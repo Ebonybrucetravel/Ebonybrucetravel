@@ -16,6 +16,9 @@ interface ResultItem {
   baggage?: string;
   aircraft?: string;
   layoverDetails?: string;
+  image?: string;           // Add this
+  amenities?: string[];     // Add this
+  features?: string[];      // Add this
 }
 
 interface SearchResultsProps {

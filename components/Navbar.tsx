@@ -165,24 +165,24 @@ const Navbar: React.FC<NavbarProps> = ({
           <div className="hidden lg:flex items-center space-x-8">
             <button
               onClick={handleFlightsClick}
-              className="text-blue-600 font-bold hover:text-blue-700 transition-colors duration-200 relative py-1 group"
+              className="text-[#32A6D7] font-bold hover:text-[#2b91c1] transition-colors duration-200 relative py-1 group"
             >
               {t?.('nav.flights') || 'Flights'}
-              <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-blue-600 rounded-full group-hover:w-full transition-all duration-300"></span>
+              <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-[#32A6D7] rounded-full group-hover:w-full transition-all duration-300"></span>
             </button>
             <a
               href="#"
-              className="text-gray-500 hover:text-blue-600 font-bold transition-colors duration-200 relative py-1 group"
+              className="text-gray-500 hover:text-[#32A6D7] font-bold transition-colors duration-200 relative py-1 group"
             >
               {t?.('nav.hotels') || 'Hotels'}
-              <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-blue-600 rounded-full group-hover:w-full transition-all duration-300"></span>
+              <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-[#32A6D7] rounded-full group-hover:w-full transition-all duration-300"></span>
             </a>
             <a
               href="#"
-              className="text-gray-500 hover:text-blue-600 font-bold transition-colors duration-200 relative py-1 group"
+              className="text-gray-500 hover:text-[#32A6D7] font-bold transition-colors duration-200 relative py-1 group"
             >
               {t?.('nav.cars') || 'Cars'}
-              <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-blue-600 rounded-full group-hover:w-full transition-all duration-300"></span>
+              <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-[#32A6D7] rounded-full group-hover:w-full transition-all duration-300"></span>
             </a>
           </div>
 
@@ -365,13 +365,13 @@ const Navbar: React.FC<NavbarProps> = ({
               <div className="hidden lg:flex items-center gap-2">
                 <button
                   onClick={onSignIn}
-                  className="px-4 py-2 text-sm font-bold text-gray-700 hover:text-blue-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 rounded-lg"
+                  className="px-4 py-2 text-sm font-bold text-gray-700 hover:text-[#32A6D7] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2 rounded-lg"
                 >
                   {t?.('nav.signIn') || 'Sign In'}
                 </button>
                 <button
                   onClick={onRegister}
-                  className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-100 hover:shadow-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
+                  className="px-5 py-2.5 bg-gradient-to-r from-[#32A6D7] to-[#2c95c2] text-white text-sm font-bold rounded-xl shadow-lg shadow-[#32A6D7]/10 hover:shadow-xl hover:from-[#2c95c2] hover:to-[#2684ad] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2"
                 >
                   {t?.('nav.register') || 'Register'}
                 </button>
@@ -381,7 +381,7 @@ const Navbar: React.FC<NavbarProps> = ({
             {/* Mobile Menu Button */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="lg:hidden p-2 text-gray-500 hover:text-blue-600 transition-colors duration-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
+              className="lg:hidden p-2 text-gray-500 hover:text-[#32A6D7] transition-colors duration-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2"
               aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={isMobileMenuOpen}
             >
@@ -408,7 +408,7 @@ const Navbar: React.FC<NavbarProps> = ({
                 handleFlightsClick();
                 setIsMobileMenuOpen(false);
               }}
-              className="w-full flex items-center px-4 py-4 text-left font-bold text-gray-900 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
+              className="w-full flex items-center px-4 py-4 text-left font-bold text-gray-900 bg-[#f0f9ff] rounded-xl hover:bg-[#e1f3ff] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2"
             >
               <svg className="w-5 h-5 mr-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -417,7 +417,7 @@ const Navbar: React.FC<NavbarProps> = ({
             </button>
             <a
               href="#"
-              className="w-full flex items-center px-4 py-4 text-left font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
+              className="w-full flex items-center px-4 py-4 text-left font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2"
             >
               <svg className="w-5 h-5 mr-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
@@ -431,7 +431,7 @@ const Navbar: React.FC<NavbarProps> = ({
             </a>
             <a
               href="#"
-              className="w-full flex items-center px-4 py-4 text-left font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
+              className="w-full flex items-center px-4 py-4 text-left font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2"
             >
               <svg className="w-5 h-5 mr-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
@@ -451,7 +451,7 @@ const Navbar: React.FC<NavbarProps> = ({
                     onSignIn?.();
                     setIsMobileMenuOpen(false);
                   }}
-                  className="w-full py-4 font-bold text-gray-700 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
+                  className="w-full py-4 font-bold text-gray-700 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2"
                 >
                   {t?.('nav.signIn') || 'Sign In'}
                 </button>
@@ -460,7 +460,7 @@ const Navbar: React.FC<NavbarProps> = ({
                     onRegister?.();
                     setIsMobileMenuOpen(false);
                   }}
-                  className="w-full py-4 font-bold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl shadow-lg shadow-blue-100 active:scale-[0.98] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
+                  className="w-full py-4 font-bold text-white bg-gradient-to-r from-[#32A6D7] to-[#2c95c2] rounded-xl shadow-lg shadow-[#32A6D7]/10 active:scale-[0.98] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2"
                 >
                   {t?.('nav.register') || 'Register'}
                 </button>

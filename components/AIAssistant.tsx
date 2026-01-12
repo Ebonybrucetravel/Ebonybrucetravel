@@ -1,12 +1,22 @@
 'use client';
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI } from '@google/genai';
 import { useLanguage } from '../context/LanguageContext';
 
 interface AIAssistantProps {
   onClose: () => void;
-  user?: { name: string; email: string; profilePicture?: string }; // Add this line
+  user?: { name: string; email: string; profilePicture?: string };
 }
+
+// Fallback travel responses
+const FALLBACK_RESPONSES = [
+  "I'd be happy to help you plan your trip! For flights from Lagos to Abuja, I recommend checking Air Peace or Ibom Air for competitive prices around $120-$180 for economy class.",
+  "Looking for hotels in London? Consider the Grand Plaza Hotel in the city center for $250/night or the Ocean View Resort beachfront for $320/night with all-inclusive amenities.",
+  "For car rentals in Los Angeles, Enterprise offers Toyota Prado SUVs for $85/day, while Hertz has Mercedes-Benz C-Class luxury cars for $120/day.",
+  "I can help you find the best travel deals! Our premium network offers competitive rates on flights, hotels, and car rentals worldwide.",
+  "Planning a multi-city trip? I recommend booking flights 2-3 months in advance for the best prices and considering mid-week travel for lower rates.",
+  "For beach destinations, consider booking all-inclusive resorts that include meals and activities. Popular options include Maldives, Bali, and the Caribbean.",
+  "Traveling on a budget? Look for red-eye flights, consider alternative airports, and book accommodations slightly outside city centers for better value."
+];
 
 const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
   const { t } = useLanguage();
@@ -14,8 +24,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
     { 
       role: 'assistant', 
       content: user?.name 
-        ? `Hello ${user.name}! I'm your Ebony Bruce AI travel assistant. Where would you like to go?`
-        : "Hello! I'm your Ebony Bruce AI travel assistant. Where would you like to go?"
+        ? `Hello ${user.name}! I'm your Ebony Bruce travel assistant. Where would you like to go?`
+        : "Hello! I'm your Ebony Bruce travel assistant. Where would you like to go?"
     }
   ]);
   const [input, setInput] = useState('');
@@ -28,6 +38,41 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
     }
   }, [messages]);
 
+  const getFallbackResponse = (userMessage: string): string => {
+    const lowerMessage = userMessage.toLowerCase();
+    
+    // Context-aware fallback responses
+    if (lowerMessage.includes('flight') || lowerMessage.includes('fly') || lowerMessage.includes('airplane')) {
+      return "For flights, I recommend checking our premium airline partners: Air Peace, Ibom Air, and Arik Air. Economy fares start from $120, premium economy from $180, and business class from $280. Would you like me to search specific routes for you?";
+    }
+    
+    if (lowerMessage.includes('hotel') || lowerMessage.includes('stay') || lowerMessage.includes('accommodation')) {
+      return "We have excellent hotel partnerships worldwide! In major cities, expect $200-$400/night for 4-5 star properties. Beach resorts range from $300-$600/night all-inclusive. Shall I check availability for your dates?";
+    }
+    
+    if (lowerMessage.includes('car') || lowerMessage.includes('rental') || lowerMessage.includes('vehicle')) {
+      return "Car rental options include economy cars from $40/day, SUVs from $85/day, and luxury vehicles from $120/day. All rentals include insurance and unlimited mileage. Which type of vehicle interests you?";
+    }
+    
+    if (lowerMessage.includes('price') || lowerMessage.includes('cost') || lowerMessage.includes('budget')) {
+      return "Our travel packages offer great value! Budget trips start from $500, mid-range from $1,200, and luxury from $2,500+ per person. This typically includes flights and accommodation. What's your budget range?";
+    }
+    
+    if (lowerMessage.includes('recommend') || lowerMessage.includes('suggest') || lowerMessage.includes('best')) {
+      return "Popular destinations right now: Bali for beaches, Japan for culture, Italy for food, and Dubai for luxury. For adventure, consider Costa Rica or New Zealand. Where are you thinking of going?";
+    }
+    
+    if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
+      return user?.name 
+        ? `Hi ${user.name}! Ready to plan your next adventure?`
+        : "Hi there! I'm here to help you plan your perfect trip. Where shall we start?";
+    }
+    
+    // Random helpful response from our fallback list
+    const randomIndex = Math.floor(Math.random() * FALLBACK_RESPONSES.length);
+    return FALLBACK_RESPONSES[randomIndex];
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -37,41 +82,32 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
     setIsLoading(true);
 
     try {
-      // Use the correct environment variable name
-      const apiKey = process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY || process.env.API_KEY;
-      if (!apiKey) {
-        throw new Error('API key not configured');
-      }
+      // Simulate API delay (500-1500ms)
+      await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
       
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [{ 
-          parts: [{ 
-            text: [...messages, { role: 'user', content: userMessage }]
-              .map(m => `${m.role}: ${m.content}`)
-              .join('\n')
-          }] 
-        }],
-        config: {
-          systemInstruction: `You are a friendly and professional travel assistant for Ebony Bruce Travels. 
-          ${user?.name ? `The user's name is ${user.name}.` : ''}
-          Help users plan trips, find destinations, and answer travel queries.`
-        }
-      });
-
+      // Get context-aware fallback response
+      const aiResponse = getFallbackResponse(userMessage);
+      
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: response.text || "I'm sorry, I couldn't process that request." 
+        content: aiResponse
       }]);
+      
     } catch (error) {
-      console.error("AI Error:", error);
+      console.error("Chat error:", error);
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: "Sorry, I'm having trouble connecting right now. Please try again later." 
+        content: "I'm here to help with your travel plans! What destination are you considering?" 
       }]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
     }
   };
 
@@ -86,7 +122,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
               </svg>
             </div>
             <div>
-              <h3 className="font-bold">Chat</h3>
+              <h3 className="font-bold">Travel Assistant</h3>
               <p className="text-xs text-blue-100">Powered by Ebony Bruce Travel</p>
             </div>
           </div>
@@ -126,8 +162,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
               type="text" 
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Ask me anything..."
+              onKeyDown={handleKeyPress}
+              placeholder="Ask about flights, hotels, or destinations..."
               className="flex-1 px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-medium"
             />
             <button 
@@ -140,6 +176,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
               </svg>
             </button>
           </div>
+          <p className="text-xs text-gray-400 mt-2 text-center">
+            Tip: Ask about flights, hotels, car rentals, or destinations
+          </p>
         </div>
       </div>
     </div>
