@@ -2,15 +2,15 @@
 
 import React from 'react';
 import { useLanguage } from '../context/LanguageContext';
-import Image from 'next/image';
 
 const HomesGrid: React.FC = () => {
   const { t, currency } = useLanguage();
   
-  // Safely access currency with defaults
   const currencySymbol = currency?.symbol || '$';
-  const currencyCode = currency?.code || 'USD';
-  
+  const brandBlue = '#32A6D7';           // Your custom blue
+  const brandBlueLight = '#e6f4fa';      // Light variant for backgrounds
+  const brandBlueDark = '#2a8bb5';       // Slightly darker for hover (optional – you can remove/adjust)
+
   const homes = [
     {
       id: '1',
@@ -74,10 +74,7 @@ const HomesGrid: React.FC = () => {
     }
   ];
 
-  // Format price with currency symbol
-  const formatPrice = (price: number) => {
-    return `${currencySymbol}${price.toFixed(2)}`;
-  };
+  const formatPrice = (price: number) => `${currencySymbol}${price.toFixed(2)}`;
 
   return (
     <section className="px-4 md:px-8 lg:px-16 py-12">
@@ -92,14 +89,15 @@ const HomesGrid: React.FC = () => {
         </div>
         <a 
           href="#" 
-          className="text-blue-600 font-semibold hover:underline hover:text-blue-700 transition-colors duration-200 flex items-center gap-2 group"
+          className="font-semibold transition-colors duration-200 flex items-center gap-2 group"
+          style={{ color: brandBlue }}
         >
           {t?.('homes.explore') || 'Explore all'}
           <svg 
             className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" 
             fill="none" 
             viewBox="0 0 24 24" 
-            stroke="currentColor"
+            stroke={brandBlue}
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
@@ -122,8 +120,7 @@ const HomesGrid: React.FC = () => {
                 width={400}
                 height={256}
                 onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600';
+                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600';
                 }}
               />
               
@@ -151,7 +148,10 @@ const HomesGrid: React.FC = () => {
             
             {/* Content Container */}
             <div className="p-6">
-              <h3 className="font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors duration-200 text-lg">
+              <h3 
+                className="font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-[${brandBlue}] transition-colors duration-200 text-lg"
+                style={{ '--hover-color': brandBlue } as React.CSSProperties}
+              >
                 {home.name}
               </h3>
               
@@ -170,7 +170,10 @@ const HomesGrid: React.FC = () => {
               
               {/* Rating */}
               <div className="flex items-center gap-3 mb-4">
-                <div className="flex items-center bg-blue-50 px-3 py-1 rounded-full">
+                <div 
+                  className="flex items-center px-3 py-1 rounded-full"
+                  style={{ backgroundColor: brandBlueLight }}
+                >
                   <div className="flex text-yellow-400 mr-2">
                     {[...Array(5)].map((_, i) => (
                       <svg 
@@ -182,12 +185,17 @@ const HomesGrid: React.FC = () => {
                       </svg>
                     ))}
                   </div>
-                  <span className="text-sm font-bold text-blue-700">{home.rating}.0</span>
+                  <span 
+                    className="text-sm font-bold"
+                    style={{ color: brandBlue }}
+                  >
+                    {home.rating}.0
+                  </span>
                 </div>
                 <span className="text-xs text-gray-400">({home.reviews} reviews)</span>
               </div>
               
-              {/* Price */}
+              {/* Price & Book */}
               <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                 <div>
                   {home.discountedPrice && (
@@ -195,14 +203,30 @@ const HomesGrid: React.FC = () => {
                       {formatPrice(home.price)}
                     </span>
                   )}
-                  <span className="text-xl font-bold text-blue-600">
+                  <span 
+                    className="text-xl font-bold"
+                    style={{ color: brandBlue }}
+                  >
                     {formatPrice(home.discountedPrice || home.price)}
                   </span>
                   <span className="text-xs text-gray-500 ml-1">/{t?.('homes.night') || 'night'}</span>
                 </div>
                 
                 <button 
-                  className="px-4 py-2 bg-blue-50 text-blue-600 font-semibold rounded-lg hover:bg-blue-100 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
+                  className="px-4 py-2 font-semibold rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2"
+                  style={{ 
+                    backgroundColor: brandBlueLight,
+                    color: brandBlue,
+                    '--tw-ring-color': `${brandBlue}33` // 20% opacity ring
+                  } as React.CSSProperties}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = brandBlue;
+                    e.currentTarget.style.color = 'white';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = brandBlueLight;
+                    e.currentTarget.style.color = brandBlue;
+                  }}
                   aria-label={`Book ${home.name}`}
                 >
                   {t?.('homes.book') || 'Book Now'}

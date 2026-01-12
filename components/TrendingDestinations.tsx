@@ -8,10 +8,12 @@ const TrendingDestinations: React.FC = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const sliderRef = useRef<HTMLDivElement>(null);
   
-  // Safely access currency properties with defaults
   const currencySymbol = currency?.symbol || '$';
   const currencyCode = currency?.code || 'USD';
-  
+  const brandBlue = '#32A6D7';           // Your custom blue
+  const brandBlueDark = '#2a8bb5';       // Slightly darker hover variant
+  const brandBlueLight = '#e6f4fa';      // Light background variant if needed
+
   const destinations = [
     { 
       id: '1', 
@@ -69,55 +71,31 @@ const TrendingDestinations: React.FC = () => {
     },
   ];
 
-  // Format price with currency
-  const formatPrice = (price: number) => {
-    return `${currencySymbol}${price}`;
-  };
+  const formatPrice = (price: number) => `${currencySymbol}${price}`;
 
-  // Calculate slides per view based on screen size
   const getSlidesPerView = () => {
     if (typeof window === 'undefined') return 4;
     const width = window.innerWidth;
-    if (width < 640) return 1; // Mobile
-    if (width < 768) return 2; // Tablet
-    if (width < 1024) return 3; // Small desktop
-    return 4; // Large desktop
+    if (width < 640) return 1;
+    if (width < 768) return 2;
+    if (width < 1024) return 3;
+    return 4;
   };
 
   const slidesPerView = getSlidesPerView();
   const totalSlides = Math.ceil(destinations.length / slidesPerView);
 
   const nextSlide = () => {
-    if (currentSlide < totalSlides - 1) {
-      setCurrentSlide(currentSlide + 1);
-    } else {
-      setCurrentSlide(0); // Loop back to start
-    }
+    setCurrentSlide((prev) => (prev < totalSlides - 1 ? prev + 1 : 0));
   };
 
   const prevSlide = () => {
-    if (currentSlide > 0) {
-      setCurrentSlide(currentSlide - 1);
-    } else {
-      setCurrentSlide(totalSlides - 1); // Loop to end
-    }
+    setCurrentSlide((prev) => (prev > 0 ? prev - 1 : totalSlides - 1));
   };
 
   const goToSlide = (index: number) => {
     setCurrentSlide(index);
   };
-
-  // Calculate which destinations to show based on current slide
-  const visibleDestinations = destinations.slice(
-    currentSlide * slidesPerView,
-    (currentSlide + 1) * slidesPerView
-  );
-
-  // If we're at the end and don't have enough items, fill from beginning
-  if (visibleDestinations.length < slidesPerView && currentSlide === totalSlides - 1) {
-    const needed = slidesPerView - visibleDestinations.length;
-    visibleDestinations.push(...destinations.slice(0, needed));
-  }
 
   return (
     <section className="px-4 md:px-8 lg:px-16 py-16 bg-white">
@@ -136,42 +114,22 @@ const TrendingDestinations: React.FC = () => {
           <div className="flex gap-3">
             <button 
               onClick={prevSlide}
-              className={`p-3 border ${currentSlide === 0 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-300 text-gray-600 hover:bg-gray-50'} rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2`}
+              className={`p-3 border ${currentSlide === 0 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-300 text-gray-600 hover:bg-gray-50'} rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[${brandBlue}] focus:ring-offset-2`}
               aria-label="Previous destinations"
               disabled={currentSlide === 0}
             >
-              <svg 
-                className="w-6 h-6" 
-                fill="none" 
-                viewBox="0 0 24 24" 
-                stroke="currentColor"
-              >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2} 
-                  d="M15 19l-7-7 7-7" 
-                />
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
             <button 
               onClick={nextSlide}
-              className={`p-3 ${currentSlide === totalSlides - 1 ? 'bg-gray-800 cursor-not-allowed' : 'bg-gray-900 hover:bg-black'} text-white rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2`}
+              className={`p-3 ${currentSlide === totalSlides - 1 ? 'bg-gray-800 cursor-not-allowed' : 'bg-gray-900 hover:bg-black'} text-white rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[${brandBlue}] focus:ring-offset-2`}
               aria-label="Next destinations"
               disabled={currentSlide === totalSlides - 1}
             >
-              <svg 
-                className="w-6 h-6" 
-                fill="none" 
-                viewBox="0 0 24 24" 
-                stroke="currentColor"
-              >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2} 
-                  d="M9 5l7 7-7 7" 
-                />
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
           </div>
@@ -179,7 +137,6 @@ const TrendingDestinations: React.FC = () => {
         
         {/* Slider Container */}
         <div className="relative overflow-hidden">
-          {/* Slider Track */}
           <div 
             ref={sliderRef}
             className="flex transition-transform duration-500 ease-out"
@@ -205,8 +162,7 @@ const TrendingDestinations: React.FC = () => {
                       width={400}
                       height={256}
                       onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.src = 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&q=80&w=800';
+                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&q=80&w=800';
                       }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
@@ -221,7 +177,7 @@ const TrendingDestinations: React.FC = () => {
                     
                     {/* Favorite Button */}
                     <button 
-                      className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm p-2 rounded-full hover:bg-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm p-2 rounded-full hover:bg-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[${brandBlue}]"
                       aria-label="Add to favorites"
                     >
                       <svg 
@@ -245,24 +201,9 @@ const TrendingDestinations: React.FC = () => {
                     <div className="mb-4">
                       <h3 className="text-xl font-bold text-gray-900 mb-1">{dest.name}</h3>
                       <div className="flex items-center gap-2 text-gray-600">
-                        <svg 
-                          className="w-4 h-4" 
-                          fill="none" 
-                          viewBox="0 0 24 24" 
-                          stroke="currentColor"
-                        >
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
-                            d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" 
-                          />
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
-                            d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" 
-                          />
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                         <span className="text-sm">{dest.country}</span>
                       </div>
@@ -289,9 +230,19 @@ const TrendingDestinations: React.FC = () => {
                       </div>
                     </div>
                     
-                    {/* Book Now Button */}
+                    {/* Book Now Button – using your brand blue */}
                     <button 
-                      className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all duration-200 flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 group-hover:shadow-md"
+                      className="w-full py-3 text-white font-medium rounded-lg transition-all duration-200 flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 group-hover:shadow-md"
+                      style={{ 
+                        backgroundColor: brandBlue,
+                        '--tw-ring-color': `${brandBlue}66` // semi-transparent ring
+                      } as React.CSSProperties}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = brandBlueDark;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = brandBlue;
+                      }}
                       aria-label={`Book trip to ${dest.name}`}
                     >
                       <span>Book Now</span>
@@ -301,12 +252,7 @@ const TrendingDestinations: React.FC = () => {
                         viewBox="0 0 24 24" 
                         stroke="currentColor"
                       >
-                        <path 
-                          strokeLinecap="round" 
-                          strokeLinejoin="round" 
-                          strokeWidth={2} 
-                          d="M14 5l7 7m0 0l-7 7m7-7H3" 
-                        />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                       </svg>
                     </button>
                   </div>
@@ -316,41 +262,24 @@ const TrendingDestinations: React.FC = () => {
           </div>
         </div>
         
-        {/* Dots Indicator */}
+        {/* Dots Indicator – active dot uses brand blue */}
         <div className="flex justify-center gap-2 mt-10">
           {Array.from({ length: totalSlides }).map((_, index) => (
             <button
               key={index}
               onClick={() => goToSlide(index)}
-              className={`w-3 h-3 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-300 ${
+              className={`w-3 h-3 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[${brandBlue}] ${
                 index === currentSlide 
-                  ? 'bg-blue-600 w-10' 
+                  ? 'bg-[${brandBlue}] w-10' 
                   : 'bg-gray-300 hover:bg-gray-400'
               }`}
               aria-label={`Go to slide ${index + 1}`}
             />
           ))}
         </div>
-        
-        {/* View all button - Centered */}
-        <div className="text-center mt-16">
-          <button className="px-10 py-4 bg-gray-900 hover:bg-black text-white font-bold text-lg rounded-full transition-all duration-200 shadow-lg hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-gray-800 focus:ring-offset-2 inline-flex items-center gap-3">
-            {t?.('trending.viewAll') || 'View All Destinations'}
-            <svg 
-              className="w-5 h-5" 
-              fill="none" 
-              viewBox="0 0 24 24" 
-              stroke="currentColor"
-            >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth={2} 
-                d="M17 8l4 4m0 0l-4 4m4-4H3" 
-              />
-            </svg>
-          </button>
-        </div>
+    
+   \
+  
       </div>
     </section>
   );

@@ -554,9 +554,7 @@ export default function Home() {
           <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
         </div>
         <span className="font-bold hidden sm:inline text-lg">Chat</span>
-        <span className="hidden sm:inline text-xs bg-blue-800/50 px-2 py-1 rounded-lg backdrop-blur-sm">
-          Ctrl+K
-        </span>
+<span className="hidden sm:inline text-xs bg-[#32A6D7]/50 px-2 py-1 rounded-lg backdrop-blur-sm"> </span>
       </button>
 
       {isAiOpen && <AIAssistant onClose={() => setIsAiOpen(false)} user={user} />}
