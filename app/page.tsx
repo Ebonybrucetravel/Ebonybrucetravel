@@ -441,14 +441,14 @@ export default function Home() {
 
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      <Navbar 
-        isLoggedIn={isLoggedIn}
-        user={user}
-        onSignIn={() => openAuth('login')} 
-        onRegister={() => openAuth('register')}
-        onProfileClick={navigateToProfile}
-        onLogoClick={navigateToHome}
-        onSearchClick={handleSearchClick}
+    <Navbar 
+      isLoggedIn={isLoggedIn}
+      user={user}
+      onSignIn={() => openAuth('login')} 
+      onRegister={() => openAuth('register')}
+      onProfileClick={navigateToProfile}
+      onLogoClick={navigateToHome}
+      onSearchClick={handleSearchClick} // This was missing
       />
       
       {currentView === 'home' && (

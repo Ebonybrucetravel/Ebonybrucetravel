@@ -3,15 +3,19 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import Image from 'next/image';
 
+// Import types from your context
+type LanguageCode = 'EN' | 'FR' | 'ES' | 'DE' | 'ZH';
+type CurrencyCode = 'USD' | 'EUR' | 'GBP' | 'NGN' | 'JPY' | 'CNY';
+
 interface Language {
-  code: 'EN' | 'FR' | 'ES' | 'DE' | 'ZH';
+  code: LanguageCode;
   name: string;
   flag: string;
-  defaultCurrencyCode: string;
+  defaultCurrencyCode: CurrencyCode; // This should match the CurrencyCode type
 }
 
 interface Currency {
-  code: string;
+  code: CurrencyCode; // Changed from string to CurrencyCode
   name: string;
   symbol: string;
   flag: string;
@@ -31,6 +35,7 @@ const currencies: Currency[] = [
   { code: 'EUR', name: 'Euro', symbol: '€', flag: '/flags/eu.png' },
   { code: 'GBP', name: 'British Pound', symbol: '£', flag: '/flags/gb.png' },
   { code: 'JPY', name: 'Japanese Yen', symbol: '¥', flag: '/flags/jp.png' },
+  { code: 'CNY', name: 'Chinese Yuan', symbol: '¥', flag: '/flags/cn.png' },
 ];
 
 interface NavbarProps {
@@ -40,23 +45,27 @@ interface NavbarProps {
   onRegister?: () => void;
   onProfileClick?: () => void;
   onLogoClick?: () => void;
+  onSearchClick?: () => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ 
-  isLoggedIn, 
-  user, 
-  onSignIn, 
-  onRegister, 
-  onProfileClick, 
-  onLogoClick 
+const Navbar: React.FC<NavbarProps> = ({
+  isLoggedIn,
+  user,
+  onSignIn,
+  onRegister,
+  onProfileClick,
+  onLogoClick,
+  onSearchClick,
 }) => {
   const { language, setLanguage, currency, setCurrency, t } = useLanguage();
+
+  // Cast language to LanguageCode since useLanguage returns LanguageCode
+  const selectedLang = languages.find((l) => l.code === language) || languages[0];
   
-  // Safe currency access
-  const currencyCode = currency?.code || 'USD';
-  const selectedLang = languages.find(l => l.code === language) || languages[0];
-  const selectedCurrency = currencies.find(c => c.code === currencyCode) || currencies[1];
-  
+  // Cast currency.code to CurrencyCode
+  const currencyCode = currency.code as CurrencyCode;
+  const selectedCurrency = currencies.find((c) => c.code === currencyCode) || currencies[1];
+
   const [isLangOpen, setIsLangOpen] = useState(false);
   const [isCurrencyOpen, setIsCurrencyOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -79,32 +88,31 @@ const Navbar: React.FC<NavbarProps> = ({
 
   const handleLanguageSelect = (lang: Language) => {
     setLanguage(lang.code);
-    const matchingCurrency = currencies.find(c => c.code === lang.defaultCurrencyCode);
+    const matchingCurrency = currencies.find((c) => c.code === lang.defaultCurrencyCode);
     if (matchingCurrency) {
-      setCurrency({ 
-        code: matchingCurrency.code, 
+      setCurrency({
+        code: matchingCurrency.code, // This now matches CurrencyCode type
         symbol: matchingCurrency.symbol,
-        name: matchingCurrency.name 
+        name: matchingCurrency.name,
       });
     }
     setIsLangOpen(false);
   };
 
   const handleCurrencySelect = (curr: Currency) => {
-    setCurrency({ 
-      code: curr.code, 
+    setCurrency({
+      code: curr.code, // This now matches CurrencyCode type
       symbol: curr.symbol,
-      name: curr.name 
+      name: curr.name,
     });
     setIsCurrencyOpen(false);
   };
 
-  // Generate fallback avatar - FIXED: Return string URL only
   const getAvatarFallback = (): string => {
     if (user?.name) {
       const initials = user.name
         .split(' ')
-        .map(n => n[0])
+        .map((n) => n[0])
         .join('')
         .toUpperCase()
         .slice(0, 2);
@@ -115,56 +123,62 @@ const Navbar: React.FC<NavbarProps> = ({
 
   const avatarUrl = user?.profilePicture || getAvatarFallback();
 
+  // Handle search click on Flights button
+  const handleFlightsClick = () => {
+    if (onSearchClick) {
+      onSearchClick();
+    } else if (onLogoClick) {
+      onLogoClick();
+    }
+  };
+
   return (
     <nav className="bg-white border-b border-gray-100 sticky top-0 z-50 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-20">
-          
-          {/* Logo Section - Using your local logo */}
-          <div 
-            className="flex items-center gap-2 cursor-pointer group"
-            role="button"
-            tabIndex={0}
-            onClick={() => { 
-              onLogoClick?.(); 
-              setIsMobileMenuOpen(false); 
+          {/* Logo Section */}
+          <button
+            type="button"
+            className="flex items-center gap-2 cursor-pointer group bg-transparent border-none p-0 m-0 focus:outline-none"
+            onClick={() => {
+              onLogoClick?.();
+              setIsMobileMenuOpen(false);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
                 onLogoClick?.();
                 setIsMobileMenuOpen(false);
               }
             }}
           >
-            
-              <Image 
-                src="/images/logo1.png" 
-                alt="Ebony Bruce Travels Logo" 
-                width={100}
-                height={40}
-                className="object-contain"
-              />
-            
-          </div>
+            <Image
+              src="/images/logo1.png"
+              alt="Ebony Bruce Travels Logo"
+              width={100}
+              height={40}
+              className="object-contain"
+            />
+          </button>
 
           {/* Desktop Navigation */}
           <div className="hidden lg:flex items-center space-x-8">
-            <button 
-              onClick={onLogoClick}
+            <button
+              onClick={handleFlightsClick}
               className="text-blue-600 font-bold hover:text-blue-700 transition-colors duration-200 relative py-1 group"
             >
               {t?.('nav.flights') || 'Flights'}
               <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-blue-600 rounded-full group-hover:w-full transition-all duration-300"></span>
             </button>
-            <a 
-              href="#" 
+            <a
+              href="#"
               className="text-gray-500 hover:text-blue-600 font-bold transition-colors duration-200 relative py-1 group"
             >
               {t?.('nav.hotels') || 'Hotels'}
               <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-blue-600 rounded-full group-hover:w-full transition-all duration-300"></span>
             </a>
-            <a 
-              href="#" 
+            <a
+              href="#"
               className="text-gray-500 hover:text-blue-600 font-bold transition-colors duration-200 relative py-1 group"
             >
               {t?.('nav.cars') || 'Cars'}
@@ -178,22 +192,22 @@ const Navbar: React.FC<NavbarProps> = ({
             <div className="hidden sm:flex items-center gap-2">
               {/* Language Selector */}
               <div className="relative" ref={langRef}>
-                <button 
-                  onClick={() => { 
-                    setIsLangOpen(!isLangOpen); 
-                    setIsCurrencyOpen(false); 
+                <button
+                  onClick={() => {
+                    setIsLangOpen(!isLangOpen);
+                    setIsCurrencyOpen(false);
                   }}
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all duration-200 border ${
-                    isLangOpen 
-                      ? 'bg-blue-50 border-blue-100 ring-2 ring-blue-50' 
+                    isLangOpen
+                      ? 'bg-blue-50 border-blue-100 ring-2 ring-blue-50'
                       : 'bg-transparent border-transparent hover:bg-gray-50 hover:border-gray-100'
                   }`}
                   aria-label="Select language"
                   aria-expanded={isLangOpen}
                 >
-                  <Image 
-                    src={selectedLang.flag} 
-                    className="rounded shadow-sm" 
+                  <Image
+                    src={selectedLang.flag}
+                    className="rounded shadow-sm"
                     alt={`${selectedLang.name} flag`}
                     width={20}
                     height={14}
@@ -201,34 +215,31 @@ const Navbar: React.FC<NavbarProps> = ({
                   <span className="text-sm font-bold text-gray-700 hidden md:inline">
                     {selectedLang.code}
                   </span>
-                  <svg 
-                    className={`w-3 h-3 text-gray-400 transition-transform ${isLangOpen ? 'rotate-180' : ''}`} 
-                    fill="none" 
-                    viewBox="0 0 24 24" 
+                  <svg
+                    className={`w-3 h-3 text-gray-400 transition-transform ${isLangOpen ? 'rotate-180' : ''}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
                     stroke="currentColor"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
-                
-                {/* Language Dropdown */}
+
                 {isLangOpen && (
                   <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-gray-100 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300 z-50 ring-1 ring-black/5">
                     <div className="p-2 space-y-1">
                       {languages.map((lang) => (
-                        <button 
-                          key={lang.code} 
-                          onClick={() => handleLanguageSelect(lang)} 
+                        <button
+                          key={lang.code}
+                          onClick={() => handleLanguageSelect(lang)}
                           className={`flex items-center justify-between w-full px-4 py-3 rounded-xl transition-all ${
-                            language === lang.code 
-                              ? 'bg-blue-50 text-blue-600' 
-                              : 'hover:bg-gray-50 text-gray-900'
+                            language === lang.code ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50 text-gray-900'
                           }`}
                         >
                           <div className="flex items-center gap-3">
-                            <Image 
-                              src={lang.flag} 
-                              className="rounded shadow-sm" 
+                            <Image
+                              src={lang.flag}
+                              className="rounded shadow-sm"
                               alt={`${lang.name} flag`}
                               width={24}
                               height={16}
@@ -240,7 +251,11 @@ const Navbar: React.FC<NavbarProps> = ({
                           </div>
                           {language === lang.code && (
                             <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              <path
+                                fillRule="evenodd"
+                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                clipRule="evenodd"
+                              />
                             </svg>
                           )}
                         </button>
@@ -252,57 +267,52 @@ const Navbar: React.FC<NavbarProps> = ({
 
               {/* Currency Selector */}
               <div className="relative" ref={currencyRef}>
-                <button 
-                  onClick={() => { 
-                    setIsCurrencyOpen(!isCurrencyOpen); 
-                    setIsLangOpen(false); 
+                <button
+                  onClick={() => {
+                    setIsCurrencyOpen(!isCurrencyOpen);
+                    setIsLangOpen(false);
                   }}
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all duration-200 border ${
-                    isCurrencyOpen 
-                      ? 'bg-blue-50 border-blue-100 ring-2 ring-blue-50' 
+                    isCurrencyOpen
+                      ? 'bg-blue-50 border-blue-100 ring-2 ring-blue-50'
                       : 'bg-transparent border-transparent hover:bg-gray-50 hover:border-gray-100'
                   }`}
                   aria-label="Select currency"
                   aria-expanded={isCurrencyOpen}
                 >
-                  <Image 
-                    src={selectedCurrency.flag} 
-                    className="rounded shadow-sm" 
+                  <Image
+                    src={selectedCurrency.flag}
+                    className="rounded shadow-sm"
                     alt={`${selectedCurrency.name} flag`}
                     width={20}
                     height={14}
                   />
-                  <span className="text-sm font-bold text-gray-700">
-                    {selectedCurrency.code}
-                  </span>
-                  <svg 
-                    className={`w-3 h-3 text-gray-400 transition-transform ${isCurrencyOpen ? 'rotate-180' : ''}`} 
-                    fill="none" 
-                    viewBox="0 0 24 24" 
+                  <span className="text-sm font-bold text-gray-700">{selectedCurrency.code}</span>
+                  <svg
+                    className={`w-3 h-3 text-gray-400 transition-transform ${isCurrencyOpen ? 'rotate-180' : ''}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
                     stroke="currentColor"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
 
-                {/* Currency Dropdown */}
                 {isCurrencyOpen && (
                   <div className="absolute top-full right-0 mt-2 w-72 bg-white border border-gray-100 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300 z-50 ring-1 ring-black/5">
                     <div className="p-2 space-y-1">
                       {currencies.map((curr) => (
-                        <button 
-                          key={curr.code} 
-                          onClick={() => handleCurrencySelect(curr)} 
+                        <button
+                          key={curr.code}
+                          onClick={() => handleCurrencySelect(curr)}
                           className={`flex items-center justify-between w-full px-4 py-3 rounded-xl transition-all ${
-                            currencyCode === curr.code 
-                              ? 'bg-blue-50 text-blue-600' 
-                              : 'hover:bg-gray-50 text-gray-900'
+                            currencyCode === curr.code ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50 text-gray-900'
                           }`}
                         >
                           <div className="flex items-center gap-3">
-                            <Image 
-                              src={curr.flag} 
-                              className="rounded" 
+                            <Image
+                              src={curr.flag}
+                              className="rounded"
                               alt={`${curr.name} flag`}
                               width={20}
                               height={14}
@@ -316,7 +326,11 @@ const Navbar: React.FC<NavbarProps> = ({
                             <span className="text-sm font-medium">{curr.symbol}</span>
                             {currencyCode === curr.code && (
                               <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                  clipRule="evenodd"
+                                />
                               </svg>
                             )}
                           </div>
@@ -328,17 +342,16 @@ const Navbar: React.FC<NavbarProps> = ({
               </div>
             </div>
 
-            {/* User/Auth Section - FIXED: Using regular img for external URLs */}
+            {/* User/Auth Section */}
             {isLoggedIn ? (
-              <button 
+              <button
                 onClick={onProfileClick}
                 className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center border-2 border-white shadow-lg hover:scale-105 transition-transform duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
                 aria-label="User profile"
               >
-                {/* Use regular img tag for external URLs */}
-                <img 
-                  src={avatarUrl} 
-                  alt={user?.name || 'User avatar'} 
+                <img
+                  src={avatarUrl}
+                  alt={user?.name || 'User avatar'}
                   className="w-full h-full object-cover"
                   width={40}
                   height={40}
@@ -350,13 +363,13 @@ const Navbar: React.FC<NavbarProps> = ({
               </button>
             ) : (
               <div className="hidden lg:flex items-center gap-2">
-                <button 
+                <button
                   onClick={onSignIn}
                   className="px-4 py-2 text-sm font-bold text-gray-700 hover:text-blue-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 rounded-lg"
                 >
                   {t?.('nav.signIn') || 'Sign In'}
                 </button>
-                <button 
+                <button
                   onClick={onRegister}
                   className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-100 hover:shadow-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
                 >
@@ -366,7 +379,7 @@ const Navbar: React.FC<NavbarProps> = ({
             )}
 
             {/* Mobile Menu Button */}
-            <button 
+            <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="lg:hidden p-2 text-gray-500 hover:text-blue-600 transition-colors duration-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
               aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
@@ -390,10 +403,10 @@ const Navbar: React.FC<NavbarProps> = ({
       {isMobileMenuOpen && (
         <div className="lg:hidden bg-white border-t border-gray-50 animate-in slide-in-from-top duration-300 overflow-hidden shadow-xl">
           <div className="px-4 py-6 space-y-1">
-            <button 
-              onClick={() => { 
-                onLogoClick?.(); 
-                setIsMobileMenuOpen(false); 
+            <button
+              onClick={() => {
+                handleFlightsClick();
+                setIsMobileMenuOpen(false);
               }}
               className="w-full flex items-center px-4 py-4 text-left font-bold text-gray-900 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
             >
@@ -402,40 +415,50 @@ const Navbar: React.FC<NavbarProps> = ({
               </svg>
               {t?.('nav.flights') || 'Flights'}
             </button>
-            <a 
-              href="#" 
+            <a
+              href="#"
               className="w-full flex items-center px-4 py-4 text-left font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
             >
               <svg className="w-5 h-5 mr-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                />
               </svg>
               {t?.('nav.hotels') || 'Hotels'}
             </a>
-            <a 
-              href="#" 
+            <a
+              href="#"
               className="w-full flex items-center px-4 py-4 text-left font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
             >
               <svg className="w-5 h-5 mr-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-.553.894L15 19m-3-9V4a1 1 0 00-1-1H5a1 1 0 00-1 1v6m8 0v10M4 10v10m8 0H4" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-.553.894L15 19m-3-9V4a1 1 0 00-1-1H5a1 1 0 00-1 1v6m8 0v10M4 10v10m8 0H4"
+                />
               </svg>
               {t?.('nav.cars') || 'Cars'}
             </a>
 
             {!isLoggedIn && (
               <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100 mt-4">
-                <button 
-                  onClick={() => { 
-                    onSignIn?.(); 
-                    setIsMobileMenuOpen(false); 
+                <button
+                  onClick={() => {
+                    onSignIn?.();
+                    setIsMobileMenuOpen(false);
                   }}
                   className="w-full py-4 font-bold text-gray-700 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
                 >
                   {t?.('nav.signIn') || 'Sign In'}
                 </button>
-                <button 
-                  onClick={() => { 
-                    onRegister?.(); 
-                    setIsMobileMenuOpen(false); 
+                <button
+                  onClick={() => {
+                    onRegister?.();
+                    setIsMobileMenuOpen(false);
                   }}
                   className="w-full py-4 font-bold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl shadow-lg shadow-blue-100 active:scale-[0.98] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
                 >
@@ -443,25 +466,25 @@ const Navbar: React.FC<NavbarProps> = ({
                 </button>
               </div>
             )}
-            
-            {/* Mobile Language & Currency - FIXED: Using img for flags */}
+
+            {/* Mobile Language & Currency */}
             <div className="flex items-center justify-between pt-6 px-2">
               <div className="flex items-center gap-4">
-                <button 
-                  onClick={() => setIsLangOpen(!isLangOpen)} 
+                <button
+                  onClick={() => setIsLangOpen(!isLangOpen)}
                   className="flex items-center gap-2 font-bold text-sm text-gray-600 hover:text-blue-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 rounded-lg p-2"
                 >
-                  <img 
-                    src={selectedLang.flag} 
-                    className="w-5 h-3.5 rounded" 
+                  <Image
+                    src={selectedLang.flag}
+                    className="w-5 h-3.5 rounded"
                     alt={`${selectedLang.name} flag`}
                     width={20}
                     height={14}
                   />
                   {selectedLang.code}
                 </button>
-                <button 
-                  onClick={() => setIsCurrencyOpen(!isCurrencyOpen)} 
+                <button
+                  onClick={() => setIsCurrencyOpen(!isCurrencyOpen)}
                   className="font-bold text-sm text-gray-600 hover:text-blue-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 rounded-lg p-2"
                 >
                   {selectedCurrency.code} ({selectedCurrency.symbol})
