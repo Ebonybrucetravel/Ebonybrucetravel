@@ -26,7 +26,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
 
   const images = [
     {
-      url: 'https://images.unsplash.com/photo-1436491865332-7a61a109c0f3?auto=format&fit=crop&q=80&w=800',
+      url: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=800',
       alt: 'Airplane in flight',
       icon: '✈️'
     },
@@ -41,7 +41,6 @@ const AuthModal: React.FC<AuthModalProps> = ({
       icon: '🚗'
     }
   ];
-
   // Handle escape key to close modal
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
