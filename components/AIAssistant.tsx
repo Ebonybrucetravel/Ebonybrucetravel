@@ -86,8 +86,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
               </svg>
             </div>
             <div>
-              <h3 className="font-bold">Trip Planner</h3>
-              <p className="text-xs text-blue-100">Powered by Gemini AI</p>
+              <h3 className="font-bold">Chat</h3>
+              <p className="text-xs text-blue-100">Powered by Ebony Bruce Travel</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition">

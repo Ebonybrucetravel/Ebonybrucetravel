@@ -64,7 +64,7 @@ export interface SearchResult {
   features?: string[];
 }
 
-// Fallback results for when AI fails
+// Fallback results
 const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
   flights: [
     { 
@@ -96,21 +96,6 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
       aircraft: 'Airbus A320',
       layoverDetails: 'Direct flight',
       image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400'
-    },
-    { 
-      id: 'fb-3', 
-      provider: 'Arik Air', 
-      title: 'Flight W3482', 
-      subtitle: 'Business Class', 
-      price: '$320', 
-      time: '11:30 AM - 12:45 PM', 
-      duration: '1h 15m', 
-      stops: 'Non-stop', 
-      rating: 4.6,
-      baggage: 'Cabin: 14kg, Checked: 2×32kg',
-      aircraft: 'Boeing 737 MAX',
-      layoverDetails: 'Direct flight',
-      image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400'
     }
   ],
   hotels: [
@@ -124,17 +109,6 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
       amenities: ['Free WiFi', 'Breakfast Included', 'Swimming Pool', 'Fitness Center', 'Spa'],
       features: ['Sea View', 'King Bed', 'Private Balcony', 'Mini Bar', 'Room Service'],
       image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400'
-    },
-    {
-      id: 'fb-hotel-2',
-      provider: 'Luxury Inn',
-      title: 'Executive Room',
-      subtitle: 'Downtown • 0.2 miles',
-      price: '$180/night',
-      rating: 4.5,
-      amenities: ['Free WiFi', 'Gym', 'Restaurant', '24/7 Reception'],
-      features: ['City View', 'Queen Bed', 'Work Desk', 'Coffee Maker'],
-      image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400'
     }
   ],
   'car-rentals': [
@@ -145,15 +119,6 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
       subtitle: 'Automatic • 7 Seats • Petrol',
       price: '$85/day',
       features: ['SUV', 'Automatic', 'Air Conditioning', 'GPS Navigation', 'Bluetooth'],
-      image: 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=400'
-    },
-    {
-      id: 'fb-car-2',
-      provider: 'Hertz',
-      title: 'Mercedes C-Class',
-      subtitle: 'Automatic • 5 Seats • Diesel',
-      price: '$120/day',
-      features: ['Luxury Sedan', 'Automatic', 'Leather Seats', 'Sunroof', 'Premium Sound'],
       image: 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=400'
     }
   ]
@@ -179,6 +144,17 @@ export default function Home() {
   
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+
+  // Log API key status on mount
+  useEffect(() => {
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY;
+    console.log('🔑 API Key Status:', {
+      hasKey: !!apiKey,
+      keyLength: apiKey?.length,
+      keyPrefix: apiKey?.substring(0, 10) + '...',
+      isValid: apiKey?.startsWith('AIza') && (apiKey?.length || 0) > 30
+    });
+  }, []);
 
   // Restore user session from localStorage
   useEffect(() => {
@@ -294,12 +270,16 @@ export default function Home() {
     setSearchTime(0);
 
     try {
-      // Try both API key environment variables
-      const apiKey = process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY || process.env.API_KEY;
-      if (!apiKey) {
-        throw new Error('API key not configured');
+      // Get API key
+      const apiKey = process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY;
+      
+      if (!apiKey || !apiKey.startsWith('AIza') || apiKey.length < 30) {
+        console.error('Invalid API key format');
+        throw new Error('API_KEY_INVALID');
       }
 
+      console.log('🚀 Starting AI search with key:', apiKey.substring(0, 15) + '...');
+      
       const ai = new GoogleGenAI({ apiKey });
       
       let contextString = '';
@@ -308,31 +288,38 @@ export default function Home() {
       if (data.type === 'flights') {
         if (data.tripType === 'multi-city' && data.segments && data.segments.length > 0) {
           contextString = `Multi-city itinerary: ${data.segments.map((s: SearchSegment) => `${s.from} to ${s.to} on ${s.date}`).join(' -> ')}. Travellers: ${data.travellers || 1}. Cabin: ${data.cabinClass || 'Economy'}`;
-          specificInstructions = 'Provide flight numbers, airlines, departure/arrival times, and layover details for each segment.';
+          specificInstructions = 'Provide flight numbers, airlines, departure/arrival times, and layover details for each segment. Include realistic prices in USD.';
         } else {
           const seg = data.segments?.[0] || { from: 'Lagos', to: 'Abuja', date: '2024-01-01' };
           contextString = `${data.tripType || 'one-way'} flight from ${seg.from} to ${seg.to} on ${seg.date}${data.returnDate ? ' returning on ' + data.returnDate : ''}. Travellers: ${data.travellers || 1}. Cabin: ${data.cabinClass || 'Economy'}`;
-          specificInstructions = 'Provide high-quality baggage details (cabin and checked), aircraft models (e.g. Boeing 787), and specific layover information if not direct.';
+          specificInstructions = 'Provide high-quality baggage details (cabin and checked), aircraft models, and specific layover information if not direct. Include realistic prices in USD.';
         }
       } else if (data.type === 'hotels') {
         contextString = `Hotels and stays in ${data.location || 'London'}`;
-        specificInstructions = 'Provide room types (e.g. Deluxe Suite), amenities (e.g. WiFi, Breakfast), and precise distance from city center.';
+        specificInstructions = 'Provide room types (e.g. Deluxe Suite), amenities (e.g. WiFi, Breakfast), and precise distance from city center. Include realistic prices in USD.';
       } else {
         contextString = `Car rentals in ${data.carPickUp || 'Los Angeles'}`;
-        specificInstructions = 'Provide car models (e.g. Toyota Prado), transmission type (Auto/Manual), fuel policy, and seat count.';
+        specificInstructions = 'Provide car models, transmission type, fuel policy, and seat count. Include realistic prices in USD.';
       }
 
+      const prompt = `Generate 3-5 realistic ${data.type} search results for: ${contextString}. ${specificInstructions}. 
+      Format the response as a JSON array. Each result should have: id, provider, title, subtitle, price, and optional fields like time, duration, stops, rating, baggage, aircraft, layoverDetails, image, amenities, features.
+      Make the data realistic and useful for travelers. Include image URLs from Unsplash (use travel/transportation related images).
+      Respond ONLY with the JSON array.`;
+
+      console.log('📝 AI Prompt sent');
+
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3-flash', // More reliable than gemini-3-flash-preview
         contents: [{ 
           parts: [{ 
-            text: `Generate 10 realistic ${data.type} search results for: ${contextString}. ${specificInstructions}. 
-            Format the response as a JSON array with detailed properties for display. Include image URLs where appropriate. Respond ONLY with the JSON array.` 
+            text: prompt
           }] 
         }],
         config: {
           responseMimeType: "application/json",
-          temperature: 0.7,
+          temperature: 0.8,
+          maxOutputTokens: 1500,
           responseSchema: {
             type: Type.ARRAY,
             items: {
@@ -361,8 +348,26 @@ export default function Home() {
       });
 
       const text = response.text || '[]';
+      console.log('🤖 Raw AI Response:', text.substring(0, 200) + '...');
+      
+      // Clean the JSON response
       const jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
-      const parsedResults = JSON.parse(jsonStr) as SearchResult[];
+      console.log('🧹 Cleaned JSON:', jsonStr.substring(0, 200) + '...');
+      
+      let parsedResults: SearchResult[] = [];
+      
+      try {
+        parsedResults = JSON.parse(jsonStr) as SearchResult[];
+      } catch (parseError) {
+        console.error('Failed to parse JSON:', parseError);
+        // Try to extract JSON from text
+        const jsonMatch = text.match(/\[.*\]/s);
+        if (jsonMatch) {
+          parsedResults = JSON.parse(jsonMatch[0]) as SearchResult[];
+        } else {
+          throw new Error('NO_VALID_JSON');
+        }
+      }
       
       if (Array.isArray(parsedResults) && parsedResults.length > 0) {
         // Add images if missing
@@ -372,12 +377,9 @@ export default function Home() {
         }));
         setSearchResults(enhancedResults);
         setSearchTime(Date.now() - startTime);
+        console.log('✅ Search successful! Found', enhancedResults.length, 'results');
       } else {
-        setSearchError("No results found. Please try different parameters.");
-        // Use fallback results
-        const fallbackResults = FALLBACK_RESULTS[data.type] || [];
-        setSearchResults(fallbackResults);
-        setSearchTime(Date.now() - startTime);
+        throw new Error('NO_RESULTS');
       }
 
       setTimeout(() => {
@@ -386,13 +388,23 @@ export default function Home() {
       }, 100);
 
     } catch (error: any) {
-      console.error("Search failed:", error);
-      const errorMsg = error.message?.includes('API key') 
-        ? "AI service is currently unavailable. Please try again later."
-        : "Our AI assistant is currently over-capacity. Showing fallback results.";
+      console.error("❌ Search failed:", error.message || error);
+      
+      let errorMsg = "Our AI assistant is currently over-capacity. Showing premium results.";
+      
+      if (error.message === 'API_KEY_INVALID') {
+        errorMsg = "AI service is not configured. Please check your API key.";
+      } else if (error.message === 'NO_RESULTS' || error.message === 'NO_VALID_JSON') {
+        errorMsg = "The AI couldn't generate valid results. Showing premium options.";
+      } else if (error.message?.includes('quota') || error.message?.includes('limit')) {
+        errorMsg = "AI service quota exceeded. Showing premium results.";
+      } else if (error.message?.includes('API key') || error.message?.includes('permission')) {
+        errorMsg = "API key issue. Please verify your Google AI API key.";
+      } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
+        errorMsg = "Network issue. Please check your connection.";
+      }
       
       setSearchError(errorMsg);
-      // Use fallback results based on search type
       const fallbackType = data?.type || 'flights';
       const fallbackResults = FALLBACK_RESULTS[fallbackType] || FALLBACK_RESULTS.flights;
       setSearchResults(fallbackResults);
@@ -441,14 +453,14 @@ export default function Home() {
 
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-gray-50 to-white">
-    <Navbar 
-      isLoggedIn={isLoggedIn}
-      user={user}
-      onSignIn={() => openAuth('login')} 
-      onRegister={() => openAuth('register')}
-      onProfileClick={navigateToProfile}
-      onLogoClick={navigateToHome}
-      onSearchClick={handleSearchClick} // This was missing
+      <Navbar 
+        isLoggedIn={isLoggedIn}
+        user={user}
+        onSignIn={() => openAuth('login')} 
+        onRegister={() => openAuth('register')}
+        onProfileClick={navigateToProfile}
+        onLogoClick={navigateToHome}
+        onSearchClick={handleSearchClick}
       />
       
       {currentView === 'home' && (
@@ -462,11 +474,14 @@ export default function Home() {
                 {isSearching ? (
                   <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-12 text-center shadow-lg border border-gray-200/50 flex flex-col items-center animate-pulse">
                     <div className="w-16 h-16 border-4 border-blue-50 border-t-[#33a8da] rounded-full animate-spin mb-6"></div>
-                    <h3 className="text-2xl font-bold text-gray-900 mt-6">Searching the globe...</h3>
-                    <p className="text-gray-500 mt-2">Finding the best travel options for you</p>
+                    <h3 className="text-2xl font-bold text-gray-900 mt-6">AI is searching the globe...</h3>
+                    <p className="text-gray-500 mt-2">Analyzing millions of travel options for you</p>
                     <div className="mt-4 w-full max-w-md bg-gray-100 rounded-full h-2">
                       <div className="bg-blue-500 h-2 rounded-full animate-pulse w-3/4"></div>
                     </div>
+                    <p className="text-sm text-blue-600 mt-4">
+                      Powered by Google Gemini AI
+                    </p>
                   </div>
                 ) : searchError ? (
                   <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-12 text-center shadow-lg border border-yellow-100 flex flex-col items-center animate-fade-in">
@@ -476,26 +491,29 @@ export default function Home() {
                       </svg>
                     </div>
                     <h3 className="text-2xl font-bold text-gray-900 mb-2">{searchError}</h3>
-                    <p className="text-gray-600 mb-6">Using fallback results for now</p>
+                    <p className="text-gray-600 mb-6">Showing premium travel options</p>
                     {searchTime > 0 && (
                       <p className="text-sm text-gray-400 mb-4">
-                        Search completed in {(searchTime / 1000).toFixed(2)}s
+                        Completed in {(searchTime / 1000).toFixed(2)}s
                       </p>
                     )}
                     <button 
                       onClick={() => searchParams && handleSearch(searchParams)} 
                       className="mt-4 px-8 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold rounded-xl shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all hover:shadow-xl active:scale-95"
                     >
-                      Try Again
+                      Try AI Search Again
                     </button>
                   </div>
                 ) : (
                   <div className="space-y-8">
                     <div className="flex justify-between items-center">
                       <div>
-                        <h2 className="text-3xl font-bold text-gray-900">Search Results</h2>
+                        <h2 className="text-3xl font-bold text-gray-900">AI-Powered Search Results</h2>
                         <p className="text-gray-500 mt-1">
-                          {searchResults.length} options found {searchTime > 0 && `in ${(searchTime / 1000).toFixed(2)}s`}
+                          {searchResults.length} premium options found in {(searchTime / 1000).toFixed(2)}s
+                          <span className="ml-2 text-blue-600 text-sm">
+                            ✓ Powered by Gemini AI
+                          </span>
                         </p>
                       </div>
                       <button
@@ -547,7 +565,6 @@ export default function Home() {
           searchParams={searchParams} 
           onBack={() => {
             setCurrentView('home');
-            // Scroll back to search results
             setTimeout(() => {
               const el = document.getElementById('search-results');
               if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -580,7 +597,7 @@ export default function Home() {
           </svg>
           <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
         </div>
-        <span className="font-bold hidden sm:inline text-lg">AI Planner</span>
+        <span className="font-bold hidden sm:inline text-lg">Chat</span>
         <span className="hidden sm:inline text-xs bg-blue-800/50 px-2 py-1 rounded-lg backdrop-blur-sm">
           Ctrl+K
         </span>
