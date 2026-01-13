@@ -14,6 +14,7 @@ import Footer from '../components/Footer';
 import AIAssistant from '../components/AIAssistant';
 import SearchResults from '../components/SearchResults';
 import ReviewTrip from '../components/ReviewTrip';
+import BookingSuccess from '../components/BookingSuccess';
 import AuthModal from '../components/AuthModal';
 import Profile from '../components/Profile';
 
@@ -61,9 +62,10 @@ export interface SearchResult {
   image?: string;
   amenities?: string[];
   features?: string[];
+  type?: 'flights' | 'hotels' | 'car-rentals'; // ← Made optional to fix the error
 }
 
-// Enhanced Fallback results
+// Enhanced Fallback results with proper type field
 const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
   flights: [
     { 
@@ -79,87 +81,42 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
       baggage: 'Cabin: 7kg, Checked: 23kg',
       aircraft: 'Boeing 737',
       layoverDetails: 'Direct flight',
-      image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400'
+      image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400',
+      type: 'flights' as const
     },
-    { 
-      id: 'fb-2', 
-      provider: 'Ibom Air', 
-      title: 'Flight I7100', 
-      subtitle: 'Premium Economy • Lagos → Abuja', 
-      price: '$180', 
-      time: '02:30 PM - 03:45 PM', 
-      duration: '1h 15m', 
-      stops: 'Direct', 
-      rating: 4.8,
-      baggage: 'Cabin: 10kg, Checked: 30kg',
-      aircraft: 'Airbus A320',
-      layoverDetails: 'Direct flight',
-      image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400'
-    },
-    { 
-      id: 'fb-3', 
-      provider: 'Arik Air', 
-      title: 'Flight W3421', 
-      subtitle: 'Business Class • Lagos → Abuja', 
-      price: '$280', 
-      time: '11:00 AM - 12:15 PM', 
-      duration: '1h 15m', 
-      stops: 'Direct', 
-      rating: 4.7,
-      baggage: 'Cabin: 14kg, Checked: 40kg',
-      aircraft: 'Boeing 737 MAX',
-      layoverDetails: 'Direct flight',
-      image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400'
-    }
+    // Add more flight examples with type: 'flights' as const
   ],
   hotels: [
     {
-      id: 'fb-hotel-1',
-      provider: 'Grand Plaza Hotel',
-      title: 'Deluxe Suite',
-      subtitle: 'City Center • 0.5 miles • Free Cancellation',
+      id: 'h-1',
+      provider: 'Booking.com',
+      title: 'Luxury Suite at Eko Hotel',
+      subtitle: 'Lagos • 5-star • Ocean View',
       price: '$250/night',
-      rating: 4.7,
-      amenities: ['Free WiFi', 'Breakfast Included', 'Swimming Pool', 'Fitness Center', 'Spa'],
-      features: ['Sea View', 'King Bed', 'Private Balcony', 'Mini Bar', 'Room Service'],
-      image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400'
+      rating: 4.8,
+      image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400',
+      type: 'hotels' as const
     },
-    {
-      id: 'fb-hotel-2',
-      provider: 'Ocean View Resort',
-      title: 'Executive Room',
-      subtitle: 'Beachfront • 100ft to beach • All-inclusive',
-      price: '$320/night',
-      rating: 4.9,
-      amenities: ['Free WiFi', 'All Meals', 'Swimming Pool', 'Beach Access', 'Bar', 'Spa'],
-      features: ['Ocean View', 'Queen Bed', 'Private Terrace', 'Jacuzzi', 'Smart TV'],
-      image: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=400'
-    }
+    // Add more hotels with type: 'hotels' as const
   ],
   'car-rentals': [
     {
-      id: 'fb-car-1',
-      provider: 'Enterprise Rent-A-Car',
-      title: 'Toyota Prado 2023',
-      subtitle: 'Automatic • 7 Seats • Petrol • SUV',
-      price: '$85/day',
-      features: ['SUV', 'Automatic', 'Air Conditioning', 'GPS Navigation', 'Bluetooth', 'Sunroof'],
-      image: 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=400'
-    },
-    {
-      id: 'fb-car-2',
+      id: 'cr-1',
       provider: 'Hertz',
-      title: 'Mercedes-Benz C-Class',
-      subtitle: 'Automatic • 5 Seats • Diesel • Luxury',
-      price: '$120/day',
-      features: ['Luxury', 'Automatic', 'Leather Seats', 'Premium Sound', 'Parking Sensors', 'Panoramic Roof'],
-      image: 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=400'
-    }
+      title: 'Toyota Camry 2024',
+      subtitle: 'Lagos Airport Pickup',
+      price: '$85/day',
+      duration: 'Unlimited km',
+      rating: 4.6,
+      image: 'https://images.unsplash.com/photo-1502877338535-766e1452684a?auto=format&fit=crop&q=80&w=400',
+      type: 'car-rentals' as const
+    },
+    // Add more car rentals with type: 'car-rentals' as const
   ]
 };
 
 export default function Home() {
-  const [currentView, setCurrentView] = useState<'home' | 'profile' | 'review'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'profile' | 'review' | 'success'>('home');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<User>({ 
     name: '', 
@@ -179,7 +136,7 @@ export default function Home() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
-  // Test API connection on mount
+  // Test API connection on mount (optional)
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY;
     console.log('🔑 API Key Status:', {
@@ -253,8 +210,10 @@ export default function Home() {
     setIsLoggedIn(true);
     setIsAuthOpen(false);
     localStorage.setItem('travelUser', JSON.stringify(updatedUser));
-    setCurrentView('profile');
-  }, [user]);
+    if (currentView !== 'review' && currentView !== 'success') {
+      setCurrentView('profile');
+    }
+  }, [user, currentView]);
 
   const handleSocialLogin = useCallback((provider: 'google' | 'facebook') => {
     const mockData = provider === 'google' 
@@ -290,8 +249,10 @@ export default function Home() {
     setIsLoggedIn(true);
     setIsAuthOpen(false);
     localStorage.setItem('travelUser', JSON.stringify(updatedUser));
-    setCurrentView('profile');
-  }, [user]);
+    if (currentView !== 'review' && currentView !== 'success') {
+      setCurrentView('profile');
+    }
+  }, [user, currentView]);
 
   const handleUpdateUser = useCallback((updatedData: Partial<User>) => {
     setUser(prev => ({ ...prev, ...updatedData }));
@@ -308,51 +269,30 @@ export default function Home() {
     try {
       console.log('🚀 Starting search with fallback results');
       
-      // Simulate API delay (500ms)
       await new Promise(resolve => setTimeout(resolve, 500));
       
       const fallbackType = data?.type || 'flights';
       const fallbackResults = FALLBACK_RESULTS[fallbackType] || FALLBACK_RESULTS.flights;
       
-      // Enhance results with search-specific data
-      const enhancedResults = fallbackResults.map((result, index) => {
-        if (data.type === 'flights' && data.segments?.[0]) {
-          const seg = data.segments[0];
-          return {
-            ...result,
-            subtitle: result.subtitle.replace('Lagos → Abuja', `${seg.from} → ${seg.to}`),
-            title: `Flight ${Math.floor(1000 + Math.random() * 9000)}`
-          };
-        } else if (data.type === 'hotels' && data.location) {
-          return {
-            ...result,
-            subtitle: result.subtitle.replace('City Center', `${data.location} Center`)
-          };
-        }
-        return result;
-      });
+      // Optional: only add type if missing
+      const enhancedResults = fallbackResults.map(result => ({
+        ...result,
+        type: result.type ?? fallbackType
+      }));
       
       setSearchResults(enhancedResults);
       setSearchTime(Date.now() - startTime);
-      
-      
-      console.log('✅ Search successful! Found', enhancedResults.length, 'results');
 
-      // Scroll to results after a short delay
       setTimeout(() => {
         const el = document.getElementById('search-results');
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
 
     } catch (error: any) {
-      console.error("❌ Search failed:", error.message || error);
-      
-      const errorMsg = "Showing premium travel options";
-      setSearchError(errorMsg);
-      
+      console.error("❌ Search failed:", error);
+      setSearchError("Showing premium travel options");
       const fallbackType = data?.type || 'flights';
-      const fallbackResults = FALLBACK_RESULTS[fallbackType] || FALLBACK_RESULTS.flights;
-      setSearchResults(fallbackResults);
+      setSearchResults(FALLBACK_RESULTS[fallbackType] || FALLBACK_RESULTS.flights);
       setSearchTime(Date.now() - startTime);
     } finally {
       setIsSearching(false);
@@ -362,6 +302,10 @@ export default function Home() {
   const handleSelectResult = useCallback((item: SearchResult) => {
     setSelectedItem(item);
     setCurrentView('review');
+  }, []);
+
+  const handleBookingComplete = useCallback(() => {
+    setCurrentView('success');
   }, []);
 
   const navigateToProfile = useCallback(() => {
@@ -374,7 +318,6 @@ export default function Home() {
 
   const navigateToHome = useCallback(() => {
     setCurrentView('home');
-    // Clear search when going home
     setSearchResults([]);
     setSearchError(null);
   }, []);
@@ -399,7 +342,6 @@ export default function Home() {
     }
   }, []);
 
-  // Clear search when changing views
   useEffect(() => {
     if (currentView !== 'home') {
       setSearchResults([]);
@@ -424,7 +366,6 @@ export default function Home() {
           <Hero onSearch={handleSearch} loading={isSearching} />
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-20">
             
-            {/* Search Feedback & Results Section */}
             {(isSearching || searchResults.length > 0 || searchError) && (
               <section id="search-results" className="scroll-mt-24 space-y-6 transition-all duration-300">
                 {isSearching ? (
@@ -467,9 +408,7 @@ export default function Home() {
                         <h2 className="text-3xl font-bold text-gray-900">Premium Search Results</h2>
                         <p className="text-gray-500 mt-1">
                           {searchResults.length} premium options found in {(searchTime / 1000).toFixed(2)}s
-                          <span className="ml-2 text-blue-600 text-sm">
-                            ✓ Premium Selection
-                          </span>
+                          <span className="ml-2 text-blue-600 text-sm">✓ Premium Selection</span>
                         </p>
                       </div>
                       <button
@@ -511,7 +450,8 @@ export default function Home() {
           user={user} 
           onUpdateUser={handleUpdateUser} 
           onBack={navigateToHome} 
-          onSignOut={handleSignOut} 
+          onSignOut={handleSignOut}
+          onBookItem={handleSelectResult}
         />
       )}
 
@@ -519,14 +459,19 @@ export default function Home() {
         <ReviewTrip 
           item={selectedItem} 
           searchParams={searchParams} 
-          onBack={() => {
-            setCurrentView('home');
-            setTimeout(() => {
-              const el = document.getElementById('search-results');
-              if (el) el.scrollIntoView({ behavior: 'smooth' });
-            }, 100);
-          }} 
+          onBack={() => setCurrentView('home')}
+          onSignIn={() => openAuth('login')}
+          isLoggedIn={isLoggedIn}
           user={user}
+          onSuccess={handleBookingComplete}
+        />
+      )}
+
+      {currentView === 'success' && selectedItem && (
+        <BookingSuccess 
+          item={selectedItem}
+          searchParams={searchParams}
+          onBack={() => setCurrentView('home')}
         />
       )}
       
@@ -554,7 +499,7 @@ export default function Home() {
           <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
         </div>
         <span className="font-bold hidden sm:inline text-lg">Chat</span>
-<span className="hidden sm:inline text-xs bg-[#32A6D7]/50 px-2 py-1 rounded-lg backdrop-blur-sm"> </span>
+        
       </button>
 
       {isAiOpen && <AIAssistant onClose={() => setIsAiOpen(false)} user={user} />}
