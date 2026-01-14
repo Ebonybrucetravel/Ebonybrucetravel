@@ -13,6 +13,7 @@ import Newsletter from '../components/Newsletter';
 import Footer from '../components/Footer';
 import AIAssistant from '../components/AIAssistant';
 import SearchResults from '../components/SearchResults';
+import HotelDetails from '../components/HotelDetails'; // Added import
 import ReviewTrip from '../components/ReviewTrip';
 import BookingSuccess from '../components/BookingSuccess';
 import AuthModal from '../components/AuthModal';
@@ -144,6 +145,7 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
       price: '$250/night',
       rating: 4.8,
       image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400',
+      amenities: ['Free WiFi', 'Swimming Pool', 'Spa', 'Restaurant', 'Fitness Center', 'Ocean View'],
       type: 'hotels' as const
     },
     {
@@ -154,6 +156,7 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
       price: '$200/night',
       rating: 4.7,
       image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400',
+      amenities: ['Free WiFi', 'Breakfast Included', 'Room Service', 'Bar', 'City View'],
       type: 'hotels' as const
     },
     {
@@ -164,6 +167,7 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
       price: '$300/night',
       rating: 4.9,
       image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400',
+      amenities: ['Free WiFi', 'Private Beach', 'Spa', 'Infinity Pool', 'Butler Service'],
       type: 'hotels' as const
     },
   ],
@@ -205,7 +209,7 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
 };
 
 export default function Home() {
-  const [currentView, setCurrentView] = useState<'home' | 'profile' | 'review' | 'success'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'profile' | 'hotel-details' | 'review' | 'success'>('home'); // Added 'hotel-details'
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<User>({ 
     name: '', 
@@ -366,7 +370,7 @@ export default function Home() {
     setIsLoggedIn(true);
     setIsAuthOpen(false);
     localStorage.setItem('travelUser', JSON.stringify(updatedUser));
-    if (currentView !== 'review' && currentView !== 'success') {
+    if (currentView !== 'review' && currentView !== 'success' && currentView !== 'hotel-details') {
       setCurrentView('profile');
     }
   }, [user, currentView]);
@@ -444,7 +448,7 @@ export default function Home() {
       localStorage.setItem('travelBookings', JSON.stringify(sampleBookings));
     }
     
-    if (currentView !== 'review' && currentView !== 'success') {
+    if (currentView !== 'review' && currentView !== 'success' && currentView !== 'hotel-details') {
       setCurrentView('profile');
     }
   }, [user, currentView]);
@@ -510,7 +514,14 @@ export default function Home() {
 
   const handleSelectResult = useCallback((item: SearchResult) => {
     setSelectedItem(item);
-    setCurrentView('review');
+    
+    // Check if this is a hotel item
+    if (item.type === 'hotels' || item.id?.includes('h-') || 
+        (item.title && item.title.toLowerCase().includes('hotel'))) {
+      setCurrentView('hotel-details');
+    } else {
+      setCurrentView('review');
+    }
   }, []);
 
   const handleBookItem = useCallback((item: any) => {
@@ -526,7 +537,14 @@ export default function Home() {
     };
     
     setSelectedItem(searchResultItem);
-    setCurrentView('review');
+    
+    // Check if this is a hotel item
+    if (item.type === 'hotel' || item.type === 'hotels' || 
+        item.id?.includes('h-') || (item.title && item.title.toLowerCase().includes('hotel'))) {
+      setCurrentView('hotel-details');
+    } else {
+      setCurrentView('review');
+    }
   }, []);
 
   const handleBookingComplete = useCallback(() => {
@@ -712,6 +730,16 @@ export default function Home() {
           onSignOut={handleSignOut}
           onBookItem={handleBookItem}
           onCancelRequest={handleCancelRequest}
+        />
+      )}
+
+      {/* Added HotelDetails view */}
+      {currentView === 'hotel-details' && selectedItem && (
+        <HotelDetails 
+          item={selectedItem}
+          searchParams={searchParams}
+          onBack={() => setCurrentView('home')}
+          onBook={() => setCurrentView('review')}
         />
       )}
 
