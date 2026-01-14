@@ -62,7 +62,25 @@ export interface SearchResult {
   image?: string;
   amenities?: string[];
   features?: string[];
-  type?: 'flights' | 'hotels' | 'car-rentals'; // ← Made optional to fix the error
+  type?: 'flights' | 'hotels' | 'car-rentals';
+}
+
+// Add Booking interface for cancellation functionality
+export interface Booking {
+  id: string;
+  type: 'flight' | 'hotel' | 'car';
+  title: string;
+  provider: string;
+  subtitle: string;
+  date: string;
+  duration?: string;
+  status: 'Confirmed' | 'Completed' | 'Cancel' | 'Active';
+  price: string;
+  currency: string;
+  iconBg: string;
+  imageUrl?: string;
+  bookingReference?: string;
+  time?: string;
 }
 
 // Enhanced Fallback results with proper type field
@@ -84,7 +102,38 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
       image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400',
       type: 'flights' as const
     },
-    // Add more flight examples with type: 'flights' as const
+    { 
+      id: 'fb-2', 
+      provider: 'Ibom Air', 
+      title: 'Flight IB123', 
+      subtitle: 'Business Class • Lagos (LOS) → Abuja (ABV)', 
+      price: '$250', 
+      time: '10:00 AM - 11:15 AM', 
+      duration: '1h 15m', 
+      stops: 'Direct', 
+      rating: 4.8,
+      baggage: 'Cabin: 10kg, Checked: 32kg',
+      aircraft: 'Airbus A320',
+      layoverDetails: 'Direct flight',
+      image: 'https://images.unsplash.com/photo-1556388158-158ea5ccacbd?auto=format&fit=crop&q=80&w=400',
+      type: 'flights' as const
+    },
+    { 
+      id: 'fb-3', 
+      provider: 'Arik Air', 
+      title: 'Flight W310', 
+      subtitle: 'Economy • Lagos (LOS) → Abuja (ABV)', 
+      price: '$100', 
+      time: '02:00 PM - 03:15 PM', 
+      duration: '1h 15m', 
+      stops: 'Direct', 
+      rating: 4.3,
+      baggage: 'Cabin: 5kg, Checked: 20kg',
+      aircraft: 'Boeing 737',
+      layoverDetails: 'Direct flight',
+      image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400',
+      type: 'flights' as const
+    },
   ],
   hotels: [
     {
@@ -97,7 +146,26 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
       image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400',
       type: 'hotels' as const
     },
-    // Add more hotels with type: 'hotels' as const
+    {
+      id: 'h-2',
+      provider: 'Hyatt',
+      title: 'Standard King Room',
+      subtitle: 'Lagos • 5-star • City View',
+      price: '$200/night',
+      rating: 4.7,
+      image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400',
+      type: 'hotels' as const
+    },
+    {
+      id: 'h-3',
+      provider: 'Hilton',
+      title: 'Executive Suite',
+      subtitle: 'Lagos • 5-star • Beach Front',
+      price: '$300/night',
+      rating: 4.9,
+      image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400',
+      type: 'hotels' as const
+    },
   ],
   'car-rentals': [
     {
@@ -111,7 +179,28 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
       image: 'https://images.unsplash.com/photo-1502877338535-766e1452684a?auto=format&fit=crop&q=80&w=400',
       type: 'car-rentals' as const
     },
-    // Add more car rentals with type: 'car-rentals' as const
+    {
+      id: 'cr-2',
+      provider: 'Avis',
+      title: 'Mercedes E-Class',
+      subtitle: 'Lagos Island Delivery',
+      price: '$120/day',
+      duration: 'Unlimited km',
+      rating: 4.8,
+      image: 'https://images.unsplash.com/photo-1502877338535-766e1452684a?auto=format&fit=crop&q=80&w=400',
+      type: 'car-rentals' as const
+    },
+    {
+      id: 'cr-3',
+      provider: 'Enterprise',
+      title: 'Range Rover Sport',
+      subtitle: 'Anywhere in Lagos',
+      price: '$150/day',
+      duration: 'Unlimited km',
+      rating: 4.7,
+      image: 'https://images.unsplash.com/photo-1502877338535-766e1452684a?auto=format&fit=crop&q=80&w=400',
+      type: 'car-rentals' as const
+    },
   ]
 };
 
@@ -136,6 +225,54 @@ export default function Home() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
+  // Mock bookings data for user profile
+  const [userBookings, setUserBookings] = useState<Booking[]>([
+    {
+      id: '1',
+      type: 'flight',
+      title: 'Lagos(LOS) to Abuja(ABJ)',
+      provider: 'Air Peace',
+      subtitle: 'Flight BA117 . Economy',
+      date: 'Dec 26 – Dec 28, 2025',
+      duration: '1h 15m Non-Stop',
+      status: 'Confirmed',
+      price: '75,000.00',
+      currency: 'NGN',
+      iconBg: 'bg-blue-50',
+      imageUrl: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&q=80&w=600',
+      bookingReference: '#LND-8824',
+      time: '08:00 AM'
+    },
+    {
+      id: '2',
+      type: 'hotel',
+      title: 'Hyatt Tokyo',
+      provider: 'Hyatt',
+      subtitle: 'Standard King Room . 2 Guests, 5 Nights',
+      date: 'Dec 26 – Dec 28, 2025',
+      status: 'Completed',
+      price: '1,500.00',
+      currency: '$',
+      iconBg: 'bg-yellow-50',
+      imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600',
+      bookingReference: '#HTL-5678'
+    },
+    {
+      id: '3',
+      type: 'car',
+      title: 'Tesla Model Y',
+      provider: 'Hertz',
+      subtitle: 'Lagos Airport • Full-to-Full',
+      date: 'Jan 15 – Jan 18, 2026',
+      status: 'Active',
+      price: '45,000.00',
+      currency: 'NGN',
+      iconBg: 'bg-purple-50',
+      imageUrl: 'https://images.unsplash.com/photo-1502877338535-766e3a6052c0?auto=format&fit=crop&q=80&w=800',
+      bookingReference: '#CAR-1234'
+    },
+  ]);
+
   // Test API connection on mount (optional)
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY;
@@ -150,6 +287,8 @@ export default function Home() {
   // Restore user session
   useEffect(() => {
     const savedUser = localStorage.getItem('travelUser');
+    const savedBookings = localStorage.getItem('travelBookings');
+    
     if (savedUser) {
       try {
         const parsedUser = JSON.parse(savedUser);
@@ -158,6 +297,16 @@ export default function Home() {
       } catch (error) {
         console.error('Failed to restore user session:', error);
         localStorage.removeItem('travelUser');
+      }
+    }
+    
+    if (savedBookings) {
+      try {
+        const parsedBookings = JSON.parse(savedBookings);
+        setUserBookings(parsedBookings);
+      } catch (error) {
+        console.error('Failed to restore bookings:', error);
+        localStorage.removeItem('travelBookings');
       }
     }
   }, []);
@@ -170,6 +319,13 @@ export default function Home() {
       localStorage.removeItem('travelUser');
     }
   }, [user, isLoggedIn]);
+
+  // Save bookings to localStorage
+  useEffect(() => {
+    if (isLoggedIn) {
+      localStorage.setItem('travelBookings', JSON.stringify(userBookings));
+    }
+  }, [userBookings, isLoggedIn]);
 
   useEffect(() => {
     if (currentView === 'home') {
@@ -249,6 +405,45 @@ export default function Home() {
     setIsLoggedIn(true);
     setIsAuthOpen(false);
     localStorage.setItem('travelUser', JSON.stringify(updatedUser));
+    
+    // Add sample bookings for new users
+    if (!localStorage.getItem('travelBookings')) {
+      const sampleBookings: Booking[] = [
+        {
+          id: '1',
+          type: 'flight',
+          title: 'Lagos(LOS) to Abuja(ABJ)',
+          provider: 'Air Peace',
+          subtitle: 'Flight BA117 . Economy',
+          date: 'Dec 26 – Dec 28, 2025',
+          duration: '1h 15m Non-Stop',
+          status: 'Confirmed',
+          price: '75,000.00',
+          currency: 'NGN',
+          iconBg: 'bg-blue-50',
+          imageUrl: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&q=80&w=600',
+          bookingReference: '#LND-8824',
+          time: '08:00 AM'
+        },
+        {
+          id: '2',
+          type: 'hotel',
+          title: 'Hyatt Tokyo',
+          provider: 'Hyatt',
+          subtitle: 'Standard King Room . 2 Guests, 5 Nights',
+          date: 'Dec 26 – Dec 28, 2025',
+          status: 'Completed',
+          price: '1,500.00',
+          currency: '$',
+          iconBg: 'bg-yellow-50',
+          imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600',
+          bookingReference: '#HTL-5678'
+        },
+      ];
+      setUserBookings(sampleBookings);
+      localStorage.setItem('travelBookings', JSON.stringify(sampleBookings));
+    }
+    
     if (currentView !== 'review' && currentView !== 'success') {
       setCurrentView('profile');
     }
@@ -256,6 +451,21 @@ export default function Home() {
 
   const handleUpdateUser = useCallback((updatedData: Partial<User>) => {
     setUser(prev => ({ ...prev, ...updatedData }));
+  }, []);
+
+  const handleCancelRequest = useCallback((booking: Booking) => {
+    // Update the booking status to Cancel
+    setUserBookings(prev => 
+      prev.map(b => 
+        b.id === booking.id ? { ...b, status: 'Cancel' as const } : b
+      )
+    );
+    
+    // Show success message
+    console.log('Booking cancelled:', booking.id);
+    
+    // You could also show a toast notification here
+    // toast.success('Booking cancelled successfully!');
   }, []);
 
   const handleSearch = useCallback(async (data: SearchParams) => {
@@ -274,7 +484,6 @@ export default function Home() {
       const fallbackType = data?.type || 'flights';
       const fallbackResults = FALLBACK_RESULTS[fallbackType] || FALLBACK_RESULTS.flights;
       
-      // Optional: only add type if missing
       const enhancedResults = fallbackResults.map(result => ({
         ...result,
         type: result.type ?? fallbackType
@@ -304,9 +513,58 @@ export default function Home() {
     setCurrentView('review');
   }, []);
 
-  const handleBookingComplete = useCallback(() => {
-    setCurrentView('success');
+  const handleBookItem = useCallback((item: any) => {
+    // Convert the saved item to a search result format for booking
+    const searchResultItem: SearchResult = {
+      id: item.id,
+      provider: item.provider,
+      title: item.title,
+      subtitle: item.subtitle,
+      price: item.price,
+      type: item.type as any,
+      image: item.imageUrl
+    };
+    
+    setSelectedItem(searchResultItem);
+    setCurrentView('review');
   }, []);
+
+  const handleBookingComplete = useCallback(() => {
+    // Add the newly booked item to user's bookings
+    if (selectedItem) {
+      const newBooking: Booking = {
+        id: Date.now().toString(),
+        type: selectedItem.type === 'flights' ? 'flight' : 
+              selectedItem.type === 'hotels' ? 'hotel' : 'car',
+        title: selectedItem.title,
+        provider: selectedItem.provider,
+        subtitle: selectedItem.subtitle,
+        date: new Date().toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'short', 
+          day: 'numeric' 
+        }) + ' – ' + 
+        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'short', 
+          day: 'numeric' 
+        }),
+        duration: selectedItem.duration,
+        status: 'Confirmed',
+        price: selectedItem.price,
+        currency: 'NGN',
+        iconBg: selectedItem.type === 'flights' ? 'bg-blue-50' : 
+               selectedItem.type === 'hotels' ? 'bg-yellow-50' : 'bg-purple-50',
+        imageUrl: selectedItem.image,
+        bookingReference: `#${Date.now().toString().slice(-6)}`,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      
+      setUserBookings(prev => [newBooking, ...prev]);
+    }
+    
+    setCurrentView('success');
+  }, [selectedItem]);
 
   const navigateToProfile = useCallback(() => {
     if (!isLoggedIn) {
@@ -333,6 +591,7 @@ export default function Home() {
     });
     setCurrentView('home');
     localStorage.removeItem('travelUser');
+    // Don't clear bookings on sign out, keep them for next login
   }, []);
 
   const handleSearchClick = useCallback(() => {
@@ -451,7 +710,8 @@ export default function Home() {
           onUpdateUser={handleUpdateUser} 
           onBack={navigateToHome} 
           onSignOut={handleSignOut}
-          onBookItem={handleSelectResult}
+          onBookItem={handleBookItem}
+          onCancelRequest={handleCancelRequest}
         />
       )}
 

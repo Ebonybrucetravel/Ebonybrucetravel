@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../app/page';
 import ManageBookingModal from './ManageBookingModal';
+import CancelBooking from './CancelBooking';
 
 interface ProfileProps {
   user: User;
@@ -9,6 +10,7 @@ interface ProfileProps {
   onBack: () => void;
   onSignOut: () => void;
   onBookItem: (item: any) => void;
+  onCancelRequest?: (booking: any) => void;
 }
 
 interface Booking {
@@ -23,6 +25,9 @@ interface Booking {
   price: string;
   currency: string;
   iconBg: string;
+  imageUrl?: string;
+  bookingReference?: string;
+  time?: string;
 }
 
 const Profile: React.FC<ProfileProps> = ({
@@ -31,6 +36,7 @@ const Profile: React.FC<ProfileProps> = ({
   onBack,
   onSignOut,
   onBookItem,
+  onCancelRequest,
 }) => {
   const [activeTab, setActiveTab] = useState<
     'details' | 'bookings' | 'saved' | 'wallet' | 'rewards' | 'security'
@@ -43,11 +49,16 @@ const Profile: React.FC<ProfileProps> = ({
   const [bookingFilter, setBookingFilter] = useState<'All' | 'Flight' | 'Hotel' | 'Car'>('All');
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [showSortDropdown, setShowSortDropdown] = useState(false);
-  const [visibleBookingsCount, setVisibleBookingsCount] = useState(4); // Start with 4 visible
+  const [visibleBookingsCount, setVisibleBookingsCount] = useState(4);
 
   // Manage booking modal
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+
+  // Cancel booking state
+  const [isCancellingBooking, setIsCancellingBooking] = useState(false);
+  const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
+  const [cancellationSearchParams, setCancellationSearchParams] = useState<any>(null);
 
   const filterRef = useRef<HTMLDivElement>(null);
   const sortRef = useRef<HTMLDivElement>(null);
@@ -92,6 +103,43 @@ const Profile: React.FC<ProfileProps> = ({
     setIsManageModalOpen(true);
   };
 
+  const handleCancelBooking = (booking: Booking) => {
+    const searchParams = extractSearchParamsFromBooking(booking);
+    setBookingToCancel(booking);
+    setCancellationSearchParams(searchParams);
+    setIsCancellingBooking(true);
+  };
+
+  const handleCancelConfirmation = () => {
+    if (bookingToCancel && onCancelRequest) {
+      const updatedBooking = { ...bookingToCancel, status: 'Cancel' as const };
+      onCancelRequest(updatedBooking);
+    }
+    
+    setIsCancellingBooking(false);
+    setBookingToCancel(null);
+    setCancellationSearchParams(null);
+    setIsManageModalOpen(false);
+  };
+
+  const handleBackFromCancellation = () => {
+    setIsCancellingBooking(false);
+    setBookingToCancel(null);
+    setCancellationSearchParams(null);
+  };
+
+  const extractSearchParamsFromBooking = (booking: Booking): any => {
+    const titleParts = booking.title.split(' to ');
+    const from = titleParts[0] || 'Lagos';
+    const to = titleParts[1] || 'Abuja';
+
+    return {
+      segments: [{ from, to }],
+      travellers: '1 Adult',
+      bookingReference: booking.bookingReference || `#${booking.id.toUpperCase()}`
+    };
+  };
+
   const handleBookItemClick = (type: 'hotel' | 'car') => {
     const mockItem =
       type === 'hotel'
@@ -124,7 +172,7 @@ const Profile: React.FC<ProfileProps> = ({
   };
 
   const handleViewMoreBookings = () => {
-    setVisibleBookingsCount((prev) => prev + 2); // Show 2 more each click
+    setVisibleBookingsCount((prev) => prev + 2);
   };
 
   const menuItems = [
@@ -136,7 +184,6 @@ const Profile: React.FC<ProfileProps> = ({
     { id: 'security', label: 'Security', icon: <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /> },
   ];
 
-  // Mock bookings data (expanded to 6 so "View More" has something to show)
   const mockBookings: Booking[] = [
     {
       id: '1',
@@ -150,6 +197,9 @@ const Profile: React.FC<ProfileProps> = ({
       price: '75,000.00',
       currency: 'NGN',
       iconBg: 'bg-blue-50',
+      imageUrl: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&q=80&w=600',
+      bookingReference: '#LND-8824',
+      time: '08:00 AM'
     },
     {
       id: '2',
@@ -162,6 +212,8 @@ const Profile: React.FC<ProfileProps> = ({
       price: '1,500.00',
       currency: '$',
       iconBg: 'bg-yellow-50',
+      imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600',
+      bookingReference: '#HTL-5678'
     },
     {
       id: '3',
@@ -174,6 +226,8 @@ const Profile: React.FC<ProfileProps> = ({
       price: '45,000.00',
       currency: 'NGN',
       iconBg: 'bg-purple-50',
+      imageUrl: 'https://images.unsplash.com/photo-1502877338535-766e3a6052c0?auto=format&fit=crop&q=80&w=800',
+      bookingReference: '#CAR-1234'
     },
     {
       id: '4',
@@ -187,6 +241,9 @@ const Profile: React.FC<ProfileProps> = ({
       price: '95,000.00',
       currency: 'NGN',
       iconBg: 'bg-blue-50',
+      imageUrl: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&q=80&w=600',
+      bookingReference: '#LND-8825',
+      time: '10:30 AM'
     },
     {
       id: '5',
@@ -199,6 +256,8 @@ const Profile: React.FC<ProfileProps> = ({
       price: '320,000.00',
       currency: 'NGN',
       iconBg: 'bg-yellow-50',
+      imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600',
+      bookingReference: '#HTL-5679'
     },
     {
       id: '6',
@@ -211,6 +270,8 @@ const Profile: React.FC<ProfileProps> = ({
       price: '85,000.00',
       currency: 'NGN',
       iconBg: 'bg-purple-50',
+      imageUrl: 'https://images.unsplash.com/photo-1502877338535-766e3a6052c0?auto=format&fit=crop&q=80&w=800',
+      bookingReference: '#CAR-1235'
     },
   ];
 
@@ -219,7 +280,6 @@ const Profile: React.FC<ProfileProps> = ({
     return b.type === bookingFilter.toLowerCase();
   });
 
-  // Only show the number of bookings we want visible
   const visibleBookings = filteredBookings.slice(0, visibleBookingsCount);
   const hasMoreBookings = visibleBookingsCount < filteredBookings.length;
 
@@ -229,10 +289,6 @@ const Profile: React.FC<ProfileProps> = ({
     Cancel: 'bg-red-50 text-red-500',
     Active: 'bg-green-100 text-green-600',
   };
-
-  // ──────────────────────────────────────────────
-  //              Render Functions (unchanged except for car card image)
-  // ──────────────────────────────────────────────
 
   const renderBookingCard = (booking: Booking) => (
     <div
@@ -441,10 +497,20 @@ const Profile: React.FC<ProfileProps> = ({
     </div>
   );
 
+  // If we're in cancellation mode, show the CancelBooking component
+  if (isCancellingBooking && bookingToCancel) {
+    return (
+      <CancelBooking
+        item={bookingToCancel}
+        searchParams={cancellationSearchParams}
+        onBack={handleBackFromCancellation}
+      />
+    );
+  }
+
   return (
     <div className="bg-[#f8fbfe] min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-
         {/* Breadcrumbs */}
         <nav className="flex items-center gap-2 text-sm text-[#33a8da] mb-8 font-medium">
           <button onClick={onBack} className="text-gray-500 hover:text-gray-700">
@@ -455,7 +521,6 @@ const Profile: React.FC<ProfileProps> = ({
         </nav>
 
         <div className="flex flex-col lg:flex-row gap-10">
-
           {/* Sidebar */}
           <aside className="w-full lg:w-80 space-y-6 shrink-0">
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
@@ -521,7 +586,6 @@ const Profile: React.FC<ProfileProps> = ({
 
           {/* Main Content */}
           <main className="flex-1 space-y-8">
-
             {activeTab === 'details' && (
               <div className="space-y-8 animate-fade-in">
                 <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 flex items-center gap-8">
@@ -928,6 +992,10 @@ const Profile: React.FC<ProfileProps> = ({
         isOpen={isManageModalOpen}
         onClose={() => setIsManageModalOpen(false)}
         booking={selectedBooking}
+        onCancelClick={(booking) => {
+          setIsManageModalOpen(false);
+          handleCancelBooking(booking);
+        }}
       />
     </div>
   );

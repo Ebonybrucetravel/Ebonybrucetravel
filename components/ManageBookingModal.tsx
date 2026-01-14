@@ -1,4 +1,3 @@
-
 'use client';
 import React from 'react';
 
@@ -20,10 +19,22 @@ interface ManageBookingModalProps {
   isOpen: boolean;
   onClose: () => void;
   booking: Booking | null;
+  onCancelClick: (booking: Booking) => void; // Add this line
 }
 
-const ManageBookingModal: React.FC<ManageBookingModalProps> = ({ isOpen, onClose, booking }) => {
+const ManageBookingModal: React.FC<ManageBookingModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  booking,
+  onCancelClick // Add this to destructuring
+}) => {
   if (!isOpen || !booking) return null;
+
+  const handleCancelClick = () => {
+    onCancelClick(booking); // Call the callback with booking data
+    // You might want to close the modal after cancellation
+    // onClose();
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -91,7 +102,7 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({ isOpen, onClose
         {/* Footer */}
         <div className="px-8 pb-8 flex items-center justify-end gap-3">
           <button 
-            onClick={onClose}
+            onClick={handleCancelClick} // Updated to use handleCancelClick
             className="px-6 py-3 border border-red-500 text-red-500 font-bold rounded-xl text-sm hover:bg-red-50 transition active:scale-95"
           >
             Cancel Booking
