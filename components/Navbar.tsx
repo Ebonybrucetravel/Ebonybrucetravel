@@ -11,11 +11,11 @@ interface Language {
   code: LanguageCode;
   name: string;
   flag: string;
-  defaultCurrencyCode: CurrencyCode; // This should match the CurrencyCode type
+  defaultCurrencyCode: CurrencyCode;
 }
 
 interface Currency {
-  code: CurrencyCode; // Changed from string to CurrencyCode
+  code: CurrencyCode;
   name: string;
   symbol: string;
   flag: string;
@@ -41,28 +41,27 @@ const currencies: Currency[] = [
 interface NavbarProps {
   isLoggedIn?: boolean;
   user?: { name: string; email: string; profilePicture?: string };
+  activeTab?: 'flights' | 'hotels' | 'cars';
   onSignIn?: () => void;
   onRegister?: () => void;
   onProfileClick?: () => void;
   onLogoClick?: () => void;
-  onSearchClick?: () => void;
+  onTabClick?: (tab: 'flights' | 'hotels' | 'cars') => void;
+  onSearchClick?: () => void; 
 }
-
 const Navbar: React.FC<NavbarProps> = ({
   isLoggedIn,
   user,
+  activeTab = 'flights',
   onSignIn,
   onRegister,
   onProfileClick,
   onLogoClick,
-  onSearchClick,
+  onTabClick,
 }) => {
   const { language, setLanguage, currency, setCurrency, t } = useLanguage();
 
-  // Cast language to LanguageCode since useLanguage returns LanguageCode
   const selectedLang = languages.find((l) => l.code === language) || languages[0];
-  
-  // Cast currency.code to CurrencyCode
   const currencyCode = currency.code as CurrencyCode;
   const selectedCurrency = currencies.find((c) => c.code === currencyCode) || currencies[1];
 
@@ -91,7 +90,7 @@ const Navbar: React.FC<NavbarProps> = ({
     const matchingCurrency = currencies.find((c) => c.code === lang.defaultCurrencyCode);
     if (matchingCurrency) {
       setCurrency({
-        code: matchingCurrency.code, // This now matches CurrencyCode type
+        code: matchingCurrency.code,
         symbol: matchingCurrency.symbol,
         name: matchingCurrency.name,
       });
@@ -101,11 +100,18 @@ const Navbar: React.FC<NavbarProps> = ({
 
   const handleCurrencySelect = (curr: Currency) => {
     setCurrency({
-      code: curr.code, // This now matches CurrencyCode type
+      code: curr.code,
       symbol: curr.symbol,
       name: curr.name,
     });
     setIsCurrencyOpen(false);
+  };
+
+  const handleTabClick = (tab: 'flights' | 'hotels' | 'cars') => {
+    if (onTabClick) {
+      onTabClick(tab);
+    }
+    setIsMobileMenuOpen(false);
   };
 
   const getAvatarFallback = (): string => {
@@ -123,32 +129,19 @@ const Navbar: React.FC<NavbarProps> = ({
 
   const avatarUrl = user?.profilePicture || getAvatarFallback();
 
-  // Handle search click on Flights button
-  const handleFlightsClick = () => {
-    if (onSearchClick) {
-      onSearchClick();
-    } else if (onLogoClick) {
-      onLogoClick();
-    }
-  };
-
   return (
     <nav className="bg-white border-b border-gray-100 sticky top-0 z-50 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-20">
+        <div className="flex justify-between items-center h-20 gap-4">
           {/* Logo Section */}
           <button
             type="button"
             className="flex items-center gap-2 cursor-pointer group bg-transparent border-none p-0 m-0 focus:outline-none"
-            onClick={() => {
-              onLogoClick?.();
-              setIsMobileMenuOpen(false);
-            }}
+            onClick={() => onLogoClick?.()}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 onLogoClick?.();
-                setIsMobileMenuOpen(false);
               }
             }}
           >
@@ -162,28 +155,46 @@ const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {/* Desktop Navigation */}
-          <div className="hidden lg:flex items-center space-x-8">
+          <div className={`hidden lg:flex items-center space-x-8 ${!isLoggedIn ? 'flex-1 justify-center' : ''}`}>
             <button
-              onClick={handleFlightsClick}
-              className="text-[#32A6D7] font-bold hover:text-[#2b91c1] transition-colors duration-200 relative py-1 group"
+              onClick={() => handleTabClick('flights')}
+              className={`font-bold relative py-1 transition-colors duration-200 ${
+                activeTab === 'flights'
+                  ? 'text-[#32A6D7] border-b-2 border-[#32A6D7]'
+                  : 'text-gray-500 hover:text-[#32A6D7]'
+              }`}
             >
               {t?.('nav.flights') || 'Flights'}
-              <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-[#32A6D7] rounded-full group-hover:w-full transition-all duration-300"></span>
+              {activeTab === 'flights' && (
+                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#32A6D7] rounded-full"></span>
+              )}
             </button>
-            <a
-              href="#"
-              className="text-gray-500 hover:text-[#32A6D7] font-bold transition-colors duration-200 relative py-1 group"
+            <button
+              onClick={() => handleTabClick('hotels')}
+              className={`font-bold relative py-1 transition-colors duration-200 ${
+                activeTab === 'hotels'
+                  ? 'text-[#32A6D7] border-b-2 border-[#32A6D7]'
+                  : 'text-gray-500 hover:text-[#32A6D7]'
+              }`}
             >
               {t?.('nav.hotels') || 'Hotels'}
-              <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-[#32A6D7] rounded-full group-hover:w-full transition-all duration-300"></span>
-            </a>
-            <a
-              href="#"
-              className="text-gray-500 hover:text-[#32A6D7] font-bold transition-colors duration-200 relative py-1 group"
+              {activeTab === 'hotels' && (
+                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#32A6D7] rounded-full"></span>
+              )}
+            </button>
+            <button
+              onClick={() => handleTabClick('cars')}
+              className={`font-bold relative py-1 transition-colors duration-200 ${
+                activeTab === 'cars'
+                  ? 'text-[#32A6D7] border-b-2 border-[#32A6D7]'
+                  : 'text-gray-500 hover:text-[#32A6D7]'
+              }`}
             >
               {t?.('nav.cars') || 'Cars'}
-              <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-[#32A6D7] rounded-full group-hover:w-full transition-all duration-300"></span>
-            </a>
+              {activeTab === 'cars' && (
+                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#32A6D7] rounded-full"></span>
+              )}
+            </button>
           </div>
 
           {/* Right Section */}
@@ -404,22 +415,46 @@ const Navbar: React.FC<NavbarProps> = ({
         <div className="lg:hidden bg-white border-t border-gray-50 animate-in slide-in-from-top duration-300 overflow-hidden shadow-xl">
           <div className="px-4 py-6 space-y-1">
             <button
-              onClick={() => {
-                handleFlightsClick();
-                setIsMobileMenuOpen(false);
-              }}
-              className="w-full flex items-center px-4 py-4 text-left font-bold text-gray-900 bg-[#f0f9ff] rounded-xl hover:bg-[#e1f3ff] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2"
+              onClick={() => handleTabClick('flights')}
+              className={`w-full flex items-center px-4 py-4 text-left font-bold rounded-xl transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2 ${
+                activeTab === 'flights'
+                  ? 'bg-[#f0f9ff] text-[#32A6D7]'
+                  : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+              }`}
             >
-              <svg className="w-5 h-5 mr-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              <svg 
+                className={`w-5 h-5 mr-4 ${activeTab === 'flights' ? 'text-[#32A6D7]' : ''}`} 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" 
+                />
               </svg>
               {t?.('nav.flights') || 'Flights'}
+              {activeTab === 'flights' && (
+                <span className="ml-auto text-[#32A6D7]">✓</span>
+              )}
             </button>
-            <a
-              href="#"
-              className="w-full flex items-center px-4 py-4 text-left font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2"
+
+            <button
+              onClick={() => handleTabClick('hotels')}
+              className={`w-full flex items-center px-4 py-4 text-left font-bold rounded-xl transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2 ${
+                activeTab === 'hotels'
+                  ? 'bg-[#f0f9ff] text-[#32A6D7]'
+                  : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+              }`}
             >
-              <svg className="w-5 h-5 mr-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg 
+                className={`w-5 h-5 mr-4 ${activeTab === 'hotels' ? 'text-[#32A6D7]' : ''}`} 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -428,12 +463,25 @@ const Navbar: React.FC<NavbarProps> = ({
                 />
               </svg>
               {t?.('nav.hotels') || 'Hotels'}
-            </a>
-            <a
-              href="#"
-              className="w-full flex items-center px-4 py-4 text-left font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2"
+              {activeTab === 'hotels' && (
+                <span className="ml-auto text-[#32A6D7]">✓</span>
+              )}
+            </button>
+
+            <button
+              onClick={() => handleTabClick('cars')}
+              className={`w-full flex items-center px-4 py-4 text-left font-bold rounded-xl transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#32A6D7] focus:ring-offset-2 ${
+                activeTab === 'cars'
+                  ? 'bg-[#f0f9ff] text-[#32A6D7]'
+                  : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+              }`}
             >
-              <svg className="w-5 h-5 mr-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg 
+                className={`w-5 h-5 mr-4 ${activeTab === 'cars' ? 'text-[#32A6D7]' : ''}`} 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -442,7 +490,10 @@ const Navbar: React.FC<NavbarProps> = ({
                 />
               </svg>
               {t?.('nav.cars') || 'Cars'}
-            </a>
+              {activeTab === 'cars' && (
+                <span className="ml-auto text-[#32A6D7]">✓</span>
+              )}
+            </button>
 
             {!isLoggedIn && (
               <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100 mt-4">

@@ -17,11 +17,20 @@ interface Travellers {
 interface SearchBoxProps {
   onSearch: (data: any) => void;
   loading: boolean;
+  activeTab?: 'flights' | 'hotels' | 'cars'; // CHANGED from string to specific union type
+  onTabChange?: (tab: 'flights' | 'hotels' | 'cars') => void; // CHANGED from any to specific type
 }
 
-const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading }) => {
+const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: activeTabProp, onTabChange }) => {
   const { t, currency } = useLanguage();
-  const [activeTab, setActiveTab] = useState('flights');
+  const [activeTab, setActiveTab] = useState<'flights' | 'hotels' | 'cars'>(activeTabProp || 'flights');
+
+  // Synchronize internal activeTab with the prop from the navbar
+  useEffect(() => {
+    if (activeTabProp) {
+      setActiveTab(activeTabProp);
+    }
+  }, [activeTabProp]);
   
   // Flight Specific State
   const [tripType, setTripType] = useState<'round-trip' | 'one-way' | 'multi-city'>('round-trip');
@@ -94,6 +103,13 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading }) => {
       }
     } else {
       setSegments([segments[0]]);
+    }
+  };
+
+  const handleLocalTabChange = (tab: 'flights' | 'hotels' | 'cars') => {
+    setActiveTab(tab);
+    if (onTabChange) {
+      onTabChange(tab);
     }
   };
 
@@ -268,11 +284,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading }) => {
         {/* Navigation Tabs - Optimized for Mobile */}
         <div className="flex items-center gap-4 md:gap-10 px-4 md:px-8 pt-4 md:pt-6 border-b border-gray-100 overflow-x-auto hide-scrollbar">
           {[
-            { id: 'flights', label: 'Flights', icon: <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" /> },
-            { id: 'hotels', label: 'Hotels', icon: <path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2zm3-8h4c1.1 0 2-.9 2-2H8c0 1.1.9 2 2 2zM3 21h18v-2H3v2zM3 8c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v10H3V8z" /> },
-            { id: 'cars', label: 'Cars', icon: <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" /> }
+            { id: 'flights' as const, label: 'Flights', icon: <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" /> },
+            { id: 'hotels' as const, label: 'Hotels', icon: <path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" /> },
+            { id: 'cars' as const, label: 'Cars', icon: <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" /> }
           ].map((tab) => (
-            <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 pb-3 md:pb-5 transition-all relative shrink-0 ${activeTab === tab.id ? 'text-[#33a8da]' : 'text-gray-400 hover:text-blue-500 font-bold'}`}>
+            <button key={tab.id} type="button" onClick={() => handleLocalTabChange(tab.id)} className={`flex items-center gap-2 pb-3 md:pb-5 transition-all relative shrink-0 ${activeTab === tab.id ? 'text-[#33a8da]' : 'text-gray-400 hover:text-blue-500 font-bold'}`}>
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">{tab.icon}</svg>
               <span className="text-sm md:text-lg font-bold tracking-tight">{tab.label}</span>
               {activeTab === tab.id && <div className="absolute bottom-[-1px] left-0 right-0 h-[3px] bg-[#33a8da] rounded-full"></div>}

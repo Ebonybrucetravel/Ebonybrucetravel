@@ -1,6 +1,6 @@
-'use client';
-import React, { useState, useMemo } from 'react';
-import { useLanguage } from '../context/LanguageContext';
+"use client";
+import React, { useState, useMemo } from "react";
+import { useLanguage } from "../context/LanguageContext";
 
 interface ResultItem {
   id: string;
@@ -25,54 +25,72 @@ interface SearchResultsProps {
   onSelect?: (item: ResultItem) => void;
 }
 
-const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, searchParams, onClear, onSelect }) => {
+const SearchResults: React.FC<SearchResultsProps> = ({
+  results: initialResults,
+  searchParams,
+  onClear,
+  onSelect,
+}) => {
   const { currency } = useLanguage();
-  const searchType = searchParams?.type || 'flights';
-  
+  const searchType = searchParams?.type || "flights";
+
   // Generic Filters
   const [priceRange, setPriceRange] = useState<number>(500000);
-  const [sortBy, setSortBy] = useState<'match' | 'price' | 'time'>('match');
+  const [sortBy, setSortBy] = useState<"match" | "price" | "time">("match");
   const [isBooking, setIsBooking] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(6);
   const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
 
   // Flight Specific
-  const [stopsFilter, setStopsFilter] = useState<string[]>(['Direct', '1 Stop', '2+ Stops']);
+  const [stopsFilter, setStopsFilter] = useState<string[]>([
+    "Direct",
+    "1 Stop",
+    "2+ Stops",
+  ]);
 
   // Hotel Specific Filters (Matching Screenshot)
-  const [popularFilters, setPopularFilters] = useState<string[]>(['Free Wi-Fi', 'Free breakfast']);
-  const [propertyTypes, setPropertyTypes] = useState<string[]>(['Hotels']);
+  const [popularFilters, setPopularFilters] = useState<string[]>([
+    "Free Wi-Fi",
+    "Free breakfast",
+  ]);
+  const [propertyTypes, setPropertyTypes] = useState<string[]>(["Hotels"]);
   const [starRatings, setStarRatings] = useState<number[]>([5]);
 
   const firstSeg = searchParams?.segments?.[0];
 
   const filteredResults = useMemo(() => {
     let filtered = [...initialResults];
-    
+
     // Type specific filtering
-    if (searchType === 'flights') {
-      filtered = filtered.filter(item => stopsFilter.includes(item.stops || 'Direct'));
+    if (searchType === "flights") {
+      filtered = filtered.filter((item) =>
+        stopsFilter.includes(item.stops || "Direct")
+      );
     }
-    
+
     // Price range filtering
-    filtered = filtered.filter(item => {
-      const numericPrice = parseInt(item.price.replace(/[^\d]/g, ''));
+    filtered = filtered.filter((item) => {
+      const numericPrice = parseInt(item.price.replace(/[^\d]/g, ""));
       return numericPrice <= priceRange;
     });
 
     // Sorting
-    if (sortBy === 'price') {
-      filtered.sort((a, b) => parseInt(a.price.replace(/[^\d]/g, '')) - parseInt(b.price.replace(/[^\d]/g, '')));
-    } else if (sortBy === 'time' && searchType === 'flights') {
-      filtered.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    if (sortBy === "price") {
+      filtered.sort(
+        (a, b) =>
+          parseInt(a.price.replace(/[^\d]/g, "")) -
+          parseInt(b.price.replace(/[^\d]/g, ""))
+      );
+    } else if (sortBy === "time" && searchType === "flights") {
+      filtered.sort((a, b) => (a.time || "").localeCompare(b.time || ""));
     }
-    
+
     return filtered;
   }, [initialResults, stopsFilter, priceRange, sortBy, searchType]);
 
   const handleToggleSaved = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setSavedItems(prev => {
+    setSavedItems((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -93,9 +111,15 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
       {/* Map Preview */}
       <div className="bg-white rounded-[24px] overflow-hidden shadow-sm border border-gray-100 p-2">
         <div className="relative h-32 rounded-[20px] overflow-hidden">
-          <img src="https://images.unsplash.com/photo-1526772662000-3f88f10405ff?auto=format&fit=crop&q=80&w=400" className="w-full h-full object-cover grayscale opacity-50" alt="Map" />
+          <img
+            src="https://images.unsplash.com/photo-1526772662000-3f88f10405ff?auto=format&fit=crop&q=80&w=400"
+            className="w-full h-full object-cover grayscale opacity-50"
+            alt="Map"
+          />
           <div className="absolute inset-0 flex items-center justify-center">
-            <button className="bg-[#33a8da] text-white px-4 py-2 rounded-lg text-xs font-bold shadow-lg hover:bg-[#2c98c7] transition">View on map</button>
+            <button className="bg-[#33a8da] text-white px-4 py-2 rounded-lg text-xs font-bold shadow-lg hover:bg-[#2c98c7] transition">
+              View on map
+            </button>
           </div>
         </div>
       </div>
@@ -103,37 +127,71 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
       {/* Budget Slider */}
       <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100">
         <div className="flex justify-between items-center mb-6">
-          <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest">Your Budget</h4>
-          <span className="text-[10px] text-blue-500 font-bold uppercase cursor-pointer">Reset</span>
+          <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest">
+            Your Budget
+          </h4>
+          <span className="text-[10px] text-blue-500 font-bold uppercase cursor-pointer">
+            Reset
+          </span>
         </div>
-        <input 
-          type="range" 
-          min="0" 
-          max="1000000" 
-          step="10000" 
-          value={priceRange} 
-          onChange={(e) => setPriceRange(parseInt(e.target.value))} 
-          className="w-full h-1 bg-blue-100 rounded-full appearance-none accent-[#33a8da] cursor-pointer" 
+        <input
+          type="range"
+          min="0"
+          max="1000000"
+          step="10000"
+          value={priceRange}
+          onChange={(e) => setPriceRange(parseInt(e.target.value))}
+          className="w-full h-1 bg-blue-100 rounded-full appearance-none accent-[#33a8da] cursor-pointer"
         />
         <div className="flex justify-between mt-4">
           <span className="text-[10px] font-bold text-gray-400">0:00</span>
-          <span className="text-[10px] font-black text-[#33a8da] tracking-tight">{currency.symbol}{priceRange.toLocaleString()}+</span>
+          <span className="text-[10px] font-black text-[#33a8da] tracking-tight">
+            {currency.symbol}
+            {priceRange.toLocaleString()}+
+          </span>
         </div>
       </div>
 
       {/* Popular Section */}
       <div className="bg-white rounded-[24px] p-6 shadow-sm border-2 border-[#33a8da]">
-        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">Popular</h4>
+        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">
+          Popular
+        </h4>
         <div className="space-y-4">
-          {['Free Wi-Fi', 'Free breakfast', 'Swimming Pool', 'Workspace', '24hrs Electricity', 'Pet-friendly', 'Beach'].map((feat) => (
-            <label key={feat} className="flex items-center gap-3 cursor-pointer group">
-              <input 
-                type="checkbox" 
-                checked={popularFilters.includes(feat)} 
-                onChange={() => setPopularFilters(prev => prev.includes(feat) ? prev.filter(p => p !== feat) : [...prev, feat])}
-                className="w-4 h-4 rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da]" 
+          {[
+            "Free Wi-Fi",
+            "Free breakfast",
+            "Swimming Pool",
+            "Workspace",
+            "24hrs Electricity",
+            "Pet-friendly",
+            "Beach",
+          ].map((feat) => (
+            <label
+              key={feat}
+              className="flex items-center gap-3 cursor-pointer group"
+            >
+              <input
+                type="checkbox"
+                checked={popularFilters.includes(feat)}
+                onChange={() =>
+                  setPopularFilters((prev) =>
+                    prev.includes(feat)
+                      ? prev.filter((p) => p !== feat)
+                      : [...prev, feat]
+                  )
+                }
+                className="w-4 h-4 rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
               />
-              <span className={`text-[11px] font-bold ${popularFilters.includes(feat) ? 'text-gray-900' : 'text-gray-400 group-hover:text-gray-600'}`}>{feat}</span>
+              <span
+                className={`text-[11px] font-bold ${
+                  popularFilters.includes(feat)
+                    ? "text-gray-900"
+                    : "text-gray-400 group-hover:text-gray-600"
+                }`}
+              >
+                {feat}
+              </span>
             </label>
           ))}
         </div>
@@ -141,17 +199,43 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
 
       {/* Property Type */}
       <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100">
-        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">Property Type</h4>
+        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">
+          Property Type
+        </h4>
         <div className="space-y-4">
-          {['Hotels', 'Apartments', 'Guesthouses', 'Motels', 'Lodges', 'Villas'].map((type) => (
-            <label key={type} className="flex items-center gap-3 cursor-pointer group">
-              <input 
-                type="checkbox" 
-                checked={propertyTypes.includes(type)} 
-                onChange={() => setPropertyTypes(prev => prev.includes(type) ? prev.filter(p => p !== type) : [...prev, type])}
-                className="w-4 h-4 rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da]" 
+          {[
+            "Hotels",
+            "Apartments",
+            "Guesthouses",
+            "Motels",
+            "Lodges",
+            "Villas",
+          ].map((type) => (
+            <label
+              key={type}
+              className="flex items-center gap-3 cursor-pointer group"
+            >
+              <input
+                type="checkbox"
+                checked={propertyTypes.includes(type)}
+                onChange={() =>
+                  setPropertyTypes((prev) =>
+                    prev.includes(type)
+                      ? prev.filter((p) => p !== type)
+                      : [...prev, type]
+                  )
+                }
+                className="w-4 h-4 rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
               />
-              <span className={`text-[11px] font-bold ${propertyTypes.includes(type) ? 'text-gray-900' : 'text-gray-400 group-hover:text-gray-600'}`}>{type}</span>
+              <span
+                className={`text-[11px] font-bold ${
+                  propertyTypes.includes(type)
+                    ? "text-gray-900"
+                    : "text-gray-400 group-hover:text-gray-600"
+                }`}
+              >
+                {type}
+              </span>
             </label>
           ))}
         </div>
@@ -159,21 +243,40 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
 
       {/* Star Rating */}
       <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100">
-        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">Star Rating</h4>
+        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">
+          Star Rating
+        </h4>
         <div className="space-y-4">
           {[5, 4, 3].map((star) => (
-            <label key={star} className="flex items-center gap-3 cursor-pointer group">
-              <input 
-                type="checkbox" 
-                checked={starRatings.includes(star)} 
-                onChange={() => setStarRatings(prev => prev.includes(star) ? prev.filter(s => s !== star) : [...prev, star])}
-                className="w-4 h-4 rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da]" 
+            <label
+              key={star}
+              className="flex items-center gap-3 cursor-pointer group"
+            >
+              <input
+                type="checkbox"
+                checked={starRatings.includes(star)}
+                onChange={() =>
+                  setStarRatings((prev) =>
+                    prev.includes(star)
+                      ? prev.filter((s) => s !== star)
+                      : [...prev, star]
+                  )
+                }
+                className="w-4 h-4 rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
               />
               <div className="flex items-center gap-1">
-                <span className="text-[11px] font-bold text-gray-900">{star} Star</span>
+                <span className="text-[11px] font-bold text-gray-900">
+                  {star} Star
+                </span>
                 <div className="flex text-yellow-400">
                   {[...Array(star)].map((_, i) => (
-                    <svg key={i} className="w-3 h-3 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                    <svg
+                      key={i}
+                      className="w-3 h-3 fill-current"
+                      viewBox="0 0 20 20"
+                    >
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
                   ))}
                 </div>
               </div>
@@ -187,13 +290,41 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
   const renderFlightFilters = () => (
     <div className="space-y-6">
       <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100">
-        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">Stops</h4>
+        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">
+          Stops
+        </h4>
         <div className="space-y-4">
-          {['Direct', '1 Stop', '2+ Stops'].map((stop) => (
-            <label key={stop} className="flex items-center justify-between cursor-pointer group">
+          {["Direct", "1 Stop", "2+ Stops"].map((stop) => (
+            <label
+              key={stop}
+              className="flex items-center justify-between cursor-pointer group"
+            >
               <div className="flex items-center gap-3">
-                <div onClick={() => setStopsFilter(prev => prev.includes(stop) ? prev.filter(s => s !== stop) : [...prev, stop])} className={`w-5 h-5 rounded border-2 flex items-center justify-center transition ${stopsFilter.includes(stop) ? 'bg-[#33a8da] border-[#33a8da]' : 'bg-white border-gray-200'}`}>
-                  {stopsFilter.includes(stop) && <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={5}><path d="M5 13l4 4L19 7"/></svg>}
+                <div
+                  onClick={() =>
+                    setStopsFilter((prev) =>
+                      prev.includes(stop)
+                        ? prev.filter((s) => s !== stop)
+                        : [...prev, stop]
+                    )
+                  }
+                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition ${
+                    stopsFilter.includes(stop)
+                      ? "bg-[#33a8da] border-[#33a8da]"
+                      : "bg-white border-gray-200"
+                  }`}
+                >
+                  {stopsFilter.includes(stop) && (
+                    <svg
+                      className="w-3.5 h-3.5 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={5}
+                    >
+                      <path d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
                 </div>
                 <span className="text-sm font-bold text-gray-600">{stop}</span>
               </div>
@@ -202,63 +333,145 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
         </div>
       </div>
       <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100">
-        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">Price range</h4>
-        <input type="range" min="0" max="5000000" step="50000" value={priceRange} onChange={(e) => setPriceRange(parseInt(e.target.value))} className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-[#33a8da] cursor-pointer" />
+        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">
+          Price range
+        </h4>
+        <input
+          type="range"
+          min="0"
+          max="5000000"
+          step="50000"
+          value={priceRange}
+          onChange={(e) => setPriceRange(parseInt(e.target.value))}
+          className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-[#33a8da] cursor-pointer"
+        />
         <div className="flex justify-between mt-4">
           <span className="text-[10px] font-bold text-gray-400">0</span>
-          <span className="text-[10px] font-black text-[#33a8da]">{currency.symbol}{priceRange.toLocaleString()}</span>
+          <span className="text-[10px] font-black text-[#33a8da]">
+            {currency.symbol}
+            {priceRange.toLocaleString()}
+          </span>
         </div>
       </div>
     </div>
   );
 
   const renderHotelCard = (item: ResultItem) => (
-    <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div
+      key={item.id}
+      className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2 duration-300"
+    >
       <div className="flex flex-col md:flex-row">
         <div className="w-full md:w-[320px] h-64 md:h-auto overflow-hidden relative flex-shrink-0">
-          <img src={item.imageUrl || `https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600`} className="w-full h-full object-cover transition duration-500 group-hover:scale-110" alt={item.title} />
-          <button onClick={(e) => handleToggleSaved(item.id, e)} className={`absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition backdrop-blur-md ${savedItems.has(item.id) ? 'bg-red-500 text-white' : 'bg-white/40 text-gray-400 hover:bg-white hover:text-red-500'}`}>
-            <svg className="w-5 h-5" fill={savedItems.has(item.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+          <img
+            src={
+              item.imageUrl ||
+              `https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600`
+            }
+            className="w-full h-full object-cover transition duration-500 group-hover:scale-110"
+            alt={item.title}
+          />
+          <button
+            onClick={(e) => handleToggleSaved(item.id, e)}
+            className={`absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition backdrop-blur-md ${
+              savedItems.has(item.id)
+                ? "bg-red-500 text-white"
+                : "bg-white/40 text-gray-400 hover:bg-white hover:text-red-500"
+            }`}
+          >
+            <svg
+              className="w-5 h-5"
+              fill={savedItems.has(item.id) ? "currentColor" : "none"}
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+              />
+            </svg>
           </button>
         </div>
 
         <div className="flex-1 p-8">
           <div className="mb-4">
-            <h3 className="text-xl font-black text-gray-900 tracking-tight leading-tight group-hover:text-[#33a8da] transition">{item.title}</h3>
+            <h3 className="text-xl font-black text-gray-900 tracking-tight leading-tight group-hover:text-[#33a8da] transition">
+              {item.title}
+            </h3>
             <div className="flex items-center gap-2 mt-2">
               <div className="text-[#33a8da]">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+                <svg
+                  className="w-4 h-4"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+                </svg>
               </div>
-              <span className="text-[11px] font-bold text-gray-500">{item.subtitle}</span>
-              <span className="text-[10px] font-black text-[#33a8da] uppercase tracking-tighter cursor-pointer hover:underline ml-2">Explore on map</span>
+              <span className="text-[11px] font-bold text-gray-500">
+                {item.subtitle}
+              </span>
+              <span className="text-[10px] font-black text-[#33a8da] uppercase tracking-tighter cursor-pointer hover:underline ml-2">
+                Explore on map
+              </span>
             </div>
           </div>
 
           <div className="flex items-center gap-4 mb-6">
             <div className="flex text-yellow-400">
               {[...Array(5)].map((_, i) => (
-                <svg key={i} className={`w-3.5 h-3.5 ${i < (item.rating || 5) ? 'fill-current' : 'text-gray-200'}`} viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                <svg
+                  key={i}
+                  className={`w-3.5 h-3.5 ${
+                    i < (item.rating || 5) ? "fill-current" : "text-gray-200"
+                  }`}
+                  viewBox="0 0 20 20"
+                >
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
               ))}
             </div>
             <div className="flex items-center gap-1.5">
-               <span className="text-[11px] font-black bg-blue-50 text-[#33a8da] px-2 py-0.5 rounded">5.0/5</span>
-               <span className="text-[10px] text-gray-300 font-bold uppercase tracking-widest">(200 Reviews)</span>
+              <span className="text-[11px] font-black bg-blue-50 text-[#33a8da] px-2 py-0.5 rounded">
+                5.0/5
+              </span>
+              <span className="text-[10px] text-gray-300 font-bold uppercase tracking-widest">
+                (200 Reviews)
+              </span>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-2 mb-8">
-            <span className="text-[9px] font-black text-gray-500 bg-gray-50 px-3 py-1.5 rounded uppercase tracking-widest border border-gray-100">Free Breakfast</span>
-            <span className="text-[9px] font-black text-gray-500 bg-gray-50 px-3 py-1.5 rounded uppercase tracking-widest border border-gray-100">Beach Access</span>
+            <span className="text-[9px] font-black text-gray-500 bg-gray-50 px-3 py-1.5 rounded uppercase tracking-widest border border-gray-100">
+              Free Breakfast
+            </span>
+            <span className="text-[9px] font-black text-gray-500 bg-gray-50 px-3 py-1.5 rounded uppercase tracking-widest border border-gray-100">
+              Beach Access
+            </span>
           </div>
 
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pt-6 border-t border-gray-50">
-             <div className="space-y-1">
-                <p className="text-[10px] line-through text-gray-400 font-bold uppercase tracking-widest">{currency.symbol}{(parseInt(item.price.replace(/[^\d]/g, '')) * 1.2).toLocaleString()}.00</p>
-                <p className="text-2xl font-black text-[#33a8da] tracking-tighter">{item.price}</p>
-             </div>
-             <button onClick={() => handleSelectResult(item)} disabled={isBooking === item.id} className="bg-[#33a8da] text-white font-black px-10 py-3 rounded-xl transition shadow-lg shadow-blue-500/10 hover:bg-[#2c98c7] active:scale-95 text-xs uppercase tracking-widest">
-               {isBooking === item.id ? 'Loading...' : 'See Availability'}
-             </button>
+            <div className="space-y-1">
+              <p className="text-[10px] line-through text-gray-400 font-bold uppercase tracking-widest">
+                {currency.symbol}
+                {(
+                  parseInt(item.price.replace(/[^\d]/g, "")) * 1.2
+                ).toLocaleString()}
+                .00
+              </p>
+              <p className="text-2xl font-black text-[#33a8da] tracking-tighter">
+                {item.price}
+              </p>
+            </div>
+            <button
+              onClick={() => handleSelectResult(item)}
+              disabled={isBooking === item.id}
+              className="bg-[#33a8da] text-white font-black px-10 py-3 rounded-xl transition shadow-lg shadow-blue-500/10 hover:bg-[#2c98c7] active:scale-95 text-xs uppercase tracking-widest"
+            >
+              {isBooking === item.id ? "Loading..." : "See Availability"}
+            </button>
           </div>
         </div>
       </div>
@@ -266,39 +479,72 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
   );
 
   const renderFlightCard = (item: ResultItem) => (
-    <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div
+      key={item.id}
+      className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2 duration-300"
+    >
       <div className="flex flex-col md:flex-row">
         <div className="flex-1 p-8">
           <div className="flex flex-wrap items-center justify-between mb-8">
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 bg-white border border-gray-100 rounded-lg flex items-center justify-center p-1">
-                <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(item.provider)}&background=f0f9ff&color=33a8da`} className="w-full h-full object-contain" alt="" />
+                <img
+                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(
+                    item.provider
+                  )}&background=f0f9ff&color=33a8da`}
+                  className="w-full h-full object-contain"
+                  alt=""
+                />
               </div>
               <div>
-                <h4 className="text-sm font-black text-gray-900 tracking-tight">{item.provider}</h4>
-                <p className="text-[10px] font-bold text-gray-400">{item.subtitle}</p>
+                <h4 className="text-sm font-black text-gray-900 tracking-tight">
+                  {item.provider}
+                </h4>
+                <p className="text-[10px] font-bold text-gray-400">
+                  {item.subtitle}
+                </p>
               </div>
             </div>
-            <div className="bg-yellow-400 text-white font-black text-[10px] px-2 py-0.5 rounded tracking-tighter">{(4 + Math.random()).toFixed(1)}</div>
+            <div className="bg-yellow-400 text-white font-black text-[10px] px-2 py-0.5 rounded tracking-tighter">
+              {(4 + Math.random()).toFixed(1)}
+            </div>
           </div>
 
           <div className="flex items-center gap-12 lg:gap-20">
             <div className="text-center">
-              <p className="text-2xl font-black text-gray-900">{item.time || '08:00'}</p>
-              <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Depart</p>
+              <p className="text-2xl font-black text-gray-900">
+                {item.time || "08:00"}
+              </p>
+              <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">
+                Depart
+              </p>
             </div>
             <div className="flex-1 flex flex-col items-center">
-              <p className="text-[10px] font-bold text-gray-300 uppercase mb-2">{item.duration || '1h 15m'}</p>
+              <p className="text-[10px] font-bold text-gray-300 uppercase mb-2">
+                {item.duration || "1h 15m"}
+              </p>
               <div className="w-full h-[1.5px] bg-gray-100 relative">
                 <div className="absolute left-1/2 -translate-x-1/2 -top-[6px] text-[#33a8da]">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
+                  <svg
+                    className="w-4 h-4"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+                  </svg>
                 </div>
               </div>
-              <p className="text-[10px] font-black uppercase mt-2 tracking-widest text-blue-500">{item.stops || 'Direct'}</p>
+              <p className="text-[10px] font-black uppercase mt-2 tracking-widest text-blue-500">
+                {item.stops || "Direct"}
+              </p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-black text-gray-900">{item.duration?.includes('h') ? '09:15' : '14:45'}</p>
-              <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Arrival</p>
+              <p className="text-2xl font-black text-gray-900">
+                {item.duration?.includes("h") ? "09:15" : "14:45"}
+              </p>
+              <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">
+                Arrival
+              </p>
             </div>
           </div>
         </div>
@@ -306,10 +552,16 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
         <div className="w-full md:w-[220px] bg-[#fdfdfd] border-l border-gray-100 flex flex-col items-center justify-center p-8 text-center">
           <div className="mb-6">
             <p className="text-2xl font-black text-gray-900">{item.price}</p>
-            <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Per Traveler</p>
+            <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">
+              Per Traveler
+            </p>
           </div>
-          <button onClick={() => handleSelectResult(item)} disabled={isBooking === item.id} className="w-full bg-[#33a8da] text-white font-black py-3.5 rounded-xl transition shadow-lg active:scale-95 text-sm uppercase">
-            {isBooking === item.id ? '...' : 'Select'}
+          <button
+            onClick={() => handleSelectResult(item)}
+            disabled={isBooking === item.id}
+            className="w-full bg-[#33a8da] text-white font-black py-3.5 rounded-xl transition shadow-lg active:scale-95 text-sm uppercase"
+          >
+            {isBooking === item.id ? "..." : "Select"}
           </button>
         </div>
       </div>
@@ -322,71 +574,146 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
         <div className="bg-white border-4 border-[#33a8da] rounded-[24px] p-6 flex flex-wrap items-center justify-between gap-6 shadow-sm">
           <div className="flex flex-wrap items-center gap-10">
             <div className="flex items-center gap-3">
-               <div className="text-[#33a8da]"><svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">{searchType === 'hotels' ? <path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" /> : <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />}</svg></div>
-               <span className="font-black text-gray-900 text-lg tracking-tight">
-                {searchType === 'flights' ? (firstSeg?.from || 'Lagos') : (searchParams?.location || 'The Providence Hotel')}
-              </span>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <div className="text-gray-400"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
-              <span className="text-sm font-bold text-gray-500">
-                {searchType === 'flights' ? (firstSeg?.date || 'Anytime') : `${searchParams?.checkIn || 'Dec 26'} — ${searchParams?.checkOut || 'Dec 30'}`}
+              <div className="text-[#33a8da]">
+                <svg
+                  className="w-6 h-6"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  {searchType === "hotels" ? (
+                    <path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" />
+                  ) : (
+                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+                  )}
+                </svg>
+              </div>
+              <span className="font-black text-gray-900 text-lg tracking-tight">
+                {searchType === "flights"
+                  ? firstSeg?.from || "Lagos"
+                  : searchParams?.location || "The Providence Hotel"}
               </span>
             </div>
 
             <div className="flex items-center gap-3">
-               <div className="text-gray-400"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></div>
-               <span className="text-sm font-bold text-gray-500">{searchParams?.travellers || '2 Adult, 0 Children'}</span>
+              <div className="text-gray-400">
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={3}
+                >
+                  <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <span className="text-sm font-bold text-gray-500">
+                {searchType === "flights"
+                  ? firstSeg?.date || "Anytime"
+                  : `${searchParams?.checkIn || "Dec 26"} — ${
+                      searchParams?.checkOut || "Dec 30"
+                    }`}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="text-gray-400">
+                <svg
+                  className="w-5 h-5"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                </svg>
+              </div>
+              <span className="text-sm font-bold text-gray-500">
+                {searchParams?.travellers || "2 Adult, 0 Children"}
+              </span>
             </div>
           </div>
-          <button onClick={onClear} className="px-8 py-3.5 bg-[#f0f9ff] text-[#33a8da] font-black text-xs rounded-xl hover:bg-blue-100 transition uppercase tracking-widest border border-blue-50">Modify Search</button>
+          <button
+            onClick={onClear}
+            className="px-8 py-3.5 bg-[#f0f9ff] text-[#33a8da] font-black text-xs rounded-xl hover:bg-blue-100 transition uppercase tracking-widest border border-blue-50"
+          >
+            Modify Search
+          </button>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-10">
         <aside className="w-full lg:w-[320px] flex-shrink-0">
           <div className="flex justify-between items-center px-4 mb-6">
-            <h3 className="font-black text-gray-900 uppercase text-xs tracking-widest">Filters</h3>
-            <span className="text-[11px] font-black text-[#33a8da] uppercase tracking-tighter cursor-pointer">Reset All</span>
+            <h3 className="font-black text-gray-900 uppercase text-xs tracking-widest">
+              Filters
+            </h3>
+            <span className="text-[11px] font-black text-[#33a8da] uppercase tracking-tighter cursor-pointer">
+              Reset All
+            </span>
           </div>
-          {searchType === 'hotels' ? renderHotelFilters() : renderFlightFilters()}
+          {searchType === "hotels"
+            ? renderHotelFilters()
+            : renderFlightFilters()}
         </aside>
 
         <div className="flex-1 space-y-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4 px-2">
             <div className="flex items-center gap-3">
-               <div className="w-8 h-8 bg-blue-50 text-[#33a8da] rounded-lg flex items-center justify-center font-black text-xs">36</div>
-               <h3 className="font-black text-gray-900 tracking-tight">{searchType === 'hotels' ? 'Properties Found' : 'Flights Found'}</h3>
+              <div className="w-8 h-8 bg-blue-50 text-[#33a8da] rounded-lg flex items-center justify-center font-black text-xs">
+                36
+              </div>
+              <h3 className="font-black text-gray-900 tracking-tight">
+                {searchType === "hotels" ? "Properties Found" : "Flights Found"}
+              </h3>
             </div>
             <div className="flex items-center gap-4">
-               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sort by:</span>
-               <div className="relative group">
-                 <button className="flex items-center gap-3 px-5 py-2.5 bg-white border border-gray-100 rounded-xl text-[11px] font-black text-gray-700 hover:border-[#33a8da] transition shadow-sm uppercase tracking-tight">
-                   Best Match <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19 9l-7 7-7-7" /></svg>
-                 </button>
-               </div>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                Sort by:
+              </span>
+              <div className="relative group">
+                <button className="flex items-center gap-3 px-5 py-2.5 bg-white border border-gray-100 rounded-xl text-[11px] font-black text-gray-700 hover:border-[#33a8da] transition shadow-sm uppercase tracking-tight">
+                  Best Match{" "}
+                  <svg
+                    className="w-4 h-4 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={3}
+                  >
+                    <path d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
           <div className="space-y-4">
-            {filteredResults.slice(0, visibleCount).map((item) => (
-              searchType === 'hotels' ? renderHotelCard(item) : renderFlightCard(item)
-            ))}
+            {filteredResults
+              .slice(0, visibleCount)
+              .map((item) =>
+                searchType === "hotels"
+                  ? renderHotelCard(item)
+                  : renderFlightCard(item)
+              )}
           </div>
 
           {filteredResults.length > visibleCount && (
             <div className="pt-10 flex justify-center">
-              <button onClick={() => setVisibleCount(p => p + 6)} className="px-16 py-4 bg-[#33a8da] text-white font-black rounded-2xl shadow-xl shadow-blue-500/20 hover:bg-[#2c98c7] transition transform active:scale-95 text-sm uppercase tracking-widest">
-                Show more {searchType === 'hotels' ? 'properties' : 'flights'}
+              <button
+                onClick={() => setVisibleCount((p) => p + 6)}
+                className="px-16 py-4 bg-[#33a8da] text-white font-black rounded-2xl shadow-xl shadow-blue-500/20 hover:bg-[#2c98c7] transition transform active:scale-95 text-sm uppercase tracking-widest"
+              >
+                Show more {searchType === "hotels" ? "properties" : "flights"}
               </button>
             </div>
           )}
 
           {filteredResults.length === 0 && (
             <div className="bg-white rounded-[32px] p-24 text-center border-4 border-dashed border-gray-100">
-              <h3 className="text-2xl font-black text-gray-900 mb-2">No results found</h3>
-              <p className="text-gray-400 font-bold">Try adjusting your filters to find your perfect travel match.</p>
+              <h3 className="text-2xl font-black text-gray-900 mb-2">
+                No results found
+              </h3>
+              <p className="text-gray-400 font-bold">
+                Try adjusting your filters to find your perfect travel match.
+              </p>
             </div>
           )}
         </div>
