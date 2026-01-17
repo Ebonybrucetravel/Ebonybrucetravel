@@ -1,0 +1,192 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication and customer/admin management
+model User {
+  id       String   @id @default(cuid())
+  email    String   @unique
+  password String // Hashed password (bcrypt)
+  name     String?
+  role     UserRole @default(CUSTOMER)
+  phone    String?
+  image    String? // Profile image URL
+
+  // Relations
+  bookings          Booking[] // User's bookings
+  auditLogs         AuditLog[] // Admin actions performed by user
+  cancelledBookings Booking[]      @relation("CancelledBy") // Bookings cancelled by this user
+  createdMarkups    MarkupConfig[] @relation("CreatedMarkup") // Markup configs created by this admin
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
+  SUPER_ADMIN
+}
+
+// Booking model for flights, hotels, and car rentals
+model Booking {
+  id          String        @id @default(cuid())
+  reference   String        @unique // Format: EBT-YYYYMMDD-XXXXXX
+  userId      String
+  productType ProductType
+  status      BookingStatus @default(PENDING)
+
+  // Provider information
+  provider          Provider // DUFFEL, TRIPS_AFRICA, BOOKING_COM
+  providerBookingId String? // External booking ID from provider
+  providerData      Json? // Store full provider response for reference
+
+  // Pricing breakdown
+  basePrice    Decimal @db.Decimal(12, 2) // Provider base price
+  markupAmount Decimal @db.Decimal(12, 2) // Calculated markup
+  serviceFee   Decimal @db.Decimal(12, 2) // Service fee
+  totalAmount  Decimal @db.Decimal(12, 2) // Total customer pays
+  currency     String  @default("NGN") // ISO 4217 code
+
+  // Booking details (stored as JSON for flexibility)
+  bookingData   Json // Product-specific data (flight details, hotel info, car details)
+  passengerInfo Json? // Passenger/traveler information
+  paymentInfo   Json? // Payment transaction details
+
+  // Payment tracking
+  paymentStatus    PaymentStatus    @default(PENDING)
+  paymentProvider  PaymentProvider? // STRIPE, PAYSTACK
+  paymentReference String? // Payment gateway transaction reference
+
+  // Relations
+  user            User  @relation(fields: [userId], references: [id])
+  cancelledByUser User? @relation("CancelledBy", fields: [cancelledBy], references: [id])
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Cancellation/Refund
+  cancelledAt  DateTime?
+  cancelledBy  String? // User ID who cancelled
+  refundAmount Decimal?      @db.Decimal(12, 2)
+  refundStatus RefundStatus?
+
+  @@index([userId])
+  @@index([reference])
+  @@index([status])
+  @@index([productType])
+  @@index([provider])
+  @@index([createdAt])
+  @@index([paymentStatus])
+  @@map("bookings")
+}
+
+enum ProductType {
+  FLIGHT_DOMESTIC
+  FLIGHT_INTERNATIONAL
+  HOTEL
+  CAR_RENTAL
+  PACKAGE // Future: Flight + Hotel packages
+}
+
+enum Provider {
+  DUFFEL
+  TRIPS_AFRICA
+  BOOKING_COM
+}
+
+enum BookingStatus {
+  PENDING
+  PAYMENT_PENDING
+  CONFIRMED
+  CANCELLED
+  REFUNDED
+  FAILED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentProvider {
+  STRIPE
+  PAYSTACK
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// Markup configuration for different product types
+model MarkupConfig {
+  id               String      @id @default(cuid())
+  productType      ProductType
+  markupPercentage Decimal     @db.Decimal(5, 2) // e.g., 10.00 for 10%
+  serviceFeeAmount Decimal     @db.Decimal(12, 2) // Fixed service fee
+  currency         String      @default("NGN")
+  isActive         Boolean     @default(true)
+
+  // Effective date range for markup changes
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime? // null = indefinitely active
+
+  // Metadata
+  description   String? // Notes about this markup config
+  createdBy     String? // Admin user ID who created this
+  createdByUser User?   @relation("CreatedMarkup", fields: [createdBy], references: [id])
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productType, currency, effectiveFrom])
+  @@index([productType])
+  @@index([isActive])
+  @@index([effectiveFrom, effectiveTo])
+  @@map("markup_configs")
+}
+
+// Optional: Audit log for tracking admin actions
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String // Admin user ID
+  action     String // e.g., "UPDATE_MARKUP", "CANCEL_BOOKING"
+  entityType String // e.g., "MarkupConfig", "Booking"
+  entityId   String // ID of the entity affected
+  changes    Json? // Before/after changes
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
