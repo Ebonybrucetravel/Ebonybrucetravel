@@ -310,6 +310,9 @@ export default function Home() {
     },
   ]);
 
+  // New state for profile tab selection
+  const [activeProfileTab, setActiveProfileTab] = useState<string>("details");
+
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY;
     console.log("🔑 API Key Status:", {
@@ -689,6 +692,19 @@ export default function Home() {
     setActiveSearchTab(tab);
   }, []);
 
+  const handleMenuClick = useCallback(() => {
+    // For mobile menu - you can implement additional functionality if needed
+    console.log("Mobile menu clicked");
+  }, []);
+
+  // NEW: Handle profile tab selection from Navbar dropdown
+  const handleProfileTabSelect = useCallback((tabId: string) => {
+    setActiveProfileTab(tabId);
+    setCurrentView("profile");
+    // You might want to pass this to the Profile component
+    console.log("Selected profile tab:", tabId);
+  }, []);
+
   useEffect(() => {
     if (currentView !== "home") {
       setSearchResults([]);
@@ -707,7 +723,9 @@ export default function Home() {
         onRegister={() => openAuth("register")}
         onProfileClick={navigateToProfile}
         onLogoClick={navigateToHome}
-        onSearchClick={handleSearchClick}
+        onMenuClick={handleMenuClick}
+        onSignOut={handleSignOut} // Added: Pass sign out handler
+        onProfileTabSelect={handleProfileTabSelect} // Added: Pass profile tab selection handler
       />
 
       {currentView === "home" && (
@@ -837,6 +855,7 @@ export default function Home() {
           onSignOut={handleSignOut}
           onBookItem={handleBookItem}
           onCancelRequest={handleCancelRequest}
+          initialActiveTab={activeProfileTab} // Pass the active tab to Profile
         />
       )}
 
