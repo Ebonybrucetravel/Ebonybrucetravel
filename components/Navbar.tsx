@@ -186,7 +186,7 @@ const Navbar: React.FC<NavbarProps> = ({
                   activeTab === tab ? 'text-[#32A6D7]' : 'text-gray-500 hover:text-[#32A6D7]'
                 }`}
               >
-                {t?.('nav.flights') || tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {t?.(`nav.${tab}`) || tab.charAt(0).toUpperCase() + tab.slice(1)}
                 {activeTab === tab && (
                   <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#32A6D7] rounded-full animate-in fade-in duration-300"></span>
                 )}
@@ -469,7 +469,7 @@ const Navbar: React.FC<NavbarProps> = ({
                   activeTab === tab ? 'bg-blue-50 text-[#32A6D7]' : 'text-gray-500 hover:bg-gray-50'
                 }`}
               >
-                {t?.('nav.flights') || tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {t?.(`nav.${tab}`) || tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
             <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
