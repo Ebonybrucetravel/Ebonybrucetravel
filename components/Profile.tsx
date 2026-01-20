@@ -60,6 +60,16 @@ interface SavedItem {
 
 type ProfileTab = 'details' | 'travelers' | 'bookings' | 'saved' | 'rewards' | 'security' | 'preferences' | 'payment';
 
+// Add this currency options array at the top
+const CURRENCY_OPTIONS = [
+  { code: 'USD', symbol: '$', name: 'US Dollar' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'GBP', symbol: '£', name: 'British Pound' },
+  { code: 'NGN', symbol: '₦', name: 'Nigerian Naira' },
+  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+  { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' }
+] as const;
+
 const Profile: React.FC<ProfileProps> = ({ 
   user, 
   activeTab: activeTabProp, 
@@ -95,8 +105,9 @@ const Profile: React.FC<ProfileProps> = ({
   const [isVerifying, setIsVerifying] = useState(false);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const [prefLang, setPrefLang] = useState(currentLang);
-  const [prefCurr, setPrefCurr] = useState<'USD' | 'EUR' | 'GBP' | 'NGN' | 'JPY' | 'CNY'>(currentCurr.code);
+  // Fix these state declarations
+  const [prefLang, setPrefLang] = useState<'EN' | 'FR' | 'ES'>(currentLang as 'EN' | 'FR' | 'ES');
+  const [prefCurrCode, setPrefCurrCode] = useState<'USD' | 'EUR' | 'GBP' | 'NGN' | 'JPY' | 'CNY'>(currentCurr.code as 'USD' | 'EUR' | 'GBP' | 'NGN' | 'JPY' | 'CNY');
 
   const [savedItems, setSavedItems] = useState<SavedItem[]>([
     { id: 's1', name: 'Luxury Suite Colosseum', location: 'Rome, Italy . 5 Star Hotel', price: '$150.00', image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600', type: 'Hotels' },
@@ -654,23 +665,22 @@ const Profile: React.FC<ProfileProps> = ({
                       <div>
                         <label className="block text-lg font-bold text-gray-900 mb-4">Currency</label>
                         <select 
-                          value={prefCurr} 
-                          onChange={(e) => setPrefCurr(e.target.value as 'USD' | 'EUR' | 'GBP' | 'NGN' | 'JPY' | 'CNY')} 
+                          value={prefCurrCode} 
+                          onChange={(e) => setPrefCurrCode(e.target.value as 'USD' | 'EUR' | 'GBP' | 'NGN' | 'JPY' | 'CNY')} 
                           className="w-full px-6 py-4 bg-gray-50 rounded-2xl font-bold text-gray-500 appearance-none"
                         >
-                          <option value="USD">USD ($)</option>
-                          <option value="EUR">EUR (€)</option>
-                          <option value="GBP">GBP (£)</option>
-                          <option value="NGN">NGN (₦)</option>
-                          <option value="JPY">JPY (¥)</option>
-                          <option value="CNY">CNY (¥)</option>
+                          {CURRENCY_OPTIONS.map(currency => (
+                            <option key={currency.code} value={currency.code}>
+                              {currency.code} ({currency.symbol})
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div>
                         <label className="block text-lg font-bold text-gray-900 mb-4">Language</label>
                         <select 
                           value={prefLang} 
-                          onChange={(e) => setPrefLang(e.target.value as any)} 
+                          onChange={(e) => setPrefLang(e.target.value as 'EN' | 'FR' | 'ES')} 
                           className="w-full px-6 py-4 bg-gray-50 rounded-2xl font-bold text-gray-500 appearance-none"
                         >
                           <option value="EN">English</option>
@@ -684,8 +694,12 @@ const Profile: React.FC<ProfileProps> = ({
                 <div className="mt-8 flex justify-end gap-5">
                   <button 
                     onClick={() => { 
-                      setLanguage(prefLang as any); 
-                      setCurrency(prefCurr); 
+                      setLanguage(prefLang); 
+                      // Find the full currency object from the code
+                      const selectedCurrency = CURRENCY_OPTIONS.find(c => c.code === prefCurrCode);
+                      if (selectedCurrency) {
+                        setCurrency(selectedCurrency); // Pass the currency object, not just the code
+                      }
                       setIsSaving(true); 
                       setTimeout(() => setIsSaving(false), 500); 
                     }} 
