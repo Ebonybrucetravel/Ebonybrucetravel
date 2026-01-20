@@ -1,6 +1,6 @@
 
 'use client';
-import React from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 
 interface BookingSuccessProps {
@@ -11,6 +11,11 @@ interface BookingSuccessProps {
 
 const BookingSuccess: React.FC<BookingSuccessProps> = ({ item, searchParams, onBack }) => {
   const { currency } = useLanguage();
+  const [actionStatus, setActionStatus] = useState<{ [key: string]: 'idle' | 'loading' | 'success' }>({
+    pdf: 'idle',
+    email: 'idle',
+    calendar: 'idle'
+  });
   
   // Refined detection logic to be more robust
   const rawType = (item.type || searchParams?.type || 'flights').toLowerCase();
@@ -41,9 +46,64 @@ const BookingSuccess: React.FC<BookingSuccessProps> = ({ item, searchParams, onB
   const totalPrice = subtotal + (isHotel ? (cleaningFee * (currency.code === 'USD' ? 1 : 1500)) : 0);
   const formattedTotal = `${currency.symbol}${totalPrice.toLocaleString()}.00`;
 
+  // Action Handlers
+  const handleDownloadPDF = () => {
+    setActionStatus(prev => ({ ...prev, pdf: 'loading' }));
+    setTimeout(() => {
+      window.print();
+      setActionStatus(prev => ({ ...prev, pdf: 'success' }));
+      setTimeout(() => setActionStatus(prev => ({ ...prev, pdf: 'idle' })), 2000);
+    }, 1000);
+  };
+
+  const handleEmail = () => {
+    setActionStatus(prev => ({ ...prev, email: 'loading' }));
+    setTimeout(() => {
+      setActionStatus(prev => ({ ...prev, email: 'success' }));
+      setTimeout(() => setActionStatus(prev => ({ ...prev, email: 'idle' })), 3000);
+    }, 1500);
+  };
+
+  const handleAddCalendar = () => {
+    setActionStatus(prev => ({ ...prev, calendar: 'loading' }));
+    
+    // Generate simple .ics file content
+    const startDate = "20251226T080000Z";
+    const endDate = "20251226T100000Z";
+    const summary = `Ebony Bruce Travels: ${item.provider} ${isFlight ? 'Flight' : isHotel ? 'Stay' : 'Rental'}`;
+    const description = `Booking Confirmation: #${Math.floor(Math.random() * 1000000)}. Total: ${formattedTotal}`;
+    const location = isFlight ? `${originCode} to ${destCode}` : cityName;
+
+    const icsContent = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "BEGIN:VEVENT",
+      `DTSTART:${startDate}`,
+      `DTEND:${endDate}`,
+      `SUMMARY:${summary}`,
+      `DESCRIPTION:${description}`,
+      `LOCATION:${location}`,
+      "END:VEVENT",
+      "END:VCALENDAR"
+    ].join("\r\n");
+
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.setAttribute('download', 'booking-ebonybruce.ics');
+    document.body.appendChild(link);
+    
+    setTimeout(() => {
+      link.click();
+      document.body.removeChild(link);
+      setActionStatus(prev => ({ ...prev, calendar: 'success' }));
+      setTimeout(() => setActionStatus(prev => ({ ...prev, calendar: 'idle' })), 2000);
+    }, 1000);
+  };
+
   // Content Renderers
   const renderFlightItinerary = () => (
-    <div className="bg-white rounded-[16px] border border-gray-100 shadow-sm p-10">
+    <div className="bg-white rounded-[16px] border border-gray-100 shadow-sm p-10 print:shadow-none print:border-gray-200">
       <div className="flex items-center gap-3 mb-10">
         <div className="text-[#33a8da]">
           <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
@@ -82,7 +142,7 @@ const BookingSuccess: React.FC<BookingSuccessProps> = ({ item, searchParams, onB
         </div>
       </div>
       
-      <div className="mt-12 pt-8 border-t border-gray-50 flex items-center gap-4 text-gray-400">
+      <div className="mt-12 pt-8 border-t border-gray-50 flex items-center gap-4 text-gray-400 print:text-black">
          <div className="flex items-center gap-2"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" strokeWidth={2}/></svg><span className="text-[10px] font-black uppercase tracking-widest">2x23kg Baggage</span></div>
          <div className="flex items-center gap-2"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A10.003 10.003 0 0012 3m0 18a10.003 10.003 0 01-8.213-4.3l-.054-.09m8.267 4.394c1.744-2.772 2.753-6.054 2.753-9.571m1.44 2.04l-.054.09A10.003 10.003 0 0112 21" strokeWidth={2}/></svg><span className="text-[10px] font-black uppercase tracking-widest">Global Assist</span></div>
       </div>
@@ -90,7 +150,7 @@ const BookingSuccess: React.FC<BookingSuccessProps> = ({ item, searchParams, onB
   );
 
   const renderHotelItinerary = () => (
-    <div className="bg-white rounded-[16px] border border-gray-100 shadow-sm p-10">
+    <div className="bg-white rounded-[16px] border border-gray-100 shadow-sm p-10 print:shadow-none print:border-gray-200">
       <div className="flex items-center gap-3 mb-12">
         <div className="text-[#33a8da]">
            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg>
@@ -111,15 +171,15 @@ const BookingSuccess: React.FC<BookingSuccessProps> = ({ item, searchParams, onB
         </div>
       </div>
 
-      <div className="flex items-center gap-3 text-gray-400 pt-8 border-t border-gray-50">
+      <div className="flex items-center gap-3 text-gray-400 pt-8 border-t border-gray-50 print:text-black">
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">{travelersCount} Adults, 0 Children</span>
+        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest print:text-black">{travelersCount} Adults, 0 Children</span>
       </div>
     </div>
   );
 
   const renderCarItinerary = () => (
-    <div className="bg-white rounded-[16px] border border-gray-100 shadow-sm p-10">
+    <div className="bg-white rounded-[16px] border border-gray-100 shadow-sm p-10 print:shadow-none print:border-gray-200">
       <div className="flex items-center gap-3 mb-10">
         <div className="text-purple-600">
            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" /></svg>
@@ -140,8 +200,8 @@ const BookingSuccess: React.FC<BookingSuccessProps> = ({ item, searchParams, onB
         </div>
       </div>
       
-      <div className="bg-purple-50 rounded-xl p-4 border border-purple-100 flex items-center gap-3">
-         <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-purple-600 shadow-sm"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+      <div className="bg-purple-50 rounded-xl p-4 border border-purple-100 flex items-center gap-3 print:bg-white print:border-gray-200">
+         <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-purple-600 shadow-sm print:border print:border-gray-100"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
          <p className="text-[11px] font-black text-purple-900 uppercase">Meet-and-Greet included. Look for the {item.provider} sign.</p>
       </div>
     </div>
@@ -151,7 +211,7 @@ const BookingSuccess: React.FC<BookingSuccessProps> = ({ item, searchParams, onB
     <div className="bg-[#f8fafc] min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Breadcrumbs */}
-        <nav className="flex items-center gap-2 text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-10">
+        <nav className="flex items-center gap-2 text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-10 print:hidden">
           <button onClick={onBack} className="hover:text-blue-600 transition flex items-center gap-1">
             Home <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M9 5l7 7-7 7" /></svg>
           </button>
@@ -170,36 +230,48 @@ const BookingSuccess: React.FC<BookingSuccessProps> = ({ item, searchParams, onB
             <h1 className="text-xl font-black text-[#5cb85c] uppercase tracking-tight">Booking Successful</h1>
           </div>
           
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3 print:hidden">
             {[
-              { label: 'Download PDF', icon: <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /> },
-              { label: 'Email', icon: <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /> },
-              { label: 'Add to Calendar', icon: <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /> }
+              { id: 'pdf', label: 'Download PDF', onClick: handleDownloadPDF, icon: <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /> },
+              { id: 'email', label: 'Email', onClick: handleEmail, icon: <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /> },
+              { id: 'calendar', label: 'Add to Calendar', onClick: handleAddCalendar, icon: <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /> }
             ].map((btn) => (
-              <button key={btn.label} className="flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-100 rounded-xl text-[11px] font-black text-gray-600 hover:bg-gray-50 transition shadow-sm active:scale-95 uppercase tracking-tight">
-                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>{btn.icon}</svg>
-                {btn.label}
+              <button 
+                key={btn.id} 
+                onClick={btn.onClick}
+                disabled={actionStatus[btn.id] === 'loading'}
+                className={`flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-100 rounded-xl text-[11px] font-black transition shadow-sm active:scale-95 uppercase tracking-tight relative overflow-hidden group ${actionStatus[btn.id] === 'success' ? 'text-green-600 border-green-100' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                {actionStatus[btn.id] === 'loading' ? (
+                  <svg className="animate-spin h-4 w-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                ) : actionStatus[btn.id] === 'success' ? (
+                  <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                ) : (
+                  <svg className="w-4 h-4 text-gray-400 group-hover:text-[#33a8da] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>{btn.icon}</svg>
+                )}
+                <span>{actionStatus[btn.id] === 'loading' ? 'Processing...' : actionStatus[btn.id] === 'success' ? 'Sent!' : btn.label}</span>
               </button>
             ))}
           </div>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-10 items-start">
+        {/* This container will contain the "Summary" printed in the PDF */}
+        <div className="flex flex-col lg:flex-row gap-10 items-start print:flex-col print:gap-4 print:items-stretch">
           <div className="flex-1 space-y-8 w-full">
             {isFlight && renderFlightItinerary()}
             {isHotel && renderHotelItinerary()}
             {isCar && renderCarItinerary()}
 
             {/* General Instructions based on Type */}
-            <div className={`rounded-[16px] border p-8 flex items-start gap-4 ${isHotel ? 'bg-[#f0f7ff] border-[#dbeafe]' : isCar ? 'bg-purple-50 border-purple-100' : 'bg-blue-50 border-blue-100'}`}>
-              <div className={`mt-0.5 shrink-0 ${isHotel || isFlight ? 'text-[#33a8da]' : 'text-purple-600'}`}>
+            <div className={`rounded-[16px] border p-8 flex items-start gap-4 ${isHotel ? 'bg-[#f0f7ff] border-[#dbeafe]' : isCar ? 'bg-purple-50 border-purple-100' : 'bg-blue-50 border-blue-100'} print:border-gray-200 print:bg-white`}>
+              <div className={`mt-0.5 shrink-0 ${isHotel || isFlight ? 'text-[#33a8da]' : 'text-purple-600'} print:text-black`}>
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               </div>
               <div className="space-y-2">
-                <h4 className={`text-sm font-black uppercase tracking-tight ${isHotel || isFlight ? 'text-[#1e40af]' : 'text-purple-900'}`}>
+                <h4 className={`text-sm font-black uppercase tracking-tight ${isHotel || isFlight ? 'text-[#1e40af]' : 'text-purple-900'} print:text-black`}>
                   {isHotel ? 'Check-in Instruction' : isCar ? 'Pick-up Instruction' : 'Boarding Instruction'}
                 </h4>
-                <p className={`text-[13px] font-bold leading-relaxed ${isHotel || isFlight ? 'text-[#1e40af]/80' : 'text-purple-900/80'}`}>
+                <p className={`text-[13px] font-bold leading-relaxed ${isHotel || isFlight ? 'text-[#1e40af]/80' : 'text-purple-900/80'} print:text-gray-600`}>
                   {isHotel ? 'The front desk is open 24/7. Please have your confirmation ID and a Valid photo ID ready.' : 
                    isCar ? 'Please head to the rental desk at the Arrivals terminal. Have your license and credit card ready.' : 
                    'Web check-in opens 24 hours before departure. Please arrive at the airport at least 3 hours before your flight.'}
@@ -209,11 +281,11 @@ const BookingSuccess: React.FC<BookingSuccessProps> = ({ item, searchParams, onB
           </div>
 
           {/* Right Sidebar */}
-          <aside className="w-full lg:w-[460px]">
-            <div className="bg-white rounded-[24px] shadow-lg border border-gray-100 overflow-hidden">
-              {/* Only show visual header with picture for Hotels and Cars */}
+          <aside className="w-full lg:w-[460px] print:w-full print:mt-4">
+            <div className="bg-white rounded-[24px] shadow-lg border border-gray-100 overflow-hidden print:shadow-none print:border-gray-200">
+              {/* Only show visual header with picture for Hotels and Cars - HIDDEN IN PRINT to save space */}
               {!isFlight ? (
-                <div className="relative h-60">
+                <div className="relative h-60 print:hidden">
                   <img src={item.imageUrl || "https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=600"} className="w-full h-full object-cover" alt="Item" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
                   <div className="absolute bottom-6 left-6 right-6">
@@ -229,21 +301,29 @@ const BookingSuccess: React.FC<BookingSuccessProps> = ({ item, searchParams, onB
               ) : (
                 <div className="p-10 border-b border-gray-50">
                   <h3 className="text-2xl font-black text-gray-900 tracking-tight leading-tight">{item.provider}</h3>
-                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mt-1 opacity-70">Flight Summary & Receipt</p>
+                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mt-1 opacity-70">Booking Receipt</p>
+                </div>
+              )}
+
+              {/* Print Only Header for Hotels/Cars */}
+              {!isFlight && (
+                <div className="hidden print:block p-10 border-b border-gray-50">
+                   <h3 className="text-2xl font-black text-gray-900 tracking-tight leading-tight">{item.title || item.provider}</h3>
+                   <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mt-1 opacity-70">Booking Confirmation</p>
                 </div>
               )}
 
               <div className="p-10 border-b border-gray-50">
                 <div className="space-y-5">
-                  <div className="flex items-center gap-4 text-gray-400">
+                  <div className="flex items-center gap-4 text-gray-400 print:text-black">
                     <div className="shrink-0"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
-                    <span className="text-xs font-bold text-gray-500">
+                    <span className="text-xs font-bold text-gray-500 print:text-black">
                       {isHotel ? `Oct 24, 2024 - Oct 27, 2024 (${unitCount} Nights)` : isFlight ? 'Dec 26, 2025' : 'Dec 26 - Dec 28'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-4 text-gray-400">
+                  <div className="flex items-center gap-4 text-gray-400 print:text-black">
                     <div className="shrink-0"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></div>
-                    <span className="text-xs font-bold text-gray-500">{travelersCount} Adults, 0 Children</span>
+                    <span className="text-xs font-bold text-gray-500 print:text-black">{travelersCount} Adults, 0 Children</span>
                   </div>
                 </div>
               </div>
@@ -252,38 +332,38 @@ const BookingSuccess: React.FC<BookingSuccessProps> = ({ item, searchParams, onB
                 <h4 className="text-lg font-black text-gray-900 tracking-tight">Price Breakdown</h4>
                 <div className="space-y-6">
                   <div className="flex justify-between items-center text-base">
-                    <span className="text-gray-600 font-bold">
+                    <span className="text-gray-600 font-bold print:text-black">
                       {isHotel ? `${unitCount} nights x ${currency.symbol}${numericPrice.toLocaleString()}` : 
                        isCar ? `${unitCount} days x ${currency.symbol}${numericPrice.toLocaleString()}` :
                        `${unitCount} travelers x ${currency.symbol}${numericPrice.toLocaleString()}`}
                     </span>
-                    <span className={`font-black ${isCar ? 'text-purple-600' : 'text-[#33a8da]'}`}>{currency.symbol}{subtotal.toLocaleString()}.00</span>
+                    <span className={`font-black ${isCar ? 'text-purple-600' : 'text-[#33a8da]'} print:text-black`}>{currency.symbol}{subtotal.toLocaleString()}.00</span>
                   </div>
                   
                   {isHotel && (
                     <div className="flex justify-between items-center text-base">
-                      <span className="text-gray-600 font-bold">Cleaning fee</span>
-                      <span className="text-[#33a8da] font-black">{currency.symbol}{(cleaningFee * (currency.code === 'USD' ? 1 : 1500)).toLocaleString()}.00</span>
+                      <span className="text-gray-600 font-bold print:text-black">Cleaning fee</span>
+                      <span className="text-[#33a8da] font-black print:text-black">{currency.symbol}{(cleaningFee * (currency.code === 'USD' ? 1 : 1500)).toLocaleString()}.00</span>
                     </div>
                   )}
 
                   <div className="flex justify-between items-center text-base">
-                    <span className="text-gray-600 font-bold">Service fee</span>
-                    <span className={`font-black uppercase ${isCar ? 'text-purple-600' : 'text-[#33a8da]'}`}>Free</span>
+                    <span className="text-gray-600 font-bold print:text-black">Service fee</span>
+                    <span className={`font-black uppercase ${isCar ? 'text-purple-600' : 'text-[#33a8da]'} print:text-black`}>Free</span>
                   </div>
                   
-                  <div className="flex justify-between items-center text-base border-b border-gray-50 pb-8">
-                    <span className="text-gray-600 font-bold">Taxes</span>
-                    <span className={`font-black uppercase ${isCar ? 'text-purple-600' : 'text-[#33a8da]'}`}>Included</span>
+                  <div className="flex justify-between items-center text-base border-b border-gray-50 pb-8 print:border-gray-100">
+                    <span className="text-gray-600 font-bold print:text-black">Taxes</span>
+                    <span className={`font-black uppercase ${isCar ? 'text-purple-600' : 'text-[#33a8da]'} print:text-black`}>Included</span>
                   </div>
 
                   <div className="pt-2 flex justify-between items-center">
                     <span className="text-2xl font-black text-gray-900 tracking-tighter">Total</span>
-                    <span className={`text-2xl font-black tracking-tighter ${isCar ? 'text-purple-600' : 'text-[#33a8da]'}`}>{formattedTotal}</span>
+                    <span className={`text-2xl font-black tracking-tighter ${isCar ? 'text-purple-600' : 'text-[#33a8da]'} print:text-black`}>{formattedTotal}</span>
                   </div>
                 </div>
 
-                <button className={`w-full text-white font-black py-6 rounded-2xl shadow-2xl transition transform active:scale-95 text-lg mt-6 ${isCar ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-100' : 'bg-[#33a8da] hover:bg-[#2c98c7] shadow-blue-100'}`}>
+                <button className={`w-full text-white font-black py-6 rounded-2xl shadow-2xl transition transform active:scale-95 text-lg mt-6 print:hidden ${isCar ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-100' : 'bg-[#33a8da] hover:bg-[#2c98c7] shadow-blue-100'}`}>
                   Manage Booking
                 </button>
               </div>
@@ -291,8 +371,8 @@ const BookingSuccess: React.FC<BookingSuccessProps> = ({ item, searchParams, onB
           </aside>
         </div>
 
-        {/* Dynamic Cross Promotion Banner - Text and Icon only */}
-        <div className="mt-16 bg-white rounded-[24px] p-10 border border-gray-100 flex flex-col md:flex-row items-center justify-between gap-8 shadow-sm">
+        {/* Dynamic Cross Promotion Banner - Text and Icon only - HIDDEN IN PRINT */}
+        <div className="mt-16 bg-white rounded-[24px] p-10 border border-gray-100 flex flex-col md:flex-row items-center justify-between gap-8 shadow-sm print:hidden">
           <div className="flex items-center gap-8">
             <div className={`w-16 h-16 rounded-full flex items-center justify-center text-white shadow-xl shrink-0 ${isHotel ? 'bg-[#33a8da] shadow-blue-100' : isCar ? 'bg-[#33a8da] shadow-blue-100' : 'bg-yellow-500 shadow-yellow-100'}`}>
                {isFlight ? (

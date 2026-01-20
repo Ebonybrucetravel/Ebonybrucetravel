@@ -1,6 +1,6 @@
 
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 
 interface ReviewTripProps {
@@ -20,12 +20,12 @@ interface ReviewTripProps {
 const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onSignIn, isLoggedIn, user, onSuccess, onFailure }) => {
   const { currency } = useLanguage();
   
-  // Determine booking type
-  const type = item.type || searchParams?.type || 'flights';
-  const isHotel = type === 'hotels' || type === 'hotel' || item.id?.includes('hotel');
-  const isCar = type === 'cars' || type === 'car';
+  // Robust detection for booking type
+  const rawType = (item.type || searchParams?.type || 'flights').toLowerCase();
+  const isHotel = rawType.includes('hotel') || item.id?.toLowerCase().includes('hotel');
+  const isCar = rawType.includes('car') || item.id?.toLowerCase().includes('car');
+  const isFlight = !isHotel && !isCar;
 
-  // State
   // Jump directly to checkout for hotels and cars as requested
   const [view, setView] = useState<'review' | 'checkout'>(isHotel || isCar ? 'checkout' : 'review');
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'bank'>('bank');
@@ -35,6 +35,11 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
   const [promoError, setPromoError] = useState('');
   const [name, setName] = useState(isLoggedIn ? user?.name || '' : 'Ebony Life');
   const [specialReq, setSpecialReq] = useState('');
+
+  // Auto-scroll to top on view change
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [view]);
 
   const travelersCount = parseInt(searchParams?.travellers?.match(/\d+/) ? searchParams.travellers.match(/\d+/)[0] : '1');
   
@@ -54,11 +59,15 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
 
   // Price logic
   const numericPrice = parseInt(item.price?.replace(/[^\d]/g, '')) || 75000;
-  const nightsCount = isHotel ? 3 : 1; 
+  const unitCount = isHotel ? 3 : (isCar ? 2 : travelersCount); 
   const cleaningFee = isHotel ? 45 : 0;
   const discount = isPromoApplied ? 5000 : 0;
-  const subtotal = (numericPrice * (isHotel ? nightsCount : travelersCount));
-  const totalPrice = subtotal + (isHotel ? (cleaningFee * (currency.code === 'USD' ? 1 : 1500)) : 0) - discount;
+  
+  // Scale fees by currency
+  const scaleFee = (fee: number) => currency.code === 'USD' ? fee : fee * 1500;
+  
+  const subtotal = (numericPrice * unitCount);
+  const totalPrice = subtotal + (isHotel ? scaleFee(cleaningFee) : 0) - discount;
   const formattedTotal = `${currency.symbol}${totalPrice.toLocaleString()}.00`;
 
   const handleApplyPromo = () => {
@@ -77,6 +86,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
     setIsBooking(true);
     setTimeout(() => {
       setIsBooking(false);
+      // Logic for testing failures
       if (name.toLowerCase().includes('fail') && paymentMethod === 'card') {
         if (onFailure) onFailure();
       } else {
@@ -85,8 +95,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
     }, 1500);
   };
 
-  // The Review screen is only used for Flights now
-  if (view === 'review') {
+  // Review screen only for Flights
+  if (isFlight && view === 'review') {
     return (
       <div className="bg-[#f0f2f5] min-h-screen py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -142,7 +152,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
                         <span className="font-black text-gray-900">{item.price}</span>
                         <span className="text-xs text-gray-400 font-bold">/ person</span>
                       </div>
-                      <p className="text-[10px] text-gray-400 font-bold">{totalPrice} estimated total</p>
+                      <p className="text-[10px] text-gray-400 font-bold">{currency.symbol}{subtotal.toLocaleString()} estimated total</p>
                     </div>
                     <button onClick={() => setView('checkout')} className="bg-[#1a73e8] text-white px-10 py-3 rounded-lg font-black text-sm hover:bg-[#1557b0] transition shadow-lg shadow-blue-500/10">Book Now</button>
                   </div>
@@ -153,7 +163,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
             <aside className="w-full lg:w-[380px]">
               <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm sticky top-24">
                 <h3 className="text-2xl font-black text-gray-900 mb-1">{cityName}</h3>
-                <p className="text-sm text-gray-500 font-bold mb-6 capitalize">{type}, {travelersCount} Travelers</p>
+                <p className="text-sm text-gray-500 font-bold mb-6 capitalize">{rawType}, {travelersCount} Travelers</p>
                 <div className="space-y-4">
                   <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/30">
                     <div className="flex items-center justify-between mb-4">
@@ -175,42 +185,51 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
     );
   }
 
+  // Checkout screen for everyone (Hotels go here directly)
   return (
     <div className="bg-[#f8fbfe] min-h-screen py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-10">
-          <h1 className="text-4xl font-black text-gray-900 tracking-tighter">Check Out</h1>
-          <p className="text-gray-400 font-bold mt-1">Review your trip details and confirm your booking.</p>
+        <div className="mb-10 flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-black text-gray-900 tracking-tighter">Check Out</h1>
+            <p className="text-gray-400 font-bold mt-1">
+              {isHotel ? 'Complete your hotel reservation securely.' : 'Review your details and confirm your booking.'}
+            </p>
+          </div>
+          <button onClick={onBack} className="text-sm font-bold text-blue-600 hover:underline flex items-center gap-1">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M15 19l-7-7 7-7" /></svg>
+            Cancel
+          </button>
         </div>
 
         <div className="flex flex-col lg:flex-row gap-8">
-          {/* Main Form Area */}
           <div className="flex-1 space-y-8">
-            
-            {/* Guest/Traveler Identity Section */}
+            {/* Identity Section */}
             <section className="bg-white rounded-[16px] p-10 shadow-sm border border-gray-100">
               <div className="flex items-center gap-3 mb-10">
                 <div className="w-5 h-5 text-[#33a8da]">
                   <svg className="w-full h-full" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
                 </div>
-                <h2 className="text-xl font-bold text-gray-900 tracking-tight">Traveler Information</h2>
+                <h2 className="text-xl font-bold text-gray-900 tracking-tight">
+                  {isHotel ? 'Guest Information' : 'Traveler Information'}
+                </h2>
               </div>
               
               {!isLoggedIn && (
                 <div className="bg-[#f7f8f9] border border-dashed border-gray-200 rounded-2xl p-10 text-center mb-10">
-                  <p className="text-gray-900 font-bold text-base mb-1">You are Booking as Guest</p>
-                  <button onClick={onSignIn} className="text-[#33a8da] text-[10px] font-black uppercase tracking-widest hover:underline mt-2">SIGN IN TO GET REWARD</button>
+                  <p className="text-gray-900 font-bold text-base mb-1">Booking as Guest</p>
+                  <button onClick={onSignIn} className="text-[#33a8da] text-[10px] font-black uppercase tracking-widest hover:underline mt-2">SIGN IN TO EARN EBONY POINTS</button>
                 </div>
               )}
               
               <div className="space-y-8">
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-widest mb-3">Ful Name</label>
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-widest mb-3">Full Name</label>
                   <input 
                     type="text" 
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Ebony Life"
+                    placeholder="Enter your name"
                     className="w-full px-6 py-4 bg-[#f7f8f9] border-none rounded-xl font-bold text-gray-900 focus:bg-white focus:ring-2 focus:ring-[#33a8da]/10 transition-all placeholder:text-gray-400" 
                   />
                 </div>
@@ -219,27 +238,27 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
                   <input 
                     type="email" 
                     defaultValue={isLoggedIn ? user?.email : ''} 
-                    placeholder="Enter your email adsress" 
+                    placeholder="Enter your email address" 
                     className="w-full px-6 py-4 bg-[#f7f8f9] border-none rounded-xl font-bold text-gray-900 focus:bg-white focus:ring-2 focus:ring-[#33a8da]/10 transition-all placeholder:text-gray-300" 
                   />
                 </div>
               </div>
             </section>
 
-            {/* Special Requirements Section - From Screenshot */}
+            {/* Special Requirements Section */}
             {isHotel && (
               <section className="bg-white rounded-[16px] p-10 shadow-sm border border-gray-100">
                 <div className="flex items-center gap-3 mb-10">
                   <div className="w-5 h-5 text-[#33a8da]">
                     <svg className="w-full h-full" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900 tracking-tight">Traveler Information</h2>
+                  <h2 className="text-xl font-bold text-gray-900 tracking-tight">Special Requests</h2>
                 </div>
                 <p className="text-sm font-bold text-gray-600 mb-4">Let the hotel know if you have any special requirements (optional)</p>
                 <textarea 
                   value={specialReq}
                   onChange={(e) => setSpecialReq(e.target.value)}
-                  placeholder="e.g. Quite room, dietary restrictions..."
+                  placeholder="e.g. Quiet room, early check-in, dietary restrictions..."
                   className="w-full px-6 py-4 bg-white border-2 border-gray-100 rounded-2xl font-medium text-gray-700 focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/5 transition-all min-h-[160px] outline-none placeholder:text-gray-300"
                 />
               </section>
@@ -259,7 +278,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${paymentMethod === 'card' ? 'border-[#33a8da]' : 'border-gray-300'}`}>
                       {paymentMethod === 'card' && <div className="w-2.5 h-2.5 bg-[#33a8da] rounded-full" />}
                     </div>
-                    <span className="font-bold text-base text-gray-700">Credit / Debit Card (Local & Int'l)</span>
+                    <span className="font-bold text-base text-gray-700">Credit / Debit Card</span>
                   </div>
                   <div className="flex gap-2">
                     <img src="https://upload.wikimedia.org/wikipedia/commons/d/d6/Visa_2021.svg" className="h-4 w-auto" alt="Visa" />
@@ -281,14 +300,14 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
             </section>
           </div>
 
-          {/* Right Sidebar - Matches screenshot layout */}
+          {/* Right Sidebar */}
           <aside className="w-full lg:w-[460px]">
             <div className="sticky top-24 bg-white rounded-[24px] shadow-lg border border-gray-100 overflow-hidden">
               
-              {/* Image Preview (Only for Hotels) */}
-              {isHotel && (
+              {/* Context-aware Header Picture (Hotels & Cars only) */}
+              {!isFlight && (
                 <div className="relative h-60">
-                  <img src={item.imageUrl || "https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=600"} className="w-full h-full object-cover" alt="Hotel" />
+                  <img src={item.imageUrl || "https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=600"} className="w-full h-full object-cover" alt="Property" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
                   <div className="absolute bottom-6 left-6 right-6">
                     <h3 className="text-white font-black text-xl leading-tight tracking-tight">{item.title || item.provider}</h3>
@@ -303,17 +322,22 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
               )}
 
               <div className="p-10 border-b border-gray-50">
-                {!isHotel && <h3 className="text-xl font-bold text-gray-900 mb-8 tracking-tight uppercase">Flight Summary</h3>}
+                <h3 className="text-xl font-bold text-gray-900 mb-8 tracking-tight uppercase">
+                  {isHotel ? 'Stay Summary' : isCar ? 'Rental Summary' : 'Flight Summary'}
+                </h3>
                 
-                {/* Information Row: Dates & Travelers */}
                 <div className="space-y-5">
                   <div className="flex items-center gap-4 text-gray-400">
                     <div className="shrink-0"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
-                    <span className="text-xs font-bold text-gray-500">{isHotel ? `Oct 24, 2024 - Oct 27, 2024 (${nightsCount} Nights)` : 'Dec 26, 2025'}</span>
+                    <span className="text-xs font-bold text-gray-500">
+                      {isHotel ? `Oct 24, 2024 - Oct 27, 2024 (${unitCount} Nights)` : isFlight ? 'Dec 26, 2025' : 'Dec 26 - Dec 28'}
+                    </span>
                   </div>
                   <div className="flex items-center gap-4 text-gray-400">
                     <div className="shrink-0"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></div>
-                    <span className="text-xs font-bold text-gray-500">{travelersCount} Adults, 0 Children</span>
+                    <span className="text-xs font-bold text-gray-500">
+                      {isHotel ? `${travelersCount} Adults, 0 Children` : isFlight ? `${travelersCount} Traveler(s)` : 'Standard Rental'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -323,14 +347,16 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
                 <h4 className="text-lg font-black text-gray-900 tracking-tight">Price Breakdown</h4>
                 <div className="space-y-6">
                   <div className="flex justify-between items-center text-base">
-                    <span className="text-gray-600 font-bold">{isHotel ? `${nightsCount} nights x ${currency.symbol}${numericPrice.toLocaleString()}.00` : 'Base Fare'}</span>
+                    <span className="text-gray-600 font-bold">
+                      {isHotel ? `${unitCount} nights x ${currency.symbol}${numericPrice.toLocaleString()}.00` : 'Base Fare'}
+                    </span>
                     <span className="text-[#33a8da] font-black">{currency.symbol}{subtotal.toLocaleString()}.00</span>
                   </div>
                   
                   {isHotel && (
                     <div className="flex justify-between items-center text-base">
                       <span className="text-gray-600 font-bold">Cleaning fee</span>
-                      <span className="text-[#33a8da] font-black">{currency.symbol}{(cleaningFee * (currency.code === 'USD' ? 1 : 1500)).toLocaleString()}.00</span>
+                      <span className="text-[#33a8da] font-black">{currency.symbol}{scaleFee(cleaningFee).toLocaleString()}.00</span>
                     </div>
                   )}
 
@@ -357,7 +383,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
                   </div>
                 </div>
 
-                {/* Promo Code - Centered Look */}
+                {/* Promo Code */}
                 <div className="mt-12">
                   <p className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-4">Promo Code</p>
                   <div className="flex gap-2">
@@ -386,7 +412,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
                   disabled={isBooking}
                   className="w-full bg-[#33a8da] text-white font-black py-6 rounded-2xl shadow-2xl shadow-blue-500/10 hover:bg-[#2c98c7] transition transform active:scale-95 text-lg mt-6"
                 >
-                  {isBooking ? 'Processing...' : 'Continue to Booking'}
+                  {isBooking ? 'Processing...' : 'Confirm & Complete'}
                 </button>
                 
                 <div className="flex items-center justify-center gap-3 mt-6 text-[11px] font-bold text-gray-400 uppercase tracking-tight">
