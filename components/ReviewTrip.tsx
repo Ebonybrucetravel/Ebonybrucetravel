@@ -230,7 +230,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Enter your name"
-                    className="w-full px-6 py-4 bg-[#f7f8f9] border-none rounded-xl font-bold text-gray-900 focus:bg-white focus:ring-2 focus:ring-[#33a8da]/10 transition-all placeholder:text-gray-400" 
+                    className="w-full px-6 py-4 bg-[#f7f8f9] border-none rounded-xl font-bold text-gray-900 focus:bg-white focus:ring-2 focus:ring-[#33a8da]/10 transition-all placeholder:text-gray-500" 
                   />
                 </div>
                 <div>
@@ -239,7 +239,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
                     type="email" 
                     defaultValue={isLoggedIn ? user?.email : ''} 
                     placeholder="Enter your email address" 
-                    className="w-full px-6 py-4 bg-[#f7f8f9] border-none rounded-xl font-bold text-gray-900 focus:bg-white focus:ring-2 focus:ring-[#33a8da]/10 transition-all placeholder:text-gray-300" 
+                    className="w-full px-6 py-4 bg-[#f7f8f9] border-none rounded-xl font-bold text-gray-900 focus:bg-white focus:ring-2 focus:ring-[#33a8da]/10 transition-all placeholder:text-gray-500" 
                   />
                 </div>
               </div>
@@ -259,7 +259,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
                   value={specialReq}
                   onChange={(e) => setSpecialReq(e.target.value)}
                   placeholder="e.g. Quiet room, early check-in, dietary restrictions..."
-                  className="w-full px-6 py-4 bg-white border-2 border-gray-100 rounded-2xl font-medium text-gray-700 focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/5 transition-all min-h-[160px] outline-none placeholder:text-gray-300"
+                  className="w-full px-6 py-4 bg-white border-2 border-gray-100 rounded-2xl font-medium text-gray-700 focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/5 transition-all min-h-[160px] outline-none placeholder:text-gray-500"
                 />
               </section>
             )}
@@ -394,7 +394,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
                         value={promoCode}
                         onChange={(e) => setPromoCode(e.target.value)}
                         placeholder="Enter coupon code" 
-                        className="bg-transparent border-none focus:ring-0 w-full text-sm font-bold text-gray-900 placeholder:text-gray-300" 
+                        className="bg-transparent border-none focus:ring-0 w-full text-sm font-bold text-gray-900 placeholder:text-gray-500" 
                       />
                     </div>
                     <button 

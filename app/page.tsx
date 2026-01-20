@@ -16,9 +16,11 @@ import SearchResults from "../components/SearchResults";
 import HotelDetails from "../components/HotelDetails";
 import ReviewTrip from "../components/ReviewTrip";
 import BookingSuccess from "../components/BookingSuccess";
-import BookingFailed from "../components/BookingFailed"; // ADDED
+import BookingFailed from "../components/BookingFailed";
 import AuthModal from "../components/AuthModal";
 import Profile from "../components/Profile";
+import AdminLogin from "../components/AdminLogin";
+import AdminDashboard from "../components/AdminDashboard";
 
 export interface User {
   name: string;
@@ -28,6 +30,7 @@ export interface User {
   gender?: string;
   phone?: string;
   provider?: "email" | "google" | "facebook";
+  role?: "user" | "admin";
 }
 
 export interface SearchSegment {
@@ -237,15 +240,17 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<
-    "home" | "profile" | "hotel-details" | "review" | "success" | "failed" // ADDED "failed" view
+    "home" | "profile" | "hotel-details" | "review" | "success" | "failed" | "admin-login" | "admin-dashboard"
   >("home");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [user, setUser] = useState<User>({
     name: "",
     email: "",
     dob: "1992-05-15",
     gender: "Male",
     phone: "+234 816 500 000",
+    role: "user",
   });
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -312,6 +317,8 @@ export default function Home() {
   ]);
 
   const [activeProfileTab, setActiveProfileTab] = useState<string>("details");
+
+  const showNav = currentView !== "admin-login" && currentView !== "admin-dashboard";
 
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY;
@@ -390,12 +397,22 @@ export default function Home() {
     setIsAuthOpen(true);
   }, []);
 
+  const handleAdminLogin = useCallback((adminData: any) => {
+    setIsAdminLoggedIn(true);
+    setCurrentView("admin-dashboard");
+  }, []);
+
+  const handleAdminClick = useCallback(() => {
+    setCurrentView("admin-login");
+  }, []);
+
   const handleLogin = useCallback(
     (userData: { name: string; email: string }) => {
       const updatedUser = {
         ...user,
         ...userData,
         provider: "email" as const,
+        role: "user" as const,
         profilePicture: `https://ui-avatars.com/api/?name=${encodeURIComponent(
           userData.name
         )}&background=2563EB&color=fff`,
@@ -445,6 +462,7 @@ export default function Home() {
         gender: mockData.gender,
         phone: mockData.phone,
         provider,
+        role: "user" as const,
       };
 
       setUser(updatedUser);
@@ -648,7 +666,6 @@ export default function Home() {
     setCurrentView("success");
   }, [selectedItem]);
 
-  // ADDED: Handle booking failure
   const handleBookingFailed = useCallback(() => {
     setCurrentView("failed");
   }, []);
@@ -669,12 +686,14 @@ export default function Home() {
 
   const handleSignOut = useCallback(() => {
     setIsLoggedIn(false);
+    setIsAdminLoggedIn(false);
     setUser({
       name: "",
       email: "",
       dob: "1992-05-15",
       gender: "Male",
       phone: "+234 816 500 000",
+      role: "user",
     });
     setCurrentView("home");
     localStorage.removeItem("travelUser");
@@ -716,19 +735,21 @@ export default function Home() {
 
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      <Navbar
-        isLoggedIn={isLoggedIn}
-        user={user}
-        activeTab={activeNavTab}
-        onTabClick={handleNavTabChange}
-        onSignIn={() => openAuth("login")}
-        onRegister={() => openAuth("register")}
-        onProfileClick={navigateToProfile}
-        onLogoClick={navigateToHome}
-        onMenuClick={handleMenuClick}
-        onSignOut={handleSignOut}
-        onProfileTabSelect={handleProfileTabSelect}
-      />
+      {showNav && (
+        <Navbar
+          isLoggedIn={isLoggedIn}
+          user={user}
+          activeTab={activeNavTab}
+          onTabClick={handleNavTabChange}
+          onSignIn={() => openAuth("login")}
+          onRegister={() => openAuth("register")}
+          onProfileClick={navigateToProfile}
+          onLogoClick={navigateToHome}
+          onMenuClick={handleMenuClick}
+          onSignOut={handleSignOut}
+          onProfileTabSelect={handleProfileTabSelect}
+        />
+      )}
 
       {currentView === "home" && (
         <>
@@ -878,7 +899,7 @@ export default function Home() {
           isLoggedIn={isLoggedIn}
           user={user}
           onSuccess={handleBookingComplete}
-          onFailure={handleBookingFailed} // ADDED
+          onFailure={handleBookingFailed}
         />
       )}
 
@@ -890,7 +911,6 @@ export default function Home() {
         />
       )}
 
-      {/* ADDED: BookingFailed view */}
       {currentView === "failed" && selectedItem && (
         <BookingFailed
           item={selectedItem}
@@ -900,8 +920,21 @@ export default function Home() {
         />
       )}
 
-      <Newsletter />
-      <Footer />
+      {currentView === "admin-login" && (
+        <AdminLogin 
+          onLoginSuccess={handleAdminLogin}
+          onBack={() => setCurrentView("home")}
+        />
+      )}
+
+      {currentView === "admin-dashboard" && isAdminLoggedIn && (
+        <AdminDashboard 
+          onLogout={handleSignOut}
+        />
+      )}
+
+      {showNav && <Newsletter />}
+      {showNav && <Footer onAdminClick={handleAdminClick} />}
 
       <AuthModal
         isOpen={isAuthOpen}
@@ -911,30 +944,32 @@ export default function Home() {
         initialMode={authMode}
       />
 
-      <button
-        onClick={() => setIsAiOpen(true)}
-        className="fixed bottom-6 right-6 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white p-4 rounded-full shadow-2xl flex items-center gap-3 transition-all duration-300 hover:scale-105 active:scale-95 z-50 group"
-        aria-label="Open AI Trip Planner (Ctrl+K)"
-      >
-        <div className="relative">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-7 w-7"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13 10V3L4 14h7v7l9-11h-7z"
-            />
-          </svg>
-          <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-        </div>
-        <span className="font-bold hidden sm:inline text-lg">Chat</span>
-      </button>
+      {showNav && (
+        <button
+          onClick={() => setIsAiOpen(true)}
+          className="fixed bottom-6 right-6 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white p-4 rounded-full shadow-2xl flex items-center gap-3 transition-all duration-300 hover:scale-105 active:scale-95 z-50 group"
+          aria-label="Open AI Trip Planner (Ctrl+K)"
+        >
+          <div className="relative">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-7 w-7"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              />
+            </svg>
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+          </div>
+          <span className="font-bold hidden sm:inline text-lg">Chat</span>
+        </button>
+      )}
 
       {isAiOpen && (
         <AIAssistant onClose={() => setIsAiOpen(false)} user={user} />
