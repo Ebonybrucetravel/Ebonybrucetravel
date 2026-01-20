@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import React, { useState, useEffect, useCallback } from "react";
 import Navbar from "../components/Navbar";
@@ -16,6 +16,7 @@ import SearchResults from "../components/SearchResults";
 import HotelDetails from "../components/HotelDetails";
 import ReviewTrip from "../components/ReviewTrip";
 import BookingSuccess from "../components/BookingSuccess";
+import BookingFailed from "../components/BookingFailed"; // ADDED
 import AuthModal from "../components/AuthModal";
 import Profile from "../components/Profile";
 
@@ -236,7 +237,7 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<
-    "home" | "profile" | "hotel-details" | "review" | "success"
+    "home" | "profile" | "hotel-details" | "review" | "success" | "failed" // ADDED "failed" view
   >("home");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<User>({
@@ -310,7 +311,6 @@ export default function Home() {
     },
   ]);
 
-  // New state for profile tab selection
   const [activeProfileTab, setActiveProfileTab] = useState<string>("details");
 
   useEffect(() => {
@@ -648,6 +648,11 @@ export default function Home() {
     setCurrentView("success");
   }, [selectedItem]);
 
+  // ADDED: Handle booking failure
+  const handleBookingFailed = useCallback(() => {
+    setCurrentView("failed");
+  }, []);
+
   const navigateToProfile = useCallback(() => {
     if (!isLoggedIn) {
       openAuth("login");
@@ -693,15 +698,12 @@ export default function Home() {
   }, []);
 
   const handleMenuClick = useCallback(() => {
-    // For mobile menu - you can implement additional functionality if needed
     console.log("Mobile menu clicked");
   }, []);
 
-  // NEW: Handle profile tab selection from Navbar dropdown
   const handleProfileTabSelect = useCallback((tabId: string) => {
     setActiveProfileTab(tabId);
     setCurrentView("profile");
-    // You might want to pass this to the Profile component
     console.log("Selected profile tab:", tabId);
   }, []);
 
@@ -724,8 +726,8 @@ export default function Home() {
         onProfileClick={navigateToProfile}
         onLogoClick={navigateToHome}
         onMenuClick={handleMenuClick}
-        onSignOut={handleSignOut} // Added: Pass sign out handler
-        onProfileTabSelect={handleProfileTabSelect} // Added: Pass profile tab selection handler
+        onSignOut={handleSignOut}
+        onProfileTabSelect={handleProfileTabSelect}
       />
 
       {currentView === "home" && (
@@ -833,7 +835,6 @@ export default function Home() {
               </section>
             )}
 
-            {/* Partners starts immediately - NO SPACE */}
             <Partners />
             
             <div className="space-y-8">
@@ -855,7 +856,7 @@ export default function Home() {
           onSignOut={handleSignOut}
           onBookItem={handleBookItem}
           onCancelRequest={handleCancelRequest}
-          initialActiveTab={activeProfileTab} // Pass the active tab to Profile
+          initialActiveTab={activeProfileTab}
         />
       )}
 
@@ -877,6 +878,7 @@ export default function Home() {
           isLoggedIn={isLoggedIn}
           user={user}
           onSuccess={handleBookingComplete}
+          onFailure={handleBookingFailed} // ADDED
         />
       )}
 
@@ -885,6 +887,16 @@ export default function Home() {
           item={selectedItem}
           searchParams={searchParams}
           onBack={() => setCurrentView("home")}
+        />
+      )}
+
+      {/* ADDED: BookingFailed view */}
+      {currentView === "failed" && selectedItem && (
+        <BookingFailed
+          item={selectedItem}
+          searchParams={searchParams}
+          onBack={() => setCurrentView("home")}
+          onRetry={() => setCurrentView("review")}
         />
       )}
 
