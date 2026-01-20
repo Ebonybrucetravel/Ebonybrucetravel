@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../app/page';
 import ManageBookingModal from './ManageBookingModal';
 import { useLanguage } from '../context/LanguageContext';
+import CancelBooking from './CancelBooking'; // Make sure to import your CancelBooking component
 
 interface ProfileProps {
   user: User;
@@ -132,6 +133,13 @@ const Profile: React.FC<ProfileProps> = ({
 
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+
+  // NEW STATES FOR CANCELLATION PAGE
+  const [showCancelPage, setShowCancelPage] = useState(false);
+  const [cancellationData, setCancellationData] = useState<{
+    item: any;
+    searchParams: any;
+  } | null>(null);
 
   const [mockBookings, setMockBookings] = useState<Booking[]>([
     { id: '1', type: 'flight', title: 'Lagos(LOS) to Abuja(ABJ)', provider: 'Air Peace', subtitle: 'Flight BA117 . Economy', date: 'Dec 26-Dec 28, 2025', duration: '1h 15m Non-Stop', status: 'Confirmed', price: '75,000.00', currency: 'NGN', iconBg: 'bg-blue-50', imageUrl: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&q=80&w=600' },
@@ -311,9 +319,41 @@ const Profile: React.FC<ProfileProps> = ({
       // Close the modal
       setIsManageModalOpen(false);
       
-      // Show success message
-      alert(`Booking ${selectedBooking.id} has been cancelled successfully!`);
+      // Prepare the data for CancelBooking page
+      const cancelData = {
+        item: {
+          id: selectedBooking.id,
+          title: selectedBooking.title,
+          provider: selectedBooking.provider,
+          subtitle: selectedBooking.subtitle,
+          date: selectedBooking.date,
+          price: selectedBooking.price,
+          type: selectedBooking.type,
+          status: selectedBooking.status,
+          currency: selectedBooking.currency
+        },
+        searchParams: {
+          segments: [
+            {
+              from: 'Lagos (LOS)',
+              to: 'Abuja (ABV)'
+            }
+          ],
+          travellers: '1 Traveller',
+          bookingReference: `#${selectedBooking.id}`
+        }
+      };
+      
+      // Set the data and show the cancel page
+      setCancellationData(cancelData);
+      setShowCancelPage(true);
     }
+  };
+
+  // Handler to go back from CancelBooking page
+  const handleBackFromCancel = () => {
+    setShowCancelPage(false);
+    setCancellationData(null);
   };
 
   const handleOtpChange = (index: number, value: string) => {
@@ -424,6 +464,17 @@ const Profile: React.FC<ProfileProps> = ({
       </div>
     );
   };
+
+  // If showCancelPage is true, render the CancelBooking component
+  if (showCancelPage && cancellationData) {
+    return (
+      <CancelBooking 
+        item={cancellationData.item}
+        searchParams={cancellationData.searchParams}
+        onBack={handleBackFromCancel}
+      />
+    );
+  }
 
   return (
     <div className="bg-[#f8fbfe] min-h-screen">
