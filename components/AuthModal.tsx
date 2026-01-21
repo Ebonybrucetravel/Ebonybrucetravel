@@ -1,11 +1,12 @@
 
 'use client';
 import React, { useState, useEffect } from 'react';
+import { authApi } from '../lib/api';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLoginSuccess: (user: { name: string; email: string }) => void;
+  onLoginSuccess: (user: { name: string; email: string; token?: string }) => void;
   onSocialLogin: (provider: 'google' | 'facebook') => void;
   initialMode?: 'login' | 'register';
 }
@@ -17,10 +18,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
   const [name, setName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const images = [
     {
-      url: 'https://images.unsplash.com/photo-1436491865332-7a61a109c0f3?auto=format&fit=crop&q=80&w=1200',
+      url: 'https://images.unsplash.com/photo-1580285198593-af9f402c676a?auto=format&fit=crop&q=80&w=1200',
       icon: <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" /></svg>
     },
     {
@@ -40,13 +43,45 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
     }
   }, [isOpen]);
 
-  useEffect(() => setMode(initialMode), [initialMode, isOpen]);
+  useEffect(() => {
+    setMode(initialMode);
+    setError(null);
+  }, [initialMode, isOpen]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      let data;
+      if (mode === 'login') {
+        data = await authApi.login({ email, password });
+      } else {
+        data = await authApi.register({ name, email, password });
+      }
+
+      // Successful auth
+      const userResult = data.user || data.data?.user || data;
+      onLoginSuccess({
+        name: userResult.name || name || 'Traveler',
+        email: userResult.email || email,
+        token: data.token || data.data?.token
+      });
+      
+    } catch (err: any) {
+      console.error('Auth Error:', err);
+      setError(err.message || 'Failed to connect to the server.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 md:p-6 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-4xl bg-white md:rounded-[32px] shadow-2xl overflow-hidden flex min-h-screen md:min-h-[600px] animate-in zoom-in-95 duration-300">
+      <div className="w-full max-w-4xl bg-white md:rounded-[32px] shadow-2xl overflow-hidden flex min-h-screen md:min-h-[600px] animate-in zoom-in-95 duration-500">
         <div className="hidden lg:block w-[45%] relative overflow-hidden">
           {images.map((img, idx) => (
             <div key={idx} className={`absolute inset-0 transition-opacity duration-1000 ${activeImageIndex === idx ? 'opacity-100' : 'opacity-0'}`}>
@@ -71,28 +106,45 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
               <p className="text-gray-500 font-medium text-sm leading-relaxed">{mode === 'login' ? 'Sign in to manage bookings and unlock travel deals.' : 'Join Ebony Bruce Travels today and start exploring.'}</p>
             </div>
 
-            <form onSubmit={(e) => { e.preventDefault(); onLoginSuccess({ name: name || 'Traveler', email }); }} className="space-y-4">
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-100 text-red-600 text-xs font-bold rounded-xl animate-in shake duration-300">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
               {mode === 'register' && (
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Full Name</label>
-                  <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/5 focus:border-[#33a8da] transition-all text-sm font-bold placeholder-gray-500" placeholder="e.g. Ebony Bruce" />
+                  <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/5 focus:border-[#33a8da] transition-all text-sm font-bold placeholder-gray-600" placeholder="e.g. Ebony Bruce" />
                 </div>
               )}
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Email</label>
-                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/5 focus:border-[#33a8da] transition-all text-sm font-bold placeholder-gray-500" placeholder="name@example.com" />
+                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/5 focus:border-[#33a8da] transition-all text-sm font-bold placeholder-gray-600" placeholder="name@example.com" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Password</label>
                 <div className="relative">
-                  <input type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/5 focus:border-[#33a8da] transition-all text-sm font-bold placeholder-gray-500" placeholder="Enter password" />
+                  <input type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/5 focus:border-[#33a8da] transition-all text-sm font-bold placeholder-gray-600" placeholder="Enter password" />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">
                     {showPassword ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" /></svg>}
                   </button>
                 </div>
               </div>
-              <button type="submit" className="w-full bg-[#33a8da] text-white font-bold py-3.5 rounded-xl hover:bg-[#2c98c7] transition shadow-lg shadow-blue-500/10 active:scale-[0.98] text-base">
-                {mode === 'login' ? 'Sign In' : 'Sign Up'}
+              <button 
+                type="submit" 
+                disabled={isLoading}
+                className="w-full bg-[#33a8da] text-white font-bold py-3.5 rounded-xl hover:bg-[#2c98c7] transition shadow-lg shadow-blue-500/10 active:scale-[0.98] text-base flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                ) : (
+                  mode === 'login' ? 'Sign In' : 'Sign Up'
+                )}
               </button>
             </form>
 
