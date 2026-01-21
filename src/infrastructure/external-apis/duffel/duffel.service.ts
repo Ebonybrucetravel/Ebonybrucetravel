@@ -223,6 +223,95 @@ export class DuffelService {
   }
 
   /**
+   * List offers for an offer request with pagination
+   * This allows fetching offers in pages rather than all at once
+   */
+  async listOffers(
+    offerRequestId: string,
+    options?: {
+      limit?: number; // 1-200, default 50
+      after?: string; // Cursor for next page
+      before?: string; // Cursor for previous page
+      sort?: string; // e.g., "total_amount", "total_duration"
+      max_connections?: number; // Filter by max connections
+    },
+  ): Promise<{
+    data: DuffelOffer[];
+    meta: {
+      limit: number;
+      after: string | null;
+      before: string | null;
+    };
+  }> {
+    if (!this.apiKey) {
+      throw new HttpException(
+        'Duffel API key is not configured',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    try {
+      const url = new URL(`${this.baseUrl}/air/offers`);
+      
+      // Add query parameters
+      url.searchParams.append('offer_request_id', offerRequestId);
+      
+      if (options?.limit !== undefined) {
+        url.searchParams.append('limit', String(Math.min(200, Math.max(1, options.limit))));
+      }
+      if (options?.after) {
+        url.searchParams.append('after', options.after);
+      }
+      if (options?.before) {
+        url.searchParams.append('before', options.before);
+      }
+      if (options?.sort) {
+        url.searchParams.append('sort', options.sort);
+      }
+      if (options?.max_connections !== undefined) {
+        url.searchParams.append('max_connections', String(options.max_connections));
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          'Accept-Encoding': 'gzip',
+          'Accept': 'application/json',
+          'Duffel-Version': 'v2',
+          'Authorization': `Bearer ${this.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new HttpException(
+          `Duffel API error: ${response.status} ${response.statusText} - ${errorText}`,
+          response.status === 404
+            ? HttpStatus.NOT_FOUND
+            : response.status === 401 || response.status === 403
+            ? HttpStatus.UNAUTHORIZED
+            : HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      const data = await response.json();
+      return {
+        data: data.data || [],
+        meta: data.meta || { limit: 50, after: null, before: null },
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `Failed to list offers: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
    * Get a single offer request by ID
    */
   async getOfferRequest(offerRequestId: string): Promise<DuffelOfferRequestResponse> {

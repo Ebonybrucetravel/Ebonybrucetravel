@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DuffelService } from '@infrastructure/external-apis/duffel/duffel.service';
 import { TripsAfricaService } from '@infrastructure/external-apis/trips-africa/trips-africa.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
+import { CacheService } from '@infrastructure/cache/cache.service';
 import { SearchFlightsDto, PassengerDto, CabinClass } from '@presentation/booking/dto/search-flights.dto';
 import { ProductType } from '@prisma/client';
 
@@ -11,18 +12,46 @@ export class SearchFlightsUseCase {
     private readonly duffelService: DuffelService,
     private readonly tripsAfricaService: TripsAfricaService,
     private readonly markupRepository: MarkupRepository,
+    private readonly cacheService: CacheService,
   ) {}
 
-  async execute(searchParams: SearchFlightsDto) {
+  async execute(
+    searchParams: SearchFlightsDto,
+    options?: {
+      returnOffers?: boolean; // If false, only return offer_request_id (for pagination)
+      limit?: number; // Limit initial offers returned
+    },
+  ) {
     const { origin, destination, departureDate, returnDate, passengers, cabinClass, maxConnections, passengerDetails } = searchParams;
+    const { returnOffers = false, limit } = options || {}; // Default to false for pagination
+
+    // Check cache first
+    const cacheKey = this.generateCacheKey(searchParams);
+    const cachedOfferRequestId = this.cacheService.getCachedSearchResult(searchParams);
+    
+    if (cachedOfferRequestId) {
+      // If we have a cached offer request ID and don't need offers, return it
+      if (!returnOffers) {
+        return {
+          offer_request_id: cachedOfferRequestId,
+          cached: true,
+        };
+      }
+      
+      // If we need offers, fetch them (will be paginated separately)
+      // For now, return the offer_request_id and let frontend paginate
+      return {
+        offer_request_id: cachedOfferRequestId,
+        cached: true,
+        message: 'Use /bookings/offers endpoint to paginate offers',
+      };
+    }
 
     // Determine if route is domestic (Nigeria) or international
-    // For now, we'll use Duffel for all routes. Later, we can add logic to detect Nigerian airports
     const isDomestic = this.isNigerianRoute(origin, destination);
 
     if (isDomestic) {
       // TODO: Implement Trips Africa API integration
-      // For now, fall back to Duffel
       console.log('⚠️  Domestic route detected, but Trips Africa API not yet implemented. Using Duffel.');
     }
 
@@ -55,20 +84,40 @@ export class SearchFlightsUseCase {
     };
 
     try {
-      // Call Duffel API
+      // Call Duffel API - don't return offers immediately for better pagination control
       const response = await this.duffelService.searchFlights(offerRequest, {
-        returnOffers: true,
+        returnOffers: returnOffers, // Only return offers if explicitly requested
         supplierTimeout: 20000, // 20 seconds
       });
 
+      // Cache the offer request ID for 10 minutes
+      // This allows multiple users searching the same route to reuse the offer request
+      this.cacheService.cacheSearchResult(searchParams, response.data.id, 10 * 60 * 1000);
+
+      // If offers are not requested, just return the offer_request_id
+      if (!returnOffers) {
+        return {
+          offer_request_id: response.data.id,
+          live_mode: response.data.live_mode,
+          message: 'Use /bookings/offers endpoint to paginate offers',
+        };
+      }
+
+      // If offers are returned, limit them and apply markup
+      let offers = response.data.offers || [];
+      
+      // Limit offers if specified
+      if (limit && limit > 0) {
+        offers = offers.slice(0, limit);
+      }
+
       // Transform and apply markup
-      const offers = await Promise.all(
-        response.data.offers.map(async (offer) => {
-          // Calculate markup for this offer
+      const offersWithMarkup = await Promise.all(
+        offers.map(async (offer) => {
           const basePrice = parseFloat(offer.total_amount);
           const currency = offer.total_currency;
 
-          // Get markup configuration (default to 0 if not found)
+          // Get markup configuration
           let markupPercentage = 0;
           try {
             const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
@@ -80,13 +129,11 @@ export class SearchFlightsUseCase {
             console.warn('Could not fetch markup config, using 0%:', error);
           }
 
-          // Calculate final price with markup
           const markupAmount = (basePrice * markupPercentage) / 100;
           const finalPrice = basePrice + markupAmount;
 
           return {
             ...offer,
-            // Add our calculated pricing
             original_amount: offer.total_amount,
             markup_percentage: markupPercentage,
             markup_amount: markupAmount.toFixed(2),
@@ -96,10 +143,18 @@ export class SearchFlightsUseCase {
         }),
       );
 
+      // Cache offers for 2 minutes (they expire quickly)
+      this.cacheService.cacheOffers(response.data.id, offersWithMarkup, 2 * 60 * 1000);
+
       return {
         offer_request_id: response.data.id,
-        offers,
+        offers: offersWithMarkup,
         live_mode: response.data.live_mode,
+        total_offers: response.data.offers?.length || 0,
+        returned_offers: offersWithMarkup.length,
+        message: offersWithMarkup.length < (response.data.offers?.length || 0) 
+          ? 'Use /bookings/offers endpoint to get more offers' 
+          : undefined,
       };
     } catch (error) {
       console.error('Error searching flights:', error);
@@ -120,6 +175,13 @@ export class SearchFlightsUseCase {
       nigerianAirports.includes(originUpper) && 
       nigerianAirports.includes(destUpper)
     );
+  }
+
+  /**
+   * Generate cache key from search parameters
+   */
+  private generateCacheKey(params: SearchFlightsDto): string {
+    return `search:${params.origin}:${params.destination}:${params.departureDate}:${params.returnDate || ''}:${params.passengers}:${params.cabinClass || 'economy'}:${params.maxConnections || 1}`;
   }
 
   /**

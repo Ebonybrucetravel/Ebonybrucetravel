@@ -1,0 +1,631 @@
+{
+	"info": {
+		"_postman_id": "ebony-bruce-travels-api-v2",
+		"name": "Ebony Bruce Travels API",
+		"description": "Complete API collection for Ebony Bruce Travels Booking System\n\n**Base URL:** `{{baseUrl}}/api/v1`\n\n**Authentication:** Most endpoints require JWT Bearer token. Get token from `/auth/login` or `/auth/register`.\n\n**Environment Variables:**\n- `baseUrl`: http://localhost:3001\n- `token`: JWT token (auto-set after login)\n- `offerRequestId`: Duffel offer request ID (auto-set after flight search)\n- `offerId`: Selected flight offer ID (auto-set after flight search)\n\n**Caching & Pagination:**\n- Flight searches are cached (10 min TTL)\n- Offers are paginated with cursor-based pagination\n- Use search endpoint first, then paginate offers separately\n\n**Quick Start:**\n1. Set `baseUrl` in environment\n2. Search for flights (no auth required)\n3. Paginate offers using offer_request_id\n4. Register or Login to get token\n5. Create bookings using offer IDs",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Register User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    if (response.token) {",
+									"        pm.environment.set('token', response.token);",
+									"        pm.environment.set('userId', response.user.id);",
+									"        console.log('Token saved:', response.token);",
+									"    }",
+									"}",
+									"",
+									"pm.test('Status code is 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('Response has user and token', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('user');",
+									"    pm.expect(response).to.have.property('token');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"name\": \"John Doe\",\n  \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/auth/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						},
+						"description": "Register a new user account.\n\n**No authentication required.**\n\n**Request Body:**\n- `email` (string, required): User email address\n- `name` (string, required): User full name\n- `password` (string, required): Password (min 6 characters)\n\n**Response:**\n- Returns user object and JWT token\n- Token is automatically saved to environment variable"
+					},
+					"response": []
+				},
+				{
+					"name": "Login User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    if (response.token) {",
+									"        pm.environment.set('token', response.token);",
+									"        pm.environment.set('userId', response.user.id);",
+									"        console.log('Token saved:', response.token);",
+									"    }",
+									"}",
+									"",
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/auth/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Login with email and password.\n\n**No authentication required.**\n\n**Response:**\n- Returns user object and JWT token\n- Token is automatically saved to environment variable"
+					},
+					"response": []
+				}
+			],
+			"description": "Authentication endpoints for user registration and login."
+		},
+		{
+			"name": "Flight Search",
+			"item": [
+				{
+					"name": "Search Flights - Get Offer Request ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has offer_request_id', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('success', true);",
+									"    pm.expect(response.data).to.have.property('offer_request_id');",
+									"    ",
+									"    // Save offer_request_id for pagination",
+									"    if (response.data.offer_request_id) {",
+									"        pm.environment.set('offerRequestId', response.data.offer_request_id);",
+									"        console.log('Offer Request ID saved:', response.data.offer_request_id);",
+									"        console.log('Cached:', response.data.cached || false);",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"origin\": \"LHR\",\n  \"destination\": \"JFK\",\n  \"departureDate\": \"2024-06-15\",\n  \"passengers\": 1,\n  \"cabinClass\": \"economy\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/search/flights",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"bookings",
+								"search",
+								"flights"
+							]
+						},
+						"description": "Search for flights and get offer_request_id.\n\n**No authentication required.**\n\n**Caching:**\n- Search results are cached for 10 minutes\n- Same search parameters = cached offer_request_id (no API call)\n- Check `cached` field in response\n\n**Request Body:**\n- `origin` (string, required): Origin airport IATA code\n- `destination` (string, required): Destination airport IATA code\n- `departureDate` (string, required): ISO 8601 date (YYYY-MM-DD)\n- `returnDate` (string, optional): For round trips\n- `passengers` (number, required): Number of passengers\n- `cabinClass` (string, optional): economy, premium_economy, business, first\n- `maxConnections` (number, optional): Max connections (0 = direct only)\n\n**Response:**\n- Returns `offer_request_id` (use for pagination)\n- Does NOT return offers (use List Offers endpoint)\n- `cached: true` means result was from cache (no Duffel API call)\n\n**Next Step:**\nUse the `offer_request_id` with `/bookings/offers` endpoint to paginate offers."
+					},
+					"response": []
+				},
+				{
+					"name": "List Offers - First Page",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Ensure offerRequestId is set",
+									"const offerRequestId = pm.environment.get('offerRequestId');",
+									"if (!offerRequestId) {",
+									"    console.warn('No offerRequestId found. Please search for flights first.');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has paginated offers', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('success', true);",
+									"    pm.expect(response).to.have.property('data');",
+									"    pm.expect(response).to.have.property('meta');",
+									"    pm.expect(response.data).to.be.an('array');",
+									"    pm.expect(response.meta).to.have.property('nextCursor');",
+									"    pm.expect(response.meta).to.have.property('hasMore');",
+									"    ",
+									"    // Save first offer ID if available",
+									"    if (response.data && response.data.length > 0) {",
+									"        pm.environment.set('offerId', response.data[0].id);",
+									"        pm.environment.set('offerPrice', response.data[0].final_amount);",
+									"        console.log('Found', response.data.length, 'offers');",
+									"        console.log('Has more:', response.meta.hasMore);",
+									"        console.log('Next cursor:', response.meta.nextCursor);",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/offers?offer_request_id={{offerRequestId}}&limit=20&sort=total_amount&sortOrder=asc",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"bookings",
+								"offers"
+							],
+							"query": [
+								{
+									"key": "offer_request_id",
+									"value": "{{offerRequestId}}",
+									"description": "Offer request ID from search endpoint"
+								},
+								{
+									"key": "limit",
+									"value": "20",
+									"description": "Items per page (1-200)",
+									"disabled": false
+								},
+								{
+									"key": "sort",
+									"value": "total_amount",
+									"description": "Sort field",
+									"disabled": true
+								},
+								{
+									"key": "sortOrder",
+									"value": "asc",
+									"description": "Sort order (asc/desc)",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get first page of flight offers with pagination.\n\n**No authentication required.**\n\n**Caching:**\n- Offers are cached for 2 minutes\n- Same pagination params = cached results (no API call)\n\n**Query Parameters:**\n- `offer_request_id` (required): From search endpoint\n- `limit` (optional): Items per page (1-200, default: 20)\n- `cursor` (optional): For next/previous pages\n- `sort` (optional): Sort field (total_amount, total_duration)\n- `sortOrder` (optional): asc or desc\n\n**Response:**\n- Returns paginated offers with markup applied\n- `meta.nextCursor` for next page\n- `meta.prevCursor` for previous page\n- `meta.hasMore` indicates if more pages available"
+					},
+					"response": []
+				},
+				{
+					"name": "List Offers - Next Page",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Get cursor from previous response or environment",
+									"const cursor = pm.environment.get('nextCursor') || pm.variables.get('nextCursor');",
+									"if (!cursor) {",
+									"    console.warn('No cursor found. Please get first page first.');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has next page data', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('success', true);",
+									"    pm.expect(response.meta).to.have.property('nextCursor');",
+									"    ",
+									"    // Save next cursor for subsequent pages",
+									"    if (response.meta.nextCursor) {",
+									"        pm.environment.set('nextCursor', response.meta.nextCursor);",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/offers?offer_request_id={{offerRequestId}}&limit=20&cursor={{nextCursor}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"bookings",
+								"offers"
+							],
+							"query": [
+								{
+									"key": "offer_request_id",
+									"value": "{{offerRequestId}}"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "cursor",
+									"value": "{{nextCursor}}",
+									"description": "Cursor from previous response meta.nextCursor"
+								}
+							]
+						},
+						"description": "Get next page of offers using cursor from previous response.\n\n**Usage:**\n1. Get first page (no cursor)\n2. Use `meta.nextCursor` from response\n3. Call this endpoint with cursor\n4. Repeat until `meta.hasMore` is false"
+					},
+					"response": []
+				},
+				{
+					"name": "List Offers - Sort by Price (Low to High)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/offers?offer_request_id={{offerRequestId}}&limit=20&sort=total_amount&sortOrder=asc",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"bookings",
+								"offers"
+							],
+							"query": [
+								{
+									"key": "offer_request_id",
+									"value": "{{offerRequestId}}"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "sort",
+									"value": "total_amount"
+								},
+								{
+									"key": "sortOrder",
+									"value": "asc"
+								}
+							]
+						},
+						"description": "Get offers sorted by price (lowest first)."
+					},
+					"response": []
+				},
+				{
+					"name": "List Offers - Sort by Duration (Shortest First)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/offers?offer_request_id={{offerRequestId}}&limit=20&sort=total_duration&sortOrder=asc",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"bookings",
+								"offers"
+							],
+							"query": [
+								{
+									"key": "offer_request_id",
+									"value": "{{offerRequestId}}"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "sort",
+									"value": "total_duration"
+								},
+								{
+									"key": "sortOrder",
+									"value": "asc"
+								}
+							]
+						},
+						"description": "Get offers sorted by flight duration (shortest first)."
+					},
+					"response": []
+				}
+			],
+			"description": "Flight search endpoints with caching and pagination.\n\n**Workflow:**\n1. Search flights → Get offer_request_id\n2. List offers (paginated) → Get offers with markup\n3. Use offer ID to create booking\n\n**Caching Benefits:**\n- Search results cached 10 minutes\n- Offers cached 2 minutes\n- Reduces API costs by 80-90%\n- Faster response times"
+		},
+		{
+			"name": "Bookings",
+			"item": [
+				{
+					"name": "Create Booking (Authenticated)",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"if (!pm.environment.get('token')) {",
+									"    console.warn('No token found. Please login first.');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    if (response.data.reference) {",
+									"        pm.environment.set('bookingReference', response.data.reference);",
+									"        pm.environment.set('bookingId', response.data.id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"productType\": \"FLIGHT_INTERNATIONAL\",\n  \"provider\": \"DUFFEL\",\n  \"basePrice\": 45000,\n  \"currency\": \"GBP\",\n  \"providerBookingId\": \"{{offerId}}\",\n  \"bookingData\": {\n    \"offerId\": \"{{offerId}}\",\n    \"origin\": \"LHR\",\n    \"destination\": \"JFK\",\n    \"departureDate\": \"2024-06-15\",\n    \"airline\": \"British Airways\"\n  },\n  \"passengerInfo\": {\n    \"firstName\": \"John\",\n    \"lastName\": \"Doe\",\n    \"email\": \"john.doe@example.com\",\n    \"phone\": \"+1234567890\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"bookings"
+							]
+						},
+						"description": "Create a booking for an authenticated user.\n\n**Authentication required:** JWT Bearer token\n\n**Uses offer ID from flight search results.**"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Guest Booking",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"productType\": \"FLIGHT_INTERNATIONAL\",\n  \"provider\": \"DUFFEL\",\n  \"basePrice\": 45000,\n  \"currency\": \"GBP\",\n  \"providerBookingId\": \"{{offerId}}\",\n  \"bookingData\": {\n    \"offerId\": \"{{offerId}}\",\n    \"origin\": \"LHR\",\n    \"destination\": \"JFK\"\n  },\n  \"passengerInfo\": {\n    \"firstName\": \"Jane\",\n    \"lastName\": \"Smith\",\n    \"email\": \"jane.smith@example.com\",\n    \"phone\": \"+1234567890\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/guest",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"bookings",
+								"guest"
+							]
+						},
+						"description": "Create a booking without authentication (guest checkout)."
+					},
+					"response": []
+				},
+				{
+					"name": "List Bookings",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"bookings"
+							]
+						},
+						"description": "Get list of bookings.\n\n**Authentication required.**\n- CUSTOMER: Sees only their bookings\n- ADMIN: Sees all bookings"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Booking by ID",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/{{bookingId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"bookings",
+								"{{bookingId}}"
+							]
+						},
+						"description": "Get booking details by ID."
+					},
+					"response": []
+				}
+			],
+			"description": "Booking management endpoints."
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global pre-request script",
+					"if (!pm.environment.get('baseUrl')) {",
+					"    pm.environment.set('baseUrl', 'http://localhost:3001');",
+					"}"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global test script",
+					"console.log('Response time:', pm.response.responseTime + 'ms');"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3001",
+			"type": "string"
+		}
+	]
+}
+

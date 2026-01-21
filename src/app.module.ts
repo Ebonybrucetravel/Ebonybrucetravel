@@ -11,6 +11,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 // Infrastructure
 import { DatabaseModule } from './infrastructure/database/database.module';
 import { ExternalApisModule } from './infrastructure/external-apis/external-apis.module';
+import { CacheModule } from './infrastructure/cache/cache.module';
 
 // Domains
 import { UserModule } from './domains/user/user.module';
@@ -49,6 +50,7 @@ import { DashboardController } from './presentation/dashboard/dashboard.controll
     // Infrastructure
     DatabaseModule,
     ExternalApisModule,
+    CacheModule,
 
     // Domains
     UserModule,

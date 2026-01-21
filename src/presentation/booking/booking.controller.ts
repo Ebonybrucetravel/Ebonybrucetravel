@@ -18,11 +18,13 @@ import { Public } from '@common/decorators/public.decorator';
 import { CreateBookingUseCase } from '@application/booking/use-cases/create-booking.use-case';
 import { CreateGuestBookingUseCase } from '@application/booking/use-cases/create-guest-booking.use-case';
 import { SearchFlightsUseCase } from '@application/booking/use-cases/search-flights.use-case';
+import { ListOffersUseCase } from '@application/booking/use-cases/list-offers.use-case';
 import { BookingService } from '@domains/booking/services/booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CreateGuestBookingDto } from './dto/create-guest-booking.dto';
 import { SearchFlightsDto } from './dto/search-flights.dto';
 import { SearchFlightsResponseDto } from './dto/flight-offer-response.dto';
+import { PaginationQueryDto } from './dto/pagination.dto';
 
 @ApiTags('Bookings')
 @Controller('bookings')
@@ -31,23 +33,57 @@ export class BookingController {
     private readonly createBookingUseCase: CreateBookingUseCase,
     private readonly createGuestBookingUseCase: CreateGuestBookingUseCase,
     private readonly searchFlightsUseCase: SearchFlightsUseCase,
+    private readonly listOffersUseCase: ListOffersUseCase,
     private readonly bookingService: BookingService,
   ) {}
 
   @Public()
   @Post('search/flights')
-  @ApiOperation({ summary: 'Search for flights (no authentication required)' })
+  @ApiOperation({ 
+    summary: 'Search for flights (no authentication required)',
+    description: 'Creates an offer request and returns offer_request_id. Use /bookings/offers to paginate offers.',
+  })
   @ApiResponse({ 
     status: 200, 
-    description: 'Flight search results',
+    description: 'Flight search completed - returns offer_request_id for pagination',
     type: SearchFlightsResponseDto,
   })
   async searchFlights(@Body() searchFlightsDto: SearchFlightsDto) {
-    const results = await this.searchFlightsUseCase.execute(searchFlightsDto);
+    // Don't return offers immediately - use pagination endpoint instead
+    const results = await this.searchFlightsUseCase.execute(searchFlightsDto, {
+      returnOffers: false, // Only return offer_request_id
+    });
     return {
       success: true,
       data: results,
-      message: 'Flight search completed successfully',
+      message: 'Flight search completed. Use /bookings/offers endpoint to paginate offers.',
+    };
+  }
+
+  @Public()
+  @Get('offers')
+  @ApiOperation({ 
+    summary: 'List flight offers with pagination (no authentication required)',
+    description: 'Paginate offers for an offer request. Use cursor-based pagination.',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Paginated flight offers',
+  })
+  async listOffers(
+    @Query('offer_request_id') offerRequestId: string,
+    @Query() pagination: PaginationQueryDto,
+  ) {
+    if (!offerRequestId) {
+      throw new NotFoundException('offer_request_id is required');
+    }
+
+    const results = await this.listOffersUseCase.execute(offerRequestId, pagination);
+    return {
+      success: true,
+      data: results.data,
+      meta: results.meta,
+      message: 'Offers retrieved successfully',
     };
   }
 
