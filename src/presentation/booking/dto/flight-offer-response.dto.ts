@@ -151,4 +151,3 @@ export class SearchFlightsResponseDto {
   @ApiProperty({ description: 'Whether this is a live mode request' })
   live_mode: boolean;
 }
-

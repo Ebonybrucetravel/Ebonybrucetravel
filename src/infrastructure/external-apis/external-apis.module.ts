@@ -8,4 +8,3 @@ import { BookingComService } from './booking-com/booking-com.service';
   exports: [DuffelService, TripsAfricaService, BookingComService],
 })
 export class ExternalApisModule {}
-

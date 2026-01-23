@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsDateString, IsInt, Min, IsOptional, IsEnum, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsDateString,
+  IsInt,
+  Min,
+  IsOptional,
+  IsEnum,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export enum CabinClass {
@@ -27,12 +36,16 @@ export class PassengerDto {
   @Min(0)
   age?: number;
 
-  @ApiPropertyOptional({ description: 'Family name (required if loyalty programme accounts are provided)' })
+  @ApiPropertyOptional({
+    description: 'Family name (required if loyalty programme accounts are provided)',
+  })
   @IsOptional()
   @IsString()
   family_name?: string;
 
-  @ApiPropertyOptional({ description: 'Given name (required if loyalty programme accounts are provided)' })
+  @ApiPropertyOptional({
+    description: 'Given name (required if loyalty programme accounts are provided)',
+  })
   @IsOptional()
   @IsString()
   given_name?: string;
@@ -61,7 +74,7 @@ export class SearchFlightsDto {
   @IsDateString()
   returnDate?: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Number of passengers',
     example: 1,
     minimum: 1,
@@ -70,8 +83,8 @@ export class SearchFlightsDto {
   @Min(1)
   passengers: number;
 
-  @ApiPropertyOptional({ 
-    enum: CabinClass, 
+  @ApiPropertyOptional({
+    enum: CabinClass,
     description: 'Cabin class preference',
     default: CabinClass.ECONOMY,
   })
@@ -79,7 +92,7 @@ export class SearchFlightsDto {
   @IsEnum(CabinClass)
   cabinClass?: CabinClass;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Maximum number of connections (0 for direct flights only)',
     default: 1,
     minimum: 0,
@@ -89,7 +102,7 @@ export class SearchFlightsDto {
   @Min(0)
   maxConnections?: number;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Passenger details (optional - defaults to adults if not specified)',
     type: [PassengerDto],
   })
@@ -99,5 +112,3 @@ export class SearchFlightsDto {
   @Type(() => PassengerDto)
   passengerDetails?: PassengerDto[];
 }
-
-

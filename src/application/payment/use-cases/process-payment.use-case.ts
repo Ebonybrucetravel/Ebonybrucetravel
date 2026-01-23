@@ -7,4 +7,3 @@ export class ProcessPaymentUseCase {
   // - Handle payment confirmation
   // - Update booking status
 }
-

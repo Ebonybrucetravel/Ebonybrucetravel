@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Post,
-  Body,
-  UseGuards,
-  Request,
-  BadRequestException,
-} from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
@@ -38,10 +31,7 @@ export class AdminController {
     }
 
     // Validate role
-    if (
-      createAdminDto.role !== UserRole.ADMIN &&
-      createAdminDto.role !== UserRole.SUPER_ADMIN
-    ) {
+    if (createAdminDto.role !== UserRole.ADMIN && createAdminDto.role !== UserRole.SUPER_ADMIN) {
       throw new BadRequestException('Role must be ADMIN or SUPER_ADMIN');
     }
 
@@ -95,5 +85,3 @@ export class AdminController {
     };
   }
 }
-
-

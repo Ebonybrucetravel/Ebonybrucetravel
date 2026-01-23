@@ -17,7 +17,11 @@ import { CacheModule } from '@infrastructure/cache/cache.module';
     SearchFlightsUseCase,
     ListOffersUseCase,
   ],
-  exports: [CreateBookingUseCase, CreateGuestBookingUseCase, SearchFlightsUseCase, ListOffersUseCase],
+  exports: [
+    CreateBookingUseCase,
+    CreateGuestBookingUseCase,
+    SearchFlightsUseCase,
+    ListOffersUseCase,
+  ],
 })
 export class BookingApplicationModule {}
-

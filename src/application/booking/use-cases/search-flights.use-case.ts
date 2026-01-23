@@ -3,7 +3,11 @@ import { DuffelService } from '@infrastructure/external-apis/duffel/duffel.servi
 import { TripsAfricaService } from '@infrastructure/external-apis/trips-africa/trips-africa.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 import { CacheService } from '@infrastructure/cache/cache.service';
-import { SearchFlightsDto, PassengerDto, CabinClass } from '@presentation/booking/dto/search-flights.dto';
+import {
+  SearchFlightsDto,
+  PassengerDto,
+  CabinClass,
+} from '@presentation/booking/dto/search-flights.dto';
 import { ProductType } from '@prisma/client';
 
 @Injectable()
@@ -22,13 +26,22 @@ export class SearchFlightsUseCase {
       limit?: number; // Limit initial offers returned
     },
   ) {
-    const { origin, destination, departureDate, returnDate, passengers, cabinClass, maxConnections, passengerDetails } = searchParams;
+    const {
+      origin,
+      destination,
+      departureDate,
+      returnDate,
+      passengers,
+      cabinClass,
+      maxConnections,
+      passengerDetails,
+    } = searchParams;
     const { returnOffers = false, limit } = options || {}; // Default to false for pagination
 
     // Check cache first
     const cacheKey = this.generateCacheKey(searchParams);
     const cachedOfferRequestId = this.cacheService.getCachedSearchResult(searchParams);
-    
+
     if (cachedOfferRequestId) {
       // If we have a cached offer request ID and don't need offers, return it
       if (!returnOffers) {
@@ -37,7 +50,7 @@ export class SearchFlightsUseCase {
           cached: true,
         };
       }
-      
+
       // If we need offers, fetch them (will be paginated separately)
       // For now, return the offer_request_id and let frontend paginate
       return {
@@ -52,7 +65,9 @@ export class SearchFlightsUseCase {
 
     if (isDomestic) {
       // TODO: Implement Trips Africa API integration
-      console.log('⚠️  Domestic route detected, but Trips Africa API not yet implemented. Using Duffel.');
+      console.log(
+        '⚠️  Domestic route detected, but Trips Africa API not yet implemented. Using Duffel.',
+      );
     }
 
     // Prepare passengers array
@@ -105,7 +120,7 @@ export class SearchFlightsUseCase {
 
       // If offers are returned, limit them and apply markup
       let offers = response.data.offers || [];
-      
+
       // Limit offers if specified
       if (limit && limit > 0) {
         offers = offers.slice(0, limit);
@@ -152,9 +167,10 @@ export class SearchFlightsUseCase {
         live_mode: response.data.live_mode,
         total_offers: response.data.offers?.length || 0,
         returned_offers: offersWithMarkup.length,
-        message: offersWithMarkup.length < (response.data.offers?.length || 0) 
-          ? 'Use /bookings/offers endpoint to get more offers' 
-          : undefined,
+        message:
+          offersWithMarkup.length < (response.data.offers?.length || 0)
+            ? 'Use /bookings/offers endpoint to get more offers'
+            : undefined,
       };
     } catch (error) {
       console.error('Error searching flights:', error);
@@ -170,11 +186,8 @@ export class SearchFlightsUseCase {
     const nigerianAirports = ['LOS', 'ABV', 'KAN', 'PHC', 'QOW', 'ENU', 'ILR', 'JOS', 'YOL', 'CBQ'];
     const originUpper = origin.toUpperCase();
     const destUpper = destination.toUpperCase();
-    
-    return (
-      nigerianAirports.includes(originUpper) && 
-      nigerianAirports.includes(destUpper)
-    );
+
+    return nigerianAirports.includes(originUpper) && nigerianAirports.includes(destUpper);
   }
 
   /**
@@ -209,8 +222,10 @@ export class SearchFlightsUseCase {
     }
 
     // Default: all adults
-    return Array(passengerCount).fill(null).map(() => ({
-      type: 'adult' as const,
-    }));
+    return Array(passengerCount)
+      .fill(null)
+      .map(() => ({
+        type: 'adult' as const,
+      }));
   }
 }

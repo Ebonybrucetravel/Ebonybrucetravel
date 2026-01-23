@@ -76,4 +76,3 @@ export class CreateBookingDto {
   @IsOptional()
   providerBookingId?: string;
 }
-

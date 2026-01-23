@@ -2,13 +2,13 @@ import { Injectable } from '@nestjs/common';
 
 /**
  * Cache service for flight search results
- * 
+ *
  * Strategy:
  * - Cache offer requests by search parameters (origin, destination, date, etc.)
  * - Cache offers by offer_request_id
  * - TTL (Time To Live) based on offer expiry times
  * - In-memory cache (can be upgraded to Redis for production)
- * 
+ *
  * Cache Keys:
  * - `flight_search:{hash}` - Cached offer request ID
  * - `offers:{offer_request_id}` - Cached offers for a request
@@ -61,7 +61,7 @@ export class CacheService {
    */
   get<T>(key: string): T | null {
     const entry = this.cache.get(key);
-    
+
     if (!entry) {
       return null;
     }
@@ -188,7 +188,7 @@ export class CacheService {
   private evictOldest(): void {
     const entries = Array.from(this.cache.entries());
     entries.sort((a, b) => a[1].createdAt - b[1].createdAt);
-    
+
     // Remove 10% of oldest entries
     const toRemove = Math.max(1, Math.floor(this.maxCacheSize * 0.1));
     for (let i = 0; i < toRemove; i++) {
@@ -213,4 +213,3 @@ export class CacheService {
     return cleaned;
   }
 }
-

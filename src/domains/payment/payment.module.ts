@@ -8,4 +8,3 @@ import { PaystackService } from './services/paystack.service';
   exports: [PaymentService, StripeService, PaystackService],
 })
 export class PaymentModule {}
-

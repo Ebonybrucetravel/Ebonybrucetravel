@@ -8,4 +8,3 @@ import { PaymentModule } from '@domains/payment/payment.module';
   exports: [ProcessPaymentUseCase],
 })
 export class PaymentApplicationModule {}
-

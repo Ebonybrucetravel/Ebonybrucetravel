@@ -17,4 +17,3 @@ import { BookingRepositoryImpl } from '@infrastructure/database/repositories/boo
   exports: [BookingService, BookingStatusService, BOOKING_REPOSITORY],
 })
 export class BookingModule {}
-

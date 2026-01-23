@@ -25,4 +25,3 @@ import { DatabaseModule } from '@infrastructure/database/database.module';
   exports: [AuthService],
 })
 export class AuthModule {}
-

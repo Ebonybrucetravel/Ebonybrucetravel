@@ -10,4 +10,3 @@ export class Payment {
   createdAt: Date;
   updatedAt: Date;
 }
-

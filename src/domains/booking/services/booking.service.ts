@@ -15,7 +15,7 @@ export class BookingService {
   async createBooking(bookingData: Partial<Booking>): Promise<Booking> {
     // Generate unique booking reference
     let reference = generateBookingReference();
-    
+
     // Ensure reference is unique (retry if exists)
     let exists = await this.bookingRepository.findByReference(reference);
     let attempts = 0;
@@ -66,4 +66,3 @@ export class BookingService {
     return this.updateBookingStatus(id, BookingStatus.CANCELLED, userId);
   }
 }
-

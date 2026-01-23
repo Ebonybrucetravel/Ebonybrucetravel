@@ -66,12 +66,7 @@ import { DashboardController } from './presentation/dashboard/dashboard.controll
     AuthModule,
     AdminModule,
   ],
-  controllers: [
-    BookingController,
-    PaymentController,
-    MarkupController,
-    DashboardController,
-  ],
+  controllers: [BookingController, PaymentController, MarkupController, DashboardController],
   providers: [
     {
       provide: APP_FILTER,
@@ -88,4 +83,3 @@ import { DashboardController } from './presentation/dashboard/dashboard.controll
   ],
 })
 export class AppModule {}
-

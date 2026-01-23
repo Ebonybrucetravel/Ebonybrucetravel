@@ -19,10 +19,10 @@ export class CreateAdminDto {
   @IsNotEmpty()
   password: string;
 
-  @ApiProperty({ 
-    enum: ['ADMIN', 'SUPER_ADMIN'], 
+  @ApiProperty({
+    enum: ['ADMIN', 'SUPER_ADMIN'],
     example: 'ADMIN',
-    description: 'Role must be ADMIN or SUPER_ADMIN' 
+    description: 'Role must be ADMIN or SUPER_ADMIN',
   })
   @IsEnum(['ADMIN', 'SUPER_ADMIN'])
   @IsNotEmpty()
@@ -33,4 +33,3 @@ export class CreateAdminDto {
   @IsOptional()
   phone?: string;
 }
-

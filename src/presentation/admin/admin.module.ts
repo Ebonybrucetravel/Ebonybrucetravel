@@ -7,5 +7,3 @@ import { DatabaseModule } from '@infrastructure/database/database.module';
   controllers: [AdminController],
 })
 export class AdminModule {}
-
-

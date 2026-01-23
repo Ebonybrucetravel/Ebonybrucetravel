@@ -3,7 +3,11 @@ import { DuffelService } from '@infrastructure/external-apis/duffel/duffel.servi
 import { CacheService } from '@infrastructure/cache/cache.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 import { ProductType } from '@prisma/client';
-import { PaginationQueryDto, PaginatedResponseDto, PaginationMetaDto } from '@presentation/booking/dto/pagination.dto';
+import {
+  PaginationQueryDto,
+  PaginatedResponseDto,
+  PaginationMetaDto,
+} from '@presentation/booking/dto/pagination.dto';
 
 @Injectable()
 export class ListOffersUseCase {
@@ -22,7 +26,7 @@ export class ListOffersUseCase {
     // Check cache first
     const cacheKey = `offers:${offerRequestId}:${limit}:${cursor || 'first'}:${sort}:${sortOrder}`;
     const cached = this.cacheService.get<PaginatedResponseDto<any>>(cacheKey);
-    
+
     if (cached) {
       return cached;
     }
@@ -111,4 +115,3 @@ export class ListOffersUseCase {
     return 2; // Assume page 2+ if cursor exists
   }
 }
-

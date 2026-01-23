@@ -8,4 +8,3 @@ import { MarkupRepository } from './repositories/markup.repository';
   exports: [PrismaService, MarkupRepository],
 })
 export class DatabaseModule {}
-

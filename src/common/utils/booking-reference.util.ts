@@ -14,4 +14,3 @@ export function generateBookingReference(): string {
 
   return `EBT-${dateStr}-${random}`;
 }
-

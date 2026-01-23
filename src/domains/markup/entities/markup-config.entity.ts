@@ -14,4 +14,3 @@ export class MarkupConfig {
   createdAt: Date;
   updatedAt: Date;
 }
-

@@ -14,10 +14,7 @@ export class MarkupRepository {
       where: {
         isActive: true,
         effectiveFrom: { lte: now },
-        OR: [
-          { effectiveTo: null },
-          { effectiveTo: { gte: now } },
-        ],
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }],
       },
       orderBy: {
         effectiveFrom: 'desc',
@@ -38,10 +35,7 @@ export class MarkupRepository {
         currency,
         isActive: true,
         effectiveFrom: { lte: now },
-        OR: [
-          { effectiveTo: null },
-          { effectiveTo: { gte: now } },
-        ],
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }],
       },
       orderBy: {
         effectiveFrom: 'desc',
@@ -72,4 +66,3 @@ export class MarkupRepository {
     };
   }
 }
-

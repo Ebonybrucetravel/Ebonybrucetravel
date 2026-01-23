@@ -64,4 +64,3 @@ export class CreateGuestBookingDto {
   @Type(() => GuestPassengerInfoDto)
   passengerInfo: GuestPassengerInfoDto;
 }
-

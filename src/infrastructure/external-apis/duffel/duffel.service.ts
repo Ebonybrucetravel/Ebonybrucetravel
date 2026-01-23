@@ -29,11 +29,14 @@ export interface DuffelOfferRequest {
   cabin_class?: 'first' | 'business' | 'premium_economy' | 'economy';
   max_connections?: number; // 0 for direct flights, 1 for max 1 connection
   airline_credit_ids?: string[];
-  private_fares?: Record<string, Array<{
-    corporate_code?: string;
-    tour_code?: string;
-    tracking_reference?: string;
-  }>>;
+  private_fares?: Record<
+    string,
+    Array<{
+      corporate_code?: string;
+      tour_code?: string;
+      tracking_reference?: string;
+    }>
+  >;
 }
 
 export interface DuffelOffer {
@@ -156,15 +159,12 @@ export class DuffelService {
     },
   ): Promise<DuffelOfferRequestResponse> {
     if (!this.apiKey) {
-      throw new HttpException(
-        'Duffel API key is not configured',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new HttpException('Duffel API key is not configured', HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     try {
       const url = new URL(`${this.baseUrl}/air/offer_requests`);
-      
+
       // Add query parameters
       if (options?.returnOffers !== undefined) {
         url.searchParams.append('return_offers', String(options.returnOffers));
@@ -177,10 +177,10 @@ export class DuffelService {
         method: 'POST',
         headers: {
           'Accept-Encoding': 'gzip',
-          'Accept': 'application/json',
+          Accept: 'application/json',
           'Content-Type': 'application/json',
           'Duffel-Version': 'v2',
-          'Authorization': `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({ data: request }),
       });
@@ -188,7 +188,7 @@ export class DuffelService {
       if (!response.ok) {
         const errorText = await response.text();
         let errorMessage = `Duffel API error: ${response.status} ${response.statusText}`;
-        
+
         try {
           const errorJson = JSON.parse(errorText);
           if (errorJson.errors && errorJson.errors.length > 0) {
@@ -203,8 +203,8 @@ export class DuffelService {
           response.status === 401 || response.status === 403
             ? HttpStatus.UNAUTHORIZED
             : response.status === 400
-            ? HttpStatus.BAD_REQUEST
-            : HttpStatus.INTERNAL_SERVER_ERROR,
+              ? HttpStatus.BAD_REQUEST
+              : HttpStatus.INTERNAL_SERVER_ERROR,
         );
       }
 
@@ -244,18 +244,15 @@ export class DuffelService {
     };
   }> {
     if (!this.apiKey) {
-      throw new HttpException(
-        'Duffel API key is not configured',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new HttpException('Duffel API key is not configured', HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     try {
       const url = new URL(`${this.baseUrl}/air/offers`);
-      
+
       // Add query parameters
       url.searchParams.append('offer_request_id', offerRequestId);
-      
+
       if (options?.limit !== undefined) {
         url.searchParams.append('limit', String(Math.min(200, Math.max(1, options.limit))));
       }
@@ -276,9 +273,9 @@ export class DuffelService {
         method: 'GET',
         headers: {
           'Accept-Encoding': 'gzip',
-          'Accept': 'application/json',
+          Accept: 'application/json',
           'Duffel-Version': 'v2',
-          'Authorization': `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${this.apiKey}`,
         },
       });
 
@@ -289,8 +286,8 @@ export class DuffelService {
           response.status === 404
             ? HttpStatus.NOT_FOUND
             : response.status === 401 || response.status === 403
-            ? HttpStatus.UNAUTHORIZED
-            : HttpStatus.INTERNAL_SERVER_ERROR,
+              ? HttpStatus.UNAUTHORIZED
+              : HttpStatus.INTERNAL_SERVER_ERROR,
         );
       }
 
@@ -316,25 +313,19 @@ export class DuffelService {
    */
   async getOfferRequest(offerRequestId: string): Promise<DuffelOfferRequestResponse> {
     if (!this.apiKey) {
-      throw new HttpException(
-        'Duffel API key is not configured',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new HttpException('Duffel API key is not configured', HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     try {
-      const response = await fetch(
-        `${this.baseUrl}/air/offer_requests/${offerRequestId}`,
-        {
-          method: 'GET',
-          headers: {
-            'Accept-Encoding': 'gzip',
-            'Accept': 'application/json',
-            'Duffel-Version': 'v2',
-            'Authorization': `Bearer ${this.apiKey}`,
-          },
+      const response = await fetch(`${this.baseUrl}/air/offer_requests/${offerRequestId}`, {
+        method: 'GET',
+        headers: {
+          'Accept-Encoding': 'gzip',
+          Accept: 'application/json',
+          'Duffel-Version': 'v2',
+          Authorization: `Bearer ${this.apiKey}`,
         },
-      );
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -343,8 +334,8 @@ export class DuffelService {
           response.status === 404
             ? HttpStatus.NOT_FOUND
             : response.status === 401 || response.status === 403
-            ? HttpStatus.UNAUTHORIZED
-            : HttpStatus.INTERNAL_SERVER_ERROR,
+              ? HttpStatus.UNAUTHORIZED
+              : HttpStatus.INTERNAL_SERVER_ERROR,
         );
       }
 

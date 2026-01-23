@@ -3,14 +3,14 @@ import { ConfigService } from '@nestjs/config';
 
 /**
  * NOTE: For per-booking pricing model, consider:
- * 
+ *
  * 1. Direct Airline Affiliate Programs (5-10% commission, $0 upfront)
  *    - Contact: Air Peace, Arik Air, Ibom Air, Green Africa, United Nigeria
  *    - Email each airline for affiliate partnership
- * 
+ *
  * 2. Negotiate with Trips Africa for per-booking pricing
  *    - Request: ₦500-₦2,000 per successful booking instead of monthly fee
- * 
+ *
  * Current: Trips Africa API (likely monthly subscription)
  * Alternative: Airline affiliate programs (0% upfront, commission per booking)
  */
@@ -30,4 +30,3 @@ export class TripsAfricaService {
   // - getBooking()
   // - cancelBooking()
 }
-

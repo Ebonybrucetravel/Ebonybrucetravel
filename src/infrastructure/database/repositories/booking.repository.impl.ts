@@ -231,4 +231,3 @@ export class BookingRepositoryImpl implements BookingRepository {
     };
   }
 }
-

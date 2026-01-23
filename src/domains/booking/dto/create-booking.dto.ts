@@ -26,4 +26,3 @@ export class CreateBookingDto {
   @IsOptional()
   passengerInfo?: Record<string, any>;
 }
-

@@ -6,4 +6,3 @@ import { MarkupCalculationService } from './services/markup-calculation.service'
   exports: [MarkupCalculationService],
 })
 export class MarkupModule {}
-

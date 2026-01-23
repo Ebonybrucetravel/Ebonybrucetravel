@@ -39,12 +39,13 @@ export class BookingController {
 
   @Public()
   @Post('search/flights')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Search for flights (no authentication required)',
-    description: 'Creates an offer request and returns offer_request_id. Use /bookings/offers to paginate offers.',
+    description:
+      'Creates an offer request and returns offer_request_id. Use /bookings/offers to paginate offers.',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Flight search completed - returns offer_request_id for pagination',
     type: SearchFlightsResponseDto,
   })
@@ -62,12 +63,12 @@ export class BookingController {
 
   @Public()
   @Get('offers')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'List flight offers with pagination (no authentication required)',
     description: 'Paginate offers for an offer request. Use cursor-based pagination.',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Paginated flight offers',
   })
   async listOffers(
@@ -121,7 +122,7 @@ export class BookingController {
   @ApiResponse({ status: 200, description: 'Bookings retrieved successfully' })
   async findAll(@Request() req, @Query() query: any) {
     const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
-    
+
     if (isAdmin) {
       // Admin sees all bookings
       const bookings = await this.bookingService.getUserBookings(''); // Empty to get all
@@ -148,7 +149,7 @@ export class BookingController {
   @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
   async findOne(@Param('id') id: string, @Request() req) {
     const booking = await this.bookingService.getBookingById(id);
-    
+
     if (!booking) {
       throw new NotFoundException('Booking not found');
     }
@@ -173,7 +174,7 @@ export class BookingController {
   @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
   async findByReference(@Param('reference') reference: string, @Request() req) {
     const booking = await this.bookingService.getBookingByReference(reference);
-    
+
     if (!booking) {
       throw new NotFoundException('Booking not found');
     }
@@ -191,4 +192,3 @@ export class BookingController {
     };
   }
 }
-

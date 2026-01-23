@@ -28,4 +28,3 @@ export class Booking {
   updatedAt: Date;
   deletedAt?: Date;
 }
-
