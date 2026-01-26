@@ -104,6 +104,44 @@ export class BookingRepositoryImpl implements BookingRepository {
     return bookings.map((booking) => this.mapToBooking(booking));
   }
 
+  async findByProviderBookingId(providerBookingId: string): Promise<Booking | null> {
+    const booking = await this.prisma.booking.findFirst({
+      where: {
+        providerBookingId,
+        deletedAt: null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    if (!booking || booking.deletedAt) {
+      return null;
+    }
+
+    return this.mapToBooking(booking);
+  }
+
+  async findAll(): Promise<Booking[]> {
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        deletedAt: null,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return bookings.map((booking) => this.mapToBooking(booking));
+  }
+
   async update(id: string, data: Partial<Booking>): Promise<Booking> {
     const updated = await this.prisma.booking.update({
       where: { id },

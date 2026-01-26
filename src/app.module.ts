@@ -14,7 +14,6 @@ import { ExternalApisModule } from './infrastructure/external-apis/external-apis
 import { CacheModule } from './infrastructure/cache/cache.module';
 
 // Domains
-import { UserModule } from './domains/user/user.module';
 import { BookingModule } from './domains/booking/booking.module';
 import { PaymentModule } from './domains/payment/payment.module';
 import { MarkupModule } from './domains/markup/markup.module';
@@ -26,6 +25,7 @@ import { PaymentApplicationModule } from './application/payment/payment-applicat
 // Presentation
 import { AuthModule } from './presentation/auth/auth.module';
 import { AdminModule } from './presentation/admin/admin.module';
+import { UserModule } from './presentation/user/user.module';
 import { BookingController } from './presentation/booking/booking.controller';
 import { PaymentController } from './presentation/payment/payment.controller';
 import { MarkupController } from './presentation/markup/markup.controller';
@@ -53,7 +53,6 @@ import { DashboardController } from './presentation/dashboard/dashboard.controll
     CacheModule,
 
     // Domains
-    UserModule,
     BookingModule,
     PaymentModule,
     MarkupModule,
@@ -65,6 +64,7 @@ import { DashboardController } from './presentation/dashboard/dashboard.controll
     // Presentation
     AuthModule,
     AdminModule,
+    UserModule,
   ],
   controllers: [BookingController, PaymentController, MarkupController, DashboardController],
   providers: [

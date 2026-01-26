@@ -352,4 +352,372 @@ export class DuffelService {
       );
     }
   }
+
+  /**
+   * Create a Duffel order from an offer
+   * This actually books the flight with the airline
+   */
+  async createOrder(orderData: {
+    selected_offers: string[]; // Array of offer IDs
+    passengers: Array<{
+      id: string; // Passenger ID from offer
+      title?: string; // e.g., "mr", "mrs", "miss"
+      gender?: string; // e.g., "m", "f"
+      given_name: string;
+      family_name: string;
+      born_on: string; // YYYY-MM-DD
+      email: string;
+      phone_number?: string;
+      identity_documents?: Array<{
+        type: string; // e.g., "passport"
+        unique_identifier?: string;
+        issued_by?: string;
+        expires_on?: string;
+      }>;
+    }>;
+    payments?: Array<{
+      type: 'balance' | 'arc_bsp_cash' | 'arc_bsp_cheque' | 'arc_bsp_credit_card' | 'bca' | 'card' | 'cash' | 'cheque' | 'invoice' | 'other';
+      amount?: string;
+      currency?: string;
+    }>;
+    metadata?: Record<string, string>;
+  }): Promise<any> {
+    if (!this.apiKey) {
+      throw new HttpException('Duffel API key is not configured', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/air/orders`, {
+        method: 'POST',
+        headers: {
+          'Accept-Encoding': 'gzip',
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'Duffel-Version': 'v2',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({ data: orderData }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = `Duffel API error: ${response.status} ${response.statusText}`;
+
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.errors && errorJson.errors.length > 0) {
+            errorMessage = errorJson.errors.map((e: any) => e.message || e.detail).join(', ');
+          }
+        } catch {
+          errorMessage += ` - ${errorText}`;
+        }
+
+        throw new HttpException(
+          errorMessage,
+          response.status === 401 || response.status === 403
+            ? HttpStatus.UNAUTHORIZED
+            : response.status === 400 || response.status === 422
+              ? HttpStatus.BAD_REQUEST
+              : HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      const data = await response.json();
+      return data.data;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `Failed to create order: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Get a single order by ID
+   */
+  async getOrder(orderId: string): Promise<any> {
+    if (!this.apiKey) {
+      throw new HttpException('Duffel API key is not configured', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/air/orders/${orderId}`, {
+        method: 'GET',
+        headers: {
+          'Accept-Encoding': 'gzip',
+          Accept: 'application/json',
+          'Duffel-Version': 'v2',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new HttpException(
+          `Duffel API error: ${response.status} ${response.statusText} - ${errorText}`,
+          response.status === 404
+            ? HttpStatus.NOT_FOUND
+            : response.status === 401 || response.status === 403
+              ? HttpStatus.UNAUTHORIZED
+              : HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      const data = await response.json();
+      return data.data;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `Failed to get order: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * List orders with pagination
+   */
+  async listOrders(options?: {
+    limit?: number;
+    after?: string;
+    before?: string;
+    sort?: string;
+  }): Promise<{
+    data: any[];
+    meta: {
+      limit: number;
+      after: string | null;
+      before: string | null;
+    };
+  }> {
+    if (!this.apiKey) {
+      throw new HttpException('Duffel API key is not configured', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    try {
+      const url = new URL(`${this.baseUrl}/air/orders`);
+
+      if (options?.limit !== undefined) {
+        url.searchParams.append('limit', String(Math.min(200, Math.max(1, options.limit))));
+      }
+      if (options?.after) {
+        url.searchParams.append('after', options.after);
+      }
+      if (options?.before) {
+        url.searchParams.append('before', options.before);
+      }
+      if (options?.sort) {
+        url.searchParams.append('sort', options.sort);
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          'Accept-Encoding': 'gzip',
+          Accept: 'application/json',
+          'Duffel-Version': 'v2',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new HttpException(
+          `Duffel API error: ${response.status} ${response.statusText} - ${errorText}`,
+          response.status === 401 || response.status === 403
+            ? HttpStatus.UNAUTHORIZED
+            : HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      const data = await response.json();
+      return {
+        data: data.data || [],
+        meta: data.meta || { limit: 50, after: null, before: null },
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `Failed to list orders: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Create a pending order cancellation
+   */
+  async createOrderCancellation(orderId: string): Promise<any> {
+    if (!this.apiKey) {
+      throw new HttpException('Duffel API key is not configured', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/air/order_cancellations`, {
+        method: 'POST',
+        headers: {
+          'Accept-Encoding': 'gzip',
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'Duffel-Version': 'v2',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          data: {
+            order_id: orderId,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = `Duffel API error: ${response.status} ${response.statusText}`;
+
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.errors && errorJson.errors.length > 0) {
+            errorMessage = errorJson.errors.map((e: any) => e.message || e.detail).join(', ');
+          }
+        } catch {
+          errorMessage += ` - ${errorText}`;
+        }
+
+        throw new HttpException(
+          errorMessage,
+          response.status === 401 || response.status === 403
+            ? HttpStatus.UNAUTHORIZED
+            : response.status === 400 || response.status === 422
+              ? HttpStatus.BAD_REQUEST
+              : HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      const data = await response.json();
+      return data.data;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `Failed to create order cancellation: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Confirm an order cancellation
+   */
+  async confirmOrderCancellation(cancellationId: string): Promise<any> {
+    if (!this.apiKey) {
+      throw new HttpException('Duffel API key is not configured', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/air/order_cancellations/${cancellationId}/actions/confirm`,
+        {
+          method: 'POST',
+          headers: {
+            'Accept-Encoding': 'gzip',
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'Duffel-Version': 'v2',
+            Authorization: `Bearer ${this.apiKey}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = `Duffel API error: ${response.status} ${response.statusText}`;
+
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.errors && errorJson.errors.length > 0) {
+            errorMessage = errorJson.errors.map((e: any) => e.message || e.detail).join(', ');
+          }
+        } catch {
+          errorMessage += ` - ${errorText}`;
+        }
+
+        throw new HttpException(
+          errorMessage,
+          response.status === 401 || response.status === 403
+            ? HttpStatus.UNAUTHORIZED
+            : response.status === 400 || response.status === 422
+              ? HttpStatus.BAD_REQUEST
+              : HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      const data = await response.json();
+      return data.data;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `Failed to confirm order cancellation: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Get a single order cancellation by ID
+   */
+  async getOrderCancellation(cancellationId: string): Promise<any> {
+    if (!this.apiKey) {
+      throw new HttpException('Duffel API key is not configured', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/air/order_cancellations/${cancellationId}`, {
+        method: 'GET',
+        headers: {
+          'Accept-Encoding': 'gzip',
+          Accept: 'application/json',
+          'Duffel-Version': 'v2',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new HttpException(
+          `Duffel API error: ${response.status} ${response.statusText} - ${errorText}`,
+          response.status === 404
+            ? HttpStatus.NOT_FOUND
+            : response.status === 401 || response.status === 403
+              ? HttpStatus.UNAUTHORIZED
+              : HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      const data = await response.json();
+      return data.data;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `Failed to get order cancellation: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }

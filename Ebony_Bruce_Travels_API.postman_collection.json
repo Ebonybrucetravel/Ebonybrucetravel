@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "ebony-bruce-travels-api-v2",
 		"name": "Ebony Bruce Travels API",
-		"description": "Complete API collection for Ebony Bruce Travels Booking System\n\n**Base URL:** `{{baseUrl}}/api/v1`\n\n**Authentication:** Most endpoints require JWT Bearer token. Get token from `/auth/login` or `/auth/register`.\n\n**Environment Variables:**\n- `baseUrl`: http://localhost:3001\n- `token`: JWT token (auto-set after login)\n- `offerRequestId`: Duffel offer request ID (auto-set after flight search)\n- `offerId`: Selected flight offer ID (auto-set after flight search)\n\n**Caching & Pagination:**\n- Flight searches are cached (10 min TTL)\n- Offers are paginated with cursor-based pagination\n- Use search endpoint first, then paginate offers separately\n\n**Quick Start:**\n1. Set `baseUrl` in environment\n2. Search for flights (no auth required)\n3. Paginate offers using offer_request_id\n4. Register or Login to get token\n5. Create bookings using offer IDs",
+		"description": "Complete API collection for Ebony Bruce Travels Booking System\n\n**Base URL:** `{{baseUrl}}/api/v1`\n\n**Authentication:** Most endpoints require JWT Bearer token. Get token from `/auth/login` or `/auth/register`.\n\n**Environment Variables:**\n- `baseUrl`: http://localhost:3001 (or your Railway URL)\n- `token`: JWT token (auto-set after login)\n- `offerRequestId`: Duffel offer request ID (auto-set after flight search)\n- `offerId`: Selected flight offer ID (auto-set after listing offers)\n- `nextCursor`: Pagination cursor for next page (auto-set)\n- `bookingId`: Booking ID (auto-set after creating booking)\n\n---\n\n## 📋 API Sections\n\n### 1. Authentication\n- **Register User** - Create new account\n- **Login** - Get JWT token\n\n### 2. User Profile\n- **Get My Profile** - Retrieve current user profile (name, email, phone, dateOfBirth, gender, image)\n- **Update Profile** - Update profile information (name, phone, dateOfBirth, gender)\n- **Upload Profile Image** - Upload profile picture to Cloudinary (auto-resized to 400x400px)\n\n### 3. Flight Search & Offers\n- **Search Flights** - Get `offer_request_id` (Step 1 of two-step process)\n- **List Offers** - Get paginated flight offers using `offer_request_id` (Step 2)\n\n### 4. Bookings\n- **Create Booking** - Create a new booking (authenticated users)\n- **Create Guest Booking** - Create booking without account\n- **Get Booking** - Retrieve booking details by ID\n\n### 5. Payments\n- **Create Payment Intent** - Create Stripe payment intent for a booking\n- **Stripe Webhook** - Handle payment events (payment_intent.succeeded, payment_intent.payment_failed, etc.)\n\n---\n\n## 🚀 Quick Start Guide\n\n### Step 1: Authentication\n1. **Register** or **Login** to get JWT token\n2. Token is automatically saved to `{{token}}` environment variable\n\n### Step 2: Flight Search (Two-Step Process)\n1. **Search Flights** → Get `offer_request_id` (no auth required)\n   - Returns immediately (2-3 seconds)\n   - Cached for 10 minutes\n2. **List Offers** → Get paginated flights using `offer_request_id`\n   - Returns 20 offers per page\n   - Markup automatically applied\n   - Use `nextCursor` for pagination\n\n### Step 3: Create Booking\n1. Select an offer from List Offers response\n2. **Create Booking** with offer details\n3. Booking ID is saved to `{{bookingId}}`\n\n### Step 4: Payment\n1. **Create Payment Intent** using booking ID\n2. Returns `clientSecret` for Stripe Checkout\n3. Webhook automatically updates booking status on payment\n\n### Step 5: Manage Profile\n1. **Get My Profile** to view current information\n2. **Update Profile** to change name, phone, dateOfBirth, gender\n3. **Upload Profile Image** to set profile picture\n\n---\n\n## 🔍 Flight Search Flow (Why Two Requests?)\n\n**Step 1: Search** - Get `offer_request_id` (fast, 2-3 seconds)\n- Duffel searches airlines in background\n- Returns immediately with search ID\n- Cached for 10 minutes\n\n**Step 2: List Offers** - Use `offer_request_id` to get flights (fast, 1 second)\n- Paginated results (20 per page)\n- Markup applied automatically\n- Cached for 2 minutes\n\n**Benefits:**\n- ⚡ Faster user experience (3-4 seconds vs 20+ seconds)\n- 📄 Pagination (don't load 500 flights at once)\n- 💾 Caching (reuse searches, reduce costs)\n- 💰 Cost-effective (fetch only what you need)\n\n---\n\n## 💳 Payment Flow\n\n1. **Create Booking** → Get `bookingId`\n2. **Create Payment Intent** → Get `clientSecret`\n3. Use `clientSecret` with Stripe.js on frontend\n4. Stripe sends webhook events to `/payments/stripe/webhook`\n5. Booking status automatically updates:\n   - `payment_intent.succeeded` → Booking status: `CONFIRMED`\n   - `payment_intent.payment_failed` → Booking status: `FAILED`\n   - `charge.refunded` → Booking status: `REFUNDED`\n\n---\n\n## 👤 User Profile Fields\n\n**Editable:**\n- `name` - Full name\n- `phone` - Phone number\n- `dateOfBirth` - Date of birth (YYYY-MM-DD format)\n- `gender` - Gender (Male, Female, Other, Prefer not to say)\n- `image` - Profile picture (via upload endpoint)\n\n**Read-only:**\n- `email` - Cannot be changed (security)\n- `role` - Set by system\n- `id` - Unique identifier\n\n---\n\n## 📝 Testing Tips\n\n- Search endpoint returns `offer_request_id` (not offers)\n- Use List Offers endpoint to get actual flight options\n- Use `nextCursor` from response to paginate\n- Check `cached` field to see if result was from cache\n- All profile endpoints require authentication\n- Image upload accepts: jpg, jpeg, png, gif, webp (max 5MB)\n- Payment webhook requires Stripe webhook secret for signature verification",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -123,6 +123,194 @@
 			"description": "Authentication endpoints for user registration and login."
 		},
 		{
+			"name": "User Profile",
+			"item": [
+				{
+					"name": "Get My Profile",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has user profile', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('id');",
+									"    pm.expect(response).to.have.property('email');",
+									"    pm.expect(response).to.have.property('name');",
+									"    pm.expect(response).to.have.property('role');",
+									"    console.log('✅ Profile retrieved:', response.email);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"users",
+								"me"
+							]
+						},
+						"description": "Get current user's profile information.\n\n**Authentication required.**\n\n**Response includes:**\n- id, email, name, phone\n- image (Cloudinary URL)\n- dateOfBirth, gender\n- role, timestamps"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Profile",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Profile updated successfully', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('id');",
+									"    pm.expect(response).to.have.property('email');",
+									"    console.log('✅ Profile updated:', response.name || response.email);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Seyi Obadeyi\",\n  \"phone\": \"+2348165000000\",\n  \"dateOfBirth\": \"1992-05-15\",\n  \"gender\": \"Male\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"users",
+								"me"
+							]
+						},
+						"description": "Update user profile information.\n\n**Authentication required.**\n\n**Editable fields:**\n- `name` - Full name\n- `phone` - Phone number\n- `dateOfBirth` - Date of birth (YYYY-MM-DD format)\n- `gender` - Gender (Male, Female, Other, Prefer not to say)\n\n**Note:** Email cannot be changed (security)."
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Profile Image",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Image uploaded successfully', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('image');",
+									"    if (response.image) {",
+									"        console.log('✅ Image uploaded:', response.image);",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "image",
+									"type": "file",
+									"src": [],
+									"description": "Profile image file (jpg, jpeg, png, gif, webp). Max 5MB. Auto-resized to 400x400px."
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/avatar",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"users",
+								"me",
+								"avatar"
+							]
+						},
+						"description": "Upload or update user profile image.\n\n**Authentication required.**\n\n**Requirements:**\n- File format: jpg, jpeg, png, gif, webp\n- Max file size: 5MB\n- Auto-resized to 400x400px\n- Stored in Cloudinary\n- Old image automatically deleted when updating"
+					},
+					"response": []
+				}
+			],
+			"description": "User profile management endpoints.\n\n**All endpoints require authentication.**\n\n**Features:**\n- Get profile information\n- Update profile (name, phone, date of birth, gender)\n- Upload profile image to Cloudinary\n\n**Note:** Email cannot be changed (security requirement)."
+		},
+		{
 			"name": "Flight Search",
 			"item": [
 				{
@@ -163,7 +351,12 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"origin\": \"LHR\",\n  \"destination\": \"JFK\",\n  \"departureDate\": \"2024-06-15\",\n  \"passengers\": 1,\n  \"cabinClass\": \"economy\"\n}"
+							"raw": "{\n  \"origin\": \"LHR\",\n  \"destination\": \"JFK\",\n  \"departureDate\": \"2026-01-25\",\n  \"passengers\": 1,\n  \"cabinClass\": \"economy\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
 						"url": {
 							"raw": "{{baseUrl}}/api/v1/bookings/search/flights",
@@ -178,7 +371,7 @@
 								"flights"
 							]
 						},
-						"description": "Search for flights and get offer_request_id.\n\n**No authentication required.**\n\n**Caching:**\n- Search results are cached for 10 minutes\n- Same search parameters = cached offer_request_id (no API call)\n- Check `cached` field in response\n\n**Request Body:**\n- `origin` (string, required): Origin airport IATA code\n- `destination` (string, required): Destination airport IATA code\n- `departureDate` (string, required): ISO 8601 date (YYYY-MM-DD)\n- `returnDate` (string, optional): For round trips\n- `passengers` (number, required): Number of passengers\n- `cabinClass` (string, optional): economy, premium_economy, business, first\n- `maxConnections` (number, optional): Max connections (0 = direct only)\n\n**Response:**\n- Returns `offer_request_id` (use for pagination)\n- Does NOT return offers (use List Offers endpoint)\n- `cached: true` means result was from cache (no Duffel API call)\n\n**Next Step:**\nUse the `offer_request_id` with `/bookings/offers` endpoint to paginate offers."
+						"description": "**STEP 1: Search for flights and get offer_request_id**\n\n**No authentication required.**\n\n**What This Does:**\n- Creates a flight search request with Duffel API\n- Returns immediately with `offer_request_id` (2-3 seconds)\n- Duffel continues searching airlines in background\n- Does NOT return flight offers (use Step 2 for that)\n\n**Why Two Steps?**\n- Faster response (don't wait 20+ seconds for all airlines)\n- Enables pagination (can't show 500 flights at once)\n- Allows caching (reuse searches, reduce costs)\n\n**Caching:**\n- Search results cached for 10 minutes\n- Same search parameters = cached `offer_request_id` (no API call)\n- Check `cached: true` in response to see if from cache\n\n**Request Body:**\n- `origin` (string, required): Origin airport IATA code (e.g., \"LHR\", \"LOS\", \"JFK\")\n- `destination` (string, required): Destination airport IATA code\n- `departureDate` (string, required): ISO 8601 date (YYYY-MM-DD)\n- `returnDate` (string, optional): For round trips (YYYY-MM-DD)\n- `passengers` (number, required): Number of passengers (min: 1)\n- `cabinClass` (string, optional): economy, premium_economy, business, first (default: economy)\n- `maxConnections` (number, optional): Max connections (0 = direct only, default: 1)\n- `passengerDetails` (array, optional): Detailed passenger info (age, type, etc.)\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"offer_request_id\": \"orq_0000B2dmFMfv0fyigjlHNI\",\n    \"live_mode\": false,\n    \"cached\": false,\n    \"message\": \"Use /bookings/offers endpoint to paginate offers\"\n  },\n  \"message\": \"Flight search completed...\"\n}\n```\n\n**Next Step:**\nUse the `offer_request_id` with **List Offers** endpoint to get actual flight options.\n\n**Example Scenarios:**\n- One-way: Only `departureDate`\n- Round trip: Both `departureDate` and `returnDate`\n- Direct flights: `maxConnections: 0`\n- Business class: `cabinClass: \"business\"`"
 					},
 					"response": []
 				},
@@ -192,7 +385,10 @@
 									"// Ensure offerRequestId is set",
 									"const offerRequestId = pm.environment.get('offerRequestId');",
 									"if (!offerRequestId) {",
-									"    console.warn('No offerRequestId found. Please search for flights first.');",
+									"    console.error('❌ No offerRequestId found!');",
+									"    console.warn('⚠️  Please run \"Search Flights - Get Offer Request ID\" first.');",
+									"} else {",
+									"    console.log('✅ Using offerRequestId:', offerRequestId);",
 									"}"
 								],
 								"type": "text/javascript"
@@ -219,9 +415,19 @@
 									"    if (response.data && response.data.length > 0) {",
 									"        pm.environment.set('offerId', response.data[0].id);",
 									"        pm.environment.set('offerPrice', response.data[0].final_amount);",
-									"        console.log('Found', response.data.length, 'offers');",
-									"        console.log('Has more:', response.meta.hasMore);",
-									"        console.log('Next cursor:', response.meta.nextCursor);",
+									"        pm.environment.set('offerCurrency', response.data[0].currency);",
+									"        console.log('✅ Found', response.data.length, 'offers');",
+									"        console.log('📄 Has more:', response.meta.hasMore);",
+									"        console.log('➡️  Next cursor:', response.meta.nextCursor || 'none');",
+									"        console.log('💰 First offer price:', response.data[0].final_amount, response.data[0].currency);",
+									"        console.log('📊 Markup:', response.data[0].markup_percentage + '%');",
+									"    } else {",
+									"        console.warn('⚠️  No offers found. Try a different search.');",
+									"    }",
+									"    ",
+									"    // Save next cursor for pagination",
+									"    if (response.meta && response.meta.nextCursor) {",
+									"        pm.environment.set('nextCursor', response.meta.nextCursor);",
 									"    }",
 									"});"
 								],
@@ -269,7 +475,7 @@
 								}
 							]
 						},
-						"description": "Get first page of flight offers with pagination.\n\n**No authentication required.**\n\n**Caching:**\n- Offers are cached for 2 minutes\n- Same pagination params = cached results (no API call)\n\n**Query Parameters:**\n- `offer_request_id` (required): From search endpoint\n- `limit` (optional): Items per page (1-200, default: 20)\n- `cursor` (optional): For next/previous pages\n- `sort` (optional): Sort field (total_amount, total_duration)\n- `sortOrder` (optional): asc or desc\n\n**Response:**\n- Returns paginated offers with markup applied\n- `meta.nextCursor` for next page\n- `meta.prevCursor` for previous page\n- `meta.hasMore` indicates if more pages available"
+						"description": "**STEP 2: Get paginated flight offers**\n\n**No authentication required.**\n\n**What This Does:**\n- Fetches flight offers for a given `offer_request_id`\n- Returns paginated results (default: 20 per page)\n- Applies markup automatically (adds your profit margin)\n- Fast response (1 second)\n\n**Prerequisites:**\n- Must have `offer_request_id` from Step 1 (Search Flights)\n- Automatically saved to environment after search\n\n**Caching:**\n- Offers cached for 2 minutes\n- Same pagination params = cached results (no API call)\n- Prices change frequently, so short cache time\n\n**Query Parameters:**\n- `offer_request_id` (required): From search endpoint (auto-filled from environment)\n- `limit` (optional): Items per page (1-200, default: 20)\n- `cursor` (optional): For next/previous pages (from `meta.nextCursor`)\n- `sort` (optional): Sort field - `total_amount`, `total_duration`, `departure_time`\n- `sortOrder` (optional): `asc` (lowest first) or `desc` (highest first)\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": [\n    {\n      \"id\": \"off_123\",\n      \"original_amount\": \"500.00\",\n      \"markup_percentage\": 10,\n      \"markup_amount\": \"50.00\",\n      \"final_amount\": \"550.00\",\n      \"currency\": \"USD\",\n      \"slices\": [...],\n      \"segments\": [...],\n      \"expires_at\": \"2026-01-25T10:00:00Z\"\n    }\n  ],\n  \"meta\": {\n    \"count\": 20,\n    \"total\": 20,\n    \"limit\": 20,\n    \"nextCursor\": \"g2wAAAACbQAAABBBZXJvbWlzdC1LaGFya2l2bQAAAB=\",\n    \"prevCursor\": null,\n    \"hasMore\": true,\n    \"page\": 1,\n    \"totalPages\": 2\n  }\n}\n```\n\n**Pagination:**\n- Use `meta.nextCursor` for next page\n- Use `meta.prevCursor` for previous page\n- Check `meta.hasMore` to see if more pages available\n- Use \"List Offers - Next Page\" request with cursor\n\n**Markup Applied:**\n- `original_amount`: Price from airline\n- `markup_percentage`: Your profit margin\n- `markup_amount`: Profit in currency\n- `final_amount`: Price customer pays (original + markup)\n\n**Important:**\n- Offers expire (check `expires_at`)\n- Use offer `id` to create booking\n- Sort by price: `sort=total_amount&sortOrder=asc`"
 					},
 					"response": []
 				},
@@ -281,9 +487,19 @@
 							"script": {
 								"exec": [
 									"// Get cursor from previous response or environment",
-									"const cursor = pm.environment.get('nextCursor') || pm.variables.get('nextCursor');",
+									"const cursor = pm.environment.get('nextCursor');",
+									"const offerRequestId = pm.environment.get('offerRequestId');",
+									"",
+									"if (!offerRequestId) {",
+									"    console.error('❌ No offerRequestId found!');",
+									"    console.warn('⚠️  Please run \"Search Flights\" first.');",
+									"}",
+									"",
 									"if (!cursor) {",
-									"    console.warn('No cursor found. Please get first page first.');",
+									"    console.warn('⚠️  No cursor found. Getting first page instead.');",
+									"    console.info('💡 Tip: Run \"List Offers - First Page\" first to get cursor.');",
+									"} else {",
+									"    console.log('✅ Using cursor for next page:', cursor);",
 									"}"
 								],
 								"type": "text/javascript"
@@ -303,8 +519,11 @@
 									"    pm.expect(response.meta).to.have.property('nextCursor');",
 									"    ",
 									"    // Save next cursor for subsequent pages",
-									"    if (response.meta.nextCursor) {",
+									"    if (response.meta && response.meta.nextCursor) {",
 									"        pm.environment.set('nextCursor', response.meta.nextCursor);",
+									"        console.log('✅ Next cursor saved:', response.meta.nextCursor);",
+									"    } else {",
+									"        console.log('ℹ️  No more pages available');",
 									"    }",
 									"});"
 								],
@@ -342,7 +561,7 @@
 								}
 							]
 						},
-						"description": "Get next page of offers using cursor from previous response.\n\n**Usage:**\n1. Get first page (no cursor)\n2. Use `meta.nextCursor` from response\n3. Call this endpoint with cursor\n4. Repeat until `meta.hasMore` is false"
+						"description": "**Get next page of offers using pagination cursor**\n\n**No authentication required.**\n\n**What This Does:**\n- Fetches the next page of offers using cursor from previous response\n- Automatically uses `nextCursor` from environment (set by previous request)\n\n**How It Works:**\n1. Call \"List Offers - First Page\" (no cursor)\n2. Response includes `meta.nextCursor`\n3. Call this endpoint (cursor auto-filled)\n4. Repeat until `meta.hasMore` is `false`\n\n**Query Parameters:**\n- `offer_request_id` (required): From search endpoint\n- `limit` (optional): Items per page (default: 20)\n- `cursor` (required): From `meta.nextCursor` of previous response (auto-filled)\n\n**Response:**\n- Same structure as first page\n- New `meta.nextCursor` for next page\n- `meta.hasMore` indicates if more pages\n\n**Example Flow:**\n```\nPage 1: ?offer_request_id=orq_123&limit=20\n  → nextCursor: \"abc\"\n\nPage 2: ?offer_request_id=orq_123&limit=20&cursor=abc\n  → nextCursor: \"def\"\n\nPage 3: ?offer_request_id=orq_123&limit=20&cursor=def\n  → hasMore: false (no more pages)\n```"
 					},
 					"response": []
 				},
@@ -425,7 +644,7 @@
 					"response": []
 				}
 			],
-			"description": "Flight search endpoints with caching and pagination.\n\n**Workflow:**\n1. Search flights → Get offer_request_id\n2. List offers (paginated) → Get offers with markup\n3. Use offer ID to create booking\n\n**Caching Benefits:**\n- Search results cached 10 minutes\n- Offers cached 2 minutes\n- Reduces API costs by 80-90%\n- Faster response times"
+			"description": "**Flight Search & Offers - Two-Step Process**\n\n**Complete Workflow:**\n1. **Search Flights** → Get `offer_request_id` (2-3 seconds)\n   - Creates search request with Duffel\n   - Returns immediately with search ID\n   - Duffel searches airlines in background\n\n2. **List Offers** → Get paginated flights (1 second)\n   - Use `offer_request_id` from step 1\n   - Get 20 flights per page (default)\n   - Markup automatically applied\n   - Use cursor to paginate\n\n3. **Create Booking** → Use offer `id` from step 2\n   - Select an offer from results\n   - Use offer `id` to create booking\n\n**Why Two Requests?**\n- ⚡ **Faster**: User sees results in 3-4 seconds (vs 20+ seconds)\n- 📄 **Pagination**: Can't show 500 flights at once\n- 💾 **Caching**: Reuse searches, reduce API costs\n- 💰 **Cost-effective**: Fetch only what you need\n\n**Caching Benefits:**\n- Search results cached 10 minutes\n- Offers cached 2 minutes\n- Reduces API costs by 80-90%\n- Faster response times\n- Multiple users can share same search\n\n**Important Notes:**\n- Search endpoint does NOT return offers (only ID)\n- Must use List Offers endpoint to get flights\n- Offers expire (check `expires_at` field)\n- Use `offer_request_id` for all pagination requests"
 		},
 		{
 			"name": "Bookings",
@@ -484,7 +703,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"productType\": \"FLIGHT_INTERNATIONAL\",\n  \"provider\": \"DUFFEL\",\n  \"basePrice\": 45000,\n  \"currency\": \"GBP\",\n  \"providerBookingId\": \"{{offerId}}\",\n  \"bookingData\": {\n    \"offerId\": \"{{offerId}}\",\n    \"origin\": \"LHR\",\n    \"destination\": \"JFK\",\n    \"departureDate\": \"2024-06-15\",\n    \"airline\": \"British Airways\"\n  },\n  \"passengerInfo\": {\n    \"firstName\": \"John\",\n    \"lastName\": \"Doe\",\n    \"email\": \"john.doe@example.com\",\n    \"phone\": \"+1234567890\"\n  }\n}"
+							"raw": "{\n  \"productType\": \"FLIGHT_INTERNATIONAL\",\n  \"provider\": \"DUFFEL\",\n  \"basePrice\": 45000,\n  \"currency\": \"GBP\",\n  \"providerBookingId\": \"{{offerId}}\",\n  \"bookingData\": {\n    \"offerId\": \"{{offerId}}\",\n    \"origin\": \"LHR\",\n    \"destination\": \"JFK\",\n    \"departureDate\": \"2026-01-25\",\n    \"airline\": \"British Airways\"\n  },\n  \"passengerInfo\": {\n    \"firstName\": \"John\",\n    \"lastName\": \"Doe\",\n    \"email\": \"john.doe@example.com\",\n    \"phone\": \"+1234567890\"\n  }\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/api/v1/bookings",
@@ -591,9 +810,272 @@
 						"description": "Get booking details by ID."
 					},
 					"response": []
+				},
+				{
+					"name": "Cancel Duffel Flight Booking",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"if (!pm.environment.get('token')) {",
+									"    console.warn('⚠️  No token found. Please login first.');",
+									"}",
+									"",
+									"if (!pm.environment.get('bookingId')) {",
+									"    console.warn('⚠️  No bookingId found. Please create a booking first.');",
+									"} else {",
+									"    console.log('✅ Cancelling booking:', pm.environment.get('bookingId'));",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    if (response.data.cancellationId) {",
+									"        pm.environment.set('cancellationId', response.data.cancellationId);",
+									"        console.log('✅ Cancellation ID:', response.data.cancellationId);",
+									"    }",
+									"    if (response.data.refundAmount) {",
+									"        console.log('💰 Refund amount:', response.data.refundAmount);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/{{bookingId}}/cancel",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"bookings",
+								"{{bookingId}}",
+								"cancel"
+							]
+						},
+						"description": "Cancel a Duffel flight booking.\n\n**Authentication required:** JWT Bearer token\n\n**Requirements:**\n- Booking must be a Duffel flight booking (`provider: DUFFEL`)\n- Booking must be in `CONFIRMED` status\n- Only booking owner or admin can cancel\n\n**Process:**\n1. Creates pending cancellation in Duffel\n2. Confirms cancellation\n3. Updates booking status to `CANCELLED`\n4. Processes refund if applicable\n\n**Response includes:**\n- `cancellationId` - Duffel cancellation ID\n- `refundAmount` - Refund amount (if applicable)\n\n**Note:** Cancellation is immediate and may be non-refundable depending on airline policy."
+					},
+					"response": []
+				},
+				{
+					"name": "Duffel Webhook (Test)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"type\": \"order.created\",\n  \"object\": {\n    \"id\": \"ord_0000A3tQcEcrfuFAb0RQPH\",\n    \"booking_reference\": \"ABC123\",\n    \"status\": \"confirmed\"\n  },\n  \"created_at\": \"2026-01-25T20:00:00Z\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/duffel/webhook",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"bookings",
+								"duffel",
+								"webhook"
+							]
+						},
+						"description": "Duffel webhook endpoint for order updates.\n\n**⚠️ IMPORTANT:** This endpoint is called by Duffel, not by your application.\n\n**Configuration:**\n1. Go to Duffel Dashboard → Webhooks\n2. Add endpoint: `https://your-domain.com/api/v1/bookings/duffel/webhook`\n3. Select events:\n   - `order.created` - Order successfully created\n   - `order.creation_failed` - Order creation failed\n   - `order.updated` - Order details updated\n   - `order.airline_initiated_change` - Airline changed the booking\n   - `order_cancellation.created` - Cancellation initiated\n   - `order_cancellation.confirmed` - Cancellation confirmed\n\n**Events Handled:**\n- `order.created` → Updates booking with order details\n- `order.creation_failed` → Marks booking as failed\n- `order.updated` → Updates booking with latest order data\n- `order.airline_initiated_change` → Stores change information\n- `order_cancellation.created` → Stores cancellation details\n- `order_cancellation.confirmed` → Updates booking to cancelled, processes refund\n\n**Note:** This request is for testing only. In production, Duffel calls this endpoint automatically.\n\n**Test Payload Example:**\n```json\n{\n  \"type\": \"order.created\",\n  \"object\": {\n    \"id\": \"ord_0000A3tQcEcrfuFAb0RQPH\",\n    \"booking_reference\": \"ABC123\",\n    \"status\": \"confirmed\"\n  },\n  \"created_at\": \"2026-01-25T20:00:00Z\"\n}\n```"
+					},
+					"response": []
 				}
 			],
-			"description": "Booking management endpoints."
+			"description": "Booking management endpoints.\n\n**All endpoints require authentication (except webhook).**\n\n**Endpoints:**\n- Create Booking (Authenticated) - Create booking for logged-in user\n- Create Guest Booking - Create booking without account\n- Get Booking - Retrieve booking details by ID\n- Cancel Duffel Flight Booking - Cancel a confirmed Duffel flight booking\n- Duffel Webhook - Handle order updates from Duffel (no auth required)\n\n**Complete Booking Flow:**\n1. Search flights and get offers\n2. Select an offer\n3. Create booking with offer details\n4. Get booking ID\n5. Create payment intent using booking ID\n6. Payment succeeds → Duffel order created automatically\n7. Duffel webhook updates booking with order details\n8. Cancel booking if needed (Duffel order cancelled automatically)\n\n**Order Creation:**\n- Duffel orders are created automatically when payment succeeds\n- No manual order creation needed\n- Order ID stored in `providerBookingId`\n- Full order data stored in `providerData`\n\n**Cancellation:**\n- Only Duffel flight bookings can be cancelled via this endpoint\n- Cancellation is immediate\n- Refunds processed automatically if applicable\n- Booking status updated to `CANCELLED`"
+		},
+		{
+			"name": "Payments",
+			"item": [
+				{
+					"name": "Create Payment Intent",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"if (!pm.environment.get('token')) {",
+									"    console.warn('⚠️  No token found. Please login first.');",
+									"}",
+									"",
+									"if (!pm.environment.get('bookingId')) {",
+									"    console.warn('⚠️  No bookingId found. Please create a booking first.');",
+									"    console.log('💡 Tip: Use \"Create Booking\" endpoint to get bookingId');",
+									"} else {",
+									"    console.log('✅ Using bookingId:', pm.environment.get('bookingId'));",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 or 201', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+									"});",
+									"",
+									"pm.test('Response has clientSecret', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('clientSecret');",
+									"    pm.expect(response).to.have.property('paymentIntentId');",
+									"    ",
+									"    console.log('✅ Payment intent created');",
+									"    console.log('💳 Payment Intent ID:', response.paymentIntentId);",
+									"    console.log('🔑 Client Secret:', response.clientSecret.substring(0, 20) + '...');",
+									"    console.log('💡 Use clientSecret with Stripe.js on frontend');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"bookingId\": \"{{bookingId}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/payments/stripe/create-intent",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"payments",
+								"stripe",
+								"create-intent"
+							]
+						},
+						"description": "Create a Stripe payment intent for a booking.\n\n**Authentication required.**\n\n**Prerequisites:**\n- Must have a booking ID (from Create Booking endpoint)\n- Booking must be in PENDING or PAYMENT_PENDING status\n\n**Request:**\n```json\n{\n  \"bookingId\": \"clx1234567890\"\n}\n```\n\n**Response:**\n```json\n{\n  \"clientSecret\": \"pi_xxx_secret_xxx\",\n  \"paymentIntentId\": \"pi_xxx\"\n}\n```\n\n**Next Steps:**\n1. Use `clientSecret` with Stripe.js on frontend\n2. Stripe handles payment processing\n3. Webhook automatically updates booking status:\n   - `payment_intent.succeeded` → Booking: `CONFIRMED`\n   - `payment_intent.payment_failed` → Booking: `FAILED`\n   - `charge.refunded` → Booking: `REFUNDED`\n\n**Note:** Webhook endpoint is `/api/v1/payments/stripe/webhook` (configured in Stripe Dashboard)"
+					},
+					"response": []
+				},
+				{
+					"name": "Stripe Webhook (Test)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Webhook received', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('received', true);",
+									"    console.log('✅ Webhook event processed');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "stripe-signature",
+								"value": "t=1234567890,v1=signature_here",
+								"description": "Stripe webhook signature (automatically added by Stripe)"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"evt_xxx\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"pi_xxx\",\n      \"metadata\": {\n        \"bookingId\": \"{{bookingId}}\"\n      }\n    }\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/payments/stripe/webhook",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"payments",
+								"stripe",
+								"webhook"
+							]
+						},
+						"description": "Stripe webhook endpoint for payment events.\n\n**⚠️ IMPORTANT:** This endpoint is called by Stripe, not by your application.\n\n**Configuration:**\n1. Go to Stripe Dashboard → Webhooks\n2. Add endpoint: `https://your-domain.com/api/v1/payments/stripe/webhook`\n3. Select events:\n   - `payment_intent.succeeded`\n   - `payment_intent.payment_failed`\n   - `payment_intent.canceled`\n   - `charge.refunded`\n4. Copy webhook signing secret (starts with `whsec_...`)\n5. Add to `.env`: `STRIPE_WEBHOOK_SECRET=\"whsec_...\"`\n\n**Security:**\n- Webhook signature is verified automatically\n- Only legitimate Stripe events are processed\n- Invalid signatures are rejected\n\n**Events Handled:**\n- `payment_intent.succeeded` → Updates booking to `CONFIRMED`\n- `payment_intent.payment_failed` → Updates booking to `FAILED`\n- `payment_intent.canceled` → Updates booking to `CANCELLED`\n- `charge.refunded` → Updates booking to `REFUNDED`\n\n**Note:** This request is for testing only. In production, Stripe calls this endpoint automatically."
+					},
+					"response": []
+				}
+			],
+			"description": "Payment processing endpoints using Stripe.\n\n**Payment Flow:**\n1. Create booking → Get `bookingId`\n2. Create payment intent → Get `clientSecret`\n3. Use `clientSecret` with Stripe.js on frontend\n4. Stripe processes payment\n5. Webhook updates booking status automatically\n\n**Webhook Setup:**\n- Configure in Stripe Dashboard\n- Endpoint URL: `https://your-domain.com/api/v1/payments/stripe/webhook`\n- Required events: `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`\n- Webhook secret required for security (signature verification)\n\n**Security:**\n- All payment endpoints verify webhook signatures\n- Only legitimate Stripe events are processed\n- Invalid signatures are rejected"
 		}
 	],
 	"event": [

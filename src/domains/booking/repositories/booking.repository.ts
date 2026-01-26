@@ -6,6 +6,8 @@ export interface BookingRepository {
   findById(id: string): Promise<Booking | null>;
   findByReference(reference: string): Promise<Booking | null>;
   findByUserId(userId: string): Promise<Booking[]>;
+  findByProviderBookingId(providerBookingId: string): Promise<Booking | null>;
+  findAll(): Promise<Booking[]>;
   update(id: string, data: Partial<Booking>): Promise<Booking>;
   delete(id: string): Promise<void>;
   findMany(filters: {

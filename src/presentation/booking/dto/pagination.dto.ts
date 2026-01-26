@@ -1,6 +1,54 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, Min, Max, IsOptional, IsString } from 'class-validator';
+import { IsInt, Min, Max, IsOptional, IsString, IsNotEmpty } from 'class-validator';
 import { Type } from 'class-transformer';
+
+export class ListOffersQueryDto {
+  @ApiProperty({
+    description: 'Offer request ID from flight search endpoint',
+    example: 'orq_0000B2dmFMfv0fyigjlHNI',
+  })
+  @IsNotEmpty()
+  @IsString()
+  offer_request_id: string;
+
+  @ApiPropertyOptional({
+    description: 'Number of items per page',
+    minimum: 1,
+    maximum: 200,
+    default: 20,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number = 20;
+
+  @ApiPropertyOptional({
+    description: 'Cursor for pagination (from previous response)',
+  })
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+
+  @ApiPropertyOptional({
+    description: 'Sort field (e.g., "total_amount", "total_duration")',
+    enum: ['total_amount', 'total_duration', 'departure_time'],
+    default: 'total_amount',
+  })
+  @IsOptional()
+  @IsString()
+  sort?: string = 'total_amount';
+
+  @ApiPropertyOptional({
+    description: 'Sort order',
+    enum: ['asc', 'desc'],
+    default: 'asc',
+  })
+  @IsOptional()
+  @IsString()
+  sortOrder?: 'asc' | 'desc' = 'asc';
+}
 
 export class PaginationQueryDto {
   @ApiPropertyOptional({
@@ -46,8 +94,11 @@ export class PaginationMetaDto {
   @ApiProperty({ description: 'Number of items in current page' })
   count: number;
 
-  @ApiProperty({ description: 'Total number of items available' })
-  total: number;
+  @ApiPropertyOptional({ 
+    description: 'Total number of items available (estimated - Duffel cursor pagination doesn\'t provide exact total)',
+    nullable: true,
+  })
+  total?: number | null;
 
   @ApiProperty({ description: 'Items per page' })
   limit: number;
@@ -64,8 +115,11 @@ export class PaginationMetaDto {
   @ApiProperty({ description: 'Current page number (1-based)' })
   page: number;
 
-  @ApiProperty({ description: 'Total number of pages' })
-  totalPages: number;
+  @ApiPropertyOptional({ 
+    description: 'Total number of pages (null if total is unknown)',
+    nullable: true,
+  })
+  totalPages?: number | null;
 }
 
 export class PaginatedResponseDto<T> {

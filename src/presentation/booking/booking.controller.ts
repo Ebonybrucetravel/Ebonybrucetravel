@@ -9,6 +9,9 @@ import {
   Request,
   ForbiddenException,
   NotFoundException,
+  BadRequestException,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
@@ -19,12 +22,14 @@ import { CreateBookingUseCase } from '@application/booking/use-cases/create-book
 import { CreateGuestBookingUseCase } from '@application/booking/use-cases/create-guest-booking.use-case';
 import { SearchFlightsUseCase } from '@application/booking/use-cases/search-flights.use-case';
 import { ListOffersUseCase } from '@application/booking/use-cases/list-offers.use-case';
+import { CancelDuffelOrderUseCase } from '@application/booking/use-cases/cancel-duffel-order.use-case';
+import { HandleDuffelWebhookUseCase } from '@application/booking/use-cases/handle-duffel-webhook.use-case';
 import { BookingService } from '@domains/booking/services/booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CreateGuestBookingDto } from './dto/create-guest-booking.dto';
 import { SearchFlightsDto } from './dto/search-flights.dto';
 import { SearchFlightsResponseDto } from './dto/flight-offer-response.dto';
-import { PaginationQueryDto } from './dto/pagination.dto';
+import { PaginationQueryDto, ListOffersQueryDto } from './dto/pagination.dto';
 
 @ApiTags('Bookings')
 @Controller('bookings')
@@ -34,6 +39,8 @@ export class BookingController {
     private readonly createGuestBookingUseCase: CreateGuestBookingUseCase,
     private readonly searchFlightsUseCase: SearchFlightsUseCase,
     private readonly listOffersUseCase: ListOffersUseCase,
+    private readonly cancelDuffelOrderUseCase: CancelDuffelOrderUseCase,
+    private readonly handleDuffelWebhookUseCase: HandleDuffelWebhookUseCase,
     private readonly bookingService: BookingService,
   ) {}
 
@@ -71,15 +78,14 @@ export class BookingController {
     status: 200,
     description: 'Paginated flight offers',
   })
-  async listOffers(
-    @Query('offer_request_id') offerRequestId: string,
-    @Query() pagination: PaginationQueryDto,
-  ) {
-    if (!offerRequestId) {
+  async listOffers(@Query() query: ListOffersQueryDto) {
+    const { offer_request_id, ...pagination } = query;
+
+    if (!offer_request_id) {
       throw new NotFoundException('offer_request_id is required');
     }
 
-    const results = await this.listOffersUseCase.execute(offerRequestId, pagination);
+    const results = await this.listOffersUseCase.execute(offer_request_id, pagination);
     return {
       success: true,
       data: results.data,
@@ -190,5 +196,63 @@ export class BookingController {
       data: booking,
       message: 'Booking retrieved successfully',
     };
+  }
+
+  @Post(':id/cancel')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Cancel a Duffel flight booking' })
+  @ApiResponse({ status: 200, description: 'Booking cancelled successfully' })
+  async cancel(@Param('id') id: string, @Request() req) {
+    const booking = await this.bookingService.getBookingById(id);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    // Check access: Admin can cancel any, customer can only cancel their own
+    const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
+    if (!isAdmin && booking.userId !== req.user.id) {
+      throw new ForbiddenException('You do not have access to cancel this booking');
+    }
+
+    // Only allow cancellation of Duffel flight bookings
+    if (booking.provider !== 'DUFFEL') {
+      throw new BadRequestException(
+        'This endpoint only supports cancellation of Duffel flight bookings.',
+      );
+    }
+
+    if (
+      booking.productType !== 'FLIGHT_INTERNATIONAL' &&
+      booking.productType !== 'FLIGHT_DOMESTIC'
+    ) {
+      throw new BadRequestException('This endpoint only supports cancellation of flight bookings.');
+    }
+
+    const result = await this.cancelDuffelOrderUseCase.execute(id, req.user.id);
+
+    return {
+      success: true,
+      data: {
+        bookingId: id,
+        cancellationId: result.cancellationId,
+        refundAmount: result.refundAmount,
+        message: 'Booking cancelled successfully',
+      },
+      message: 'Booking cancelled successfully',
+    };
+  }
+
+  @Post('duffel/webhook')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Duffel webhook endpoint (handles order updates)' })
+  @ApiResponse({ status: 200, description: 'Webhook received successfully' })
+  async handleDuffelWebhook(@Body() body: any) {
+    // Duffel webhooks don't require signature verification like Stripe
+    // but you can add verification if Duffel provides it
+    await this.handleDuffelWebhookUseCase.execute(body);
+    return { received: true };
   }
 }

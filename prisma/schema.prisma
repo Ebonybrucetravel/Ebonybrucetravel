@@ -12,13 +12,15 @@ datasource db {
 
 // User model for authentication and customer/admin management
 model User {
-  id       String   @id @default(cuid())
-  email    String   @unique
-  password String // Hashed password (bcrypt)
-  name     String?
-  role     UserRole @default(CUSTOMER)
-  phone    String?
-  image    String? // Profile image URL
+  id          String    @id @default(cuid())
+  email       String    @unique
+  password    String // Hashed password (bcrypt)
+  name        String?
+  role        UserRole  @default(CUSTOMER)
+  phone       String?
+  image       String? // Profile image URL
+  dateOfBirth DateTime? // Date of birth
+  gender      String? // Gender (Male, Female, Other, Prefer not to say)
 
   // Relations
   bookings          Booking[] // User's bookings
