@@ -2,13 +2,12 @@
 import React, { useState, useMemo } from "react";
 import { useLanguage } from "../context/LanguageContext";
 
-interface ResultItem {
+interface SearchResult {
   id: string;
   provider: string;
   title: string;
   subtitle: string;
   price: string;
-  imageUrl?: string;
   time?: string;
   duration?: string;
   stops?: string;
@@ -16,13 +15,17 @@ interface ResultItem {
   baggage?: string;
   aircraft?: string;
   layoverDetails?: string;
+  image?: string;
+  amenities?: string[];
+  features?: string[];
+  type?: "flights" | "hotels" | "car-rentals";
 }
 
 interface SearchResultsProps {
-  results: ResultItem[];
+  results: SearchResult[];
   searchParams: any;
   onClear: () => void;
-  onSelect?: (item: ResultItem) => void;
+  onSelect?: (item: SearchResult) => void;
 }
 
 const SearchResults: React.FC<SearchResultsProps> = ({
@@ -48,7 +51,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     "2+ Stops",
   ]);
 
-  // Hotel Specific Filters (Matching Screenshot)
+  // Hotel Specific Filters
   const [popularFilters, setPopularFilters] = useState<string[]>([
     "Free Wi-Fi",
     "Free breakfast",
@@ -68,25 +71,54 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       );
     }
 
-    // Price range filtering
+    // Price range filtering - SAFE VERSION
     filtered = filtered.filter((item) => {
-      const numericPrice = parseInt(item.price.replace(/[^\d]/g, ""));
-      return numericPrice <= priceRange;
+      try {
+        const numericPrice = extractNumericPrice(item.price);
+        return numericPrice <= priceRange;
+      } catch {
+        return true; // If price parsing fails, include the item
+      }
     });
 
-    // Sorting
+    // Sorting - SAFE VERSION
     if (sortBy === "price") {
-      filtered.sort(
-        (a, b) =>
-          parseInt(a.price.replace(/[^\d]/g, "")) -
-          parseInt(b.price.replace(/[^\d]/g, ""))
-      );
+      filtered.sort((a, b) => {
+        try {
+          const priceA = extractNumericPrice(a.price);
+          const priceB = extractNumericPrice(b.price);
+          return priceA - priceB;
+        } catch {
+          return 0;
+        }
+      });
     } else if (sortBy === "time" && searchType === "flights") {
       filtered.sort((a, b) => (a.time || "").localeCompare(b.time || ""));
     }
 
     return filtered;
   }, [initialResults, stopsFilter, priceRange, sortBy, searchType]);
+
+  // Helper function to safely extract numeric price
+  const extractNumericPrice = (priceString: string): number => {
+    if (!priceString) return 0;
+    
+    // Remove currency symbols and commas
+    const cleanString = priceString.replace(/[^\d.]/g, '');
+    const numeric = parseFloat(cleanString);
+    
+    // If parsing fails, try alternative methods
+    if (isNaN(numeric)) {
+      // Try extracting numbers using regex
+      const matches = priceString.match(/\d+(\.\d+)?/);
+      if (matches) {
+        return parseFloat(matches[0]);
+      }
+      return 0;
+    }
+    
+    return numeric;
+  };
 
   const handleToggleSaved = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -98,7 +130,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     });
   };
 
-  const handleSelectResult = (item: ResultItem) => {
+  const handleSelectResult = (item: SearchResult) => {
+    if (!item || !item.id) return;
+    
     setIsBooking(item.id);
     setTimeout(() => {
       if (onSelect) onSelect(item);
@@ -356,7 +390,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     </div>
   );
 
-  const renderHotelCard = (item: ResultItem) => (
+  const renderHotelCard = (item: SearchResult) => (
     <div
       key={item.id}
       className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2 duration-300"
@@ -365,7 +399,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         <div className="w-full md:w-[320px] h-64 md:h-auto overflow-hidden relative flex-shrink-0">
           <img
             src={
-              item.imageUrl ||
+              item.image ||
               `https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600`
             }
             className="w-full h-full object-cover transition duration-500 group-hover:scale-110"
@@ -398,7 +432,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         <div className="flex-1 p-8">
           <div className="mb-4">
             <h3 className="text-xl font-black text-gray-900 tracking-tight leading-tight group-hover:text-[#33a8da] transition">
-              {item.title}
+              {item.title || "Hotel Name"}
             </h3>
             <div className="flex items-center gap-2 mt-2">
               <div className="text-[#33a8da]">
@@ -411,7 +445,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 </svg>
               </div>
               <span className="text-[11px] font-bold text-gray-500">
-                {item.subtitle}
+                {item.subtitle || "Hotel Location"}
               </span>
               <span className="text-[10px] font-black text-[#33a8da] uppercase tracking-tighter cursor-pointer hover:underline ml-2">
                 Explore on map
@@ -425,7 +459,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 <svg
                   key={i}
                   className={`w-3.5 h-3.5 ${
-                    i < (item.rating || 5) ? "fill-current" : "text-gray-200"
+                    i < (item.rating || 4) ? "fill-current" : "text-gray-200"
                   }`}
                   viewBox="0 0 20 20"
                 >
@@ -435,7 +469,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] font-black bg-blue-50 text-[#33a8da] px-2 py-0.5 rounded">
-                5.0/5
+                {(item.rating || 4).toFixed(1)}/5
               </span>
               <span className="text-[10px] text-gray-300 font-bold uppercase tracking-widest">
                 (200 Reviews)
@@ -444,25 +478,17 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           </div>
 
           <div className="flex flex-wrap gap-2 mb-8">
-            <span className="text-[9px] font-black text-gray-500 bg-gray-50 px-3 py-1.5 rounded uppercase tracking-widest border border-gray-100">
-              Free Breakfast
-            </span>
-            <span className="text-[9px] font-black text-gray-500 bg-gray-50 px-3 py-1.5 rounded uppercase tracking-widest border border-gray-100">
-              Beach Access
-            </span>
+            {item.amenities?.slice(0, 3).map((amenity, index) => (
+              <span key={index} className="text-[9px] font-black text-gray-500 bg-gray-50 px-3 py-1.5 rounded uppercase tracking-widest border border-gray-100">
+                {amenity}
+              </span>
+            ))}
           </div>
 
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pt-6 border-t border-gray-50">
             <div className="space-y-1">
-              <p className="text-[10px] line-through text-gray-400 font-bold uppercase tracking-widest">
-                {currency.symbol}
-                {(
-                  parseInt(item.price.replace(/[^\d]/g, "")) * 1.2
-                ).toLocaleString()}
-                .00
-              </p>
               <p className="text-2xl font-black text-[#33a8da] tracking-tighter">
-                {item.price}
+                {item.price || "$0"}
               </p>
             </div>
             <button
@@ -478,7 +504,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     </div>
   );
 
-  const renderFlightCard = (item: ResultItem) => (
+  const renderFlightCard = (item: SearchResult) => (
     <div
       key={item.id}
       className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2 duration-300"
@@ -490,7 +516,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               <div className="w-10 h-10 bg-white border border-gray-100 rounded-lg flex items-center justify-center p-1">
                 <img
                   src={`https://ui-avatars.com/api/?name=${encodeURIComponent(
-                    item.provider
+                    item.provider || "Airline"
                   )}&background=f0f9ff&color=33a8da`}
                   className="w-full h-full object-contain"
                   alt=""
@@ -498,22 +524,22 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               </div>
               <div>
                 <h4 className="text-sm font-black text-gray-900 tracking-tight">
-                  {item.provider}
+                  {item.provider || "Airline"}
                 </h4>
                 <p className="text-[10px] font-bold text-gray-400">
-                  {item.subtitle}
+                  {item.subtitle || "Flight details"}
                 </p>
               </div>
             </div>
             <div className="bg-yellow-400 text-white font-black text-[10px] px-2 py-0.5 rounded tracking-tighter">
-              {(4 + Math.random()).toFixed(1)}
+              {(item.rating || 4.5).toFixed(1)}
             </div>
           </div>
 
           <div className="flex items-center gap-12 lg:gap-20">
             <div className="text-center">
               <p className="text-2xl font-black text-gray-900">
-                {item.time || "08:00"}
+                {item.time?.split(" - ")[0] || "08:00"}
               </p>
               <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">
                 Depart
@@ -540,7 +566,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             </div>
             <div className="text-center">
               <p className="text-2xl font-black text-gray-900">
-                {item.duration?.includes("h") ? "09:15" : "14:45"}
+                {item.time?.split(" - ")[1] || (item.duration?.includes("h") ? "09:15" : "14:45")}
               </p>
               <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">
                 Arrival
@@ -551,7 +577,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
         <div className="w-full md:w-[220px] bg-[#fdfdfd] border-l border-gray-100 flex flex-col items-center justify-center p-8 text-center">
           <div className="mb-6">
-            <p className="text-2xl font-black text-gray-900">{item.price}</p>
+            <p className="text-2xl font-black text-gray-900">{item.price || "$0"}</p>
             <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">
               Per Traveler
             </p>
@@ -658,7 +684,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4 px-2">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-blue-50 text-[#33a8da] rounded-lg flex items-center justify-center font-black text-xs">
-                36
+                {filteredResults.length}
               </div>
               <h3 className="font-black text-gray-900 tracking-tight">
                 {searchType === "hotels" ? "Properties Found" : "Flights Found"}
@@ -686,13 +712,24 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           </div>
 
           <div className="space-y-4">
-            {filteredResults
-              .slice(0, visibleCount)
-              .map((item) =>
-                searchType === "hotels"
-                  ? renderHotelCard(item)
-                  : renderFlightCard(item)
-              )}
+            {filteredResults.length > 0 ? (
+              filteredResults
+                .slice(0, visibleCount)
+                .map((item) =>
+                  searchType === "hotels"
+                    ? renderHotelCard(item)
+                    : renderFlightCard(item)
+                )
+            ) : (
+              <div className="bg-white rounded-[32px] p-24 text-center border-4 border-dashed border-gray-100">
+                <h3 className="text-2xl font-black text-gray-900 mb-2">
+                  No results found
+                </h3>
+                <p className="text-gray-400 font-bold">
+                  Try adjusting your filters to find your perfect travel match.
+                </p>
+              </div>
+            )}
           </div>
 
           {filteredResults.length > visibleCount && (
@@ -703,17 +740,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               >
                 Show more {searchType === "hotels" ? "properties" : "flights"}
               </button>
-            </div>
-          )}
-
-          {filteredResults.length === 0 && (
-            <div className="bg-white rounded-[32px] p-24 text-center border-4 border-dashed border-gray-100">
-              <h3 className="text-2xl font-black text-gray-900 mb-2">
-                No results found
-              </h3>
-              <p className="text-gray-400 font-bold">
-                Try adjusting your filters to find your perfect travel match.
-              </p>
             </div>
           )}
         </div>

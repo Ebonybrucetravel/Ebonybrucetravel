@@ -11,6 +11,8 @@ class ApiError extends Error {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const url = `${API_BASE}${endpoint}`;
+  
   const config = {
     ...options,
     headers: {
@@ -21,17 +23,39 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   };
 
   try {
-    const response = await fetch(`${API_BASE}${endpoint}`, config);
-    const data = await response.json();
+    const response = await fetch(url, config);
+    
+    // Check if the response is actually JSON before parsing
+    const contentType = response.headers.get("content-type");
+    let data: any;
+    
+    if (contentType && contentType.includes("application/json")) {
+      data = await response.json();
+    } else {
+      // Fallback for non-JSON responses (like HTML error pages)
+      const text = await response.text();
+      data = { message: text || response.statusText };
+    }
 
     if (!response.ok) {
-      throw new ApiError(data.message || 'Something went wrong', response.status);
+      throw new ApiError(data.message || `Server error: ${response.status}`, response.status);
     }
 
     return data;
-  } catch (error) {
-    if (error instanceof ApiError) throw error;
-    throw new Error('Network error or server unreachable');
+  } catch (error: any) {
+    // Log the full error to the console for developer debugging
+    console.error(`[API Request Error] ${options.method || 'GET'} ${url}:`, error);
+
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    // Handle standard fetch errors (CORS, DNS, Network Offline)
+    if (error.name === 'TypeError' && (error.message === 'Failed to fetch' || error.message.includes('NetworkError'))) {
+      throw new Error('Connection refused: Please check your internet or verify the server CORS policy.');
+    }
+
+    throw new Error(error.message || 'An unexpected error occurred during the request.');
   }
 }
 
@@ -46,6 +70,15 @@ export const authApi = {
     return request<any>('/api/v1/auth/register', {
       method: 'POST',
       body: JSON.stringify(userData),
+    });
+  },
+};
+
+export const bookingApi = {
+  searchFlights: (searchParams: any) => {
+    return request<any>('/api/v1/bookings/search/flights', {
+      method: 'POST',
+      body: JSON.stringify(searchParams),
     });
   },
 };

@@ -18,6 +18,8 @@ import ReviewTrip from "../components/ReviewTrip";
 import BookingSuccess from "../components/BookingSuccess";
 import BookingFailed from "../components/BookingFailed";
 import AuthModal from "../components/AuthModal";
+import ContentPage from '../components/ContentPage';
+import AboutUs from '../components/AboutUs';
 import Profile from "../components/Profile";
 import AdminLogin from "../components/AdminLogin";
 import AdminDashboard from "../components/AdminDashboard";
@@ -68,6 +70,17 @@ export interface SearchResult {
   amenities?: string[];
   features?: string[];
   type?: "flights" | "hotels" | "car-rentals";
+  // New fields for real API data
+  realData?: {
+    departureTime?: string;
+    arrivalTime?: string;
+    airline?: string;
+    flightNumber?: string;
+    totalDuration?: number;
+    stops?: number;
+    price?: number;
+    currency?: string;
+  };
 }
 
 export interface Booking {
@@ -259,6 +272,8 @@ export default function Home() {
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
   const [selectedItem, setSelectedItem] = useState<SearchResult | null>(null);
   const [searchTime, setSearchTime] = useState<number>(0);
+  const [isRealApiUsed, setIsRealApiUsed] = useState(false);
+  const [apiValidationErrors, setApiValidationErrors] = useState<string[]>([]);
 
   const [activeSearchTab, setActiveSearchTab] = useState<'flights' | 'hotels' | 'cars'>('flights');
   const [activeNavTab, setActiveNavTab] = useState<'flights' | 'hotels' | 'cars'>('flights');
@@ -319,6 +334,116 @@ export default function Home() {
   const [activeProfileTab, setActiveProfileTab] = useState<string>("details");
 
   const showNav = currentView !== "admin-login" && currentView !== "admin-dashboard";
+
+  // Function for booking creation
+  const handleCreateBooking = useCallback(async (bookingData: any) => {
+    try {
+      const endpoint = isLoggedIn 
+        ? "https://ebony-bruce-production.up.railway.app/api/v1/bookings"
+        : "https://ebony-bruce-production.up.railway.app/api/v1/bookings/guest";
+
+      console.log("📤 Sending booking to:", endpoint);
+      console.log("📦 Booking data:", bookingData);
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(bookingData),
+      });
+
+      console.log("📡 Booking response status:", response.status);
+      const result = await response.json();
+      console.log("📡 Booking response:", result);
+      
+      if (response.ok) {
+        console.log("✅ Booking created successfully:", result);
+        return { success: true, data: result };
+      } else {
+        console.error("❌ Booking failed:", result);
+        return { success: false, error: result.message || "Booking failed" };
+      }
+    } catch (error) {
+      console.error("❌ Booking error:", error);
+      return { success: false, error: "Network error" };
+    }
+  }, [isLoggedIn]);
+
+  // Updated handleBookingComplete function
+  const handleBookingComplete = useCallback(async () => {
+    if (selectedItem && searchParams) {
+      // Extract numeric price from selectedItem.price (which might be "$120" or "$120.00")
+      const priceStr = selectedItem.price.replace('$', '').replace(',', '');
+      const basePrice = parseFloat(priceStr) * 100; // Convert to kobo/cents
+      
+      // Format dates in ISO format as shown in Postman
+      const departureDate = new Date(searchParams.segments?.[0]?.date || new Date());
+      const arrivalDate = new Date(departureDate.getTime() + 90 * 60 * 1000); // 90 minutes later
+      
+      const bookingData = {
+        productType: "FLIGHT_DOMESTIC",
+        provider: "TRIPS_AFRICA",
+        basePrice: isNaN(basePrice) ? 150000 : Math.round(basePrice),
+        currency: "NGN",
+        bookingData: {
+          flightNumber: selectedItem.realData?.flightNumber || selectedItem.title?.replace('Flight ', '') || "AP123",
+          departure: searchParams.segments?.[0]?.from || "Lagos (LOS)",
+          destination: searchParams.segments?.[0]?.to || "Abuja (ABV)",
+          departureDate: departureDate.toISOString(),
+          arrivalDate: arrivalDate.toISOString(),
+          airline: selectedItem.provider,
+          class: searchParams.cabinClass || "Economy"
+        },
+        passengerInfo: {
+          firstName: user.name?.split(' ')[0] || "John",
+          lastName: user.name?.split(' ')[1] || "Doe",
+          email: user.email || "john.doe@example.com",
+          phone: user.phone || "+2348012345678",
+          ...(user.dob && { dateOfBirth: user.dob }) // Only include if exists
+        }
+      };
+
+      console.log("📦 Final booking data to send:", bookingData);
+      const bookingResult = await handleCreateBooking(bookingData);
+      
+      if (bookingResult.success) {
+        // Create local booking record
+        const newBooking: Booking = {
+          id: Date.now().toString(),
+          type: "flight",
+          title: `${searchParams.segments?.[0]?.from || "LAG"} to ${searchParams.segments?.[0]?.to || "ABV"}`,
+          provider: selectedItem.provider,
+          subtitle: selectedItem.title,
+          date: new Date().toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          }),
+          duration: selectedItem.duration,
+          status: "Confirmed",
+          price: selectedItem.price,
+          currency: "NGN",
+          iconBg: "bg-blue-50",
+          imageUrl: selectedItem.image,
+          bookingReference: `#${bookingResult.data?.bookingReference || Date.now().toString().slice(-6)}`,
+          time: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        };
+
+        setUserBookings((prev) => [newBooking, ...prev]);
+        setCurrentView("success");
+      } else {
+        console.error("❌ Booking failed with error:", bookingResult.error);
+        setCurrentView("failed");
+      }
+    } else {
+      console.error("❌ No selected item or search params for booking");
+      setCurrentView("failed");
+    }
+  }, [selectedItem, searchParams, user, handleCreateBooking]);
 
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY;
@@ -533,6 +658,7 @@ export default function Home() {
     console.log("Booking cancelled:", booking.id);
   }, []);
 
+  
   const handleSearch = useCallback(async (data: SearchParams) => {
     const startTime = Date.now();
     setSearchParams(data);
@@ -540,38 +666,259 @@ export default function Home() {
     setSearchError(null);
     setSearchResults([]);
     setSearchTime(0);
-
-    try {
-      console.log("🚀 Starting search with fallback results");
-
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      const fallbackType = data?.type || "flights";
-      const fallbackResults =
-        FALLBACK_RESULTS[fallbackType] || FALLBACK_RESULTS.flights;
-
-      const enhancedResults = fallbackResults.map((result) => ({
-        ...result,
-        type: result.type ?? fallbackType,
-      }));
-
-      setSearchResults(enhancedResults);
-      setSearchTime(Date.now() - startTime);
-
-      setTimeout(() => {
-        const el = document.getElementById("search-results");
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 100);
-    } catch (error: any) {
-      console.error("❌ Search failed:", error);
-      setSearchError("Showing premium travel options");
-      const fallbackType = data?.type || "flights";
+    setIsRealApiUsed(false);
+    setApiValidationErrors([]);
+  
+    // Handle non-flight searches with fallback
+    if (data.type !== "flights") {
+      const fallbackType = data.type || "flights";
+      const fallbackResults = FALLBACK_RESULTS[fallbackType] || FALLBACK_RESULTS.flights;
       setSearchResults(
-        FALLBACK_RESULTS[fallbackType] || FALLBACK_RESULTS.flights
+        fallbackResults.map((r) => ({
+          ...r,
+          type: r.type ?? (fallbackType as any),
+        }))
       );
+      setIsSearching(false);
       setSearchTime(Date.now() - startTime);
+      setTimeout(() => {
+        document.getElementById("search-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+      return;
+    }
+  
+    try {
+      console.log("🚀 Starting real flight search with params:", data);
+  
+      // Prepare search parameters
+      const origin = (data.segments?.[0]?.from ?? "LOS").toUpperCase().trim();
+      const destination = (data.segments?.[0]?.to ?? "ABV").toUpperCase().trim();
+      let departureDate = data.segments?.[0]?.date;
+      if (!departureDate) {
+        departureDate = new Date().toISOString().split("T")[0];
+      }
+  
+      let cabinClass = (data.cabinClass ?? "economy").toLowerCase();
+      if (!["economy", "business", "first"].includes(cabinClass)) {
+        cabinClass = "economy";
+      }
+  
+      const passengers = Math.max(1, Math.min(9, Number(data.travellers) || 1));
+  
+      // ──────────────────────────────────────────────────────────────
+      // STEP 1: Create the offer request
+      // ──────────────────────────────────────────────────────────────
+      const searchEndpoint = "https://ebony-bruce-production.up.railway.app/api/v1/bookings/search/flights";
+  
+      const searchBody = {
+        origin,
+        destination,
+        departureDate,
+        passengers,
+        cabinClass,
+        ...(data.tripType === "round-trip" && data.returnDate && {
+          returnDate: data.returnDate,
+        }),
+        // Add these fields only if your backend actually requires them:
+        // tripType: data.tripType || "one-way",
+        // preferredAirlines: ["AP", "IB", "W3"],
+      };
+  
+      console.log("POST to create offer request →", searchEndpoint);
+      console.log("Request body:", JSON.stringify(searchBody, null, 2));
+  
+      const searchResponse = await fetch(searchEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          // Uncomment and add real token if your API requires authentication
+          // "Authorization": `Bearer ${yourTokenHere}`,
+        },
+        body: JSON.stringify(searchBody),
+      });
+  
+      const searchText = await searchResponse.text();
+      let searchData;
+      try {
+        searchData = JSON.parse(searchText);
+      } catch (e) {
+        console.error("Invalid JSON from search endpoint:", searchText.substring(0, 300));
+        throw new Error("Invalid response from flight search creation");
+      }
+  
+      if (!searchResponse.ok) {
+        console.error("Offer request creation failed:", searchData);
+        const errorMsg = searchData?.message || searchData?.error || `HTTP ${searchResponse.status}`;
+        throw new Error(`Could not create flight search: ${errorMsg}`);
+      }
+  
+      // Extract offer_request_id — adjust this path based on your real response
+      const offerRequestId =
+        searchData?.data?.offer_request_id ||
+        searchData?.offer_request_id ||
+        searchData?.id ||
+        searchData?.requestId;
+  
+      if (!offerRequestId || typeof offerRequestId !== "string" || !offerRequestId.startsWith("orq_")) {
+        console.error("No valid offer_request_id received:", searchData);
+        throw new Error("Missing or invalid offer_request_id from backend");
+      }
+  
+      console.log("✅ Offer request created → ID:", offerRequestId);
+  
+      // ──────────────────────────────────────────────────────────────
+      // STEP 2: Fetch all offers (with pagination)
+      // ──────────────────────────────────────────────────────────────
+      let allOffers: any[] = [];
+      let nextCursor: string | null = null;
+      let page = 1;
+  
+      do {
+        const offersUrl = new URL("https://ebony-bruce-production.up.railway.app/api/v1/bookings/offers");
+        offersUrl.searchParams.set("offer_request_id", offerRequestId);
+        offersUrl.searchParams.set("limit", "20");
+        if (nextCursor) {
+          offersUrl.searchParams.set("cursor", nextCursor);
+        }
+  
+        console.log(`GET offers page ${page}: ${offersUrl.toString()}`);
+  
+        const offersResponse = await fetch(offersUrl.toString(), {
+          method: "GET",
+          headers: {
+            "Accept": "application/json",
+            // "Authorization": `Bearer ${yourTokenHere}`, // if needed
+          },
+        });
+  
+        const offersText = await offersResponse.text();
+        let offersData;
+        try {
+          offersData = JSON.parse(offersText);
+        } catch {
+          console.error("Invalid JSON from offers endpoint:", offersText.substring(0, 300));
+          throw new Error("Invalid offers response format");
+        }
+  
+        if (!offersResponse.ok) {
+          console.error("Offers fetch failed:", offersData);
+          throw new Error(offersData?.message || `Offers fetch failed (${offersResponse.status})`);
+        }
+  
+        // Extract offers array — adjust based on your real response structure
+        const pageOffers =
+          offersData?.data ||
+          offersData?.offers ||
+          offersData?.results ||
+          offersData?.flights ||
+          (Array.isArray(offersData) ? offersData : []);
+  
+        allOffers = [...allOffers, ...pageOffers];
+  
+        // Handle pagination — adjust field name as per your API
+        nextCursor =
+          offersData?.next_cursor ||
+          offersData?.pagination?.next ||
+          offersData?.next ||
+          offersData?.meta?.next_cursor ||
+          null;
+  
+        page++;
+        // Safety: prevent infinite loops or too many requests
+        if (page > 6) {
+          console.warn("Stopping pagination after 6 pages");
+          break;
+        }
+      } while (nextCursor);
+  
+      console.log(`Total offers received: ${allOffers.length}`);
+  
+      if (allOffers.length === 0) {
+        setSearchError("No available flights found for this route and date.");
+        setSearchResults(FALLBACK_RESULTS.flights);
+        setIsRealApiUsed(false);
+      } else {
+        setIsRealApiUsed(true);
+  
+        // Transform to your SearchResult format
+        const transformedResults: SearchResult[] = allOffers.map((offer: any, index: number) => {
+          // ── Customize these extractions based on your actual /offers response ──
+          const slices = offer.slices || offer.itineraries?.[0]?.slices || [];
+          const firstSegment = slices[0] || {};
+          const lastSegment = slices[slices.length - 1] || {};
+  
+          const airline = offer.owner?.name || firstSegment.marketing_carrier?.name || firstSegment.airline || "Unknown Airline";
+          const flightNumber = firstSegment.flight_number || firstSegment.flightNumber || `FL${1000 + index}`;
+          const totalPrice = offer.total_amount || offer.amount || offer.price?.amount || 150000;
+          const currency = offer.total_currency || offer.currency || "NGN";
+  
+          const durationMinutes = offer.duration_minutes || offer.total_duration || 90;
+          const hours = Math.floor(durationMinutes / 60);
+          const minutes = durationMinutes % 60;
+          const durationStr = `${hours}h ${minutes.toString().padStart(2, "0")}m`;
+  
+          const stopsCount = Math.max(0, slices.length - 1);
+          const stopsText = stopsCount === 0 ? "Direct" : stopsCount === 1 ? "1 stop" : `${stopsCount} stops`;
+  
+          let departureTime = firstSegment.departing_at || firstSegment.departure_time || firstSegment.departs_at;
+          let arrivalTime = lastSegment.arriving_at || lastSegment.arrival_time || lastSegment.arrives_at;
+  
+          let timeDisplay = "08:00 – 09:30";
+          if (departureTime && arrivalTime) {
+            try {
+              const dep = new Date(departureTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+              const arr = new Date(arrivalTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+              timeDisplay = `${dep} – ${arr}`;
+            } catch {}
+          }
+  
+          return {
+            id: offer.id || `offer-${offerRequestId}-${index}`,
+            provider: airline,
+            title: `Flight ${flightNumber}`,
+            subtitle: `${cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1)} • ${origin} → ${destination}`,
+            price: `₦${Number(totalPrice).toLocaleString()}`,
+            time: timeDisplay,
+            duration: durationStr,
+            stops: stopsText,
+            rating: 4.3 + Math.random() * 0.6,
+            baggage: "23 kg checked + 8 kg cabin", // improve when real data available
+            aircraft: firstSegment.aircraft?.name || "Boeing 737 / Airbus A320",
+            layoverDetails: stopsText === "Direct" ? "Non-stop" : stopsText,
+            image: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400",
+            type: "flights" as const,
+            realData: {
+              departureTime,
+              arrivalTime,
+              airline,
+              flightNumber,
+              totalDuration: durationMinutes,
+              stops: stopsCount,
+              price: Number(totalPrice),
+              currency,
+            },
+          };
+        });
+  
+        setSearchResults(transformedResults);
+      }
+    } catch (error: any) {
+      console.error("❌ Flight search failed:", error);
+      const errorMessage = error.message?.includes("offer_request_id")
+        ? "Flight search service unavailable. Please try again later."
+        : error.message || "Unable to fetch live flights. Showing curated options.";
+      setSearchError(errorMessage);
+      setSearchResults(FALLBACK_RESULTS.flights);
+      setIsRealApiUsed(false);
     } finally {
       setIsSearching(false);
+      setSearchTime(Date.now() - startTime);
+  
+      // Scroll to results
+      setTimeout(() => {
+        document.getElementById("search-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
     }
   }, []);
 
@@ -614,58 +961,6 @@ export default function Home() {
     }
   }, []);
 
-  const handleBookingComplete = useCallback(() => {
-    if (selectedItem) {
-      const newBooking: Booking = {
-        id: Date.now().toString(),
-        type:
-          selectedItem.type === "flights"
-            ? "flight"
-            : selectedItem.type === "hotels"
-            ? "hotel"
-            : "car",
-        title: selectedItem.title,
-        provider: selectedItem.provider,
-        subtitle: selectedItem.subtitle,
-        date:
-          new Date().toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-          }) +
-          " – " +
-          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString(
-            "en-US",
-            {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-            }
-          ),
-        duration: selectedItem.duration,
-        status: "Confirmed",
-        price: selectedItem.price,
-        currency: "NGN",
-        iconBg:
-          selectedItem.type === "flights"
-            ? "bg-blue-50"
-            : selectedItem.type === "hotels"
-            ? "bg-yellow-50"
-            : "bg-purple-50",
-        imageUrl: selectedItem.image,
-        bookingReference: `#${Date.now().toString().slice(-6)}`,
-        time: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      };
-
-      setUserBookings((prev) => [newBooking, ...prev]);
-    }
-
-    setCurrentView("success");
-  }, [selectedItem]);
-
   const handleBookingFailed = useCallback(() => {
     setCurrentView("failed");
   }, []);
@@ -682,6 +977,7 @@ export default function Home() {
     setCurrentView("home");
     setSearchResults([]);
     setSearchError(null);
+    setApiValidationErrors([]);
   }, []);
 
   const handleSignOut = useCallback(() => {
@@ -730,6 +1026,7 @@ export default function Home() {
     if (currentView !== "home") {
       setSearchResults([]);
       setSearchError(null);
+      setApiValidationErrors([]);
     }
   }, [currentView]);
 
@@ -760,8 +1057,9 @@ export default function Home() {
             onTabChange={handleTabChange}
           />
           
+         
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-0">
-            {(isSearching || searchResults.length > 0 || searchError) && (
+            {(isSearching || searchResults.length > 0 || searchError || apiValidationErrors.length > 0) && (
               <section
                 id="search-results"
                 className="scroll-mt-24"
@@ -770,19 +1068,25 @@ export default function Home() {
                   <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-8 text-center shadow-lg border border-gray-200/50 flex flex-col items-center animate-pulse">
                     <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin mb-4"></div>
                     <h3 className="text-xl font-bold text-gray-900 mt-4">
-                      Searching premium options...
+                      {searchParams?.type === "flights" 
+                        ? "Searching real-time flights..." 
+                        : "Searching premium options..."}
                     </h3>
                     <p className="text-gray-500 mt-1">
-                      Fetching the best travel deals for you
+                      {searchParams?.type === "flights" 
+                        ? "Fetching live flight data from airlines" 
+                        : "Fetching the best travel deals for you"}
                     </p>
                     <div className="mt-3 w-full max-w-md bg-gray-100 rounded-full h-1.5">
                       <div className="bg-blue-500 h-1.5 rounded-full animate-pulse w-3/4"></div>
                     </div>
                     <p className="text-sm text-blue-600 mt-3">
-                      Premium Travel Network
+                      {searchParams?.type === "flights" 
+                        ? "Live Flight Search Network" 
+                        : "Premium Travel Network"}
                     </p>
                   </div>
-                ) : searchError ? (
+                ) : searchError || apiValidationErrors.length > 0 ? (
                   <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-8 text-center shadow-lg border border-yellow-100 flex flex-col items-center animate-fade-in">
                     <div className="w-16 h-16 bg-yellow-50 rounded-full flex items-center justify-center text-yellow-500 mb-4">
                       <svg
@@ -800,10 +1104,23 @@ export default function Home() {
                       </svg>
                     </div>
                     <h3 className="text-xl font-bold text-gray-900 mb-2">
-                      {searchError}
+                      {searchError || "Validation errors occurred"}
                     </h3>
+                    {apiValidationErrors.length > 0 && (
+                      <div className="mb-4 text-left">
+                        <p className="text-sm font-medium text-gray-700 mb-2">Please fix these issues:</p>
+                        <ul className="text-sm text-gray-600 space-y-1">
+                          {apiValidationErrors.map((error, index) => (
+                            <li key={index} className="flex items-start">
+                              <span className="text-red-500 mr-2">•</span>
+                              {error}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     <p className="text-gray-600 mb-4">
-                      Premium travel options ready
+                      Showing premium travel options
                     </p>
                     {searchTime > 0 && (
                       <p className="text-sm text-gray-400 mb-3">
@@ -814,7 +1131,7 @@ export default function Home() {
                       onClick={() => searchParams && handleSearch(searchParams)}
                       className="mt-3 px-6 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold rounded-xl shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all hover:shadow-xl active:scale-95"
                     >
-                      Search Again
+                      Try Again
                     </button>
                   </div>
                 ) : (
@@ -822,25 +1139,42 @@ export default function Home() {
                     <div className="flex justify-between items-center">
                       <div>
                         <h2 className="text-2xl font-bold text-gray-900">
-                          Premium Search Results
+                          {isRealApiUsed ? "Live Flight Results" : "Premium Search Results"}
                         </h2>
                         <p className="text-gray-500 text-sm mt-1">
-                          {searchResults.length} premium options found in{" "}
+                          {searchResults.length} {isRealApiUsed ? "real-time" : "premium"} options found in{" "}
                           {(searchTime / 1000).toFixed(2)}s
-                          <span className="ml-2 text-blue-600 text-xs">
-                            ✓ Premium Selection
-                          </span>
+                          {isRealApiUsed ? (
+                            <span className="ml-2 text-green-600 text-xs">
+                              ✓ Live Data
+                            </span>
+                          ) : (
+                            <span className="ml-2 text-blue-600 text-xs">
+                              ✓ Premium Selection
+                            </span>
+                          )}
                         </p>
                       </div>
-                      <button
-                        onClick={() => {
-                          setSearchResults([]);
-                          setSearchError(null);
-                        }}
-                        className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 font-medium hover:bg-gray-100 rounded-lg transition-colors"
-                      >
-                        Clear Results
-                      </button>
+                      <div className="flex items-center gap-3">
+                        {isRealApiUsed && (
+                          <span className="px-3 py-1.5 text-xs font-medium bg-green-100 text-green-800 rounded-full flex items-center gap-1">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Live Data
+                          </span>
+                        )}
+                        <button
+                          onClick={() => {
+                            setSearchResults([]);
+                            setSearchError(null);
+                            setApiValidationErrors([]);
+                          }}
+                          className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 font-medium hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                          Clear Results
+                        </button>
+                      </div>
                     </div>
                     <SearchResults
                       results={searchResults}
@@ -848,6 +1182,7 @@ export default function Home() {
                       onClear={() => {
                         setSearchResults([]);
                         setSearchError(null);
+                        setApiValidationErrors([]);
                       }}
                       onSelect={handleSelectResult}
                     />
