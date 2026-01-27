@@ -41,7 +41,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, onS
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [view]);
 
-  const travelersCount = parseInt(searchParams?.travellers?.match(/\d+/) ? searchParams.travellers.match(/\d+/)[0] : '1');
+  const travelersCount = Math.max(1, Number(searchParams?.travellers) || 1);
   
   // Locations
   const destination = searchParams?.segments?.[0]?.to || searchParams?.location || searchParams?.carPickUp || 'Your Destination';

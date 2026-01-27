@@ -28,6 +28,7 @@ export interface User {
   name: string;
   email: string;
   profilePicture?: string;
+  avatar?: string;
   dob?: string;
   gender?: string;
   phone?: string;
@@ -70,7 +71,6 @@ export interface SearchResult {
   amenities?: string[];
   features?: string[];
   type?: "flights" | "hotels" | "car-rentals";
-  // New fields for real API data
   realData?: {
     departureTime?: string;
     arrivalTime?: string;
@@ -257,9 +257,12 @@ export default function Home() {
   >("home");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [authToken, setAuthToken] = useState<string | null>(null);
   const [user, setUser] = useState<User>({
     name: "",
     email: "",
+    profilePicture: "https://ui-avatars.com/api/?name=Guest&background=f4d9c6&color=9a7d6a&size=56",
+    avatar: "https://ui-avatars.com/api/?name=Guest&background=f4d9c6&color=9a7d6a&size=56", // Add this line
     dob: "1992-05-15",
     gender: "Male",
     phone: "+234 816 500 000",
@@ -335,147 +338,32 @@ export default function Home() {
 
   const showNav = currentView !== "admin-login" && currentView !== "admin-dashboard";
 
-  // Function for booking creation
-  const handleCreateBooking = useCallback(async (bookingData: any) => {
-    try {
-      const endpoint = isLoggedIn 
-        ? "https://ebony-bruce-production.up.railway.app/api/v1/bookings"
-        : "https://ebony-bruce-production.up.railway.app/api/v1/bookings/guest";
-
-      console.log("📤 Sending booking to:", endpoint);
-      console.log("📦 Booking data:", bookingData);
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(bookingData),
-      });
-
-      console.log("📡 Booking response status:", response.status);
-      const result = await response.json();
-      console.log("📡 Booking response:", result);
-      
-      if (response.ok) {
-        console.log("✅ Booking created successfully:", result);
-        return { success: true, data: result };
-      } else {
-        console.error("❌ Booking failed:", result);
-        return { success: false, error: result.message || "Booking failed" };
-      }
-    } catch (error) {
-      console.error("❌ Booking error:", error);
-      return { success: false, error: "Network error" };
-    }
-  }, [isLoggedIn]);
-
-  // Updated handleBookingComplete function
-  const handleBookingComplete = useCallback(async () => {
-    if (selectedItem && searchParams) {
-      // Extract numeric price from selectedItem.price (which might be "$120" or "$120.00")
-      const priceStr = selectedItem.price.replace('$', '').replace(',', '');
-      const basePrice = parseFloat(priceStr) * 100; // Convert to kobo/cents
-      
-      // Format dates in ISO format as shown in Postman
-      const departureDate = new Date(searchParams.segments?.[0]?.date || new Date());
-      const arrivalDate = new Date(departureDate.getTime() + 90 * 60 * 1000); // 90 minutes later
-      
-      const bookingData = {
-        productType: "FLIGHT_DOMESTIC",
-        provider: "TRIPS_AFRICA",
-        basePrice: isNaN(basePrice) ? 150000 : Math.round(basePrice),
-        currency: "NGN",
-        bookingData: {
-          flightNumber: selectedItem.realData?.flightNumber || selectedItem.title?.replace('Flight ', '') || "AP123",
-          departure: searchParams.segments?.[0]?.from || "Lagos (LOS)",
-          destination: searchParams.segments?.[0]?.to || "Abuja (ABV)",
-          departureDate: departureDate.toISOString(),
-          arrivalDate: arrivalDate.toISOString(),
-          airline: selectedItem.provider,
-          class: searchParams.cabinClass || "Economy"
-        },
-        passengerInfo: {
-          firstName: user.name?.split(' ')[0] || "John",
-          lastName: user.name?.split(' ')[1] || "Doe",
-          email: user.email || "john.doe@example.com",
-          phone: user.phone || "+2348012345678",
-          ...(user.dob && { dateOfBirth: user.dob }) // Only include if exists
-        }
-      };
-
-      console.log("📦 Final booking data to send:", bookingData);
-      const bookingResult = await handleCreateBooking(bookingData);
-      
-      if (bookingResult.success) {
-        // Create local booking record
-        const newBooking: Booking = {
-          id: Date.now().toString(),
-          type: "flight",
-          title: `${searchParams.segments?.[0]?.from || "LAG"} to ${searchParams.segments?.[0]?.to || "ABV"}`,
-          provider: selectedItem.provider,
-          subtitle: selectedItem.title,
-          date: new Date().toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-          }),
-          duration: selectedItem.duration,
-          status: "Confirmed",
-          price: selectedItem.price,
-          currency: "NGN",
-          iconBg: "bg-blue-50",
-          imageUrl: selectedItem.image,
-          bookingReference: `#${bookingResult.data?.bookingReference || Date.now().toString().slice(-6)}`,
-          time: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        };
-
-        setUserBookings((prev) => [newBooking, ...prev]);
-        setCurrentView("success");
-      } else {
-        console.error("❌ Booking failed with error:", bookingResult.error);
-        setCurrentView("failed");
-      }
-    } else {
-      console.error("❌ No selected item or search params for booking");
-      setCurrentView("failed");
-    }
-  }, [selectedItem, searchParams, user, handleCreateBooking]);
-
-  useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY;
-    console.log("🔑 API Key Status:", {
-      hasKey: !!apiKey,
-      keyLength: apiKey?.length,
-      keyPrefix: apiKey?.substring(0, 10) + "...",
-      isValid: apiKey?.startsWith("AIza") && (apiKey?.length || 0) > 30,
-    });
-  }, []);
-
+  // Restore session (user, token, bookings)
   useEffect(() => {
     const savedUser = localStorage.getItem("travelUser");
+    const savedToken = localStorage.getItem("authToken");
     const savedBookings = localStorage.getItem("travelBookings");
 
     if (savedUser) {
       try {
-        const parsedUser = JSON.parse(savedUser);
-        setUser(parsedUser);
+        const parsed = JSON.parse(savedUser);
+        setUser(parsed);
         setIsLoggedIn(true);
-      } catch (error) {
-        console.error("Failed to restore user session:", error);
+      } catch (err) {
+        console.error("Failed to restore user:", err);
         localStorage.removeItem("travelUser");
       }
     }
 
+    if (savedToken) {
+      setAuthToken(savedToken);
+    }
+
     if (savedBookings) {
       try {
-        const parsedBookings = JSON.parse(savedBookings);
-        setUserBookings(parsedBookings);
-      } catch (error) {
-        console.error("Failed to restore bookings:", error);
+        setUserBookings(JSON.parse(savedBookings));
+      } catch (err) {
+        console.error("Failed to restore bookings:", err);
         localStorage.removeItem("travelBookings");
       }
     }
@@ -495,170 +383,193 @@ export default function Home() {
     }
   }, [userBookings, isLoggedIn]);
 
-  useEffect(() => {
-    if (currentView === "home") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  }, [currentView]);
+  // UPDATED: Improved booking handler with proper authentication support
+  const handleCreateBooking = useCallback(async (bookingData: any) => {
+    try {
+      const endpoint = isLoggedIn && authToken
+        ? "https://ebony-bruce-production.up.railway.app/api/v1/bookings"
+        : "https://ebony-bruce-production.up.railway.app/api/v1/bookings/guest";
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
-        e.preventDefault();
-        setIsAiOpen(true);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      // Add Authorization header only if logged in and has token
+      if (isLoggedIn && authToken) {
+        headers["Authorization"] = `Bearer ${authToken}`;
       }
-      if (e.key === "Escape") {
-        if (isAiOpen) setIsAiOpen(false);
-        if (isAuthOpen) setIsAuthOpen(false);
+
+      console.log("📤 Booking endpoint:", endpoint);
+      console.log("📦 Booking data:", JSON.stringify(bookingData, null, 2));
+      console.log("🔐 Auth status:", { isLoggedIn, hasToken: !!authToken });
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(bookingData),
+      });
+
+      console.log("📡 Response status:", response.status);
+
+      const result = await response.json();
+
+      if (response.ok) {
+        console.log("✅ Booking success:", result);
+        return { success: true, data: result };
+      } else {
+        console.error("❌ Booking failed:", result);
+        return { 
+          success: false, 
+          error: result.message || result.error || `Booking failed (${response.status})` 
+        };
       }
+    } catch (error) {
+      console.error("❌ Booking network error:", error);
+      return { 
+        success: false, 
+        error: "Network error – please check your connection" 
+      };
+    }
+  }, [isLoggedIn, authToken]);
+
+  // UPDATED: Flight booking completion with better error handling
+  const handleBookingComplete = useCallback(async () => {
+    if (!selectedItem || !searchParams) {
+      console.error("Cannot complete booking: missing item or params");
+      setCurrentView("failed");
+      return;
+    }
+
+    // Extract numeric price
+    const priceStr = selectedItem.price.replace(/[^\d.]/g, '');
+    const basePrice = parseFloat(priceStr) || 150;
+    const priceInCents = Math.round(basePrice * 100); // Convert to cents/kobo
+
+    // Format dates
+    const departureDate = new Date(searchParams.segments?.[0]?.date || Date.now());
+    const arrivalDate = new Date(departureDate.getTime() + 90 * 60 * 1000); // 90 minutes later
+
+    // Prepare passenger info based on login status
+    const passengerInfo: any = {
+      firstName: user.name?.split(' ')[0] || "John",
+      lastName: user.name?.split(' ')[1] || "Doe",
+      email: user.email || "guest@example.com",
+      phone: user.phone || "+2348012345678",
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isAiOpen, isAuthOpen]);
+    // Only include DOB if it exists and user is logged in
+    if (isLoggedIn && user.dob) {
+      passengerInfo.dateOfBirth = user.dob;
+    }
 
-  const openAuth = useCallback((mode: "login" | "register") => {
-    setAuthMode(mode);
-    setIsAuthOpen(true);
-  }, []);
+    const bookingData = {
+      productType: "FLIGHT_DOMESTIC",
+      provider: "TRIPS_AFRICA",
+      basePrice: priceInCents,
+      currency: "NGN",
+      bookingData: {
+        flightNumber: selectedItem.realData?.flightNumber || selectedItem.title?.replace('Flight ', '') || "AP123",
+        departure: searchParams.segments?.[0]?.from || "Lagos (LOS)",
+        destination: searchParams.segments?.[0]?.to || "Abuja (ABV)",
+        departureDate: departureDate.toISOString(),
+        arrivalDate: arrivalDate.toISOString(),
+        airline: selectedItem.provider,
+        class: searchParams.cabinClass || "Economy"
+      },
+      passengerInfo
+    };
 
-  const handleAdminLogin = useCallback((adminData: any) => {
-    setIsAdminLoggedIn(true);
-    setCurrentView("admin-dashboard");
-  }, []);
+    console.log("🚀 Final booking payload:", bookingData);
+    const result = await handleCreateBooking(bookingData);
 
-  const handleAdminClick = useCallback(() => {
-    setCurrentView("admin-login");
-  }, []);
+    if (result.success) {
+      // Create local booking record
+      const newBooking: Booking = {
+        id: Date.now().toString(),
+        type: "flight",
+        title: `${searchParams.segments?.[0]?.from || "LOS"} to ${searchParams.segments?.[0]?.to || "ABV"}`,
+        provider: selectedItem.provider,
+        subtitle: selectedItem.title,
+        date: new Date().toLocaleDateString("en-US", { 
+          year: "numeric", 
+          month: "short", 
+          day: "numeric" 
+        }),
+        duration: selectedItem.duration,
+        status: "Confirmed",
+        price: selectedItem.price,
+        currency: "NGN",
+        iconBg: "bg-blue-50",
+        imageUrl: selectedItem.image,
+        bookingReference: `#${result.data?.bookingReference || Date.now().toString().slice(-6)}`,
+        time: new Date().toLocaleTimeString([], { 
+          hour: "2-digit", 
+          minute: "2-digit" 
+        }),
+      };
+
+      setUserBookings(prev => [newBooking, ...prev]);
+      setCurrentView("success");
+    } else {
+      console.error("❌ Booking failed with error:", result.error);
+      setCurrentView("failed");
+    }
+  }, [selectedItem, searchParams, user, isLoggedIn, handleCreateBooking]);
 
   const handleLogin = useCallback(
-    (userData: { name: string; email: string }) => {
+    (userData: { name: string; email: string; token?: string }) => {
       const updatedUser = {
         ...user,
         ...userData,
         provider: "email" as const,
         role: "user" as const,
-        profilePicture: `https://ui-avatars.com/api/?name=${encodeURIComponent(
-          userData.name
-        )}&background=2563EB&color=fff`,
+        profilePicture: `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name)}&background=2563EB&color=fff`,
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name)}&background=2563EB&color=fff`, // Add this line
       };
       setUser(updatedUser);
       setIsLoggedIn(true);
       setIsAuthOpen(false);
-      localStorage.setItem("travelUser", JSON.stringify(updatedUser));
-      if (
-        currentView !== "review" &&
-        currentView !== "success" &&
-        currentView !== "hotel-details"
-      ) {
-        setCurrentView("profile");
-      }
-    },
-    [user, currentView]
-  );
-
-  const handleSocialLogin = useCallback(
-    (provider: "google" | "facebook") => {
-      const mockData =
-        provider === "google"
-          ? {
-              name: "Google Traveler",
-              email: "traveler.google@gmail.com",
-              img: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100",
-              dob: "1990-01-01",
-              gender: "Male",
-              phone: "+234 000 000 000",
-            }
-          : {
-              name: "Facebook User",
-              email: "user.fb@facebook.com",
-              img: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=100",
-              dob: "1990-01-01",
-              gender: "Female",
-              phone: "+234 111 111 111",
-            };
-
-      const updatedUser = {
-        ...user,
-        name: mockData.name,
-        email: mockData.email,
-        profilePicture: mockData.img,
-        dob: mockData.dob,
-        gender: mockData.gender,
-        phone: mockData.phone,
-        provider,
-        role: "user" as const,
-      };
-
-      setUser(updatedUser);
-      setIsLoggedIn(true);
-      setIsAuthOpen(false);
-      localStorage.setItem("travelUser", JSON.stringify(updatedUser));
-
-      if (!localStorage.getItem("travelBookings")) {
-        const sampleBookings: Booking[] = [
-          {
-            id: "1",
-            type: "flight",
-            title: "Lagos(LOS) to Abuja(ABJ)",
-            provider: "Air Peace",
-            subtitle: "Flight BA117 . Economy",
-            date: "Dec 26 – Dec 28, 2025",
-            duration: "1h 15m Non-Stop",
-            status: "Confirmed",
-            price: "75,000.00",
-            currency: "NGN",
-            iconBg: "bg-blue-50",
-            imageUrl:
-              "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&q=80&w=600",
-            bookingReference: "#LND-8824",
-            time: "08:00 AM",
-          },
-          {
-            id: "2",
-            type: "hotel",
-            title: "Hyatt Tokyo",
-            provider: "Hyatt",
-            subtitle: "Standard King Room . 2 Guests, 5 Nights",
-            date: "Dec 26 – Dec 28, 2025",
-            status: "Completed",
-            price: "1,500.00",
-            currency: "$",
-            iconBg: "bg-yellow-50",
-            imageUrl:
-              "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
-            bookingReference: "#HTL-5678",
-          },
-        ];
-        setUserBookings(sampleBookings);
-        localStorage.setItem("travelBookings", JSON.stringify(sampleBookings));
-      }
-
-      if (
-        currentView !== "review" &&
-        currentView !== "success" &&
-        currentView !== "hotel-details"
-      ) {
-        setCurrentView("profile");
-      }
-    },
-    [user, currentView]
-  );
-
-  const handleUpdateUser = useCallback((updatedData: Partial<User>) => {
-    setUser((prev) => ({ ...prev, ...updatedData }));
-  }, []);
-
-  const handleCancelRequest = useCallback((booking: Booking) => {
-    setUserBookings((prev) =>
-      prev.map((b) =>
-        b.id === booking.id ? { ...b, status: "Cancel" as const } : b
-      )
-    );
-    console.log("Booking cancelled:", booking.id);
-  }, []);
-
   
+      // Store token if provided
+      if (userData.token) {
+        setAuthToken(userData.token);
+        localStorage.setItem("authToken", userData.token);
+      }
+  
+      localStorage.setItem("travelUser", JSON.stringify(updatedUser));
+  
+      // Navigate to profile unless in booking flow
+      if (
+        currentView !== "review" &&
+        currentView !== "success" &&
+        currentView !== "hotel-details"
+      ) {
+        setCurrentView("profile");
+      }
+    },
+    [user, currentView]
+  );
+
+  const handleSignOut = useCallback(() => {
+    setIsLoggedIn(false);
+    setIsAdminLoggedIn(false);
+    setAuthToken(null);
+    setUser({
+      name: "",
+      email: "",
+      profilePicture: "https://ui-avatars.com/api/?name=Guest&background=f4d9c6&color=9a7d6a&size=56",
+      avatar: "https://ui-avatars.com/api/?name=Guest&background=f4d9c6&color=9a7d6a&size=56", // Add this line
+      dob: "1992-05-15",
+      gender: "Male",
+      phone: "+234 816 500 000",
+      role: "user",
+    });
+    localStorage.removeItem("travelUser");
+    localStorage.removeItem("authToken");
+    setCurrentView("home");
+  }, []);
+
+  // Search handler (keep your existing implementation)
   const handleSearch = useCallback(async (data: SearchParams) => {
     const startTime = Date.now();
     setSearchParams(data);
@@ -705,9 +616,7 @@ export default function Home() {
   
       const passengers = Math.max(1, Math.min(9, Number(data.travellers) || 1));
   
-      // ──────────────────────────────────────────────────────────────
       // STEP 1: Create the offer request
-      // ──────────────────────────────────────────────────────────────
       const searchEndpoint = "https://ebony-bruce-production.up.railway.app/api/v1/bookings/search/flights";
   
       const searchBody = {
@@ -719,9 +628,6 @@ export default function Home() {
         ...(data.tripType === "round-trip" && data.returnDate && {
           returnDate: data.returnDate,
         }),
-        // Add these fields only if your backend actually requires them:
-        // tripType: data.tripType || "one-way",
-        // preferredAirlines: ["AP", "IB", "W3"],
       };
   
       console.log("POST to create offer request →", searchEndpoint);
@@ -732,8 +638,6 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json",
-          // Uncomment and add real token if your API requires authentication
-          // "Authorization": `Bearer ${yourTokenHere}`,
         },
         body: JSON.stringify(searchBody),
       });
@@ -753,7 +657,7 @@ export default function Home() {
         throw new Error(`Could not create flight search: ${errorMsg}`);
       }
   
-      // Extract offer_request_id — adjust this path based on your real response
+      // Extract offer_request_id
       const offerRequestId =
         searchData?.data?.offer_request_id ||
         searchData?.offer_request_id ||
@@ -767,9 +671,7 @@ export default function Home() {
   
       console.log("✅ Offer request created → ID:", offerRequestId);
   
-      // ──────────────────────────────────────────────────────────────
       // STEP 2: Fetch all offers (with pagination)
-      // ──────────────────────────────────────────────────────────────
       let allOffers: any[] = [];
       let nextCursor: string | null = null;
       let page = 1;
@@ -788,7 +690,6 @@ export default function Home() {
           method: "GET",
           headers: {
             "Accept": "application/json",
-            // "Authorization": `Bearer ${yourTokenHere}`, // if needed
           },
         });
   
@@ -806,7 +707,6 @@ export default function Home() {
           throw new Error(offersData?.message || `Offers fetch failed (${offersResponse.status})`);
         }
   
-        // Extract offers array — adjust based on your real response structure
         const pageOffers =
           offersData?.data ||
           offersData?.offers ||
@@ -816,7 +716,6 @@ export default function Home() {
   
         allOffers = [...allOffers, ...pageOffers];
   
-        // Handle pagination — adjust field name as per your API
         nextCursor =
           offersData?.next_cursor ||
           offersData?.pagination?.next ||
@@ -825,7 +724,6 @@ export default function Home() {
           null;
   
         page++;
-        // Safety: prevent infinite loops or too many requests
         if (page > 6) {
           console.warn("Stopping pagination after 6 pages");
           break;
@@ -841,9 +739,8 @@ export default function Home() {
       } else {
         setIsRealApiUsed(true);
   
-        // Transform to your SearchResult format
+        // Transform to SearchResult format
         const transformedResults: SearchResult[] = allOffers.map((offer: any, index: number) => {
-          // ── Customize these extractions based on your actual /offers response ──
           const slices = offer.slices || offer.itineraries?.[0]?.slices || [];
           const firstSegment = slices[0] || {};
           const lastSegment = slices[slices.length - 1] || {};
@@ -883,7 +780,7 @@ export default function Home() {
             duration: durationStr,
             stops: stopsText,
             rating: 4.3 + Math.random() * 0.6,
-            baggage: "23 kg checked + 8 kg cabin", // improve when real data available
+            baggage: "23 kg checked + 8 kg cabin",
             aircraft: firstSegment.aircraft?.name || "Boeing 737 / Airbus A320",
             layoverDetails: stopsText === "Direct" ? "Non-stop" : stopsText,
             image: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400",
@@ -915,15 +812,24 @@ export default function Home() {
       setIsSearching(false);
       setSearchTime(Date.now() - startTime);
   
-      // Scroll to results
       setTimeout(() => {
         document.getElementById("search-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 150);
     }
   }, []);
 
+  // UPDATED: Handle guest booking authentication prompt
   const handleSelectResult = useCallback((item: SearchResult) => {
     setSelectedItem(item);
+
+    // Check if user needs to sign in for booking
+    if (!isLoggedIn) {
+      setIsAuthOpen(true);
+      setAuthMode("register");
+      // Store the selected item temporarily
+      sessionStorage.setItem("pendingBooking", JSON.stringify(item));
+      return;
+    }
 
     if (
       item.type === "hotels" ||
@@ -934,8 +840,35 @@ export default function Home() {
     } else {
       setCurrentView("review");
     }
-  }, []);
+  }, [isLoggedIn]);
 
+  // Check for pending booking after login
+  useEffect(() => {
+    if (isLoggedIn && isAuthOpen === false) {
+      const pendingBooking = sessionStorage.getItem("pendingBooking");
+      if (pendingBooking) {
+        try {
+          const item = JSON.parse(pendingBooking);
+          setSelectedItem(item);
+          sessionStorage.removeItem("pendingBooking");
+          
+          if (
+            item.type === "hotels" ||
+            item.id?.includes("h-") ||
+            (item.title && item.title.toLowerCase().includes("hotel"))
+          ) {
+            setCurrentView("hotel-details");
+          } else {
+            setCurrentView("review");
+          }
+        } catch (error) {
+          console.error("Error processing pending booking:", error);
+        }
+      }
+    }
+  }, [isLoggedIn, isAuthOpen]);
+
+  // Other handlers (keep existing)
   const handleBookItem = useCallback((item: any) => {
     const searchResultItem: SearchResult = {
       id: item.id,
@@ -967,32 +900,18 @@ export default function Home() {
 
   const navigateToProfile = useCallback(() => {
     if (!isLoggedIn) {
-      openAuth("login");
+      setIsAuthOpen(true);
+      setAuthMode("login");
     } else {
       setCurrentView("profile");
     }
-  }, [isLoggedIn, openAuth]);
+  }, [isLoggedIn]);
 
   const navigateToHome = useCallback(() => {
     setCurrentView("home");
     setSearchResults([]);
     setSearchError(null);
     setApiValidationErrors([]);
-  }, []);
-
-  const handleSignOut = useCallback(() => {
-    setIsLoggedIn(false);
-    setIsAdminLoggedIn(false);
-    setUser({
-      name: "",
-      email: "",
-      dob: "1992-05-15",
-      gender: "Male",
-      phone: "+234 816 500 000",
-      role: "user",
-    });
-    setCurrentView("home");
-    localStorage.removeItem("travelUser");
   }, []);
 
   const handleSearchClick = useCallback(() => {
@@ -1021,6 +940,145 @@ export default function Home() {
     setCurrentView("profile");
     console.log("Selected profile tab:", tabId);
   }, []);
+
+  const handleUpdateUser = useCallback((updatedData: Partial<User>) => {
+    setUser((prev) => ({ ...prev, ...updatedData }));
+  }, []);
+
+  const handleCancelRequest = useCallback((booking: Booking) => {
+    setUserBookings((prev) =>
+      prev.map((b) =>
+        b.id === booking.id ? { ...b, status: "Cancel" as const } : b
+      )
+    );
+    console.log("Booking cancelled:", booking.id);
+  }, []);
+
+  const handleAdminLogin = useCallback((adminData: any) => {
+    setIsAdminLoggedIn(true);
+    setCurrentView("admin-dashboard");
+  }, []);
+
+  const handleAdminClick = useCallback(() => {
+    setCurrentView("admin-login");
+  }, []);
+
+  // Add keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setIsAiOpen(true);
+      }
+      if (e.key === "Escape") {
+        if (isAiOpen) setIsAiOpen(false);
+        if (isAuthOpen) setIsAuthOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isAiOpen, isAuthOpen]);
+
+  const openAuth = useCallback((mode: "login" | "register") => {
+    setAuthMode(mode);
+    setIsAuthOpen(true);
+  }, []);
+
+  const handleSocialLogin = useCallback(
+    (provider: "google" | "facebook") => {
+      const mockData =
+        provider === "google"
+          ? {
+              name: "Google Traveler",
+              email: "traveler.google@gmail.com",
+              img: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100",
+              dob: "1990-01-01",
+              gender: "Male",
+              phone: "+234 000 000 000",
+            }
+          : {
+              name: "Facebook User",
+              email: "user.fb@facebook.com",
+              img: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=100",
+              dob: "1990-01-01",
+              gender: "Female",
+              phone: "+234 111 111 111",
+            };
+  
+      const updatedUser = {
+        ...user,
+        name: mockData.name,
+        email: mockData.email,
+        profilePicture: mockData.img,
+        avatar: mockData.img, // Add this line
+        dob: mockData.dob,
+        gender: mockData.gender,
+        phone: mockData.phone,
+        provider,
+        role: "user" as const,
+      };
+  
+      setUser(updatedUser);
+      setIsLoggedIn(true);
+      setIsAuthOpen(false);
+      localStorage.setItem("travelUser", JSON.stringify(updatedUser));
+  
+      if (!localStorage.getItem("travelBookings")) {
+        const sampleBookings: Booking[] = [
+          {
+            id: "1",
+            type: "flight",
+            title: "Lagos(LOS) to Abuja(ABJ)",
+            provider: "Air Peace",
+            subtitle: "Flight BA117 . Economy",
+            date: "Dec 26 – Dec 28, 2025",
+            duration: "1h 15m Non-Stop",
+            status: "Confirmed",
+            price: "75,000.00",
+            currency: "NGN",
+            iconBg: "bg-blue-50",
+            imageUrl:
+              "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&q=80&w=600",
+            bookingReference: "#LND-8824",
+            time: "08:00 AM",
+          },
+          {
+            id: "2",
+            type: "hotel",
+            title: "Hyatt Tokyo",
+            provider: "Hyatt",
+            subtitle: "Standard King Room . 2 Guests, 5 Nights",
+            date: "Dec 26 – Dec 28, 2025",
+            status: "Completed",
+            price: "1,500.00",
+            currency: "$",
+            iconBg: "bg-yellow-50",
+            imageUrl:
+              "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
+            bookingReference: "#HTL-5678",
+          },
+        ];
+        setUserBookings(sampleBookings);
+        localStorage.setItem("travelBookings", JSON.stringify(sampleBookings));
+      }
+  
+      if (
+        currentView !== "review" &&
+        currentView !== "success" &&
+        currentView !== "hotel-details"
+      ) {
+        setCurrentView("profile");
+      }
+    },
+    [user, currentView]
+  );
+
+  useEffect(() => {
+    if (currentView === "home") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [currentView]);
 
   useEffect(() => {
     if (currentView !== "home") {
@@ -1057,7 +1115,6 @@ export default function Home() {
             onTabChange={handleTabChange}
           />
           
-         
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-0">
             {(isSearching || searchResults.length > 0 || searchError || apiValidationErrors.length > 0) && (
               <section

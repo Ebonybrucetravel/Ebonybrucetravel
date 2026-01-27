@@ -24,7 +24,8 @@ const BookingSuccess: React.FC<BookingSuccessProps> = ({ item, searchParams, onB
   const isFlight = !isHotel && !isCar;
 
   // General Data
-  const travelersCount = parseInt(searchParams?.travellers?.match(/\d+/) ? searchParams.travellers.match(/\d+/)[0] : '1');
+  const travelersCount = Math.max(1, Number(searchParams?.travellers) || 1);
+
   const destination = searchParams?.segments?.[0]?.to || searchParams?.location || searchParams?.carPickUp || 'Your Destination';
   const origin = searchParams?.segments?.[0]?.from || 'Lagos';
   const cityName = destination.split('(')[0].trim();

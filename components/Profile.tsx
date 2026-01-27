@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../app/page';
 import ManageBookingModal from './ManageBookingModal';
 import { useLanguage } from '../context/LanguageContext';
-import CancelBooking from './CancelBooking'; // Make sure to import your CancelBooking component
+import CancelBooking from './CancelBooking'; 
+import { userApi, ApiError } from '../lib/api';
 
 interface ProfileProps {
   user: User;
@@ -61,7 +62,6 @@ interface SavedItem {
 
 type ProfileTab = 'details' | 'travelers' | 'bookings' | 'saved' | 'rewards' | 'security' | 'preferences' | 'payment';
 
-// Add this currency options array at the top
 const CURRENCY_OPTIONS = [
   { code: 'USD', symbol: '$', name: 'US Dollar' },
   { code: 'EUR', symbol: '€', name: 'Euro' },
@@ -106,7 +106,6 @@ const Profile: React.FC<ProfileProps> = ({
   const [isVerifying, setIsVerifying] = useState(false);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Fix these state declarations
   const [prefLang, setPrefLang] = useState<'EN' | 'FR' | 'ES'>(currentLang as 'EN' | 'FR' | 'ES');
   const [prefCurrCode, setPrefCurrCode] = useState<'USD' | 'EUR' | 'GBP' | 'NGN' | 'JPY' | 'CNY'>(currentCurr.code as 'USD' | 'EUR' | 'GBP' | 'NGN' | 'JPY' | 'CNY');
 
@@ -134,7 +133,6 @@ const Profile: React.FC<ProfileProps> = ({
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
-  // NEW STATES FOR CANCELLATION PAGE
   const [showCancelPage, setShowCancelPage] = useState(false);
   const [cancellationData, setCancellationData] = useState<{
     item: any;
@@ -165,7 +163,9 @@ const Profile: React.FC<ProfileProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) setShowFilterDropdown(false);
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setShowFilterDropdown(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -192,24 +192,166 @@ const Profile: React.FC<ProfileProps> = ({
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        handleInputChange('profilePicture', reader.result as string);
+    if (!file) return;
+  
+    console.log('📁 Selected file:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: new Date(file.lastModified).toLocaleString()
+    });
+  
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size should be less than 5MB');
+      return;
+    }
+  
+    // Check file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload an image file (JPEG, PNG, GIF, or WebP)');
+      return;
+    }
+  
+    // Show immediate preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const imageUrl = reader.result as string;
+      setFormData(prev => ({ 
+        ...prev, 
+        profilePicture: imageUrl,
+        avatar: imageUrl
+      }));
+    };
+    reader.readAsDataURL(file);
+  
+    setIsSaving(true);
+  
+    try {
+      console.log('📤 Uploading profile image to API...');
+      
+      // Upload to the API with field name "image"
+      const uploadResult = await userApi.uploadProfileImage(file);
+      
+      console.log('✅ Upload successful, response:', uploadResult);
+      
+      // Get the image URL from the response - check all possible field names
+      // FIXED: Remove .data since uploadResult doesn't have a data property
+      const imageUrl = uploadResult.avatar || 
+                      uploadResult.url || 
+                      uploadResult.imageUrl || 
+                      uploadResult.profilePicture;
+                      // REMOVED: uploadResult.data?.url ||
+                      // REMOVED: uploadResult.data?.avatar;
+      
+      if (!imageUrl) {
+        throw new Error('No image URL returned from server');
+      }
+      
+      // Update the form data with the new image URL
+      const updatedData = {
+        ...formData,
+        profilePicture: imageUrl,
+        avatar: imageUrl
       };
-      reader.readAsDataURL(file);
+      
+      setFormData(updatedData);
+      
+      // Save to user profile via API
+      const profileResult = await userApi.updateProfile({
+        profilePicture: imageUrl,
+        avatar: imageUrl
+      });
+      
+      if (profileResult) {
+        console.log('✅ Profile updated with new image');
+        
+        // Call the parent update function
+        onUpdateUser({
+          ...profileResult,
+          profilePicture: imageUrl,
+          avatar: imageUrl
+        });
+        
+        // Show success message
+        alert('Profile picture updated successfully!');
+      }
+    } catch (error: any) {
+      console.error('❌ Failed to upload profile picture:', error);
+      
+      let errorMessage = 'Failed to upload image';
+      if (error instanceof ApiError) {
+        errorMessage = error.message;
+        console.log('🔍 ApiError details:', {
+          message: error.message,
+          status: error.status,
+          code: error.code
+        });
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(`Failed to upload image: ${errorMessage}`);
+      
+      // Revert to original image
+      setFormData({ ...user });
+    } finally {
+      setIsSaving(false);
+      
+      // Clear file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    setTimeout(() => {
-      onUpdateUser(formData);
+    
+    try {
+      console.log('🔄 Saving profile updates:', formData);
+      
+      // Create a safe object without avatar property
+      const safeFormData = { ...formData };
+      // Remove avatar if it exists since it's not part of User type
+      if ('avatar' in safeFormData) {
+        delete safeFormData.avatar;
+      }
+      
+      // Update via API
+      const result = await userApi.updateProfile(safeFormData);
+      
+      if (result) {
+        console.log('✅ Profile saved successfully:', result);
+        
+        // Update parent component with the full result
+        onUpdateUser(result);
+        
+        // Show success
+        alert('Profile updated successfully!');
+        
+        // Exit edit mode
+        setIsEditing(false);
+      } else {
+        throw new Error('Failed to save profile');
+      }
+    } catch (error: any) {
+      console.error('❌ Failed to save profile:', error);
+      
+      let errorMessage = 'Failed to save profile';
+      if (error instanceof ApiError) {
+        errorMessage = error.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(`Failed to save profile: ${errorMessage}`);
+    } finally {
       setIsSaving(false);
-      setIsEditing(false);
-    }, 800);
+    }
   };
 
   const handleShareList = () => {
@@ -234,7 +376,11 @@ const Profile: React.FC<ProfileProps> = ({
   };
 
   const handleUpdatePassword = () => {
-    if (!passwords.new || passwords.new !== passwords.confirm) return;
+    if (!passwords.new || passwords.new !== passwords.confirm) {
+      alert('New passwords do not match');
+      return;
+    }
+    
     setIsUpdatingPassword(true);
     setTimeout(() => {
       setIsUpdatingPassword(false);
@@ -248,6 +394,8 @@ const Profile: React.FC<ProfileProps> = ({
       setTravelers([...travelers, { ...newTraveler, id: Date.now().toString() }]);
       setNewTraveler({ name: '', relationship: 'Spouse', dob: '', gender: 'Male' });
       setShowAddTravelerForm(false);
+    } else {
+      alert('Please fill in all required fields');
     }
   };
 
@@ -288,6 +436,8 @@ const Profile: React.FC<ProfileProps> = ({
         setIsSavingCard(false);
         setShowAddPaymentForm(false);
       }, 1000);
+    } else {
+      alert('Please fill in all card details');
     }
   };
 
@@ -350,7 +500,6 @@ const Profile: React.FC<ProfileProps> = ({
     }
   };
 
-  // Handler to go back from CancelBooking page
   const handleBackFromCancel = () => {
     setShowCancelPage(false);
     setCancellationData(null);
@@ -373,7 +522,11 @@ const Profile: React.FC<ProfileProps> = ({
   };
 
   const handleVerifyOtp = () => {
-    if (otp.some(digit => digit === '')) return;
+    if (otp.some(digit => digit === '')) {
+      alert('Please enter the complete OTP');
+      return;
+    }
+    
     setIsVerifying(true);
     setTimeout(() => {
       setIsVerifying(false);
@@ -435,7 +588,13 @@ const Profile: React.FC<ProfileProps> = ({
   };
 
   const renderBookingCard = (booking: Booking) => {
-    const statusColors = { Confirmed: 'bg-green-100 text-green-600', Completed: 'bg-gray-100 text-gray-500', Cancel: 'bg-red-50 text-red-500', Active: 'bg-green-100 text-green-600' };
+    const statusColors = { 
+      Confirmed: 'bg-green-100 text-green-600', 
+      Completed: 'bg-gray-100 text-gray-500', 
+      Cancel: 'bg-red-50 text-red-500', 
+      Active: 'bg-green-100 text-green-600' 
+    };
+    
     return (
       <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow">
         <div className={`w-16 h-16 rounded-full flex items-center justify-center shrink-0 ${booking.iconBg}`}>
@@ -478,7 +637,13 @@ const Profile: React.FC<ProfileProps> = ({
 
   return (
     <div className="bg-[#f8fbfe] min-h-screen">
-      <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileChange} 
+        className="hidden" 
+        accept="image/jpeg,image/png,image/jpg,image/gif,image/webp" 
+      />
       
       {/* Soft Mobile Menu Drawer (Slide-in) */}
       {isDrawerOpen && (
@@ -491,7 +656,9 @@ const Profile: React.FC<ProfileProps> = ({
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-lg font-black text-gray-900 tracking-tight">Navigation</h3>
               <button onClick={onCloseDrawer} className="p-2 text-gray-400 hover:text-gray-900">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M6 18L18 6M6 6l12 12" /></svg>
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
             
@@ -502,7 +669,9 @@ const Profile: React.FC<ProfileProps> = ({
                   onClick={() => handleTabClick(item.id as ProfileTab)} 
                   className={`w-full flex items-center gap-4 px-5 py-4 rounded-xl transition-all text-sm font-bold ${activeTab === item.id ? 'bg-blue-50 text-[#33a8da]' : 'text-gray-500 hover:bg-gray-50'}`}
                 >
-                  <svg className={`w-5 h-5 ${activeTab === item.id ? 'text-[#33a8da]' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>{item.icon}</svg>
+                  <svg className={`w-5 h-5 ${activeTab === item.id ? 'text-[#33a8da]' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    {item.icon}
+                  </svg>
                   {item.label}
                 </button>
               ))}
@@ -510,7 +679,9 @@ const Profile: React.FC<ProfileProps> = ({
 
             <div className="mt-auto pt-6 border-t border-gray-100">
               <button onClick={onSignOut} className="w-full flex items-center gap-4 px-5 py-4 rounded-xl text-red-500 font-bold hover:bg-red-50 transition-colors">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
                 Sign Out
               </button>
             </div>
@@ -525,23 +696,53 @@ const Profile: React.FC<ProfileProps> = ({
             <div className="bg-white rounded-[24px] p-8 shadow-sm border border-gray-100/50">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 bg-[#f4d9c6] rounded-full flex items-center justify-center text-[#9a7d6a] border-2 border-white shadow-sm overflow-hidden shrink-0">
-                  {formData.profilePicture ? <img src={formData.profilePicture} className="w-full h-full object-cover" alt="Profile" /> : <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a`} className="w-full h-full object-cover" alt="Profile" />}
+                  <img 
+                    src={
+                      formData.profilePicture || 
+                      formData.avatar || 
+                      `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=56`
+                    } 
+                    className="w-full h-full object-cover" 
+                    alt="Profile" 
+                    onError={(e) => {
+                      e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=56`;
+                    }}
+                  />
                 </div>
-                <div className="min-w-0"><h2 className="text-xl font-black text-gray-900 tracking-tight truncate">{formData.name || 'Ebony Bruce'}</h2><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Premium Identity</p></div>
+                <div className="min-w-0">
+                  <h2 className="text-xl font-black text-gray-900 tracking-tight truncate">{formData.name || 'Ebony Bruce'}</h2>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Premium Identity</p>
+                </div>
               </div>
             </div>
             
             <nav className="bg-white rounded-[24px] overflow-hidden shadow-sm border border-gray-100/50">
               {menuItems.map((item) => (
-                <button key={item.id} onClick={() => handleTabClick(item.id as ProfileTab)} className={`w-full flex items-center gap-5 px-8 py-5 transition-all text-[15px] font-bold ${activeTab === item.id ? 'bg-[#f0f9ff] text-[#33a8da]' : 'text-gray-400 hover:bg-gray-50'}`}>
-                  <svg className={`w-5 h-5 ${activeTab === item.id ? 'text-[#33a8da]' : 'text-gray-400 opacity-60'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>{item.icon}</svg>{item.label}
+                <button 
+                  key={item.id} 
+                  onClick={() => handleTabClick(item.id as ProfileTab)} 
+                  className={`w-full flex items-center gap-5 px-8 py-5 transition-all text-[15px] font-bold ${activeTab === item.id ? 'bg-[#f0f9ff] text-[#33a8da]' : 'text-gray-400 hover:bg-gray-50'}`}
+                >
+                  <svg className={`w-5 h-5 ${activeTab === item.id ? 'text-[#33a8da]' : 'text-gray-400 opacity-60'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    {item.icon}
+                  </svg>
+                  {item.label}
                 </button>
               ))}
             </nav>
 
             <div className="bg-[#f0f9ff] rounded-[24px] p-8 shadow-sm border border-blue-50">
-              <div className="flex items-center gap-3 mb-5"><div className="w-5 h-5 bg-orange-400 rounded-full flex items-center justify-center text-white"><svg className="w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg></div><h3 className="text-xs font-bold text-gray-900 uppercase tracking-tighter">Gold Level</h3></div>
-              <div className="w-full bg-white h-1.5 rounded-full overflow-hidden mb-3"><div className="h-full bg-orange-400 w-3/4 rounded-full" /></div>
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-5 h-5 bg-orange-400 rounded-full flex items-center justify-center text-white">
+                  <svg className="w-3" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                  </svg>
+                </div>
+                <h3 className="text-xs font-bold text-gray-900 uppercase tracking-tighter">Gold Level</h3>
+              </div>
+              <div className="w-full bg-white h-1.5 rounded-full overflow-hidden mb-3">
+                <div className="h-full bg-orange-400 w-3/4 rounded-full" />
+              </div>
               <p className="text-[11px] text-gray-500 font-bold uppercase tracking-widest">1,200 points Platinum</p>
             </div>
           </aside>
@@ -553,16 +754,32 @@ const Profile: React.FC<ProfileProps> = ({
                   <div className="flex items-center gap-8">
                     <div onClick={handleProfilePictureClick} className={`relative group shrink-0 ${isEditing ? 'cursor-pointer hover:scale-105 transition-transform' : ''}`}>
                       <div className="w-24 h-24 bg-[#f4d9c6] rounded-full flex items-center justify-center border-4 border-white shadow-sm overflow-hidden">
-                        {formData.profilePicture ? <img src={formData.profilePicture} className="w-full h-full object-cover" alt="Profile" /> : <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a`} className="w-full h-full object-cover" alt="Profile" />}
+                        <img 
+                          src={
+                            formData.profilePicture || 
+                            formData.avatar || 
+                            `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=96`
+                          } 
+                          className="w-full h-full object-cover" 
+                          alt="Profile" 
+                          onError={(e) => {
+                            e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=96`;
+                          }}
+                        />
                         {isEditing && (
                           <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                              <path d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
                           </div>
                         )}
                       </div>
                       {isEditing && (
                         <div className="absolute bottom-1 right-1 w-7 h-7 bg-[#33a8da] border-4 border-white rounded-full flex items-center justify-center shadow-md">
-                          <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 4v16m8-8H4" /></svg>
+                          <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path d="M12 4v16m8-8H4" />
+                          </svg>
                         </div>
                       )}
                     </div>
@@ -573,7 +790,9 @@ const Profile: React.FC<ProfileProps> = ({
                   </div>
                   {!isEditing && (
                     <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 px-8 py-3 bg-white border-2 border-[#33a8da] text-[#33a8da] font-black text-xs uppercase tracking-widest rounded-xl hover:bg-blue-50 transition active:scale-95 shadow-sm">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
                       Edit Profile
                     </button>
                   )}
@@ -584,17 +803,37 @@ const Profile: React.FC<ProfileProps> = ({
                   <div className="space-y-8">
                     <div>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Full Name</label>
-                      <input type="text" disabled={!isEditing} value={formData.name || ''} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="Full Name" className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold text-gray-900 transition-all outline-none ${isEditing ? 'border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'border-transparent opacity-70 cursor-not-allowed'}`} />
+                      <input 
+                        type="text" 
+                        disabled={!isEditing} 
+                        value={formData.name || ''} 
+                        onChange={(e) => handleInputChange('name', e.target.value)} 
+                        placeholder="Full Name" 
+                        className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold text-gray-900 transition-all outline-none ${isEditing ? 'border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'border-transparent opacity-70 cursor-not-allowed'}`} 
+                      />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       <div>
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Date of Birth</label>
-                        <input type="date" disabled={!isEditing} value={formData.dob || '1992-05-15'} onChange={(e) => handleInputChange('dob', e.target.value)} className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold text-gray-900 transition-all outline-none ${isEditing ? 'border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'border-transparent opacity-70 cursor-not-allowed'}`} />
+                        <input 
+                          type="date" 
+                          disabled={!isEditing} 
+                          value={formData.dob || '1992-05-15'} 
+                          onChange={(e) => handleInputChange('dob', e.target.value)} 
+                          className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold text-gray-900 transition-all outline-none ${isEditing ? 'border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'border-transparent opacity-70 cursor-not-allowed'}`} 
+                        />
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Gender</label>
-                        <select disabled={!isEditing} value={formData.gender || 'Male'} onChange={(e) => handleInputChange('gender', e.target.value)} className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold text-gray-900 transition-all outline-none appearance-none ${isEditing ? 'border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'border-transparent opacity-70 cursor-not-allowed'}`}>
-                          <option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
+                        <select 
+                          disabled={!isEditing} 
+                          value={formData.gender || 'Male'} 
+                          onChange={(e) => handleInputChange('gender', e.target.value)} 
+                          className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold text-gray-900 transition-all outline-none appearance-none ${isEditing ? 'border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'border-transparent opacity-70 cursor-not-allowed'}`}
+                        >
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          <option value="Other">Other</option>
                         </select>
                       </div>
                     </div>
@@ -605,25 +844,73 @@ const Profile: React.FC<ProfileProps> = ({
                   <h3 className="text-xl font-bold text-gray-900 mb-8">Contact Information</h3>
                   <div className="space-y-4">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-5 bg-gray-50 rounded-2xl border border-gray-100 group transition-all hover:bg-white">
-                      <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-[#33a8da] shrink-0"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg></div>
-                      <div className="flex-1"><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Email Address</p><input type="email" disabled={!isEditing} value={formData.email || ''} onChange={(e) => handleInputChange('email', e.target.value)} className={`w-full bg-transparent font-bold text-gray-900 border-none outline-none p-0 focus:ring-0 ${!isEditing && 'opacity-70 cursor-not-allowed'}`} /></div>
+                      <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-[#33a8da] shrink-0">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Email Address</p>
+                        <input 
+                          type="email" 
+                          disabled={!isEditing} 
+                          value={formData.email || ''} 
+                          onChange={(e) => handleInputChange('email', e.target.value)} 
+                          className={`w-full bg-transparent font-bold text-gray-900 border-none outline-none p-0 focus:ring-0 ${!isEditing && 'opacity-70 cursor-not-allowed'}`} 
+                        />
+                      </div>
                       {isEditing && <span className="text-[10px] font-black uppercase text-green-500 bg-green-50 px-2 py-0.5 rounded">Verified</span>}
                     </div>
-                    <div className="flex flex-col sm:flexRow items-start sm:items-center gap-4 p-5 bg-gray-50 rounded-2xl border border-gray-100 group transition-all hover:bg-white">
-                      <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-[#33a8da] shrink-0"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg></div>
-                      <div className="flex-1"><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Phone Number</p><input type="tel" disabled={!isEditing} value={formData.phone || ''} onChange={(e) => handleInputChange('phone', e.target.value)} className={`w-full bg-transparent font-bold text-gray-900 border-none outline-none p-0 focus:ring-0 ${!isEditing && 'opacity-70 cursor-not-allowed'}`} /></div>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-5 bg-gray-50 rounded-2xl border border-gray-100 group transition-all hover:bg-white">
+                      <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-[#33a8da] shrink-0">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Phone Number</p>
+                        <input 
+                          type="tel" 
+                          disabled={!isEditing} 
+                          value={formData.phone || ''} 
+                          onChange={(e) => handleInputChange('phone', e.target.value)} 
+                          className={`w-full bg-transparent font-bold text-gray-900 border-none outline-none p-0 focus:ring-0 ${!isEditing && 'opacity-70 cursor-not-allowed'}`} 
+                        />
+                      </div>
                       {isEditing && <button className="text-[10px] font-bold uppercase text-gray-400 hover:text-[#33a8da] transition">Update</button>}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex flex-col md:flexRow justify-end gap-4 pb-12">
+                <div className="flex flex-col md:flex-row justify-end gap-4 pb-12">
                   {isEditing && (
-                    <button onClick={() => { setIsEditing(false); setFormData({ ...user }); }} className="px-8 py-3.5 border border-gray-200 rounded-xl text-gray-500 font-bold text-sm uppercase tracking-widest hover:bg-gray-50 transition">Cancel</button>
+                    <button 
+                      onClick={() => { setIsEditing(false); setFormData({ ...user }); }} 
+                      className="px-8 py-3.5 border border-gray-200 rounded-xl text-gray-500 font-bold text-sm uppercase tracking-widest hover:bg-gray-50 transition"
+                    >
+                      Cancel
+                    </button>
                   )}
-                  <button onClick={onSignOut} className="px-10 py-3.5 border border-blue-100 rounded-xl text-[#33a8da] font-bold text-sm uppercase tracking-widest hover:bg-blue-50 transition">Sign Out</button>
-                  <button onClick={handleSave} disabled={isSaving || !isEditing} className={`px-10 py-3.5 text-white font-bold text-sm uppercase tracking-widest rounded-xl shadow-xl transition transform active:scale-95 flex items-center justify-center gap-2 ${isEditing ? 'bg-[#33a8da] shadow-blue-100 hover:bg-[#2c98c7]' : 'bg-gray-300 shadow-none cursor-not-allowed'}`}>
-                    {isSaving ? (<><svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Saving...</>) : 'Save Changes'}
+                  <button 
+                    onClick={onSignOut} 
+                    className="px-10 py-3.5 border border-blue-100 rounded-xl text-[#33a8da] font-bold text-sm uppercase tracking-widest hover:bg-blue-50 transition"
+                  >
+                    Sign Out
+                  </button>
+                  <button 
+                    onClick={handleSave} 
+                    disabled={isSaving || !isEditing} 
+                    className={`px-10 py-3.5 text-white font-bold text-sm uppercase tracking-widest rounded-xl shadow-xl transition transform active:scale-95 flex items-center justify-center gap-2 ${isEditing ? 'bg-[#33a8da] shadow-blue-100 hover:bg-[#2c98c7]' : 'bg-gray-300 shadow-none cursor-not-allowed'}`}
+                  >
+                    {isSaving ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Saving...
+                      </>
+                    ) : 'Save Changes'}
                   </button>
                 </div>
               </div>
@@ -632,12 +919,38 @@ const Profile: React.FC<ProfileProps> = ({
             {activeTab === 'bookings' && (
               <div className="animate-in fade-in duration-500 space-y-8">
                 <div className="bg-white rounded-[24px] p-8 md:p-10 shadow-sm border border-gray-100/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                  <div><h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Booking History</h1><p className="text-gray-400 font-bold text-sm mt-1">Manage your upcoming and past travels.</p></div>
-                  <div className="relative" ref={filterRef}><button onClick={() => setShowFilterDropdown(!showFilterDropdown)} className="px-5 py-2.5 bg-white border border-gray-100 rounded-xl text-xs font-bold text-gray-500 flex items-center gap-2 hover:border-[#33a8da] transition shadow-sm">{bookingFilter === 'All' ? 'All Bookings' : `${bookingFilter}s`}<svg className={`w-3.5 h-3.5 transition-transform ${showFilterDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg></button>
-                    {showFilterDropdown && <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">{['All', 'Flight', 'Hotel', 'Car'].map((f) => (<button key={f} onClick={() => { setBookingFilter(f as any); setShowFilterDropdown(false); }} className={`w-full text-left px-5 py-3 text-xs font-bold ${bookingFilter === f ? 'text-[#33a8da] bg-blue-50' : 'text-gray-500 hover:bg-gray-50'}`}>{f === 'All' ? 'All Bookings' : `${f}s`}</button>))}</div>}
+                  <div>
+                    <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Booking History</h1>
+                    <p className="text-gray-400 font-bold text-sm mt-1">Manage your upcoming and past travels.</p>
+                  </div>
+                  <div className="relative" ref={filterRef}>
+                    <button 
+                      onClick={() => setShowFilterDropdown(!showFilterDropdown)} 
+                      className="px-5 py-2.5 bg-white border border-gray-100 rounded-xl text-xs font-bold text-gray-500 flex items-center gap-2 hover:border-[#33a8da] transition shadow-sm"
+                    >
+                      {bookingFilter === 'All' ? 'All Bookings' : `${bookingFilter}s`}
+                      <svg className={`w-3.5 h-3.5 transition-transform ${showFilterDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {showFilterDropdown && (
+                      <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
+                        {['All', 'Flight', 'Hotel', 'Car'].map((f) => (
+                          <button 
+                            key={f} 
+                            onClick={() => { setBookingFilter(f as any); setShowFilterDropdown(false); }} 
+                            className={`w-full text-left px-5 py-3 text-xs font-bold ${bookingFilter === f ? 'text-[#33a8da] bg-blue-50' : 'text-gray-500 hover:bg-gray-50'}`}
+                          >
+                            {f === 'All' ? 'All Bookings' : `${f}s`}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className="space-y-4">{filteredBookings.map(renderBookingCard)}</div>
+                <div className="space-y-4">
+                  {filteredBookings.map(renderBookingCard)}
+                </div>
               </div>
             )}
 
@@ -747,7 +1060,16 @@ const Profile: React.FC<ProfileProps> = ({
                     <p className="text-gray-400 font-bold text-sm mt-1">Your personal travel wishlist.</p>
                   </div>
                   <button onClick={handleShareList} disabled={isSharing} className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 rounded-xl text-[#33a8da] font-bold text-xs uppercase tracking-widest hover:bg-gray-50 active:scale-95 disabled:opacity-50">
-                    {isSharing ? <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>}
+                    {isSharing ? (
+                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+                      </svg>
+                    )}
                     {isSharing ? 'Sharing...' : 'Share List'}
                   </button>
                 </div>
@@ -869,10 +1191,9 @@ const Profile: React.FC<ProfileProps> = ({
                   <button 
                     onClick={() => { 
                       setLanguage(prefLang); 
-                      // Find the full currency object from the code
                       const selectedCurrency = CURRENCY_OPTIONS.find(c => c.code === prefCurrCode);
                       if (selectedCurrency) {
-                        setCurrency(selectedCurrency); // Pass the currency object, not just the code
+                        setCurrency(selectedCurrency);
                       }
                       setIsSaving(true); 
                       setTimeout(() => setIsSaving(false), 500); 
@@ -977,17 +1298,44 @@ const Profile: React.FC<ProfileProps> = ({
       {is2FAModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-[440px] rounded-[32px] shadow-2xl overflow-hidden relative p-10 text-center">
-            <button onClick={close2FAModal} className="absolute top-6 right-6 text-gray-300 hover:text-gray-600 transition"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M6 18L18 6M6 6l12 12" /></svg></button>
+            <button onClick={close2FAModal} className="absolute top-6 right-6 text-gray-300 hover:text-gray-600 transition">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
             {faStep === 'otp' ? (
               <>
                 <h2 className="text-2xl font-black text-gray-900 mb-2">Verify Account</h2>
                 <p className="text-sm text-gray-400 font-bold mb-10 px-4">Code sent to {formData.email || 'your email'}</p>
-                <div className="flex justify-center gap-3 mb-10">{otp.map((digit, idx) => (<input key={idx} ref={el => { otpRefs.current[idx] = el; }} type="text" maxLength={1} value={digit} onChange={e => handleOtpChange(idx, e.target.value)} onKeyDown={e => handleOtpKeyDown(idx, e)} className="w-11 h-14 bg-gray-50 border-2 border-gray-100 rounded-xl text-center text-xl font-black text-gray-900 focus:border-[#33a8da] outline-none" />))}</div>
-                <button onClick={handleVerifyOtp} disabled={isVerifying || otp.some(d => d === '')} className="w-full bg-[#33a8da] text-white font-bold py-4 rounded-2xl shadow-xl shadow-blue-500/20 hover:bg-[#2c98c7] disabled:opacity-50 text-sm uppercase tracking-widest">{isVerifying ? 'Verifying...' : 'Enable 2FA'}</button>
+                <div className="flex justify-center gap-3 mb-10">
+                  {otp.map((digit, idx) => (
+                    <input 
+                      key={idx} 
+                      ref={el => { otpRefs.current[idx] = el; }} 
+                      type="text" 
+                      maxLength={1} 
+                      value={digit} 
+                      onChange={e => handleOtpChange(idx, e.target.value)} 
+                      onKeyDown={e => handleOtpKeyDown(idx, e)} 
+                      className="w-11 h-14 bg-gray-50 border-2 border-gray-100 rounded-xl text-center text-xl font-black text-gray-900 focus:border-[#33a8da] outline-none" 
+                    />
+                  ))}
+                </div>
+                <button 
+                  onClick={handleVerifyOtp} 
+                  disabled={isVerifying || otp.some(d => d === '')} 
+                  className="w-full bg-[#33a8da] text-white font-bold py-4 rounded-2xl shadow-xl shadow-blue-500/20 hover:bg-[#2c98c7] disabled:opacity-50 text-sm uppercase tracking-widest"
+                >
+                  {isVerifying ? 'Verifying...' : 'Enable 2FA'}
+                </button>
               </>
             ) : (
               <div className="animate-in zoom-in-95 duration-300">
-                <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center text-green-500 mx-auto mb-6"><svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M5 13l4 4L19 7" /></svg></div>
+                <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center text-green-500 mx-auto mb-6">
+                  <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
                 <h2 className="text-2xl font-black text-gray-900 mb-4">Security Activated</h2>
                 <button onClick={close2FAModal} className="w-full bg-gray-900 text-white font-bold py-4 rounded-2xl shadow-xl hover:bg-black transition text-sm uppercase tracking-widest">Done</button>
               </div>
