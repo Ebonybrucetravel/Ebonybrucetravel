@@ -30,7 +30,9 @@ export class CreateGuestBookingUseCase {
           name: `${dto.passengerInfo.firstName} ${dto.passengerInfo.lastName}`,
           phone: dto.passengerInfo.phone,
           role: 'CUSTOMER',
-          password: '', // Empty password - guest user
+          password: null, // Guest users don't have passwords (they can register later)
+          provider: null,
+          providerId: null,
         },
       });
     }

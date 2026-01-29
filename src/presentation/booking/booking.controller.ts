@@ -200,9 +200,19 @@ export class BookingController {
 
   @Post(':id/cancel')
   @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Cancel a Duffel flight booking' })
+  @ApiOperation({
+    summary: 'Cancel a Duffel flight booking (Admin Only)',
+    description:
+      'Only administrators can cancel bookings. Cancellations are restricted within 24 hours of departure and for non-refundable fares.',
+  })
   @ApiResponse({ status: 200, description: 'Booking cancelled successfully' })
+  @ApiResponse({ status: 403, description: 'Only administrators can cancel bookings' })
+  @ApiResponse({
+    status: 400,
+    description: 'Cancellation not allowed (time restriction or non-refundable fare)',
+  })
   async cancel(@Param('id') id: string, @Request() req) {
     const booking = await this.bookingService.getBookingById(id);
 
@@ -210,11 +220,7 @@ export class BookingController {
       throw new NotFoundException('Booking not found');
     }
 
-    // Check access: Admin can cancel any, customer can only cancel their own
-    const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
-    if (!isAdmin && booking.userId !== req.user.id) {
-      throw new ForbiddenException('You do not have access to cancel this booking');
-    }
+    // Only admins can cancel - enforced by @Roles decorator above
 
     // Only allow cancellation of Duffel flight bookings
     if (booking.provider !== 'DUFFEL') {
@@ -230,7 +236,9 @@ export class BookingController {
       throw new BadRequestException('This endpoint only supports cancellation of flight bookings.');
     }
 
-    const result = await this.cancelDuffelOrderUseCase.execute(id, req.user.id);
+    // Only admins can cancel - pass isAdmin flag
+    const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
+    const result = await this.cancelDuffelOrderUseCase.execute(id, req.user.id, isAdmin);
 
     return {
       success: true,
@@ -238,7 +246,14 @@ export class BookingController {
         bookingId: id,
         cancellationId: result.cancellationId,
         refundAmount: result.refundAmount,
-        message: 'Booking cancelled successfully',
+        refundTo: result.refundTo,
+        hasAirlineCredits: result.hasAirlineCredits,
+        airlineCredits: result.airlineCredits,
+        message: result.hasAirlineCredits
+          ? 'Booking cancelled. The airline has issued travel credits (vouchers) instead of a cash refund. You can use these credits directly with the airline for future bookings.'
+          : result.refundTo === 'balance'
+            ? 'Booking cancelled. Refund will be processed to your original payment method.'
+            : 'Booking cancelled successfully',
       },
       message: 'Booking cancelled successfully',
     };

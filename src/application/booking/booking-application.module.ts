@@ -11,9 +11,10 @@ import { MarkupModule } from '@domains/markup/markup.module';
 import { ExternalApisModule } from '@infrastructure/external-apis/external-apis.module';
 import { DatabaseModule } from '@infrastructure/database/database.module';
 import { CacheModule } from '@infrastructure/cache/cache.module';
+import { EmailModule } from '@infrastructure/email/email.module';
 
 @Module({
-  imports: [BookingModule, MarkupModule, ExternalApisModule, DatabaseModule, CacheModule],
+  imports: [BookingModule, MarkupModule, ExternalApisModule, DatabaseModule, CacheModule, EmailModule],
   providers: [
     CreateBookingUseCase,
     CreateGuestBookingUseCase,

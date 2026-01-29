@@ -14,13 +14,17 @@ datasource db {
 model User {
   id          String    @id @default(cuid())
   email       String    @unique
-  password    String // Hashed password (bcrypt)
+  password    String? // Hashed password (bcrypt) - optional for OAuth users
   name        String?
   role        UserRole  @default(CUSTOMER)
   phone       String?
   image       String? // Profile image URL
   dateOfBirth DateTime? // Date of birth
   gender      String? // Gender (Male, Female, Other, Prefer not to say)
+  
+  // OAuth fields
+  provider    String? // 'facebook', 'google', or null for email/password
+  providerId  String? // OAuth provider's user ID
 
   // Relations
   bookings          Booking[] // User's bookings
@@ -35,6 +39,7 @@ model User {
 
   @@index([email])
   @@index([role])
+  @@unique([provider, providerId]) // Ensure unique OAuth provider + ID combination
   @@map("users")
 }
 

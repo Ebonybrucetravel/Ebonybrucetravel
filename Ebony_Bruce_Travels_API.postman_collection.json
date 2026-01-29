@@ -118,9 +118,111 @@
 						"description": "Login with email and password.\n\n**No authentication required.**\n\n**Response:**\n- Returns user object and JWT token\n- Token is automatically saved to environment variable"
 					},
 					"response": []
+				},
+				{
+					"name": "Facebook OAuth Login",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"console.log('🔵 Initiating Facebook OAuth login...');",
+									"console.log('💡 Note: This will redirect to Facebook for authentication');",
+									"console.log('💡 After authentication, you will be redirected to the callback URL');"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// OAuth redirects to external provider, so we check for redirect",
+									"if (pm.response.code === 302 || pm.response.code === 200) {",
+									"    console.log('✅ Facebook OAuth initiated');",
+									"    console.log('💡 Follow the redirect to complete authentication');",
+									"}",
+									"",
+									"pm.test('OAuth flow initiated', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 302]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/auth/facebook",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"facebook"
+							]
+						},
+						"description": "Initiate Facebook OAuth login.\n\n**No authentication required.**\n\n**How it works:**\n1. This endpoint redirects to Facebook for authentication\n2. User authorizes the app on Facebook\n3. Facebook redirects to `/auth/facebook/callback`\n4. Backend creates/updates user and generates JWT token\n5. User is redirected to frontend with token in query params\n\n**Frontend Integration:**\n- Redirect user to this endpoint: `GET /api/v1/auth/facebook`\n- Handle callback at `/auth/callback?token=...&user=...`\n- Extract token and user from query params\n- Store token and redirect to dashboard\n\n**Environment Variables Required:**\n- `FACEBOOK_APP_ID` - Facebook App ID\n- `FACEBOOK_APP_SECRET` - Facebook App Secret\n- `FACEBOOK_CALLBACK_URL` - Callback URL (default: `/api/v1/auth/facebook/callback`)\n- `FRONTEND_URL` - Frontend URL for redirect after auth (default: `http://localhost:3000`)\n\n**Note:** In Postman, this will show a redirect. In a browser, it will redirect to Facebook."
+					},
+					"response": []
+				},
+				{
+					"name": "Google OAuth Login",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"console.log('🔴 Initiating Google OAuth login...');",
+									"console.log('💡 Note: This will redirect to Google for authentication');",
+									"console.log('💡 After authentication, you will be redirected to the callback URL');"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// OAuth redirects to external provider, so we check for redirect",
+									"if (pm.response.code === 302 || pm.response.code === 200) {",
+									"    console.log('✅ Google OAuth initiated');",
+									"    console.log('💡 Follow the redirect to complete authentication');",
+									"}",
+									"",
+									"pm.test('OAuth flow initiated', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 302]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/auth/google",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"google"
+							]
+						},
+						"description": "Initiate Google OAuth login.\n\n**No authentication required.**\n\n**How it works:**\n1. This endpoint redirects to Google for authentication\n2. User authorizes the app on Google\n3. Google redirects to `/auth/google/callback`\n4. Backend creates/updates user and generates JWT token\n5. User is redirected to frontend with token in query params\n\n**Frontend Integration:**\n- Redirect user to this endpoint: `GET /api/v1/auth/google`\n- Handle callback at `/auth/callback?token=...&user=...`\n- Extract token and user from query params\n- Store token and redirect to dashboard\n\n**Environment Variables Required:**\n- `GOOGLE_CLIENT_ID` - Google OAuth Client ID\n- `GOOGLE_CLIENT_SECRET` - Google OAuth Client Secret\n- `GOOGLE_CALLBACK_URL` - Callback URL (default: `/api/v1/auth/google/callback`)\n- `FRONTEND_URL` - Frontend URL for redirect after auth (default: `http://localhost:3000`)\n\n**Note:** In Postman, this will show a redirect. In a browser, it will redirect to Google."
+					},
+					"response": []
 				}
 			],
-			"description": "Authentication endpoints for user registration and login."
+			"description": "Authentication endpoints for user registration, login, and OAuth (Facebook/Google).\n\n**OAuth Flow:**\n1. User clicks \"Login with Facebook/Google\" on frontend\n2. Frontend redirects to `/auth/facebook` or `/auth/google`\n3. Backend redirects to OAuth provider (Facebook/Google)\n4. User authorizes on OAuth provider\n5. OAuth provider redirects to callback endpoint\n6. Backend creates/updates user and generates JWT token\n7. Backend redirects to frontend with token: `{FRONTEND_URL}/auth/callback?token=...&user=...`\n8. Frontend extracts token and stores it (localStorage/sessionStorage)\n9. Frontend redirects user to dashboard\n\n**Account Linking:**\n- If user logs in with OAuth and email already exists, OAuth account is linked to existing email account\n- If user logs in with email/password and then uses OAuth with same email, accounts are automatically linked"
 		},
 		{
 			"name": "User Profile",
@@ -303,12 +405,130 @@
 								"avatar"
 							]
 						},
-						"description": "Upload or update user profile image.\n\n**Authentication required.**\n\n**Requirements:**\n- File format: jpg, jpeg, png, gif, webp\n- Max file size: 5MB\n- Auto-resized to 400x400px\n- Stored in Cloudinary\n- Old image automatically deleted when updating"
+						"description": "Upload or update user profile image.\n\n**Authentication required.**\n\n**Requirements:**\n- File format: jpg, jpeg, png, gif, webp\n- Max file size: 5MB\n- Auto-resized to 400x400px\n- Stored in Cloudinary\n- Old image automatically deleted when updating\n\n**Field name:** `image` (multipart/form-data)"
+					},
+					"response": []
+				},
+				{
+					"name": "Change Password",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Password changed successfully', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('success', true);",
+									"    pm.expect(response).to.have.property('message');",
+									"    console.log('✅ Password changed successfully');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"currentPassword\": \"oldPassword123\",\n  \"newPassword\": \"newPassword123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/password",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"users",
+								"me",
+								"password"
+							]
+						},
+						"description": "Change user password.\n\n**Authentication required.**\n\n**Request Body:**\n- `currentPassword` (string, required): Current password\n- `newPassword` (string, required): New password (minimum 6 characters)\n\n**Error Responses:**\n- `400 Bad Request` - Invalid current password or OAuth account (cannot change password for social login accounts)\n- `401 Unauthorized` - Current password is incorrect\n\n**Note:** OAuth users (Facebook/Google) cannot change password. They must use social login."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Account",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Account deleted successfully', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('success', true);",
+									"    pm.expect(response).to.have.property('message');",
+									"    console.log('✅ Account deleted successfully');",
+									"    console.log('⚠️  Note: This is a soft delete. Account data is preserved but marked as deleted.');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"users",
+								"me"
+							]
+						},
+						"description": "Delete user account (soft delete).\n\n**Authentication required.**\n\n**What happens:**\n- Account is soft deleted (marked as deleted, not permanently removed)\n- Email is anonymized to ensure uniqueness\n- Profile image is deleted from Cloudinary\n- User cannot log in after deletion\n\n**Restrictions:**\n- Cannot delete account with active bookings (PENDING, PAYMENT_PENDING, CONFIRMED)\n- Must cancel or complete all bookings first\n\n**Error Responses:**\n- `400 Bad Request` - Account has active bookings\n\n**Note:** This is a soft delete. Account data is preserved for audit purposes but the user cannot log in."
 					},
 					"response": []
 				}
 			],
-			"description": "User profile management endpoints.\n\n**All endpoints require authentication.**\n\n**Features:**\n- Get profile information\n- Update profile (name, phone, date of birth, gender)\n- Upload profile image to Cloudinary\n\n**Note:** Email cannot be changed (security requirement)."
+			"description": "User profile management endpoints.\n\n**All endpoints require authentication.**\n\n**Features:**\n- Get profile information\n- Update profile (name, phone, date of birth, gender)\n- Upload profile image to Cloudinary\n- Change password (email/password accounts only)\n- Delete account (soft delete)\n\n**Note:** Email cannot be changed (security requirement). OAuth users cannot change password."
 		},
 		{
 			"name": "Flight Search",
@@ -703,7 +923,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"productType\": \"FLIGHT_INTERNATIONAL\",\n  \"provider\": \"DUFFEL\",\n  \"basePrice\": 45000,\n  \"currency\": \"GBP\",\n  \"providerBookingId\": \"{{offerId}}\",\n  \"bookingData\": {\n    \"offerId\": \"{{offerId}}\",\n    \"origin\": \"LHR\",\n    \"destination\": \"JFK\",\n    \"departureDate\": \"2026-01-25\",\n    \"airline\": \"British Airways\"\n  },\n  \"passengerInfo\": {\n    \"firstName\": \"John\",\n    \"lastName\": \"Doe\",\n    \"email\": \"john.doe@example.com\",\n    \"phone\": \"+1234567890\"\n  }\n}"
+							"raw": "{\n  \"productType\": \"FLIGHT_INTERNATIONAL\",\n  \"provider\": \"DUFFEL\",\n  \"basePrice\": 45000,\n  \"currency\": \"GBP\",\n  \"bookingData\": {\n    \"offerId\": \"{{offerId}}\",\n    \"origin\": \"LHR\",\n    \"destination\": \"JFK\",\n    \"departureDate\": \"2026-01-25\",\n    \"airline\": \"British Airways\"\n  },\n  \"passengerInfo\": {\n    \"firstName\": \"John\",\n    \"lastName\": \"Doe\",\n    \"email\": \"john.doe@example.com\",\n    \"phone\": \"+1234567890\"\n  }\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/api/v1/bookings",
@@ -732,7 +952,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"productType\": \"FLIGHT_INTERNATIONAL\",\n  \"provider\": \"DUFFEL\",\n  \"basePrice\": 45000,\n  \"currency\": \"GBP\",\n  \"providerBookingId\": \"{{offerId}}\",\n  \"bookingData\": {\n    \"offerId\": \"{{offerId}}\",\n    \"origin\": \"LHR\",\n    \"destination\": \"JFK\"\n  },\n  \"passengerInfo\": {\n    \"firstName\": \"Jane\",\n    \"lastName\": \"Smith\",\n    \"email\": \"jane.smith@example.com\",\n    \"phone\": \"+1234567890\"\n  }\n}"
+							"raw": "{\n  \"productType\": \"FLIGHT_INTERNATIONAL\",\n  \"provider\": \"DUFFEL\",\n  \"basePrice\": 45000,\n  \"currency\": \"GBP\",\n  \"bookingData\": {\n    \"offerId\": \"{{offerId}}\",\n    \"origin\": \"LHR\",\n    \"destination\": \"JFK\"\n  },\n  \"passengerInfo\": {\n    \"firstName\": \"Jane\",\n    \"lastName\": \"Smith\",\n    \"email\": \"jane.smith@example.com\",\n    \"phone\": \"+1234567890\"\n  }\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/api/v1/bookings/guest",
@@ -834,22 +1054,36 @@
 						{
 							"listen": "test",
 							"script": {
-								"exec": [
-									"pm.test('Status code is 200', function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"if (pm.response.code === 200) {",
-									"    const response = pm.response.json();",
-									"    if (response.data.cancellationId) {",
-									"        pm.environment.set('cancellationId', response.data.cancellationId);",
-									"        console.log('✅ Cancellation ID:', response.data.cancellationId);",
-									"    }",
-									"    if (response.data.refundAmount) {",
-									"        console.log('💰 Refund amount:', response.data.refundAmount);",
-									"    }",
-									"}"
-								],
+							"exec": [
+								"pm.test('Status code is 200 or 403', function () {",
+								"    pm.expect(pm.response.code).to.be.oneOf([200, 403, 400]);",
+								"});",
+								"",
+								"if (pm.response.code === 403) {",
+								"    console.error('❌ Access denied. Only administrators can cancel bookings.');",
+								"    console.log('💡 Tip: Use an admin account token');",
+								"} else if (pm.response.code === 400) {",
+								"    const response = pm.response.json();",
+								"    console.error('❌ Cancellation not allowed:', response.message || response.error);",
+								"    console.log('💡 Possible reasons:');",
+								"    console.log('   - Within 24 hours of departure');",
+								"    console.log('   - Non-refundable fare');",
+								"    console.log('   - Departure time has passed');",
+								"} else if (pm.response.code === 200) {",
+								"    const response = pm.response.json();",
+								"    console.log('✅ Booking cancelled successfully');",
+								"    if (response.data.cancellationId) {",
+								"        pm.environment.set('cancellationId', response.data.cancellationId);",
+								"        console.log('📋 Cancellation ID:', response.data.cancellationId);",
+								"    }",
+								"    if (response.data.refundAmount) {",
+								"        console.log('💰 Refund amount:', response.data.refundAmount, response.data.refundTo || '');",
+								"    }",
+								"    if (response.data.hasAirlineCredits) {",
+								"        console.log('🎫 Airline credits issued (no cash refund)');",
+								"    }",
+								"}"
+							],
 								"type": "text/javascript"
 							}
 						}
@@ -885,7 +1119,7 @@
 								"cancel"
 							]
 						},
-						"description": "Cancel a Duffel flight booking.\n\n**Authentication required:** JWT Bearer token\n\n**Requirements:**\n- Booking must be a Duffel flight booking (`provider: DUFFEL`)\n- Booking must be in `CONFIRMED` status\n- Only booking owner or admin can cancel\n\n**Process:**\n1. Creates pending cancellation in Duffel\n2. Confirms cancellation\n3. Updates booking status to `CANCELLED`\n4. Processes refund if applicable\n\n**Response includes:**\n- `cancellationId` - Duffel cancellation ID\n- `refundAmount` - Refund amount (if applicable)\n\n**Note:** Cancellation is immediate and may be non-refundable depending on airline policy."
+						"description": "Cancel a Duffel flight booking (ADMIN ONLY).\n\n**⚠️ RESTRICTIONS:**\n- **Admin Only:** Only administrators (ADMIN, SUPER_ADMIN) can cancel bookings\n- **Time Restriction:** Cancellations are NOT allowed within 24 hours of departure\n- **Non-Refundable Fares:** Cancellations are blocked for non-refundable fares\n- **After Departure:** Cannot cancel after departure time has passed\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Requirements:**\n- Booking must be a Duffel flight booking (`provider: DUFFEL`)\n- Booking must be in `CONFIRMED` status\n- User must have ADMIN or SUPER_ADMIN role\n- Departure must be more than 24 hours away\n- Fare must allow refunds (non-refundable fares blocked)\n\n**Process:**\n1. Validates cancellation restrictions (time, fare type)\n2. Creates pending cancellation in Duffel\n3. Confirms cancellation\n4. Updates booking status to `CANCELLED`\n5. Processes refund if applicable\n6. Sends cancellation email to customer\n\n**Response includes:**\n- `cancellationId` - Duffel cancellation ID\n- `refundAmount` - Refund amount (if applicable)\n- `refundTo` - Where refund goes (balance, airline_credits, card)\n- `hasAirlineCredits` - Whether airline issued credits instead of cash\n- `airlineCredits` - Credit details (if applicable)\n\n**Error Responses:**\n- `403 Forbidden` - User is not an administrator\n- `400 Bad Request` - Cancellation not allowed (time restriction or non-refundable fare)\n\n**Note:** Customers cannot cancel directly. They must contact support for cancellations."
 					},
 					"response": []
 				},
@@ -1010,7 +1244,44 @@
 								"create-intent"
 							]
 						},
-						"description": "Create a Stripe payment intent for a booking.\n\n**Authentication required.**\n\n**Prerequisites:**\n- Must have a booking ID (from Create Booking endpoint)\n- Booking must be in PENDING or PAYMENT_PENDING status\n\n**Request:**\n```json\n{\n  \"bookingId\": \"clx1234567890\"\n}\n```\n\n**Response:**\n```json\n{\n  \"clientSecret\": \"pi_xxx_secret_xxx\",\n  \"paymentIntentId\": \"pi_xxx\"\n}\n```\n\n**Next Steps:**\n1. Use `clientSecret` with Stripe.js on frontend\n2. Stripe handles payment processing\n3. Webhook automatically updates booking status:\n   - `payment_intent.succeeded` → Booking: `CONFIRMED`\n   - `payment_intent.payment_failed` → Booking: `FAILED`\n   - `charge.refunded` → Booking: `REFUNDED`\n\n**Note:** Webhook endpoint is `/api/v1/payments/stripe/webhook` (configured in Stripe Dashboard)"
+						"description": "Create a Stripe payment intent for a booking (authenticated user).\n\n**Authentication required.**\n\n**Prerequisites:**\n- Must have a booking ID (from Create Booking endpoint)\n- Booking must be in PENDING or PAYMENT_PENDING status\n- User must own the booking (or be ADMIN/SUPER_ADMIN)\n\n**Request:**\n```json\n{\n  \"bookingId\": \"clx1234567890\"\n}\n```\n\n**Response:**\n```json\n{\n  \"clientSecret\": \"pi_xxx_secret_xxx\",\n  \"paymentIntentId\": \"pi_xxx\"\n}\n```\n\n**Next Steps:**\n1. Use `clientSecret` with Stripe.js on frontend\n2. Stripe handles payment processing\n3. Webhook automatically updates booking status:\n   - `payment_intent.succeeded` → Booking: `CONFIRMED`\n   - `payment_intent.payment_failed` → Booking: `FAILED`\n   - `charge.refunded` → Booking: `REFUNDED`\n\n**Note:** Webhook endpoint is `/api/v1/payments/stripe/webhook` (configured in Stripe Dashboard)"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Guest Payment Intent",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"bookingReference\": \"EBT-20260126-123456\",\n  \"email\": \"guest@example.com\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/payments/stripe/create-intent/guest",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"payments",
+								"stripe",
+								"create-intent",
+								"guest"
+							]
+						},
+						"description": "Create a Stripe payment intent for a **guest booking**.\n\n**Authentication:** Not required (public endpoint) ✅\n\n**Security:**\n- Uses **booking reference** + **passenger email** to securely identify the booking\n- Common industry pattern for guest checkout (similar to PNR + last name)\n\n**Prerequisites:**\n- Guest booking must exist (from `Create Guest Booking` endpoint)\n- Booking must be in PENDING or PAYMENT_PENDING status\n- Email must match passenger or user email on the booking\n\n**Request:**\n```json\n{\n  \"bookingReference\": \"EBT-20260126-123456\",\n  \"email\": \"guest@example.com\"\n}\n```\n\n**Response:**\n```json\n{\n  \"clientSecret\": \"pi_xxx_secret_xxx\",\n  \"paymentIntentId\": \"pi_xxx\"\n}\n```\n\n**Next Steps:**\n1. Use `clientSecret` with Stripe.js on frontend\n2. Stripe handles payment processing\n3. Webhook automatically updates booking status\n\n**Note:** This flow is designed for guest checkout (no login required)."
 					},
 					"response": []
 				},

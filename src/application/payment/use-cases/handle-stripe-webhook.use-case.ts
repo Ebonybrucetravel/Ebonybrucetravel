@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/database/prisma.service';
 import { StripeService } from '@domains/payment/services/stripe.service';
 import { CreateDuffelOrderUseCase } from '@application/booking/use-cases/create-duffel-order.use-case';
+import { ResendService } from '@infrastructure/email/resend.service';
 import Stripe from 'stripe';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class HandleStripeWebhookUseCase {
     private readonly prisma: PrismaService,
     private readonly stripeService: StripeService,
     private readonly createDuffelOrderUseCase: CreateDuffelOrderUseCase,
+    private readonly resendService: ResendService,
   ) {}
 
   async execute(event: Stripe.Event): Promise<void> {
@@ -171,19 +173,43 @@ export class HandleStripeWebhookUseCase {
         return;
       }
 
+      const refundAmount = charge.amount_refunded
+        ? Number(charge.amount_refunded) / (booking.currency === 'NGN' ? 100 : 100)
+        : null;
+
       await this.prisma.booking.update({
         where: { id: booking.id },
         data: {
           refundStatus: 'COMPLETED',
-          refundAmount: charge.amount_refunded
-            ? Number(charge.amount_refunded) / (booking.currency === 'NGN' ? 100 : 100)
-            : null,
+          refundAmount: refundAmount,
           paymentStatus: charge.amount_refunded === charge.amount ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
           status: 'REFUNDED',
         },
       });
 
       this.logger.log(`Booking ${booking.id} refunded`);
+
+      // Send refund email to customer
+      try {
+        const user = await this.prisma.user.findUnique({
+          where: { id: booking.userId },
+          select: { email: true, name: true },
+        });
+
+        if (user && user.email && refundAmount) {
+          await this.resendService.sendRefundEmail({
+            to: user.email,
+            customerName: user.name || 'Valued Customer',
+            bookingReference: booking.reference,
+            refundAmount: refundAmount,
+            refundCurrency: booking.currency,
+            refundDate: new Date(),
+          });
+        }
+      } catch (emailError) {
+        // Don't fail refund if email fails
+        this.logger.error(`Failed to send refund email:`, emailError);
+      }
     } catch (error) {
       this.logger.error(`Failed to process refund:`, error);
     }

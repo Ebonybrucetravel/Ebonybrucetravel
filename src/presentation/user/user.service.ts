@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/database/prisma.service';
 import { CloudinaryService } from '@infrastructure/cloudinary/cloudinary.service';
+import * as bcrypt from 'bcrypt';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { ProfileResponseDto } from './dto/profile-response.dto';
 
 @Injectable()
@@ -107,7 +109,11 @@ export class UserService {
     if (user.image) {
       const oldPublicId = this.cloudinaryService.extractPublicId(user.image);
       if (oldPublicId) {
-        await this.cloudinaryService.deleteImage(`ebony-bruce-travels/users/${oldPublicId}`);
+        // Extract full public ID including folder path
+        const fullPublicId = user.image.includes('ebony-bruce-travels/users')
+          ? `ebony-bruce-travels/users/${oldPublicId}`
+          : oldPublicId;
+        await this.cloudinaryService.deleteImage(fullPublicId);
       }
     }
 
@@ -148,6 +154,89 @@ export class UserService {
       createdAt: updatedUser.createdAt,
       updatedAt: updatedUser.updatedAt,
     };
+  }
+
+  async changePassword(userId: string, changePasswordDto: ChangePasswordDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, password: true, provider: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // OAuth users don't have passwords
+    if (!user.password || user.provider) {
+      throw new BadRequestException('Password cannot be changed for OAuth accounts. Please use social login.');
+    }
+
+    // Verify current password
+    const isCurrentPasswordValid = await bcrypt.compare(
+      changePasswordDto.currentPassword,
+      user.password,
+    );
+
+    if (!isCurrentPasswordValid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    // Hash new password
+    const hashedNewPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
+
+    // Update password
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedNewPassword },
+    });
+  }
+
+  async deleteAccount(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        bookings: {
+          where: {
+            status: {
+              in: ['PENDING', 'PAYMENT_PENDING', 'CONFIRMED'],
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Check if user has active bookings
+    if (user.bookings.length > 0) {
+      throw new BadRequestException(
+        'Cannot delete account with active bookings. Please cancel or complete all bookings first.',
+      );
+    }
+
+    // Soft delete user
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        deletedAt: new Date(),
+        email: `deleted_${Date.now()}_${user.email}`, // Make email unique for soft delete
+      },
+    });
+
+    // Delete profile image from Cloudinary if exists
+    if (user.image) {
+      const oldPublicId = this.cloudinaryService.extractPublicId(user.image);
+      if (oldPublicId) {
+        const fullPublicId = user.image.includes('ebony-bruce-travels/users')
+          ? `ebony-bruce-travels/users/${oldPublicId}`
+          : oldPublicId;
+        await this.cloudinaryService.deleteImage(fullPublicId).catch(() => {
+          // Ignore errors - image might already be deleted
+        });
+      }
+    }
   }
 }
 

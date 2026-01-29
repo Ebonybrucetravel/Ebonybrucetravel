@@ -2,6 +2,8 @@ import { Injectable, Logger, Inject } from '@nestjs/common';
 import { BookingRepository } from '@domains/booking/repositories/booking.repository';
 import { BOOKING_REPOSITORY } from '@domains/booking/repositories/booking.repository.token';
 import { BookingStatus, PaymentStatus } from '@prisma/client';
+import { ResendService } from '@infrastructure/email/resend.service';
+import { PrismaService } from '@infrastructure/database/prisma.service';
 
 export interface DuffelWebhookEvent {
   type: string;
@@ -19,6 +21,8 @@ export class HandleDuffelWebhookUseCase {
   constructor(
     @Inject(BOOKING_REPOSITORY)
     private readonly bookingRepository: BookingRepository,
+    private readonly resendService: ResendService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async execute(event: DuffelWebhookEvent): Promise<void> {
@@ -167,15 +171,39 @@ export class HandleDuffelWebhookUseCase {
       }
 
       // Store airline-initiated change information
+      // Keep status as CONFIRMED but mark in providerData that change is pending
       await this.bookingRepository.update(booking.id, {
+        status: BookingStatus.CONFIRMED, // Keep as confirmed, change tracked in providerData
         providerData: {
           ...(booking.providerData as any),
           airlineInitiatedChange: change,
           airlineChangeReceivedAt: new Date().toISOString(),
+          hasPendingAirlineChange: true, // Flag to indicate change needs attention
         },
       });
 
       this.logger.log(`Airline-initiated change received for booking ${booking.id}`);
+
+      // Send email notification to customer
+      try {
+        const user = await this.prisma.user.findUnique({
+          where: { id: booking.userId },
+          select: { email: true, name: true },
+        });
+
+        if (user && user.email) {
+          await this.resendService.sendAirlineChangeEmail({
+            to: user.email,
+            customerName: user.name || 'Valued Customer',
+            bookingReference: booking.reference,
+            changeDetails: change,
+            actionRequired: true, // Airline changes typically require action
+          });
+        }
+      } catch (emailError) {
+        // Don't fail webhook if email fails
+        this.logger.error(`Failed to send airline change email:`, emailError);
+      }
     } catch (error) {
       this.logger.error(`Failed to handle airline_initiated_change:`, error);
       throw error;

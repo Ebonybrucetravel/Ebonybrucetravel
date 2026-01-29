@@ -93,6 +93,13 @@ async function main() {
       description: 'Default markup for international flights in USD (Duffel)',
     },
     {
+      productType: ProductType.FLIGHT_INTERNATIONAL,
+      markupPercentage: 10.0,
+      serviceFeeAmount: 40.0,
+      currency: 'GBP',
+      description: 'Default markup for international flights in GBP (Duffel)',
+    },
+    {
       productType: ProductType.HOTEL,
       markupPercentage: 15.0,
       serviceFeeAmount: 5000.0,

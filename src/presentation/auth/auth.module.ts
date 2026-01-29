@@ -6,6 +6,8 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
+import { FacebookStrategy } from './strategies/facebook.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
 import { DatabaseModule } from '@infrastructure/database/database.module';
 
 @Module({
@@ -21,7 +23,7 @@ import { DatabaseModule } from '@infrastructure/database/database.module';
     DatabaseModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, LocalStrategy],
+  providers: [AuthService, JwtStrategy, LocalStrategy, FacebookStrategy, GoogleStrategy],
   exports: [AuthService],
 })
 export class AuthModule {}
