@@ -52,26 +52,27 @@ export class AuthController {
   //   res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
   // }
 
-  @Public()
-  @Get('google')
-  @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Initiate Google OAuth login' })
-  @ApiResponse({ status: 302, description: 'Redirects to Google for authentication' })
-  async googleAuth() {
-    // Guard redirects to Google
-  }
+  // Google OAuth endpoints - Commented out until GOOGLE_CLIENT_ID is configured
+  // @Public()
+  // @Get('google')
+  // @UseGuards(AuthGuard('google'))
+  // @ApiOperation({ summary: 'Initiate Google OAuth login' })
+  // @ApiResponse({ status: 302, description: 'Redirects to Google for authentication' })
+  // async googleAuth() {
+  //   // Guard redirects to Google
+  // }
 
-  @Public()
-  @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Google OAuth callback' })
-  @ApiResponse({ status: 200, description: 'Google login successful' })
-  async googleAuthCallback(@Req() req: any, @Res() res: Response) {
-    const user = req.user;
-    const token = await this.authService.generateOAuthToken(user);
+  // @Public()
+  // @Get('google/callback')
+  // @UseGuards(AuthGuard('google'))
+  // @ApiOperation({ summary: 'Google OAuth callback' })
+  // @ApiResponse({ status: 200, description: 'Google login successful' })
+  // async googleAuthCallback(@Req() req: any, @Res() res: Response) {
+  //   const user = req.user;
+  //   const token = await this.authService.generateOAuthToken(user);
 
-    // Redirect to frontend with token (adjust URL as needed)
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
-  }
+  //   // Redirect to frontend with token (adjust URL as needed)
+  //   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  //   res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
+  // }
 }

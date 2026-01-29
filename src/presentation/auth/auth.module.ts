@@ -7,7 +7,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 // import { FacebookStrategy } from './strategies/facebook.strategy'; // Commented out - enable when FACEBOOK_APP_ID is configured
-import { GoogleStrategy } from './strategies/google.strategy';
+// import { GoogleStrategy } from './strategies/google.strategy'; // Commented out - enable when GOOGLE_CLIENT_ID is configured
 import { DatabaseModule } from '@infrastructure/database/database.module';
 
 @Module({
@@ -28,7 +28,7 @@ import { DatabaseModule } from '@infrastructure/database/database.module';
     JwtStrategy,
     LocalStrategy,
     // FacebookStrategy, // Commented out - enable when FACEBOOK_APP_ID is configured
-    GoogleStrategy,
+    // GoogleStrategy, // Commented out - enable when GOOGLE_CLIENT_ID is configured
   ],
   exports: [AuthService],
 })

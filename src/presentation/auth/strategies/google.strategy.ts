@@ -1,3 +1,11 @@
+// Google OAuth Strategy - Commented out until GOOGLE_CLIENT_ID is configured
+// To enable:
+// 1. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_CALLBACK_URL in .env
+// 2. Uncomment this file
+// 3. Uncomment GoogleStrategy in auth.module.ts
+// 4. Uncomment Google endpoints in auth.controller.ts
+
+/*
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, VerifyCallback } from 'passport-google-oauth20';
@@ -41,4 +49,5 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     done(null, authenticatedUser);
   }
 }
+*/
 
