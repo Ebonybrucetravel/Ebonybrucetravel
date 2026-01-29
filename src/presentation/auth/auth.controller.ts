@@ -28,28 +28,29 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
-  @Public()
-  @Get('facebook')
-  @UseGuards(AuthGuard('facebook'))
-  @ApiOperation({ summary: 'Initiate Facebook OAuth login' })
-  @ApiResponse({ status: 302, description: 'Redirects to Facebook for authentication' })
-  async facebookAuth() {
-    // Guard redirects to Facebook
-  }
+  // Facebook OAuth endpoints - Commented out until FACEBOOK_APP_ID is configured
+  // @Public()
+  // @Get('facebook')
+  // @UseGuards(AuthGuard('facebook'))
+  // @ApiOperation({ summary: 'Initiate Facebook OAuth login' })
+  // @ApiResponse({ status: 302, description: 'Redirects to Facebook for authentication' })
+  // async facebookAuth() {
+  //   // Guard redirects to Facebook
+  // }
 
-  @Public()
-  @Get('facebook/callback')
-  @UseGuards(AuthGuard('facebook'))
-  @ApiOperation({ summary: 'Facebook OAuth callback' })
-  @ApiResponse({ status: 200, description: 'Facebook login successful' })
-  async facebookAuthCallback(@Req() req: any, @Res() res: Response) {
-    const user = req.user;
-    const token = await this.authService.generateOAuthToken(user);
+  // @Public()
+  // @Get('facebook/callback')
+  // @UseGuards(AuthGuard('facebook'))
+  // @ApiOperation({ summary: 'Facebook OAuth callback' })
+  // @ApiResponse({ status: 200, description: 'Facebook login successful' })
+  // async facebookAuthCallback(@Req() req: any, @Res() res: Response) {
+  //   const user = req.user;
+  //   const token = await this.authService.generateOAuthToken(user);
 
-    // Redirect to frontend with token (adjust URL as needed)
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
-  }
+  //   // Redirect to frontend with token (adjust URL as needed)
+  //   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  //   res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
+  // }
 
   @Public()
   @Get('google')

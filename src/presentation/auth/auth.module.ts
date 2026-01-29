@@ -6,7 +6,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
-import { FacebookStrategy } from './strategies/facebook.strategy';
+// import { FacebookStrategy } from './strategies/facebook.strategy'; // Commented out - enable when FACEBOOK_APP_ID is configured
 import { GoogleStrategy } from './strategies/google.strategy';
 import { DatabaseModule } from '@infrastructure/database/database.module';
 
@@ -23,7 +23,13 @@ import { DatabaseModule } from '@infrastructure/database/database.module';
     DatabaseModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, LocalStrategy, FacebookStrategy, GoogleStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    LocalStrategy,
+    // FacebookStrategy, // Commented out - enable when FACEBOOK_APP_ID is configured
+    GoogleStrategy,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

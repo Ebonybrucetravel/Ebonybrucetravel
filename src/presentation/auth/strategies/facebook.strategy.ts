@@ -1,3 +1,11 @@
+// Facebook OAuth Strategy - Commented out until FACEBOOK_APP_ID is configured
+// To enable:
+// 1. Set FACEBOOK_APP_ID, FACEBOOK_APP_SECRET, and FACEBOOK_CALLBACK_URL in .env
+// 2. Uncomment this file
+// 3. Uncomment FacebookStrategy in auth.module.ts
+// 4. Uncomment Facebook endpoints in auth.controller.ts
+
+/*
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, Profile } from 'passport-facebook';
@@ -42,4 +50,5 @@ export class FacebookStrategy extends PassportStrategy(Strategy, 'facebook') {
     done(null, authenticatedUser);
   }
 }
+*/
 
