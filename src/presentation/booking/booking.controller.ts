@@ -12,6 +12,7 @@ import {
   BadRequestException,
   HttpCode,
   HttpStatus,
+  HttpException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
@@ -85,16 +86,66 @@ export class BookingController {
     description: 'Flight search completed - returns offer_request_id for pagination',
     type: SearchFlightsResponseDto,
   })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid search parameters or unsupported currency',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Flight search service temporarily unavailable',
+  })
   async searchFlights(@Body() searchFlightsDto: SearchFlightsDto) {
-    // Don't return offers immediately - use pagination endpoint instead
-    const results = await this.searchFlightsUseCase.execute(searchFlightsDto, {
-      returnOffers: false, // Only return offer_request_id
-    });
-    return {
-      success: true,
-      data: results,
-      message: 'Flight search completed. Use /bookings/offers endpoint to paginate offers.',
-    };
+    try {
+      // Don't return offers immediately - use pagination endpoint instead
+      const results = await this.searchFlightsUseCase.execute(searchFlightsDto, {
+        returnOffers: false, // Only return offer_request_id
+      });
+      return {
+        success: true,
+        data: results,
+        message: 'Flight search completed. Use /bookings/offers endpoint to paginate offers.',
+      };
+    } catch (error: any) {
+      // Re-throw HttpException as-is (already properly formatted)
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      // Convert other errors to proper HTTP exceptions
+      const errorMessage = error?.message || 'An unexpected error occurred while searching for flights';
+      
+      // Check for common error patterns
+      if (errorMessage.includes('currency') || errorMessage.includes('Currency')) {
+        throw new BadRequestException({
+          success: false,
+          message: errorMessage,
+          error: 'Invalid currency',
+        });
+      }
+
+      if (errorMessage.includes('Duffel') || errorMessage.includes('API')) {
+        throw new HttpException(
+          {
+            success: false,
+            message: 'Flight search service is temporarily unavailable. Please try again in a few moments.',
+            error: 'Service unavailable',
+            details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+          },
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
+
+      // Generic error
+      throw new HttpException(
+        {
+          success: false,
+          message: 'Unable to search flights at this time. Please check your search parameters and try again.',
+          error: 'Search failed',
+          details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Public()

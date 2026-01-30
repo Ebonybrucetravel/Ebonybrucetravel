@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, BadRequestException } from '@nestjs/common';
 import { DuffelService } from '@infrastructure/external-apis/duffel/duffel.service';
 import { TripsAfricaService } from '@infrastructure/external-apis/trips-africa/trips-africa.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
@@ -44,7 +44,7 @@ export class SearchFlightsUseCase {
     // Validate currency
     const targetCurrency = currency.toUpperCase();
     if (!this.currencyService.isSupportedCurrency(targetCurrency)) {
-      throw new Error(
+      throw new BadRequestException(
         `Unsupported currency: ${currency}. Supported currencies: ${this.currencyService.getSupportedCurrencies().join(', ')}`,
       );
     }
@@ -237,8 +237,37 @@ export class SearchFlightsUseCase {
             : undefined,
       };
     } catch (error) {
+      // Log error for debugging
       console.error('Error searching flights:', error);
-      throw error;
+
+      // Re-throw HttpException as-is (from DuffelService or validation)
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      // Convert other errors to proper HTTP exceptions
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      // Check for network/API errors
+      if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('ECONNREFUSED')) {
+        throw new HttpException(
+          {
+            message: 'Unable to connect to flight search service. Please try again in a few moments.',
+            error: 'Service unavailable',
+          },
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
+
+      // Generic error
+      throw new HttpException(
+        {
+          message: 'An error occurred while searching for flights. Please check your search parameters and try again.',
+          error: 'Search failed',
+          details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
