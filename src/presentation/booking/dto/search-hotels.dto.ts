@@ -14,6 +14,31 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
+// Define GeographicCoordinatesDto first (used by LocationSearchDto)
+export class GeographicCoordinatesDto {
+  @ApiProperty({
+    description: 'Latitude (-90 to 90)',
+    example: 51.5071,
+    minimum: -90,
+    maximum: 90,
+  })
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitude: number;
+
+  @ApiProperty({
+    description: 'Longitude (-180 to 180)',
+    example: -0.1416,
+    minimum: -180,
+    maximum: 180,
+  })
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitude: number;
+}
+
 export class GuestDto {
   @ApiProperty({ enum: ['adult', 'child'], description: 'Guest type' })
   @IsEnum(['adult', 'child'])
@@ -50,30 +75,6 @@ export class LocationSearchDto {
   @Min(1)
   @Max(100)
   radius?: number;
-}
-
-export class GeographicCoordinatesDto {
-  @ApiProperty({
-    description: 'Latitude (-90 to 90)',
-    example: 51.5071,
-    minimum: -90,
-    maximum: 90,
-  })
-  @IsNumber()
-  @Min(-90)
-  @Max(90)
-  latitude: number;
-
-  @ApiProperty({
-    description: 'Longitude (-180 to 180)',
-    example: -0.1416,
-    minimum: -180,
-    maximum: 180,
-  })
-  @IsNumber()
-  @Min(-180)
-  @Max(180)
-  longitude: number;
 }
 
 export class AccommodationSearchDto {

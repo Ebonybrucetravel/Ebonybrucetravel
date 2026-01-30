@@ -2,28 +2,7 @@ import { IsString, IsNotEmpty, MinLength, IsOptional, ValidateNested, IsNumber, 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
-export class LocationDto {
-  @ApiProperty({
-    description: 'Geographic coordinates for location-based filtering',
-    example: { latitude: 51.5071, longitude: -0.1416 },
-  })
-  @ValidateNested()
-  @Type(() => GeographicCoordinatesDto)
-  geographic_coordinates: GeographicCoordinatesDto;
-
-  @ApiPropertyOptional({
-    description: 'Search radius in kilometers (1-100, default: 5)',
-    minimum: 1,
-    maximum: 100,
-    default: 5,
-  })
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Max(100)
-  radius?: number;
-}
-
+// Define GeographicCoordinatesDto first (used by LocationDto)
 export class GeographicCoordinatesDto {
   @ApiProperty({
     description: 'Latitude (-90 to 90)',
@@ -46,6 +25,28 @@ export class GeographicCoordinatesDto {
   @Min(-180)
   @Max(180)
   longitude: number;
+}
+
+export class LocationDto {
+  @ApiProperty({
+    description: 'Geographic coordinates for location-based filtering',
+    example: { latitude: 51.5071, longitude: -0.1416 },
+  })
+  @ValidateNested()
+  @Type(() => GeographicCoordinatesDto)
+  geographic_coordinates: GeographicCoordinatesDto;
+
+  @ApiPropertyOptional({
+    description: 'Search radius in kilometers (1-100, default: 5)',
+    minimum: 1,
+    maximum: 100,
+    default: 5,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  radius?: number;
 }
 
 export class AccommodationSuggestionsDto {

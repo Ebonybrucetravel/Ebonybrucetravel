@@ -11,6 +11,17 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
+// Define PaymentDto first (used by CreateHotelBookingDto)
+export class PaymentDto {
+  @ApiPropertyOptional({
+    description: '3D Secure session ID for card payments',
+    example: '3ds_0000AWr2XsTRIF1Vp34gh5',
+  })
+  @IsOptional()
+  @IsString()
+  three_d_secure_session_id?: string;
+}
+
 export class HotelGuestDto {
   @ApiProperty({ description: 'Guest first name', example: 'John' })
   @IsString()
@@ -94,15 +105,5 @@ export class CreateHotelBookingDto {
   })
   @IsOptional()
   metadata?: Record<string, string>;
-}
-
-export class PaymentDto {
-  @ApiPropertyOptional({
-    description: '3D Secure session ID for card payments',
-    example: '3ds_0000AWr2XsTRIF1Vp34gh5',
-  })
-  @IsOptional()
-  @IsString()
-  three_d_secure_session_id?: string;
 }
 
