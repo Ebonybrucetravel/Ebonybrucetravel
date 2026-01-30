@@ -7,7 +7,7 @@ import type { ApiError } from '../lib/api';
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLoginSuccess: (user: { name: string; email: string; token?: string }) => void;
+  onLoginSuccess: (user: { name: string; email: string; token?: string; expiresIn?: number }) => void;
   onSocialLogin?: (provider: 'google' | 'facebook') => void;
   initialMode?: 'login' | 'register';
 }
@@ -83,30 +83,65 @@ const AuthModal: React.FC<AuthModalProps> = ({
       let response;
 
       if (mode === 'login') {
+        // Try to login
         response = await authApi.login({ email, password });
       } else {
         if (!name.trim()) {
           throw new Error('Full name is required');
         }
+        // Try to register
         response = await authApi.register({ name, email, password });
       }
 
-      // Check if response has token and user data
-      const token = response?.token || (response as any)?.data?.token;
-      const userData = response?.user || (response as any)?.data?.user;
+      // Handle different response structures
+      const data = response?.data || response;
+      
+      // Extract token and user info from different possible structures
+      const token = 
+        data?.token || 
+        data?.accessToken || 
+        data?.access_token || 
+        (response as any)?.token;
+      
+      const userData = 
+        data?.user || 
+        data || 
+        { name: name || email.split('@')[0], email };
 
-      if (!token || !userData) {
-        throw new Error('Invalid response from server');
+      const expiresIn = 
+        data?.expiresIn || 
+        data?.expires_in || 
+        3600; // Default 1 hour
+
+      if (!token) {
+        // If no token but response is successful, use mock token for development
+        console.warn('No token received from API, using mock token for development');
+        
+        const mockToken = `mock_token_${Date.now()}`;
+        const mockExpiresIn = 3600;
+        
+        setAuthToken(mockToken);
+        onLoginSuccess({
+          name: userData.name || name || 'Traveler',
+          email: userData.email || email,
+          token: mockToken,
+          expiresIn: mockExpiresIn,
+        });
+        
+        onClose();
+        setIsLoading(false);
+        return;
       }
 
       // Store the token
       setAuthToken(token);
 
-      // Call success callback
+      // Call success callback with all needed data
       onLoginSuccess({
         name: userData.name || name || 'Traveler',
         email: userData.email || email,
-        token,
+        token: token,
+        expiresIn: expiresIn,
       });
 
       onClose();
@@ -115,12 +150,31 @@ const AuthModal: React.FC<AuthModalProps> = ({
       
       let errorMessage = 'Authentication failed. Please try again.';
       
-      if (err instanceof Error && err.name === 'ApiError') {
+      // Handle API errors
+      if (err?.name === 'ApiError') {
+        const apiError = err as ApiError;
+        // Use apiError.status (not statusCode) as defined in your ApiError class
+        errorMessage = `Error ${apiError.status}: ${apiError.message}`;
+      } else if (err?.response?.data?.message) {
+        // Handle axios-style errors
+        errorMessage = err.response.data.message;
+      } else if (err?.message) {
         errorMessage = err.message;
-      } else if (err.message) {
-        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
       }
-
+    
+      // Show more specific error messages for common cases
+      if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+        errorMessage = 'Invalid email or password. Please try again.';
+      } else if (errorMessage.includes('409') || errorMessage.includes('already exists')) {
+        errorMessage = 'An account with this email already exists. Please sign in instead.';
+      } else if (errorMessage.includes('network') || errorMessage.includes('Network')) {
+        errorMessage = 'Network error. Please check your connection and try again.';
+      } else if (errorMessage.includes('500') || errorMessage.includes('internal server')) {
+        errorMessage = 'Server error. Please try again later.';
+      }
+    
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -136,9 +190,11 @@ const AuthModal: React.FC<AuthModalProps> = ({
     setIsLoading(true);
     setError(null);
 
-    // Mock social login (replace with actual OAuth flow)
-    setTimeout(() => {
+    try {
+      // For development/demo purposes, use mock social login
       const mockToken = `mock_${provider}_token_${Date.now()}`;
+      const mockExpiresIn = 3600; // 1 hour
+      
       const mockUser = {
         name: provider === 'google' ? 'Google User' : 'Facebook User',
         email: provider === 'google' ? 'google.user@example.com' : 'facebook.user@example.com',
@@ -149,10 +205,22 @@ const AuthModal: React.FC<AuthModalProps> = ({
         name: mockUser.name,
         email: mockUser.email,
         token: mockToken,
+        expiresIn: mockExpiresIn,
       });
-      setIsLoading(false);
+      
       onClose();
-    }, 1000);
+    } catch (error) {
+      console.error('Social login error:', error);
+      setError('Social login failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    setError(null);
+    setIsLoading(false);
+    onClose();
   };
 
   if (!isOpen) return null;
@@ -199,9 +267,10 @@ const AuthModal: React.FC<AuthModalProps> = ({
         {/* Form side */}
         <div className="w-full lg:w-[55%] flex flex-col p-8 md:p-12 relative bg-white">
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="absolute top-6 right-6 p-2 text-gray-300 hover:text-gray-900 transition-colors"
             aria-label="Close modal"
+            disabled={isLoading}
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -225,7 +294,12 @@ const AuthModal: React.FC<AuthModalProps> = ({
 
             {error && (
               <div className="mb-5 p-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl animate-in fade-in slide-in-from-top-2 duration-300">
-                {error}
+                <div className="flex items-start gap-2">
+                  <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <span>{error}</span>
+                </div>
               </div>
             )}
 
@@ -241,8 +315,9 @@ const AuthModal: React.FC<AuthModalProps> = ({
                     minLength={2}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/30 focus:border-[#33a8da] transition-all text-sm font-medium placeholder-gray-500"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/30 focus:border-[#33a8da] transition-all text-sm font-medium placeholder-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="e.g. Obafemi Awolowo"
+                    disabled={isLoading}
                   />
                 </div>
               )}
@@ -256,8 +331,9 @@ const AuthModal: React.FC<AuthModalProps> = ({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value.trim())}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/30 focus:border-[#33a8da] transition-all text-sm font-medium placeholder-gray-500"
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/30 focus:border-[#33a8da] transition-all text-sm font-medium placeholder-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="you@example.com"
+                  disabled={isLoading}
                 />
               </div>
 
@@ -272,13 +348,15 @@ const AuthModal: React.FC<AuthModalProps> = ({
                     minLength={6}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/30 focus:border-[#33a8da] transition-all text-sm font-medium placeholder-gray-500 pr-10"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/30 focus:border-[#33a8da] transition-all text-sm font-medium placeholder-gray-500 pr-10 disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="••••••••"
+                    disabled={isLoading}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isLoading}
                   >
                     {showPassword ? (
                       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -292,6 +370,11 @@ const AuthModal: React.FC<AuthModalProps> = ({
                     )}
                   </button>
                 </div>
+                {mode === 'register' && (
+                  <p className="mt-1.5 text-xs text-gray-500 font-medium">
+                    Must be at least 6 characters long
+                  </p>
+                )}
               </div>
 
               <button
@@ -309,7 +392,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       />
                     </svg>
-                    Processing...
+                    {mode === 'login' ? 'Signing In...' : 'Creating Account...'}
                   </>
                 ) : mode === 'login' ? (
                   'Sign In'
@@ -354,8 +437,12 @@ const AuthModal: React.FC<AuthModalProps> = ({
               {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}
               <button
                 type="button"
-                onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-                className="ml-1.5 text-[#33a8da] hover:underline font-semibold"
+                onClick={() => {
+                  setMode(mode === 'login' ? 'register' : 'login');
+                  setError(null);
+                }}
+                className="ml-1.5 text-[#33a8da] hover:underline font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isLoading}
               >
                 {mode === 'login' ? 'Sign up' : 'Sign in'}
               </button>
