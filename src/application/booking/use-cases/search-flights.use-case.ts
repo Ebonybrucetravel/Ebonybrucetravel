@@ -3,6 +3,7 @@ import { DuffelService } from '@infrastructure/external-apis/duffel/duffel.servi
 import { TripsAfricaService } from '@infrastructure/external-apis/trips-africa/trips-africa.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 import { CacheService } from '@infrastructure/cache/cache.service';
+import { CurrencyService } from '@infrastructure/currency/currency.service';
 import {
   SearchFlightsDto,
   PassengerDto,
@@ -17,6 +18,7 @@ export class SearchFlightsUseCase {
     private readonly tripsAfricaService: TripsAfricaService,
     private readonly markupRepository: MarkupRepository,
     private readonly cacheService: CacheService,
+    private readonly currencyService: CurrencyService,
   ) {}
 
   async execute(
@@ -35,8 +37,17 @@ export class SearchFlightsUseCase {
       cabinClass,
       maxConnections,
       passengerDetails,
+      currency = 'GBP',
     } = searchParams;
     const { returnOffers = false, limit } = options || {}; // Default to false for pagination
+
+    // Validate currency
+    const targetCurrency = currency.toUpperCase();
+    if (!this.currencyService.isSupportedCurrency(targetCurrency)) {
+      throw new Error(
+        `Unsupported currency: ${currency}. Supported currencies: ${this.currencyService.getSupportedCurrencies().join(', ')}`,
+      );
+    }
 
     // Check cache first
     const cacheKey = this.generateCacheKey(searchParams);
@@ -126,34 +137,87 @@ export class SearchFlightsUseCase {
         offers = offers.slice(0, limit);
       }
 
-      // Transform and apply markup
+      // Transform, apply markup, and convert currency
       const offersWithMarkup = await Promise.all(
         offers.map(async (offer) => {
+          const duffelCurrency = offer.total_currency; // Usually USD from Duffel
           const basePrice = parseFloat(offer.total_amount);
-          const currency = offer.total_currency;
+          const baseAmount = parseFloat(offer.base_amount);
+          const taxAmount = offer.tax_amount ? parseFloat(offer.tax_amount) : 0;
 
-          // Get markup configuration
+          // Step 1: Convert prices from Duffel currency to target currency (pure conversion)
+          const convertedBasePrice = await this.currencyService.convert(
+            basePrice,
+            duffelCurrency,
+            targetCurrency,
+          );
+          const convertedBaseAmount = await this.currencyService.convert(
+            baseAmount,
+            duffelCurrency,
+            targetCurrency,
+          );
+          const convertedTaxAmount = offer.tax_amount
+            ? await this.currencyService.convert(taxAmount, duffelCurrency, targetCurrency)
+            : 0;
+
+          // Step 2: Calculate currency conversion fee (buffer) as separate line item
+          // This protects against rate fluctuations and ensures payment success
+          const conversionDetails = this.currencyService.calculateConversionFee(
+            convertedBasePrice,
+            duffelCurrency,
+            targetCurrency,
+          );
+
+          // Step 3: Get markup configuration using target currency
           let markupPercentage = 0;
           try {
             const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
               ProductType.FLIGHT_INTERNATIONAL,
-              currency,
+              targetCurrency,
             );
             markupPercentage = markupConfig?.markupPercentage || 0;
           } catch (error) {
-            console.warn('Could not fetch markup config, using 0%:', error);
+            console.warn(`Could not fetch markup config for ${targetCurrency}, using 0%:`, error);
           }
 
-          const markupAmount = (basePrice * markupPercentage) / 100;
-          const finalPrice = basePrice + markupAmount;
+          // Step 4: Apply markup to price after conversion fee
+          const markupAmount = (conversionDetails.totalWithFee * markupPercentage) / 100;
+          const finalPrice = conversionDetails.totalWithFee + markupAmount;
 
           return {
             ...offer,
+            // Original amounts in Duffel currency (for reference)
             original_amount: offer.total_amount,
+            original_currency: duffelCurrency,
+            // Base converted amounts (pure conversion, no fees)
+            base_amount: this.currencyService.formatAmount(convertedBaseAmount, targetCurrency),
+            base_currency: targetCurrency,
+            tax_amount: offer.tax_amount
+              ? this.currencyService.formatAmount(convertedTaxAmount, targetCurrency)
+              : null,
+            tax_currency: offer.tax_amount ? targetCurrency : null,
+            // Currency conversion breakdown (transparent fee structure)
+            conversion_fee: this.currencyService.formatAmount(
+              conversionDetails.conversionFee,
+              targetCurrency,
+            ),
+            conversion_fee_percentage:
+              duffelCurrency !== targetCurrency ? this.currencyService.getConversionBuffer() : 0,
+            // Price after conversion and fee (before markup)
+            price_after_conversion: this.currencyService.formatAmount(
+              conversionDetails.totalWithFee,
+              targetCurrency,
+            ),
+            total_amount: this.currencyService.formatAmount(
+              conversionDetails.totalWithFee,
+              targetCurrency,
+            ),
+            total_currency: targetCurrency,
+            // Markup and final amounts
             markup_percentage: markupPercentage,
-            markup_amount: markupAmount.toFixed(2),
-            final_amount: finalPrice.toFixed(2),
-            currency: offer.total_currency,
+            markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
+            final_amount: this.currencyService.formatAmount(finalPrice, targetCurrency),
+            currency: targetCurrency,
           };
         }),
       );

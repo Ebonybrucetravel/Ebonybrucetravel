@@ -24,12 +24,29 @@ import { SearchFlightsUseCase } from '@application/booking/use-cases/search-flig
 import { ListOffersUseCase } from '@application/booking/use-cases/list-offers.use-case';
 import { CancelDuffelOrderUseCase } from '@application/booking/use-cases/cancel-duffel-order.use-case';
 import { HandleDuffelWebhookUseCase } from '@application/booking/use-cases/handle-duffel-webhook.use-case';
+import { SearchHotelsUseCase } from '@application/booking/use-cases/search-hotels.use-case';
+import { FetchHotelRatesUseCase } from '@application/booking/use-cases/fetch-hotel-rates.use-case';
+import { CreateHotelQuoteUseCase } from '@application/booking/use-cases/create-hotel-quote.use-case';
+import { CreateHotelBookingUseCase } from '@application/booking/use-cases/create-hotel-booking.use-case';
+import { GetHotelBookingUseCase } from '@application/booking/use-cases/get-hotel-booking.use-case';
+import { ListHotelBookingsUseCase } from '@application/booking/use-cases/list-hotel-bookings.use-case';
+import { CancelHotelBookingUseCase } from '@application/booking/use-cases/cancel-hotel-booking.use-case';
+import { GetAccommodationUseCase } from '@application/booking/use-cases/get-accommodation.use-case';
+import { SearchAccommodationSuggestionsUseCase } from '@application/booking/use-cases/search-accommodation-suggestions.use-case';
+import { GetAccommodationReviewsUseCase } from '@application/booking/use-cases/get-accommodation-reviews.use-case';
+import { SearchPlaceSuggestionsUseCase } from '@application/booking/use-cases/search-place-suggestions.use-case';
+import { ListAirlinesUseCase } from '@application/booking/use-cases/list-airlines.use-case';
 import { BookingService } from '@domains/booking/services/booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CreateGuestBookingDto } from './dto/create-guest-booking.dto';
 import { SearchFlightsDto } from './dto/search-flights.dto';
 import { SearchFlightsResponseDto } from './dto/flight-offer-response.dto';
 import { PaginationQueryDto, ListOffersQueryDto } from './dto/pagination.dto';
+import { SearchHotelsDto } from './dto/search-hotels.dto';
+import { CreateHotelQuoteDto } from './dto/create-hotel-quote.dto';
+import { CreateHotelBookingDto } from './dto/create-hotel-booking.dto';
+import { AccommodationSuggestionsDto } from './dto/accommodation-suggestions.dto';
+import { PlaceSuggestionsDto } from './dto/place-suggestions.dto';
 
 @ApiTags('Bookings')
 @Controller('bookings')
@@ -41,6 +58,18 @@ export class BookingController {
     private readonly listOffersUseCase: ListOffersUseCase,
     private readonly cancelDuffelOrderUseCase: CancelDuffelOrderUseCase,
     private readonly handleDuffelWebhookUseCase: HandleDuffelWebhookUseCase,
+    private readonly searchHotelsUseCase: SearchHotelsUseCase,
+    private readonly fetchHotelRatesUseCase: FetchHotelRatesUseCase,
+    private readonly createHotelQuoteUseCase: CreateHotelQuoteUseCase,
+    private readonly createHotelBookingUseCase: CreateHotelBookingUseCase,
+    private readonly getHotelBookingUseCase: GetHotelBookingUseCase,
+    private readonly listHotelBookingsUseCase: ListHotelBookingsUseCase,
+    private readonly cancelHotelBookingUseCase: CancelHotelBookingUseCase,
+    private readonly getAccommodationUseCase: GetAccommodationUseCase,
+    private readonly searchAccommodationSuggestionsUseCase: SearchAccommodationSuggestionsUseCase,
+    private readonly getAccommodationReviewsUseCase: GetAccommodationReviewsUseCase,
+    private readonly searchPlaceSuggestionsUseCase: SearchPlaceSuggestionsUseCase,
+    private readonly listAirlinesUseCase: ListAirlinesUseCase,
     private readonly bookingService: BookingService,
   ) {}
 
@@ -256,6 +285,207 @@ export class BookingController {
             : 'Booking cancelled successfully',
       },
       message: 'Booking cancelled successfully',
+    };
+  }
+
+  // ==================== HOTEL/STAYS ENDPOINTS ====================
+
+  @Public()
+  @Post('search/hotels')
+  @ApiOperation({ summary: 'Search for hotels/accommodation (no authentication required)' })
+  @ApiResponse({ status: 200, description: 'Hotel search results' })
+  async searchHotels(@Body() searchDto: SearchHotelsDto) {
+    const results = await this.searchHotelsUseCase.execute(searchDto);
+    return {
+      success: true,
+      data: results,
+      message: 'Hotels retrieved successfully',
+    };
+  }
+
+  @Public()
+  @Get('hotels/rates/:searchResultId')
+  @ApiOperation({ summary: 'Fetch detailed rates for a hotel search result' })
+  @ApiResponse({ status: 200, description: 'Hotel rates' })
+  async fetchHotelRates(
+    @Param('searchResultId') searchResultId: string,
+    @Query('currency') currency: string = 'GBP',
+  ) {
+    const rates = await this.fetchHotelRatesUseCase.execute(searchResultId, currency);
+    return {
+      success: true,
+      data: rates,
+      message: 'Hotel rates retrieved successfully',
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('hotels/quotes')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a quote for a hotel rate' })
+  @ApiResponse({ status: 201, description: 'Quote created successfully' })
+  async createHotelQuote(@Body() quoteDto: CreateHotelQuoteDto) {
+    const quote = await this.createHotelQuoteUseCase.execute(quoteDto);
+    return {
+      success: true,
+      data: quote,
+      message: 'Hotel quote created successfully',
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('hotels/bookings')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a hotel booking' })
+  @ApiResponse({ status: 201, description: 'Hotel booking created successfully' })
+  async createHotelBooking(@Body() bookingDto: CreateHotelBookingDto, @Request() req: any) {
+    const result = await this.createHotelBookingUseCase.execute(bookingDto, req.user.id);
+    return {
+      success: true,
+      data: result,
+      message: 'Hotel booking created successfully',
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('hotels/bookings')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List hotel bookings for the authenticated user' })
+  @ApiResponse({ status: 200, description: 'Hotel bookings list' })
+  async listHotelBookings(
+    @Request() req: any,
+    @Query('limit') limit?: number,
+    @Query('cursor') cursor?: string,
+  ) {
+    const result = await this.listHotelBookingsUseCase.execute(req.user.id, {
+      limit: limit ? Number(limit) : undefined,
+      cursor,
+    });
+    return {
+      success: true,
+      data: result.data,
+      meta: result.meta,
+      message: 'Hotel bookings retrieved successfully',
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('hotels/bookings/:bookingId')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get a hotel booking by ID' })
+  @ApiResponse({ status: 200, description: 'Hotel booking details' })
+  async getHotelBooking(@Param('bookingId') bookingId: string, @Request() req: any) {
+    const result = await this.getHotelBookingUseCase.execute(bookingId, req.user.id);
+    return {
+      success: true,
+      data: result,
+      message: 'Hotel booking retrieved successfully',
+    };
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Post('hotels/bookings/:bookingId/cancel')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancel a hotel booking (Admin only)' })
+  @ApiResponse({ status: 200, description: 'Hotel booking cancelled successfully' })
+  async cancelHotelBooking(@Param('bookingId') bookingId: string) {
+    const result = await this.cancelHotelBookingUseCase.execute(bookingId);
+    return {
+      success: true,
+      data: result,
+      message: 'Hotel booking cancelled successfully',
+    };
+  }
+
+  @Public()
+  @Get('hotels/accommodation/:accommodationId')
+  @ApiOperation({ summary: 'Get accommodation details by ID' })
+  @ApiResponse({ status: 200, description: 'Accommodation details' })
+  async getAccommodation(@Param('accommodationId') accommodationId: string) {
+    const accommodation = await this.getAccommodationUseCase.execute(accommodationId);
+    return {
+      success: true,
+      data: accommodation,
+      message: 'Accommodation retrieved successfully',
+    };
+  }
+
+  @Public()
+  @Post('hotels/accommodation/suggestions')
+  @ApiOperation({ summary: 'Search for accommodation suggestions (autocomplete)' })
+  @ApiResponse({ status: 200, description: 'Accommodation suggestions' })
+  async searchAccommodationSuggestions(@Body() dto: AccommodationSuggestionsDto) {
+    const suggestions = await this.searchAccommodationSuggestionsUseCase.execute(dto);
+    return {
+      success: true,
+      data: suggestions,
+      message: 'Accommodation suggestions retrieved successfully',
+    };
+  }
+
+  @Public()
+  @Get('hotels/accommodation/:accommodationId/reviews')
+  @ApiOperation({ summary: 'Get accommodation reviews' })
+  @ApiResponse({ status: 200, description: 'Accommodation reviews' })
+  async getAccommodationReviews(
+    @Param('accommodationId') accommodationId: string,
+    @Query('limit') limit?: number,
+    @Query('after') after?: string,
+    @Query('before') before?: string,
+  ) {
+    const reviews = await this.getAccommodationReviewsUseCase.execute(accommodationId, {
+      limit: limit ? Number(limit) : undefined,
+      after,
+      before,
+    });
+    return {
+      success: true,
+      data: reviews,
+      message: 'Accommodation reviews retrieved successfully',
+    };
+  }
+
+  @Public()
+  @Get('flights/places/suggestions')
+  @ApiOperation({
+    summary: 'Search for place suggestions (airports/cities) - for flight search autocomplete',
+    description:
+      'Use this endpoint to provide autocomplete suggestions for origin and destination fields in flight search. Supports searching by airport/city name or IATA code, with optional location-based filtering.',
+  })
+  @ApiResponse({ status: 200, description: 'Place suggestions (airports and cities)' })
+  async searchPlaceSuggestions(@Query() dto: PlaceSuggestionsDto) {
+    const suggestions = await this.searchPlaceSuggestionsUseCase.execute(dto);
+    return {
+      success: true,
+      data: suggestions,
+      message: 'Place suggestions retrieved successfully',
+    };
+  }
+
+  @Public()
+  @Get('flights/airlines')
+  @ApiOperation({
+    summary: 'List airlines',
+    description: 'Retrieve a paginated list of all airlines. Useful for displaying airline information in flight results.',
+  })
+  @ApiResponse({ status: 200, description: 'List of airlines' })
+  async listAirlines(
+    @Query('limit') limit?: number,
+    @Query('after') after?: string,
+    @Query('before') before?: string,
+  ) {
+    const result = await this.listAirlinesUseCase.execute({
+      limit: limit ? Number(limit) : undefined,
+      after,
+      before,
+    });
+    return {
+      success: true,
+      data: result.data,
+      meta: result.meta,
+      message: 'Airlines retrieved successfully',
     };
   }
 

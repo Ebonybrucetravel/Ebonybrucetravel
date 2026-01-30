@@ -89,6 +89,14 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   REDIS_PASSWORD?: string;
+
+  @IsString()
+  @IsOptional()
+  CURRENCY_CONVERSION_BUFFER?: string; // Percentage buffer (e.g., "2.5" for 2.5%)
+
+  @IsString()
+  @IsOptional()
+  EXCHANGE_RATE_API_KEY?: string;
 }
 
 export function validate(config: Record<string, unknown>) {

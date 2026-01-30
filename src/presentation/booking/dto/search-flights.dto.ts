@@ -111,4 +111,13 @@ export class SearchFlightsDto {
   @ValidateNested({ each: true })
   @Type(() => PassengerDto)
   passengerDetails?: PassengerDto[];
+
+  @ApiPropertyOptional({
+    description: 'Currency code for price display (ISO 4217). Default: GBP. Supported: GBP, USD, EUR, NGN, JPY, CNY, GHS, KES, ZAR',
+    enum: ['GBP', 'USD', 'EUR', 'NGN', 'JPY', 'CNY', 'GHS', 'KES', 'ZAR'],
+    default: 'GBP',
+  })
+  @IsOptional()
+  @IsString()
+  currency?: string = 'GBP';
 }

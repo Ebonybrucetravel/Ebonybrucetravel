@@ -25,11 +25,12 @@ export class CreatePaymentIntentUseCase {
     }
 
     // Convert amount to smallest currency unit
-    // For NGN: multiply by 100 (kobo)
-    // For USD: multiply by 100 (cents)
-    const amountInSmallestUnit = Math.round(
-      Number(booking.totalAmount) * (booking.currency === 'NGN' ? 100 : 100),
-    );
+    // Most currencies: multiply by 100 (cents/kobo/pence)
+    // JPY: no decimal places (already in smallest unit)
+    // Some currencies like KRW, VND also have 0 decimal places
+    const currency = booking.currency.toUpperCase();
+    const multiplier = currency === 'JPY' ? 1 : 100; // JPY has no decimal places
+    const amountInSmallestUnit = Math.round(Number(booking.totalAmount) * multiplier);
 
     // Create payment intent
     const paymentIntent = await this.stripeService.createPaymentIntent({

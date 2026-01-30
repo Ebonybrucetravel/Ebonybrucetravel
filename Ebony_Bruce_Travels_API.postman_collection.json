@@ -828,7 +828,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"origin\": \"LHR\",\n  \"destination\": \"JFK\",\n  \"departureDate\": \"2026-01-25\",\n  \"passengers\": 1,\n  \"cabinClass\": \"economy\"\n}",
+							"raw": "{\n  \"origin\": \"LHR\",\n  \"destination\": \"JFK\",\n  \"departureDate\": \"2026-01-25\",\n  \"passengers\": 1,\n  \"cabinClass\": \"economy\",\n  \"currency\": \"GBP\"\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -848,7 +848,65 @@
 								"flights"
 							]
 						},
-						"description": "**STEP 1: Search for flights and get offer_request_id**\n\n**No authentication required.**\n\n**What This Does:**\n- Creates a flight search request with Duffel API\n- Returns immediately with `offer_request_id` (2-3 seconds)\n- Duffel continues searching airlines in background\n- Does NOT return flight offers (use Step 2 for that)\n\n**Why Two Steps?**\n- Faster response (don't wait 20+ seconds for all airlines)\n- Enables pagination (can't show 500 flights at once)\n- Allows caching (reuse searches, reduce costs)\n\n**Caching:**\n- Search results cached for 10 minutes\n- Same search parameters = cached `offer_request_id` (no API call)\n- Check `cached: true` in response to see if from cache\n\n**Request Body:**\n- `origin` (string, required): Origin airport IATA code (e.g., \"LHR\", \"LOS\", \"JFK\")\n- `destination` (string, required): Destination airport IATA code\n- `departureDate` (string, required): ISO 8601 date (YYYY-MM-DD)\n- `returnDate` (string, optional): For round trips (YYYY-MM-DD)\n- `passengers` (number, required): Number of passengers (min: 1)\n- `cabinClass` (string, optional): economy, premium_economy, business, first (default: economy)\n- `maxConnections` (number, optional): Max connections (0 = direct only, default: 1)\n- `passengerDetails` (array, optional): Detailed passenger info (age, type, etc.)\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"offer_request_id\": \"orq_0000B2dmFMfv0fyigjlHNI\",\n    \"live_mode\": false,\n    \"cached\": false,\n    \"message\": \"Use /bookings/offers endpoint to paginate offers\"\n  },\n  \"message\": \"Flight search completed...\"\n}\n```\n\n**Next Step:**\nUse the `offer_request_id` with **List Offers** endpoint to get actual flight options.\n\n**Example Scenarios:**\n- One-way: Only `departureDate`\n- Round trip: Both `departureDate` and `returnDate`\n- Direct flights: `maxConnections: 0`\n- Business class: `cabinClass: \"business\"`"
+						"description": "**STEP 1: Search for flights and get offer_request_id**\n\n**No authentication required.**\n\n**What This Does:**\n- Creates a flight search request with Duffel API\n- Returns immediately with `offer_request_id` (2-3 seconds)\n- Duffel continues searching airlines in background\n- Does NOT return flight offers (use Step 2 for that)\n\n**Why Two Steps?**\n- Faster response (don't wait 20+ seconds for all airlines)\n- Enables pagination (can't show 500 flights at once)\n- Allows caching (reuse searches, reduce costs)\n\n**Caching:**\n- Search results cached for 10 minutes\n- Same search parameters = cached `offer_request_id` (no API call)\n- Check `cached: true` in response to see if from cache\n\n**Request Body:**\n- `origin` (string, required): Origin airport IATA code (e.g., \"LHR\", \"LOS\", \"JFK\")\n- `destination` (string, required): Destination airport IATA code\n- `departureDate` (string, required): ISO 8601 date (YYYY-MM-DD)\n- `returnDate` (string, optional): For round trips (YYYY-MM-DD)\n- `passengers` (number, required): Number of passengers (min: 1)\n- `cabinClass` (string, optional): economy, premium_economy, business, first (default: economy)\n- `maxConnections` (number, optional): Max connections (0 = direct only, default: 1)\n- `passengerDetails` (array, optional): Detailed passenger info (age, type, etc.)\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"offer_request_id\": \"orq_0000B2dmFMfv0fyigjlHNI\",\n    \"live_mode\": false,\n    \"cached\": false,\n    \"message\": \"Use /bookings/offers endpoint to paginate offers\"\n  },\n  \"message\": \"Flight search completed...\"\n}\n```\n\n**Next Step:**\nUse the `offer_request_id` with **List Offers** endpoint to get actual flight options.\n\n**Example Scenarios:**\n\n**One-Way Flight:**\n```json\n{\n  \"origin\": \"LHR\",\n  \"destination\": \"JFK\",\n  \"departureDate\": \"2026-01-25\",\n  \"passengers\": 1,\n  \"cabinClass\": \"economy\",\n  \"currency\": \"GBP\"\n}\n```\n\n**Round Trip Flight (IMPORTANT - Add returnDate):**\n```json\n{\n  \"origin\": \"LHR\",\n  \"destination\": \"JFK\",\n  \"departureDate\": \"2026-01-25\",\n  \"returnDate\": \"2026-02-05\",\n  \"passengers\": 2,\n  \"cabinClass\": \"economy\",\n  \"currency\": \"GBP\"\n}\n```\n\n**Direct Flights Only:**\n```json\n{\n  \"origin\": \"LHR\",\n  \"destination\": \"JFK\",\n  \"departureDate\": \"2026-01-25\",\n  \"passengers\": 1,\n  \"maxConnections\": 0,\n  \"cabinClass\": \"economy\"\n}\n```\n\n**Business Class:**\n```json\n{\n  \"origin\": \"LHR\",\n  \"destination\": \"JFK\",\n  \"departureDate\": \"2026-01-25\",\n  \"passengers\": 1,\n  \"cabinClass\": \"business\",\n  \"currency\": \"GBP\"\n}\n```\n\n**With Children/Infants:**\n```json\n{\n  \"origin\": \"LHR\",\n  \"destination\": \"JFK\",\n  \"departureDate\": \"2026-01-25\",\n  \"passengers\": 3,\n  \"passengerDetails\": [\n    { \"type\": \"adult\" },\n    { \"type\": \"adult\" },\n    { \"type\": \"child\", \"age\": 5 }\n  ],\n  \"cabinClass\": \"economy\"\n}\n```\n\n**⚠️ ROUND TRIP TROUBLESHOOTING:**\n- Ensure `returnDate` is AFTER `departureDate`\n- Wait 20-30 seconds after search before calling List Offers (Duffel needs time to search)\n- Round trips may take longer to process than one-way\n- Check `offer_request_id` is valid before listing offers\n- Use the same `offer_request_id` for both outbound and return flights"
+					},
+					"response": []
+				},
+				{
+					"name": "Search Flights - Round Trip Example",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    if (response.data && response.data.offer_request_id) {",
+									"        pm.environment.set('offerRequestId', response.data.offer_request_id);",
+									"        console.log('✅ Round trip search successful!');",
+									"        console.log('📋 Offer Request ID:', response.data.offer_request_id);",
+									"        console.log('⏳ Wait 20-30 seconds before calling List Offers');",
+									"        console.log('💡 Round trips take longer to process than one-way');",
+									"    }",
+									"}",
+									"",
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has offer_request_id', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('success', true);",
+									"    pm.expect(response.data).to.have.property('offer_request_id');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"origin\": \"LHR\",\n  \"destination\": \"JFK\",\n  \"departureDate\": \"2026-01-25\",\n  \"returnDate\": \"2026-02-05\",\n  \"passengers\": 2,\n  \"cabinClass\": \"economy\",\n  \"currency\": \"GBP\",\n  \"maxConnections\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/search/flights",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "search", "flights"]
+						},
+						"description": "**ROUND TRIP FLIGHT SEARCH EXAMPLE**\n\n**No authentication required.**\n\n**⚠️ IMPORTANT FOR ROUND TRIPS:**\n1. **Wait 20-30 seconds** after this search before calling List Offers\n2. Round trips take longer to process than one-way flights\n3. Duffel searches both outbound AND return flights\n4. Use the same `offer_request_id` for both directions\n\n**Key Difference from One-Way:**\n- **Add `returnDate`** field (must be AFTER `departureDate`)\n- Round trip searches create 2 slices (outbound + return)\n- Processing time is longer (20-30 seconds vs 10-15 seconds)\n\n**Request Body:**\n```json\n{\n  \"origin\": \"LHR\",\n  \"destination\": \"JFK\",\n  \"departureDate\": \"2026-01-25\",\n  \"returnDate\": \"2026-02-05\",  ← REQUIRED for round trips\n  \"passengers\": 2,\n  \"cabinClass\": \"economy\",\n  \"currency\": \"GBP\"\n}\n```\n\n**Response:**\n- Returns `offer_request_id` immediately (2-3 seconds)\n- Duffel continues searching in background\n- **Wait 20-30 seconds** before calling List Offers\n- Offers will include both outbound and return flights\n\n**Troubleshooting:**\n- ❌ No results? Wait longer (round trips take 20-30 seconds)\n- ❌ Invalid date? Ensure `returnDate` is AFTER `departureDate`\n- ❌ No offers? Try different dates or routes\n- ✅ Check `offer_request_id` is valid before listing offers\n\n**Next Steps:**\n1. Wait 20-30 seconds\n2. Call **List Offers** with the `offer_request_id`\n3. Offers will show combined round trip prices\n4. Each offer includes both outbound and return segments"
 					},
 					"response": []
 				},
@@ -1604,6 +1662,338 @@
 				}
 			],
 			"description": "Payment processing endpoints using Stripe.\n\n**Payment Flow:**\n1. Create booking → Get `bookingId`\n2. Create payment intent → Get `clientSecret`\n3. Use `clientSecret` with Stripe.js on frontend\n4. Stripe processes payment\n5. Webhook updates booking status automatically\n\n**Webhook Setup:**\n- Configure in Stripe Dashboard\n- Endpoint URL: `https://your-domain.com/api/v1/payments/stripe/webhook`\n- Required events: `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`\n- Webhook secret required for security (signature verification)\n\n**Security:**\n- All payment endpoints verify webhook signatures\n- Only legitimate Stripe events are processed\n- Invalid signatures are rejected"
+		},
+		{
+			"name": "Hotels",
+			"item": [
+				{
+					"name": "Search Hotels",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"location\": {\n    \"geographic_coordinates\": {\n      \"latitude\": 51.5071,\n      \"longitude\": -0.1416\n    },\n    \"radius\": 5\n  },\n  \"check_in_date\": \"2024-06-04\",\n  \"check_out_date\": \"2024-06-07\",\n  \"rooms\": 1,\n  \"guests\": [\n    { \"type\": \"adult\" },\n    { \"type\": \"adult\" }\n  ],\n  \"currency\": \"GBP\",\n  \"free_cancellation_only\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/search/hotels",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "search", "hotels"]
+						},
+						"description": "**Search for hotels/accommodation**\n\n**No authentication required.**\n\n**What This Does:**\n- Searches hotels using Duffel Stays API\n- Returns hotels with prices (converted to selected currency)\n- Applies markup automatically\n- Cached for 5 minutes\n\n**Search Methods:**\n\n**1. Location-Based Search (by coordinates):**\n```json\n{\n  \"location\": {\n    \"geographic_coordinates\": {\n      \"latitude\": 51.5071,\n      \"longitude\": -0.1416\n    },\n    \"radius\": 5\n  },\n  \"check_in_date\": \"2024-06-04\",\n  \"check_out_date\": \"2024-06-07\",\n  \"rooms\": 1,\n  \"guests\": [{ \"type\": \"adult\" }],\n  \"currency\": \"GBP\"\n}\n```\n\n**2. Accommodation-Based Search (by hotel IDs):**\n```json\n{\n  \"accommodation\": {\n    \"ids\": [\"acc_0000AWr2VsUNIF1Vl91xg0\"],\n    \"fetch_rates\": true\n  },\n  \"check_in_date\": \"2024-06-04\",\n  \"check_out_date\": \"2024-06-07\",\n  \"rooms\": 1,\n  \"guests\": [{ \"type\": \"adult\" }],\n  \"currency\": \"GBP\"\n}\n```\n\n**Request Parameters:**\n- `location` (object, optional): Location-based search\n  - `geographic_coordinates`: { `latitude` (-90 to 90), `longitude` (-180 to 180) }\n  - `radius` (number, optional): Search radius in km (1-100, default: 5)\n- `accommodation` (object, optional): Search by hotel IDs\n  - `ids` (array, required): List of accommodation IDs (max 10 with rates, 200 without)\n  - `fetch_rates` (boolean, optional): Whether to fetch rates (default: false)\n- `check_in_date` (string, required): ISO 8601 date (max 330 days in future)\n- `check_out_date` (string, required): ISO 8601 date (max 99 nights stay)\n- `rooms` (number, required): Number of rooms (min: 1)\n- `guests` (array, required): List of guests\n  - `type` (string, required): \"adult\" or \"child\"\n  - `age` (number, optional): Age for children (0-17)\n- `currency` (string, optional): Currency code (default: GBP). Supported: GBP, USD, EUR, NGN, JPY, CNY, GHS, KES, ZAR\n- `free_cancellation_only` (boolean, optional): Filter for free cancellation only (default: false)\n- `mobile` (boolean, optional): Whether search is from mobile (default: false)\n- `negotiated_rate_ids` (array, optional): Corporate/group rate IDs\n\n**Response:**\n- Returns hotels with `cheapest_rate_total_amount` (includes markup and conversion fee)\n- Each hotel includes `accommodation` details and available `rooms`\n- Prices are in selected currency with transparent conversion fee\n\n**Filters:**\n- ✅ Location-based (latitude/longitude with radius)\n- ✅ Accommodation IDs\n- ✅ Free cancellation only\n- ✅ Currency selection\n- ✅ Date range (check-in/check-out)\n- ✅ Number of rooms and guests\n- ✅ Mobile device detection"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Hotel Rates",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/hotels/rates/:searchResultId?currency=GBP",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "hotels", "rates", ":searchResultId"],
+							"query": [
+								{
+									"key": "currency",
+									"value": "GBP",
+									"description": "Currency code (default: GBP)"
+								}
+							]
+						},
+						"description": "**Get detailed rates for a specific hotel search result**\n\n**No authentication required.**\n\n**What This Does:**\n- Fetches all available rates for a hotel from search results\n- Returns detailed pricing for each room type\n- Applies currency conversion and markup\n\n**URL Parameters:**\n- `searchResultId` (string, required): Search result ID from hotel search\n\n**Query Parameters:**\n- `currency` (string, optional): Currency code (default: GBP)\n\n**Use Case:**\n- User clicks on a hotel from search results\n- Frontend calls this endpoint to get all room types and rates\n- Display detailed pricing options to user"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Hotel Quote",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"rate_id\": \"rat_0000BTVRuKZTavzrZDJ4cb\",\n  \"search_result_id\": \"srr_0000ASVBuJVLdmqtZDJ4ca\",\n  \"currency\": \"GBP\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/hotels/quotes",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "hotels", "quotes"]
+						},
+						"description": "**Create a hotel quote (reserve rate)**\n\n**No authentication required.**\n\n**What This Does:**\n- Creates a quote for a specific hotel rate\n- Reserves the rate temporarily\n- Returns final pricing with all fees\n\n**Request Body:**\n- `rate_id` (string, required): Rate ID from hotel rates\n- `search_result_id` (string, required): Search result ID\n- `currency` (string, optional): Currency code (default: GBP)\n\n**Response:**\n- Returns quote with `quote_id`\n- Use `quote_id` to create booking\n- Quote includes all pricing breakdown"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Hotel Booking",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"quote_id\": \"quo_0000BTVRuKZTavzrZDJ4cb\",\n  \"email\": \"guest@example.com\",\n  \"phone_number\": \"+442080160509\",\n  \"guests\": [\n    {\n      \"given_name\": \"John\",\n      \"family_name\": \"Doe\",\n      \"type\": \"adult\"\n    }\n  ],\n  \"accommodation_special_requests\": \"Late check-in requested\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/hotels/bookings",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "hotels", "bookings"]
+						},
+						"description": "**Create a hotel booking**\n\n**Authentication required.**\n\n**What This Does:**\n- Creates a confirmed hotel booking\n- Requires quote_id from Create Hotel Quote\n- Stores booking in database\n\n**Request Body:**\n- `quote_id` (string, required): Quote ID from Create Hotel Quote\n- `email` (string, required): Lead guest email\n- `phone_number` (string, required): Phone in E.164 format (e.g., +442080160509)\n- `guests` (array, required): Guest details\n  - `given_name` (string, required): First name\n  - `family_name` (string, required): Last name\n  - `type` (string, required): \"adult\" or \"child\"\n  - `age` (number, optional): Age for children (0-17)\n- `accommodation_special_requests` (string, optional): Special requests\n- `payment` (object, optional): Payment method (if paying via Duffel balance)\n- `metadata` (object, optional): Custom metadata\n\n**Response:**\n- Returns booking with `bookingId`\n- Booking is immediately confirmed\n- Use booking ID for payment processing"
+					},
+					"response": []
+				},
+				{
+					"name": "List Hotel Bookings",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/hotels/bookings?limit=20",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "hotels", "bookings"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "20",
+									"description": "Items per page"
+								},
+								{
+									"key": "cursor",
+									"value": "",
+									"description": "Pagination cursor",
+									"disabled": true
+								}
+							]
+						},
+						"description": "**List user's hotel bookings**\n\n**Authentication required.**\n\n**Query Parameters:**\n- `limit` (number, optional): Items per page (default: 20, max: 200)\n- `cursor` (string, optional): Pagination cursor\n\n**Response:**\n- Returns paginated list of hotel bookings\n- Includes booking details, dates, pricing"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Hotel Booking",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/hotels/bookings/:bookingId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "hotels", "bookings", ":bookingId"]
+						},
+						"description": "**Get hotel booking details**\n\n**Authentication required.**\n\n**URL Parameters:**\n- `bookingId` (string, required): Booking ID\n\n**Response:**\n- Returns full booking details from Duffel\n- Includes accommodation, guests, dates, pricing"
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Hotel Booking (Admin Only)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/hotels/bookings/:bookingId/cancel",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "hotels", "bookings", ":bookingId", "cancel"]
+						},
+						"description": "**Cancel a hotel booking**\n\n**Admin authentication required.**\n\n**What This Does:**\n- Cancels hotel booking in Duffel\n- Updates local database\n- Only admins can cancel (same as flight cancellations)\n\n**URL Parameters:**\n- `bookingId` (string, required): Booking ID to cancel\n\n**Response:**\n- Returns cancellation confirmation\n- Booking status updated to CANCELLED"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Accommodation Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/hotels/accommodation/:accommodationId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "hotels", "accommodation", ":accommodationId"]
+						},
+						"description": "**Get accommodation/hotel details by ID**\n\n**No authentication required.**\n\n**URL Parameters:**\n- `accommodationId` (string, required): Accommodation ID\n\n**Use Case:**\n- Display hotel details page\n- Show amenities, location, photos\n- Use before searching for rates"
+					},
+					"response": []
+				},
+				{
+					"name": "Search Accommodation Suggestions",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"london\",\n  \"location\": {\n    \"geographic_coordinates\": {\n      \"latitude\": 51.5071,\n      \"longitude\": -0.1416\n    },\n    \"radius\": 10\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/hotels/accommodation/suggestions",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "hotels", "accommodation", "suggestions"]
+						},
+						"description": "**Search for hotel/accommodation suggestions (autocomplete)**\n\n**No authentication required.**\n\n**What This Does:**\n- Provides autocomplete suggestions for hotel search\n- Minimum 3 characters required\n- Optional location-based filtering\n\n**Request Body:**\n- `query` (string, required): Search query (min 3 characters)\n- `location` (object, optional): Location filter\n  - `geographic_coordinates`: { `latitude`, `longitude` }\n  - `radius` (number, optional): Radius in km (1-100, default: 5)\n\n**Use Case:**\n- Hotel search autocomplete\n- Location-based suggestions\n- Find hotels by name or location"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Accommodation Reviews",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/hotels/accommodation/:accommodationId/reviews?limit=20",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "hotels", "accommodation", ":accommodationId", "reviews"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "20",
+									"description": "Items per page"
+								},
+								{
+									"key": "after",
+									"value": "",
+									"description": "Pagination cursor",
+									"disabled": true
+								}
+							]
+						},
+						"description": "**Get accommodation reviews**\n\n**No authentication required.**\n\n**URL Parameters:**\n- `accommodationId` (string, required): Accommodation ID\n\n**Query Parameters:**\n- `limit` (number, optional): Items per page\n- `after` (string, optional): Pagination cursor\n- `before` (string, optional): Previous page cursor\n\n**Response:**\n- Returns paginated guest reviews\n- Includes ratings, comments, dates"
+					},
+					"response": []
+				}
+			],
+			"description": "Hotel/Stays booking endpoints using Duffel Stays API.\n\n**Hotel Booking Flow:**\n1. **Search Hotels** → Get list of hotels with prices\n2. **Get Hotel Rates** → Get detailed rates for a hotel\n3. **Create Hotel Quote** → Reserve a rate (get quote_id)\n4. **Create Hotel Booking** → Confirm booking with guest details\n5. **List/Get Hotel Bookings** → View bookings\n6. **Cancel Hotel Booking** → Admin-only cancellation\n\n**Search Methods:**\n- Location-based (latitude/longitude with radius)\n- Accommodation-based (by hotel IDs)\n\n**Filters Available:**\n- ✅ Location (coordinates + radius)\n- ✅ Accommodation IDs\n- ✅ Free cancellation only\n- ✅ Currency selection (GBP, USD, EUR, NGN, JPY, CNY, GHS, KES, ZAR)\n- ✅ Date range (check-in/check-out)\n- ✅ Number of rooms and guests\n- ✅ Mobile device detection\n\n**Pricing:**\n- All prices include currency conversion fee (2.5% default)\n- Markup applied automatically\n- Transparent fee breakdown in response\n\n**Utilities:**\n- **Accommodation Suggestions** - Autocomplete for hotel search\n- **Get Accommodation** - Hotel details by ID\n- **Get Reviews** - Guest reviews for hotels"
+		},
+		{
+			"name": "Flight Utilities",
+			"item": [
+				{
+					"name": "Search Place Suggestions (Airports/Cities)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/flights/places/suggestions?query=london",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "flights", "places", "suggestions"],
+							"query": [
+								{
+									"key": "query",
+									"value": "london",
+									"description": "Search query (min 3 characters)"
+								},
+								{
+									"key": "lat",
+									"value": "",
+									"description": "Latitude for location-based search",
+									"disabled": true
+								},
+								{
+									"key": "lng",
+									"value": "",
+									"description": "Longitude for location-based search",
+									"disabled": true
+								},
+								{
+									"key": "rad",
+									"value": "",
+									"description": "Radius in metres",
+									"disabled": true
+								}
+							]
+						},
+						"description": "**Search for airport/city suggestions (autocomplete)**\n\n**No authentication required.**\n\n**What This Does:**\n- Provides autocomplete suggestions for flight search origin/destination\n- Searches by airport name, city name, or IATA code\n- Optional location-based filtering\n\n**Query Parameters:**\n- `query` (string, required): Search query (minimum 3 characters)\n  - Examples: \"london\", \"LHR\", \"heathrow\", \"JFK\"\n- `lat` (number, optional): Latitude for location-based search (-90 to 90)\n- `lng` (number, optional): Longitude for location-based search (-180 to 180)\n- `rad` (number, optional): Search radius in metres\n\n**Response:**\n- Returns airports and cities matching the query\n- Includes IATA codes, names, coordinates\n- Use for origin/destination autocomplete in flight search\n\n**Examples:**\n- `?query=london` - Find all London airports/cities\n- `?query=LHR` - Find Heathrow airport\n- `?query=heathrow&lat=51.5071&lng=-0.1416&rad=10000` - Location-based search"
+					},
+					"response": []
+				},
+				{
+					"name": "List Airlines",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/flights/airlines?limit=50",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "flights", "airlines"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "50",
+									"description": "Items per page (1-200, default: 50)"
+								},
+								{
+									"key": "after",
+									"value": "",
+									"description": "Pagination cursor",
+									"disabled": true
+								},
+								{
+									"key": "before",
+									"value": "",
+									"description": "Previous page cursor",
+									"disabled": true
+								}
+							]
+						},
+						"description": "**List all airlines**\n\n**No authentication required.**\n\n**What This Does:**\n- Returns paginated list of all airlines\n- Includes airline name, IATA code, logo URLs\n- Useful for displaying airline information in flight results\n\n**Query Parameters:**\n- `limit` (number, optional): Items per page (1-200, default: 50)\n- `after` (string, optional): Cursor for next page\n- `before` (string, optional): Cursor for previous page\n\n**Response:**\n- Returns airlines with:\n  - `name`: Airline name (e.g., \"British Airways\")\n  - `iata_code`: IATA code (e.g., \"BA\")\n  - `logo_symbol_url`: Logo URL\n  - `logo_lockup_url`: Full logo URL\n  - `id`: Duffel airline ID\n\n**Use Case:**\n- Display airline logos in flight results\n- Show airline names\n- Filter flights by airline"
+					},
+					"response": []
+				}
+			],
+			"description": "Utility endpoints for flight search.\n\n**Place Suggestions:**\n- Autocomplete for origin/destination fields\n- Search by airport name, city name, or IATA code\n- Optional location-based filtering\n- Minimum 3 characters required\n\n**List Airlines:**\n- Get all airlines with logos and IATA codes\n- Paginated results\n- Use for displaying airline information in flight results"
 		}
 	],
 	"event": [

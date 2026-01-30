@@ -2,6 +2,7 @@ import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { DuffelService } from '@infrastructure/external-apis/duffel/duffel.service';
 import { CacheService } from '@infrastructure/cache/cache.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
+import { CurrencyService } from '@infrastructure/currency/currency.service';
 import { ProductType } from '@prisma/client';
 import {
   PaginationQueryDto,
@@ -15,6 +16,7 @@ export class ListOffersUseCase {
     private readonly duffelService: DuffelService,
     private readonly cacheService: CacheService,
     private readonly markupRepository: MarkupRepository,
+    private readonly currencyService: CurrencyService,
   ) {}
 
   async execute(
@@ -22,10 +24,19 @@ export class ListOffersUseCase {
     pagination: PaginationQueryDto,
   ): Promise<PaginatedResponseDto<any>> {
     try {
-      const { limit = 20, cursor, sort = 'total_amount', sortOrder = 'asc' } = pagination;
+      const { limit = 20, cursor, sort = 'total_amount', sortOrder = 'asc', currency = 'GBP' } = pagination;
 
-      // Check cache first
-      const cacheKey = `offers:${offerRequestId}:${limit}:${cursor || 'first'}:${sort}:${sortOrder}`;
+      // Validate currency
+      const targetCurrency = currency.toUpperCase();
+      if (!this.currencyService.isSupportedCurrency(targetCurrency)) {
+        throw new HttpException(
+          `Unsupported currency: ${currency}. Supported currencies: ${this.currencyService.getSupportedCurrencies().join(', ')}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // Check cache first (include currency in cache key)
+      const cacheKey = `offers:${offerRequestId}:${limit}:${cursor || 'first'}:${sort}:${sortOrder}:${targetCurrency}`;
       const cached = this.cacheService.get<PaginatedResponseDto<any>>(cacheKey);
 
       if (cached) {
@@ -54,13 +65,38 @@ export class ListOffersUseCase {
       // This allows us to use the correct markup (FLIGHT_DOMESTIC vs FLIGHT_INTERNATIONAL)
       const isDomestic = this.isNigerianRouteFromOffers(offers);
 
-      // Apply markup to offers
+      // Apply markup and currency conversion to offers
       const offersWithMarkup = await Promise.all(
         offers.map(async (offer) => {
+          const duffelCurrency = offer.total_currency; // Usually USD from Duffel
           const basePrice = parseFloat(offer.total_amount);
-          const currency = offer.total_currency;
+          const baseAmount = parseFloat(offer.base_amount);
+          const taxAmount = offer.tax_amount ? parseFloat(offer.tax_amount) : 0;
 
-          // Get markup configuration - use FLIGHT_DOMESTIC for Nigerian routes, FLIGHT_INTERNATIONAL otherwise
+          // Step 1: Convert prices from Duffel currency to target currency (pure conversion, no buffer)
+          const convertedBasePrice = await this.currencyService.convert(
+            basePrice,
+            duffelCurrency,
+            targetCurrency,
+          );
+          const convertedBaseAmount = await this.currencyService.convert(
+            baseAmount,
+            duffelCurrency,
+            targetCurrency,
+          );
+          const convertedTaxAmount = offer.tax_amount
+            ? await this.currencyService.convert(taxAmount, duffelCurrency, targetCurrency)
+            : 0;
+
+          // Step 2: Calculate currency conversion fee (buffer) as separate line item
+          // This protects against rate fluctuations and ensures payment success
+          const conversionDetails = this.currencyService.calculateConversionFee(
+            convertedBasePrice,
+            duffelCurrency,
+            targetCurrency,
+          );
+
+          // Step 3: Get markup configuration using target currency
           let markupPercentage = 0;
           try {
             const productType = isDomestic
@@ -68,23 +104,42 @@ export class ListOffersUseCase {
               : ProductType.FLIGHT_INTERNATIONAL;
             const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
               productType,
-              currency,
+              targetCurrency,
             );
             markupPercentage = markupConfig?.markupPercentage || 0;
           } catch (error) {
-            console.warn('Could not fetch markup config, using 0%:', error);
+            console.warn(`Could not fetch markup config for ${targetCurrency}, using 0%:`, error);
           }
 
-          const markupAmount = (basePrice * markupPercentage) / 100;
-          const finalPrice = basePrice + markupAmount;
+          // Step 4: Apply markup to price after conversion fee
+          // Markup is applied to the amount that includes conversion fee (more professional)
+          const markupAmount = (conversionDetails.totalWithFee * markupPercentage) / 100;
+          const finalPrice = conversionDetails.totalWithFee + markupAmount;
 
           return {
             ...offer,
+            // Original amounts in Duffel currency (for reference)
             original_amount: offer.total_amount,
+            original_currency: duffelCurrency,
+            // Base converted amounts (pure conversion, no fees)
+            base_amount: this.currencyService.formatAmount(convertedBaseAmount, targetCurrency),
+            base_currency: targetCurrency,
+            tax_amount: offer.tax_amount
+              ? this.currencyService.formatAmount(convertedTaxAmount, targetCurrency)
+              : null,
+            tax_currency: offer.tax_amount ? targetCurrency : null,
+            // Currency conversion breakdown (transparent fee structure)
+            conversion_fee: this.currencyService.formatAmount(conversionDetails.conversionFee, targetCurrency),
+            conversion_fee_percentage: duffelCurrency !== targetCurrency ? this.currencyService.getConversionBuffer() : 0,
+            // Price after conversion and fee (before markup)
+            price_after_conversion: this.currencyService.formatAmount(conversionDetails.totalWithFee, targetCurrency),
+            total_amount: this.currencyService.formatAmount(conversionDetails.totalWithFee, targetCurrency),
+            total_currency: targetCurrency,
+            // Markup and final amounts
             markup_percentage: markupPercentage,
-            markup_amount: markupAmount.toFixed(2),
-            final_amount: finalPrice.toFixed(2),
-            currency: offer.total_currency,
+            markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
+            final_amount: this.currencyService.formatAmount(finalPrice, targetCurrency),
+            currency: targetCurrency,
           };
         }),
       );
