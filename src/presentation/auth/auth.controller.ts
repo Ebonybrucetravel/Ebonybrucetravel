@@ -42,15 +42,19 @@ export class AuthController {
     const result = await this.authService.login(loginDto);
 
     // Schedule delayed login notification with request context (fire and forget)
-    if (result.user) {
+    // This is non-blocking and errors are caught internally
+    if (result && result.user) {
+      // Don't await - let it run in background
+      // scheduleLoginNotificationWithContext already has internal error handling
       this.authService.scheduleLoginNotificationWithContext(
         result.user.email,
         result.user.name || 'Valued Customer',
         ipAddress,
         userAgent,
       ).catch((error) => {
-        // Log but don't fail login if queue scheduling fails
-        console.error('Failed to schedule login notification:', error);
+        // This should rarely happen since scheduleLoginNotificationWithContext catches errors internally
+        // But we catch here as a final safety net
+        console.error('Unexpected error in login notification scheduling:', error);
       });
     }
 

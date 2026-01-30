@@ -102,6 +102,8 @@ export class AuthService {
 
   async login(loginDto: LoginDto) {
     try {
+      this.logger.debug(`Login attempt for: ${loginDto.email}`);
+      
       // Find user by email
       const user = await this.prisma.user.findUnique({
         where: { email: loginDto.email },
@@ -147,9 +149,13 @@ export class AuthService {
       };
     } catch (error) {
       this.logger.error(`Login failed for ${loginDto.email}:`, error);
+      this.logger.error(`Error stack: ${error instanceof Error ? error.stack : 'No stack trace'}`);
       if (error instanceof UnauthorizedException) {
         throw error;
       }
+      // Log the actual error details for debugging in production
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Login internal error details: ${errorMessage}`);
       throw new InternalServerErrorException('Login failed. Please try again.');
     }
   }
@@ -290,32 +296,44 @@ export class AuthService {
    * Uses queue service instead of setTimeout for better reliability
    */
   private async scheduleLoginNotification(email: string, customerName: string, ipAddress?: string, userAgent?: string): Promise<void> {
-    // Random delay between 10-20 minutes (600,000 - 1,200,000 ms)
-    const minDelay = 10 * 60 * 1000; // 10 minutes
-    const maxDelay = 20 * 60 * 1000; // 20 minutes
-    const randomDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+    try {
+      // Random delay between 10-20 minutes (600,000 - 1,200,000 ms)
+      const minDelay = 10 * 60 * 1000; // 10 minutes
+      const maxDelay = 20 * 60 * 1000; // 20 minutes
+      const randomDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
 
-    this.logger.log(`Scheduling login notification email for ${email} in ${Math.round(randomDelay / 1000 / 60)} minutes`);
+      this.logger.log(`Scheduling login notification email for ${email} in ${Math.round(randomDelay / 1000 / 60)} minutes`);
 
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
-    const changePasswordUrl = `${frontendUrl}/change-password`; // Frontend change password page
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+      const changePasswordUrl = `${frontendUrl}/change-password`; // Frontend change password page
 
-    // Use queue service (BullMQ/Redis if available, otherwise in-memory)
-    await this.queueService.scheduleEmail(randomDelay, {
-      to: email,
-      customerName,
-      loginTime: new Date(),
-      ipAddress,
-      userAgent,
-      changePasswordUrl,
-    });
+      // Use queue service (BullMQ/Redis if available, otherwise in-memory)
+      await this.queueService.scheduleEmail(randomDelay, {
+        to: email,
+        customerName,
+        loginTime: new Date(),
+        ipAddress,
+        userAgent,
+        changePasswordUrl,
+      });
+    } catch (error) {
+      // Log error but don't throw - this is a non-critical feature
+      this.logger.error(`Error scheduling login notification for ${email}:`, error);
+      throw error; // Re-throw to be caught by scheduleLoginNotificationWithContext
+    }
   }
 
   /**
    * Schedule login notification with request context (called from controller)
+   * This method is designed to never throw - all errors are caught and logged
    */
   async scheduleLoginNotificationWithContext(email: string, customerName: string, ipAddress?: string, userAgent?: string): Promise<void> {
-    await this.scheduleLoginNotification(email, customerName, ipAddress, userAgent);
+    try {
+      await this.scheduleLoginNotification(email, customerName, ipAddress, userAgent);
+    } catch (error) {
+      // Log error but don't throw - login should succeed even if notification scheduling fails
+      this.logger.error(`Failed to schedule login notification for ${email}:`, error);
+    }
   }
 
   /**

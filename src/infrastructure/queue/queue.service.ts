@@ -38,10 +38,16 @@ export class QueueService {
    * Schedule a delayed email notification
    */
   async scheduleEmail(delayMs: number, emailData: LoginNotificationEmailData): Promise<string> {
-    if (this.useRedis && this.bullQueueService) {
-      return await this.bullQueueService.scheduleEmail(delayMs, emailData);
-    } else {
-      return this.emailQueueService.scheduleEmail(delayMs, emailData);
+    try {
+      if (this.useRedis && this.bullQueueService) {
+        return await this.bullQueueService.scheduleEmail(delayMs, emailData);
+      } else {
+        // EmailQueueService.scheduleEmail is synchronous, but we wrap it in Promise.resolve for consistency
+        return Promise.resolve(this.emailQueueService.scheduleEmail(delayMs, emailData));
+      }
+    } catch (error) {
+      this.logger.error('Error scheduling email:', error);
+      throw error;
     }
   }
 
