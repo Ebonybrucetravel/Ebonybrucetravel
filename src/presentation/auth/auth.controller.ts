@@ -1,10 +1,15 @@
 import { Controller, Post, Body, Get, UseGuards, Request, Req, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import * as requestIp from 'request-ip';
 import { Public } from '@common/decorators/public.decorator';
+import { Throttle } from '@common/decorators/throttle.decorator';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 import { Response } from 'express';
 
 @ApiTags('Authentication')
@@ -13,66 +18,157 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @Throttle(3, 60000) // 3 requests per minute for registration
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'User registered successfully' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
   }
 
   @Public()
+  @Throttle(5, 60000) // 5 requests per minute for login
   @Post('login')
   @ApiOperation({ summary: 'Login user' })
   @ApiResponse({ status: 200, description: 'Login successful' })
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  async login(@Body() loginDto: LoginDto, @Req() req: any) {
+    // Extract IP address and user agent for security notification
+    const ipAddress = requestIp.getClientIp(req) || 'Unknown';
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+
+    const result = await this.authService.login(loginDto);
+
+    // Schedule delayed login notification with request context (fire and forget)
+    if (result.user) {
+      this.authService.scheduleLoginNotificationWithContext(
+        result.user.email,
+        result.user.name || 'Valued Customer',
+        ipAddress,
+        userAgent,
+      ).catch((error) => {
+        // Log but don't fail login if queue scheduling fails
+        console.error('Failed to schedule login notification:', error);
+      });
+    }
+
+    return result;
   }
 
-  // Facebook OAuth endpoints - Commented out until FACEBOOK_APP_ID is configured
-  // @Public()
-  // @Get('facebook')
-  // @UseGuards(AuthGuard('facebook'))
-  // @ApiOperation({ summary: 'Initiate Facebook OAuth login' })
-  // @ApiResponse({ status: 302, description: 'Redirects to Facebook for authentication' })
-  // async facebookAuth() {
-  //   // Guard redirects to Facebook
-  // }
+  @Public()
+  @Get('facebook')
+  @UseGuards(AuthGuard('facebook'))
+  @ApiOperation({ summary: 'Initiate Facebook OAuth login' })
+  @ApiResponse({ status: 302, description: 'Redirects to Facebook for authentication' })
+  @ApiResponse({ status: 400, description: 'Facebook OAuth not configured' })
+  async facebookAuth() {
+    // Guard redirects to Facebook
+    // If OAuth is not configured, the strategy will handle the error gracefully
+  }
 
-  // @Public()
-  // @Get('facebook/callback')
-  // @UseGuards(AuthGuard('facebook'))
-  // @ApiOperation({ summary: 'Facebook OAuth callback' })
-  // @ApiResponse({ status: 200, description: 'Facebook login successful' })
-  // async facebookAuthCallback(@Req() req: any, @Res() res: Response) {
-  //   const user = req.user;
-  //   const token = await this.authService.generateOAuthToken(user);
+  @Public()
+  @Get('facebook/callback')
+  @UseGuards(AuthGuard('facebook'))
+  @ApiOperation({ summary: 'Facebook OAuth callback' })
+  @ApiResponse({ status: 200, description: 'Facebook login successful' })
+  @ApiResponse({ status: 401, description: 'Facebook authentication failed' })
+  async facebookAuthCallback(@Req() req: any, @Res() res: Response) {
+    try {
+      if (!req.user) {
+        return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?error=authentication_failed`);
+      }
 
-  //   // Redirect to frontend with token (adjust URL as needed)
-  //   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  //   res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
-  // }
+      const user = req.user;
+      const token = await this.authService.generateOAuthToken(user);
 
-  // Google OAuth endpoints - Commented out until GOOGLE_CLIENT_ID is configured
-  // @Public()
-  // @Get('google')
-  // @UseGuards(AuthGuard('google'))
-  // @ApiOperation({ summary: 'Initiate Google OAuth login' })
-  // @ApiResponse({ status: 302, description: 'Redirects to Google for authentication' })
-  // async googleAuth() {
-  //   // Guard redirects to Google
-  // }
+      // Redirect to frontend with token
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
+    } catch (error) {
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      res.redirect(`${frontendUrl}/auth/callback?error=authentication_failed`);
+    }
+  }
 
-  // @Public()
-  // @Get('google/callback')
-  // @UseGuards(AuthGuard('google'))
-  // @ApiOperation({ summary: 'Google OAuth callback' })
-  // @ApiResponse({ status: 200, description: 'Google login successful' })
-  // async googleAuthCallback(@Req() req: any, @Res() res: Response) {
-  //   const user = req.user;
-  //   const token = await this.authService.generateOAuthToken(user);
+  @Public()
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Initiate Google OAuth login' })
+  @ApiResponse({ status: 302, description: 'Redirects to Google for authentication' })
+  @ApiResponse({ status: 400, description: 'Google OAuth not configured' })
+  async googleAuth() {
+    // Guard redirects to Google
+    // If OAuth is not configured, the strategy will handle the error gracefully
+  }
 
-  //   // Redirect to frontend with token (adjust URL as needed)
-  //   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  //   res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
-  // }
+  @Public()
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Google OAuth callback' })
+  @ApiResponse({ status: 200, description: 'Google login successful' })
+  @ApiResponse({ status: 401, description: 'Google authentication failed' })
+  async googleAuthCallback(@Req() req: any, @Res() res: Response) {
+    try {
+      if (!req.user) {
+        return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?error=authentication_failed`);
+      }
+
+      const user = req.user;
+      const token = await this.authService.generateOAuthToken(user);
+
+      // Redirect to frontend with token
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
+    } catch (error) {
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      res.redirect(`${frontendUrl}/auth/callback?error=authentication_failed`);
+    }
+  }
+
+  @Public()
+  @Throttle(3, 60000) // 3 requests per minute
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Request password reset' })
+  @ApiResponse({ status: 200, description: 'Password reset email sent (if account exists)' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    await this.authService.forgotPassword(forgotPasswordDto);
+    // Always return success (security best practice - don't reveal if email exists)
+    return {
+      success: true,
+      message: 'If an account with that email exists, a password reset link has been sent.',
+    };
+  }
+
+  @Public()
+  @Throttle(5, 60000) // 5 requests per minute
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Reset password with token' })
+  @ApiResponse({ status: 200, description: 'Password reset successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    await this.authService.resetPassword(resetPasswordDto);
+    return {
+      success: true,
+      message: 'Password reset successfully. You can now login with your new password.',
+    };
+  }
+
+  @Public()
+  @Throttle(10, 60000) // 10 requests per minute
+  @Post('verify-email')
+  @ApiOperation({ summary: 'Verify email address with token' })
+  @ApiResponse({ status: 200, description: 'Email verified successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  async verifyEmail(@Body() verifyEmailDto: VerifyEmailDto) {
+    await this.authService.verifyEmail(verifyEmailDto);
+    return {
+      success: true,
+      message: 'Email verified successfully.',
+    };
+  }
 }

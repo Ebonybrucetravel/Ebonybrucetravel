@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "ebony-bruce-travels-api-v2",
 		"name": "Ebony Bruce Travels API",
-		"description": "Complete API collection for Ebony Bruce Travels Booking System\n\n**Base URL:** `{{baseUrl}}/api/v1`\n\n**Authentication:** Most endpoints require JWT Bearer token. Get token from `/auth/login` or `/auth/register`.\n\n**Environment Variables:**\n- `baseUrl`: http://localhost:3001 (or your Railway URL)\n- `token`: JWT token (auto-set after login)\n- `offerRequestId`: Duffel offer request ID (auto-set after flight search)\n- `offerId`: Selected flight offer ID (auto-set after listing offers)\n- `nextCursor`: Pagination cursor for next page (auto-set)\n- `bookingId`: Booking ID (auto-set after creating booking)\n\n---\n\n## 📋 API Sections\n\n### 1. Authentication\n- **Register User** - Create new account\n- **Login** - Get JWT token\n\n### 2. User Profile\n- **Get My Profile** - Retrieve current user profile (name, email, phone, dateOfBirth, gender, image)\n- **Update Profile** - Update profile information (name, phone, dateOfBirth, gender)\n- **Upload Profile Image** - Upload profile picture to Cloudinary (auto-resized to 400x400px)\n\n### 3. Flight Search & Offers\n- **Search Flights** - Get `offer_request_id` (Step 1 of two-step process)\n- **List Offers** - Get paginated flight offers using `offer_request_id` (Step 2)\n\n### 4. Bookings\n- **Create Booking** - Create a new booking (authenticated users)\n- **Create Guest Booking** - Create booking without account\n- **Get Booking** - Retrieve booking details by ID\n\n### 5. Payments\n- **Create Payment Intent** - Create Stripe payment intent for a booking\n- **Stripe Webhook** - Handle payment events (payment_intent.succeeded, payment_intent.payment_failed, etc.)\n\n---\n\n## 🚀 Quick Start Guide\n\n### Step 1: Authentication\n1. **Register** or **Login** to get JWT token\n2. Token is automatically saved to `{{token}}` environment variable\n\n### Step 2: Flight Search (Two-Step Process)\n1. **Search Flights** → Get `offer_request_id` (no auth required)\n   - Returns immediately (2-3 seconds)\n   - Cached for 10 minutes\n2. **List Offers** → Get paginated flights using `offer_request_id`\n   - Returns 20 offers per page\n   - Markup automatically applied\n   - Use `nextCursor` for pagination\n\n### Step 3: Create Booking\n1. Select an offer from List Offers response\n2. **Create Booking** with offer details\n3. Booking ID is saved to `{{bookingId}}`\n\n### Step 4: Payment\n1. **Create Payment Intent** using booking ID\n2. Returns `clientSecret` for Stripe Checkout\n3. Webhook automatically updates booking status on payment\n\n### Step 5: Manage Profile\n1. **Get My Profile** to view current information\n2. **Update Profile** to change name, phone, dateOfBirth, gender\n3. **Upload Profile Image** to set profile picture\n\n---\n\n## 🔍 Flight Search Flow (Why Two Requests?)\n\n**Step 1: Search** - Get `offer_request_id` (fast, 2-3 seconds)\n- Duffel searches airlines in background\n- Returns immediately with search ID\n- Cached for 10 minutes\n\n**Step 2: List Offers** - Use `offer_request_id` to get flights (fast, 1 second)\n- Paginated results (20 per page)\n- Markup applied automatically\n- Cached for 2 minutes\n\n**Benefits:**\n- ⚡ Faster user experience (3-4 seconds vs 20+ seconds)\n- 📄 Pagination (don't load 500 flights at once)\n- 💾 Caching (reuse searches, reduce costs)\n- 💰 Cost-effective (fetch only what you need)\n\n---\n\n## 💳 Payment Flow\n\n1. **Create Booking** → Get `bookingId`\n2. **Create Payment Intent** → Get `clientSecret`\n3. Use `clientSecret` with Stripe.js on frontend\n4. Stripe sends webhook events to `/payments/stripe/webhook`\n5. Booking status automatically updates:\n   - `payment_intent.succeeded` → Booking status: `CONFIRMED`\n   - `payment_intent.payment_failed` → Booking status: `FAILED`\n   - `charge.refunded` → Booking status: `REFUNDED`\n\n---\n\n## 👤 User Profile Fields\n\n**Editable:**\n- `name` - Full name\n- `phone` - Phone number\n- `dateOfBirth` - Date of birth (YYYY-MM-DD format)\n- `gender` - Gender (Male, Female, Other, Prefer not to say)\n- `image` - Profile picture (via upload endpoint)\n\n**Read-only:**\n- `email` - Cannot be changed (security)\n- `role` - Set by system\n- `id` - Unique identifier\n\n---\n\n## 📝 Testing Tips\n\n- Search endpoint returns `offer_request_id` (not offers)\n- Use List Offers endpoint to get actual flight options\n- Use `nextCursor` from response to paginate\n- Check `cached` field to see if result was from cache\n- All profile endpoints require authentication\n- Image upload accepts: jpg, jpeg, png, gif, webp (max 5MB)\n- Payment webhook requires Stripe webhook secret for signature verification",
+		"description": "Complete API collection for Ebony Bruce Travels Booking System\n\n**Base URL:** `{{baseUrl}}/api/v1`\n\n**Authentication:** Most endpoints require JWT Bearer token. Get token from `/auth/login` or `/auth/register`.\n\n**Environment Variables:**\n- `baseUrl`: http://localhost:3001 (or your Railway URL)\n- `token`: JWT token (auto-set after login)\n- `offerRequestId`: Duffel offer request ID (auto-set after flight search)\n- `offerId`: Selected flight offer ID (auto-set after listing offers)\n- `nextCursor`: Pagination cursor for next page (auto-set)\n- `bookingId`: Booking ID (auto-set after creating booking)\n\n**New Features (v2.0):**\n- ✅ Email verification on registration\n- ✅ Password reset/forgot password flow\n- ✅ Rate limiting (login: 5/min, register: 3/min)\n- ✅ Delayed login notification emails (10-20 min security feature)\n- ✅ Health check endpoints\n- ✅ Request correlation IDs\n- ✅ Audit logging for sensitive operations\n- ✅ OAuth (Facebook/Google) with graceful fallback\n\n---\n\n## 📋 API Sections\n\n### 1. Authentication\n- **Register User** - Create new account (sends verification email)\n- **Login** - Get JWT token (triggers delayed security notification)\n- **Forgot Password** - Request password reset email\n- **Reset Password** - Reset password with token\n- **Verify Email** - Verify email address with token\n- **Facebook OAuth** - Social login with Facebook\n- **Google OAuth** - Social login with Google\n\n### 2. User Profile\n- **Get My Profile** - Retrieve current user profile\n- **Update Profile** - Update profile information\n- **Upload Profile Image** - Upload profile picture to Cloudinary\n- **Change Password** - Change password (email/password accounts only)\n- **Delete Account** - Soft delete account\n\n### 3. Health Check\n- **Health Check** - Service health status\n- **Database Health** - Database connection status\n\n### 4. Flight Search & Offers\n- **Search Flights** - Get `offer_request_id` (Step 1 of two-step process)\n- **List Offers** - Get paginated flight offers using `offer_request_id` (Step 2)\n\n### 5. Bookings\n- **Create Booking** - Create a new booking (authenticated users)\n- **Create Guest Booking** - Create booking without account\n- **Get Booking** - Retrieve booking details by ID\n\n### 6. Payments\n- **Create Payment Intent** - Create Stripe payment intent for a booking\n- **Create Guest Payment Intent** - Create payment intent for guest booking\n- **Stripe Webhook** - Handle payment events\n\n---\n\n## 🚀 Quick Start Guide\n\n### Step 1: Authentication\n1. **Register** or **Login** to get JWT token\n2. Token is automatically saved to `{{token}}` environment variable\n3. **Verify Email** after registration (check email for verification link)\n4. **Login** triggers delayed security notification email (10-20 min)\n\n### Step 2: Flight Search (Two-Step Process)\n1. **Search Flights** → Get `offer_request_id` (no auth required)\n   - Returns immediately (2-3 seconds)\n   - Cached for 10 minutes\n2. **List Offers** → Get paginated flights using `offer_request_id`\n   - Returns 20 offers per page\n   - Markup automatically applied\n   - Use `nextCursor` for pagination\n\n### Step 3: Create Booking\n1. Select an offer from List Offers response\n2. **Create Booking** with offer details\n3. Booking ID is saved to `{{bookingId}}`\n\n### Step 4: Payment\n1. **Create Payment Intent** using booking ID\n2. Returns `clientSecret` for Stripe Checkout\n3. Webhook automatically updates booking status on payment\n\n### Step 5: Manage Profile\n1. **Get My Profile** to view current information\n2. **Update Profile** to change name, phone, dateOfBirth, gender\n3. **Upload Profile Image** to set profile picture\n4. **Change Password** if needed (email/password accounts only)\n\n---\n\n## 🔒 Security Features\n\n### Rate Limiting\n- **Login**: 5 requests per minute\n- **Register**: 3 requests per minute\n- **Forgot Password**: 3 requests per minute\n- **Reset Password**: 5 requests per minute\n- **Global**: 100 requests per minute (other endpoints)\n\n### Email Verification\n- New registrations receive verification email\n- Email must be verified (optional, but recommended)\n- Verification token expires in 24 hours\n\n### Password Reset\n- Forgot password sends reset email\n- Reset token expires in 1 hour\n- Security: Doesn't reveal if email exists\n\n### Login Notifications\n- Delayed email notification (10-20 minutes after login)\n- Includes IP address and device information\n- Link to change password if suspicious activity\n- Helps detect unauthorized access\n\n### Audit Logging\n- Password changes are logged\n- Account deletions are logged\n- Includes IP address and user agent\n- Stored in `audit_logs` table\n\n---\n\n## 🔍 Flight Search Flow (Why Two Requests?)\n\n**Step 1: Search** - Get `offer_request_id` (fast, 2-3 seconds)\n- Duffel searches airlines in background\n- Returns immediately with search ID\n- Cached for 10 minutes\n\n**Step 2: List Offers** - Use `offer_request_id` to get flights (fast, 1 second)\n- Paginated results (20 per page)\n- Markup applied automatically\n- Cached for 2 minutes\n\n**Benefits:**\n- ⚡ Faster user experience (3-4 seconds vs 20+ seconds)\n- 📄 Pagination (don't load 500 flights at once)\n- 💾 Caching (reuse searches, reduce costs)\n- 💰 Cost-effective (fetch only what you need)\n\n---\n\n## 💳 Payment Flow\n\n1. **Create Booking** → Get `bookingId`\n2. **Create Payment Intent** → Get `clientSecret`\n3. Use `clientSecret` with Stripe.js on frontend\n4. Stripe sends webhook events to `/payments/stripe/webhook`\n5. Booking status automatically updates:\n   - `payment_intent.succeeded` → Booking status: `CONFIRMED`\n   - `payment_intent.payment_failed` → Booking status: `FAILED`\n   - `charge.refunded` → Booking status: `REFUNDED`\n\n---\n\n## 👤 User Profile Fields\n\n**Editable:**\n- `name` - Full name\n- `phone` - Phone number\n- `dateOfBirth` - Date of birth (YYYY-MM-DD format)\n- `gender` - Gender (Male, Female, Other, Prefer not to say)\n- `image` - Profile picture (via upload endpoint)\n\n**Read-only:**\n- `email` - Cannot be changed (security)\n- `emailVerified` - Email verification status\n- `role` - Set by system\n- `id` - Unique identifier\n\n---\n\n## 📝 Testing Tips\n\n- Search endpoint returns `offer_request_id` (not offers)\n- Use List Offers endpoint to get actual flight options\n- Use `nextCursor` from response to paginate\n- Check `cached` field to see if result was from cache\n- All profile endpoints require authentication\n- Image upload accepts: jpg, jpeg, png, gif, webp (max 5MB)\n- Payment webhook requires Stripe webhook secret for signature verification\n- Rate limiting: If you get 429, wait a minute before retrying\n- Check health endpoint: `GET /api/v1/health` to verify service status\n- Correlation IDs: Check `X-Correlation-ID` header in responses for request tracking",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -63,7 +63,7 @@
 								"register"
 							]
 						},
-						"description": "Register a new user account.\n\n**No authentication required.**\n\n**Request Body:**\n- `email` (string, required): User email address\n- `name` (string, required): User full name\n- `password` (string, required): Password (min 6 characters)\n\n**Response:**\n- Returns user object and JWT token\n- Token is automatically saved to environment variable"
+						"description": "Register a new user account.\n\n**No authentication required.**\n\n**Rate Limit:** 3 requests per minute\n\n**Request Body:**\n- `email` (string, required): User email address\n- `name` (string, required): User full name\n- `password` (string, required): Password (min 6 characters)\n\n**Response:**\n- Returns user object and JWT token\n- Token is automatically saved to environment variable\n- **Verification email sent** - Check email for verification link\n- Email verification is optional but recommended\n\n**Email Verification:**\n- Verification email sent immediately after registration\n- Contains verification link with token\n- Token expires in 24 hours\n- Use `/auth/verify-email` endpoint to verify\n\n**Error Responses:**\n- `409 Conflict` - Email already exists\n- `429 Too Many Requests` - Rate limit exceeded (3/min)\n\n**Note:** After registration, you'll receive a welcome email with email verification link."
 					},
 					"response": []
 				},
@@ -115,7 +115,7 @@
 								"login"
 							]
 						},
-						"description": "Login with email and password.\n\n**No authentication required.**\n\n**Response:**\n- Returns user object and JWT token\n- Token is automatically saved to environment variable"
+						"description": "Login with email and password.\n\n**No authentication required.**\n\n**Rate Limit:** 5 requests per minute\n\n**Request Body:**\n- `email` (string, required): User email address\n- `password` (string, required): User password\n\n**Response:**\n- Returns user object and JWT token\n- Token is automatically saved to environment variable\n\n**Security Features:**\n- **Delayed Login Notification**: Email sent 10-20 minutes after login (random delay)\n- Notification includes IP address, device info, and login time\n- Link to change password if suspicious activity detected\n- Helps detect unauthorized access\n\n**Error Responses:**\n- `401 Unauthorized` - Invalid credentials\n- `401 Unauthorized` - Account deleted\n- `401 Unauthorized` - OAuth-only account (use social login)\n- `429 Too Many Requests` - Rate limit exceeded (5/min)\n\n**Note:**\n- OAuth users (Facebook/Google) cannot use email/password login\n- Deleted accounts cannot log in\n- Login notification email is sent asynchronously (doesn't delay login response)"
 					},
 					"response": []
 				},
@@ -166,7 +166,7 @@
 								"facebook"
 							]
 						},
-						"description": "Initiate Facebook OAuth login.\n\n**No authentication required.**\n\n**How it works:**\n1. This endpoint redirects to Facebook for authentication\n2. User authorizes the app on Facebook\n3. Facebook redirects to `/auth/facebook/callback`\n4. Backend creates/updates user and generates JWT token\n5. User is redirected to frontend with token in query params\n\n**Frontend Integration:**\n- Redirect user to this endpoint: `GET /api/v1/auth/facebook`\n- Handle callback at `/auth/callback?token=...&user=...`\n- Extract token and user from query params\n- Store token and redirect to dashboard\n\n**Environment Variables Required:**\n- `FACEBOOK_APP_ID` - Facebook App ID\n- `FACEBOOK_APP_SECRET` - Facebook App Secret\n- `FACEBOOK_CALLBACK_URL` - Callback URL (default: `/api/v1/auth/facebook/callback`)\n- `FRONTEND_URL` - Frontend URL for redirect after auth (default: `http://localhost:3000`)\n\n**Note:** In Postman, this will show a redirect. In a browser, it will redirect to Facebook."
+						"description": "Initiate Facebook OAuth login.\n\n**No authentication required.**\n\n**How it works:**\n1. This endpoint redirects to Facebook for authentication\n2. User authorizes the app on Facebook\n3. Facebook redirects to `/auth/facebook/callback`\n4. Backend creates/updates user and generates JWT token\n5. User is redirected to frontend with token in query params\n\n**Frontend Integration:**\n- Redirect user to this endpoint: `GET /api/v1/auth/facebook`\n- Handle callback at `/auth/callback?token=...&user=...`\n- Extract token and user from query params\n- Store token and redirect to dashboard\n\n**Environment Variables Required:**\n- `FACEBOOK_APP_ID` - Facebook App ID\n- `FACEBOOK_APP_SECRET` - Facebook App Secret\n- `FACEBOOK_CALLBACK_URL` - Callback URL (default: `/api/v1/auth/facebook/callback`)\n- `FRONTEND_URL` - Frontend URL for redirect after auth (default: `http://localhost:3000`)\n\n**Graceful Handling:**\n- If OAuth credentials are not configured, endpoint returns error gracefully\n- Application continues to work without OAuth\n- Check logs for OAuth configuration status\n\n**Note:** In Postman, this will show a redirect. In a browser, it will redirect to Facebook."
 					},
 					"response": []
 				},
@@ -217,12 +217,177 @@
 								"google"
 							]
 						},
-						"description": "Initiate Google OAuth login.\n\n**No authentication required.**\n\n**How it works:**\n1. This endpoint redirects to Google for authentication\n2. User authorizes the app on Google\n3. Google redirects to `/auth/google/callback`\n4. Backend creates/updates user and generates JWT token\n5. User is redirected to frontend with token in query params\n\n**Frontend Integration:**\n- Redirect user to this endpoint: `GET /api/v1/auth/google`\n- Handle callback at `/auth/callback?token=...&user=...`\n- Extract token and user from query params\n- Store token and redirect to dashboard\n\n**Environment Variables Required:**\n- `GOOGLE_CLIENT_ID` - Google OAuth Client ID\n- `GOOGLE_CLIENT_SECRET` - Google OAuth Client Secret\n- `GOOGLE_CALLBACK_URL` - Callback URL (default: `/api/v1/auth/google/callback`)\n- `FRONTEND_URL` - Frontend URL for redirect after auth (default: `http://localhost:3000`)\n\n**Note:** In Postman, this will show a redirect. In a browser, it will redirect to Google."
+						"description": "Initiate Google OAuth login.\n\n**No authentication required.**\n\n**How it works:**\n1. This endpoint redirects to Google for authentication\n2. User authorizes the app on Google\n3. Google redirects to `/auth/google/callback`\n4. Backend creates/updates user and generates JWT token\n5. User is redirected to frontend with token in query params\n\n**Frontend Integration:**\n- Redirect user to this endpoint: `GET /api/v1/auth/google`\n- Handle callback at `/auth/callback?token=...&user=...`\n- Extract token and user from query params\n- Store token and redirect to dashboard\n\n**Environment Variables Required:**\n- `GOOGLE_CLIENT_ID` - Google OAuth Client ID\n- `GOOGLE_CLIENT_SECRET` - Google OAuth Client Secret\n- `GOOGLE_CALLBACK_URL` - Callback URL (default: `/api/v1/auth/google/callback`)\n- `FRONTEND_URL` - Frontend URL for redirect after auth (default: `http://localhost:3000`)\n\n**Graceful Handling:**\n- If OAuth credentials are not configured, endpoint returns error gracefully\n- Application continues to work without OAuth\n- Check logs for OAuth configuration status\n\n**Note:** In Postman, this will show a redirect. In a browser, it will redirect to Google."
+					},
+					"response": []
+				},
+				{
+					"name": "Forgot Password",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Password reset email sent', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('success', true);",
+									"    pm.expect(response).to.have.property('message');",
+									"    console.log('✅ Password reset email sent (if account exists)');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user@example.com\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/auth/forgot-password",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"forgot-password"
+							]
+						},
+						"description": "Request password reset email.\n\n**No authentication required.**\n\n**Rate Limit:** 3 requests per minute\n\n**Request Body:**\n- `email` (string, required): User email address\n\n**Response:**\n- Always returns success (security best practice - doesn't reveal if email exists)\n- If account exists, password reset email is sent\n- Reset token expires in 1 hour\n\n**Security:**\n- Does not reveal if email exists (prevents email enumeration)\n- Reset link sent to email if account exists\n- OAuth-only accounts are silently ignored\n\n**Error Responses:**\n- `429 Too Many Requests` - Rate limit exceeded (3/min)\n\n**Note:** Check email for password reset link. The link expires in 1 hour."
+					},
+					"response": []
+				},
+				{
+					"name": "Reset Password",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Password reset successful', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('success', true);",
+									"    pm.expect(response).to.have.property('message');",
+									"    console.log('✅ Password reset successfully');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"reset-token-from-email\",\n  \"newPassword\": \"newSecurePassword123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/auth/reset-password",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"reset-password"
+							]
+						},
+						"description": "Reset password with token from email.\n\n**No authentication required.**\n\n**Rate Limit:** 5 requests per minute\n\n**Request Body:**\n- `token` (string, required): Reset token from password reset email\n- `newPassword` (string, required): New password (min 6 characters)\n\n**Response:**\n- Returns success message\n- Password is updated\n- User can now login with new password\n\n**Error Responses:**\n- `400 Bad Request` - Invalid or expired token\n- `429 Too Many Requests` - Rate limit exceeded (5/min)\n\n**Note:**\n- Token expires in 1 hour\n- Token can only be used once\n- After reset, user must login with new password"
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Email",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Email verified successfully', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('success', true);",
+									"    pm.expect(response).to.have.property('message');",
+									"    console.log('✅ Email verified successfully');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"verification-token-from-email\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/auth/verify-email",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"verify-email"
+							]
+						},
+						"description": "Verify email address with token from registration email.\n\n**No authentication required.**\n\n**Rate Limit:** 10 requests per minute\n\n**Request Body:**\n- `token` (string, required): Verification token from registration email\n\n**Response:**\n- Returns success message\n- Email is marked as verified\n- `emailVerified` field set to `true`\n\n**Error Responses:**\n- `400 Bad Request` - Invalid or expired token\n- `400 Bad Request` - Email already verified\n- `429 Too Many Requests` - Rate limit exceeded (10/min)\n\n**Note:**\n- Token expires in 24 hours\n- Token can only be used once\n- Email verification is optional but recommended\n- Verification link is sent in welcome email after registration"
 					},
 					"response": []
 				}
 			],
-			"description": "Authentication endpoints for user registration, login, and OAuth (Facebook/Google).\n\n**OAuth Flow:**\n1. User clicks \"Login with Facebook/Google\" on frontend\n2. Frontend redirects to `/auth/facebook` or `/auth/google`\n3. Backend redirects to OAuth provider (Facebook/Google)\n4. User authorizes on OAuth provider\n5. OAuth provider redirects to callback endpoint\n6. Backend creates/updates user and generates JWT token\n7. Backend redirects to frontend with token: `{FRONTEND_URL}/auth/callback?token=...&user=...`\n8. Frontend extracts token and stores it (localStorage/sessionStorage)\n9. Frontend redirects user to dashboard\n\n**Account Linking:**\n- If user logs in with OAuth and email already exists, OAuth account is linked to existing email account\n- If user logs in with email/password and then uses OAuth with same email, accounts are automatically linked"
+			"description": "Authentication endpoints for user registration, login, password reset, email verification, and OAuth (Facebook/Google).\n\n**OAuth Flow:**\n1. User clicks \"Login with Facebook/Google\" on frontend\n2. Frontend redirects to `/auth/facebook` or `/auth/google`\n3. Backend redirects to OAuth provider (Facebook/Google)\n4. User authorizes on OAuth provider\n5. OAuth provider redirects to callback endpoint\n6. Backend creates/updates user and generates JWT token\n7. Backend redirects to frontend with token: `{FRONTEND_URL}/auth/callback?token=...&user=...`\n8. Frontend extracts token and stores it (localStorage/sessionStorage)\n9. Frontend redirects user to dashboard\n\n**Account Linking:**\n- If user logs in with OAuth and email already exists, OAuth account is linked to existing email account\n- If user logs in with email/password and then uses OAuth with same email, accounts are automatically linked"
 		},
 		{
 			"name": "User Profile",
@@ -471,7 +636,7 @@
 								"password"
 							]
 						},
-						"description": "Change user password.\n\n**Authentication required.**\n\n**Request Body:**\n- `currentPassword` (string, required): Current password\n- `newPassword` (string, required): New password (minimum 6 characters)\n\n**Error Responses:**\n- `400 Bad Request` - Invalid current password or OAuth account (cannot change password for social login accounts)\n- `401 Unauthorized` - Current password is incorrect\n\n**Note:** OAuth users (Facebook/Google) cannot change password. They must use social login."
+						"description": "Change user password.\n\n**Authentication required.**\n\n**Request Body:**\n- `currentPassword` (string, required): Current password\n- `newPassword` (string, required): New password (minimum 6 characters)\n\n**Security:**\n- Current password is verified before allowing change\n- Password change is logged to audit table\n- Includes IP address and user agent in audit log\n\n**Error Responses:**\n- `400 Bad Request` - Invalid current password or OAuth account (cannot change password for social login accounts)\n- `401 Unauthorized` - Current password is incorrect\n- `404 Not Found` - User not found\n\n**Note:** OAuth users (Facebook/Google) cannot change password. They must use social login."
 					},
 					"response": []
 				},
@@ -528,7 +693,99 @@
 					"response": []
 				}
 			],
-			"description": "User profile management endpoints.\n\n**All endpoints require authentication.**\n\n**Features:**\n- Get profile information\n- Update profile (name, phone, date of birth, gender)\n- Upload profile image to Cloudinary\n- Change password (email/password accounts only)\n- Delete account (soft delete)\n\n**Note:** Email cannot be changed (security requirement). OAuth users cannot change password."
+			"description": "User profile management endpoints.\n\n**All endpoints require authentication.**\n\n**Features:**\n- Get profile information\n- Update profile (name, phone, date of birth, gender)\n- Upload profile image to Cloudinary\n- Change password (email/password accounts only)\n- Delete account (soft delete)\n\n**Security & Audit:**\n- Password changes are logged to audit table\n- Account deletions are logged to audit table\n- Includes IP address and user agent in audit logs\n\n**Note:** Email cannot be changed (security requirement). OAuth users cannot change password."
+		},
+		{
+			"name": "Health Check",
+			"item": [
+				{
+					"name": "Health Check",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Service is healthy', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('status', 'ok');",
+									"    pm.expect(response).to.have.property('uptime');",
+									"    console.log('✅ Service is healthy');",
+									"    console.log('Uptime:', response.uptime, 'seconds');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/health",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"health"
+							]
+						},
+						"description": "Check service health status.\n\n**No authentication required.**\n\n**Response:**\n- `status`: Service status (\"ok\" or \"error\")\n- `timestamp`: Current timestamp\n- `uptime`: Service uptime in seconds\n- `environment`: Current environment (development/production)\n\n**Use Cases:**\n- Load balancer health checks\n- Monitoring and alerting\n- Service status verification\n\n**Note:** This endpoint is public and doesn't require authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Database Health Check",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Database status', function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('status');",
+									"    pm.expect(response).to.have.property('database');",
+									"    if (response.database === 'connected') {",
+									"        console.log('✅ Database is connected');",
+									"    } else {",
+									"        console.log('❌ Database is disconnected');",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/health/db",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"health",
+								"db"
+							]
+						},
+						"description": "Check database connection health.\n\n**No authentication required.**\n\n**Response:**\n- `status`: Health status (\"ok\" or \"error\")\n- `database`: Database connection status (\"connected\" or \"disconnected\")\n- `timestamp`: Current timestamp\n- `error`: Error message (only in production if connection fails)\n\n**Use Cases:**\n- Database monitoring\n- Connection pool health checks\n- Troubleshooting database issues\n\n**Note:**\n- Returns 200 even if database is disconnected (for monitoring)\n- Check `database` field to determine actual status\n- Error details hidden in production for security"
+					},
+					"response": []
+				}
+			],
+			"description": "Health check endpoints for monitoring service and database status.\n\n**No authentication required.**\n\n**Endpoints:**\n- **Health Check** - General service health\n- **Database Health** - Database connection status\n\n**Use Cases:**\n- Load balancer health checks\n- Monitoring dashboards\n- Alerting systems\n- Service status verification"
 		},
 		{
 			"name": "Flight Search",

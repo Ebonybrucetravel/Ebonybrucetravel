@@ -31,6 +31,29 @@ export interface AirlineChangeEmailData {
   actionRequired: boolean;
 }
 
+export interface RegistrationEmailData {
+  to: string;
+  customerName: string;
+  email: string;
+  verificationUrl?: string;
+}
+
+export interface PasswordResetEmailData {
+  to: string;
+  customerName: string;
+  resetUrl: string;
+  expiresIn: string; // e.g., "1 hour"
+}
+
+export interface LoginNotificationEmailData {
+  to: string;
+  customerName: string;
+  loginTime: Date;
+  ipAddress?: string;
+  userAgent?: string;
+  changePasswordUrl: string;
+}
+
 @Injectable()
 export class ResendService {
   private readonly resend: Resend;
@@ -113,6 +136,72 @@ export class ResendService {
     } catch (error) {
       this.logger.error(`Failed to send airline change email to ${data.to}:`, error);
       // Don't throw - email failure shouldn't break the webhook flow
+    }
+  }
+
+  /**
+   * Send registration welcome email
+   */
+  async sendRegistrationEmail(data: RegistrationEmailData): Promise<void> {
+    try {
+      const subject = 'Welcome to Ebony Bruce Travels!';
+      const html = this.getRegistrationEmailTemplate(data);
+
+      await this.resend.emails.send({
+        from: this.fromEmail,
+        to: data.to,
+        subject,
+        html,
+      });
+
+      this.logger.log(`Registration email sent to ${data.to}`);
+    } catch (error) {
+      this.logger.error(`Failed to send registration email to ${data.to}:`, error);
+      // Don't throw - email failure shouldn't break the registration flow
+    }
+  }
+
+  /**
+   * Send password reset email
+   */
+  async sendPasswordResetEmail(data: PasswordResetEmailData): Promise<void> {
+    try {
+      const subject = 'Reset Your Password - Ebony Bruce Travels';
+      const html = this.getPasswordResetEmailTemplate(data);
+
+      await this.resend.emails.send({
+        from: this.fromEmail,
+        to: data.to,
+        subject,
+        html,
+      });
+
+      this.logger.log(`Password reset email sent to ${data.to}`);
+    } catch (error) {
+      this.logger.error(`Failed to send password reset email to ${data.to}:`, error);
+      // Don't throw - email failure shouldn't break the flow
+    }
+  }
+
+  /**
+   * Send login notification email (delayed security notification)
+   */
+  async sendLoginNotificationEmail(data: LoginNotificationEmailData): Promise<void> {
+    try {
+      const subject = 'New Sign-In Detected - Ebony Bruce Travels';
+      const html = this.getLoginNotificationEmailTemplate(data);
+
+      await this.resend.emails.send({
+        from: this.fromEmail,
+        to: data.to,
+        subject,
+        html,
+      });
+
+      this.logger.log(`Login notification email sent to ${data.to}`);
+    } catch (error) {
+      this.logger.error(`Failed to send login notification email to ${data.to}:`, error);
+      // Don't throw - email failure shouldn't break the login flow
     }
   }
 
@@ -313,6 +402,223 @@ export class ResendService {
               <p style="margin-top: 20px;">
                 Best regards,<br>
                 <strong>The Ebony Bruce Travels Team</strong>
+              </p>
+            </div>
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+            <p>This is an automated email. Please do not reply to this message.</p>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Registration welcome email template
+   */
+  private getRegistrationEmailTemplate(data: RegistrationEmailData): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Welcome to Ebony Bruce Travels</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
+            <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
+          </div>
+          
+          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
+              Welcome to Ebony Bruce Travels!
+            </h2>
+            
+            <p>Dear ${data.customerName || 'Valued Customer'},</p>
+            
+            <p>Thank you for creating an account with Ebony Bruce Travels! We're excited to have you on board.</p>
+            
+            <div style="background-color: #d4edda; border-left: 4px solid #27ae60; padding: 15px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #155724;">Your Account Details</h3>
+              <p style="margin: 5px 0;"><strong>Email:</strong> ${data.email}</p>
+            </div>
+            
+            <p>You can now:</p>
+            <ul>
+              <li>Search and book flights, hotels, and car rentals</li>
+              <li>Manage your bookings from your dashboard</li>
+              <li>Receive exclusive travel deals and promotions</li>
+              <li>Track your booking status in real-time</li>
+            </ul>
+            
+            ${data.verificationUrl ? `
+            <div style="background-color: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #0c5460;">Verify Your Email</h3>
+              <p>Please verify your email address to complete your registration and unlock all features.</p>
+              <div style="text-align: center; margin: 20px 0;">
+                <a href="${data.verificationUrl}" 
+                   style="display: inline-block; background-color: #0c5460; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                  Verify Email Address
+                </a>
+              </div>
+              <p style="font-size: 12px; color: #666;">Or copy and paste this link into your browser: ${data.verificationUrl}</p>
+            </div>
+            ` : ''}
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+              <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
+              <p>Thank you for choosing Ebony Bruce Travels. We look forward to helping you plan your next adventure!</p>
+              <p style="margin-top: 20px;">
+                Best regards,<br>
+                <strong>The Ebony Bruce Travels Team</strong>
+              </p>
+            </div>
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+            <p>This is an automated email. Please do not reply to this message.</p>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Login notification email template (security alert)
+   */
+  private getLoginNotificationEmailTemplate(data: LoginNotificationEmailData): string {
+    const loginTime = data.loginTime.toLocaleString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    });
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>New Sign-In Detected</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
+            <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
+          </div>
+          
+          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">
+              New Sign-In Detected
+            </h2>
+            
+            <p>Dear ${data.customerName || 'Valued Customer'},</p>
+            
+            <p>We detected a new sign-in to your Ebony Bruce Travels account.</p>
+            
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #856404;">Sign-In Details</h3>
+              <p style="margin: 5px 0;"><strong>Time:</strong> ${loginTime}</p>
+              ${data.ipAddress ? `<p style="margin: 5px 0;"><strong>IP Address:</strong> ${data.ipAddress}</p>` : ''}
+              ${data.userAgent ? `<p style="margin: 5px 0;"><strong>Device:</strong> ${data.userAgent}</p>` : ''}
+            </div>
+            
+            <div style="background-color: #f8d7da; border-left: 4px solid #dc3545; padding: 15px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #721c24;">Was this you?</h3>
+              <p>If you recognize this sign-in, no action is needed. Your account is secure.</p>
+              <p><strong>If you did NOT initiate this sign-in, please change your password immediately to secure your account.</strong></p>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.changePasswordUrl}" 
+                 style="display: inline-block; background-color: #dc3545; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                Change Password
+              </a>
+            </div>
+            
+            <div style="background-color: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #0c5460;">Security Tips</h3>
+              <ul style="margin: 10px 0; padding-left: 20px;">
+                <li>Use a strong, unique password</li>
+                <li>Never share your password with anyone</li>
+                <li>Enable two-factor authentication if available</li>
+                <li>Log out from shared or public devices</li>
+              </ul>
+            </div>
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+              <p>If you have any concerns about your account security, please contact our support team immediately.</p>
+              <p style="margin-top: 20px;">
+                Best regards,<br>
+                <strong>The Ebony Bruce Travels Security Team</strong>
+              </p>
+            </div>
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+            <p>This is an automated security notification. Please do not reply to this message.</p>
+            <p>If you did not sign in to your account, please change your password immediately.</p>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Password reset email template
+   */
+  private getPasswordResetEmailTemplate(data: PasswordResetEmailData): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Reset Your Password</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
+            <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
+          </div>
+          
+          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">
+              Reset Your Password
+            </h2>
+            
+            <p>Dear ${data.customerName || 'Valued Customer'},</p>
+            
+            <p>We received a request to reset your password for your Ebony Bruce Travels account.</p>
+            
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
+              <p><strong>This link will expire in ${data.expiresIn}.</strong></p>
+              <p>If you did not request a password reset, please ignore this email. Your password will remain unchanged.</p>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.resetUrl}" 
+                 style="display: inline-block; background-color: #e74c3c; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                Reset Password
+              </a>
+            </div>
+            
+            <p style="font-size: 12px; color: #666;">Or copy and paste this link into your browser: ${data.resetUrl}</p>
+            
+            <div style="background-color: #f8d7da; border-left: 4px solid #dc3545; padding: 15px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #721c24;">Security Notice</h3>
+              <p>For your security, this password reset link will expire in ${data.expiresIn}. If you need to reset your password after it expires, please request a new reset link.</p>
+            </div>
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+              <p>If you have any questions or concerns, please contact our support team.</p>
+              <p style="margin-top: 20px;">
+                Best regards,<br>
+                <strong>The Ebony Bruce Travels Security Team</strong>
               </p>
             </div>
           </div>

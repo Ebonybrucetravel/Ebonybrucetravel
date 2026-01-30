@@ -156,7 +156,12 @@ export class UserService {
     };
   }
 
-  async changePassword(userId: string, changePasswordDto: ChangePasswordDto): Promise<void> {
+  async changePassword(
+    userId: string,
+    changePasswordDto: ChangePasswordDto,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<void> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, password: true, provider: true },
@@ -189,9 +194,26 @@ export class UserService {
       where: { id: userId },
       data: { password: hashedNewPassword },
     });
+
+    // Log to audit table
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'CHANGE_PASSWORD',
+          entityType: 'User',
+          entityId: userId,
+          ipAddress,
+          userAgent,
+        },
+      });
+    } catch (error) {
+      // Don't fail password change if audit log fails
+      console.error('Failed to create audit log for password change:', error);
+    }
   }
 
-  async deleteAccount(userId: string): Promise<void> {
+  async deleteAccount(userId: string, ipAddress?: string, userAgent?: string): Promise<void> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -214,6 +236,27 @@ export class UserService {
       throw new BadRequestException(
         'Cannot delete account with active bookings. Please cancel or complete all bookings first.',
       );
+    }
+
+    // Log to audit table before deletion
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'DELETE_ACCOUNT',
+          entityType: 'User',
+          entityId: userId,
+          changes: {
+            email: user.email,
+            deletedAt: new Date().toISOString(),
+          },
+          ipAddress,
+          userAgent,
+        },
+      });
+    } catch (error) {
+      // Don't fail deletion if audit log fails
+      console.error('Failed to create audit log for account deletion:', error);
     }
 
     // Soft delete user

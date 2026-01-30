@@ -26,6 +26,15 @@ model User {
   provider    String? // 'facebook', 'google', or null for email/password
   providerId  String? // OAuth provider's user ID
 
+  // Email verification
+  emailVerified         Boolean   @default(false)
+  emailVerificationToken String?
+  emailVerificationExpires DateTime?
+
+  // Password reset
+  resetPasswordToken      String?
+  resetPasswordExpires    DateTime?
+
   // Relations
   bookings          Booking[] // User's bookings
   auditLogs         AuditLog[] // Admin actions performed by user

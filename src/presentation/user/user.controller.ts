@@ -7,6 +7,7 @@ import {
   Body,
   UseGuards,
   Request,
+  Req,
   UseInterceptors,
   UploadedFile,
   ParseFilePipe,
@@ -15,6 +16,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import * as requestIp from 'request-ip';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
@@ -69,8 +71,11 @@ export class UserController {
   @ApiOperation({ summary: 'Change user password' })
   @ApiResponse({ status: 200, description: 'Password changed successfully' })
   @ApiResponse({ status: 400, description: 'Invalid current password' })
-  async changePassword(@Request() req, @Body() changePasswordDto: ChangePasswordDto) {
-    await this.userService.changePassword(req.user.id, changePasswordDto);
+  async changePassword(@Request() req, @Req() request: any, @Body() changePasswordDto: ChangePasswordDto) {
+    const ipAddress = requestIp.getClientIp(request) || 'Unknown';
+    const userAgent = request.headers['user-agent'] || 'Unknown';
+    
+    await this.userService.changePassword(req.user.id, changePasswordDto, ipAddress, userAgent);
     return {
       success: true,
       message: 'Password changed successfully',
@@ -81,8 +86,11 @@ export class UserController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete user account (soft delete)' })
   @ApiResponse({ status: 200, description: 'Account deleted successfully' })
-  async deleteAccount(@Request() req) {
-    await this.userService.deleteAccount(req.user.id);
+  async deleteAccount(@Request() req, @Req() request: any) {
+    const ipAddress = requestIp.getClientIp(request) || 'Unknown';
+    const userAgent = request.headers['user-agent'] || 'Unknown';
+    
+    await this.userService.deleteAccount(req.user.id, ipAddress, userAgent);
     return {
       success: true,
       message: 'Account deleted successfully',

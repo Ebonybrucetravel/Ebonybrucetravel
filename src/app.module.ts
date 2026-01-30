@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
@@ -7,6 +7,9 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ThrottlerGuard } from '@nestjs/throttler';
+import { CustomThrottlerGuard } from './common/guards/throttle.guard';
+import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import { validate } from './config/env.validation';
 
 // Infrastructure
 import { DatabaseModule } from './infrastructure/database/database.module';
@@ -26,6 +29,7 @@ import { PaymentApplicationModule } from './application/payment/payment-applicat
 import { AuthModule } from './presentation/auth/auth.module';
 import { AdminModule } from './presentation/admin/admin.module';
 import { UserModule } from './presentation/user/user.module';
+import { HealthModule } from './presentation/health/health.module';
 import { BookingController } from './presentation/booking/booking.controller';
 import { PaymentController } from './presentation/payment/payment.controller';
 import { MarkupController } from './presentation/markup/markup.controller';
@@ -37,6 +41,7 @@ import { DashboardController } from './presentation/dashboard/dashboard.controll
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      validate,
     }),
 
     // Rate limiting
@@ -65,6 +70,7 @@ import { DashboardController } from './presentation/dashboard/dashboard.controll
     AuthModule,
     AdminModule,
     UserModule,
+    HealthModule,
   ],
   controllers: [BookingController, PaymentController, MarkupController, DashboardController],
   providers: [
@@ -78,8 +84,12 @@ import { DashboardController } from './presentation/dashboard/dashboard.controll
     },
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: ThrottlerGuard, // Using default guard for now - custom guard needs proper DI setup
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+  }
+}
