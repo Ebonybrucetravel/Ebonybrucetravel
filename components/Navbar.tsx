@@ -103,20 +103,20 @@ const Navbar: React.FC<NavbarProps> = ({
       setCurrency({
         code: matchingCurrency.code,
         symbol: matchingCurrency.symbol,
-        name: matchingCurrency.name,
       });
     }
     setIsLangOpen(false);
   };
-
+  
   const handleCurrencySelect = (curr: Currency) => {
     setCurrency({
       code: curr.code,
       symbol: curr.symbol,
-      name: curr.name,
     });
     setIsCurrencyOpen(false);
   };
+
+
 
   const handleTabClick = (tab: 'flights' | 'hotels' | 'cars') => {
     if (onTabClick) {
