@@ -25,6 +25,10 @@ import AdminLogin from "../components/AdminLogin";
 import AdminDashboard from "../components/AdminDashboard";
 import CancelBooking from "../components/CancelBooking";
 import { bookingApi, paymentApi, searchFlightsWithPagination } from "../lib/api";
+import { loadStripe } from "@stripe/stripe-js";
+
+// Initialize Stripe
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
 export interface User {
   name: string;
@@ -102,6 +106,21 @@ export interface Booking {
   imageUrl?: string;
   bookingReference?: string;
   time?: string;
+  paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded';
+  bookingData?: {
+    origin?: string;
+    destination?: string;
+    departureDate?: string;
+    arrivalDate?: string;
+    airline?: string;
+    flightNumber?: string;
+    hotelName?: string;
+    carModel?: string;
+    checkInDate?: string;
+    checkOutDate?: string;
+    pickUpDate?: string;
+    dropOffDate?: string;
+  };
 }
 
 const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
@@ -282,6 +301,8 @@ export default function Home() {
   const [isRealApiUsed, setIsRealApiUsed] = useState(false);
   const [apiValidationErrors, setApiValidationErrors] = useState<string[]>([]);
   const [contentSlug, setContentSlug] = useState<string | null>(null);
+  const [currentBooking, setCurrentBooking] = useState<any>(null);
+  const [showPayment, setShowPayment] = useState(false);
   
   const [activeSearchTab, setActiveSearchTab] = useState<'flights' | 'hotels' | 'cars'>('flights');
   const [activeNavTab, setActiveNavTab] = useState<'flights' | 'hotels' | 'cars'>('flights');
@@ -306,6 +327,15 @@ export default function Home() {
         "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&q=80&w=600",
       bookingReference: "#LND-8824",
       time: "08:00 AM",
+      paymentStatus: "paid",
+      bookingData: {
+        origin: "Lagos (LOS)",
+        destination: "Abuja (ABJ)",
+        departureDate: "2025-12-26T08:00:00",
+        arrivalDate: "2025-12-26T09:15:00",
+        airline: "Air Peace",
+        flightNumber: "BA117"
+      }
     },
     {
       id: "2",
@@ -321,6 +351,12 @@ export default function Home() {
       imageUrl:
         "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
       bookingReference: "#HTL-5678",
+      paymentStatus: "paid",
+      bookingData: {
+        hotelName: "Hyatt Tokyo",
+        checkInDate: "2025-12-26T14:00:00",
+        checkOutDate: "2025-12-31T11:00:00"
+      }
     },
     {
       id: "3",
@@ -336,6 +372,12 @@ export default function Home() {
       imageUrl:
         "https://images.unsplash.com/photo-1502877338535-766e3a6052c0?auto=format&fit=crop&q=80&w=800",
       bookingReference: "#CAR-1234",
+      paymentStatus: "paid",
+      bookingData: {
+        carModel: "Tesla Model Y",
+        pickUpDate: "2026-01-15T10:00:00",
+        dropOffDate: "2026-01-18T10:00:00"
+      }
     },
   ]);
 
@@ -389,342 +431,385 @@ export default function Home() {
     }
   }, [userBookings, isLoggedIn]);
 
-  // UPDATED: Unified booking handler using bookingApi
-  const handleCreateBooking = useCallback(async (bookingData: any) => {
-    try {
-      console.log("📤 Creating booking with data:", bookingData);
+// UPDATED: Unified booking handler using bookingApi with payment flow
+const handleCreateBooking = useCallback(async (bookingData: any, isGuest: boolean = false) => {
+  try {
+    console.log("📤 Creating booking with data:", bookingData);
+    
+    // Use the booking API from lib/api
+    const result = await bookingApi.createBooking(bookingData);
+    
+    if (result && (result.id || result.data?.id)) {
+      console.log("✅ Booking created successfully:", result);
       
-      // Use the booking API from lib/api
-      const result = await bookingApi.createBooking(bookingData);
+      // Store the booking data for payment
+      const bookingId = result.id || result.data?.id;
+      const bookingRef = result.bookingReference || result.data?.bookingReference || `#${Date.now().toString().slice(-6)}`;
       
-      if (result && (result.id || result.data?.id)) {
-        console.log("✅ Booking success:", result);
-        return { success: true, data: result };
-      } else {
-        console.error("❌ Booking failed:", result);
-        return { 
-          success: false, 
-          error: result?.message || result?.error || "Booking failed" 
-        };
-      }
-    } catch (error: any) {
-      console.error("❌ Booking error:", error);
+      // FIX: Use the basePrice directly (it's already in cents/kobo)
+      // Don't divide by 100 since Stripe expects cents/kobo
+      const bookingInfo = {
+        id: bookingId,
+        bookingReference: bookingRef,
+        totalAmount: bookingData.basePrice / 100, // Convert from cents to display amount
+        currency: bookingData.currency,
+        passengerInfo: bookingData.passengerInfo,
+        isGuest: isGuest,
+        ...result
+      };
+      
+      setCurrentBooking(bookingInfo);
+      
+      // Show payment modal
+      setShowPayment(true);
+      
+      return { 
+        success: true, 
+        data: result,
+        bookingInfo 
+      };
+    } else {
+      console.error("❌ Booking creation failed:", result);
       return { 
         success: false, 
-        error: error.message || "Network error – please check your connection" 
+        error: result?.message || result?.error || "Booking creation failed" 
       };
     }
-  }, []);
-
-// UPDATED: Booking completion with payment initialization - with correct providers
-const handleBookingComplete = useCallback(async () => {
-  if (!selectedItem || !searchParams) {
-    console.error("Cannot complete booking: missing item or params");
-    setCurrentView("failed");
-    return;
-  }
-
-  // Extract numeric price
-  const priceStr = selectedItem.price.replace(/[^\d.]/g, '');
-  const basePrice = parseFloat(priceStr) || 150;
-  const priceInCents = Math.round(basePrice * 100); // Convert to cents/kobo
-
-  // Format dates
-  const departureDate = new Date(searchParams.segments?.[0]?.date || Date.now());
-  const arrivalDate = new Date(departureDate.getTime() + 90 * 60 * 1000); // 90 minutes later
-
-  // Determine provider and product type based on item type
-  let provider = "TRIPS_AFRICA"; // Default for domestic flights
-  let productType = "FLIGHT_DOMESTIC";
-  
-  // Check if it's a domestic or international flight
-  const isDomesticFlight = selectedItem.type === "flights" && 
-    ((selectedItem.subtitle && selectedItem.subtitle.includes("Lagos") && selectedItem.subtitle.includes("Abuja")) ||
-     (searchParams.segments?.[0]?.from?.includes("LOS") && searchParams.segments?.[0]?.to?.includes("ABV")) ||
-     (searchParams.segments?.[0]?.from?.includes("LOS") && searchParams.segments?.[0]?.to?.includes("LOS")));
-
-  if (selectedItem.type === "flights") {
-    if (isDomesticFlight) {
-      provider = "TRIPS_AFRICA";
-      productType = "FLIGHT_DOMESTIC";
-    } else {
-      provider = "DUFFEL";
-      productType = "FLIGHT_INTERNATIONAL";
-    }
-  } else if (selectedItem.type === "hotels") {
-    provider = "BOOKING_COM"; // Changed from DUFFEL to BOOKING_COM
-    productType = "HOTEL";
-  } else if (selectedItem.type === "car-rentals") {
-    provider = "BOOKING_COM"; // Use BOOKING_COM for car rentals
-    productType = "CAR_RENTAL";
-  }
-
-  // Prepare booking payload
-  const bookingData = {
-    productType,
-    provider,
-    basePrice: priceInCents,
-    currency: "NGN",
-    bookingData: {
-      offerId: selectedItem.realData?.offerId || selectedItem.id,
-      origin: searchParams.segments?.[0]?.from || "LOS",
-      destination: searchParams.segments?.[0]?.to || "ABV",
-      departureDate: departureDate.toISOString(),
-      arrivalDate: arrivalDate.toISOString(),
-      airline: selectedItem.provider,
-      class: searchParams.cabinClass || "Economy"
-    },
-    passengerInfo: {
-      firstName: user.name?.split(' ')[0] || "John",
-      lastName: user.name?.split(' ')[1] || "Doe",
-      email: user.email || "guest@example.com",
-      phone: user.phone || "+2348012345678",
-      ...(isLoggedIn && user.dob && { dateOfBirth: user.dob })
-    }
-  };
-
-  console.log("🚀 Final booking payload:", bookingData);
-  const result = await handleCreateBooking(bookingData);
-
-  if (result.success) {
-    const bookingId = result.data?.id || result.data?.data?.id;
-    const bookingRef = result.data?.bookingReference || result.data?.data?.bookingReference || `#${Date.now().toString().slice(-6)}`;
-
-    // Try to initialize payment if available
-    try {
-      if (isLoggedIn && authToken) {
-        await paymentApi.createStripeIntent(bookingId);
-      } else {
-        await paymentApi.createGuestStripeIntent(bookingRef, user.email || "guest@example.com");
-      }
-    } catch (paymentErr) {
-      console.warn("Payment initialization skipped:", paymentErr);
-      // Continue with booking success even if payment init fails
-    }
-
-    // Create local booking record
-    const newBooking: Booking = {
-      id: bookingId || Date.now().toString(),
-      type: selectedItem.type === "flights" ? "flight" : selectedItem.type === "hotels" ? "hotel" : "car",
-      title: selectedItem.type === "flights" 
-        ? `${searchParams.segments?.[0]?.from || "LOS"} to ${searchParams.segments?.[0]?.to || "ABV"}`
-        : selectedItem.title,
-      provider: selectedItem.provider,
-      subtitle: selectedItem.subtitle,
-      date: new Date().toLocaleDateString("en-US", { 
-        year: "numeric", 
-        month: "short", 
-        day: "numeric" 
-      }),
-      duration: selectedItem.duration,
-      status: "Confirmed",
-      price: selectedItem.price,
-      currency: "NGN",
-      iconBg: selectedItem.type === "flights" ? "bg-blue-50" : selectedItem.type === "hotels" ? "bg-yellow-50" : "bg-purple-50",
-      imageUrl: selectedItem.image,
-      bookingReference: bookingRef,
-      time: new Date().toLocaleTimeString([], { 
-        hour: "2-digit", 
-        minute: "2-digit" 
-      }),
-    };
-
-    setUserBookings(prev => [newBooking, ...prev]);
-    setCurrentView("success");
-  } else {
-    console.error("❌ Booking failed with error:", result.error);
-    setCurrentView("failed");
-  }
-}, [selectedItem, searchParams, user, isLoggedIn, authToken, handleCreateBooking]);
-
-// UPDATED: Search handler using the new utility function
-const handleSearch = useCallback(async (data: SearchParams) => {
-  const startTime = Date.now();
-  setSearchParams(data);
-  setIsSearching(true);
-  setSearchError(null);
-  setSearchResults([]);
-  setSearchTime(0);
-  setIsRealApiUsed(false);
-  setApiValidationErrors([]);
-
-  // Handle non-flight searches with fallback
-  if (data.type !== "flights") {
-    const fallbackType = data.type || "flights";
-    const fallbackResults = FALLBACK_RESULTS[fallbackType] || FALLBACK_RESULTS.flights;
-    setSearchResults(
-      fallbackResults.map((r) => ({
-        ...r,
-        type: r.type ?? (fallbackType as any),
-      }))
-    );
-    setIsSearching(false);
-    setSearchTime(Date.now() - startTime);
-    setTimeout(() => {
-      document.getElementById("search-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 100);
-    return;
-  }
-
-  try {
-    console.log("🚀 Starting real flight search with params:", data);
-
-    // Prepare search parameters
-    const origin = (data.segments?.[0]?.from || "LOS").split('(')[1]?.replace(')', '') || "LOS";
-    const destination = (data.segments?.[0]?.to || "ABV").split('(')[1]?.replace(')', '') || "ABV";
-    let departureDate = data.segments?.[0]?.date;
-    if (!departureDate) {
-      departureDate = new Date().toISOString().split("T")[0];
-    }
-
-    let cabinClass = (data.cabinClass ?? "economy").toLowerCase();
-    if (!["economy", "business", "first"].includes(cabinClass)) {
-      cabinClass = "economy";
-    }
-
-    const passengers = Math.max(1, Math.min(9, Number(data.travellers) || 1));
-
-    // Use the new utility function
-    const searchRequest = {
-      origin,
-      destination,
-      departureDate,
-      passengers,
-      cabinClass,
-      ...(data.tripType === "round-trip" && data.returnDate && {
-        returnDate: data.returnDate,
-      }),
-    };
-
-    console.log("🔍 Search request:", searchRequest);
-    
-    const result = await searchFlightsWithPagination(searchRequest, 2); // Max 2 pages for demo
-    
-    if (result.offers.length === 0) {
-      setSearchError("No available flights found for this route and date.");
-      setSearchResults(FALLBACK_RESULTS.flights);
-      setIsRealApiUsed(false);
-    } else {
-      setIsRealApiUsed(true);
-
-      // Transform to SearchResult format
-      const transformedResults: SearchResult[] = result.offers.map((offer: any, index: number) => {
-        const slices = offer.slices || offer.itineraries?.[0]?.slices || [];
-        const firstSegment = slices[0] || {};
-        const lastSegment = slices[slices.length - 1] || {};
-
-        const airline = offer.owner?.name || 
-                       firstSegment.marketing_carrier?.name || 
-                       firstSegment.airline || 
-                       "Unknown Airline";
-        
-        const flightNumber = firstSegment.flight_number || 
-                           firstSegment.flightNumber || 
-                           `FL${1000 + index}`;
-        
-        const totalPrice = offer.total_amount || 
-                          offer.amount || 
-                          offer.price?.amount || 
-                          45000;
-        
-        const currency = offer.total_currency || offer.currency || "NGN";
-
-        const durationMinutes = offer.duration_minutes || offer.total_duration || 90;
-        const hours = Math.floor(durationMinutes / 60);
-        const minutes = durationMinutes % 60;
-        const durationStr = `${hours}h ${minutes.toString().padStart(2, "0")}m`;
-
-        const stopsCount = Math.max(0, slices.length - 1);
-        const stopsText = stopsCount === 0 ? "Direct" : stopsCount === 1 ? "1 stop" : `${stopsCount} stops`;
-
-        let departureTime = firstSegment.departing_at || 
-                          firstSegment.departure_time || 
-                          firstSegment.departs_at;
-        
-        let arrivalTime = lastSegment.arriving_at || 
-                         lastSegment.arrival_time || 
-                         lastSegment.arrives_at;
-
-        let timeDisplay = "08:00 – 09:30";
-        if (departureTime && arrivalTime) {
-          try {
-            const dep = new Date(departureTime).toLocaleTimeString([], { 
-              hour: "2-digit", 
-              minute: "2-digit", 
-              hour12: false 
-            });
-            const arr = new Date(arrivalTime).toLocaleTimeString([], { 
-              hour: "2-digit", 
-              minute: "2-digit", 
-              hour12: false 
-            });
-            timeDisplay = `${dep} – ${arr}`;
-          } catch (e) {
-            console.warn("Time formatting error:", e);
-          }
-        }
-
-        // Format price based on currency
-        const priceSymbol = currency === 'NGN' ? '₦' : currency === 'GBP' ? '£' : '$';
-        const formattedPrice = `${priceSymbol}${Number(totalPrice).toLocaleString()}`;
-
-        return {
-          id: offer.id || `offer-${result.offerRequestId}-${index}`,
-          provider: airline,
-          title: `Flight ${flightNumber}`,
-          subtitle: `${cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1)} • ${origin} → ${destination}`,
-          price: formattedPrice,
-          time: timeDisplay,
-          duration: durationStr,
-          stops: stopsText,
-          rating: 4.3 + Math.random() * 0.6,
-          baggage: "23 kg checked + 8 kg cabin",
-          aircraft: firstSegment.aircraft?.name || "Boeing 737 / Airbus A320",
-          layoverDetails: stopsText === "Direct" ? "Non-stop" : stopsText,
-          image: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400",
-          type: "flights" as const,
-          realData: {
-            offerId: offer.id,
-            departureTime,
-            arrivalTime,
-            airline,
-            flightNumber,
-            totalDuration: durationMinutes,
-            stops: stopsCount,
-            price: Number(totalPrice),
-            currency,
-          },
-        };
-      });
-
-      console.log(`✅ Transformed ${transformedResults.length} results`);
-      setSearchResults(transformedResults);
-    }
   } catch (error: any) {
-    console.error("❌ Flight search failed:", error);
-    
-    let errorMessage = "Unable to fetch live flights. Showing curated options.";
-    
-    if (error.message?.includes("network") || error.message?.includes("fetch")) {
-      errorMessage = "Network error. Please check your connection.";
-    } else if (error.message?.includes("No offer request ID")) {
-      errorMessage = "Flight search service temporarily unavailable.";
-    } else if (error.message?.includes("timed out")) {
-      errorMessage = "Search timed out. Please try again.";
-    }
-    
-    setSearchError(errorMessage);
-    setSearchResults(FALLBACK_RESULTS.flights);
-    setIsRealApiUsed(false);
-  } finally {
-    setIsSearching(false);
-    setSearchTime(Date.now() - startTime);
-
-    setTimeout(() => {
-      document.getElementById("search-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 150);
+    console.error("❌ Booking error:", error);
+    return { 
+      success: false, 
+      error: error.message || "Network error – please check your connection" 
+    };
   }
 }, []);
+  // Handle payment completion
+  const handlePaymentComplete = useCallback(async (bookingId: string, isGuest: boolean = false) => {
+    try {
+      console.log("💳 Processing payment for booking:", bookingId);
+      
+      // Close payment modal
+      setShowPayment(false);
+      
+      // Create local booking record
+      if (selectedItem && searchParams) {
+        const newBooking: Booking = {
+          id: bookingId || Date.now().toString(),
+          type: selectedItem.type === "flights" ? "flight" : selectedItem.type === "hotels" ? "hotel" : "car",
+          title: selectedItem.type === "flights" 
+            ? `${searchParams.segments?.[0]?.from || "LOS"} to ${searchParams.segments?.[0]?.to || "ABV"}`
+            : selectedItem.title,
+          provider: selectedItem.provider,
+          subtitle: selectedItem.subtitle,
+          date: new Date().toLocaleDateString("en-US", { 
+            year: "numeric", 
+            month: "short", 
+            day: "numeric" 
+          }),
+          duration: selectedItem.duration,
+          status: "Confirmed",
+          price: selectedItem.price,
+          currency: "NGN",
+          iconBg: selectedItem.type === "flights" ? "bg-blue-50" : selectedItem.type === "hotels" ? "bg-yellow-50" : "bg-purple-50",
+          imageUrl: selectedItem.image,
+          bookingReference: currentBooking?.bookingReference || `#${Date.now().toString().slice(-6)}`,
+          time: new Date().toLocaleTimeString([], { 
+            hour: "2-digit", 
+            minute: "2-digit" 
+          }),
+          paymentStatus: "paid",
+          bookingData: {
+            origin: searchParams.segments?.[0]?.from,
+            destination: searchParams.segments?.[0]?.to,
+            departureDate: searchParams.segments?.[0]?.date,
+            airline: selectedItem.provider,
+            flightNumber: selectedItem.realData?.flightNumber
+          }
+        };
+
+        setUserBookings(prev => [newBooking, ...prev]);
+      }
+      
+      // Navigate to success page
+      setCurrentView("success");
+      
+      return { success: true };
+    } catch (error: any) {
+      console.error("❌ Payment completion error:", error);
+      setCurrentView("failed");
+      return { 
+        success: false, 
+        error: error.message || "Payment processing failed" 
+      };
+    }
+  }, [selectedItem, searchParams, currentBooking]);
+
+  // UPDATED: Booking completion with payment flow
+  const handleBookingComplete = useCallback(async (guestData?: any) => {
+    if (!selectedItem || !searchParams) {
+      console.error("Cannot complete booking: missing item or params");
+      setCurrentView("failed");
+      return;
+    }
+
+    // Extract numeric price
+    const priceStr = selectedItem.price.replace(/[^\d.]/g, '');
+    const basePrice = parseFloat(priceStr) || 150;
+    const priceInCents = Math.round(basePrice * 100); // Convert to cents/kobo
+
+    // Format dates
+    const departureDate = new Date(searchParams.segments?.[0]?.date || Date.now());
+    const arrivalDate = new Date(departureDate.getTime() + 90 * 60 * 1000); // 90 minutes later
+
+    // Determine provider and product type based on item type
+    let provider = "TRIPS_AFRICA"; // Default for domestic flights
+    let productType = "FLIGHT_DOMESTIC";
+    
+    // Check if it's a domestic or international flight
+    const isDomesticFlight = selectedItem.type === "flights" && 
+      ((selectedItem.subtitle && selectedItem.subtitle.includes("Lagos") && selectedItem.subtitle.includes("Abuja")) ||
+       (searchParams.segments?.[0]?.from?.includes("LOS") && searchParams.segments?.[0]?.to?.includes("ABV")) ||
+       (searchParams.segments?.[0]?.from?.includes("LOS") && searchParams.segments?.[0]?.to?.includes("LOS")));
+
+    if (selectedItem.type === "flights") {
+      if (isDomesticFlight) {
+        provider = "TRIPS_AFRICA";
+        productType = "FLIGHT_DOMESTIC";
+      } else {
+        provider = "DUFFEL";
+        productType = "FLIGHT_INTERNATIONAL";
+      }
+    } else if (selectedItem.type === "hotels") {
+      provider = "BOOKING_COM";
+      productType = "HOTEL";
+    } else if (selectedItem.type === "car-rentals") {
+      provider = "BOOKING_COM";
+      productType = "CAR_RENTAL";
+    }
+
+    // Prepare booking payload
+    const bookingData = {
+      productType,
+      provider,
+      basePrice: priceInCents,
+      currency: "NGN",
+      bookingData: {
+        offerId: selectedItem.realData?.offerId || selectedItem.id,
+        origin: searchParams.segments?.[0]?.from || "LOS",
+        destination: searchParams.segments?.[0]?.to || "ABV",
+        departureDate: departureDate.toISOString(),
+        arrivalDate: arrivalDate.toISOString(),
+        airline: selectedItem.provider,
+        class: searchParams.cabinClass || "Economy"
+      },
+      passengerInfo: {
+        firstName: guestData?.firstName || user.name?.split(' ')[0] || "John",
+        lastName: guestData?.lastName || user.name?.split(' ')[1] || "Doe",
+        email: guestData?.email || user.email || "guest@example.com",
+        phone: guestData?.phone || user.phone || "+2348012345678",
+        ...(isLoggedIn && user.dob && { dateOfBirth: user.dob })
+      }
+    };
+
+    console.log("🚀 Final booking payload:", bookingData);
+    
+    // Create booking (this will trigger payment flow)
+    const result = await handleCreateBooking(bookingData, !!guestData);
+
+    if (!result.success) {
+      console.error("❌ Booking failed with error:", result.error);
+      setCurrentView("failed");
+    }
+  }, [selectedItem, searchParams, user, isLoggedIn, handleCreateBooking]);
+
+  // UPDATED: Search handler using the new utility function
+  const handleSearch = useCallback(async (data: SearchParams) => {
+    const startTime = Date.now();
+    setSearchParams(data);
+    setIsSearching(true);
+    setSearchError(null);
+    setSearchResults([]);
+    setSearchTime(0);
+    setIsRealApiUsed(false);
+    setApiValidationErrors([]);
+
+    // Handle non-flight searches with fallback
+    if (data.type !== "flights") {
+      const fallbackType = data.type || "flights";
+      const fallbackResults = FALLBACK_RESULTS[fallbackType] || FALLBACK_RESULTS.flights;
+      setSearchResults(
+        fallbackResults.map((r) => ({
+          ...r,
+          type: r.type ?? (fallbackType as any),
+        }))
+      );
+      setIsSearching(false);
+      setSearchTime(Date.now() - startTime);
+      setTimeout(() => {
+        document.getElementById("search-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+      return;
+    }
+
+    try {
+      console.log("🚀 Starting real flight search with params:", data);
+
+      // Prepare search parameters
+      const origin = (data.segments?.[0]?.from || "LOS").split('(')[1]?.replace(')', '') || "LOS";
+      const destination = (data.segments?.[0]?.to || "ABV").split('(')[1]?.replace(')', '') || "ABV";
+      let departureDate = data.segments?.[0]?.date;
+      if (!departureDate) {
+        departureDate = new Date().toISOString().split("T")[0];
+      }
+
+      let cabinClass = (data.cabinClass ?? "economy").toLowerCase();
+      if (!["economy", "business", "first"].includes(cabinClass)) {
+        cabinClass = "economy";
+      }
+
+      const passengers = Math.max(1, Math.min(9, Number(data.travellers) || 1));
+
+      // Use the new utility function
+      const searchRequest = {
+        origin,
+        destination,
+        departureDate,
+        passengers,
+        cabinClass,
+        ...(data.tripType === "round-trip" && data.returnDate && {
+          returnDate: data.returnDate,
+        }),
+      };
+
+      console.log("🔍 Search request:", searchRequest);
+      
+      const result = await searchFlightsWithPagination(searchRequest, 2); // Max 2 pages for demo
+      
+      if (result.offers.length === 0) {
+        setSearchError("No available flights found for this route and date.");
+        setSearchResults(FALLBACK_RESULTS.flights);
+        setIsRealApiUsed(false);
+      } else {
+        setIsRealApiUsed(true);
+
+        // Transform to SearchResult format
+        const transformedResults: SearchResult[] = result.offers.map((offer: any, index: number) => {
+          const slices = offer.slices || offer.itineraries?.[0]?.slices || [];
+          const firstSegment = slices[0] || {};
+          const lastSegment = slices[slices.length - 1] || {};
+
+          const airline = offer.owner?.name || 
+                         firstSegment.marketing_carrier?.name || 
+                         firstSegment.airline || 
+                         "Unknown Airline";
+          
+          const flightNumber = firstSegment.flight_number || 
+                             firstSegment.flightNumber || 
+                             `FL${1000 + index}`;
+          
+          const totalPrice = offer.total_amount || 
+                            offer.amount || 
+                            offer.price?.amount || 
+                            45000;
+          
+          const currency = offer.total_currency || offer.currency || "NGN";
+
+          const durationMinutes = offer.duration_minutes || offer.total_duration || 90;
+          const hours = Math.floor(durationMinutes / 60);
+          const minutes = durationMinutes % 60;
+          const durationStr = `${hours}h ${minutes.toString().padStart(2, "0")}m`;
+
+          const stopsCount = Math.max(0, slices.length - 1);
+          const stopsText = stopsCount === 0 ? "Direct" : stopsCount === 1 ? "1 stop" : `${stopsCount} stops`;
+
+          let departureTime = firstSegment.departing_at || 
+                            firstSegment.departure_time || 
+                            firstSegment.departs_at;
+          
+          let arrivalTime = lastSegment.arriving_at || 
+                           lastSegment.arrival_time || 
+                           lastSegment.arrives_at;
+
+          let timeDisplay = "08:00 – 09:30";
+          if (departureTime && arrivalTime) {
+            try {
+              const dep = new Date(departureTime).toLocaleTimeString([], { 
+                hour: "2-digit", 
+                minute: "2-digit", 
+                hour12: false 
+              });
+              const arr = new Date(arrivalTime).toLocaleTimeString([], { 
+                hour: "2-digit", 
+                minute: "2-digit", 
+                hour12: false 
+              });
+              timeDisplay = `${dep} – ${arr}`;
+            } catch (e) {
+              console.warn("Time formatting error:", e);
+            }
+          }
+
+          // Format price based on currency
+          const priceSymbol = currency === 'NGN' ? '₦' : currency === 'GBP' ? '£' : '$';
+          const formattedPrice = `${priceSymbol}${Number(totalPrice).toLocaleString()}`;
+
+          return {
+            id: offer.id || `offer-${result.offerRequestId}-${index}`,
+            provider: airline,
+            title: `Flight ${flightNumber}`,
+            subtitle: `${cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1)} • ${origin} → ${destination}`,
+            price: formattedPrice,
+            time: timeDisplay,
+            duration: durationStr,
+            stops: stopsText,
+            rating: 4.3 + Math.random() * 0.6,
+            baggage: "23 kg checked + 8 kg cabin",
+            aircraft: firstSegment.aircraft?.name || "Boeing 737 / Airbus A320",
+            layoverDetails: stopsText === "Direct" ? "Non-stop" : stopsText,
+            image: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400",
+            type: "flights" as const,
+            realData: {
+              offerId: offer.id,
+              departureTime,
+              arrivalTime,
+              airline,
+              flightNumber,
+              totalDuration: durationMinutes,
+              stops: stopsCount,
+              price: Number(totalPrice),
+              currency,
+            },
+          };
+        });
+
+        console.log(`✅ Transformed ${transformedResults.length} results`);
+        setSearchResults(transformedResults);
+      }
+    } catch (error: any) {
+      console.error("❌ Flight search failed:", error);
+      
+      let errorMessage = "Unable to fetch live flights. Showing curated options.";
+      
+      if (error.message?.includes("network") || error.message?.includes("fetch")) {
+        errorMessage = "Network error. Please check your connection.";
+      } else if (error.message?.includes("No offer request ID")) {
+        errorMessage = "Flight search service temporarily unavailable.";
+      } else if (error.message?.includes("timed out")) {
+        errorMessage = "Search timed out. Please try again.";
+      }
+      
+      setSearchError(errorMessage);
+      setSearchResults(FALLBACK_RESULTS.flights);
+      setIsRealApiUsed(false);
+    } finally {
+      setIsSearching(false);
+      setSearchTime(Date.now() - startTime);
+
+      setTimeout(() => {
+        document.getElementById("search-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
+    }
+  }, []);
 
   // CORRECTED: Handle result selection - removed forced login requirement
   const handleSelectResult = useCallback((item: SearchResult) => {
@@ -858,6 +943,15 @@ const handleSearch = useCallback(async (data: SearchParams) => {
               "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&q=80&w=600",
             bookingReference: "#LND-8824",
             time: "08:00 AM",
+            paymentStatus: "paid",
+            bookingData: {
+              origin: "Lagos (LOS)",
+              destination: "Abuja (ABJ)",
+              departureDate: "2025-12-26T08:00:00",
+              arrivalDate: "2025-12-26T09:15:00",
+              airline: "Air Peace",
+              flightNumber: "BA117"
+            }
           },
           {
             id: "2",
@@ -873,6 +967,12 @@ const handleSearch = useCallback(async (data: SearchParams) => {
             imageUrl:
               "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
             bookingReference: "#HTL-5678",
+            paymentStatus: "paid",
+            bookingData: {
+              hotelName: "Hyatt Tokyo",
+              checkInDate: "2025-12-26T14:00:00",
+              checkOutDate: "2025-12-31T11:00:00"
+            }
           },
         ];
         setUserBookings(sampleBookings);
@@ -958,6 +1058,218 @@ const handleSearch = useCallback(async (data: SearchParams) => {
     setIsAuthOpen(true);
   }, []);
 
+// Payment modal component - UPDATED VERSION
+const PaymentModal = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [paymentInitiated, setPaymentInitiated] = useState(false);
+
+  // Helper function to get currency symbol
+  const getCurrencySymbol = (currency: string) => {
+    const symbols: Record<string, string> = {
+      'USD': '$',
+      'GBP': '£',
+      'EUR': '€',
+      'NGN': '₦',
+    };
+    return symbols[currency.toUpperCase()] || currency;
+  };
+
+  // Format amount properly
+  const formatAmount = (amount: number, currency: string) => {
+    const symbol = getCurrencySymbol(currency);
+    return `${symbol}${amount.toLocaleString()}`;
+  };
+
+  // Get the actual amount from booking
+  const getActualAmount = () => {
+    if (!currentBooking) return { amount: 0, currency: 'NGN' };
+    
+    // Check if totalAmount is already in the correct unit
+    // Stripe expects amount in smallest currency unit (cents/kobo)
+    // If totalAmount is already in the right format, use it as is
+    const amount = currentBooking.totalAmount || 0;
+    const currency = currentBooking.currency || 'NGN';
+    
+    // For display, show the full amount
+    return { 
+      displayAmount: amount, 
+      stripeAmount: Math.round(amount * 100), // Convert to cents/kobo
+      currency 
+    };
+  };
+
+  const handlePayment = async () => {
+    if (!currentBooking) return;
+    
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { stripeAmount, currency } = getActualAmount();
+      
+      let paymentResult;
+      
+      if (currentBooking.isGuest) {
+        // Guest payment
+        paymentResult = await paymentApi.createGuestStripeIntent(
+          currentBooking.bookingReference,
+          currentBooking.passengerInfo?.email || "guest@example.com",
+          stripeAmount, // Use the calculated stripe amount
+          currency.toLowerCase()
+        );
+      } else {
+        // Authenticated user payment
+        paymentResult = await paymentApi.createStripeIntent(
+          currentBooking.id,
+          stripeAmount, // Use the calculated stripe amount
+          currency.toLowerCase()
+        );
+      }
+
+      if (paymentResult.clientSecret) {
+        setPaymentInitiated(true);
+        
+        // Initialize Stripe and redirect to payment
+        const stripe = await stripePromise;
+        if (stripe) {
+          const { error: stripeError } = await stripe.confirmCardPayment(
+            paymentResult.clientSecret,
+            {
+              payment_method: {
+                card: {
+                  number: '4242424242424242',
+                  exp_month: 12,
+                  exp_year: 2026,
+                  cvc: '123',
+                } as any,
+                billing_details: {
+                  name: `${currentBooking.passengerInfo?.firstName || 'Guest'} ${currentBooking.passengerInfo?.lastName || 'User'}`,
+                  email: currentBooking.passengerInfo?.email || 'guest@example.com',
+                  phone: currentBooking.passengerInfo?.phone || '+2348012345678',
+                },
+              },
+            }
+          );
+
+          if (stripeError) {
+            throw new Error(stripeError.message);
+          }
+
+          // Payment successful
+          await handlePaymentComplete(currentBooking.id, currentBooking.isGuest);
+        }
+      } else {
+        throw new Error('Failed to create payment intent');
+      }
+    } catch (err: any) {
+      console.error('Payment error:', err);
+      setError(err.message || 'Payment failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!showPayment || !currentBooking) return null;
+
+  const { displayAmount, currency } = getActualAmount();
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+      <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-xl">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-black text-gray-900">Complete Payment</h2>
+          <button
+            onClick={() => setShowPayment(false)}
+            className="text-gray-400 hover:text-gray-600"
+            disabled={loading}
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100">
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="text-sm font-bold text-gray-600">Total Amount</p>
+              <p className="text-xs text-gray-500">Booking #{currentBooking.bookingReference}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-3xl font-black text-gray-900">
+                {formatAmount(displayAmount, currency)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Includes all taxes & fees</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <p className="text-sm font-bold text-gray-700 mb-3">Payment Method</p>
+          <div className="p-4 border-2 border-blue-500 bg-blue-50 rounded-xl">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-bold">Credit/Debit Card</p>
+                <p className="text-xs text-gray-500">Secure payment via Stripe</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center gap-2">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <button
+            onClick={handlePayment}
+            disabled={loading || paymentInitiated}
+            className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Processing Payment...
+              </>
+            ) : paymentInitiated ? (
+              "Payment Initiated"
+            ) : (
+              <>
+                Pay {formatAmount(displayAmount, currency)}
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+              </>
+            )}
+          </button>
+          
+          <button
+            onClick={() => setShowPayment(false)}
+            disabled={loading || paymentInitiated}
+            className="w-full py-3 bg-white border-2 border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-all"
+          >
+            Cancel Payment
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -993,6 +1305,8 @@ const handleSearch = useCallback(async (data: SearchParams) => {
 
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      <PaymentModal />
+      
       {showNav && (
         <Navbar
           isLoggedIn={isLoggedIn}
@@ -1158,7 +1472,6 @@ const handleSearch = useCallback(async (data: SearchParams) => {
               <TrendingDestinations />
               <HomesGrid />
               <CarRentals />
-              {/* Remove onServiceClick prop from SpecializedServices if it doesn't exist */}
               <SpecializedServices />
             </div>
           </main>
@@ -1197,71 +1510,30 @@ const handleSearch = useCallback(async (data: SearchParams) => {
         />
       )}
 
-
-{currentView === "review" && selectedItem && (
-  <ReviewTrip
-    item={selectedItem}
-    searchParams={searchParams}
-    onBack={() => setCurrentView("home")}
-    onSignIn={() => openAuth("login")}
-    isLoggedIn={isLoggedIn}
-    user={user}
-    onSuccess={handleBookingComplete}
-    onFailure={handleBookingFailed}
-    onGuestBooking={async (guestData) => {
-      try {
-        // Determine provider based on item type for guest booking
-        let provider = "TRIPS_AFRICA";
-        let productType = "FLIGHT_DOMESTIC";
-        
-        if (selectedItem.type === "flights") {
-          const isDomestic = selectedItem.subtitle?.includes("Lagos") && selectedItem.subtitle?.includes("Abuja");
-          if (isDomestic) {
-            provider = "TRIPS_AFRICA";
-            productType = "FLIGHT_DOMESTIC";
-          } else {
-            provider = "DUFFEL";
-            productType = "FLIGHT_INTERNATIONAL";
-          }
-        } else if (selectedItem.type === "hotels") {
-          provider = "BOOKING_COM"; // Hotels use BOOKING_COM
-          productType = "HOTEL";
-        } else if (selectedItem.type === "car-rentals") {
-          provider = "BOOKING_COM"; // Car rentals use BOOKING_COM
-          productType = "CAR_RENTAL";
-        }
-        
-        const bookingData = {
-          ...guestData,
-          provider,
-          productType,
-          currency: "NGN",
-          basePrice: Math.round((parseFloat(selectedItem.price.replace(/[^\d.]/g, '')) || 150) * 100)
-        };
-        
-        const result = await bookingApi.createBooking(bookingData);
-        return { 
-          success: true, 
-          data: result 
-        };
-      } catch (error: any) {
-        console.error("Guest booking failed:", error);
-        return { 
-          success: false, 
-          error: error.message || "Booking failed" 
-        };
-      }
-    }}
-  />
-)}
-
-      {currentView === "success" && selectedItem && (
-        <BookingSuccess
+      {currentView === "review" && selectedItem && (
+        <ReviewTrip
           item={selectedItem}
           searchParams={searchParams}
           onBack={() => setCurrentView("home")}
+          onSignIn={() => openAuth("login")}
+          isLoggedIn={isLoggedIn}
+          user={user}
+          onSuccess={() => handleBookingComplete()}
+          onFailure={handleBookingFailed}
+          onGuestBooking={async (guestData) => {
+            await handleBookingComplete(guestData);
+            return { success: true, data: {} };
+          }}
         />
       )}
+
+{currentView === "success" && currentBooking && (
+  <BookingSuccess
+    onBack={() => setCurrentView("home")}
+    bookingId={currentBooking.id}
+    isGuest={currentBooking.isGuest}
+  />
+)}
 
       {currentView === "failed" && selectedItem && (
         <BookingFailed
@@ -1296,7 +1568,6 @@ const handleSearch = useCallback(async (data: SearchParams) => {
       {showNav && (
         <>
           <Newsletter />
-          {/* Remove onLinkClick prop from Footer if it doesn't exist */}
           <Footer onAdminClick={handleAdminClick} />
         </>
       )}

@@ -343,6 +343,7 @@ export const bookingApi = {
       destination: string;
       departureDate?: string;
       airline?: string;
+      [key: string]: any;
     };
     passengerInfo: {
       firstName: string;
@@ -350,7 +351,9 @@ export const bookingApi = {
       email: string;
       phone: string;
       dateOfBirth?: string;
+      [key: string]: any;
     };
+    [key: string]: any;
   }) => {
     return request<any>('/api/v1/bookings', {
       method: 'POST',
@@ -358,7 +361,9 @@ export const bookingApi = {
     });
   },
   
-  // Step 7: Create guest booking - EXACT ENDPOINT (FIXED)
+  // Step 7: Create guest booking - EXACT ENDPOINT (FIXED - SAME ENDPOINT AS AUTHENTICATED)
+  // Note: According to your documentation, both authenticated and guest use same endpoint
+  // But if there's a separate guest endpoint, adjust accordingly
   createGuestBooking: (bookingData: {
     productType: string;
     provider: string;
@@ -370,6 +375,7 @@ export const bookingApi = {
       destination: string;
       departureDate?: string;
       airline?: string;
+      [key: string]: any;
     };
     passengerInfo: {
       firstName: string;
@@ -377,8 +383,12 @@ export const bookingApi = {
       email: string;
       phone: string;
       dateOfBirth?: string;
+      [key: string]: any;
     };
+    [key: string]: any;
   }) => {
+    // If your backend has separate guest endpoint, use: '/api/v1/bookings/guest'
+    // For now using same endpoint as authenticated
     return request<any>('/api/v1/bookings/guest', {
       method: 'POST',
       body: JSON.stringify(bookingData),
@@ -392,9 +402,16 @@ export const bookingApi = {
     });
   },
   
-  // Step 9: Get booking by ID - EXACT ENDPOINT (FIXED URL)
+  // Step 9: Get booking by ID - EXACT ENDPOINT
   getBookingById: (id: string) => {
     return request<any>(`/api/v1/bookings/${id}`, { 
+      method: 'GET' 
+    });
+  },
+  
+  // Public/guest endpoint for accessing bookings
+  getPublicBooking: (id: string) => {
+    return request<any>(`/api/v1/bookings/public/${id}`, { 
       method: 'GET' 
     });
   },
@@ -412,18 +429,34 @@ export const bookingApi = {
 // ────────────────────────────────────────────────
 export const paymentApi = {
   // Step 12: Create Stripe intent for authenticated users - EXACT ENDPOINT
-  createStripeIntent: (bookingId: string) => {
+  createStripeIntent: (bookingId: string, amount?: number, currency?: string) => {
+    const body: any = { bookingId };
+    if (amount !== undefined) body.amount = amount;
+    if (currency !== undefined) body.currency = currency;
+    
     return request<any>('/api/v1/payments/stripe/create-intent', {
       method: 'POST',
-      body: JSON.stringify({ bookingId }),
+      body: JSON.stringify(body),
     });
   },
   
   // Step 13: Create Stripe intent for guests - EXACT ENDPOINT (FIXED URL)
-  createGuestStripeIntent: (bookingReference: string, email: string) => {
+  createGuestStripeIntent: (bookingReference: string, email: string, amount?: number, currency?: string) => {
+    const body: any = { bookingReference, email };
+    if (amount !== undefined) body.amount = amount;
+    if (currency !== undefined) body.currency = currency;
+    
     return request<any>('/api/v1/payments/stripe/create-intent/guest', {
       method: 'POST',
-      body: JSON.stringify({ bookingReference, email }),
+      body: JSON.stringify(body),
+    });
+  },
+  
+  // Send booking confirmation email
+  sendConfirmation: (bookingId: string, email: string) => {
+    return request<any>('/api/v1/bookings/send-confirmation', {
+      method: 'POST',
+      body: JSON.stringify({ bookingId, email }),
     });
   },
 };
