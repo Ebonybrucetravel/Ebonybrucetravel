@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { DuffelService } from '@infrastructure/external-apis/duffel/duffel.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 import { CacheService } from '@infrastructure/cache/cache.service';
@@ -31,7 +31,29 @@ export class SearchHotelsUseCase {
 
     // Validate that either location or accommodation is provided
     if (!location && !accommodation) {
-      throw new Error('Either location or accommodation must be provided');
+      throw new BadRequestException('Either location or accommodation must be provided');
+    }
+
+    // Validate dates
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const checkIn = new Date(check_in_date);
+    checkIn.setHours(0, 0, 0, 0);
+    
+    if (checkIn < today) {
+      throw new BadRequestException(
+        `Check-in date (${check_in_date}) cannot be in the past. Please select a future date.`,
+      );
+    }
+
+    const checkOut = new Date(check_out_date);
+    checkOut.setHours(0, 0, 0, 0);
+    
+    if (checkOut <= checkIn) {
+      throw new BadRequestException(
+        `Check-out date (${check_out_date}) must be after check-in date (${check_in_date}).`,
+      );
     }
 
     // Check cache first
@@ -217,8 +239,35 @@ export class SearchHotelsUseCase {
 
       return result;
     } catch (error) {
+      // Log error for debugging
       console.error('Error searching hotels:', error);
-      throw error;
+
+      // Re-throw HttpException as-is (from DuffelService or validation)
+      if (error instanceof HttpException) {
+        // If it's a 403, provide a more user-friendly message
+        if (error.getStatus() === HttpStatus.FORBIDDEN) {
+          throw new ForbiddenException({
+            success: false,
+            message: 'Hotel search is not available. This feature requires additional account access. Please contact support.',
+            error: 'Feature not available',
+            details: error.message,
+          });
+        }
+        throw error;
+      }
+
+      // Convert other errors to proper HTTP exceptions
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      throw new HttpException(
+        {
+          success: false,
+          message: 'Unable to search hotels at this time. Please check your search parameters and try again.',
+          error: 'Search failed',
+          details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 

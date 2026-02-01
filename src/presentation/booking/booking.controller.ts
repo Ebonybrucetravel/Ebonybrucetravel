@@ -32,6 +32,7 @@ import { CreateHotelBookingUseCase } from '@application/booking/use-cases/create
 import { GetHotelBookingUseCase } from '@application/booking/use-cases/get-hotel-booking.use-case';
 import { ListHotelBookingsUseCase } from '@application/booking/use-cases/list-hotel-bookings.use-case';
 import { CancelHotelBookingUseCase } from '@application/booking/use-cases/cancel-hotel-booking.use-case';
+import { CreateDuffelOrderUseCase } from '@application/booking/use-cases/create-duffel-order.use-case';
 import { GetAccommodationUseCase } from '@application/booking/use-cases/get-accommodation.use-case';
 import { SearchAccommodationSuggestionsUseCase } from '@application/booking/use-cases/search-accommodation-suggestions.use-case';
 import { GetAccommodationReviewsUseCase } from '@application/booking/use-cases/get-accommodation-reviews.use-case';
@@ -71,6 +72,7 @@ export class BookingController {
     private readonly getAccommodationReviewsUseCase: GetAccommodationReviewsUseCase,
     private readonly searchPlaceSuggestionsUseCase: SearchPlaceSuggestionsUseCase,
     private readonly listAirlinesUseCase: ListAirlinesUseCase,
+    private readonly createDuffelOrderUseCase: CreateDuffelOrderUseCase,
     private readonly bookingService: BookingService,
   ) {}
 
@@ -278,6 +280,68 @@ export class BookingController {
     };
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/create-duffel-order')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Manually create Duffel order for a booking (recovery/retry endpoint)',
+    description:
+      'Creates a Duffel order for a booking that has completed payment but order creation failed. Use this to retry order creation or recover from webhook failures. Requires payment to be completed first.',
+  })
+  @ApiResponse({ status: 200, description: 'Duffel order created successfully' })
+  @ApiResponse({ status: 400, description: 'Booking not ready for order creation' })
+  @ApiResponse({ status: 404, description: 'Booking not found' })
+  async createDuffelOrder(@Param('id') id: string, @Request() req) {
+    try {
+      const booking = await this.bookingService.getBookingById(id);
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      // Check if user owns the booking or is admin
+      if (booking.userId !== req.user.id && req.user.role !== 'ADMIN' && req.user.role !== 'SUPER_ADMIN') {
+        throw new ForbiddenException('You do not have permission to create orders for this booking');
+      }
+
+      // Check if order already exists
+      if (booking.providerBookingId) {
+        return {
+          success: true,
+          data: {
+            orderId: booking.providerBookingId,
+            message: 'Duffel order already exists for this booking',
+            existing: true,
+          },
+          message: 'Order already created',
+        };
+      }
+
+      const result = await this.createDuffelOrderUseCase.execute(id);
+      return {
+        success: true,
+        data: result,
+        message: 'Duffel order created successfully',
+      };
+    } catch (error: any) {
+      // Re-throw HttpException as-is
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        {
+          success: false,
+          message: 'Failed to create Duffel order. Please check booking status and try again.',
+          error: 'Order creation failed',
+          details: process.env.NODE_ENV === 'development' ? error?.message : undefined,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Post(':id/cancel')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
@@ -345,13 +409,36 @@ export class BookingController {
   @Post('search/hotels')
   @ApiOperation({ summary: 'Search for hotels/accommodation (no authentication required)' })
   @ApiResponse({ status: 200, description: 'Hotel search results' })
+  @ApiResponse({ status: 400, description: 'Invalid search parameters' })
+  @ApiResponse({ status: 403, description: 'Hotel search feature not available for this account' })
+  @ApiResponse({ status: 500, description: 'Hotel search service temporarily unavailable' })
   async searchHotels(@Body() searchDto: SearchHotelsDto) {
-    const results = await this.searchHotelsUseCase.execute(searchDto);
-    return {
-      success: true,
-      data: results,
-      message: 'Hotels retrieved successfully',
-    };
+    try {
+      const results = await this.searchHotelsUseCase.execute(searchDto);
+      return {
+        success: true,
+        data: results,
+        message: 'Hotels retrieved successfully',
+      };
+    } catch (error: any) {
+      // Re-throw HttpException as-is (already properly formatted)
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      // Convert other errors to proper HTTP exceptions
+      const errorMessage = error?.message || 'An unexpected error occurred while searching for hotels';
+      
+      throw new HttpException(
+        {
+          success: false,
+          message: 'Unable to search hotels at this time. Please check your search parameters and try again.',
+          error: 'Search failed',
+          details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Public()

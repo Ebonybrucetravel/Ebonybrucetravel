@@ -49,6 +49,31 @@ export class SearchFlightsUseCase {
       );
     }
 
+    // Validate dates
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to start of day
+    
+    const departure = new Date(departureDate);
+    departure.setHours(0, 0, 0, 0);
+    
+    if (departure < today) {
+      throw new BadRequestException(
+        `Departure date (${departureDate}) cannot be in the past. Please select a future date.`,
+      );
+    }
+
+    // Validate return date if provided
+    if (returnDate) {
+      const returnD = new Date(returnDate);
+      returnD.setHours(0, 0, 0, 0);
+      
+      if (returnD < departure) {
+        throw new BadRequestException(
+          `Return date (${returnDate}) must be after departure date (${departureDate}).`,
+        );
+      }
+    }
+
     // Check cache first
     const cacheKey = this.generateCacheKey(searchParams);
     const cachedOfferRequestId = this.cacheService.getCachedSearchResult(searchParams);

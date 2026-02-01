@@ -198,13 +198,44 @@ export class DuffelService {
           errorMessage += ` - ${errorText}`;
         }
 
+        // Map HTTP status codes properly
+        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (response.status === 401) {
+          httpStatus = HttpStatus.UNAUTHORIZED;
+        } else if (response.status === 403) {
+          httpStatus = HttpStatus.FORBIDDEN; // 403 = Forbidden (not Unauthorized)
+        } else if (response.status === 400 || response.status === 422) {
+          httpStatus = HttpStatus.BAD_REQUEST;
+        } else if (response.status === 404) {
+          httpStatus = HttpStatus.NOT_FOUND;
+        } else if (response.status >= 500) {
+          httpStatus = HttpStatus.SERVICE_UNAVAILABLE;
+        }
+
+        // Check for date validation errors (Duffel sometimes returns these incorrectly)
+        const isDateValidationError = 
+          errorMessage.toLowerCase().includes('departure_date') ||
+          errorMessage.toLowerCase().includes('return_date') ||
+          errorMessage.toLowerCase().includes('must be after') ||
+          errorMessage.toLowerCase().includes('date') && errorMessage.toLowerCase().includes('must');
+
+        if (isDateValidationError && httpStatus === HttpStatus.INTERNAL_SERVER_ERROR) {
+          httpStatus = HttpStatus.BAD_REQUEST;
+        }
+
         throw new HttpException(
-          errorMessage,
-          response.status === 401 || response.status === 403
-            ? HttpStatus.UNAUTHORIZED
-            : response.status === 400
-              ? HttpStatus.BAD_REQUEST
-              : HttpStatus.INTERNAL_SERVER_ERROR,
+          {
+            message: errorMessage,
+            error: response.status === 403 
+              ? 'Feature not available' 
+              : response.status === 401 
+                ? 'Authentication failed'
+                : isDateValidationError
+                  ? 'Invalid date'
+                  : 'API error',
+            statusCode: httpStatus,
+          },
+          httpStatus,
         );
       }
 
@@ -303,6 +334,66 @@ export class DuffelService {
 
       throw new HttpException(
         `Failed to list offers: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Get a single offer by ID
+   * GET /air/offers/{offer_id}
+   */
+  async getOffer(offerId: string): Promise<any> {
+    if (!this.apiKey) {
+      throw new HttpException('Duffel API key is not configured', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/air/offers/${offerId}`, {
+        method: 'GET',
+        headers: {
+          'Accept-Encoding': 'gzip',
+          Accept: 'application/json',
+          'Duffel-Version': 'v2',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = `Duffel API error: ${response.status}`;
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.errors && errorJson.errors.length > 0) {
+            errorMessage = errorJson.errors.map((e: any) => e.message || e.detail).join(', ');
+          }
+        } catch {
+          errorMessage += ` - ${errorText}`;
+        }
+
+        throw new HttpException(
+          {
+            message: errorMessage,
+            error: response.status === 403 
+              ? 'Feature not available' 
+              : response.status === 401 
+                ? 'Authentication failed'
+                : 'API error',
+            statusCode: response.status === 404 ? HttpStatus.NOT_FOUND : HttpStatus.INTERNAL_SERVER_ERROR,
+          },
+          response.status === 404 ? HttpStatus.NOT_FOUND : HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `Failed to get offer: ${error instanceof Error ? error.message : 'Unknown error'}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -412,13 +503,31 @@ export class DuffelService {
           errorMessage += ` - ${errorText}`;
         }
 
+        // Map HTTP status codes properly
+        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (response.status === 401) {
+          httpStatus = HttpStatus.UNAUTHORIZED;
+        } else if (response.status === 403) {
+          httpStatus = HttpStatus.FORBIDDEN; // 403 = Forbidden (feature not enabled)
+        } else if (response.status === 400 || response.status === 422) {
+          httpStatus = HttpStatus.BAD_REQUEST;
+        } else if (response.status === 404) {
+          httpStatus = HttpStatus.NOT_FOUND;
+        } else if (response.status >= 500) {
+          httpStatus = HttpStatus.SERVICE_UNAVAILABLE;
+        }
+
         throw new HttpException(
-          errorMessage,
-          response.status === 401 || response.status === 403
-            ? HttpStatus.UNAUTHORIZED
-            : response.status === 400 || response.status === 422
-              ? HttpStatus.BAD_REQUEST
-              : HttpStatus.INTERNAL_SERVER_ERROR,
+          {
+            message: errorMessage,
+            error: response.status === 403 
+              ? 'Feature not available' 
+              : response.status === 401 
+                ? 'Authentication failed'
+                : 'API error',
+            statusCode: httpStatus,
+          },
+          httpStatus,
         );
       }
 
@@ -592,13 +701,31 @@ export class DuffelService {
           errorMessage += ` - ${errorText}`;
         }
 
+        // Map HTTP status codes properly
+        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (response.status === 401) {
+          httpStatus = HttpStatus.UNAUTHORIZED;
+        } else if (response.status === 403) {
+          httpStatus = HttpStatus.FORBIDDEN; // 403 = Forbidden (feature not enabled)
+        } else if (response.status === 400 || response.status === 422) {
+          httpStatus = HttpStatus.BAD_REQUEST;
+        } else if (response.status === 404) {
+          httpStatus = HttpStatus.NOT_FOUND;
+        } else if (response.status >= 500) {
+          httpStatus = HttpStatus.SERVICE_UNAVAILABLE;
+        }
+
         throw new HttpException(
-          errorMessage,
-          response.status === 401 || response.status === 403
-            ? HttpStatus.UNAUTHORIZED
-            : response.status === 400 || response.status === 422
-              ? HttpStatus.BAD_REQUEST
-              : HttpStatus.INTERNAL_SERVER_ERROR,
+          {
+            message: errorMessage,
+            error: response.status === 403 
+              ? 'Feature not available' 
+              : response.status === 401 
+                ? 'Authentication failed'
+                : 'API error',
+            statusCode: httpStatus,
+          },
+          httpStatus,
         );
       }
 
@@ -652,13 +779,31 @@ export class DuffelService {
           errorMessage += ` - ${errorText}`;
         }
 
+        // Map HTTP status codes properly
+        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (response.status === 401) {
+          httpStatus = HttpStatus.UNAUTHORIZED;
+        } else if (response.status === 403) {
+          httpStatus = HttpStatus.FORBIDDEN; // 403 = Forbidden (feature not enabled)
+        } else if (response.status === 400 || response.status === 422) {
+          httpStatus = HttpStatus.BAD_REQUEST;
+        } else if (response.status === 404) {
+          httpStatus = HttpStatus.NOT_FOUND;
+        } else if (response.status >= 500) {
+          httpStatus = HttpStatus.SERVICE_UNAVAILABLE;
+        }
+
         throw new HttpException(
-          errorMessage,
-          response.status === 401 || response.status === 403
-            ? HttpStatus.UNAUTHORIZED
-            : response.status === 400 || response.status === 422
-              ? HttpStatus.BAD_REQUEST
-              : HttpStatus.INTERNAL_SERVER_ERROR,
+          {
+            message: errorMessage,
+            error: response.status === 403 
+              ? 'Feature not available' 
+              : response.status === 401 
+                ? 'Authentication failed'
+                : 'API error',
+            statusCode: httpStatus,
+          },
+          httpStatus,
         );
       }
 
@@ -878,13 +1023,31 @@ export class DuffelService {
           errorMessage += ` - ${errorText}`;
         }
 
+        // Map HTTP status codes properly
+        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (response.status === 401) {
+          httpStatus = HttpStatus.UNAUTHORIZED;
+        } else if (response.status === 403) {
+          httpStatus = HttpStatus.FORBIDDEN; // 403 = Forbidden (feature not enabled)
+        } else if (response.status === 400 || response.status === 422) {
+          httpStatus = HttpStatus.BAD_REQUEST;
+        } else if (response.status === 404) {
+          httpStatus = HttpStatus.NOT_FOUND;
+        } else if (response.status >= 500) {
+          httpStatus = HttpStatus.SERVICE_UNAVAILABLE;
+        }
+
         throw new HttpException(
-          errorMessage,
-          response.status === 401 || response.status === 403
-            ? HttpStatus.UNAUTHORIZED
-            : response.status === 400 || response.status === 422
-              ? HttpStatus.BAD_REQUEST
-              : HttpStatus.INTERNAL_SERVER_ERROR,
+          {
+            message: errorMessage,
+            error: response.status === 403 
+              ? 'Feature not available' 
+              : response.status === 401 
+                ? 'Authentication failed'
+                : 'API error',
+            statusCode: httpStatus,
+          },
+          httpStatus,
         );
       }
 
@@ -954,13 +1117,31 @@ export class DuffelService {
           errorMessage += ` - ${errorText}`;
         }
 
+        // Map HTTP status codes properly
+        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (response.status === 401) {
+          httpStatus = HttpStatus.UNAUTHORIZED;
+        } else if (response.status === 403) {
+          httpStatus = HttpStatus.FORBIDDEN; // 403 = Forbidden (feature not enabled)
+        } else if (response.status === 400 || response.status === 422) {
+          httpStatus = HttpStatus.BAD_REQUEST;
+        } else if (response.status === 404) {
+          httpStatus = HttpStatus.NOT_FOUND;
+        } else if (response.status >= 500) {
+          httpStatus = HttpStatus.SERVICE_UNAVAILABLE;
+        }
+
         throw new HttpException(
-          errorMessage,
-          response.status === 401 || response.status === 403
-            ? HttpStatus.UNAUTHORIZED
-            : response.status === 400 || response.status === 422
-              ? HttpStatus.BAD_REQUEST
-              : HttpStatus.INTERNAL_SERVER_ERROR,
+          {
+            message: errorMessage,
+            error: response.status === 403 
+              ? 'Feature not available' 
+              : response.status === 401 
+                ? 'Authentication failed'
+                : 'API error',
+            statusCode: httpStatus,
+          },
+          httpStatus,
         );
       }
 
@@ -1036,13 +1217,31 @@ export class DuffelService {
           errorMessage += ` - ${errorText}`;
         }
 
+        // Map HTTP status codes properly
+        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (response.status === 401) {
+          httpStatus = HttpStatus.UNAUTHORIZED;
+        } else if (response.status === 403) {
+          httpStatus = HttpStatus.FORBIDDEN; // 403 = Forbidden (feature not enabled)
+        } else if (response.status === 400 || response.status === 422) {
+          httpStatus = HttpStatus.BAD_REQUEST;
+        } else if (response.status === 404) {
+          httpStatus = HttpStatus.NOT_FOUND;
+        } else if (response.status >= 500) {
+          httpStatus = HttpStatus.SERVICE_UNAVAILABLE;
+        }
+
         throw new HttpException(
-          errorMessage,
-          response.status === 401 || response.status === 403
-            ? HttpStatus.UNAUTHORIZED
-            : response.status === 400 || response.status === 422
-              ? HttpStatus.BAD_REQUEST
-              : HttpStatus.INTERNAL_SERVER_ERROR,
+          {
+            message: errorMessage,
+            error: response.status === 403 
+              ? 'Feature not available' 
+              : response.status === 401 
+                ? 'Authentication failed'
+                : 'API error',
+            statusCode: httpStatus,
+          },
+          httpStatus,
         );
       }
 
@@ -1160,13 +1359,31 @@ export class DuffelService {
           errorMessage += ` - ${errorText}`;
         }
 
+        // Map HTTP status codes properly
+        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (response.status === 401) {
+          httpStatus = HttpStatus.UNAUTHORIZED;
+        } else if (response.status === 403) {
+          httpStatus = HttpStatus.FORBIDDEN; // 403 = Forbidden (feature not enabled)
+        } else if (response.status === 400 || response.status === 422) {
+          httpStatus = HttpStatus.BAD_REQUEST;
+        } else if (response.status === 404) {
+          httpStatus = HttpStatus.NOT_FOUND;
+        } else if (response.status >= 500) {
+          httpStatus = HttpStatus.SERVICE_UNAVAILABLE;
+        }
+
         throw new HttpException(
-          errorMessage,
-          response.status === 401 || response.status === 403
-            ? HttpStatus.UNAUTHORIZED
-            : response.status === 400 || response.status === 422
-              ? HttpStatus.BAD_REQUEST
-              : HttpStatus.INTERNAL_SERVER_ERROR,
+          {
+            message: errorMessage,
+            error: response.status === 403 
+              ? 'Feature not available' 
+              : response.status === 401 
+                ? 'Authentication failed'
+                : 'API error',
+            statusCode: httpStatus,
+          },
+          httpStatus,
         );
       }
 
@@ -1235,13 +1452,31 @@ export class DuffelService {
           errorMessage += ` - ${errorText}`;
         }
 
+        // Map HTTP status codes properly
+        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (response.status === 401) {
+          httpStatus = HttpStatus.UNAUTHORIZED;
+        } else if (response.status === 403) {
+          httpStatus = HttpStatus.FORBIDDEN; // 403 = Forbidden (feature not enabled)
+        } else if (response.status === 400 || response.status === 422) {
+          httpStatus = HttpStatus.BAD_REQUEST;
+        } else if (response.status === 404) {
+          httpStatus = HttpStatus.NOT_FOUND;
+        } else if (response.status >= 500) {
+          httpStatus = HttpStatus.SERVICE_UNAVAILABLE;
+        }
+
         throw new HttpException(
-          errorMessage,
-          response.status === 401 || response.status === 403
-            ? HttpStatus.UNAUTHORIZED
-            : response.status === 400 || response.status === 422
-              ? HttpStatus.BAD_REQUEST
-              : HttpStatus.INTERNAL_SERVER_ERROR,
+          {
+            message: errorMessage,
+            error: response.status === 403 
+              ? 'Feature not available' 
+              : response.status === 401 
+                ? 'Authentication failed'
+                : 'API error',
+            statusCode: httpStatus,
+          },
+          httpStatus,
         );
       }
 
@@ -1536,13 +1771,31 @@ export class DuffelService {
           errorMessage += ` - ${errorText}`;
         }
 
+        // Map HTTP status codes properly
+        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (response.status === 401) {
+          httpStatus = HttpStatus.UNAUTHORIZED;
+        } else if (response.status === 403) {
+          httpStatus = HttpStatus.FORBIDDEN; // 403 = Forbidden (feature not enabled)
+        } else if (response.status === 400 || response.status === 422) {
+          httpStatus = HttpStatus.BAD_REQUEST;
+        } else if (response.status === 404) {
+          httpStatus = HttpStatus.NOT_FOUND;
+        } else if (response.status >= 500) {
+          httpStatus = HttpStatus.SERVICE_UNAVAILABLE;
+        }
+
         throw new HttpException(
-          errorMessage,
-          response.status === 401 || response.status === 403
-            ? HttpStatus.UNAUTHORIZED
-            : response.status === 400 || response.status === 422
-              ? HttpStatus.BAD_REQUEST
-              : HttpStatus.INTERNAL_SERVER_ERROR,
+          {
+            message: errorMessage,
+            error: response.status === 403 
+              ? 'Feature not available' 
+              : response.status === 401 
+                ? 'Authentication failed'
+                : 'API error',
+            statusCode: httpStatus,
+          },
+          httpStatus,
         );
       }
 
@@ -1671,13 +1924,31 @@ export class DuffelService {
           errorMessage += ` - ${errorText}`;
         }
 
+        // Map HTTP status codes properly
+        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (response.status === 401) {
+          httpStatus = HttpStatus.UNAUTHORIZED;
+        } else if (response.status === 403) {
+          httpStatus = HttpStatus.FORBIDDEN; // 403 = Forbidden (feature not enabled)
+        } else if (response.status === 400 || response.status === 422) {
+          httpStatus = HttpStatus.BAD_REQUEST;
+        } else if (response.status === 404) {
+          httpStatus = HttpStatus.NOT_FOUND;
+        } else if (response.status >= 500) {
+          httpStatus = HttpStatus.SERVICE_UNAVAILABLE;
+        }
+
         throw new HttpException(
-          errorMessage,
-          response.status === 401 || response.status === 403
-            ? HttpStatus.UNAUTHORIZED
-            : response.status === 400 || response.status === 422
-              ? HttpStatus.BAD_REQUEST
-              : HttpStatus.INTERNAL_SERVER_ERROR,
+          {
+            message: errorMessage,
+            error: response.status === 403 
+              ? 'Feature not available' 
+              : response.status === 401 
+                ? 'Authentication failed'
+                : 'API error',
+            statusCode: httpStatus,
+          },
+          httpStatus,
         );
       }
 

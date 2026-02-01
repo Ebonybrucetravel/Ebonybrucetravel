@@ -58,12 +58,35 @@ export class CreateDuffelOrderUseCase {
     }
 
     try {
-      // Prepare passenger data for Duffel order
-      // Note: We need to get the passenger ID from the offer, but for now we'll use the offer's passenger structure
-      // In a real implementation, you'd fetch the offer first to get passenger IDs
+      // Fetch the offer to get passenger IDs (required by Duffel)
+      this.logger.log(`Fetching offer ${bookingData.offerId} to get passenger IDs...`);
+      const offerResponse = await this.duffelService.getOffer(bookingData.offerId);
+      const offer = offerResponse.data;
+
+      if (!offer || !offer.passengers || offer.passengers.length === 0) {
+        throw new BadRequestException(
+          'Offer does not contain passenger information. Cannot create order.',
+        );
+      }
+
+      // Map our passenger info to Duffel passenger IDs from the offer
       const passengers = Array.isArray(passengerInfo) ? passengerInfo : [passengerInfo];
+      
+      if (passengers.length !== offer.passengers.length) {
+        throw new BadRequestException(
+          `Passenger count mismatch: Booking has ${passengers.length} passengers, but offer has ${offer.passengers.length}.`,
+        );
+      }
 
       const duffelPassengers = passengers.map((passenger: any, index: number) => {
+        // Get passenger ID from the offer (required by Duffel)
+        const offerPassenger = offer.passengers[index];
+        if (!offerPassenger || !offerPassenger.id) {
+          throw new BadRequestException(
+            `Offer passenger at index ${index} is missing ID. Cannot create order.`,
+          );
+        }
+
         // Parse date of birth if provided
         let bornOn: string | undefined;
         if (passenger.dateOfBirth) {
@@ -71,20 +94,24 @@ export class CreateDuffelOrderUseCase {
           bornOn = dob.toISOString().split('T')[0]; // YYYY-MM-DD
         } else if (passenger.bornOn) {
           bornOn = passenger.bornOn;
+        } else if (offerPassenger.born_on) {
+          bornOn = offerPassenger.born_on;
         }
 
         return {
-          id: passenger.id || `pas_${index}`, // Use passenger ID from offer if available
-          title: passenger.title,
-          gender: passenger.gender,
-          given_name: passenger.firstName || passenger.given_name || passenger.givenName,
-          family_name: passenger.lastName || passenger.family_name || passenger.familyName,
+          id: offerPassenger.id, // CRITICAL: Use passenger ID from offer
+          title: passenger.title || offerPassenger.title,
+          gender: passenger.gender || offerPassenger.gender,
+          given_name: passenger.firstName || passenger.given_name || passenger.givenName || offerPassenger.given_name,
+          family_name: passenger.lastName || passenger.family_name || passenger.familyName || offerPassenger.family_name,
           born_on: bornOn,
-          email: passenger.email,
-          phone_number: passenger.phone || passenger.phoneNumber,
-          identity_documents: passenger.identityDocuments || passenger.identity_documents,
+          email: passenger.email || offerPassenger.email,
+          phone_number: passenger.phone || passenger.phoneNumber || offerPassenger.phone_number,
+          identity_documents: passenger.identityDocuments || passenger.identity_documents || offerPassenger.identity_documents,
         };
       });
+
+      this.logger.log(`Prepared ${duffelPassengers.length} passengers for order creation`);
 
       // Create Duffel order with retry logic
       const orderData = await retryWithBackoffAndLogging(
