@@ -43,6 +43,7 @@ export interface User {
   updatedAt?: string;
   avatar?: string;
   token?: string;
+  isVerified?: boolean;
 }
 
 // ────────────────────────────────────────────────
@@ -200,7 +201,7 @@ export function getStoredUser(): User | null {
 }
 
 // ────────────────────────────────────────────────
-// Auth API
+// Auth API - UPDATED WITH NEW ENDPOINTS
 // ────────────────────────────────────────────────
 export const authApi = {
   login: (credentials: { email: string; password: string }) => {
@@ -248,6 +249,75 @@ export const authApi = {
       method: 'GET',
     });
   },
+
+  // NEW: Forgot password endpoint
+  forgotPassword: (email: string) => {
+    return request<ApiResponse<{ message: string }>>('/api/v1/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  // NEW: Reset password endpoint
+  resetPassword: (token: string, password: string) => {
+    return request<ApiResponse<{ message: string; user?: User }>>('/api/v1/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    });
+  },
+
+  // NEW: Verify email endpoint
+  verifyEmail: (token: string) => {
+    return request<ApiResponse<{ message: string; user?: User; verified: boolean }>>('/api/v1/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  },
+
+  // NEW: Resend verification email
+  resendVerificationEmail: (email: string) => {
+    return request<ApiResponse<{ message: string }>>('/api/v1/auth/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  // NEW: Social login endpoints (if supported)
+  googleLogin: (accessToken: string) => {
+    return request<any>('/api/v1/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ accessToken }),
+    }).then(response => {
+      if (response.token && response.user) {
+        setAuthToken(response.token, response.user);
+      } else if (response.data?.token && response.data?.user) {
+        setAuthToken(response.data.token, response.data.user);
+      }
+      return response;
+    });
+  },
+
+  facebookLogin: (accessToken: string) => {
+    return request<any>('/api/v1/auth/facebook', {
+      method: 'POST',
+      body: JSON.stringify({ accessToken }),
+    }).then(response => {
+      if (response.token && response.user) {
+        setAuthToken(response.token, response.user);
+      } else if (response.data?.token && response.data?.user) {
+        setAuthToken(response.data.token, response.data.user);
+      }
+      return response;
+    });
+  },
+
+  // NEW: Check if email exists
+  checkEmailExists: (email: string) => {
+    return request<ApiResponse<{ exists: boolean }>>('/api/v1/auth/check-email', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
 };
 
 // ────────────────────────────────────────────────
@@ -287,6 +357,21 @@ export const userApi = {
   deleteAccount: () => {
     return request<{ message: string }>('/api/v1/users/me', {
       method: 'DELETE',
+    });
+  },
+
+  // NEW: Update email address (may require re-verification)
+  updateEmail: (email: string, password: string) => {
+    return request<{ message: string; requiresVerification: boolean }>('/api/v1/users/me/email', {
+      method: 'PUT',
+      body: JSON.stringify({ email, password }),
+    });
+  },
+
+  // NEW: Get user's bookings
+  getMyBookings: () => {
+    return request<any[]>('/api/v1/users/me/bookings', {
+      method: 'GET',
     });
   },
 };
@@ -362,8 +447,7 @@ export const bookingApi = {
   },
   
   // Step 7: Create guest booking - EXACT ENDPOINT (FIXED - SAME ENDPOINT AS AUTHENTICATED)
-  // Note: According to your documentation, both authenticated and guest use same endpoint
-  // But if there's a separate guest endpoint, adjust accordingly
+  //
   createGuestBooking: (bookingData: {
     productType: string;
     provider: string;
@@ -387,7 +471,7 @@ export const bookingApi = {
     };
     [key: string]: any;
   }) => {
-    // If your backend has separate guest endpoint, use: '/api/v1/bookings/guest'
+
     // For now using same endpoint as authenticated
     return request<any>('/api/v1/bookings/guest', {
       method: 'POST',
@@ -459,6 +543,24 @@ export const paymentApi = {
       body: JSON.stringify({ bookingId, email }),
     });
   },
+  
+  // NEW: Get payment status
+  getPaymentStatus: (paymentId: string) => {
+    return request<any>(`/api/v1/payments/${paymentId}/status`, {
+      method: 'GET',
+    });
+  },
+  
+  // NEW: Refund payment
+  refundPayment: (paymentId: string, amount?: number) => {
+    const body: any = { paymentId };
+    if (amount !== undefined) body.amount = amount;
+    
+    return request<any>(`/api/v1/payments/${paymentId}/refund`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
 };
 
 // ────────────────────────────────────────────────
@@ -477,6 +579,14 @@ export const hotelApi = {
       method: 'GET',
     });
   },
+  
+  // NEW: Hotel booking
+  bookHotel: (hotelId: string, bookingData: any) => {
+    return request<any>(`/api/v1/hotels/${hotelId}/book`, {
+      method: 'POST',
+      body: JSON.stringify(bookingData),
+    });
+  },
 };
 
 // ────────────────────────────────────────────────
@@ -487,6 +597,86 @@ export const carApi = {
     return request<any>('/api/v1/cars/search', {
       method: 'POST',
       body: JSON.stringify(params),
+    });
+  },
+  
+  // NEW: Car rental booking
+  bookCar: (carId: string, bookingData: any) => {
+    return request<any>(`/api/v1/cars/${carId}/book`, {
+      method: 'POST',
+      body: JSON.stringify(bookingData),
+    });
+  },
+};
+
+// ────────────────────────────────────────────────
+// NEW: Notification API
+// ────────────────────────────────────────────────
+export const notificationApi = {
+  getNotifications: () => {
+    return request<any[]>('/api/v1/notifications', {
+      method: 'GET',
+    });
+  },
+  
+  markAsRead: (notificationId: string) => {
+    return request<any>(`/api/v1/notifications/${notificationId}/read`, {
+      method: 'PUT',
+    });
+  },
+  
+  markAllAsRead: () => {
+    return request<any>('/api/v1/notifications/read-all', {
+      method: 'PUT',
+    });
+  },
+  
+  deleteNotification: (notificationId: string) => {
+    return request<any>(`/api/v1/notifications/${notificationId}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// ────────────────────────────────────────────────
+// NEW: Support/Contact API
+// ────────────────────────────────────────────────
+export const supportApi = {
+  contactUs: (data: {
+    name: string;
+    email: string;
+    subject: string;
+    message: string;
+    phone?: string;
+  }) => {
+    return request<any>('/api/v1/support/contact', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  
+  submitFeedback: (data: {
+    rating: number;
+    comment: string;
+    bookingId?: string;
+    category?: string;
+  }) => {
+    return request<any>('/api/v1/support/feedback', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  
+  reportIssue: (data: {
+    title: string;
+    description: string;
+    category: string;
+    priority?: 'low' | 'medium' | 'high';
+    screenshot?: string;
+  }) => {
+    return request<any>('/api/v1/support/issues', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   },
 };
@@ -534,7 +724,87 @@ export async function uploadUserAvatar(file: File): Promise<string | null> {
 }
 
 // ────────────────────────────────────────────────
-// NEW: Flight search utility function
+// NEW: Auth helper functions
+// ────────────────────────────────────────────────
+export async function handleForgotPassword(email: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const response = await authApi.forgotPassword(email);
+    return {
+      success: true,
+      message: response?.message || 'Password reset instructions sent to your email.'
+    };
+  } catch (error: any) {
+    console.error('Forgot password error:', error);
+    return {
+      success: false,
+      message: error?.message || 'Failed to send reset instructions. Please try again.'
+    };
+  }
+}
+
+export async function handleResetPassword(token: string, password: string): Promise<{ success: boolean; message: string; user?: User }> {
+  try {
+    const response = await authApi.resetPassword(token, password);
+    return {
+      success: true,
+      message: response?.message || 'Password reset successfully!',
+      user: response?.user
+    };
+  } catch (error: any) {
+    console.error('Reset password error:', error);
+    return {
+      success: false,
+      message: error?.message || 'Failed to reset password. Please try again.'
+    };
+  }
+}
+
+export async function handleVerifyEmail(token: string): Promise<{ success: boolean; message: string; user?: User; verified?: boolean }> {
+  try {
+    const response = await authApi.verifyEmail(token);
+    return {
+      success: true,
+      message: response?.message || 'Email verified successfully!',
+      user: response?.user,
+      verified: response?.verified || true
+    };
+  } catch (error: any) {
+    console.error('Verify email error:', error);
+    return {
+      success: false,
+      message: error?.message || 'Failed to verify email. Please try again.'
+    };
+  }
+}
+
+export async function checkEmailVerified(): Promise<boolean> {
+  try {
+    const user = await fetchUserProfile();
+    return user?.isVerified || false;
+  } catch (error) {
+    console.error('Check email verified error:', error);
+    return false;
+  }
+}
+
+export async function resendVerificationEmail(email: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const response = await authApi.resendVerificationEmail(email);
+    return {
+      success: true,
+      message: response?.message || 'Verification email sent successfully!'
+    };
+  } catch (error: any) {
+    console.error('Resend verification error:', error);
+    return {
+      success: false,
+      message: error?.message || 'Failed to resend verification email.'
+    };
+  }
+}
+
+// ────────────────────────────────────────────────
+// Flight search utility function
 // ────────────────────────────────────────────────
 export async function searchFlightsWithPagination(
   params: {
@@ -638,11 +908,67 @@ export async function searchFlightsWithPagination(
 }
 
 // ────────────────────────────────────────────────
+// NEW: Session management helper
+// ────────────────────────────────────────────────
+export class SessionManager {
+  static async validateSession(): Promise<boolean> {
+    try {
+      const token = getAuthToken();
+      if (!token) return false;
+      
+      // Check if token is expired
+      const response = await authApi.verifyToken();
+      return response?.data?.valid || false;
+    } catch (error) {
+      console.error('Session validation error:', error);
+      return false;
+    }
+  }
+  
+  static async refreshSession(): Promise<boolean> {
+    try {
+      const user = getStoredUser();
+      if (!user?.email) return false;
+      
+      // In a real app, you'd call a refresh token endpoint
+      // For now, we'll just re-validate
+      return await this.validateSession();
+    } catch (error) {
+      console.error('Session refresh error:', error);
+      return false;
+    }
+  }
+  
+  static async logoutEverywhere(): Promise<void> {
+    try {
+      await authApi.logout();
+    } catch (error) {
+      console.error('Logout everywhere error:', error);
+      clearAuthToken();
+    }
+  }
+}
+
+// ────────────────────────────────────────────────
 // Auth event listeners
 // ────────────────────────────────────────────────
 if (typeof window !== 'undefined') {
   window.addEventListener('auth-expired', () => {
     clearAuthToken();
+  });
+  
+  // Auto-refresh session every 5 minutes
+  window.addEventListener('load', () => {
+    const token = getAuthToken();
+    if (token) {
+      setInterval(async () => {
+        const isValid = await SessionManager.validateSession();
+        if (!isValid) {
+          clearAuthToken();
+          window.dispatchEvent(new CustomEvent('session-expired'));
+        }
+      }, 5 * 60 * 1000); // 5 minutes
+    }
   });
 }
 
@@ -656,6 +982,8 @@ export default {
   paymentApi,
   hotelApi,
   carApi,
+  notificationApi,
+  supportApi,
   setAuthToken,
   clearAuthToken,
   getStoredAuthToken,
@@ -664,5 +992,16 @@ export default {
   updateUserProfile,
   uploadUserAvatar,
   searchFlightsWithPagination,
+  
+  // NEW: Auth helper functions
+  handleForgotPassword,
+  handleResetPassword,
+  handleVerifyEmail,
+  checkEmailVerified,
+  resendVerificationEmail,
+  
+  // NEW: Session management
+  SessionManager,
+  
   ApiError,
 };
