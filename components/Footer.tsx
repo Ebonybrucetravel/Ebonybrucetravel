@@ -42,35 +42,35 @@ const Footer: React.FC<FooterProps> = ({
     {
       title: t?.("footer.company") || "Company",
       links: [
-        t?.("footer.aboutUs") || "About Us",
-        t?.("footer.services") || "Services",
-        t?.("footer.career") || "Career",
-        t?.("footer.pressCenter") || "Press Center",
-        t?.("footer.investorRelation") || "Investor Relation",
-        t?.("footer.sustainability") || "Sustainability",
+        t?.("About Us") || "About Us",
+        t?.("Services") || "Services",
+        t?.("Career") || "Career",
+        t?.("Press Center") || "Press Center",
+        t?.("Investor Relation") || "Investor Relation",
+        t?.("Sustainability") || "Sustainability",
       ],
     },
     {
-      title: t?.("footer.support") || "Support",
+      title: t?.("Support") || "Support",
       links: [
-        t?.("footer.helpCenter") || "Help Center",
-        t?.("footer.terms") || "Terms of Service",
-        t?.("footer.privacy") || "Privacy Policy",
-        t?.("footer.partnerDispute") || "Partner Dispute",
-        t?.("footer.humanRights") || "Human Right Statement",
-        t?.("footer.accessibility") || "Accessibility Statement",
+        t?.("Help Center") || "Help Center",
+        t?.("Terms of Service") || "Terms of Service",
+        t?.("Privacy Policy") || "Privacy Policy",
+        t?.("Partner Dispute") || "Partner Dispute",
+        t?.("Human Right Statement") || "Human Right Statement",
+        t?.("Accessibility Statement") || "Accessibility Statement",
       ],
     },
     {
-      title: t?.("footer.discover") || "Discover",
+      title: t?.("Discover") || "Discover",
       links: [
-        t?.("footer.flights") || "Flights",
-        t?.("footer.hotels") || "Hotels",
-        t?.("footer.carRentals") || "Car Rentals",
-        t?.("footer.myBookings") || "My Bookings",
-        t?.("footer.travelArticles") || "Travel Articles",
-        t?.("footer.agents") || "Agents",
-        t?.("footer.holidayDeals") || "Season and Holiday deals",
+        t?.("Flights") || "Flights",
+        t?.("Hotels") || "Hotels",
+        t?.("Car Rentals") || "Car Rentals",
+        t?.("My Bookings") || "My Bookings",
+        t?.("Travel Articles") || "Travel Articles",
+        t?.("Agents") || "Agents",
+        t?.("Season and Holiday deals") || "Season and Holiday deals",
       ],
     },
   ];
@@ -124,7 +124,7 @@ const Footer: React.FC<FooterProps> = ({
             </div>
 
             <p className="text-gray-500 leading-relaxed max-w-sm mb-6">
-              {t?.("footer.description") ||
+              {t?.("Explore the world with a partner you can trust. Book flights, hotels, and cars with confidence") ||
                 "Explore the world with a partner you can trust. Book flights, hotels, and cars with confidence."}
             </p>
 

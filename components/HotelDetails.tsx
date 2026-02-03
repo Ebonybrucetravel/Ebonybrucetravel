@@ -1,11 +1,25 @@
 "use client";
 import React, { useState, useEffect } from "react";
 
+interface RoomOption {
+  type: string;
+  guests: number;
+  price: number;
+  currency: string;
+  options: string[];
+  offerId?: string;
+}
+
+interface AmenityGroup {
+  group: string;
+  items: string[];
+}
+
 interface HotelDetailsProps {
   item: any;
   searchParams: any;
   onBack: () => void;
-  onBook: () => void;
+  onBook: (room?: RoomOption) => void;
 }
 
 const HotelDetails: React.FC<HotelDetailsProps> = ({
@@ -17,29 +31,274 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const [activeTab, setActiveTab] = useState("Overview");
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [hotelData, setHotelData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   useEffect(() => {
+    console.log("Hotel Details Component Mounted with item:", item);
     window.scrollTo(0, 0);
-  }, []);
+    if (item) {
+      fetchHotelDetails();
+    }
+  }, [item]);
 
-  const images = [
-    item.imageUrl ||
-      "https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=1200",
-    "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
-    "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=600",
-    "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=600",
-    "https://images.unsplash.com/photo-1564501049412-61c2a3083791?auto=format&fit=crop&q=80&w=600",
-  ];
+  const fetchHotelDetails = async () => {
+    console.log("fetchHotelDetails called with item:", item);
+    
+    if (!item?.hotelId) {
+      console.warn("No hotelId found in item:", item);
+      setError("Hotel ID not found");
+      setHotelData(item);
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    setDebugInfo(null);
+    
+    try {
+      console.log("Fetching hotel details for hotelId:", item.hotelId);
+      
+      const requestBody = {
+        cityCode: searchParams?.cityCode || "LON",
+        checkInDate: searchParams?.checkInDate || "2026-06-04",
+        checkOutDate: searchParams?.checkOutDate || "2026-06-07",
+        adults: searchParams?.adults || 2,
+        roomQuantity: searchParams?.roomQuantity || 1,
+        currency: searchParams?.currency || "GBP",
+        bestRateOnly: searchParams?.bestRateOnly !== undefined ? searchParams.bestRateOnly : true
+      };
+
+      console.log("API Request body:", requestBody);
+
+      const response = await fetch(
+        `https://ebony-bruce-production.up.railway.app/api/v1/bookings/search/hotels/amadeus/${item.hotelId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody)
+        }
+      );
+      
+      console.log("API Response status:", response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("API Error response:", errorText);
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("API Success response data:", data);
+      
+      setDebugInfo({
+        response: data,
+        item: item,
+        timestamp: new Date().toISOString()
+      });
+      
+      setHotelData(data);
+    } catch (err: any) {
+      console.error("Error fetching hotel details:", err);
+      setError(err.message || "Failed to load hotel details. Please try again.");
+      setHotelData(item);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const hotel = hotelData || item;
+
+  const getImages = () => {
+    if (!hotel) return [];
+    
+    const images: string[] = [];
+    
+    if (hotel.imageUrl) {
+      images.push(hotel.imageUrl);
+    }
+    
+    if (hotel.images && Array.isArray(hotel.images)) {
+      hotel.images.forEach((img: any) => {
+        if (img.url) images.push(img.url);
+      });
+    }
+    
+    if (images.length === 0) {
+      return [
+        "https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=1200",
+        "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
+        "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=600",
+        "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=600",
+        "https://images.unsplash.com/photo-1564501049412-61c2a3083791?auto=format&fit=crop&q=80&w=600",
+      ];
+    }
+    
+    while (images.length < 5) {
+      images.push("https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=1200");
+    }
+    
+    return images.slice(0, 5);
+  };
+
+  const images = getImages();
+
+  const parseRoomOptions = (): RoomOption[] => {
+    if (!hotel || !hotel.offers || !Array.isArray(hotel.offers) || hotel.offers.length === 0) {
+      return [
+        {
+          type: "Classic room",
+          guests: 2,
+          price: 110.0,
+          currency: "USD",
+          options: ["Free cancellation", "No prepayment"],
+        },
+        {
+          type: "Classic room",
+          guests: 2,
+          price: 125.0,
+          currency: "USD",
+          options: ["Free cancellation", "Breakfast included"],
+        },
+        {
+          type: "Double room",
+          guests: 2,
+          price: 135.0,
+          currency: "USD",
+          options: ["Free cancellation", "WiFi included"],
+        },
+        {
+          type: "Double room",
+          guests: 2,
+          price: 145.0,
+          currency: "USD",
+          options: ["Breakfast included", "No prepayment"],
+        },
+        {
+          type: "Classic room",
+          guests: 3,
+          price: 165.0,
+          currency: "USD",
+          options: ["Free cancellation", "Extra bed"],
+        },
+      ];
+    }
+
+    return hotel.offers.map((offer: any): RoomOption => {
+      const roomType = offer.room?.type || 
+                       offer.room?.typeEstimated?.category ||
+                       offer.room?.description?.text ||
+                       "Standard Room";
+      
+      const guests = offer.guests?.adults || 2;
+      
+      let price = 110.0;
+      let currency = "USD";
+      
+      if (offer.price) {
+        if (offer.price.total) {
+          price = parseFloat(offer.price.total);
+          currency = offer.price.currency || "USD";
+        } else if (offer.price.base) {
+          price = parseFloat(offer.price.base);
+          currency = offer.price.currency || "USD";
+        }
+      }
+      
+      const options: string[] = [];
+      
+      if (offer.policies?.cancellation?.type === "FREE_CANCELLATION") {
+        options.push("Free cancellation");
+      }
+      
+      if (offer.room?.typeEstimated?.beds) {
+        options.push(`${offer.room.typeEstimated.beds} bed(s)`);
+      }
+      
+      if (offer.room?.description?.text) {
+        const desc = offer.room.description.text;
+        if (desc.length > 30) {
+          options.push(desc.substring(0, 30) + "...");
+        } else {
+          options.push(desc);
+        }
+      }
+      
+      if (options.length === 0) {
+        options.push("Standard amenities", "Free Wi-Fi");
+      }
+
+      return {
+        type: roomType,
+        guests: guests,
+        price: price,
+        currency: currency,
+        options: options,
+        offerId: offer.id
+      };
+    });
+  };
+
+  const roomOptions = parseRoomOptions();
+
+  const parseAmenities = (): AmenityGroup[] => {
+    if (!hotel || !hotel.amenities || !Array.isArray(hotel.amenities)) {
+      return [
+        {
+          group: "Common",
+          items: ["Free Wi-Fi", "Swimming Pool", "Air Conditioning", "Flat-screen TV", "Ensuite Bathroom", "Balcony"]
+        },
+        {
+          group: "Kitchen",
+          items: ["Refrigerator", "Kitchenette", "Electric kettle", "Microwave", "Dining area", "Coffee machine"]
+        },
+        {
+          group: "Wellness",
+          items: ["Fitness center", "Spa and wellness center", "Massage", "Hot tub/Jacuzzi"]
+        },
+        {
+          group: "Services",
+          items: ["Room service", "24-hour front desk", "Concierge service", "Laundry", "Airport shuttle"]
+        },
+      ];
+    }
+
+    const amenities: AmenityGroup[] = hotel.amenities.reduce((acc: AmenityGroup[], amenity: any): AmenityGroup[] => {
+      const group = amenity.category || "Common";
+      const existingGroup = acc.find(g => g.group === group);
+      
+      const amenityName = amenity.description || amenity.name || "Unknown";
+      
+      if (existingGroup) {
+        existingGroup.items.push(amenityName);
+      } else {
+        acc.push({
+          group: group,
+          items: [amenityName]
+        });
+      }
+      
+      return acc;
+    }, []);
+
+    return amenities;
+  };
+
+  const amenities = parseAmenities();
 
   const openGallery = (index: number) => {
     setCurrentImageIndex(index);
     setIsGalleryOpen(true);
-    document.body.style.overflow = "hidden"; // Prevent scrolling when gallery is open
+    document.body.style.overflow = "hidden";
   };
 
   const closeGallery = () => {
     setIsGalleryOpen(false);
-    document.body.style.overflow = "auto"; // Restore scrolling
+    document.body.style.overflow = "auto";
   };
 
   const goToNextImage = () => {
@@ -56,7 +315,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     setCurrentImageIndex(index);
   };
 
-  // Handle keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isGalleryOpen) return;
@@ -74,100 +332,25 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isGalleryOpen]);
 
-  const roomOptions = [
-    {
-      type: "Classic room",
-      guests: 2,
-      price: 110.0,
-      options: ["Free cancellation", "No prepayment"],
-    },
-    {
-      type: "Classic room",
-      guests: 2,
-      price: 125.0,
-      options: ["Free cancellation", "Breakfast included"],
-    },
-    {
-      type: "Double room",
-      guests: 2,
-      price: 135.0,
-      options: ["Free cancellation", "WiFi included"],
-    },
-    {
-      type: "Double room",
-      guests: 2,
-      price: 145.0,
-      options: ["Breakfast included", "No prepayment"],
-    },
-    {
-      type: "Classic room",
-      guests: 3,
-      price: 165.0,
-      options: ["Free cancellation", "Extra bed"],
-    },
-  ];
-
-  const amenities = [
-    {
-      group: "Common",
-      items: [
-        "Free Wi-Fi",
-        "Swimming Pool",
-        "Air Conditioning",
-        "Flat-screen TV",
-        "Ensuite Bathroom",
-        "Balcony",
-      ],
-    },
-    {
-      group: "Kitchen",
-      items: [
-        "Refrigerator",
-        "Kitchenette",
-        "Electric kettle",
-        "Microwave",
-        "Dining area",
-        "Coffee machine",
-      ],
-    },
-    {
-      group: "Wellness",
-      items: [
-        "Fitness center",
-        "Spa and wellness center",
-        "Massage",
-        "Hot tub/Jacuzzi",
-      ],
-    },
-    {
-      group: "Services",
-      items: [
-        "Room service",
-        "24-hour front desk",
-        "Concierge service",
-        "Laundry",
-        "Airport shuttle",
-      ],
-    },
-  ];
-
   const policies = [
-    { label: "Check-in", value: "From 2:00 PM" },
-    { label: "Check-out", value: "Until 11:00 AM" },
+    { label: "Check-in", value: hotel.checkInTime || "From 2:00 PM" },
+    { label: "Check-out", value: hotel.checkOutTime || "Until 11:00 AM" },
     {
       label: "Cancellation / Prepayment",
       value:
+        hotel.cancellationPolicy ||
         "Cancellation and prepayment policies vary according to accommodation type. Please enter the dates of your stay and check the conditions of your required room.",
     },
     {
       label: "Children and extra beds",
       value:
+        hotel.childrenPolicy ||
         "Children of all ages are welcome. Children 12 years and above are considered adults at this property.",
     },
-    { label: "Pets", value: "Pets are not allowed." },
+    { label: "Pets", value: hotel.petsPolicy || "Pets are not allowed." },
     {
       label: "Payment methods",
-      value: "Cash, Visa, Mastercard, American Express",
+      value: hotel.paymentMethods || "Cash, Visa, Mastercard, American Express",
     },
   ];
 
@@ -180,16 +363,10 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
           </h2>
           <div className="text-sm text-gray-500 font-medium leading-relaxed space-y-4">
             <p>
-              {item.title} provides premium, air-conditioned accommodations with
-              free Wi-Fi in a prime urban location. Every suite is meticulously
-              designed to offer a perfect blend of modern comfort and
-              sophisticated local style.
+              {hotel.description || hotel.hotel?.description?.text || `${hotel.name || hotel.title} provides premium, air-conditioned accommodations with free Wi-Fi in a prime urban location. Every suite is meticulously designed to offer a perfect blend of modern comfort and sophisticated local style.`}
             </p>
             <p>
-              Featuring state-of-the-art facilities, guests can enjoy a seamless
-              stay with high-speed connectivity and luxury bedding. The property
-              is ideally situated within walking distance of the city's main
-              attractions.
+              Featuring state-of-the-art facilities, guests can enjoy a seamless stay with high-speed connectivity and luxury bedding. The property is ideally situated within walking distance of the city's main attractions.
             </p>
           </div>
         </div>
@@ -204,10 +381,10 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-12 pt-12 border-t border-gray-50">
         {[
-          { label: "Property Type", value: "Boutique Hotel" },
+          { label: "Property Type", value: hotel.type || "Boutique Hotel" },
           { label: "Year Built", value: "2018 (Renovated)" },
           { label: "Staff Languages", value: "EN, IT, FR" },
-          { label: "Room Count", value: "42 Luxury Suites" },
+          { label: "Room Count", value: `${roomOptions.length} Luxury Suites` },
         ].map((stat) => (
           <div key={stat.label}>
             <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">
@@ -244,7 +421,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {roomOptions.map((room, i) => (
+            {roomOptions.map((room: RoomOption, i: number) => (
               <tr key={i} className="hover:bg-gray-50/50 transition">
                 <td className="px-4 py-6">
                   <p className="text-sm font-black text-[#33a8da] hover:underline cursor-pointer truncate">
@@ -275,7 +452,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                 </td>
                 <td className="px-4 py-6">
                   <p className="text-base font-black text-gray-900">
-                    ${room.price.toFixed(2)}
+                    {room.currency} {room.price.toFixed(2)}
                   </p>
                   <p className="text-[9px] text-gray-400 font-bold uppercase whitespace-nowrap">
                     Includes taxes
@@ -283,7 +460,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                 </td>
                 <td className="px-4 py-6">
                   <div className="space-y-1.5">
-                    {room.options.map((opt, k) => (
+                    {room.options.map((opt: string, k: number) => (
                       <div
                         key={k}
                         className="flex items-center gap-1.5 text-[9px] font-bold text-green-600 uppercase tracking-tighter"
@@ -304,7 +481,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                 </td>
                 <td className="px-4 py-6 text-right">
                   <button
-                    onClick={onBook}
+                    onClick={() => onBook(room)}
                     className="bg-[#33a8da] text-white px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-md hover:bg-[#2c98c7] transition active:scale-95 whitespace-nowrap"
                   >
                     Reserve
@@ -324,7 +501,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
         <div className="w-full md:w-64 space-y-8 shrink-0">
           <div className="flex items-center gap-5">
             <div className="text-5xl font-black text-[#33a8da] tracking-tighter">
-              4.9
+              {hotel.rating || "4.9"}
             </div>
             <div className="space-y-1">
               <div className="flex text-yellow-400">
@@ -382,8 +559,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                 </div>
               </div>
               <p className="text-sm text-gray-600 font-medium leading-relaxed italic">
-                "A truly formal and premium experience. The attention to detail
-                and professional staff made our stay unforgettable."
+                "A truly formal and premium experience. The attention to detail and professional staff made our stay unforgettable."
               </p>
             </div>
           ))}
@@ -395,13 +571,13 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const renderAmenities = () => (
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-10">
-        {amenities.map((group) => (
+        {amenities.map((group: AmenityGroup) => (
           <div key={group.group}>
             <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6 border-b border-gray-50 pb-2">
               {group.group}
             </h3>
             <div className="grid grid-cols-2 gap-y-4">
-              {group.items.map((amenity) => (
+              {group.items.map((amenity: string) => (
                 <div key={amenity} className="flex items-center gap-3">
                   <div className="w-1.5 h-1.5 bg-[#33a8da] rounded-full"></div>
                   <span className="text-sm font-bold text-gray-700">
@@ -459,11 +635,45 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#33a8da] mx-auto"></div>
+          <p className="mt-4 text-sm font-medium text-gray-600">Loading hotel details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !hotelData && !item) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-white px-4">
+        <div className="text-center max-w-md">
+          <div className="text-red-500 text-4xl mb-4">⚠️</div>
+          <h3 className="text-lg font-bold text-gray-900 mb-2">Unable to load hotel details</h3>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={fetchHotelDetails}
+            className="bg-[#33a8da] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#2c98c7] transition"
+          >
+            Try Again
+          </button>
+          <button
+            onClick={onBack}
+            className="ml-4 px-6 py-3 border border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-50 transition"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="bg-white min-h-screen">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Breadcrumbs - Formal Style */}
           <nav className="flex items-center gap-3 text-[10px] font-black text-gray-400 uppercase tracking-widest mb-10">
             <button onClick={onBack} className="hover:text-gray-900 transition">
               Home
@@ -476,11 +686,10 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             <span className="text-[#33a8da]">Property Details</span>
           </nav>
 
-          {/* Title Section - Formal Design */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-10">
             <div>
               <h1 className="text-3xl md:text-5xl font-black text-gray-900 tracking-tighter leading-none mb-3">
-                {item.title}
+                {hotel.name || hotel.title}
               </h1>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5 text-[#33a8da]">
@@ -492,7 +701,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                     <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
                   </svg>
                   <span className="text-xs font-bold text-gray-500">
-                    {item.subtitle}
+                    {hotel.subtitle || hotel.address?.cityName || "City"}
                   </span>
                 </div>
                 <button className="text-[10px] font-black text-[#33a8da] uppercase tracking-widest hover:underline">
@@ -528,9 +737,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             </div>
           </div>
 
-          {/* Gallery Grid - Formal 1/4 Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-16">
-            {/* Main Image - Clickable */}
             <div
               className="lg:col-span-8 h-[400px] lg:h-[600px] rounded-[32px] overflow-hidden shadow-lg cursor-pointer group relative"
               onClick={() => openGallery(0)}
@@ -558,9 +765,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                 </div>
               </div>
             </div>
-            {/* Thumbnail Images - Clickable */}
             <div className="lg:col-span-4 grid grid-cols-2 gap-4">
-              {/* First three thumbnail images */}
               {images.slice(1, 4).map((img, i) => (
                 <div
                   key={i}
@@ -576,22 +781,18 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                 </div>
               ))}
 
-              {/* Last thumbnail position with "View All Photos" button */}
               <div
                 className="relative rounded-[24px] overflow-hidden h-[190px] lg:h-auto shadow-sm cursor-pointer group"
                 onClick={() => openGallery(4)}
               >
-                {/* Overlay image */}
                 <img
                   src={images[4]}
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                   alt="Property gallery 5"
                 />
 
-                {/* Dark overlay */}
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-all duration-300"></div>
 
-                {/* "View All Photos" button overlay */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-4">
                   <div className="text-center">
                     <div className="bg-white rounded-full p-3 inline-flex items-center justify-center mb-3 shadow-lg">
@@ -618,7 +819,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                   </div>
                 </div>
 
-                {/* Clickable overlay for the entire card */}
                 <div
                   className="absolute inset-0"
                   onClick={() => openGallery(4)}
@@ -627,7 +827,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             </div>
           </div>
 
-          {/* Sticky Tabs Navigation */}
           <div className="border-b border-gray-100 mb-12 flex gap-10 overflow-x-auto hide-scrollbar sticky top-20 bg-white z-10 pt-4">
             {[
               "Overview",
@@ -653,13 +852,11 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             ))}
           </div>
 
-          {/* Main Content & Sidebar Grid */}
           <div className="flex flex-col lg:flex-row gap-12 mb-24">
             <div className="flex-1 min-w-0">{renderActiveContent()}</div>
 
             <aside className="w-full lg:w-[380px] shrink-0">
               <div className="sticky top-44 space-y-8">
-                {/* Formal Pricing Card */}
                 <div className="bg-white rounded-[32px] border border-gray-100 p-8 shadow-xl shadow-gray-200/40 border-t-4 border-t-[#33a8da]">
                   <div className="flex justify-between items-end mb-8">
                     <div>
@@ -667,7 +864,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                         Starting at
                       </p>
                       <p className="text-4xl font-black text-gray-900 tracking-tighter leading-none">
-                        $110.00
+                        {roomOptions[0]?.currency || "USD"} {roomOptions[0]?.price?.toFixed(2) || "110.00"}
                       </p>
                     </div>
                     <div className="text-right">
@@ -686,13 +883,21 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                         Selected Dates
                       </span>
                       <span className="text-xs font-bold text-gray-900">
-                        Dec 26 - Dec 30
+                        {searchParams?.checkInDate || "Dec 26"} - {searchParams?.checkOutDate || "Dec 30"}
+                      </span>
+                    </div>
+                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
+                      <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">
+                        Guests
+                      </span>
+                      <span className="text-xs font-bold text-gray-900">
+                        {searchParams?.adults || 2} Adult(s)
                       </span>
                     </div>
                   </div>
 
                   <button
-                    onClick={onBook}
+                    onClick={() => onBook(roomOptions[0])}
                     className="w-full bg-[#33a8da] text-white font-black py-5 rounded-2xl shadow-xl shadow-blue-500/20 hover:bg-[#2c98c7] transition active:scale-95 text-base uppercase tracking-widest"
                   >
                     Confirm & Book Now
@@ -702,7 +907,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                   </p>
                 </div>
 
-                {/* Map/Location Mini Card */}
                 <div className="bg-white rounded-[32px] border border-gray-100 p-8 shadow-sm relative overflow-hidden group cursor-pointer">
                   <div className="flex items-center gap-3 mb-5">
                     <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-[#33a8da] group-hover:scale-110 transition">
@@ -719,8 +923,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                     </h3>
                   </div>
                   <p className="text-sm text-gray-500 font-medium mb-5">
-                    Ideally positioned within the heart of the business and
-                    cultural district.
+                    Ideally positioned within the heart of the business and cultural district.
                   </p>
                   <button className="text-[10px] font-black text-[#33a8da] uppercase tracking-widest border-b-2 border-transparent hover:border-[#33a8da] transition">
                     View Location Details
@@ -730,7 +933,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             </aside>
           </div>
 
-          {/* Similar Properties Section - Formal Look */}
           <div className="pt-24 border-t border-gray-100">
             <div className="flex justify-between items-end mb-12">
               <div>
@@ -821,10 +1023,8 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
         </div>
       </div>
 
-      {/* Image Gallery Modal */}
       {isGalleryOpen && (
         <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm flex flex-col">
-          {/* Close Button */}
           <button
             onClick={closeGallery}
             className="absolute top-6 right-6 z-10 text-white hover:text-gray-300 transition-colors"
@@ -844,7 +1044,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             </svg>
           </button>
 
-          {/* Main Image Display */}
           <div className="flex-1 flex items-center justify-center p-4 relative">
             <button
               onClick={goToPrevImage}
@@ -892,13 +1091,11 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
               </svg>
             </button>
 
-            {/* Image Counter */}
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm rounded-full px-4 py-2 text-white text-sm font-medium">
               {currentImageIndex + 1} / {images.length}
             </div>
           </div>
 
-          {/* Thumbnail Strip */}
           <div className="h-32 bg-black/50 border-t border-white/10">
             <div className="max-w-6xl mx-auto h-full px-4">
               <div className="flex items-center h-full gap-4 overflow-x-auto pb-4">
@@ -923,7 +1120,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             </div>
           </div>
 
-          {/* Keyboard Shortcuts Hint */}
           <div className="absolute bottom-6 right-6 text-white/60 text-xs">
             <div className="flex items-center gap-4">
               <span className="flex items-center gap-1">

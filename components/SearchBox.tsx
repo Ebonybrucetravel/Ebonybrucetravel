@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLanguage } from '../context/LanguageContext';
+import { getCityCode } from '../lib/api'; // Import the city code helper
 
 interface Segment {
   from: string;
@@ -20,6 +21,14 @@ interface Airport {
   city: string;
   country: string;
   type: 'airport' | 'city';
+}
+
+interface HotelDestination {
+  name: string;
+  city: string;
+  country: string;
+  cityCode: string;
+  image?: string;
 }
 
 interface SearchBoxProps {
@@ -64,6 +73,10 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const [hotelLocation, setHotelLocation] = useState('');
   const [checkInDate, setCheckInDate] = useState('');
   const [checkOutDate, setCheckOutDate] = useState('');
+  const [rooms, setRooms] = useState(1);
+  const [showHotelLocationDropdown, setShowHotelLocationDropdown] = useState(false);
+  const [hotelLocationSuggestions, setHotelLocationSuggestions] = useState<HotelDestination[]>([]);
+  const [loadingHotelSuggestions, setLoadingHotelSuggestions] = useState(false);
 
   // Car Rental State
   const [carPickUp, setCarPickUp] = useState('');
@@ -77,13 +90,29 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   // Common State
   const [travellers, setTravellers] = useState<Travellers>({ adults: 1, children: 0, infants: 0 });
   const [showTravellerDropdown, setShowTravellerDropdown] = useState(false);
+  const [showRoomDropdown, setShowRoomDropdown] = useState(false);
 
   const travellerRef = useRef<HTMLDivElement>(null);
+  const roomRef = useRef<HTMLDivElement>(null);
   const cabinRef = useRef<HTMLDivElement>(null);
   const filtersRef = useRef<HTMLDivElement>(null);
   const fromRef = useRef<HTMLDivElement>(null);
   const toRef = useRef<HTMLDivElement>(null);
+  const hotelLocationRef = useRef<HTMLDivElement>(null);
   const today = new Date().toISOString().split('T')[0];
+
+  // Popular hotel destinations
+  const popularHotelDestinations: HotelDestination[] = [
+    { name: 'Lagos', city: 'Lagos', country: 'Nigeria', cityCode: 'LOS', image: 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D' },
+    { name: 'London', city: 'London', country: 'United Kingdom', cityCode: 'LON', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
+    { name: 'New York', city: 'New York', country: 'USA', cityCode: 'NYC', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Dubai', city: 'Dubai', country: 'UAE', cityCode: 'DXB', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Paris', city: 'Paris', country: 'France', cityCode: 'PAR', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Tokyo', city: 'Tokyo', country: 'Japan', cityCode: 'TYO', image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Singapore', city: 'Singapore', country: 'Singapore', cityCode: 'SIN', image: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Cape Town', city: 'Cape Town', country: 'South Africa', cityCode: 'CPT', image: 'https://images.unsplash.com/photo-1596394516093-9ba7b6146eba?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Accra', city: 'Accra', country: 'Ghana', cityCode: 'ACC', image: 'https://images.unsplash.com/photo-1587496679742-bad502958c4a?auto=format&fit=crop&q=80&w=400' },
+  ];
 
   // Popular airports for the whole world (updated with more airports)
   const popularAirports: Airport[] = [
@@ -145,66 +174,71 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     { code: 'SYD', name: 'Sydney Kingsford Smith Airport', city: 'Sydney', country: 'Australia', type: 'airport' },
     { code: 'MEL', name: 'Melbourne Airport', city: 'Melbourne', country: 'Australia', type: 'airport' },
     { code: 'AKL', name: 'Auckland Airport', city: 'Auckland', country: 'New Zealand', type: 'airport' },
-    
-    // West Africa Additional
-    { code: 'DSS', name: 'Blaise Diagne International Airport', city: 'Dakar', country: 'Senegal', type: 'airport' },
-    { code: 'ROB', name: 'Roberts International Airport', city: 'Monrovia', country: 'Liberia', type: 'airport' },
-    { code: 'FNA', name: 'Lungi International Airport', city: 'Freetown', country: 'Sierra Leone', type: 'airport' },
-    { code: 'BJL', name: 'Banjul International Airport', city: 'Banjul', country: 'Gambia', type: 'airport' },
-    { code: 'OUA', name: 'Ouagadougou Airport', city: 'Ouagadougou', country: 'Burkina Faso', type: 'airport' },
-    { code: 'NIM', name: 'Diori Hamani International Airport', city: 'Niamey', country: 'Niger', type: 'airport' },
-    { code: 'LFW', name: 'Lomé–Tokoin International Airport', city: 'Lomé', country: 'Togo', type: 'airport' },
-    { code: 'COO', name: 'Cadjehoun Airport', city: 'Cotonou', country: 'Benin', type: 'airport' },
   ];
 
-  // Fetch airport suggestions from AviationStack API (or similar)
+  // Fetch airport suggestions
   const fetchAirportSuggestions = useCallback(async (query: string): Promise<Airport[]> => {
     if (!query || query.length < 2) {
-      // Show popular airports when query is empty or too short
       return popularAirports.slice(0, 8);
     }
     
     try {
       setLoadingSuggestions(true);
       
-      // First, filter from our popular airports list
-      const filtered = filterAirports(query);
+      // Filter from our popular airports list
+      const lowerQuery = query.toLowerCase();
+      const filtered = popularAirports.filter(airport => 
+        airport.code.toLowerCase().includes(lowerQuery) ||
+        airport.city.toLowerCase().includes(lowerQuery) ||
+        airport.country.toLowerCase().includes(lowerQuery) ||
+        airport.name.toLowerCase().includes(lowerQuery)
+      );
+      
       if (filtered.length > 0) {
         return filtered.slice(0, 10);
       }
       
-      // If no results in local list, try API
-      // Note: You'll need to get an API key from AviationStack or similar service
-      // For now, we'll use a mock API response structure
-      return await mockApiSearch(query);
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 300));
+      return [];
       
     } catch (error) {
       console.error('Error fetching airport suggestions:', error);
-      return filterAirports(query).slice(0, 5);
+      return [];
     } finally {
       setLoadingSuggestions(false);
     }
   }, []);
 
-  // Filter airports based on query
-  const filterAirports = (query: string): Airport[] => {
-    const lowerQuery = query.toLowerCase();
-    return popularAirports.filter(airport => 
-      airport.code.toLowerCase().includes(lowerQuery) ||
-      airport.city.toLowerCase().includes(lowerQuery) ||
-      airport.country.toLowerCase().includes(lowerQuery) ||
-      airport.name.toLowerCase().includes(lowerQuery)
-    );
-  };
-
-  // Mock API function - replace with real API call
-  const mockApiSearch = async (query: string): Promise<Airport[]> => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 300));
+  // Fetch hotel location suggestions
+  const fetchHotelLocationSuggestions = useCallback(async (query: string): Promise<HotelDestination[]> => {
+    if (!query || query.length < 2) {
+      return popularHotelDestinations.slice(0, 6);
+    }
     
-    // Return empty array for demo - in production, call real API
-    return [];
-  };
+    try {
+      setLoadingHotelSuggestions(true);
+      
+      // Filter from popular destinations
+      const lowerQuery = query.toLowerCase();
+      const filtered = popularHotelDestinations.filter(dest => 
+        dest.city.toLowerCase().includes(lowerQuery) ||
+        dest.country.toLowerCase().includes(lowerQuery) ||
+        dest.name.toLowerCase().includes(lowerQuery) ||
+        dest.cityCode.toLowerCase().includes(lowerQuery)
+      );
+      
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 200));
+      return filtered.length > 0 ? filtered.slice(0, 8) : [];
+      
+    } catch (error) {
+      console.error('Error fetching hotel suggestions:', error);
+      return [];
+    } finally {
+      setLoadingHotelSuggestions(false);
+    }
+  }, []);
 
   // Handle From input changes
   const handleFromInputChange = useCallback(async (value: string, index: number = 0) => {
@@ -240,6 +274,20 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     }
   }, [segments, fetchAirportSuggestions]);
 
+  // Handle hotel location input changes
+  const handleHotelLocationChange = useCallback(async (value: string) => {
+    setHotelLocation(value);
+    
+    if (value.length >= 1) {
+      const suggestions = await fetchHotelLocationSuggestions(value);
+      setHotelLocationSuggestions(suggestions);
+      setShowHotelLocationDropdown(true);
+    } else {
+      setHotelLocationSuggestions(popularHotelDestinations.slice(0, 6));
+      setShowHotelLocationDropdown(value.length > 0);
+    }
+  }, [fetchHotelLocationSuggestions]);
+
   // Handle airport selection
   const handleAirportSelect = useCallback((airport: Airport, type: 'from' | 'to', index: number = 0) => {
     const newSegments = [...segments];
@@ -256,11 +304,20 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     setSegments(newSegments);
   }, [segments]);
 
+  // Handle hotel destination selection
+  const handleHotelDestinationSelect = useCallback((destination: HotelDestination) => {
+    setHotelLocation(`${destination.city}, ${destination.country}`);
+    setShowHotelLocationDropdown(false);
+  }, []);
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (travellerRef.current && !travellerRef.current.contains(event.target as Node)) {
         setShowTravellerDropdown(false);
+      }
+      if (roomRef.current && !roomRef.current.contains(event.target as Node)) {
+        setShowRoomDropdown(false);
       }
       if (cabinRef.current && !cabinRef.current.contains(event.target as Node)) {
         setShowCabinDropdown(false);
@@ -274,6 +331,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       if (toRef.current && !toRef.current.contains(event.target as Node)) {
         setShowToDropdown(false);
       }
+      if (hotelLocationRef.current && !hotelLocationRef.current.contains(event.target as Node)) {
+        setShowHotelLocationDropdown(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -286,7 +346,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     const tomorrowStr = tomorrow.toISOString().split('T')[0];
     
     const nextWeek = new Date();
-    nextWeek.setDate(nextWeek.getDate() + 7);
+    nextWeek.setDate(nextWeek.getDate() + 4);
     const nextWeekStr = nextWeek.toISOString().split('T')[0];
     
     setSegments(prev => {
@@ -375,12 +435,21 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     });
   };
 
+  const updateRooms = (increment: boolean) => {
+    setRooms(prev => increment ? Math.min(5, prev + 1) : Math.max(1, prev - 1));
+  };
+
   const getTravellerSummary = () => {
     const parts = [];
     if (travellers.adults > 0) parts.push(`${travellers.adults} Adult${travellers.adults > 1 ? 's' : ''}`);
     if (travellers.children > 0) parts.push(`${travellers.children} Child${travellers.children > 1 ? 'ren' : ''}`);
     if (travellers.infants > 0) parts.push(`${travellers.infants} Infant${travellers.infants > 1 ? 's' : ''}`);
     return parts.join(', ') || '1 Adult';
+  };
+
+  const getHotelGuestSummary = () => {
+    const totalGuests = travellers.adults + travellers.children;
+    return `${totalGuests} Guest${totalGuests > 1 ? 's' : ''}, ${rooms} Room${rooms > 1 ? 's' : ''}`;
   };
 
   // Extract airport code from display value
@@ -392,46 +461,64 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Prepare segments with extracted airport codes
-    const preparedSegments = segments.map(segment => ({
-      from: extractAirportCode(segment.from),
-      to: extractAirportCode(segment.to),
-      date: segment.date || today
-    }));
+    if (activeTab === 'flights') {
+      // Prepare segments with extracted airport codes
+      const preparedSegments = segments.map(segment => ({
+        from: extractAirportCode(segment.from),
+        to: extractAirportCode(segment.to),
+        date: segment.date || today
+      }));
 
-    const data = {
-      type: activeTab,
-      ...(activeTab === 'flights' ? { 
-          tripType, 
-          segments: preparedSegments,
-          returnDate: tripType === 'round-trip' ? returnDate : undefined, 
-          cabinClass: cabinClass.toLowerCase().replace(' ', '_'),
-          stops: stopsFilter,
-          maxPrice: maxPrice,
-          travellers: travellers.adults + travellers.children,
-          travellersDetails: travellers
-        } : 
-         activeTab === 'hotels' ? { 
-           location: hotelLocation, 
-           checkIn: checkInDate, 
-           checkOut: checkOutDate, 
-           travellers: travellers.adults + travellers.children,
-           travellersDetails: travellers
-         } :
-         { 
-           carPickUp, 
-           carPickUpDate, 
-           carPickUpTime, 
-           carDropOffDate, 
-           carDropOffTime, 
-           differentLocation, 
-           driverAged,
-           travellers: travellers.adults
-         })
-    };
-    
-    console.log('Search data:', data);
-    onSearch(data);
+      const data = {
+        type: 'flights',
+        tripType, 
+        segments: preparedSegments,
+        returnDate: tripType === 'round-trip' ? returnDate : undefined, 
+        cabinClass: cabinClass.toLowerCase().replace(' ', '_'),
+        stops: stopsFilter,
+        maxPrice: maxPrice,
+        travellers: travellers.adults + travellers.children,
+        travellersDetails: travellers
+      };
+      
+      console.log('Flight search data:', data);
+      onSearch(data);
+      
+    } else if (activeTab === 'hotels') {
+      // Extract city code from hotel location
+      const cityCode = getCityCode(hotelLocation);
+      
+      const data = {
+        type: 'hotels',
+        location: hotelLocation,
+        cityCode: cityCode,
+        checkInDate: checkInDate,
+        checkOutDate: checkOutDate,
+        travellers: travellers.adults + travellers.children,
+        travellersDetails: travellers,
+        rooms: rooms,
+        currency: 'NGN'
+      };
+      
+      console.log('Hotel search data:', data);
+      onSearch(data);
+      
+    } else {
+      const data = { 
+        type: 'car-rentals',
+        carPickUp, 
+        carPickUpDate, 
+        carPickUpTime, 
+        carDropOffDate, 
+        carDropOffTime, 
+        differentLocation, 
+        driverAged,
+        travellers: travellers.adults
+      };
+      
+      console.log('Car search data:', data);
+      onSearch(data);
+    }
   };
 
   const triggerPicker = (e: React.MouseEvent<HTMLInputElement>) => {
@@ -473,6 +560,24 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             </div>
           </div>
           <button type="button" onClick={() => setShowTravellerDropdown(false)} className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors">Done</button>
+        </div>
+      </div>
+    )
+  );
+
+  const renderRoomDropdown = () => (
+    showRoomDropdown && (
+      <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-50 animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <div><span className="block font-bold text-gray-800 text-sm">Rooms</span></div>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => updateRooms(false)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">-</button>
+              <span className="font-bold w-4 text-center text-base">{rooms}</span>
+              <button type="button" onClick={() => updateRooms(true)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">+</button>
+            </div>
+          </div>
+          <button type="button" onClick={() => setShowRoomDropdown(false)} className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors">Done</button>
         </div>
       </div>
     )
@@ -522,6 +627,61 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         </>
       )}
     </div>
+  );
+
+  const renderHotelLocationDropdown = () => (
+    showHotelLocationDropdown && (
+      <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-gray-200 max-h-60 overflow-y-auto z-50">
+        {loadingHotelSuggestions ? (
+          <div className="px-4 py-3 text-center text-gray-500">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#33a8da] mx-auto"></div>
+            <p className="text-xs mt-2">Searching destinations...</p>
+          </div>
+        ) : hotelLocationSuggestions.length === 0 ? (
+          <div className="px-4 py-3 text-center text-gray-500 text-sm">No destinations found. Try a different search.</div>
+        ) : (
+          <>
+            <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+              <div className="text-xs font-bold text-gray-500">POPULAR DESTINATIONS</div>
+            </div>
+            {hotelLocationSuggestions.map((dest) => (
+              <button
+                key={`hotel-${dest.cityCode}`}
+                type="button"
+                className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
+                onClick={() => handleHotelDestinationSelect(dest)}
+              >
+                <div className="flex items-start gap-3">
+                  {dest.image && (
+                    <div className="flex-shrink-0">
+                      <img 
+                        src={dest.image} 
+                        alt={dest.city}
+                        className="w-10 h-10 rounded-lg object-cover"
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-gray-900 truncate">{dest.city}, {dest.country}</div>
+                    <div className="text-xs text-gray-500 truncate">{dest.name}</div>
+                  </div>
+                  <div className="text-xs font-bold text-gray-400 px-2 py-1 bg-gray-100 rounded">
+                    {dest.cityCode}
+                  </div>
+                </div>
+              </button>
+            ))}
+            {hotelLocationSuggestions.length >= 6 && (
+              <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                <div className="text-xs text-center text-gray-500">
+                  Type more characters to search all destinations
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    )
   );
 
   const renderFlightSegmentRow = (segment: Segment, index: number) => {
@@ -749,7 +909,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                       )}
                     </div>
                     
-                    {/* RESTORED FILTERS SECTION */}
                     <div className="relative" ref={filtersRef}>
                       <button 
                         type="button" 
@@ -821,37 +980,112 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
           {activeTab === 'hotels' && (
             <div className="flex flex-col lg:flex-row items-stretch gap-1 bg-[#33a8da] rounded-xl p-1">
               <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-1">
-                <div className="md:col-span-5 bg-white p-3 md:p-4 flex items-center gap-3 rounded-t-lg md:rounded-l-lg md:rounded-tr-none">
-                  <svg className="w-6 h-6 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24"><path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" /></svg>
-                  <div className="flex-1">
-                    <label className="block text-[9px] font-bold text-gray-400 uppercase mb-0.5">Location</label>
-                    <input type="text" value={hotelLocation} onChange={(e) => setHotelLocation(e.target.value)} className="w-full font-bold text-gray-900 focus:outline-none text-sm md:text-base bg-transparent p-0" placeholder="Destination" />
-                  </div>
-                </div>
-                <div className="md:col-span-4 bg-white p-3 md:p-4 flex items-center gap-3 relative border-t md:border-t-0 md:border-l border-gray-100">
-                  <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                  <div className="flex-1 relative h-9 flex flex-col justify-center">
-                    <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Stay Window</label>
-                    <span className="text-gray-900 font-bold text-xs md:text-sm truncate">
-                      {checkInDate ? `${new Date(checkInDate).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})} — ${checkOutDate ? new Date(checkOutDate).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '...'}` : 'Dates'}
-                    </span>
-                    <div className="absolute inset-0 flex opacity-0 cursor-pointer">
-                       <input type="date" min={today} className="flex-1" onChange={(e) => setCheckInDate(e.target.value)} onClick={triggerPicker} />
-                       <input type="date" min={checkInDate || today} className="flex-1" onChange={(e) => setCheckOutDate(e.target.value)} onClick={triggerPicker} />
+                {/* Hotel Location with Autocomplete */}
+                <div className="md:col-span-4 relative" ref={hotelLocationRef}>
+                  <div className="bg-white p-3 md:p-4 flex items-center gap-3 rounded-t-lg md:rounded-l-lg md:rounded-tr-none">
+                    <svg className="w-6 h-6 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24"><path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" /></svg>
+                    <div className="flex-1 relative">
+                      <label className="block text-[9px] font-bold text-gray-400 uppercase mb-0.5">Destination</label>
+                      <input 
+                        type="text" 
+                        value={hotelLocation} 
+                        onChange={(e) => handleHotelLocationChange(e.target.value)}
+                        onFocus={() => {
+                          if (hotelLocation.length < 2) {
+                            setHotelLocationSuggestions(popularHotelDestinations.slice(0, 6));
+                          }
+                          setShowHotelLocationDropdown(true);
+                        }}
+                        className="w-full font-bold text-gray-900 focus:outline-none text-sm md:text-base bg-transparent p-0 pr-6" 
+                        placeholder="City, country, or landmark" 
+                      />
+                      {hotelLocation && (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setHotelLocation('');
+                            setShowHotelLocationDropdown(false);
+                          }}
+                          className="absolute right-0 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg"
+                        >
+                          ×
+                        </button>
+                      )}
                     </div>
                   </div>
+                  {showHotelLocationDropdown && renderHotelLocationDropdown()}
                 </div>
-                <div ref={travellerRef} onClick={() => setShowTravellerDropdown(!showTravellerDropdown)} className="md:col-span-3 bg-white p-3 md:p-4 flex items-center gap-3 relative border-t md:border-t-0 md:border-l border-gray-100 rounded-b-lg md:rounded-r-lg md:rounded-bl-none">
-                  <svg className="w-6 h-6 text-gray-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-                  <div className="flex-1 truncate">
-                    <label className="block text-[8px] font-bold text-gray-500 uppercase mb-0.5">Guests</label>
-                    <span className="block font-bold text-gray-900 text-xs md:text-sm">{getTravellerSummary()}</span>
+
+                {/* Check-in Date */}
+                <div className="md:col-span-3 bg-white p-3 md:p-4 flex items-center gap-3 relative border-t md:border-t-0 md:border-l border-gray-100">
+                  <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  <div className="flex-1 relative h-9 flex flex-col justify-center">
+                    <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Check-in</label>
+                    <span className={`block font-bold text-xs md:text-sm truncate ${checkInDate ? 'text-gray-900' : 'text-gray-400'}`}>
+                      {checkInDate ? new Date(checkInDate).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'Select date'}
+                    </span>
+                    <input 
+                      type="date" 
+                      min={today} 
+                      value={checkInDate} 
+                      onChange={(e) => setCheckInDate(e.target.value)} 
+                      onClick={triggerPicker}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20" 
+                    />
                   </div>
-                  {renderTravellerDropdown()}
+                </div>
+
+                {/* Check-out Date */}
+                <div className="md:col-span-3 bg-white p-3 md:p-4 flex items-center gap-3 relative border-t md:border-t-0 md:border-l border-gray-100">
+                  <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  <div className="flex-1 relative h-9 flex flex-col justify-center">
+                    <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Check-out</label>
+                    <span className={`block font-bold text-xs md:text-sm truncate ${checkOutDate ? 'text-gray-900' : 'text-gray-400'}`}>
+                      {checkOutDate ? new Date(checkOutDate).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'Select date'}
+                    </span>
+                    <input 
+                      type="date" 
+                      min={checkInDate || today} 
+                      value={checkOutDate} 
+                      onChange={(e) => setCheckOutDate(e.target.value)} 
+                      onClick={triggerPicker}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20" 
+                    />
+                  </div>
+                </div>
+
+                {/* Guests & Rooms */}
+                <div className="md:col-span-2 grid grid-cols-2 gap-1">
+                  <div ref={travellerRef} onClick={() => setShowTravellerDropdown(!showTravellerDropdown)} className="bg-white p-3 md:p-4 flex items-center gap-3 relative border-t md:border-t-0 md:border-l border-gray-100 rounded-bl-lg md:rounded-bl-none">
+                    <svg className="w-6 h-6 text-gray-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                    <div className="flex-1 truncate">
+                      <label className="block text-[8px] font-bold text-gray-500 uppercase mb-0.5">Guests</label>
+                      <span className="block font-bold text-gray-900 text-xs md:text-sm truncate">{travellers.adults + travellers.children}</span>
+                    </div>
+                    {renderTravellerDropdown()}
+                  </div>
+                  
+                  <div ref={roomRef} onClick={() => setShowRoomDropdown(!showRoomDropdown)} className="bg-white p-3 md:p-4 flex items-center gap-3 relative border-t md:border-t-0 md:border-l border-gray-100 rounded-br-lg md:rounded-r-lg md:rounded-bl-none">
+                    <svg className="w-6 h-6 text-gray-500" fill="currentColor" viewBox="0 0 24 24"><path d="M19 5v14H5V5h14m0-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
+                    <div className="flex-1 truncate">
+                      <label className="block text-[8px] font-bold text-gray-500 uppercase mb-0.5">Rooms</label>
+                      <span className="block font-bold text-gray-900 text-xs md:text-sm truncate">{rooms}</span>
+                    </div>
+                    {renderRoomDropdown()}
+                  </div>
                 </div>
               </div>
-              <button type="submit" disabled={loading} className="w-full lg:w-auto bg-black text-white px-8 py-4 lg:py-5 font-bold text-lg rounded-xl lg:rounded-lg hover:bg-gray-900 transition shadow-xl mt-2 lg:mt-0 lg:ml-1">
-                {loading ? '...' : 'Search'}
+              <button 
+                type="submit" 
+                disabled={loading || !hotelLocation || !checkInDate || !checkOutDate} 
+                className="w-full lg:w-auto bg-black text-white px-8 py-4 lg:py-5 font-bold text-lg rounded-xl lg:rounded-lg hover:bg-gray-900 transition shadow-xl mt-2 lg:mt-0 lg:ml-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    Searching...
+                  </>
+                ) : 'Search'}
               </button>
             </div>
           )}

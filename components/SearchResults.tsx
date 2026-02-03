@@ -8,6 +8,7 @@ interface SearchResult {
   title: string;
   subtitle: string;
   price: string;
+  totalPrice?: string; // Add this for hotels
   time?: string;
   duration?: string;
   stops?: string;
@@ -19,6 +20,14 @@ interface SearchResult {
   amenities?: string[];
   features?: string[];
   type?: "flights" | "hotels" | "car-rentals";
+  // Add hotel-specific fields
+  isRefundable?: boolean;
+  cancellationPolicy?: string;
+  bedType?: string;
+  beds?: number;
+  roomType?: string;
+  nights?: number;
+  location?: string;
 }
 
 interface SearchResultsProps {
@@ -39,7 +48,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
   // Generic Filters
   const [priceRange, setPriceRange] = useState<number>(500000);
-  const [sortBy, setSortBy] = useState<"match" | "price" | "time">("match");
+  const [sortBy, setSortBy] = useState<"match" | "price" | "time" | "rating">("match");
   const [isBooking, setIsBooking] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(6);
   const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
@@ -57,7 +66,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     "Free breakfast",
   ]);
   const [propertyTypes, setPropertyTypes] = useState<string[]>(["Hotels"]);
-  const [starRatings, setStarRatings] = useState<number[]>([5]);
+  const [starRatings, setStarRatings] = useState<number[]>([5, 4, 3]);
 
   const firstSeg = searchParams?.segments?.[0];
 
@@ -69,6 +78,12 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       filtered = filtered.filter((item) =>
         stopsFilter.includes(item.stops || "Direct")
       );
+    } else if (searchType === "hotels") {
+      // Filter hotels by star rating
+      filtered = filtered.filter((item) => {
+        const itemRating = Math.floor(item.rating || 0);
+        return starRatings.includes(itemRating) || starRatings.length === 0;
+      });
     }
 
     // Price range filtering - SAFE VERSION
@@ -94,10 +109,12 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       });
     } else if (sortBy === "time" && searchType === "flights") {
       filtered.sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+    } else if (sortBy === "rating") {
+      filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     }
 
     return filtered;
-  }, [initialResults, stopsFilter, priceRange, sortBy, searchType]);
+  }, [initialResults, stopsFilter, priceRange, sortBy, searchType, starRatings]);
 
   // Helper function to safely extract numeric price
   const extractNumericPrice = (priceString: string): number => {
@@ -164,7 +181,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest">
             Your Budget
           </h4>
-          <span className="text-[10px] text-blue-500 font-bold uppercase cursor-pointer">
+          <span 
+            className="text-[10px] text-blue-500 font-bold uppercase cursor-pointer hover:text-blue-600"
+            onClick={() => setPriceRange(500000)}
+          >
             Reset
           </span>
         </div>
@@ -178,7 +198,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           className="w-full h-1 bg-blue-100 rounded-full appearance-none accent-[#33a8da] cursor-pointer"
         />
         <div className="flex justify-between mt-4">
-          <span className="text-[10px] font-bold text-gray-400">0:00</span>
+          <span className="text-[10px] font-bold text-gray-400">{currency.symbol}0</span>
           <span className="text-[10px] font-black text-[#33a8da] tracking-tight">
             {currency.symbol}
             {priceRange.toLocaleString()}+
@@ -218,7 +238,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 className="w-4 h-4 rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
               />
               <span
-                className={`text-[11px] font-bold ${
+                className={`text-[11px] font-bold transition ${
                   popularFilters.includes(feat)
                     ? "text-gray-900"
                     : "text-gray-400 group-hover:text-gray-600"
@@ -262,7 +282,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 className="w-4 h-4 rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
               />
               <span
-                className={`text-[11px] font-bold ${
+                className={`text-[11px] font-bold transition ${
                   propertyTypes.includes(type)
                     ? "text-gray-900"
                     : "text-gray-400 group-hover:text-gray-600"
@@ -277,9 +297,17 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
       {/* Star Rating */}
       <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100">
-        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">
-          Star Rating
-        </h4>
+        <div className="flex justify-between items-center mb-6">
+          <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest">
+            Star Rating
+          </h4>
+          <span 
+            className="text-[10px] text-blue-500 font-bold uppercase cursor-pointer hover:text-blue-600"
+            onClick={() => setStarRatings([5, 4, 3])}
+          >
+            Reset
+          </span>
+        </div>
         <div className="space-y-4">
           {[5, 4, 3].map((star) => (
             <label
@@ -324,9 +352,17 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const renderFlightFilters = () => (
     <div className="space-y-6">
       <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100">
-        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">
-          Stops
-        </h4>
+        <div className="flex justify-between items-center mb-6">
+          <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest">
+            Stops
+          </h4>
+          <span 
+            className="text-[10px] text-blue-500 font-bold uppercase cursor-pointer hover:text-blue-600"
+            onClick={() => setStopsFilter(["Direct", "1 Stop", "2+ Stops"])}
+          >
+            Reset
+          </span>
+        </div>
         <div className="space-y-4">
           {["Direct", "1 Stop", "2+ Stops"].map((stop) => (
             <label
@@ -367,9 +403,17 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         </div>
       </div>
       <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100">
-        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">
-          Price range
-        </h4>
+        <div className="flex justify-between items-center mb-6">
+          <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest">
+            Price range
+          </h4>
+          <span 
+            className="text-[10px] text-blue-500 font-bold uppercase cursor-pointer hover:text-blue-600"
+            onClick={() => setPriceRange(500000)}
+          >
+            Reset
+          </span>
+        </div>
         <input
           type="range"
           min="0"
@@ -380,7 +424,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-[#33a8da] cursor-pointer"
         />
         <div className="flex justify-between mt-4">
-          <span className="text-[10px] font-bold text-gray-400">0</span>
+          <span className="text-[10px] font-bold text-gray-400">{currency.symbol}0</span>
           <span className="text-[10px] font-black text-[#33a8da]">
             {currency.symbol}
             {priceRange.toLocaleString()}
@@ -390,119 +434,167 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     </div>
   );
 
-  const renderHotelCard = (item: SearchResult) => (
-    <div
-      key={item.id}
-      className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2 duration-300"
-    >
-      <div className="flex flex-col md:flex-row">
-        <div className="w-full md:w-[320px] h-64 md:h-auto overflow-hidden relative flex-shrink-0">
-          <img
-            src={
-              item.image ||
-              `https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600`
-            }
-            className="w-full h-full object-cover transition duration-500 group-hover:scale-110"
-            alt={item.title}
-          />
-          <button
-            onClick={(e) => handleToggleSaved(item.id, e)}
-            className={`absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition backdrop-blur-md ${
-              savedItems.has(item.id)
-                ? "bg-red-500 text-white"
-                : "bg-white/40 text-gray-400 hover:bg-white hover:text-red-500"
-            }`}
-          >
-            <svg
-              className="w-5 h-5"
-              fill={savedItems.has(item.id) ? "currentColor" : "none"}
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-              />
-            </svg>
-          </button>
-        </div>
-
-        <div className="flex-1 p-8">
-          <div className="mb-4">
-            <h3 className="text-xl font-black text-gray-900 tracking-tight leading-tight group-hover:text-[#33a8da] transition">
-              {item.title || "Hotel Name"}
-            </h3>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="text-[#33a8da]">
-                <svg
-                  className="w-4 h-4"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
-                </svg>
-              </div>
-              <span className="text-[11px] font-bold text-gray-500">
-                {item.subtitle || "Hotel Location"}
-              </span>
-              <span className="text-[10px] font-black text-[#33a8da] uppercase tracking-tighter cursor-pointer hover:underline ml-2">
-                Explore on map
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4 mb-6">
-            <div className="flex text-yellow-400">
-              {[...Array(5)].map((_, i) => (
-                <svg
-                  key={i}
-                  className={`w-3.5 h-3.5 ${
-                    i < (item.rating || 4) ? "fill-current" : "text-gray-200"
-                  }`}
-                  viewBox="0 0 20 20"
-                >
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
-              ))}
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-black bg-blue-50 text-[#33a8da] px-2 py-0.5 rounded">
-                {(item.rating || 4).toFixed(1)}/5
-              </span>
-              <span className="text-[10px] text-gray-300 font-bold uppercase tracking-widest">
-                (200 Reviews)
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2 mb-8">
-            {item.amenities?.slice(0, 3).map((amenity, index) => (
-              <span key={index} className="text-[9px] font-black text-gray-500 bg-gray-50 px-3 py-1.5 rounded uppercase tracking-widest border border-gray-100">
-                {amenity}
-              </span>
-            ))}
-          </div>
-
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pt-6 border-t border-gray-50">
-            <div className="space-y-1">
-              <p className="text-2xl font-black text-[#33a8da] tracking-tighter">
-                {item.price || "$0"}
-              </p>
-            </div>
+  const renderHotelCard = (item: SearchResult) => {
+    const starRating = Math.floor(item.rating || 0);
+    
+    return (
+      <div
+        key={item.id}
+        className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2 duration-300"
+      >
+        <div className="flex flex-col md:flex-row">
+          <div className="w-full md:w-[320px] h-64 md:h-auto overflow-hidden relative flex-shrink-0">
+            <img
+              src={
+                item.image ||
+                `https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600`
+              }
+              className="w-full h-full object-cover transition duration-500 group-hover:scale-110"
+              alt={item.title}
+            />
             <button
-              onClick={() => handleSelectResult(item)}
-              disabled={isBooking === item.id}
-              className="bg-[#33a8da] text-white font-black px-10 py-3 rounded-xl transition shadow-lg shadow-blue-500/10 hover:bg-[#2c98c7] active:scale-95 text-xs uppercase tracking-widest"
+              onClick={(e) => handleToggleSaved(item.id, e)}
+              className={`absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition backdrop-blur-md ${
+                savedItems.has(item.id)
+                  ? "bg-red-500 text-white"
+                  : "bg-white/40 text-gray-400 hover:bg-white hover:text-red-500"
+              }`}
             >
-              {isBooking === item.id ? "Loading..." : "See Availability"}
+              <svg
+                className="w-5 h-5"
+                fill={savedItems.has(item.id) ? "currentColor" : "none"}
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                />
+              </svg>
             </button>
+          </div>
+
+          <div className="flex-1 p-8">
+            <div className="mb-4">
+              <h3 className="text-xl font-black text-gray-900 tracking-tight leading-tight group-hover:text-[#33a8da] transition">
+                {item.title || "Hotel Name"}
+              </h3>
+              <div className="flex items-center gap-2 mt-2">
+                <div className="text-[#33a8da]">
+                  <svg
+                    className="w-4 h-4"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+                  </svg>
+                </div>
+                <span className="text-[11px] font-bold text-gray-500">
+                  {item.subtitle || "Hotel Location"}
+                </span>
+                {item.location && (
+                  <span className="text-[10px] font-black text-[#33a8da] uppercase tracking-tighter cursor-pointer hover:underline ml-2">
+                    Explore on map
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 mb-6">
+              <div className="flex text-yellow-400">
+                {[...Array(5)].map((_, i) => (
+                  <svg
+                    key={i}
+                    className={`w-3.5 h-3.5 ${
+                      i < starRating ? "fill-current" : "text-gray-200"
+                    }`}
+                    viewBox="0 0 20 20"
+                  >
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-black bg-blue-50 text-[#33a8da] px-2 py-0.5 rounded">
+                  {(item.rating || 4).toFixed(1)}/5
+                </span>
+                <span className="text-[10px] text-gray-300 font-bold uppercase tracking-widest">
+                  (200+ Reviews)
+                </span>
+              </div>
+              {item.isRefundable && (
+                <span className="text-[9px] font-black text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-100">
+                  Free Cancellation
+                </span>
+              )}
+            </div>
+
+            {/* Room Features */}
+            {(item.bedType || item.beds || item.roomType) && (
+              <div className="flex flex-wrap gap-3 mb-6">
+                {item.roomType && (
+                  <span className="text-[10px] font-bold text-gray-700 bg-gray-50 px-3 py-1 rounded border border-gray-100">
+                    {item.roomType}
+                  </span>
+                )}
+                {item.beds && item.bedType && (
+                  <span className="text-[10px] font-bold text-gray-700 bg-gray-50 px-3 py-1 rounded border border-gray-100">
+                    {item.beds} {item.bedType} Bed{item.beds > 1 ? 's' : ''}
+                  </span>
+                )}
+                {item.nights && (
+                  <span className="text-[10px] font-bold text-gray-700 bg-gray-50 px-3 py-1 rounded border border-gray-100">
+                    {item.nights} Night{item.nights > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Amenities */}
+            <div className="flex flex-wrap gap-2 mb-8">
+              {item.amenities?.slice(0, 5).map((amenity, index) => (
+                <span key={index} className="text-[9px] font-black text-gray-500 bg-gray-50 px-3 py-1.5 rounded uppercase tracking-widest border border-gray-100">
+                  {amenity}
+                </span>
+              ))}
+              {item.amenities && item.amenities.length > 5 && (
+                <span className="text-[9px] font-bold text-blue-500 bg-blue-50 px-3 py-1.5 rounded border border-blue-100">
+                  +{item.amenities.length - 5} more
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pt-6 border-t border-gray-50">
+              <div className="space-y-1">
+                <p className="text-2xl font-black text-[#33a8da] tracking-tighter">
+                  {item.price || "$0"}
+                </p>
+                {item.totalPrice && (
+                  <p className="text-[11px] font-bold text-gray-500">
+                    Total: {item.totalPrice} • <span className="text-green-600">Free cancellation</span>
+                  </p>
+                )}
+                {item.cancellationPolicy && (
+                  <p className="text-[10px] text-gray-400 font-bold">
+                    {item.cancellationPolicy}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => handleSelectResult(item)}
+                disabled={isBooking === item.id}
+                className="bg-[#33a8da] text-white font-black px-10 py-3 rounded-xl transition shadow-lg shadow-blue-500/10 hover:bg-[#2c98c7] active:scale-95 text-xs uppercase tracking-widest"
+              >
+                {isBooking === item.id ? "Loading..." : "See Availability"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderFlightCard = (item: SearchResult) => (
     <div
@@ -616,7 +708,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               <span className="font-black text-gray-900 text-lg tracking-tight">
                 {searchType === "flights"
                   ? firstSeg?.from || "Lagos"
-                  : searchParams?.location || "The Providence Hotel"}
+                  : searchParams?.location || "London"}
               </span>
             </div>
 
@@ -635,8 +727,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               <span className="text-sm font-bold text-gray-500">
                 {searchType === "flights"
                   ? firstSeg?.date || "Anytime"
-                  : `${searchParams?.checkIn || "Dec 26"} — ${
-                      searchParams?.checkOut || "Dec 30"
+                  : `${searchParams?.checkInDate || searchParams?.checkIn || "Dec 26"} — ${
+                      searchParams?.checkOutDate || searchParams?.checkOut || "Dec 30"
                     }`}
               </span>
             </div>
@@ -652,7 +744,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 </svg>
               </div>
               <span className="text-sm font-bold text-gray-500">
-                {searchParams?.travellers || "2 Adult, 0 Children"}
+                {searchType === "hotels" 
+                  ? `${searchParams?.travellers || searchParams?.adults || 2} Adult${(searchParams?.travellers || searchParams?.adults || 2) > 1 ? 's' : ''}, ${searchParams?.rooms || 1} Room${(searchParams?.rooms || 1) > 1 ? 's' : ''}`
+                  : `${searchParams?.travellers || 2} Adult${(searchParams?.travellers || 2) > 1 ? 's' : ''}, 0 Children`}
               </span>
             </div>
           </div>
@@ -671,7 +765,20 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             <h3 className="font-black text-gray-900 uppercase text-xs tracking-widest">
               Filters
             </h3>
-            <span className="text-[11px] font-black text-[#33a8da] uppercase tracking-tighter cursor-pointer">
+            <span 
+              className="text-[11px] font-black text-[#33a8da] uppercase tracking-tighter cursor-pointer hover:text-blue-600"
+              onClick={() => {
+                if (searchType === "flights") {
+                  setStopsFilter(["Direct", "1 Stop", "2+ Stops"]);
+                } else {
+                  setStarRatings([5, 4, 3]);
+                  setPopularFilters(["Free Wi-Fi", "Free breakfast"]);
+                  setPropertyTypes(["Hotels"]);
+                }
+                setPriceRange(searchType === "flights" ? 500000 : 1000000);
+                setSortBy("match");
+              }}
+            >
               Reset All
             </span>
           </div>
@@ -695,8 +802,17 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 Sort by:
               </span>
               <div className="relative group">
-                <button className="flex items-center gap-3 px-5 py-2.5 bg-white border border-gray-100 rounded-xl text-[11px] font-black text-gray-700 hover:border-[#33a8da] transition shadow-sm uppercase tracking-tight">
-                  Best Match{" "}
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="flex items-center gap-3 px-5 py-2.5 bg-white border border-gray-100 rounded-xl text-[11px] font-black text-gray-700 hover:border-[#33a8da] transition shadow-sm uppercase tracking-tight appearance-none cursor-pointer"
+                >
+                  <option value="match">Best Match</option>
+                  <option value="price">Price (Low to High)</option>
+                  <option value="time">Departure Time</option>
+                  {searchType === "hotels" && <option value="rating">Rating (High to Low)</option>}
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                   <svg
                     className="w-4 h-4 text-gray-400"
                     fill="none"
@@ -706,7 +822,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   >
                     <path d="M19 9l-7 7-7-7" />
                   </svg>
-                </button>
+                </div>
               </div>
             </div>
           </div>
