@@ -18,6 +18,7 @@ import { SearchAccommodationSuggestionsUseCase } from './use-cases/search-accomm
 import { GetAccommodationReviewsUseCase } from './use-cases/get-accommodation-reviews.use-case';
 import { SearchPlaceSuggestionsUseCase } from './use-cases/search-place-suggestions.use-case';
 import { ListAirlinesUseCase } from './use-cases/list-airlines.use-case';
+import { SearchAmadeusHotelsUseCase } from './use-cases/search-amadeus-hotels.use-case';
 import { BookingModule } from '@domains/booking/booking.module';
 import { MarkupModule } from '@domains/markup/markup.module';
 import { ExternalApisModule } from '@infrastructure/external-apis/external-apis.module';
@@ -48,6 +49,7 @@ import { CurrencyModule } from '@infrastructure/currency/currency.module';
     GetAccommodationReviewsUseCase,
     SearchPlaceSuggestionsUseCase,
     ListAirlinesUseCase,
+    SearchAmadeusHotelsUseCase,
   ],
   exports: [
     CreateBookingUseCase,
@@ -69,6 +71,7 @@ import { CurrencyModule } from '@infrastructure/currency/currency.module';
     GetAccommodationReviewsUseCase,
     SearchPlaceSuggestionsUseCase,
     ListAirlinesUseCase,
+    SearchAmadeusHotelsUseCase,
   ],
 })
 export class BookingApplicationModule {}

@@ -5,7 +5,7 @@ export interface DuffelOfferRequest {
   slices: Array<{
     origin: string; // IATA code (e.g., "LHR")
     destination: string; // IATA code (e.g., "JFK")
-    departure_date: string; // ISO 8601 date (e.g., "2024-04-24")
+    departure_date: string; // ISO 8601 date (e.g., "2026-04-24")
     departure_time?: {
       from?: string; // HH:mm format
       to?: string; // HH:mm format

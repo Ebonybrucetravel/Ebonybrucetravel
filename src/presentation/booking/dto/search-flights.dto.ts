@@ -65,7 +65,7 @@ export class SearchFlightsDto {
   @IsString()
   destination: string;
 
-  @ApiProperty({ description: 'Departure date in ISO 8601 format (e.g., "2024-04-24")' })
+  @ApiProperty({ description: 'Departure date in ISO 8601 format (e.g., "2026-04-24")' })
   @IsDateString()
   departureDate: string;
 

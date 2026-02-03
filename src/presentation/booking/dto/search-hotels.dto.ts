@@ -117,14 +117,14 @@ export class SearchHotelsDto {
 
   @ApiProperty({
     description: 'Check-in date (ISO 8601 format, max 330 days in future)',
-    example: '2024-06-04',
+    example: '2026-06-04',
   })
   @IsDateString()
   check_in_date: string;
 
   @ApiProperty({
     description: 'Check-out date (ISO 8601 format, max 99 nights stay)',
-    example: '2024-06-07',
+    example: '2026-06-07',
   })
   @IsDateString()
   check_out_date: string;

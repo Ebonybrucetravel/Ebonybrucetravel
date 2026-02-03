@@ -97,6 +97,18 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   EXCHANGE_RATE_API_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  AMADEUS_API_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  AMADEUS_API_SECRET?: string;
+
+  @IsString()
+  @IsOptional()
+  AMADEUS_ENV?: string; // 'test' or 'production'
 }
 
 export function validate(config: Record<string, unknown>) {

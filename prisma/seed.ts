@@ -71,6 +71,7 @@ async function main() {
   console.log('\n📊 Creating default markup configurations...\n');
 
   const defaultMarkups = [
+    // ==================== FLIGHT MARKUPS ====================
     {
       productType: ProductType.FLIGHT_DOMESTIC,
       markupPercentage: 10.0,
@@ -100,12 +101,112 @@ async function main() {
       description: 'Default markup for international flights in GBP (Duffel)',
     },
     {
+      productType: ProductType.FLIGHT_INTERNATIONAL,
+      markupPercentage: 10.0,
+      serviceFeeAmount: 45.0,
+      currency: 'EUR',
+      description: 'Default markup for international flights in EUR (Duffel)',
+    },
+    {
+      productType: ProductType.FLIGHT_INTERNATIONAL,
+      markupPercentage: 10.0,
+      serviceFeeAmount: 5000.0,
+      currency: 'JPY',
+      description: 'Default markup for international flights in JPY (Duffel)',
+    },
+    {
+      productType: ProductType.FLIGHT_INTERNATIONAL,
+      markupPercentage: 10.0,
+      serviceFeeAmount: 300.0,
+      currency: 'CNY',
+      description: 'Default markup for international flights in CNY (Duffel)',
+    },
+    {
+      productType: ProductType.FLIGHT_INTERNATIONAL,
+      markupPercentage: 10.0,
+      serviceFeeAmount: 200.0,
+      currency: 'GHS',
+      description: 'Default markup for international flights in GHS (Duffel)',
+    },
+    {
+      productType: ProductType.FLIGHT_INTERNATIONAL,
+      markupPercentage: 10.0,
+      serviceFeeAmount: 1000.0,
+      currency: 'KES',
+      description: 'Default markup for international flights in KES (Duffel)',
+    },
+    {
+      productType: ProductType.FLIGHT_INTERNATIONAL,
+      markupPercentage: 10.0,
+      serviceFeeAmount: 500.0,
+      currency: 'ZAR',
+      description: 'Default markup for international flights in ZAR (Duffel)',
+    },
+    // ==================== HOTEL MARKUPS ====================
+    {
       productType: ProductType.HOTEL,
       markupPercentage: 15.0,
       serviceFeeAmount: 5000.0,
       currency: 'NGN',
-      description: 'Default markup for hotel bookings',
+      description: 'Default markup for hotel bookings in NGN (Amadeus/Duffel)',
     },
+    {
+      productType: ProductType.HOTEL,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 25.0,
+      currency: 'GBP',
+      description: 'Default markup for hotel bookings in GBP (Amadeus/Duffel)',
+    },
+    {
+      productType: ProductType.HOTEL,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 30.0,
+      currency: 'USD',
+      description: 'Default markup for hotel bookings in USD (Amadeus/Duffel)',
+    },
+    {
+      productType: ProductType.HOTEL,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 28.0,
+      currency: 'EUR',
+      description: 'Default markup for hotel bookings in EUR (Amadeus/Duffel)',
+    },
+    {
+      productType: ProductType.HOTEL,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 3000.0,
+      currency: 'JPY',
+      description: 'Default markup for hotel bookings in JPY (Amadeus/Duffel)',
+    },
+    {
+      productType: ProductType.HOTEL,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 200.0,
+      currency: 'CNY',
+      description: 'Default markup for hotel bookings in CNY (Amadeus/Duffel)',
+    },
+    {
+      productType: ProductType.HOTEL,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 150.0,
+      currency: 'GHS',
+      description: 'Default markup for hotel bookings in GHS (Amadeus/Duffel)',
+    },
+    {
+      productType: ProductType.HOTEL,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 800.0,
+      currency: 'KES',
+      description: 'Default markup for hotel bookings in KES (Amadeus/Duffel)',
+    },
+    {
+      productType: ProductType.HOTEL,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 400.0,
+      currency: 'ZAR',
+      description: 'Default markup for hotel bookings in ZAR (Amadeus/Duffel)',
+    },
+    // ==================== CAR RENTAL MARKUPS ====================
     {
       productType: ProductType.CAR_RENTAL,
       markupPercentage: 10.0,
@@ -129,8 +230,18 @@ async function main() {
       const created = await prisma.markupConfig.create({
         data: markup,
       });
+      const currencySymbol = markup.currency === 'NGN' ? '₦' : 
+                            markup.currency === 'GBP' ? '£' :
+                            markup.currency === 'USD' ? '$' :
+                            markup.currency === 'EUR' ? '€' :
+                            markup.currency === 'JPY' ? '¥' :
+                            markup.currency === 'CNY' ? '¥' :
+                            markup.currency === 'GHS' ? '₵' :
+                            markup.currency === 'KES' ? 'KSh' :
+                            markup.currency === 'ZAR' ? 'R' : markup.currency;
+      
       console.log(
-        `✅ Created markup for ${markup.productType} (${markup.currency}): ${markup.markupPercentage}% + ₦${markup.serviceFeeAmount}`,
+        `✅ Created markup for ${markup.productType} (${markup.currency}): ${markup.markupPercentage}% + ${currencySymbol}${markup.serviceFeeAmount}`,
       );
     } else {
       console.log(

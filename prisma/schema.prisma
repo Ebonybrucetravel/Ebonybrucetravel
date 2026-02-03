@@ -125,6 +125,7 @@ enum Provider {
   DUFFEL
   TRIPS_AFRICA
   BOOKING_COM
+  AMADEUS
 }
 
 enum BookingStatus {

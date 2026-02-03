@@ -26,6 +26,7 @@ import { ListOffersUseCase } from '@application/booking/use-cases/list-offers.us
 import { CancelDuffelOrderUseCase } from '@application/booking/use-cases/cancel-duffel-order.use-case';
 import { HandleDuffelWebhookUseCase } from '@application/booking/use-cases/handle-duffel-webhook.use-case';
 import { SearchHotelsUseCase } from '@application/booking/use-cases/search-hotels.use-case';
+import { SearchAmadeusHotelsUseCase } from '@application/booking/use-cases/search-amadeus-hotels.use-case';
 import { FetchHotelRatesUseCase } from '@application/booking/use-cases/fetch-hotel-rates.use-case';
 import { CreateHotelQuoteUseCase } from '@application/booking/use-cases/create-hotel-quote.use-case';
 import { CreateHotelBookingUseCase } from '@application/booking/use-cases/create-hotel-booking.use-case';
@@ -45,6 +46,7 @@ import { SearchFlightsDto } from './dto/search-flights.dto';
 import { SearchFlightsResponseDto } from './dto/flight-offer-response.dto';
 import { PaginationQueryDto, ListOffersQueryDto } from './dto/pagination.dto';
 import { SearchHotelsDto } from './dto/search-hotels.dto';
+import { SearchAmadeusHotelsDto } from './dto/search-amadeus-hotels.dto';
 import { CreateHotelQuoteDto } from './dto/create-hotel-quote.dto';
 import { CreateHotelBookingDto } from './dto/create-hotel-booking.dto';
 import { AccommodationSuggestionsDto } from './dto/accommodation-suggestions.dto';
@@ -61,6 +63,7 @@ export class BookingController {
     private readonly cancelDuffelOrderUseCase: CancelDuffelOrderUseCase,
     private readonly handleDuffelWebhookUseCase: HandleDuffelWebhookUseCase,
     private readonly searchHotelsUseCase: SearchHotelsUseCase,
+    private readonly searchAmadeusHotelsUseCase: SearchAmadeusHotelsUseCase,
     private readonly fetchHotelRatesUseCase: FetchHotelRatesUseCase,
     private readonly createHotelQuoteUseCase: CreateHotelQuoteUseCase,
     private readonly createHotelBookingUseCase: CreateHotelBookingUseCase,
@@ -407,8 +410,11 @@ export class BookingController {
 
   @Public()
   @Post('search/hotels')
-  @ApiOperation({ summary: 'Search for hotels/accommodation (no authentication required)' })
-  @ApiResponse({ status: 200, description: 'Hotel search results' })
+  @ApiOperation({ 
+    summary: 'Search for hotels/accommodation using Duffel Stays (no authentication required)',
+    description: 'Searches for hotels using Duffel Stays API. Requires Duffel Stays account access.',
+  })
+  @ApiResponse({ status: 200, description: 'Hotel search results from Duffel' })
   @ApiResponse({ status: 400, description: 'Invalid search parameters' })
   @ApiResponse({ status: 403, description: 'Hotel search feature not available for this account' })
   @ApiResponse({ status: 500, description: 'Hotel search service temporarily unavailable' })
@@ -422,6 +428,113 @@ export class BookingController {
       };
     } catch (error: any) {
       // Re-throw HttpException as-is (already properly formatted)
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      // Convert other errors to proper HTTP exceptions
+      const errorMessage = error?.message || 'An unexpected error occurred while searching for hotels';
+      
+      throw new HttpException(
+        {
+          success: false,
+          message: 'Unable to search hotels at this time. Please check your search parameters and try again.',
+          error: 'Search failed',
+          details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Public()
+  @Post('search/hotels/amadeus')
+  @ApiOperation({ 
+    summary: 'Search for hotels using Amadeus API (no authentication required)',
+    description: 'Searches for hotels using Amadeus Self-Service API. Supports search by city code or specific hotel IDs. Returns hotel offers with pricing, policies, and availability.',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Hotel search results from Amadeus',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            data: {
+              type: 'array',
+              description: 'Array of hotel offers',
+              items: {
+                type: 'object',
+                properties: {
+                  type: { type: 'string', example: 'hotel-offers' },
+                  hotel: {
+                    type: 'object',
+                    properties: {
+                      hotelId: { type: 'string', example: 'MCLONGHM' },
+                      name: { type: 'string', example: 'JW Marriott Grosvenor House London' },
+                      cityCode: { type: 'string', example: 'LON' },
+                      chainCode: { type: 'string', example: 'MC' },
+                    },
+                  },
+                  available: { type: 'boolean', example: true },
+                  offers: {
+                    type: 'array',
+                    description: 'Array of available offers for this hotel',
+                  },
+                },
+              },
+            },
+            currency: { type: 'string', example: 'GBP' },
+            conversion_note: { type: 'string' },
+          },
+        },
+        message: { type: 'string', example: 'Hotels retrieved successfully' },
+      },
+    },
+  })
+  @ApiResponse({ 
+    status: 400, 
+    description: 'Invalid search parameters. Common errors: missing cityCode/hotelIds, invalid dates, invalid currency code.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: false },
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Either hotelIds or cityCode must be provided' },
+        error: { type: 'string', example: 'Bad Request' },
+        errors: {
+          type: 'array',
+          description: 'Detailed Amadeus error information',
+          items: {
+            type: 'object',
+            properties: {
+              status: { type: 'number' },
+              code: { type: 'number', example: 383 },
+              title: { type: 'string', example: 'INVALID CITY CODE' },
+              detail: { type: 'string' },
+              source: { type: 'object' },
+              documentation: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Authentication failed - invalid Amadeus API credentials' })
+  @ApiResponse({ status: 500, description: 'Internal server error or Amadeus API unavailable' })
+  async searchAmadeusHotels(@Body() searchDto: SearchAmadeusHotelsDto) {
+    try {
+      const results = await this.searchAmadeusHotelsUseCase.execute(searchDto);
+      return {
+        success: true,
+        data: results,
+        message: 'Hotels retrieved successfully',
+      };
+    } catch (error: any) {
+      // Re-throw HttpException as-is (already properly formatted with Amadeus error details)
       if (error instanceof HttpException) {
         throw error;
       }

@@ -26,10 +26,10 @@ export class ProfileResponseDto {
   @ApiProperty({ enum: UserRole, example: 'CUSTOMER' })
   role: UserRole;
 
-  @ApiProperty({ example: '2024-01-01T00:00:00.000Z' })
+  @ApiProperty({ example: '2026-01-01T00:00:00.000Z' })
   createdAt: Date;
 
-  @ApiProperty({ example: '2024-01-01T00:00:00.000Z' })
+  @ApiProperty({ example: '2026-01-01T00:00:00.000Z' })
   updatedAt: Date;
 }
 
