@@ -359,6 +359,10 @@ export class AmadeusService {
     hotelIds?: string[];
     amenities?: string[];
     ratings?: number[];
+    chainCodes?: string[];
+    radius?: number;
+    radiusUnit?: 'KM' | 'MILE';
+    hotelSource?: 'BEDBANK' | 'DIRECTCHAIN' | 'ALL';
   }): Promise<any> {
     const queryParams: Record<string, string> = {
       cityCode: params.cityCode,
@@ -373,8 +377,81 @@ export class AmadeusService {
     if (params.ratings && params.ratings.length > 0) {
       queryParams.ratings = params.ratings.join(',').toString();
     }
+    if (params.chainCodes && params.chainCodes.length > 0) {
+      queryParams.chainCodes = params.chainCodes.join(',');
+    }
+    if (params.radius) {
+      queryParams.radius = params.radius.toString();
+    }
+    if (params.radiusUnit) {
+      queryParams.radiusUnit = params.radiusUnit;
+    }
+    if (params.hotelSource) {
+      queryParams.hotelSource = params.hotelSource;
+    }
 
     return this.makeRequest('/v1/reference-data/locations/hotels/by-city', {
+      method: 'GET',
+      params: queryParams,
+    });
+  }
+
+  /**
+   * Get hotel list by geographic coordinates
+   * GET /v1/reference-data/locations/hotels/by-geocode
+   */
+  async getHotelsByGeocode(params: {
+    latitude: number;
+    longitude: number;
+    radius?: number;
+    radiusUnit?: 'KM' | 'MILE';
+    chainCodes?: string[];
+    amenities?: string[];
+    ratings?: number[];
+    hotelSource?: 'BEDBANK' | 'DIRECTCHAIN' | 'ALL';
+  }): Promise<any> {
+    const queryParams: Record<string, string> = {
+      latitude: params.latitude.toString(),
+      longitude: params.longitude.toString(),
+    };
+
+    if (params.radius) {
+      queryParams.radius = params.radius.toString();
+    }
+    if (params.radiusUnit) {
+      queryParams.radiusUnit = params.radiusUnit;
+    }
+    if (params.chainCodes && params.chainCodes.length > 0) {
+      queryParams.chainCodes = params.chainCodes.join(',');
+    }
+    if (params.amenities && params.amenities.length > 0) {
+      queryParams.amenities = params.amenities.join(',');
+    }
+    if (params.ratings && params.ratings.length > 0) {
+      queryParams.ratings = params.ratings.join(',').toString();
+    }
+    if (params.hotelSource) {
+      queryParams.hotelSource = params.hotelSource;
+    }
+
+    return this.makeRequest('/v1/reference-data/locations/hotels/by-geocode', {
+      method: 'GET',
+      params: queryParams,
+    });
+  }
+
+  /**
+   * Get hotel list by hotel IDs
+   * GET /v1/reference-data/locations/hotels/by-hotels
+   */
+  async getHotelsByIds(params: {
+    hotelIds: string[];
+  }): Promise<any> {
+    const queryParams: Record<string, string> = {
+      hotelIds: params.hotelIds.join(','),
+    };
+
+    return this.makeRequest('/v1/reference-data/locations/hotels/by-hotels', {
       method: 'GET',
       params: queryParams,
     });

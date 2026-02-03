@@ -21,6 +21,9 @@ export class SearchAmadeusHotelsUseCase {
     const {
       hotelIds,
       cityCode,
+      geographicCoordinates,
+      radius = 5,
+      radiusUnit = 'KM',
       checkInDate,
       checkOutDate,
       adults = 1,
@@ -33,13 +36,27 @@ export class SearchAmadeusHotelsUseCase {
       bestRateOnly,
       countryOfResidence,
       lang,
+      chainCodes,
+      amenities,
+      ratings,
+      hotelSource,
+      limit = 20,
+      page = 1,
     } = searchParams;
 
-    // Validate that either hotelIds or cityCode is provided
-    if (!hotelIds?.length && !cityCode) {
+    // Validate that at least one search method is provided
+    if (!hotelIds?.length && !cityCode && !geographicCoordinates) {
       throw new BadRequestException(
-        'Either hotelIds or cityCode must be provided',
+        'Either hotelIds, cityCode, or geographicCoordinates must be provided',
       );
+    }
+
+    // Validate pagination
+    if (limit < 1 || limit > 100) {
+      throw new BadRequestException('Limit must be between 1 and 100');
+    }
+    if (page < 1) {
+      throw new BadRequestException('Page must be at least 1');
     }
 
     // Validate dates
@@ -73,46 +90,80 @@ export class SearchAmadeusHotelsUseCase {
     }
 
     try {
-      // Amadeus v3 requires hotelIds (cityCode is not supported in v3)
-      // If cityCode is provided, first get hotel IDs by city, then search
+      // Amadeus v3 requires hotelIds (cityCode/geocode are not supported in v3)
+      // If cityCode or geographicCoordinates is provided, first get hotel IDs, then search
       let hotelIdsToSearch = hotelIds;
+      let allHotelIds: string[] = [];
+      let totalHotels = 0;
 
-      if (cityCode && (!hotelIds || hotelIds.length === 0)) {
-        // Step 1: Get hotel IDs by city code
-        const hotelsListResponse = await this.amadeusService.getHotelsByCity({
-          cityCode,
-        });
+      // Step 1: Get hotel IDs if needed
+      if ((cityCode || geographicCoordinates) && (!hotelIds || hotelIds.length === 0)) {
+        let hotelsListResponse: any;
+
+        if (geographicCoordinates) {
+          // Use geocode search for map-based search
+          hotelsListResponse = await this.amadeusService.getHotelsByGeocode({
+            latitude: geographicCoordinates.latitude,
+            longitude: geographicCoordinates.longitude,
+            radius,
+            radiusUnit,
+            chainCodes,
+            amenities,
+            ratings,
+            hotelSource,
+          });
+        } else if (cityCode) {
+          // Use city search
+          hotelsListResponse = await this.amadeusService.getHotelsByCity({
+            cityCode,
+            chainCodes,
+            amenities,
+            ratings,
+            radius,
+            radiusUnit,
+            hotelSource,
+          });
+        }
 
         if (!hotelsListResponse || !hotelsListResponse.data || hotelsListResponse.data.length === 0) {
+          const locationDesc = geographicCoordinates
+            ? `coordinates (${geographicCoordinates.latitude}, ${geographicCoordinates.longitude})`
+            : `city code: ${cityCode}`;
           throw new BadRequestException(
-            `No hotels found for city code: ${cityCode}. Please try a different city or provide specific hotel IDs.`,
+            `No hotels found for ${locationDesc}. Please try different search criteria or provide specific hotel IDs.`,
           );
         }
 
         // Extract hotel IDs from the response
-        hotelIdsToSearch = hotelsListResponse.data
+        allHotelIds = hotelsListResponse.data
           .map((hotel: any) => hotel.hotelId)
           .filter((id: string) => id && id.length === 8); // Amadeus hotel IDs are 8 chars
 
-        if (hotelIdsToSearch.length === 0) {
+        if (allHotelIds.length === 0) {
+          const locationDesc = geographicCoordinates
+            ? `coordinates (${geographicCoordinates.latitude}, ${geographicCoordinates.longitude})`
+            : `city code: ${cityCode}`;
           throw new BadRequestException(
-            `No valid hotel IDs found for city code: ${cityCode}. Please try a different city or provide specific hotel IDs.`,
+            `No valid hotel IDs found for ${locationDesc}. Please try different search criteria or provide specific hotel IDs.`,
           );
         }
-
-        // Limit to first 50 hotels to avoid URL length issues
-        if (hotelIdsToSearch.length > 50) {
-          hotelIdsToSearch = hotelIdsToSearch.slice(0, 50);
-        }
+      } else if (hotelIds && hotelIds.length > 0) {
+        allHotelIds = hotelIds;
       }
 
-      if (!hotelIdsToSearch || hotelIdsToSearch.length === 0) {
+      // Step 2: Apply pagination to hotel IDs (before searching for offers)
+      totalHotels = allHotelIds.length;
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      hotelIdsToSearch = allHotelIds.slice(startIndex, endIndex);
+
+      if (hotelIdsToSearch.length === 0) {
         throw new BadRequestException(
-          'Either hotelIds or cityCode must be provided. hotelIds is required for Amadeus v3 API.',
+          `No hotels found for page ${page}. Please try a different page.`,
         );
       }
 
-      // Step 2: Search hotels using hotel IDs
+      // Step 3: Search hotels using hotel IDs (paginated subset)
       const response = await this.amadeusService.searchHotels({
         hotelIds: hotelIdsToSearch,
         checkInDate,
@@ -230,9 +281,28 @@ export class SearchAmadeusHotelsUseCase {
         }),
       );
 
+      // Calculate pagination metadata
+      // If we used direct hotelIds, set totalHotels
+      if (hotelIds && hotelIds.length > 0 && allHotelIds.length === 0) {
+        totalHotels = hotelIds.length;
+        allHotelIds = hotelIds;
+      }
+      const totalPages = Math.ceil(totalHotels / limit);
+      const hasMore = page < totalPages;
+
       const result = {
         data: processedResults,
-        meta: response.meta || {},
+        meta: {
+          ...(response.meta || {}),
+          count: processedResults.length,
+          total: totalHotels,
+          limit,
+          page,
+          totalPages,
+          hasMore,
+          nextPage: hasMore ? page + 1 : null,
+          prevPage: page > 1 ? page - 1 : null,
+        },
         currency: targetCurrency,
         conversion_note: `Prices include a ${this.currencyService.getConversionBuffer()}% conversion fee to protect against exchange rate fluctuations.`,
         cached: false,
@@ -261,13 +331,44 @@ export class SearchAmadeusHotelsUseCase {
 
 
   private generateCacheKey(searchParams: SearchAmadeusHotelsDto): string {
-    const { hotelIds, cityCode, checkInDate, checkOutDate, adults, roomQuantity, currency } = searchParams;
+    const {
+      hotelIds,
+      cityCode,
+      geographicCoordinates,
+      checkInDate,
+      checkOutDate,
+      adults,
+      roomQuantity,
+      currency,
+      amenities,
+      ratings,
+      chainCodes,
+      radius,
+      radiusUnit,
+    } = searchParams;
+    
     let key = `amadeus_hotel_search:${checkInDate}-${checkOutDate}-${adults}-${roomQuantity}-${currency}`;
+    
     if (hotelIds && hotelIds.length > 0) {
-      key += `:hotels-${hotelIds.join(',')}`;
+      // Sort hotel IDs for consistent cache key
+      key += `:hotels-${[...hotelIds].sort().join(',')}`;
+    } else if (geographicCoordinates) {
+      key += `:geo-${geographicCoordinates.latitude.toFixed(4)}-${geographicCoordinates.longitude.toFixed(4)}-${radius || 5}-${radiusUnit || 'KM'}`;
     } else if (cityCode) {
       key += `:city-${cityCode}`;
     }
+
+    // Add filter parameters to cache key
+    if (amenities && amenities.length > 0) {
+      key += `:amenities-${[...amenities].sort().join(',')}`;
+    }
+    if (ratings && ratings.length > 0) {
+      key += `:ratings-${[...ratings].sort().join(',')}`;
+    }
+    if (chainCodes && chainCodes.length > 0) {
+      key += `:chains-${[...chainCodes].sort().join(',')}`;
+    }
+
     return key;
   }
 }
