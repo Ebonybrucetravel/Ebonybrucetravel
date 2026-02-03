@@ -1,4 +1,4 @@
-// api.ts - UPDATED to match exact endpoints from your documentation
+// api.ts - COMPLETE VERSION with Amadeus hotel booking
 const API_BASE = 'https://ebony-bruce-production.up.railway.app';
 
 // Define ApiError class with enhanced error handling
@@ -47,7 +47,7 @@ export interface User {
   isVerified?: boolean;
 }
 
-// Hotel search interfaces - UPDATED based on actual API response
+// Hotel search interfaces
 export interface HotelSearchParams {
   cityCode: string;
   checkInDate: string;
@@ -184,6 +184,70 @@ export interface HotelSearchResponse {
     currency?: string;
     conversion_note?: string;
     cached?: boolean;
+  };
+  message?: string;
+  [key: string]: any;
+}
+
+// Hotel booking interfaces
+export interface HotelGuest {
+  name: {
+    title: string;
+    firstName: string;
+    lastName: string;
+  };
+  contact: {
+    phone: string;
+    email: string;
+  };
+}
+
+export interface RoomAssociation {
+  hotelOfferId: string;
+  guestReferences: Array<{
+    guestReference: string;
+  }>;
+}
+
+export interface PaymentCardInfo {
+  vendorCode: string;
+  cardNumber: string;
+  expiryDate: string; // Format: "YYYY-MM"
+  holderName: string;
+  securityCode: string;
+}
+
+export interface HotelBookingRequest {
+  hotelOfferId: string;
+  offerPrice: number;
+  currency: string;
+  guests: HotelGuest[];
+  roomAssociations: RoomAssociation[];
+  payment: {
+    method: "CREDIT_CARD";
+    paymentCard: {
+      paymentCardInfo: PaymentCardInfo;
+    };
+  };
+  travelAgentEmail?: string;
+  accommodationSpecialRequests?: string;
+}
+
+export interface HotelBookingResponse {
+  success?: boolean;
+  data?: {
+    bookingId: string;
+    confirmationNumber?: string;
+    status?: string;
+    hotelName?: string;
+    checkInDate?: string;
+    checkOutDate?: string;
+    totalPrice?: number;
+    currency?: string;
+    guests?: HotelGuest[];
+    roomType?: string;
+    cancellationPolicy?: string;
+    bookingDate?: string;
   };
   message?: string;
   [key: string]: any;
@@ -373,8 +437,6 @@ export const getCityCode = (cityName: string): string => {
     'singapore': 'SIN',
     'tokyo': 'TYO',
     'hong kong': 'HKG',
-    
-
     'lagos, nigeria': 'LOS',
   };
 
@@ -403,7 +465,7 @@ export const getCityCode = (cityName: string): string => {
 };
 
 // ────────────────────────────────────────────────
-// UPDATED: Hotel Search API - Amadeus Endpoint (FIXED spread operator issue)
+// Hotel Search API - Amadeus Endpoint
 // ────────────────────────────────────────────────
 export const searchHotelsAmadeus = async (
   searchParams: HotelSearchParams
@@ -453,7 +515,7 @@ export const searchHotelsAmadeus = async (
 };
 
 // ────────────────────────────────────────────────
-// UPDATED: Hotel search with pagination and filtering
+// Hotel search with pagination and filtering
 // ────────────────────────────────────────────────
 export async function searchHotelsWithPagination(
   params: HotelSearchParams & {
@@ -592,7 +654,7 @@ export async function searchHotelsWithPagination(
 }
 
 // ────────────────────────────────────────────────
-// NEW: Transform hotel API data to SearchResult format for your frontend
+// Transform hotel API data to SearchResult format for your frontend
 // ────────────────────────────────────────────────
 export function transformHotelToSearchResult(
   hotel: HotelOffer, 
@@ -887,7 +949,7 @@ function getHotelImage(chainCode?: string, index: number = 0): string {
 }
 
 // ────────────────────────────────────────────────
-// NEW: Format hotel search parameters
+// Format hotel search parameters
 // ────────────────────────────────────────────────
 export async function formatHotelSearchParams(
   location: string,
@@ -924,7 +986,7 @@ export async function formatHotelSearchParams(
 }
 
 // ────────────────────────────────────────────────
-// NEW: Search hotels and transform results for frontend - FIXED VERSION
+// Search hotels and transform results for frontend
 // ────────────────────────────────────────────────
 export async function searchAndTransformHotels(
   searchParams: HotelSearchParams,
@@ -992,7 +1054,152 @@ export async function searchAndTransformHotels(
 }
 
 // ────────────────────────────────────────────────
-// Auth API - UPDATED WITH NEW ENDPOINTS
+// Validate hotel booking data
+// ────────────────────────────────────────────────
+export function validateHotelBookingData(bookingData: HotelBookingRequest): {
+  isValid: boolean;
+  errors: string[];
+} {
+  const errors: string[] = [];
+
+  // Validate hotelOfferId
+  if (!bookingData.hotelOfferId || bookingData.hotelOfferId.trim() === '') {
+    errors.push('Hotel offer ID is required');
+  }
+
+  // Validate price
+  if (bookingData.offerPrice <= 0) {
+    errors.push('Offer price must be greater than 0');
+  }
+
+  // Validate currency
+  if (!bookingData.currency || bookingData.currency.trim() === '') {
+    errors.push('Currency is required');
+  }
+
+  // Validate guests
+  if (!bookingData.guests || bookingData.guests.length === 0) {
+    errors.push('At least one guest is required');
+  } else {
+    bookingData.guests.forEach((guest, index) => {
+      if (!guest.name.firstName || guest.name.firstName.trim() === '') {
+        errors.push(`Guest ${index + 1}: First name is required`);
+      }
+      if (!guest.name.lastName || guest.name.lastName.trim() === '') {
+        errors.push(`Guest ${index + 1}: Last name is required`);
+      }
+      if (!guest.contact.email || !isValidEmail(guest.contact.email)) {
+        errors.push(`Guest ${index + 1}: Valid email is required`);
+      }
+      if (!guest.contact.phone || guest.contact.phone.trim() === '') {
+        errors.push(`Guest ${index + 1}: Phone number is required`);
+      }
+    });
+  }
+
+  // Validate room associations
+  if (!bookingData.roomAssociations || bookingData.roomAssociations.length === 0) {
+    errors.push('Room associations are required');
+  } else {
+    bookingData.roomAssociations.forEach((room, index) => {
+      if (!room.hotelOfferId || room.hotelOfferId.trim() === '') {
+        errors.push(`Room association ${index + 1}: Hotel offer ID is required`);
+      }
+      if (!room.guestReferences || room.guestReferences.length === 0) {
+        errors.push(`Room association ${index + 1}: At least one guest reference is required`);
+      }
+    });
+  }
+
+  // Validate payment
+  if (!bookingData.payment) {
+    errors.push('Payment information is required');
+  } else if (bookingData.payment.method === 'CREDIT_CARD') {
+    const cardInfo = bookingData.payment.paymentCard?.paymentCardInfo;
+    if (!cardInfo) {
+      errors.push('Credit card information is required');
+    } else {
+      if (!isValidCreditCardNumber(cardInfo.cardNumber)) {
+        errors.push('Invalid credit card number');
+      }
+      if (!isValidExpiryDate(cardInfo.expiryDate)) {
+        errors.push('Invalid expiry date. Use YYYY-MM format');
+      }
+      if (!cardInfo.holderName || cardInfo.holderName.trim() === '') {
+        errors.push('Card holder name is required');
+      }
+      if (!cardInfo.securityCode || cardInfo.securityCode.length < 3) {
+        errors.push('Security code must be at least 3 digits');
+      }
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+  };
+}
+
+// Helper function to validate email
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+// Helper function to validate credit card number
+function isValidCreditCardNumber(cardNumber: string): boolean {
+  // Remove spaces and dashes
+  const cleanNumber = cardNumber.replace(/\s+/g, '').replace(/-/g, '');
+  
+  // Check if it's all digits and has valid length
+  if (!/^\d+$/.test(cleanNumber)) return false;
+  if (cleanNumber.length < 13 || cleanNumber.length > 19) return false;
+  
+  // Luhn algorithm check
+  return luhnCheck(cleanNumber);
+}
+
+// Luhn algorithm implementation
+function luhnCheck(cardNumber: string): boolean {
+  let sum = 0;
+  let isEven = false;
+  
+  for (let i = cardNumber.length - 1; i >= 0; i--) {
+    let digit = parseInt(cardNumber.charAt(i), 10);
+    
+    if (isEven) {
+      digit *= 2;
+      if (digit > 9) {
+        digit -= 9;
+      }
+    }
+    
+    sum += digit;
+    isEven = !isEven;
+  }
+  
+  return sum % 10 === 0;
+}
+
+// Helper function to validate expiry date
+function isValidExpiryDate(expiryDate: string): boolean {
+  if (!expiryDate || !/^\d{4}-\d{2}$/.test(expiryDate)) return false;
+  
+  const [year, month] = expiryDate.split('-').map(Number);
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // January is 0
+  
+  // Check if year is in the future or current year with future month
+  if (year < currentYear) return false;
+  if (year === currentYear && month < currentMonth) return false;
+  if (month < 1 || month > 12) return false;
+  
+  return true;
+}
+
+// ────────────────────────────────────────────────
+// Auth API
 // ────────────────────────────────────────────────
 export const authApi = {
   login: (credentials: { email: string; password: string }) => {
@@ -1041,7 +1248,7 @@ export const authApi = {
     });
   },
 
-  // NEW: Forgot password endpoint
+  // Forgot password endpoint
   forgotPassword: (email: string) => {
     return request<ApiResponse<{ message: string }>>('/api/v1/auth/forgot-password', {
       method: 'POST',
@@ -1049,7 +1256,7 @@ export const authApi = {
     });
   },
 
-  // NEW: Reset password endpoint
+  // Reset password endpoint
   resetPassword: (token: string, password: string) => {
     return request<ApiResponse<{ message: string; user?: User }>>('/api/v1/auth/reset-password', {
       method: 'POST',
@@ -1057,7 +1264,7 @@ export const authApi = {
     });
   },
 
-  // NEW: Verify email endpoint
+  // Verify email endpoint
   verifyEmail: (token: string) => {
     return request<ApiResponse<{ message: string; user?: User; verified: boolean }>>('/api/v1/auth/verify-email', {
       method: 'POST',
@@ -1065,7 +1272,7 @@ export const authApi = {
     });
   },
 
-  // NEW: Resend verification email
+  // Resend verification email
   resendVerificationEmail: (email: string) => {
     return request<ApiResponse<{ message: string }>>('/api/v1/auth/resend-verification', {
       method: 'POST',
@@ -1073,7 +1280,7 @@ export const authApi = {
     });
   },
 
-  // NEW: Social login endpoints (if supported)
+  // Social login endpoints (if supported)
   googleLogin: (accessToken: string) => {
     return request<any>('/api/v1/auth/google', {
       method: 'POST',
@@ -1102,7 +1309,7 @@ export const authApi = {
     });
   },
 
-  // NEW: Check if email exists
+  // Check if email exists
   checkEmailExists: (email: string) => {
     return request<ApiResponse<{ exists: boolean }>>('/api/v1/auth/check-email', {
       method: 'POST',
@@ -1151,7 +1358,7 @@ export const userApi = {
     });
   },
 
-  // NEW: Update email address (may require re-verification)
+  // Update email address (may require re-verification)
   updateEmail: (email: string, password: string) => {
     return request<{ message: string; requiresVerification: boolean }>('/api/v1/users/me/email', {
       method: 'PUT',
@@ -1159,7 +1366,7 @@ export const userApi = {
     });
   },
 
-  // NEW: Get user's bookings
+  // Get user's bookings
   getMyBookings: () => {
     return request<any[]>('/api/v1/users/me/bookings', {
       method: 'GET',
@@ -1168,10 +1375,10 @@ export const userApi = {
 };
 
 // ────────────────────────────────────────────────
-// UPDATED: Booking API to match your exact endpoints
+// Booking API with Amadeus Hotel Booking
 // ────────────────────────────────────────────────
 export const bookingApi = {
-  // Step 1: Search flights - EXACT ENDPOINT
+  // Flight search - EXACT ENDPOINT
   searchFlights: (params: {
     origin: string;
     destination: string;
@@ -1186,7 +1393,7 @@ export const bookingApi = {
     });
   },
   
-  // Steps 2-5: Get flight offers with pagination and sorting options
+  // Get flight offers with pagination and sorting options
   getOffers: (
     offerRequestId: string, 
     cursor?: string, 
@@ -1207,7 +1414,15 @@ export const bookingApi = {
     });
   },
   
-  // Step 6: Create authenticated booking - EXACT ENDPOINT
+  // NEW: Create hotel booking via Amadeus endpoint
+  createHotelBookingAmadeus: (bookingData: HotelBookingRequest): Promise<HotelBookingResponse> => {
+    return request<HotelBookingResponse>('/api/v1/bookings/hotels/bookings/amadeus', {
+      method: 'POST',
+      body: JSON.stringify(bookingData),
+    });
+  },
+
+  // Create authenticated booking - EXACT ENDPOINT
   createBooking: (bookingData: {
     productType: string;
     provider: string;
@@ -1237,7 +1452,7 @@ export const bookingApi = {
     });
   },
   
-  // Step 7: Create guest booking - EXACT ENDPOINT
+  // Create guest booking - EXACT ENDPOINT
   createGuestBooking: (bookingData: {
     productType: string;
     provider: string;
@@ -1267,14 +1482,14 @@ export const bookingApi = {
     });
   },
   
-  // Step 8: List bookings - EXACT ENDPOINT
+  // List bookings - EXACT ENDPOINT
   listBookings: () => {
     return request<any[]>('/api/v1/bookings', { 
       method: 'GET' 
     });
   },
   
-  // Step 9: Get booking by ID - EXACT ENDPOINT
+  // Get booking by ID - EXACT ENDPOINT
   getBookingById: (id: string) => {
     return request<any>(`/api/v1/bookings/${id}`, { 
       method: 'GET' 
@@ -1288,14 +1503,14 @@ export const bookingApi = {
     });
   },
   
-  // Step 10: Cancel booking - EXACT ENDPOINT
+  // Cancel booking - EXACT ENDPOINT
   cancelBooking: (id: string) => {
     return request<any>(`/api/v1/bookings/${id}/cancel`, { 
       method: 'POST' 
     });
   },
   
-  // NEW: Hotel booking
+  // Hotel booking (generic)
   createHotelBooking: (hotelBookingData: {
     productType: string;
     provider: string;
@@ -1334,10 +1549,10 @@ export const bookingApi = {
 };
 
 // ────────────────────────────────────────────────
-// UPDATED: Payment API to match your exact endpoints
+// Payment API
 // ────────────────────────────────────────────────
 export const paymentApi = {
-  // Step 12: Create Stripe intent for authenticated users - EXACT ENDPOINT
+  // Create Stripe intent for authenticated users - EXACT ENDPOINT
   createStripeIntent: (bookingId: string, amount?: number, currency?: string) => {
     const body: any = { bookingId };
     if (amount !== undefined) body.amount = amount;
@@ -1349,7 +1564,7 @@ export const paymentApi = {
     });
   },
   
-  // Step 13: Create Stripe intent for guests - EXACT ENDPOINT
+  // Create Stripe intent for guests - EXACT ENDPOINT
   createGuestStripeIntent: (bookingReference: string, email: string, amount?: number, currency?: string) => {
     const body: any = { bookingReference, email };
     if (amount !== undefined) body.amount = amount;
@@ -1369,14 +1584,14 @@ export const paymentApi = {
     });
   },
   
-  // NEW: Get payment status
+  // Get payment status
   getPaymentStatus: (paymentId: string) => {
     return request<any>(`/api/v1/payments/${paymentId}/status`, {
       method: 'GET',
     });
   },
   
-  // NEW: Refund payment
+  // Refund payment
   refundPayment: (paymentId: string, amount?: number) => {
     const body: any = { paymentId };
     if (amount !== undefined) body.amount = amount;
@@ -1389,16 +1604,16 @@ export const paymentApi = {
 };
 
 // ────────────────────────────────────────────────
-// UPDATED: Hotels API with Amadeus endpoint
+// Hotels API with Amadeus endpoint
 // ────────────────────────────────────────────────
 export const hotelApi = {
-  // Amadeus hotel search - EXACT ENDPOINT YOU PROVIDED
+  // Amadeus hotel search
   searchHotelsAmadeus: searchHotelsAmadeus,
   
   // Hotel search with pagination and filtering
   searchHotelsWithPagination: searchHotelsWithPagination,
   
-  // NEW: Search and transform hotels for frontend
+  // Search and transform hotels for frontend
   searchAndTransformHotels: searchAndTransformHotels,
   
   // Format hotel search parameters
@@ -1407,15 +1622,25 @@ export const hotelApi = {
   // Transform hotel to search result
   transformHotelToSearchResult: transformHotelToSearchResult,
   
+  // Validate hotel booking data
+  validateHotelBookingData: validateHotelBookingData,
+  
   // Get city code
   getCityCode: getCityCode,
+  
+  // NEW: Book hotel via Amadeus (alternative access)
+  bookHotelAmadeus: (bookingData: HotelBookingRequest): Promise<HotelBookingResponse> => {
+    return request<HotelBookingResponse>('/api/v1/bookings/hotels/bookings/amadeus', {
+      method: 'POST',
+      body: JSON.stringify(bookingData),
+    });
+  },
   
   // Get hotel details
   getHotelDetails: async (hotelId: string) => {
     try {
       console.log(`🏨 Fetching details for hotel: ${hotelId}`);
       
-      // Note: You might need to adjust this endpoint based on your backend
       const response = await request<any>(`/api/v1/hotels/${hotelId}/details`, {
         method: 'GET',
       });
@@ -1434,7 +1659,6 @@ export const hotelApi = {
     try {
       console.log(`📸 Fetching photos for hotel: ${hotelId}`);
       
-      // Note: You might need to adjust this endpoint based on your backend
       const response = await request<any>(`/api/v1/hotels/${hotelId}/photos?limit=${limit}`, {
         method: 'GET',
       });
@@ -1460,7 +1684,6 @@ export const hotelApi = {
     try {
       console.log(`📝 Fetching reviews for hotel: ${hotelId}`);
       
-      // Note: You might need to adjust this endpoint based on your backend
       const response = await request<any>(`/api/v1/hotels/${hotelId}/reviews?limit=${limit}`, {
         method: 'GET',
       });
@@ -1527,7 +1750,7 @@ export const hotelApi = {
     }
   },
   
-  // NEW: Hotel booking
+  // Hotel booking (generic)
   bookHotel: (hotelId: string, bookingData: any) => {
     return request<any>(`/api/v1/hotels/${hotelId}/book`, {
       method: 'POST',
@@ -1535,7 +1758,7 @@ export const hotelApi = {
     });
   },
   
-  // NEW: Get available hotel amenities
+  // Get available hotel amenities
   getAvailableAmenities: () => {
     return request<string[]>('/api/v1/hotels/amenities', {
       method: 'GET',
@@ -1561,22 +1784,22 @@ export const hotelApi = {
     });
   },
   
-// NEW: Get popular hotel destinations
-getPopularDestinations: () => {
-  return request<any[]>('/api/v1/hotels/popular-destinations', {
-    method: 'GET',
-  }).catch(() => {
-    // Return default destinations if API fails
-    return [
-      { cityCode: 'LOS', cityName: 'Lagos', country: 'Nigeria', image: 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D' },
-      { cityCode: 'LON', cityName: 'London', country: 'UK', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
-      { cityCode: 'NYC', cityName: 'New York', country: 'USA', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400' },
-      { cityCode: 'PAR', cityName: 'Paris', country: 'France', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400' },
-      { cityCode: 'DXB', cityName: 'Dubai', country: 'UAE', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400' },
-      { cityCode: 'SYD', cityName: 'Sydney', country: 'Australia', image: 'https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?auto=format&fit=crop&q=80&w=400' },
-    ];
-  });
-},
+  // Get popular hotel destinations
+  getPopularDestinations: () => {
+    return request<any[]>('/api/v1/hotels/popular-destinations', {
+      method: 'GET',
+    }).catch(() => {
+      // Return default destinations if API fails
+      return [
+        { cityCode: 'LOS', cityName: 'Lagos', country: 'Nigeria', image: 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D' },
+        { cityCode: 'LON', cityName: 'London', country: 'UK', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
+        { cityCode: 'NYC', cityName: 'New York', country: 'USA', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400' },
+        { cityCode: 'PAR', cityName: 'Paris', country: 'France', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400' },
+        { cityCode: 'DXB', cityName: 'Dubai', country: 'UAE', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400' },
+        { cityCode: 'SYD', cityName: 'Sydney', country: 'Australia', image: 'https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?auto=format&fit=crop&q=80&w=400' },
+      ];
+    });
+  },
 };
 
 // ────────────────────────────────────────────────
@@ -1590,7 +1813,7 @@ export const carApi = {
     });
   },
   
-  // NEW: Car rental booking
+  // Car rental booking
   bookCar: (carId: string, bookingData: any) => {
     return request<any>(`/api/v1/cars/${carId}/book`, {
       method: 'POST',
@@ -1600,7 +1823,7 @@ export const carApi = {
 };
 
 // ────────────────────────────────────────────────
-// NEW: Notification API
+// Notification API
 // ────────────────────────────────────────────────
 export const notificationApi = {
   getNotifications: () => {
@@ -1629,7 +1852,7 @@ export const notificationApi = {
 };
 
 // ────────────────────────────────────────────────
-// NEW: Support/Contact API
+// Support/Contact API
 // ────────────────────────────────────────────────
 export const supportApi = {
   contactUs: (data: {
@@ -1714,7 +1937,7 @@ export async function uploadUserAvatar(file: File): Promise<string | null> {
 }
 
 // ────────────────────────────────────────────────
-// NEW: Auth helper functions
+// Auth helper functions
 // ────────────────────────────────────────────────
 export async function handleForgotPassword(email: string): Promise<{ success: boolean; message: string }> {
   try {
@@ -1794,7 +2017,7 @@ export async function resendVerificationEmail(email: string): Promise<{ success:
 }
 
 // ────────────────────────────────────────────────
-// Flight search utility function (FIXED typo: offesrResult -> offersResult)
+// Flight search utility function
 // ────────────────────────────────────────────────
 export async function searchFlightsWithPagination(
   params: {
@@ -1898,7 +2121,7 @@ export async function searchFlightsWithPagination(
 }
 
 // ────────────────────────────────────────────────
-// NEW: Session management helper
+// Session management helper
 // ────────────────────────────────────────────────
 export class SessionManager {
   static async validateSession(): Promise<boolean> {
@@ -1940,6 +2163,152 @@ export class SessionManager {
 }
 
 // ────────────────────────────────────────────────
+// Hotel booking helper function
+// ────────────────────────────────────────────────
+export async function createAmadeusHotelBooking(
+  offerId: string,
+  hotelData: any,
+  guestInfo: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+  },
+  paymentInfo?: {
+    cardNumber?: string;
+    expiryDate?: string;
+    holderName?: string;
+    securityCode?: string;
+  }
+): Promise<HotelBookingResponse> {
+  try {
+    console.log('🏨 Creating Amadeus hotel booking...');
+    
+    // Validate hotel data
+    if (!hotelData || !hotelData.realData) {
+      throw new ApiError('Invalid hotel data', 400, 'INVALID_HOTEL_DATA');
+    }
+    
+    const realData = hotelData.realData;
+    
+    // Prepare booking data
+    const bookingData: HotelBookingRequest = {
+      hotelOfferId: offerId,
+      offerPrice: realData.price,
+      currency: realData.currency || 'GBP',
+      guests: [
+        {
+          name: {
+            title: 'MR', // Default title
+            firstName: guestInfo.firstName,
+            lastName: guestInfo.lastName,
+          },
+          contact: {
+            phone: guestInfo.phone,
+            email: guestInfo.email,
+          },
+        },
+      ],
+      roomAssociations: [
+        {
+          hotelOfferId: offerId,
+          guestReferences: [
+            {
+              guestReference: '1',
+            },
+          ],
+        },
+      ],
+      payment: {
+        method: 'CREDIT_CARD',
+        paymentCard: {
+          paymentCardInfo: paymentInfo ? {
+            vendorCode: getVendorCodeFromCardNumber(paymentInfo.cardNumber || ''),
+            cardNumber: paymentInfo.cardNumber || '',
+            expiryDate: paymentInfo.expiryDate || '',
+            holderName: paymentInfo.holderName || '',
+            securityCode: paymentInfo.securityCode || '',
+          } : {
+            // Demo/test card info (use Stripe test cards in production)
+            vendorCode: 'VI',
+            cardNumber: '4242424242424242',
+            expiryDate: '2026-12',
+            holderName: 'TEST USER',
+            securityCode: '123',
+          },
+        },
+      },
+      travelAgentEmail: 'support@travelopia.com',
+      accommodationSpecialRequests: 'Please provide early check-in if available',
+    };
+    
+    // Validate booking data
+    const validation = validateHotelBookingData(bookingData);
+    if (!validation.isValid) {
+      throw new ApiError(
+        `Booking validation failed: ${validation.errors.join(', ')}`,
+        400,
+        'BOOKING_VALIDATION_FAILED'
+      );
+    }
+    
+    // Create booking
+    const response = await bookingApi.createHotelBookingAmadeus(bookingData);
+    
+    if (!response.success) {
+      throw new ApiError(
+        response.message || 'Hotel booking failed',
+        response.status || 500,
+        'HOTEL_BOOKING_FAILED'
+      );
+    }
+    
+    console.log('✅ Hotel booking created successfully:', response);
+    return response;
+    
+  } catch (error: any) {
+    console.error('❌ Hotel booking failed:', error);
+    
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    throw new ApiError(
+      error.message || 'Failed to create hotel booking',
+      error.status || 500,
+      'HOTEL_BOOKING_ERROR'
+    );
+  }
+}
+
+// Helper function to get vendor code from card number
+function getVendorCodeFromCardNumber(cardNumber: string): string {
+  if (!cardNumber) return 'VI'; // Default to Visa
+  
+  const cleanNumber = cardNumber.replace(/\s+/g, '').replace(/-/g, '');
+  
+  // Visa cards start with 4
+  if (cleanNumber.startsWith('4')) return 'VI';
+  
+  // MasterCard starts with 51-55
+  if (/^5[1-5]/.test(cleanNumber)) return 'MC';
+  
+  // American Express starts with 34 or 37
+  if (/^3[47]/.test(cleanNumber)) return 'AX';
+  
+  // Discover starts with 6011, 644-649, or 65
+  if (/^6(011|4[4-9]|5)/.test(cleanNumber)) return 'DS';
+  
+  // Diners Club starts with 300-305, 36, or 38
+  if (/^3(0[0-5]|6|8)/.test(cleanNumber)) return 'DC';
+  
+  // JCB starts with 3528-3589
+  if (/^35/.test(cleanNumber)) return 'JC';
+  
+  return 'VI'; // Default to Visa
+}
+
+// ────────────────────────────────────────────────
 // Auth event listeners
 // ────────────────────────────────────────────────
 if (typeof window !== 'undefined') {
@@ -1963,7 +2332,7 @@ if (typeof window !== 'undefined') {
 }
 
 // ────────────────────────────────────────────────
-// API Configuration - FIXED VERSION
+// API Configuration
 // ────────────────────────────────────────────────
 export const apiConfig = {
   endpoints: {
@@ -1983,6 +2352,8 @@ export const apiConfig = {
     hotelSearchParams: 'HotelSearchParams' as const,
     hotelOffer: 'HotelOffer' as const,
     hotelSearchResponse: 'HotelSearchResponse' as const,
+    hotelBookingRequest: 'HotelBookingRequest' as const,
+    hotelBookingResponse: 'HotelBookingResponse' as const,
   },
   
   defaultHeaders: {
@@ -2020,8 +2391,20 @@ export function isHotelSearchResponse(obj: any): obj is HotelSearchResponse {
          ('success' in obj || 'data' in obj || 'message' in obj);
 }
 
+export function isHotelBookingRequest(obj: any): obj is HotelBookingRequest {
+  return obj && typeof obj === 'object' && 
+         'hotelOfferId' in obj && 
+         'guests' in obj && 
+         'payment' in obj;
+}
+
+export function isHotelBookingResponse(obj: any): obj is HotelBookingResponse {
+  return obj && typeof obj === 'object' && 
+         ('success' in obj || 'data' in obj || 'message' in obj);
+}
+
 // ────────────────────────────────────────────────
-// Export everything
+// Export everything as an API object
 // ────────────────────────────────────────────────
 const api = {
   // API modules
@@ -2040,7 +2423,11 @@ const api = {
   searchAndTransformHotels,
   formatHotelSearchParams,
   transformHotelToSearchResult,
+  validateHotelBookingData,
   getCityCode,
+  
+  // Hotel booking functions
+  createAmadeusHotelBooking,
   
   // Token management
   setAuthToken,
@@ -2074,8 +2461,10 @@ const api = {
   isHotelSearchParams,
   isHotelOffer,
   isHotelSearchResponse,
+  isHotelBookingRequest,
+  isHotelBookingResponse,
   
-  // Types and Classes
+  // Classes
   ApiError,
 };
 

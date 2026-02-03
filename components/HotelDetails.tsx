@@ -38,6 +38,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
 
   useEffect(() => {
     console.log("Hotel Details Component Mounted with item:", item);
+    console.log("Item has realData:", item?.realData);
     window.scrollTo(0, 0);
     if (item) {
       fetchHotelDetails();
@@ -47,9 +48,10 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const fetchHotelDetails = async () => {
     console.log("fetchHotelDetails called with item:", item);
     
-    if (!item?.hotelId) {
-      console.warn("No hotelId found in item:", item);
-      setError("Hotel ID not found");
+    // Check if we have the realData structure from the API
+    if (!item?.realData?.offerId) {
+      console.warn("No offerId found in item.realData:", item);
+      setError("Hotel offer not found");
       setHotelData(item);
       return;
     }
@@ -59,51 +61,78 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     setDebugInfo(null);
     
     try {
-      console.log("Fetching hotel details for hotelId:", item.hotelId);
+      console.log("Using item.realData for hotel details:", item.realData);
       
-      const requestBody = {
-        cityCode: searchParams?.cityCode || "LON",
-        checkInDate: searchParams?.checkInDate || "2026-06-04",
-        checkOutDate: searchParams?.checkOutDate || "2026-06-07",
-        adults: searchParams?.adults || 2,
-        roomQuantity: searchParams?.roomQuantity || 1,
-        currency: searchParams?.currency || "GBP",
-        bestRateOnly: searchParams?.bestRateOnly !== undefined ? searchParams.bestRateOnly : true
-      };
-
-      console.log("API Request body:", requestBody);
-
-      const response = await fetch(
-        `https://ebony-bruce-production.up.railway.app/api/v1/bookings/search/hotels/amadeus/${item.hotelId}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(requestBody)
-        }
-      );
-      
-      console.log("API Response status:", response.status);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("API Error response:", errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log("API Success response data:", data);
+      // Since we already have the hotel data from the search results,
+      // we can use it directly and extract the right price
+      const hotelOfferData = item.realData;
       
       setDebugInfo({
-        response: data,
+        realData: hotelOfferData,
         item: item,
         timestamp: new Date().toISOString()
       });
       
-      setHotelData(data);
+      // Create a hotel object from the realData
+      const hotelFromRealData = {
+        ...item,
+        hotelId: hotelOfferData.hotelId,
+        name: hotelOfferData.hotelName,
+        price: hotelOfferData.price,
+        basePrice: hotelOfferData.basePrice,
+        currency: hotelOfferData.currency,
+        checkInDate: hotelOfferData.checkInDate,
+        checkOutDate: hotelOfferData.checkOutDate,
+        guests: hotelOfferData.guests,
+        rooms: hotelOfferData.rooms,
+        roomType: hotelOfferData.roomType,
+        bedType: hotelOfferData.bedType,
+        beds: hotelOfferData.beds,
+        nights: hotelOfferData.nights,
+        isRefundable: hotelOfferData.isRefundable,
+        cancellationPolicy: hotelOfferData.cancellationPolicy,
+        paymentType: hotelOfferData.paymentType,
+        finalPrice: hotelOfferData.finalPrice,
+        markupAmount: hotelOfferData.markupAmount,
+        serviceFee: hotelOfferData.serviceFee,
+        // For room options, we need to create offers from the realData
+        offers: [{
+          id: hotelOfferData.offerId,
+          room: {
+            type: hotelOfferData.roomType,
+            typeEstimated: {
+              category: hotelOfferData.roomType,
+              beds: hotelOfferData.beds,
+              bedType: hotelOfferData.bedType
+            }
+          },
+          guests: {
+            adults: hotelOfferData.guests
+          },
+          price: {
+            total: hotelOfferData.price.toString(),
+            base: hotelOfferData.basePrice?.toString() || hotelOfferData.price.toString(),
+            currency: hotelOfferData.currency
+          },
+          policies: {
+            refundable: hotelOfferData.isRefundable ? {
+              cancellationRefund: "REFUNDABLE"
+            } : {
+              cancellationRefund: "NON_REFUNDABLE"
+            },
+            cancellations: hotelOfferData.cancellationPolicy ? [{
+              description: {
+                text: hotelOfferData.cancellationPolicy
+              }
+            }] : undefined
+          }
+        }]
+      };
+      
+      setHotelData(hotelFromRealData);
+      
     } catch (err: any) {
-      console.error("Error fetching hotel details:", err);
+      console.error("Error processing hotel details:", err);
       setError(err.message || "Failed to load hotel details. Please try again.");
       setHotelData(item);
     } finally {
@@ -128,6 +157,11 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
       });
     }
     
+    // If no images from hotel data, use item image
+    if (images.length === 0 && hotel.image) {
+      images.push(hotel.image);
+    }
+    
     if (images.length === 0) {
       return [
         "https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=1200",
@@ -148,148 +182,146 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const images = getImages();
 
   const parseRoomOptions = (): RoomOption[] => {
-    if (!hotel || !hotel.offers || !Array.isArray(hotel.offers) || hotel.offers.length === 0) {
-      return [
-        {
-          type: "Classic room",
-          guests: 2,
-          price: 110.0,
-          currency: "USD",
-          options: ["Free cancellation", "No prepayment"],
-        },
-        {
-          type: "Classic room",
-          guests: 2,
-          price: 125.0,
-          currency: "USD",
-          options: ["Free cancellation", "Breakfast included"],
-        },
-        {
-          type: "Double room",
-          guests: 2,
-          price: 135.0,
-          currency: "USD",
-          options: ["Free cancellation", "WiFi included"],
-        },
-        {
-          type: "Double room",
-          guests: 2,
-          price: 145.0,
-          currency: "USD",
-          options: ["Breakfast included", "No prepayment"],
-        },
-        {
-          type: "Classic room",
-          guests: 3,
-          price: 165.0,
-          currency: "USD",
-          options: ["Free cancellation", "Extra bed"],
-        },
-      ];
+    // First check if we have realData from API
+    if (hotel?.realData) {
+      const realData = hotel.realData;
+      return [{
+        type: realData.roomType || "Standard Room",
+        guests: realData.guests || 2,
+        price: realData.price || 0,
+        currency: realData.currency || "USD",
+        options: [
+          realData.isRefundable ? "Free cancellation" : "Non-refundable",
+          `${realData.beds || 1} ${realData.bedType || "bed"}`,
+          `${realData.nights || 1} night${(realData.nights || 1) > 1 ? 's' : ''}`
+        ],
+        offerId: realData.offerId
+      }];
+    }
+    
+    // Fallback to offers structure
+    if (hotel?.offers && Array.isArray(hotel.offers) && hotel.offers.length > 0) {
+      return hotel.offers.map((offer: any): RoomOption => {
+        const roomType = offer.room?.type || 
+                         offer.room?.typeEstimated?.category ||
+                         offer.room?.description?.text ||
+                         "Standard Room";
+        
+        const guests = offer.guests?.adults || 2;
+        
+        let price = 0;
+        let currency = "USD";
+        
+        if (offer.price) {
+          if (offer.price.total) {
+            price = parseFloat(offer.price.total);
+            currency = offer.price.currency || "USD";
+          } else if (offer.price.base) {
+            price = parseFloat(offer.price.base);
+            currency = offer.price.currency || "USD";
+          }
+        }
+        
+        const options: string[] = [];
+        
+        if (offer.policies?.refundable?.cancellationRefund === "REFUNDABLE" || 
+            offer.policies?.cancellation?.type === "FREE_CANCELLATION") {
+          options.push("Free cancellation");
+        } else {
+          options.push("Non-refundable");
+        }
+        
+        if (offer.room?.typeEstimated?.beds) {
+          options.push(`${offer.room.typeEstimated.beds} bed(s)`);
+        }
+        
+        if (offer.room?.description?.text) {
+          const desc = offer.room.description.text;
+          if (desc.length > 30) {
+            options.push(desc.substring(0, 30) + "...");
+          } else {
+            options.push(desc);
+          }
+        }
+        
+        if (options.length === 0) {
+          options.push("Standard amenities", "Free Wi-Fi");
+        }
+
+        return {
+          type: roomType,
+          guests: guests,
+          price: price,
+          currency: currency,
+          options: options,
+          offerId: offer.id
+        };
+      });
     }
 
-    return hotel.offers.map((offer: any): RoomOption => {
-      const roomType = offer.room?.type || 
-                       offer.room?.typeEstimated?.category ||
-                       offer.room?.description?.text ||
-                       "Standard Room";
-      
-      const guests = offer.guests?.adults || 2;
-      
-      let price = 110.0;
-      let currency = "USD";
-      
-      if (offer.price) {
-        if (offer.price.total) {
-          price = parseFloat(offer.price.total);
-          currency = offer.price.currency || "USD";
-        } else if (offer.price.base) {
-          price = parseFloat(offer.price.base);
-          currency = offer.price.currency || "USD";
-        }
+    // Fallback defaults
+    return [
+      {
+        type: "Classic room",
+        guests: 2,
+        price: hotel?.realData?.price || 110.0,
+        currency: hotel?.realData?.currency || "USD",
+        options: ["Free cancellation", "No prepayment"],
+        offerId: hotel?.realData?.offerId
       }
-      
-      const options: string[] = [];
-      
-      if (offer.policies?.cancellation?.type === "FREE_CANCELLATION") {
-        options.push("Free cancellation");
-      }
-      
-      if (offer.room?.typeEstimated?.beds) {
-        options.push(`${offer.room.typeEstimated.beds} bed(s)`);
-      }
-      
-      if (offer.room?.description?.text) {
-        const desc = offer.room.description.text;
-        if (desc.length > 30) {
-          options.push(desc.substring(0, 30) + "...");
-        } else {
-          options.push(desc);
-        }
-      }
-      
-      if (options.length === 0) {
-        options.push("Standard amenities", "Free Wi-Fi");
-      }
-
-      return {
-        type: roomType,
-        guests: guests,
-        price: price,
-        currency: currency,
-        options: options,
-        offerId: offer.id
-      };
-    });
+    ];
   };
 
   const roomOptions = parseRoomOptions();
 
   const parseAmenities = (): AmenityGroup[] => {
-    if (!hotel || !hotel.amenities || !Array.isArray(hotel.amenities)) {
-      return [
-        {
-          group: "Common",
-          items: ["Free Wi-Fi", "Swimming Pool", "Air Conditioning", "Flat-screen TV", "Ensuite Bathroom", "Balcony"]
-        },
-        {
-          group: "Kitchen",
-          items: ["Refrigerator", "Kitchenette", "Electric kettle", "Microwave", "Dining area", "Coffee machine"]
-        },
-        {
-          group: "Wellness",
-          items: ["Fitness center", "Spa and wellness center", "Massage", "Hot tub/Jacuzzi"]
-        },
-        {
-          group: "Services",
-          items: ["Room service", "24-hour front desk", "Concierge service", "Laundry", "Airport shuttle"]
-        },
-      ];
+    // If hotel has amenities from API
+    if (hotel?.amenities && Array.isArray(hotel.amenities)) {
+      const amenities: AmenityGroup[] = hotel.amenities.reduce((acc: AmenityGroup[], amenity: any): AmenityGroup[] => {
+        const group = amenity.category || "Common";
+        const existingGroup = acc.find(g => g.group === group);
+        
+        const amenityName = amenity.description || amenity.name || "Unknown";
+        
+        if (existingGroup) {
+          existingGroup.items.push(amenityName);
+        } else {
+          acc.push({
+            group: group,
+            items: [amenityName]
+          });
+        }
+        
+        return acc;
+      }, []);
+
+      return amenities;
     }
 
-    const amenities: AmenityGroup[] = hotel.amenities.reduce((acc: AmenityGroup[], amenity: any): AmenityGroup[] => {
-      const group = amenity.category || "Common";
-      const existingGroup = acc.find(g => g.group === group);
-      
-      const amenityName = amenity.description || amenity.name || "Unknown";
-      
-      if (existingGroup) {
-        existingGroup.items.push(amenityName);
-      } else {
-        acc.push({
-          group: group,
-          items: [amenityName]
-        });
-      }
-      
-      return acc;
-    }, []);
-
-    return amenities;
+    // Fallback amenities
+    return [
+      {
+        group: "Common",
+        items: ["Free Wi-Fi", "Swimming Pool", "Air Conditioning", "Flat-screen TV", "Ensuite Bathroom", "Balcony"]
+      },
+      {
+        group: "Kitchen",
+        items: ["Refrigerator", "Kitchenette", "Electric kettle", "Microwave", "Dining area", "Coffee machine"]
+      },
+      {
+        group: "Wellness",
+        items: ["Fitness center", "Spa and wellness center", "Massage", "Hot tub/Jacuzzi"]
+      },
+      {
+        group: "Services",
+        items: ["Room service", "24-hour front desk", "Concierge service", "Laundry", "Airport shuttle"]
+      },
+    ];
   };
 
   const amenities = parseAmenities();
 
+  // Rest of the component remains the same...
   const openGallery = (index: number) => {
     setCurrentImageIndex(index);
     setIsGalleryOpen(true);
@@ -339,6 +371,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
       label: "Cancellation / Prepayment",
       value:
         hotel.cancellationPolicy ||
+        hotel.realData?.cancellationPolicy ||
         "Cancellation and prepayment policies vary according to accommodation type. Please enter the dates of your stay and check the conditions of your required room.",
     },
     {
@@ -363,7 +396,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
           </h2>
           <div className="text-sm text-gray-500 font-medium leading-relaxed space-y-4">
             <p>
-              {hotel.description || hotel.hotel?.description?.text || `${hotel.name || hotel.title} provides premium, air-conditioned accommodations with free Wi-Fi in a prime urban location. Every suite is meticulously designed to offer a perfect blend of modern comfort and sophisticated local style.`}
+              {hotel.description || hotel.hotel?.description?.text || `${hotel.name || hotel.title || "This premium hotel"} provides premium, air-conditioned accommodations with free Wi-Fi in a prime urban location. Every suite is meticulously designed to offer a perfect blend of modern comfort and sophisticated local style.`}
             </p>
             <p>
               Featuring state-of-the-art facilities, guests can enjoy a seamless stay with high-speed connectivity and luxury bedding. The property is ideally situated within walking distance of the city's main attractions.
@@ -571,14 +604,17 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const renderAmenities = () => (
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-10">
-        {amenities.map((group: AmenityGroup) => (
-          <div key={group.group}>
+        {amenities.map((group: AmenityGroup, groupIndex) => (
+          <div key={`group-${groupIndex}`}>
             <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6 border-b border-gray-50 pb-2">
               {group.group}
             </h3>
             <div className="grid grid-cols-2 gap-y-4">
-              {group.items.map((amenity: string) => (
-                <div key={amenity} className="flex items-center gap-3">
+              {group.items.map((amenity: string, amenityIndex) => (
+                <div 
+                  key={`amenity-${groupIndex}-${amenityIndex}`} 
+                  className="flex items-center gap-3"
+                >
                   <div className="w-1.5 h-1.5 bg-[#33a8da] rounded-full"></div>
                   <span className="text-sm font-bold text-gray-700">
                     {amenity}
@@ -689,7 +725,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-10">
             <div>
               <h1 className="text-3xl md:text-5xl font-black text-gray-900 tracking-tighter leading-none mb-3">
-                {hotel.name || hotel.title}
+                {hotel.name || hotel.title || "Premium Hotel"}
               </h1>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5 text-[#33a8da]">
@@ -701,7 +737,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                     <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
                   </svg>
                   <span className="text-xs font-bold text-gray-500">
-                    {hotel.subtitle || hotel.address?.cityName || "City"}
+                    {hotel.subtitle || hotel.address?.cityName || hotel.realData?.location || "City"}
                   </span>
                 </div>
                 <button className="text-[10px] font-black text-[#33a8da] uppercase tracking-widest hover:underline">
@@ -732,7 +768,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                 </svg>
               </button>
               <div className="bg-[#33a8da] text-white font-black px-4 py-2.5 rounded-xl text-lg tracking-tighter shadow-lg shadow-blue-500/20">
-                4.9
+                {hotel.rating || "4.9"}
               </div>
             </div>
           </div>
@@ -864,7 +900,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                         Starting at
                       </p>
                       <p className="text-4xl font-black text-gray-900 tracking-tighter leading-none">
-                        {roomOptions[0]?.currency || "USD"} {roomOptions[0]?.price?.toFixed(2) || "110.00"}
+                        {roomOptions[0]?.currency || "USD"} {roomOptions[0]?.price?.toFixed(2) || "0.00"}
                       </p>
                     </div>
                     <div className="text-right">
@@ -883,7 +919,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                         Selected Dates
                       </span>
                       <span className="text-xs font-bold text-gray-900">
-                        {searchParams?.checkInDate || "Dec 26"} - {searchParams?.checkOutDate || "Dec 30"}
+                        {searchParams?.checkInDate || hotel.realData?.checkInDate || "Dec 26"} - {searchParams?.checkOutDate || hotel.realData?.checkOutDate || "Dec 30"}
                       </span>
                     </div>
                     <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
@@ -891,7 +927,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                         Guests
                       </span>
                       <span className="text-xs font-bold text-gray-900">
-                        {searchParams?.adults || 2} Adult(s)
+                        {searchParams?.adults || hotel.realData?.guests || 2} Adult(s)
                       </span>
                     </div>
                   </div>
