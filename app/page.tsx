@@ -67,6 +67,7 @@ export interface SearchParams {
   checkInDate?: string;
   checkOutDate?: string;
   guests?: number;
+  adults?: number; // Added adults field
   rooms?: number;
   currency?: string;
   carPickUp?: string;
@@ -334,6 +335,7 @@ export default function Home() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
+  const [hotelSearchParams, setHotelSearchParams] = useState<SearchParams | null>(null); // NEW: Separate hotel params
   const [selectedItem, setSelectedItem] = useState<SearchResult | null>(null);
   const [searchTime, setSearchTime] = useState<number>(0);
   const [isRealApiUsed, setIsRealApiUsed] = useState(false);
@@ -457,20 +459,14 @@ export default function Home() {
     }
   }, []);
 
-// UPDATED useEffect dependencies
-useEffect(() => {
-  if (isLoggedIn && user.name && user.email) {
-    localStorage.setItem("travelUser", JSON.stringify(user));
-  } else if (!isLoggedIn) {
-    localStorage.removeItem("travelUser");
-  }
-}, [user, isLoggedIn]); // Add isLoggedIn dependency
-
-useEffect(() => {
-  if (isLoggedIn) {
-    localStorage.setItem("travelBookings", JSON.stringify(userBookings));
-  }
-}, [userBookings, isLoggedIn]); // Add isLoggedIn dependency
+  // UPDATED useEffect dependencies
+  useEffect(() => {
+    if (isLoggedIn && user.name && user.email) {
+      localStorage.setItem("travelUser", JSON.stringify(user));
+    } else if (!isLoggedIn) {
+      localStorage.removeItem("travelUser");
+    }
+  }, [user, isLoggedIn]);
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -486,7 +482,7 @@ useEffect(() => {
         data.location || "Lagos",
         data.checkInDate,
         data.checkOutDate,
-        data.guests || 2,
+        data.guests || data.adults || 2, // Use adults if guests not provided
         data.rooms || 1
       );
 
@@ -506,7 +502,7 @@ useEffect(() => {
                   data.location?.toLowerCase().includes('london') ? 'LON' : 'LON',
         checkInDate: data.checkInDate || tomorrow.toISOString().split('T')[0],
         checkOutDate: data.checkOutDate || checkOut.toISOString().split('T')[0],
-        adults: data.guests || 2,
+        adults: data.guests || data.adults || 2,
         roomQuantity: data.rooms || 1,
         currency: 'GBP',
         bestRateOnly: true
@@ -567,190 +563,202 @@ useEffect(() => {
     }
   }, []);
 
-// UPDATED: Handle payment completion with proper dependencies
-const handlePaymentComplete = useCallback(async (bookingId: string, isGuest: boolean = false) => {
-  try {
-    console.log("💳 Processing payment for booking:", bookingId);
-    
-    // Close payment modal
-    setShowPayment(false);
-    
-    // Create local booking record
-    if (selectedItem && searchParams) {
-      const newBooking: Booking = {
-        id: bookingId || Date.now().toString(),
-        type: selectedItem.type === "flights" ? "flight" : selectedItem.type === "hotels" ? "hotel" : "car",
-        title: selectedItem.type === "flights" 
-          ? `${searchParams.segments?.[0]?.from || "LOS"} to ${searchParams.segments?.[0]?.to || "ABV"}`
-          : selectedItem.title,
-        provider: selectedItem.provider,
-        subtitle: selectedItem.subtitle,
-        date: new Date().toLocaleDateString("en-US", { 
-          year: "numeric", 
-          month: "short", 
-          day: "numeric" 
-        }),
-        duration: selectedItem.duration,
-        status: "Confirmed",
-        price: selectedItem.price,
-        currency: "NGN",
-        iconBg: selectedItem.type === "flights" ? "bg-blue-50" : selectedItem.type === "hotels" ? "bg-yellow-50" : "bg-purple-50",
-        imageUrl: selectedItem.image,
-        bookingReference: currentBooking?.bookingReference || `#${Date.now().toString().slice(-6)}`,
-        time: new Date().toLocaleTimeString([], { 
-          hour: "2-digit", 
-          minute: "2-digit" 
-        }),
-        paymentStatus: "paid",
-        bookingData: {
-          origin: searchParams.segments?.[0]?.from,
-          destination: searchParams.segments?.[0]?.to,
-          departureDate: searchParams.segments?.[0]?.date,
-          airline: selectedItem.provider,
-          flightNumber: selectedItem.realData?.flightNumber,
-          ...(selectedItem.type === "hotels" && selectedItem.realData && {
-            hotelId: selectedItem.realData.hotelId,
-            hotelName: selectedItem.title,
-            checkInDate: selectedItem.realData.checkInDate,
-            checkOutDate: selectedItem.realData.checkOutDate,
-            guests: selectedItem.realData.guests,
-            rooms: selectedItem.realData.rooms,
-            nights: selectedItem.realData.nights
-          })
-        }
+  // UPDATED: Handle payment completion with proper dependencies
+  const handlePaymentComplete = useCallback(async (bookingId: string, isGuest: boolean = false) => {
+    try {
+      console.log("💳 Processing payment for booking:", bookingId);
+      
+      // Close payment modal
+      setShowPayment(false);
+      
+      // Create local booking record
+      if (selectedItem && searchParams) {
+        const newBooking: Booking = {
+          id: bookingId || Date.now().toString(),
+          type: selectedItem.type === "flights" ? "flight" : selectedItem.type === "hotels" ? "hotel" : "car",
+          title: selectedItem.type === "flights" 
+            ? `${searchParams.segments?.[0]?.from || "LOS"} to ${searchParams.segments?.[0]?.to || "ABV"}`
+            : selectedItem.title,
+          provider: selectedItem.provider,
+          subtitle: selectedItem.subtitle,
+          date: new Date().toLocaleDateString("en-US", { 
+            year: "numeric", 
+            month: "short", 
+            day: "numeric" 
+          }),
+          duration: selectedItem.duration,
+          status: "Confirmed",
+          price: selectedItem.price,
+          currency: "NGN",
+          iconBg: selectedItem.type === "flights" ? "bg-blue-50" : selectedItem.type === "hotels" ? "bg-yellow-50" : "bg-purple-50",
+          imageUrl: selectedItem.image,
+          bookingReference: currentBooking?.bookingReference || `#${Date.now().toString().slice(-6)}`,
+          time: new Date().toLocaleTimeString([], { 
+            hour: "2-digit", 
+            minute: "2-digit" 
+          }),
+          paymentStatus: "paid",
+          bookingData: {
+            origin: searchParams.segments?.[0]?.from,
+            destination: searchParams.segments?.[0]?.to,
+            departureDate: searchParams.segments?.[0]?.date,
+            airline: selectedItem.provider,
+            flightNumber: selectedItem.realData?.flightNumber,
+            ...(selectedItem.type === "hotels" && selectedItem.realData && {
+              hotelId: selectedItem.realData.hotelId,
+              hotelName: selectedItem.title,
+              checkInDate: selectedItem.realData.checkInDate,
+              checkOutDate: selectedItem.realData.checkOutDate,
+              guests: selectedItem.realData.guests,
+              rooms: selectedItem.realData.rooms,
+              nights: selectedItem.realData.nights
+            })
+          }
+        };
+
+        setUserBookings(prev => [newBooking, ...prev]);
+      }
+      
+      // Navigate to success page
+      setCurrentView("success");
+      
+      return { success: true };
+    } catch (error: any) {
+      console.error("❌ Payment completion error:", error);
+      setCurrentView("failed");
+      return { 
+        success: false, 
+        error: error.message || "Payment processing failed" 
       };
-
-      setUserBookings(prev => [newBooking, ...prev]);
     }
-    
-    // Navigate to success page
-    setCurrentView("success");
-    
-    return { success: true };
-  } catch (error: any) {
-    console.error("❌ Payment completion error:", error);
-    setCurrentView("failed");
-    return { 
-      success: false, 
-      error: error.message || "Payment processing failed" 
-    };
-  }
-}, [selectedItem, searchParams, currentBooking, setShowPayment, setCurrentView]); // ADDED all setters
+  }, [selectedItem, searchParams, currentBooking]);
 
-// UPDATED: Booking completion with payment flow - now handles hotels
-const handleBookingComplete = useCallback(async (guestData?: any) => {
-  if (!selectedItem || !searchParams) {
-    console.error("Cannot complete booking: missing item or params");
-    setCurrentView("failed");
-    return;
-  }
+  // UPDATED: Booking completion with payment flow - now handles hotels
+  const handleBookingComplete = useCallback(async (guestData?: any) => {
+    if (!selectedItem || !searchParams) {
+      console.error("Cannot complete booking: missing item or params");
+      setCurrentView("failed");
+      return;
+    }
 
-  // Determine booking type
-  const isHotel = selectedItem.type === "hotels";
-  const isCar = selectedItem.type === "car-rentals";
-  const isFlight = selectedItem.type === "flights";
+    // Determine booking type
+    const isHotel = selectedItem.type === "hotels";
+    const isCar = selectedItem.type === "car-rentals";
+    const isFlight = selectedItem.type === "flights";
 
-  // Extract numeric price from realData if available, otherwise from price string
-  let basePrice = 0;
-  if (selectedItem.realData?.price) {
-    basePrice = selectedItem.realData.price;
-  } else {
-    const priceStr = selectedItem.price.replace(/[^\d.]/g, '');
-    basePrice = parseFloat(priceStr) || (isHotel ? 95000 : 150);
-  }
-  
-  const priceInCents = Math.round(basePrice * 100); // Convert to cents/kobo
-
-  // Format dates
-  const departureDate = new Date(searchParams.segments?.[0]?.date || Date.now());
-  const arrivalDate = new Date(departureDate.getTime() + 90 * 60 * 1000); // 90 minutes later
-
-  // HOTEL SPECIFIC: Get hotel data from selected item
-  const hotelData = selectedItem.realData;
-
-  // Determine provider and product type based on item type
-  let provider = "BOOKING_COM"; // Default for hotels
-  let productType = "HOTEL";
-  
-  if (isFlight) {
-    // Check if it's a domestic or international flight
-    const isDomesticFlight = selectedItem.type === "flights" && 
-      ((selectedItem.subtitle && selectedItem.subtitle.includes("Lagos") && selectedItem.subtitle.includes("Abuja")) ||
-       (searchParams.segments?.[0]?.from?.includes("LOS") && searchParams.segments?.[0]?.to?.includes("ABV")) ||
-       (searchParams.segments?.[0]?.from?.includes("LOS") && searchParams.segments?.[0]?.to?.includes("LOS")));
-
-    if (isDomesticFlight) {
-      provider = "TRIPS_AFRICA";
-      productType = "FLIGHT_DOMESTIC";
+    // Extract numeric price from realData if available, otherwise from price string
+    let basePrice = 0;
+    if (selectedItem.realData?.price) {
+      basePrice = selectedItem.realData.price;
     } else {
-      provider = "DUFFEL";
-      productType = "FLIGHT_INTERNATIONAL";
+      const priceStr = selectedItem.price.replace(/[^\d.]/g, '');
+      basePrice = parseFloat(priceStr) || (isHotel ? 95000 : 150);
     }
-  } else if (isCar) {
-    provider = "BOOKING_COM";
-    productType = "CAR_RENTAL";
-  }
+    
+    const priceInCents = Math.round(basePrice * 100); // Convert to cents/kobo
 
-  // Prepare booking payload - DIFFERENT FOR HOTELS VS FLIGHTS
-  const bookingData: any = {
-    productType,
-    provider,
-    basePrice: priceInCents,
-    currency: selectedItem.realData?.currency || "NGN",
-    bookingData: {
-      offerId: selectedItem.realData?.offerId || selectedItem.id,
-      ...(isFlight && {
-        origin: searchParams.segments?.[0]?.from || "LOS",
-        destination: searchParams.segments?.[0]?.to || "ABV",
-        departureDate: departureDate.toISOString(),
-        arrivalDate: arrivalDate.toISOString(),
-        airline: selectedItem.provider,
-        class: searchParams.cabinClass || "Economy"
-      }),
-      ...(isHotel && {
-        hotelId: hotelData?.hotelId || selectedItem.id,
-        offerId: hotelData?.offerId || selectedItem.id,
-        hotelName: selectedItem.title,
-        checkInDate: hotelData?.checkInDate || searchParams.checkInDate || new Date().toISOString(),
-        checkOutDate: hotelData?.checkOutDate || searchParams.checkOutDate || new Date(Date.now() + 86400000 * 3).toISOString(), // +3 days
-        guests: hotelData?.guests || searchParams.guests || 2,
-        rooms: hotelData?.rooms || searchParams.rooms || 1,
-        location: searchParams.location || "Lagos",
-        roomType: hotelData?.roomType || "Standard Room",
-        nights: hotelData?.nights || 3
-      }),
-      ...(isCar && {
-        carId: selectedItem.id,
-        carModel: selectedItem.title,
-        pickUpDate: searchParams.pickUpDate || new Date().toISOString(),
-        dropOffDate: searchParams.dropOffDate || new Date(Date.now() + 86400000 * 2).toISOString(), // +2 days
-        pickUpLocation: searchParams.carPickUp || "Lagos Airport"
-      })
-    },
-    passengerInfo: {
-      firstName: guestData?.firstName || user.name?.split(' ')[0] || "John",
-      lastName: guestData?.lastName || user.name?.split(' ')[1] || "Doe",
-      email: guestData?.email || user.email || "guest@example.com",
-      phone: guestData?.phone || user.phone || "+2348012345678",
-      ...(isLoggedIn && user.dob && { dateOfBirth: user.dob })
+    // Format dates
+    const departureDate = new Date(searchParams.segments?.[0]?.date || Date.now());
+    const arrivalDate = new Date(departureDate.getTime() + 90 * 60 * 1000); // 90 minutes later
+
+    // HOTEL SPECIFIC: Get hotel data from selected item
+    const hotelData = selectedItem.realData;
+
+    // Determine provider and product type based on item type
+    let provider = "BOOKING_COM"; // Default for hotels
+    let productType = "HOTEL";
+    
+    if (isFlight) {
+      // Check if it's a domestic or international flight
+      const isDomesticFlight = selectedItem.type === "flights" && 
+        ((selectedItem.subtitle && selectedItem.subtitle.includes("Lagos") && selectedItem.subtitle.includes("Abuja")) ||
+         (searchParams.segments?.[0]?.from?.includes("LOS") && searchParams.segments?.[0]?.to?.includes("ABV")) ||
+         (searchParams.segments?.[0]?.from?.includes("LOS") && searchParams.segments?.[0]?.to?.includes("LOS")));
+
+      if (isDomesticFlight) {
+        provider = "TRIPS_AFRICA";
+        productType = "FLIGHT_DOMESTIC";
+      } else {
+        provider = "DUFFEL";
+        productType = "FLIGHT_INTERNATIONAL";
+      }
+    } else if (isCar) {
+      provider = "BOOKING_COM";
+      productType = "CAR_RENTAL";
     }
-  };
 
-  console.log("🚀 Final booking payload:", bookingData);
-  
-  // Create booking (this will trigger payment flow)
-  const result = await handleCreateBooking(bookingData, !!guestData);
+    // Prepare booking payload - DIFFERENT FOR HOTELS VS FLIGHTS
+    const bookingData: any = {
+      productType,
+      provider,
+      basePrice: priceInCents,
+      currency: selectedItem.realData?.currency || "NGN",
+      bookingData: {
+        offerId: selectedItem.realData?.offerId || selectedItem.id,
+        ...(isFlight && {
+          origin: searchParams.segments?.[0]?.from || "LOS",
+          destination: searchParams.segments?.[0]?.to || "ABV",
+          departureDate: departureDate.toISOString(),
+          arrivalDate: arrivalDate.toISOString(),
+          airline: selectedItem.provider,
+          class: searchParams.cabinClass || "Economy"
+        }),
+        ...(isHotel && {
+          hotelId: hotelData?.hotelId || selectedItem.id,
+          offerId: hotelData?.offerId || selectedItem.id,
+          hotelName: selectedItem.title,
+          checkInDate: hotelData?.checkInDate || searchParams.checkInDate || new Date().toISOString(),
+          checkOutDate: hotelData?.checkOutDate || searchParams.checkOutDate || new Date(Date.now() + 86400000 * 3).toISOString(), // +3 days
+          guests: hotelData?.guests || searchParams.guests || 2,
+          rooms: hotelData?.rooms || searchParams.rooms || 1,
+          location: searchParams.location || "Lagos",
+          roomType: hotelData?.roomType || "Standard Room",
+          nights: hotelData?.nights || 3
+        }),
+        ...(isCar && {
+          carId: selectedItem.id,
+          carModel: selectedItem.title,
+          pickUpDate: searchParams.pickUpDate || new Date().toISOString(),
+          dropOffDate: searchParams.dropOffDate || new Date(Date.now() + 86400000 * 2).toISOString(), // +2 days
+          pickUpLocation: searchParams.carPickUp || "Lagos Airport"
+        })
+      },
+      passengerInfo: {
+        firstName: guestData?.firstName || user.name?.split(' ')[0] || "John",
+        lastName: guestData?.lastName || user.name?.split(' ')[1] || "Doe",
+        email: guestData?.email || user.email || "guest@example.com",
+        phone: guestData?.phone || user.phone || "+2348012345678",
+        ...(isLoggedIn && user.dob && { dateOfBirth: user.dob })
+      }
+    };
 
-  if (!result.success) {
-    console.error("❌ Booking failed with error:", result.error);
-    setCurrentView("failed");
-  }
-}, [selectedItem, searchParams, user, isLoggedIn, handleCreateBooking]); // ADDED handleCreateBooking dependency
+    console.log("🚀 Final booking payload:", bookingData);
+    
+    // Create booking (this will trigger payment flow)
+    const result = await handleCreateBooking(bookingData, !!guestData);
+
+    if (!result.success) {
+      console.error("❌ Booking failed with error:", result.error);
+      setCurrentView("failed");
+    }
+  }, [selectedItem, searchParams, user, isLoggedIn, handleCreateBooking]);
 
   // UPDATED: Search handler using the new utility function
   const handleSearch = useCallback(async (data: SearchParams) => {
     const startTime = Date.now();
     setSearchParams(data);
+    
+    // Store hotel search parameters separately with adults/guests explicitly set
+    if (data.type === "hotels") {
+      setHotelSearchParams({
+        ...data,
+        adults: data.guests || data.adults || 1, // Ensure adults is set
+        guests: data.guests || data.adults || 1, // Ensure guests is set
+      });
+    } else {
+      setHotelSearchParams(null); // Clear hotel params for non-hotel searches
+    }
+    
     setIsSearching(true);
     setSearchError(null);
     setSearchResults([]);
@@ -1021,7 +1029,7 @@ const handleBookingComplete = useCallback(async (guestData?: any) => {
         setCurrentView("profile");
       }
     },
-    [user, currentView, setUser, setIsLoggedIn, setIsAuthOpen, setAuthToken, setCurrentView] // ADDED all setters
+    [user, currentView]
   );
 
   const handleSignOut = useCallback(() => {
@@ -1151,7 +1159,7 @@ const handleBookingComplete = useCallback(async (guestData?: any) => {
         setCurrentView("profile");
       }
     },
-    [user, currentView, setUser, setIsLoggedIn, setIsAuthOpen, setAuthToken, setUserBookings, setCurrentView] // ADDED all setters
+    [user, currentView]
   );
 
   const handleBookItem = useCallback((item: any) => {
@@ -1193,6 +1201,7 @@ const handleBookingComplete = useCallback(async (guestData?: any) => {
     setSearchResults([]);
     setSearchError(null);
     setApiValidationErrors([]);
+    setHotelSearchParams(null); // Clear hotel params
   }, []);
 
   const handleBookingFailed = useCallback(() => {
@@ -1222,133 +1231,197 @@ const handleBookingComplete = useCallback(async (guestData?: any) => {
     setIsAuthOpen(true);
   }, []);
 
-// UPDATED PaymentModal component with useCallback for functions
-const PaymentModal = () => {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [paymentInitiated, setPaymentInitiated] = useState(false);
+  // PaymentModal component
+  const PaymentModal = () => {
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [paymentInitiated, setPaymentInitiated] = useState(false);
 
-  // Memoize helper functions
-  const getCurrencySymbol = useCallback((currency: string) => {
-    const symbols: Record<string, string> = {
-      'USD': '$',
-      'GBP': '£',
-      'EUR': '€',
-      'NGN': '₦',
-    };
-    return symbols[currency.toUpperCase()] || currency;
-  }, []);
+    const getCurrencySymbol = useCallback((currency: string) => {
+      const symbols: Record<string, string> = {
+        'USD': '$',
+        'GBP': '£',
+        'EUR': '€',
+        'NGN': '₦',
+      };
+      return symbols[currency.toUpperCase()] || currency;
+    }, []);
 
-  const formatAmount = useCallback((amount: number, currency: string) => {
-    const symbol = getCurrencySymbol(currency);
-    return `${symbol}${amount.toLocaleString()}`;
-  }, [getCurrencySymbol]);
+    const formatAmount = useCallback((amount: number, currency: string) => {
+      const symbol = getCurrencySymbol(currency);
+      return `${symbol}${amount.toLocaleString()}`;
+    }, [getCurrencySymbol]);
 
-  const getActualAmount = useCallback(() => {
-    if (!currentBooking) return { amount: 0, currency: 'NGN' };
-    
-    const amount = currentBooking.totalAmount || 0;
-    const currency = currentBooking.currency || 'NGN';
-    
-    return { 
-      displayAmount: amount, 
-      stripeAmount: Math.round(amount * 100),
-      currency 
-    };
-  }, [currentBooking]);
-
-  const handlePayment = useCallback(async () => {
-    if (!currentBooking) return;
-    
-    setLoading(true);
-    setError(null);
-
-    try {
-      const { stripeAmount, currency } = getActualAmount();
+    const getActualAmount = useCallback(() => {
+      if (!currentBooking) return { amount: 0, currency: 'NGN' };
       
-      let paymentResult;
+      const amount = currentBooking.totalAmount || 0;
+      const currency = currentBooking.currency || 'NGN';
       
-      if (currentBooking.isGuest) {
-        // Guest payment
-        paymentResult = await paymentApi.createGuestStripeIntent(
-          currentBooking.bookingReference,
-          currentBooking.passengerInfo?.email || "guest@example.com",
-          stripeAmount,
-          currency.toLowerCase()
-        );
-      } else {
-        // Authenticated user payment
-        paymentResult = await paymentApi.createStripeIntent(
-          currentBooking.id,
-          stripeAmount,
-          currency.toLowerCase()
-        );
-      }
+      return { 
+        displayAmount: amount, 
+        stripeAmount: Math.round(amount * 100),
+        currency 
+      };
+    }, [currentBooking]);
 
-      if (paymentResult.clientSecret) {
-        setPaymentInitiated(true);
+    const handlePayment = useCallback(async () => {
+      if (!currentBooking) return;
+      
+      setLoading(true);
+      setError(null);
+
+      try {
+        const { stripeAmount, currency } = getActualAmount();
         
-        // Initialize Stripe and redirect to payment
-        const stripe = await stripePromise;
-        if (stripe) {
-          const { error: stripeError } = await stripe.confirmCardPayment(
-            paymentResult.clientSecret,
-            {
-              payment_method: {
-                card: {
-                  number: '4242424242424242',
-                  exp_month: 12,
-                  exp_year: 2026,
-                  cvc: '123',
-                } as any,
-                billing_details: {
-                  name: `${currentBooking.passengerInfo?.firstName || 'Guest'} ${currentBooking.passengerInfo?.lastName || 'User'}`,
-                  email: currentBooking.passengerInfo?.email || 'guest@example.com',
-                  phone: currentBooking.passengerInfo?.phone || '+2348012345678',
-                },
-              },
-            }
+        let paymentResult;
+        
+        if (currentBooking.isGuest) {
+          // Guest payment
+          paymentResult = await paymentApi.createGuestStripeIntent(
+            currentBooking.bookingReference,
+            currentBooking.passengerInfo?.email || "guest@example.com",
+            stripeAmount,
+            currency.toLowerCase()
           );
-
-          if (stripeError) {
-            throw new Error(stripeError.message);
-          }
-
-          // Payment successful
-          await handlePaymentComplete(currentBooking.id, currentBooking.isGuest);
+        } else {
+          // Authenticated user payment
+          paymentResult = await paymentApi.createStripeIntent(
+            currentBooking.id,
+            stripeAmount,
+            currency.toLowerCase()
+          );
         }
-      } else {
-        throw new Error('Failed to create payment intent');
+
+        if (paymentResult.clientSecret) {
+          setPaymentInitiated(true);
+          
+          // Initialize Stripe and redirect to payment
+          const stripe = await stripePromise;
+          if (stripe) {
+            const { error: stripeError } = await stripe.confirmCardPayment(
+              paymentResult.clientSecret,
+              {
+                payment_method: {
+                  card: {
+                    number: '4242424242424242',
+                    exp_month: 12,
+                    exp_year: 2026,
+                    cvc: '123',
+                  } as any,
+                  billing_details: {
+                    name: `${currentBooking.passengerInfo?.firstName || 'Guest'} ${currentBooking.passengerInfo?.lastName || 'User'}`,
+                    email: currentBooking.passengerInfo?.email || 'guest@example.com',
+                    phone: currentBooking.passengerInfo?.phone || '+2348012345678',
+                  },
+                },
+              }
+            );
+
+            if (stripeError) {
+              throw new Error(stripeError.message);
+            }
+
+            // Payment successful
+            await handlePaymentComplete(currentBooking.id, currentBooking.isGuest);
+          }
+        } else {
+          throw new Error('Failed to create payment intent');
+        }
+      } catch (err: any) {
+        console.error('Payment error:', err);
+        setError(err.message || 'Payment failed. Please try again.');
+      } finally {
+        setLoading(false);
       }
-    } catch (err: any) {
-      console.error('Payment error:', err);
-      setError(err.message || 'Payment failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [currentBooking, getActualAmount, handlePaymentComplete]);
+    }, [currentBooking, getActualAmount, handlePaymentComplete]);
 
-  if (!showPayment || !currentBooking) return null;
+    if (!showPayment || !currentBooking) return null;
 
-  const { displayAmount, currency } = getActualAmount();
+    const { displayAmount, currency } = getActualAmount();
 
-  // ... rest of the component JSX remains the same
-};
-useEffect(() => {
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "k") {
-      e.preventDefault();
-      setIsAiOpen(true);
-    }
-    if (e.key === "Escape") {
-      if (isAiOpen) setIsAiOpen(false);
-      if (isAuthOpen) setIsAuthOpen(false);
-    }
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900">Complete Payment</h2>
+            <button
+              onClick={() => setShowPayment(false)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              ✕
+            </button>
+          </div>
+          
+          <div className="mb-6">
+            <div className="bg-gray-50 rounded-xl p-4 mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-gray-600">Booking Reference</span>
+                <span className="font-bold text-gray-900">{currentBooking.bookingReference}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">Total Amount</span>
+                <span className="text-2xl font-bold text-gray-900">
+                  {formatAmount(displayAmount, currency)}
+                </span>
+              </div>
+            </div>
+            
+            {error && (
+              <div className="bg-red-50 text-red-700 p-3 rounded-lg mb-4">
+                {error}
+              </div>
+            )}
+            
+            <div className="text-sm text-gray-500 mb-4">
+              {paymentInitiated ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-2"></div>
+                  Processing payment...
+                </div>
+              ) : (
+                "Click 'Pay Now' to proceed with secure payment"
+              )}
+            </div>
+          </div>
+          
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowPayment(false)}
+              className="flex-1 py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition"
+              disabled={loading || paymentInitiated}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handlePayment}
+              disabled={loading || paymentInitiated}
+              className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold rounded-xl shadow-lg hover:from-blue-600 hover:to-blue-700 transition disabled:opacity-50"
+            >
+              {loading || paymentInitiated ? "Processing..." : "Pay Now"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
-  window.addEventListener("keydown", handleKeyDown);
-  return () => window.removeEventListener("keydown", handleKeyDown);
-}, [isAiOpen, isAuthOpen, setIsAiOpen, setIsAuthOpen]); // ADDED setIsAiOpen and setIsAuthOpen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setIsAiOpen(true);
+      }
+      if (e.key === "Escape") {
+        if (isAiOpen) setIsAiOpen(false);
+        if (isAuthOpen) setIsAuthOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isAiOpen, isAuthOpen]);
+
   // Scroll to top on home view
   useEffect(() => {
     if (currentView === "home") {
@@ -1373,8 +1446,8 @@ useEffect(() => {
         <Navbar
           isLoggedIn={isLoggedIn}
           user={user}
-          activeTab={activeTab} // Use the single source of truth
-          onTabClick={setActiveTab} // Update the single source of truth
+          activeTab={activeTab}
+          onTabClick={setActiveTab}
           onSignIn={() => openAuth("login")}
           onRegister={() => openAuth("register")}
           onProfileClick={navigateToProfile}
@@ -1390,8 +1463,8 @@ useEffect(() => {
           <Hero 
             onSearch={handleSearch} 
             loading={isSearching}
-            activeSearchTab={activeTab} // Use the same activeTab
-            onTabChange={setActiveTab} // Update the same activeTab
+            activeSearchTab={activeTab}
+            onTabChange={setActiveTab}
           />
           
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-0">
@@ -1574,9 +1647,25 @@ useEffect(() => {
       {currentView === "hotel-details" && selectedItem && (
         <HotelDetails
           item={selectedItem}
-          searchParams={searchParams}
+          searchParams={
+            // Use hotelSearchParams first (contains the actual search values)
+            hotelSearchParams || {
+              // Fallback with proper values
+              adults: 1,
+              guests: 1,
+              checkInDate: new Date().toISOString().split('T')[0],
+              checkOutDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+              cityCode: "LON",
+              roomQuantity: 1,
+              currency: "USD",
+              bestRateOnly: true,
+            }
+          }
           onBack={() => setCurrentView("home")}
-          onBook={() => setCurrentView("review")}
+          onBook={(room) => {
+            setCurrentView("review");
+            // You might want to store the selected room here
+          }}
         />
       )}
 

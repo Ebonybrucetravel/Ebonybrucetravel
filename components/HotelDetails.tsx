@@ -34,19 +34,67 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const [hotelData, setHotelData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   useEffect(() => {
-    console.log("Hotel Details Component Mounted with item:", item);
+    console.log("=== HOTEL DETAILS DEBUG ===");
+    console.log("Hotel Details Component Mounted");
+    console.log("Item:", item);
     console.log("Item has realData:", item?.realData);
+    console.log("Full searchParams object:", searchParams);
+    console.log("searchParams?.adults value:", searchParams?.adults);
+    console.log("Type of searchParams?.adults:", typeof searchParams?.adults);
+    console.log("===========================");
+    
     window.scrollTo(0, 0);
     if (item) {
       fetchHotelDetails();
     }
   }, [item]);
 
+  // Helper function to parse adults from searchParams
+  const parseAdultsFromSearchParams = (): number => {
+    const adultsFromSearch = searchParams?.adults;
+    
+    console.log("parseAdultsFromSearchParams called with:", adultsFromSearch);
+    
+    if (adultsFromSearch === undefined || adultsFromSearch === null) {
+      console.log("No adults found in searchParams, checking item.realData...");
+      // Check if item.realData has guests
+      if (item?.realData?.guests) {
+        console.log("Found guests in item.realData:", item.realData.guests);
+        return parseInt(item.realData.guests, 10) || 1;
+      }
+      console.log("No guests found anywhere, defaulting to 1");
+      return 1; // Default to 1, not 2
+    }
+    
+    let parsedAdults = 1; // Default to 1, not 2
+    
+    if (typeof adultsFromSearch === 'string') {
+      parsedAdults = parseInt(adultsFromSearch, 10);
+      console.log("Parsed string adultsFromSearch:", adultsFromSearch, "to:", parsedAdults);
+    } else if (typeof adultsFromSearch === 'number') {
+      parsedAdults = adultsFromSearch;
+      console.log("Using number adultsFromSearch:", adultsFromSearch);
+    }
+    
+    // If parsing failed or resulted in 0, use 1
+    if (isNaN(parsedAdults) || parsedAdults < 1) {
+      console.log("Invalid adults value, defaulting to 1");
+      parsedAdults = 1;
+    }
+    
+    console.log("Final parsed adults:", parsedAdults);
+    return parsedAdults;
+  };
+
   const fetchHotelDetails = async () => {
-    console.log("fetchHotelDetails called with item:", item);
+    console.log("=== fetchHotelDetails DEBUG ===");
+    console.log("Current searchParams:", searchParams);
+    
+    // Get the actual adults count
+    const parsedAdults = parseAdultsFromSearchParams();
+    console.log("Parsed adults count:", parsedAdults);
     
     // Check if we have the realData structure from the API
     if (!item?.realData?.offerId) {
@@ -58,20 +106,11 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     
     setLoading(true);
     setError(null);
-    setDebugInfo(null);
     
     try {
       console.log("Using item.realData for hotel details:", item.realData);
       
-      // Since we already have the hotel data from the search results,
-      // we can use it directly and extract the right price
       const hotelOfferData = item.realData;
-      
-      setDebugInfo({
-        realData: hotelOfferData,
-        item: item,
-        timestamp: new Date().toISOString()
-      });
       
       // Create a hotel object from the realData
       const hotelFromRealData = {
@@ -83,7 +122,8 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
         currency: hotelOfferData.currency,
         checkInDate: hotelOfferData.checkInDate,
         checkOutDate: hotelOfferData.checkOutDate,
-        guests: hotelOfferData.guests,
+        // Use parsedAdults
+        guests: parsedAdults,
         rooms: hotelOfferData.rooms,
         roomType: hotelOfferData.roomType,
         bedType: hotelOfferData.bedType,
@@ -95,7 +135,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
         finalPrice: hotelOfferData.finalPrice,
         markupAmount: hotelOfferData.markupAmount,
         serviceFee: hotelOfferData.serviceFee,
-        // For room options, we need to create offers from the realData
         offers: [{
           id: hotelOfferData.offerId,
           room: {
@@ -106,8 +145,9 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
               bedType: hotelOfferData.bedType
             }
           },
+          // Use parsedAdults
           guests: {
-            adults: hotelOfferData.guests
+            adults: parsedAdults
           },
           price: {
             total: hotelOfferData.price.toString(),
@@ -128,6 +168,8 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
           }
         }]
       };
+      
+      console.log("Created hotelFromRealData with guests:", hotelFromRealData.guests);
       
       setHotelData(hotelFromRealData);
       
@@ -157,7 +199,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
       });
     }
     
-    // If no images from hotel data, use item image
     if (images.length === 0 && hotel.image) {
       images.push(hotel.image);
     }
@@ -182,12 +223,21 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const images = getImages();
 
   const parseRoomOptions = (): RoomOption[] => {
+    console.log("=== parseRoomOptions DEBUG ===");
+    
+    // Get the actual adults count
+    const parsedAdults = parseAdultsFromSearchParams();
+    console.log("Using guests count:", parsedAdults);
+    
     // First check if we have realData from API
     if (hotel?.realData) {
       const realData = hotel.realData;
+      console.log("Creating room option from realData with guests:", parsedAdults);
+      
       return [{
         type: realData.roomType || "Standard Room",
-        guests: realData.guests || 2,
+        // Use parsedAdults
+        guests: parsedAdults,
         price: realData.price || 0,
         currency: realData.currency || "USD",
         options: [
@@ -207,7 +257,8 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                          offer.room?.description?.text ||
                          "Standard Room";
         
-        const guests = offer.guests?.adults || 2;
+        // Use parsedAdults
+        const guests = parsedAdults;
         
         let price = 0;
         let currency = "USD";
@@ -260,10 +311,11 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     }
 
     // Fallback defaults
+    console.log("Using fallback defaults with guests:", parsedAdults);
     return [
       {
         type: "Classic room",
-        guests: 2,
+        guests: parsedAdults,
         price: hotel?.realData?.price || 110.0,
         currency: hotel?.realData?.currency || "USD",
         options: ["Free cancellation", "No prepayment"],
@@ -273,9 +325,9 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   };
 
   const roomOptions = parseRoomOptions();
+  console.log("Created roomOptions:", roomOptions);
 
   const parseAmenities = (): AmenityGroup[] => {
-    // If hotel has amenities from API
     if (hotel?.amenities && Array.isArray(hotel.amenities)) {
       const amenities: AmenityGroup[] = hotel.amenities.reduce((acc: AmenityGroup[], amenity: any): AmenityGroup[] => {
         const group = amenity.category || "Common";
@@ -298,7 +350,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
       return amenities;
     }
 
-    // Fallback amenities
     return [
       {
         group: "Common",
@@ -321,7 +372,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
 
   const amenities = parseAmenities();
 
-  // Rest of the component remains the same...
   const openGallery = (index: number) => {
     setCurrentImageIndex(index);
     setIsGalleryOpen(true);
@@ -378,7 +428,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
       label: "Children and extra beds",
       value:
         hotel.childrenPolicy ||
-        "Children of all ages are welcome. Children 12 years and above are considered adults at this property.",
+        "Children of all ages are welcome. Children 12 years and above are considered adults at this hotel.",
     },
     { label: "Pets", value: hotel.petsPolicy || "Pets are not allowed." },
     {
@@ -392,14 +442,14 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
       <div className="flex flex-col lg:flex-row gap-8">
         <div className="flex-1">
           <h2 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">
-            About this property
+            About this Hotel
           </h2>
           <div className="text-sm text-gray-500 font-medium leading-relaxed space-y-4">
             <p>
               {hotel.description || hotel.hotel?.description?.text || `${hotel.name || hotel.title || "This premium hotel"} provides premium, air-conditioned accommodations with free Wi-Fi in a prime urban location. Every suite is meticulously designed to offer a perfect blend of modern comfort and sophisticated local style.`}
             </p>
             <p>
-              Featuring state-of-the-art facilities, guests can enjoy a seamless stay with high-speed connectivity and luxury bedding. The property is ideally situated within walking distance of the city's main attractions.
+              Featuring state-of-the-art facilities, guests can enjoy a seamless stay with high-speed connectivity and luxury bedding. The hotel is ideally situated within walking distance of the city's main attractions.
             </p>
           </div>
         </div>
@@ -482,6 +532,9 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                       </svg>
                     ))}
                   </div>
+                  <p className="text-[9px] text-gray-400 font-bold mt-1">
+                    {room.guests} {room.guests === 1 ? 'Adult' : 'Adults'}
+                  </p>
                 </td>
                 <td className="px-4 py-6">
                   <p className="text-base font-black text-gray-900">
@@ -927,7 +980,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                         Guests
                       </span>
                       <span className="text-xs font-bold text-gray-900">
-                        {searchParams?.adults || hotel.realData?.guests || 2} Adult(s)
+                        {roomOptions[0]?.guests || 1} Adult(s)
                       </span>
                     </div>
                   </div>
@@ -973,7 +1026,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             <div className="flex justify-between items-end mb-12">
               <div>
                 <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase">
-                  Similar properties
+                  Similar Hotels
                 </h2>
                 <p className="text-sm font-bold text-gray-400 mt-2">
                   Curated luxury accommodations for your stay
