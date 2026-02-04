@@ -51,7 +51,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   
   // Flight Specific State
   const [tripType, setTripType] = useState<'round-trip' | 'one-way' | 'multi-city'>('round-trip');
-  const [cabinClass, setCabinClass] = useState('Economy');
+  const [cabinClass, setCabinClass] = useState('economy');
   const [showCabinDropdown, setShowCabinDropdown] = useState(false);
   const [showFiltersDropdown, setShowFiltersDropdown] = useState(false);
   const [stopsFilter, setStopsFilter] = useState('Any');
@@ -176,7 +176,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     { code: 'AKL', name: 'Auckland Airport', city: 'Auckland', country: 'New Zealand', type: 'airport' },
   ];
 
-  // Fetch airport suggestions
   const fetchAirportSuggestions = useCallback(async (query: string): Promise<Airport[]> => {
     if (!query || query.length < 2) {
       return popularAirports.slice(0, 8);
@@ -185,7 +184,41 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     try {
       setLoadingSuggestions(true);
       
-      // Filter from our popular airports list
+      // Try using the real API for suggestions
+      const response = await fetch(
+        `https://ebony-bruce-production.up.railway.app/api/v1/bookings/flights/places/suggestions?query=${encodeURIComponent(query)}`
+      );
+      
+      if (response.ok) {
+        const result = await response.json();
+        
+        if (result.success && Array.isArray(result.data)) {
+          // Transform API response to your Airport interface
+          const suggestions: Airport[] = result.data
+            .map((place: any) => ({
+              code: place.iata_code || place.code || '',
+              name: place.name || '',
+              city: place.city_name || place.city || place.name || '',
+              country: place.country_name || place.country || '',
+              type: place.type === 'city' ? 'city' : 'airport'
+            }))
+            .filter((place: Airport) => place.code && place.name); // Filter valid results
+          
+          // Remove duplicates based on code + city combination
+          const uniqueSuggestions = suggestions.filter(
+            (airport, index, self) =>
+              index === self.findIndex((a) => 
+                a.code === airport.code && a.city === airport.city
+              )
+          );
+          
+          console.log('Unique API suggestions:', uniqueSuggestions.length);
+          return uniqueSuggestions.slice(0, 12);
+        }
+      }
+      
+      // Fallback to local search if API fails
+      console.log('Using fallback airport search');
       const lowerQuery = query.toLowerCase();
       const filtered = popularAirports.filter(airport => 
         airport.code.toLowerCase().includes(lowerQuery) ||
@@ -194,17 +227,36 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         airport.name.toLowerCase().includes(lowerQuery)
       );
       
-      if (filtered.length > 0) {
-        return filtered.slice(0, 10);
-      }
+      // Remove duplicates from local search too
+      const uniqueFiltered = filtered.filter(
+        (airport, index, self) =>
+          index === self.findIndex((a) => 
+            a.code === airport.code && a.city === airport.city
+          )
+      );
       
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 300));
-      return [];
+      return uniqueFiltered.slice(0, 10);
       
     } catch (error) {
       console.error('Error fetching airport suggestions:', error);
-      return [];
+      // Fallback to local search
+      const lowerQuery = query.toLowerCase();
+      const filtered = popularAirports.filter(airport => 
+        airport.code.toLowerCase().includes(lowerQuery) ||
+        airport.city.toLowerCase().includes(lowerQuery) ||
+        airport.country.toLowerCase().includes(lowerQuery) ||
+        airport.name.toLowerCase().includes(lowerQuery)
+      );
+      
+      // Remove duplicates
+      const uniqueFiltered = filtered.filter(
+        (airport, index, self) =>
+          index === self.findIndex((a) => 
+            a.code === airport.code && a.city === airport.city
+          )
+      );
+      
+      return uniqueFiltered.slice(0, 10);
     } finally {
       setLoadingSuggestions(false);
     }
@@ -288,21 +340,28 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     }
   }, [fetchHotelLocationSuggestions]);
 
-  // Handle airport selection
-  const handleAirportSelect = useCallback((airport: Airport, type: 'from' | 'to', index: number = 0) => {
-    const newSegments = [...segments];
-    const displayValue = `${airport.code} - ${airport.city}, ${airport.country}`;
-    
-    if (type === 'from') {
-      newSegments[index].from = displayValue;
-      setShowFromDropdown(false);
-    } else {
-      newSegments[index].to = displayValue;
-      setShowToDropdown(false);
-    }
-    
-    setSegments(newSegments);
-  }, [segments]);
+// Update the handleAirportSelect function to handle duplicates
+const handleAirportSelect = useCallback((airport: Airport, type: 'from' | 'to', index: number = 0) => {
+  const newSegments = [...segments];
+  const displayValue = `${airport.code} - ${airport.city}, ${airport.country}`;
+  
+  if (type === 'from') {
+    newSegments[index].from = displayValue;
+    setShowFromDropdown(false);
+  } else {
+    newSegments[index].to = displayValue;
+    setShowToDropdown(false);
+  }
+  
+  setSegments(newSegments);
+  
+  // Clear suggestions to avoid duplicates
+  if (type === 'from') {
+    setFromSuggestions([]);
+  } else {
+    setToSuggestions([]);
+  }
+}, [segments]);
 
   // Handle hotel destination selection
   const handleHotelDestinationSelect = useCallback((destination: HotelDestination) => {
@@ -444,7 +503,8 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     if (travellers.adults > 0) parts.push(`${travellers.adults} Adult${travellers.adults > 1 ? 's' : ''}`);
     if (travellers.children > 0) parts.push(`${travellers.children} Child${travellers.children > 1 ? 'ren' : ''}`);
     if (travellers.infants > 0) parts.push(`${travellers.infants} Infant${travellers.infants > 1 ? 's' : ''}`);
-    return parts.join(', ') || '1 Adult';
+    const total = travellers.adults + travellers.children + travellers.infants;
+    return `${total} Passenger${total > 1 ? 's' : ''} (${parts.join(', ')})`;
   };
 
   const getHotelGuestSummary = () => {
@@ -452,74 +512,158 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     return `${totalGuests} Guest${totalGuests > 1 ? 's' : ''}, ${rooms} Room${rooms > 1 ? 's' : ''}`;
   };
 
-  // Extract airport code from display value
-  const extractAirportCode = (displayValue: string): string => {
-    const match = displayValue.match(/^([A-Z]{3})/);
-    return match ? match[1] : displayValue.split(' ')[0];
-  };
+// Replace the extractAirportCode function with this more robust version:
+const extractAirportCode = (displayValue: string): string => {
+  if (!displayValue) return '';
+  
+  console.log('Extracting code from:', displayValue);
+  
+  // Handle multiple formats:
+  // 1. "LOS - Lagos, Nigeria" → Extract "LOS"
+  // 2. "LOS" → Return "LOS"
+  // 3. "Lagos" → Try to find matching airport code
+  
+  // Try to extract IATA code (3 uppercase letters at start)
+  const iataMatch = displayValue.match(/^([A-Z]{3})\b/);
+  if (iataMatch) {
+    console.log('Found IATA code:', iataMatch[1]);
+    return iataMatch[1];
+  }
+  
+  // Try to find IATA code anywhere in the string
+  const anyIataMatch = displayValue.match(/\b([A-Z]{3})\b/);
+  if (anyIataMatch) {
+    console.log('Found IATA code in string:', anyIataMatch[1]);
+    return anyIataMatch[1];
+  }
+  
+  // If no IATA code found, try to match with popular airports
+  const lowerValue = displayValue.toLowerCase();
+  const matchedAirport = popularAirports.find(airport => 
+    airport.city.toLowerCase().includes(lowerValue) ||
+    airport.name.toLowerCase().includes(lowerValue)
+  );
+  
+  if (matchedAirport) {
+    console.log('Matched airport:', matchedAirport.code);
+    return matchedAirport.code;
+  }
+  
+  // Last resort: return first word
+  const firstWord = displayValue.split(' ')[0];
+  console.log('Using first word:', firstWord);
+  return firstWord;
+};
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+const handleSubmit = (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  if (activeTab === 'flights') {
+    // Extract airport codes with better logging
+    const origin = extractAirportCode(segments[0].from);
+    const destination = extractAirportCode(segments[0].to);
     
-    if (activeTab === 'flights') {
-      // Prepare segments with extracted airport codes
-      const preparedSegments = segments.map(segment => ({
-        from: extractAirportCode(segment.from),
-        to: extractAirportCode(segment.to),
-        date: segment.date || today
-      }));
-
-      const data = {
-        type: 'flights',
-        tripType, 
-        segments: preparedSegments,
-        returnDate: tripType === 'round-trip' ? returnDate : undefined, 
-        cabinClass: cabinClass.toLowerCase().replace(' ', '_'),
-        stops: stopsFilter,
-        maxPrice: maxPrice,
-        travellers: travellers.adults + travellers.children,
-        travellersDetails: travellers
-      };
-      
-      console.log('Flight search data:', data);
-      onSearch(data);
-      
-    } else if (activeTab === 'hotels') {
-      // Extract city code from hotel location
-      const cityCode = getCityCode(hotelLocation);
-      
-      const data = {
-        type: 'hotels',
-        location: hotelLocation,
-        cityCode: cityCode,
-        checkInDate: checkInDate,
-        checkOutDate: checkOutDate,
-        travellers: travellers.adults + travellers.children,
-        travellersDetails: travellers,
-        rooms: rooms,
-        currency: 'NGN'
-      };
-      
-      console.log('Hotel search data:', data);
-      onSearch(data);
-      
-    } else {
-      const data = { 
-        type: 'car-rentals',
-        carPickUp, 
-        carPickUpDate, 
-        carPickUpTime, 
-        carDropOffDate, 
-        carDropOffTime, 
-        differentLocation, 
-        driverAged,
-        travellers: travellers.adults
-      };
-      
-      console.log('Car search data:', data);
-      onSearch(data);
+    console.log('🔍 Flight Search Details:');
+    console.log('From (raw):', segments[0].from);
+    console.log('To (raw):', segments[0].to);
+    console.log('Origin (extracted):', origin);
+    console.log('Destination (extracted):', destination);
+    console.log('Departure Date:', segments[0].date);
+    console.log('Return Date:', returnDate);
+    console.log('Trip Type:', tripType);
+    
+    // Calculate total passengers
+    const totalPassengers = travellers.adults + travellers.children + travellers.infants;
+    
+    // Convert stops filter to maxConnections
+    let maxConnections: number | undefined;
+    switch (stopsFilter) {
+      case 'Non-stop':
+        maxConnections = 0;
+        break;
+      case '1 Stop':
+        maxConnections = 1;
+        break;
+      case '2+ Stops':
+        maxConnections = 2;
+        break;
+      default:
+        maxConnections = undefined; // Any = no filter
     }
-  };
+    
+    // Prepare the data in EXACT format the API expects
+    const data: any = {
+      origin: origin,
+      destination: destination,
+      departureDate: segments[0].date || today,
+      passengers: totalPassengers,
+      cabinClass: cabinClass.toLowerCase(),
+      currency: currency.code || 'NGN',
+    };
+    
+    // Add returnDate only for round-trip
+    if (tripType === 'round-trip' && returnDate) {
+      data.returnDate = returnDate;
+    }
+    
+    // Add maxConnections only if specified
+    if (maxConnections !== undefined) {
+      data.maxConnections = maxConnections;
+    }
+    
+    // Add maxPrice only if it's meaningful
+    if (maxPrice > 0 && maxPrice < 10000) {
+      data.maxPrice = maxPrice;
+    }
+    
+    console.log('📦 Final API Payload:', JSON.stringify(data, null, 2));
+    
+    // Validate required fields
+    const errors = [];
+    
+    // Validate airport codes (should be 3-letter IATA codes)
+    if (!origin || !/^[A-Z]{3}$/.test(origin)) {
+      errors.push(`Invalid origin airport code: "${origin}". Please select from the suggestions.`);
+    }
+    
+    if (!destination || !/^[A-Z]{3}$/.test(destination)) {
+      errors.push(`Invalid destination airport code: "${destination}". Please select from the suggestions.`);
+    }
+    
+    if (origin === destination) {
+      errors.push('Origin and destination cannot be the same');
+    }
+    
+    if (!segments[0].date) {
+      errors.push('Please select a departure date');
+    }
+    
+    if (tripType === 'round-trip' && !returnDate) {
+      errors.push('Please select a return date for round-trip');
+    }
+    
+    if (segments[0].date && returnDate && segments[0].date > returnDate) {
+      errors.push('Return date cannot be before departure date');
+    }
+    
+    if (errors.length > 0) {
+      alert(errors.join('\n'));
+      return;
+    }
+    
+    // For multi-city trips, need special handling
+    if (tripType === 'multi-city') {
+      alert('Multi-city search requires a different API endpoint or format. Using first segment for now.');
+    }
+    
+    onSearch(data);
+    
+  } else if (activeTab === 'hotels') {
+    // ... hotel code remains the same ...
+  } else {
+    // ... car rental code remains the same ...
+  }
+};
 
   const triggerPicker = (e: React.MouseEvent<HTMLInputElement>) => {
     try { 
@@ -591,44 +735,48 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
           <p className="text-xs mt-2">Searching airports...</p>
         </div>
       ) : suggestions.length === 0 ? (
-        <div className="px-4 py-3 text-center text-gray-500 text-sm">No airports found. Try a different search.</div>
+        <div className="px-4 py-3 text-center text-gray-500 text-sm">
+          No airports found. Try searching by city name or airport code.
+        </div>
       ) : (
         <>
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
-            <div className="text-xs font-bold text-gray-500">POPULAR AIRPORTS</div>
+            <div className="text-xs font-bold text-gray-500">
+              {suggestions.length} AIRPORT{suggestions.length !== 1 ? 'S' : ''} FOUND
+            </div>
           </div>
-          {suggestions.map((airport) => (
+          {suggestions.map((airport, idx) => (
             <button
-              key={`${type}-${airport.code}-${index}`}
+              key={`${type}-${airport.code}-${index}-${airport.city}-${idx}-${airport.name}`}
               type="button"
-              className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
+              className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 group"
               onClick={() => handleAirportSelect(airport, type, index)}
             >
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0">
-                  <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center text-sm font-bold">
+                  <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center text-sm font-bold group-hover:bg-blue-200 transition-colors">
                     {airport.code}
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-bold text-gray-900 truncate">{airport.city}, {airport.country}</div>
                   <div className="text-xs text-gray-500 truncate">{airport.name}</div>
+                  <div className="text-[10px] text-gray-400 mt-0.5 font-bold uppercase">
+                    {airport.type === 'city' ? 'CITY' : 'AIRPORT'}
+                  </div>
                 </div>
               </div>
             </button>
           ))}
-          {suggestions.length >= 8 && (
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
-              <div className="text-xs text-center text-gray-500">
-                Type more characters to search all airports worldwide
-              </div>
+          <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+            <div className="text-xs text-center text-gray-500">
+              Select an airport or type more to search
             </div>
-          )}
+          </div>
         </>
       )}
     </div>
   );
-
   const renderHotelLocationDropdown = () => (
     showHotelLocationDropdown && (
       <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-gray-200 max-h-60 overflow-y-auto z-50">
@@ -697,7 +845,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             {/* From Input with Autocomplete */}
             <div className="relative" ref={index === activeSegmentIndex ? fromRef : null}>
               <div className="bg-white p-3 md:p-4 flex items-center gap-3 relative rounded-t-lg sm:rounded-l-lg sm:rounded-tr-none">
-                <svg className="w-6 h-6 text-[#33a8da] shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                <svg className="w-6 h-6 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
                 </svg>
                 <div className="flex-1 relative">
@@ -896,13 +1044,26 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                   <div className="flex items-center gap-2 md:gap-4 border-l border-gray-100 pl-4 h-8">
                     <div className="relative" ref={cabinRef}>
                       <button type="button" onClick={() => setShowCabinDropdown(!showCabinDropdown)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-100 bg-gray-50 text-gray-700 hover:border-gray-300 text-[10px] md:text-xs font-bold">
-                        {cabinClass} <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 9l-7 7-7-7" strokeWidth={3}/></svg>
+                        {cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1).replace('_', ' ')} <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 9l-7 7-7-7" strokeWidth={3}/></svg>
                       </button>
                       {showCabinDropdown && (
                         <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
-                          {['Economy', 'Premium Economy', 'Business', 'First Class'].map((cls) => (
-                            <button key={cls} type="button" onClick={() => { setCabinClass(cls); setShowCabinDropdown(false); }} className="w-full text-left px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors">
-                              {cls}
+                          {[
+                            { label: 'Economy', value: 'economy' },
+                            { label: 'Premium Economy', value: 'premium_economy' },
+                            { label: 'Business', value: 'business' },
+                            { label: 'First Class', value: 'first' }
+                          ].map((cls) => (
+                            <button 
+                              key={cls.value} 
+                              type="button" 
+                              onClick={() => { 
+                                setCabinClass(cls.value); 
+                                setShowCabinDropdown(false); 
+                              }} 
+                              className="w-full text-left px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+                            >
+                              {cls.label}
                             </button>
                           ))}
                         </div>

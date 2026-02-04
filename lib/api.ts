@@ -1,4 +1,4 @@
-// api.ts - COMPLETE VERSION with Amadeus hotel booking
+// api.ts - COMPLETE VERSION with Amadeus hotel booking and FIXED flight search
 const API_BASE = 'https://ebony-bruce-production.up.railway.app';
 
 // Define ApiError class with enhanced error handling
@@ -250,6 +250,33 @@ export interface HotelBookingResponse {
     bookingDate?: string;
   };
   message?: string;
+  [key: string]: any;
+}
+
+// Flight search interfaces
+export interface FlightSearchParams {
+  origin: string;
+  destination: string;
+  departureDate: string;
+  returnDate?: string;
+  passengers: number;
+  cabinClass: string;
+  currency?: string;
+  maxConnections?: number;
+  [key: string]: any;
+}
+
+export interface FlightSearchResponse {
+  success?: boolean;
+  data?: {
+    offer_request_id: string;
+    status: string;
+    created_at: string;
+    total_offers?: number;
+    [key: string]: any;
+  };
+  message?: string;
+  error?: string;
   [key: string]: any;
 }
 
@@ -1199,6 +1226,241 @@ function isValidExpiryDate(expiryDate: string): boolean {
 }
 
 // ────────────────────────────────────────────────
+// FIXED: Flight Search API with correct parameters
+// ────────────────────────────────────────────────
+export const searchFlightsFixed = async (
+  params: FlightSearchParams
+): Promise<FlightSearchResponse> => {
+  try {
+    console.log('✈️ Starting flight search with params:', params);
+    
+    // Format parameters exactly as your API expects
+    const requestBody: any = {
+      origin: params.origin.toUpperCase(),
+      destination: params.destination.toUpperCase(),
+      departureDate: params.departureDate,
+      passengers: params.passengers,
+      cabinClass: params.cabinClass.toLowerCase(),
+    };
+    
+    // Add optional parameters only if they exist
+    if (params.returnDate && params.returnDate.trim() !== '' && params.returnDate !== params.departureDate) {
+      requestBody.returnDate = params.returnDate;
+    }
+    
+    if (params.currency) {
+      requestBody.currency = params.currency.toUpperCase();
+    }
+    
+    if (params.maxConnections !== undefined) {
+      requestBody.maxConnections = params.maxConnections;
+    }
+    
+    console.log('📤 Sending flight search request body:', JSON.stringify(requestBody, null, 2));
+    
+    const response = await request<FlightSearchResponse>('/api/v1/bookings/search/flights', {
+      method: 'POST',
+      body: JSON.stringify(requestBody),
+    });
+    
+    console.log('✅ Flight search response:', {
+      success: response.success,
+      message: response.message,
+      error: response.error,
+      hasData: !!response.data,
+      offerRequestId: response.data?.offer_request_id,
+    });
+    
+    return response;
+    
+  } catch (error: any) {
+    console.error('❌ Flight search failed:', error);
+    
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    // Provide more specific error messages
+    if (error.message?.includes('origin') || error.message?.includes('destination')) {
+      throw new ApiError('Invalid origin or destination airport code', 400, 'INVALID_AIRPORT_CODE');
+    }
+    
+    if (error.message?.includes('date')) {
+      throw new ApiError('Invalid date format. Please use YYYY-MM-DD format.', 400, 'INVALID_DATE_FORMAT');
+    }
+    
+    if (error.message?.includes('returnDate') && error.message?.includes('before')) {
+      throw new ApiError('Return date must be after departure date', 400, 'INVALID_RETURN_DATE');
+    }
+    
+    throw new ApiError(
+      error.message || 'Failed to search for flights',
+      error.status || 500,
+      'FLIGHT_SEARCH_ERROR'
+    );
+  }
+};
+
+// ────────────────────────────────────────────────
+// Enhanced flight search with pagination
+// ────────────────────────────────────────────────
+export async function searchFlightsWithPagination(
+  params: FlightSearchParams,
+  maxPages: number = 3
+): Promise<{
+  success: boolean;
+  offerRequestId?: string;
+  offers: any[];
+  total: number;
+  message?: string;
+  isRoundTrip: boolean;
+}> {
+  try {
+    console.log('🔍 Starting flight search with pagination:', params);
+    
+    // Step 1: Create search request
+    const searchResult = await searchFlightsFixed(params);
+    
+    if (!searchResult.success) {
+      throw new ApiError(
+        searchResult.message || 'Flight search failed',
+        400,
+        'SEARCH_FAILED',
+        searchResult
+      );
+    }
+    
+    const offerRequestId = searchResult.data?.offer_request_id;
+    
+    if (!offerRequestId) {
+      console.warn('⚠️ No offer_request_id received:', searchResult);
+      
+      // Try alternative field names
+      const altId = searchResult.data?.id || searchResult.data?.requestId || searchResult.id;
+      if (altId) {
+        console.log(`📋 Using alternative ID: ${altId}`);
+      } else {
+        throw new ApiError(
+          'Flight search completed but no request ID returned. Please try again.',
+          500,
+          'NO_REQUEST_ID'
+        );
+      }
+    }
+    
+    console.log('📋 Offer Request ID:', offerRequestId);
+    
+    // Step 2: Fetch offers with pagination
+    let allOffers: any[] = [];
+    let nextCursor: string | null = null;
+    let page = 1;
+    const isRoundTrip = !!(params.returnDate && params.returnDate !== params.departureDate);
+    
+    // If we have an offer request ID, fetch offers
+    if (offerRequestId) {
+      do {
+        console.log(`📄 Fetching flight offers page ${page}...`);
+        
+        try {
+          const offersResult = await bookingApi.getOffers(
+            offerRequestId,
+            nextCursor || undefined,
+            20,
+            page === 1 ? 'total_amount' : undefined,
+            'asc'
+          );
+          
+          console.log(`📦 Page ${page} response:`, {
+            hasData: !!offersResult.data,
+            dataType: typeof offersResult.data,
+            isArray: Array.isArray(offersResult.data),
+          });
+          
+          // Extract offers from response
+          let offers: any[] = [];
+          
+          if (Array.isArray(offersResult.data)) {
+            offers = offersResult.data;
+          } else if (Array.isArray(offersResult.offers)) {
+            offers = offersResult.offers;
+          } else if (Array.isArray(offersResult.results)) {
+            offers = offersResult.results;
+          } else if (Array.isArray(offersResult)) {
+            offers = offersResult;
+          } else if (offersResult.data && typeof offersResult.data === 'object') {
+            // Check if data contains an array
+            const dataObj = offersResult.data;
+            for (const key in dataObj) {
+              if (Array.isArray(dataObj[key])) {
+                offers = dataObj[key];
+                break;
+              }
+            }
+          }
+          
+          console.log(`📦 Extracted ${offers.length} offers from page ${page}`);
+          
+          if (offers.length > 0) {
+            allOffers = [...allOffers, ...offers];
+          }
+          
+          // Update cursor for next page
+          nextCursor = offersResult?.next_cursor || 
+                      offersResult?.pagination?.next || 
+                      offersResult?.meta?.next_cursor || 
+                      offersResult?.data?.next_cursor || 
+                      null;
+          
+          console.log(`📄 Next cursor for page ${page}:`, nextCursor);
+          
+          page++;
+          
+          // Safety limit
+          if (page > maxPages) {
+            console.log(`⚠️ Reached maximum pages (${maxPages})`);
+            break;
+          }
+          
+          // Small delay between requests
+          if (nextCursor) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+          
+        } catch (error) {
+          console.error(`❌ Error fetching page ${page}:`, error);
+          break;
+        }
+        
+      } while (nextCursor && allOffers.length < 50);
+    }
+    
+    console.log(`✅ Total offers fetched: ${allOffers.length}`);
+    
+    return {
+      success: true,
+      offerRequestId,
+      offers: allOffers,
+      total: allOffers.length,
+      message: searchResult.message,
+      isRoundTrip,
+    };
+    
+  } catch (error: any) {
+    console.error('❌ Flight search with pagination error:', error);
+    
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    throw new ApiError(
+      error.message || 'Flight search failed',
+      error.status || 500,
+      'FLIGHT_SEARCH_ERROR'
+    );
+  }
+}
+
+// ────────────────────────────────────────────────
 // Auth API
 // ────────────────────────────────────────────────
 export const authApi = {
@@ -1375,23 +1637,14 @@ export const userApi = {
 };
 
 // ────────────────────────────────────────────────
-// Booking API with Amadeus Hotel Booking
+// FIXED: Booking API with corrected flight search
 // ────────────────────────────────────────────────
 export const bookingApi = {
-  // Flight search - EXACT ENDPOINT
-  searchFlights: (params: {
-    origin: string;
-    destination: string;
-    departureDate: string;
-    passengers: number;
-    cabinClass: string;
-    returnDate?: string;
-  }) => {
-    return request<any>('/api/v1/bookings/search/flights', {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
-  },
+  // Flight search - FIXED version with all parameters
+  searchFlights: searchFlightsFixed,
+  
+  // Flight search with pagination
+  searchFlightsWithPagination: searchFlightsWithPagination,
   
   // Get flight offers with pagination and sorting options
   getOffers: (
@@ -1414,7 +1667,7 @@ export const bookingApi = {
     });
   },
   
-  // NEW: Create hotel booking via Amadeus endpoint
+  // Create hotel booking via Amadeus endpoint
   createHotelBookingAmadeus: (bookingData: HotelBookingRequest): Promise<HotelBookingResponse> => {
     return request<HotelBookingResponse>('/api/v1/bookings/hotels/bookings/amadeus', {
       method: 'POST',
@@ -1422,7 +1675,7 @@ export const bookingApi = {
     });
   },
 
-  // Create authenticated booking - EXACT ENDPOINT
+  // Create authenticated booking
   createBooking: (bookingData: {
     productType: string;
     provider: string;
@@ -1452,7 +1705,7 @@ export const bookingApi = {
     });
   },
   
-  // Create guest booking - EXACT ENDPOINT
+  // Create guest booking
   createGuestBooking: (bookingData: {
     productType: string;
     provider: string;
@@ -1482,14 +1735,14 @@ export const bookingApi = {
     });
   },
   
-  // List bookings - EXACT ENDPOINT
+  // List bookings
   listBookings: () => {
     return request<any[]>('/api/v1/bookings', { 
       method: 'GET' 
     });
   },
   
-  // Get booking by ID - EXACT ENDPOINT
+  // Get booking by ID
   getBookingById: (id: string) => {
     return request<any>(`/api/v1/bookings/${id}`, { 
       method: 'GET' 
@@ -1503,7 +1756,7 @@ export const bookingApi = {
     });
   },
   
-  // Cancel booking - EXACT ENDPOINT
+  // Cancel booking
   cancelBooking: (id: string) => {
     return request<any>(`/api/v1/bookings/${id}/cancel`, { 
       method: 'POST' 
@@ -1552,7 +1805,7 @@ export const bookingApi = {
 // Payment API
 // ────────────────────────────────────────────────
 export const paymentApi = {
-  // Create Stripe intent for authenticated users - EXACT ENDPOINT
+  // Create Stripe intent for authenticated users
   createStripeIntent: (bookingId: string, amount?: number, currency?: string) => {
     const body: any = { bookingId };
     if (amount !== undefined) body.amount = amount;
@@ -1564,7 +1817,7 @@ export const paymentApi = {
     });
   },
   
-  // Create Stripe intent for guests - EXACT ENDPOINT
+  // Create Stripe intent for guests
   createGuestStripeIntent: (bookingReference: string, email: string, amount?: number, currency?: string) => {
     const body: any = { bookingReference, email };
     if (amount !== undefined) body.amount = amount;
@@ -1628,7 +1881,7 @@ export const hotelApi = {
   // Get city code
   getCityCode: getCityCode,
   
-  // NEW: Book hotel via Amadeus (alternative access)
+  // Book hotel via Amadeus
   bookHotelAmadeus: (bookingData: HotelBookingRequest): Promise<HotelBookingResponse> => {
     return request<HotelBookingResponse>('/api/v1/bookings/hotels/bookings/amadeus', {
       method: 'POST',
@@ -2017,149 +2270,114 @@ export async function resendVerificationEmail(email: string): Promise<{ success:
 }
 
 // ────────────────────────────────────────────────
-// Flight search utility function
+// Flight search helper functions
 // ────────────────────────────────────────────────
-export async function searchFlightsWithPagination(
-  params: {
-    origin: string;
-    destination: string;
-    departureDate: string;
-    passengers: number;
-    cabinClass: string;
-    returnDate?: string;
-  },
-  maxPages: number = 3
-) {
-  try {
-    console.log('🔍 Starting flight search with params:', params);
-    
-    // Step 1: Create search request
-    const searchResult = await bookingApi.searchFlights(params);
-    console.log('✅ Search result:', searchResult);
-    
-    const offerRequestId = searchResult?.data?.offer_request_id || 
-                          searchResult?.offer_request_id || 
-                          searchResult?.id;
-    
-    if (!offerRequestId) {
-      console.error('❌ No offer request ID received:', searchResult);
-      throw new ApiError('Flight search failed: No offer request ID', 500, 'NO_OFFER_REQUEST_ID');
-    }
-    
-    console.log('📋 Offer Request ID:', offerRequestId);
-    
-    // Step 2-5: Fetch offers with pagination
-    let allOffers: any[] = [];
-    let nextCursor: string | null = null;
-    let page = 1;
-    
-    do {
-      console.log(`📄 Fetching page ${page}...`);
-      
-      const offersResult = await bookingApi.getOffers(
-        offerRequestId,
-        nextCursor || undefined,
-        20,
-        page === 1 ? 'total_amount' : undefined,
-        'asc'
-      );
-      
-      console.log(`📦 Page ${page} offers:`, offersResult);
-      
-      const offers = offersResult?.data || 
-                    offersResult?.offers || 
-                    offersResult?.results || 
-                    (Array.isArray(offersResult) ? offersResult : []);
-      
-      if (offers.length > 0) {
-        allOffers = [...allOffers, ...offers];
-      }
-      
-      // Update cursor for next page
-      nextCursor = offersResult?.next_cursor || 
-                  offersResult?.pagination?.next || 
-                  offersResult?.meta?.next_cursor || 
-                  null;
-      
-      page++;
-      
-      // Safety limit
-      if (page > maxPages) {
-        console.log(`⚠️ Reached maximum pages (${maxPages})`);
-        break;
-      }
-      
-      // Small delay between requests
-      if (nextCursor) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-      
-    } while (nextCursor && allOffers.length < 50); // Stop after 50 offers or no more pages
-    
-    console.log(`✅ Total offers fetched: ${allOffers.length}`);
-    
-    return {
-      success: true,
-      offerRequestId,
-      offers: allOffers,
-      total: allOffers.length,
-    };
-    
-  } catch (error: any) {
-    console.error('❌ Flight search error:', error);
-    
-    if (error instanceof ApiError) {
-      throw error;
-    }
-    
-    throw new ApiError(
-      error.message || 'Flight search failed',
-      error.status || 500,
-      'FLIGHT_SEARCH_ERROR'
-    );
-  }
-}
+export function validateFlightSearchParams(params: FlightSearchParams): {
+  isValid: boolean;
+  errors: string[];
+  warnings?: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
 
-// ────────────────────────────────────────────────
-// Session management helper
-// ────────────────────────────────────────────────
-export class SessionManager {
-  static async validateSession(): Promise<boolean> {
-    try {
-      const token = getAuthToken();
-      if (!token) return false;
+  // Validate origin
+  if (!params.origin || params.origin.trim().length < 2) {
+    errors.push('Origin airport code is required (e.g., LOS, LHR)');
+  } else if (params.origin.length !== 3) {
+    warnings.push('Origin should be a 3-letter IATA airport code (e.g., LOS for Lagos)');
+  }
+
+  // Validate destination
+  if (!params.destination || params.destination.trim().length < 2) {
+    errors.push('Destination airport code is required (e.g., LOS, LHR)');
+  } else if (params.destination.length !== 3) {
+    warnings.push('Destination should be a 3-letter IATA airport code');
+  }
+
+  // Validate origin and destination are not the same
+  if (params.origin && params.destination && 
+      params.origin.toUpperCase() === params.destination.toUpperCase()) {
+    errors.push('Origin and destination cannot be the same');
+  }
+
+  // Validate departure date
+  if (!params.departureDate) {
+    errors.push('Departure date is required');
+  } else if (!/^\d{4}-\d{2}-\d{2}$/.test(params.departureDate)) {
+    errors.push('Departure date must be in YYYY-MM-DD format');
+  } else {
+    const depDate = new Date(params.departureDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (isNaN(depDate.getTime())) {
+      errors.push('Invalid departure date');
+    } else if (depDate < today) {
+      errors.push('Departure date cannot be in the past');
+    } else if (depDate > new Date(today.getFullYear() + 2, today.getMonth(), today.getDate())) {
+      warnings.push('Departure date is more than 2 years in the future, some airlines may not have schedules');
+    }
+  }
+
+  // Validate return date if provided
+  if (params.returnDate && params.returnDate.trim() !== '') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(params.returnDate)) {
+      errors.push('Return date must be in YYYY-MM-DD format');
+    } else {
+      const depDate = new Date(params.departureDate);
+      const retDate = new Date(params.returnDate);
       
-      // Check if token is expired
-      const response = await authApi.verifyToken();
-      return response?.data?.valid || false;
-    } catch (error) {
-      console.error('Session validation error:', error);
-      return false;
+      if (isNaN(retDate.getTime())) {
+        errors.push('Invalid return date');
+      } else if (retDate <= depDate) {
+        errors.push('Return date must be after departure date');
+      } else {
+        const maxReturnDays = 365;
+        const diffDays = Math.ceil((retDate.getTime() - depDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays > maxReturnDays) {
+          warnings.push(`Return date is more than ${maxReturnDays} days after departure`);
+        }
+      }
     }
   }
-  
-  static async refreshSession(): Promise<boolean> {
-    try {
-      const user = getStoredUser();
-      if (!user?.email) return false;
-      
-      // In a real app, you'd call a refresh token endpoint
-      // For now, we'll just re-validate
-      return await this.validateSession();
-    } catch (error) {
-      console.error('Session refresh error:', error);
-      return false;
+
+  // Validate passengers
+  if (!params.passengers || params.passengers < 1) {
+    errors.push('At least 1 passenger is required');
+  } else if (params.passengers > 9) {
+    errors.push('Maximum 9 passengers per booking');
+  } else if (params.passengers > 6) {
+    warnings.push('Large group bookings may have limited availability');
+  }
+
+  // Validate cabin class
+  const validClasses = ['economy', 'premium_economy', 'business', 'first'];
+  if (!params.cabinClass) {
+    errors.push('Cabin class is required');
+  } else if (!validClasses.includes(params.cabinClass.toLowerCase())) {
+    errors.push(`Cabin class must be one of: ${validClasses.join(', ')}`);
+  }
+
+  // Validate currency
+  const validCurrencies = ['GBP', 'USD', 'EUR', 'NGN'];
+  if (params.currency && !validCurrencies.includes(params.currency.toUpperCase())) {
+    warnings.push(`Currency ${params.currency} may not be supported. Using GBP instead.`);
+  }
+
+  // Validate max connections
+  if (params.maxConnections !== undefined) {
+    if (!Number.isInteger(params.maxConnections) || params.maxConnections < 0) {
+      warnings.push('Max connections must be a positive integer');
+    } else if (params.maxConnections > 3) {
+      warnings.push('More than 3 connections may result in very long travel times');
     }
   }
-  
-  static async logoutEverywhere(): Promise<void> {
-    try {
-      await authApi.logout();
-    } catch (error) {
-      console.error('Logout everywhere error:', error);
-      clearAuthToken();
-    }
-  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings: warnings.length > 0 ? warnings : undefined,
+  };
 }
 
 // ────────────────────────────────────────────────
@@ -2309,6 +2527,213 @@ function getVendorCodeFromCardNumber(cardNumber: string): string {
 }
 
 // ────────────────────────────────────────────────
+// Transform flight data for frontend
+// ────────────────────────────────────────────────
+export function transformFlightOfferToSearchResult(
+  offer: any,
+  index: number,
+  isReturnFlight: boolean = false
+): any {
+  try {
+    // Extract flight information from offer
+    const itineraries = offer.itineraries || [];
+    const price = offer.price || offer.total_amount || {};
+    const airline = offer.validating_airline_codes?.[0] || 'Multiple';
+    
+    // Get first itinerary for basic info
+    const firstItinerary = itineraries[0] || {};
+    const segments = firstItinerary.segments || [];
+    const firstSegment = segments[0] || {};
+    const lastSegment = segments[segments.length - 1] || firstSegment;
+    
+    // Calculate duration
+    const duration = firstItinerary.duration || '';
+    
+    // Get stops information
+    const stops = Math.max(0, segments.length - 1);
+    const stopsText = stops === 0 ? 'Direct' : `${stops} stop${stops > 1 ? 's' : ''}`;
+    
+    // Format price
+    const totalPrice = price.total || price.amount || 0;
+    const currency = price.currency || 'GBP';
+    const currencySymbol = getCurrencySymbol(currency);
+    
+    // Format airline name
+    const airlineName = getAirlineName(airline);
+    
+    // Get departure and arrival info
+    const departureTime = firstSegment.departure?.at || '';
+    const arrivalTime = lastSegment.arrival?.at || '';
+    const departureAirport = firstSegment.departure?.iataCode || '';
+    const arrivalAirport = lastSegment.arrival?.iataCode || '';
+    
+    // Format times
+    const formatTime = (dateTime: string) => {
+      if (!dateTime) return '';
+      try {
+        const date = new Date(dateTime);
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } catch {
+        return dateTime.split('T')[1]?.substring(0, 5) || '';
+      }
+    };
+    
+    // Create result object
+    const result = {
+      id: offer.id || `flight-${index}-${isReturnFlight ? 'return' : 'outbound'}`,
+      provider: airlineName,
+      title: `${airlineName} Flight`,
+      subtitle: `${departureAirport} → ${arrivalAirport} • ${stopsText} • ${duration}`,
+      price: `${currencySymbol}${Math.round(totalPrice).toLocaleString()}`,
+      totalPrice: `${currencySymbol}${Math.round(totalPrice).toLocaleString()} total`,
+      rating: 4.0, // Default rating
+      image: getAirlineImage(airline),
+      amenities: [
+        'Seat Selection',
+        'Cabin Baggage',
+        'In-flight Entertainment',
+        'Meal Service',
+      ],
+      features: [
+        `Depart: ${formatTime(departureTime)}`,
+        `Arrive: ${formatTime(arrivalTime)}`,
+        `Duration: ${duration}`,
+        `Class: ${offer.cabin_class || 'Economy'}`,
+        stopsText,
+      ],
+      type: "flights" as const,
+      isReturnFlight,
+      realData: {
+        offerId: offer.id,
+        airline: airlineName,
+        airlineCode: airline,
+        departureTime,
+        arrivalTime,
+        departureAirport,
+        arrivalAirport,
+        stops,
+        duration,
+        price: totalPrice,
+        currency,
+        cabinClass: offer.cabin_class || 'ECONOMY',
+        segments,
+        itineraries,
+        travelerPricings: offer.traveler_pricings,
+        validatingAirlineCodes: offer.validating_airline_codes,
+        numberOfBookableSeats: offer.number_of_bookable_seats,
+        oneWay: offer.one_way || !isReturnFlight,
+        bookingRequirements: offer.booking_requirements,
+      },
+    };
+    
+    return result;
+  } catch (error) {
+    console.error('Error transforming flight offer:', error, offer);
+    
+    // Return a fallback result
+    return {
+      id: `flight-error-${index}`,
+      provider: 'Airline',
+      title: 'Flight',
+      subtitle: 'Flight details unavailable',
+      price: 'Price unavailable',
+      totalPrice: 'Price unavailable',
+      rating: 0,
+      image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400',
+      amenities: ['Information unavailable'],
+      features: ['Details not available'],
+      type: "flights" as const,
+      isReturnFlight,
+      realData: {},
+    };
+  }
+}
+
+// Helper functions for flight transformation
+function getCurrencySymbol(currency: string): string {
+  const symbols: Record<string, string> = {
+    'GBP': '£',
+    'USD': '$',
+    'EUR': '€',
+    'NGN': '₦',
+  };
+  return symbols[currency.toUpperCase()] || currency;
+}
+
+function getAirlineName(code: string): string {
+  const airlines: Record<string, string> = {
+    'BA': 'British Airways',
+    'LH': 'Lufthansa',
+    'AF': 'Air France',
+    'KL': 'KLM',
+    'TK': 'Turkish Airlines',
+    'EK': 'Emirates',
+    'QR': 'Qatar Airways',
+    'ET': 'Ethiopian Airlines',
+    'VS': 'Virgin Atlantic',
+    'AA': 'American Airlines',
+    'DL': 'Delta Air Lines',
+    'UA': 'United Airlines',
+    'WN': 'Southwest Airlines',
+    'FR': 'Ryanair',
+    'U2': 'easyJet',
+  };
+  return airlines[code] || code || 'Multiple Airlines';
+}
+
+function getAirlineImage(code: string): string {
+  const airlineImages: Record<string, string> = {
+    'BA': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80&w=400',
+    'EK': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80&w=400',
+    'QR': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80&w=400',
+    'LH': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80&w=400',
+  };
+  return airlineImages[code] || 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400';
+}
+
+// ────────────────────────────────────────────────
+// Session management helper
+// ────────────────────────────────────────────────
+export class SessionManager {
+  static async validateSession(): Promise<boolean> {
+    try {
+      const token = getAuthToken();
+      if (!token) return false;
+      
+      // Check if token is expired
+      const response = await authApi.verifyToken();
+      return response?.data?.valid || false;
+    } catch (error) {
+      console.error('Session validation error:', error);
+      return false;
+    }
+  }
+  
+  static async refreshSession(): Promise<boolean> {
+    try {
+      const user = getStoredUser();
+      if (!user?.email) return false;
+      
+      // In a real app, you'd call a refresh token endpoint
+      // For now, we'll just re-validate
+      return await this.validateSession();
+    } catch (error) {
+      console.error('Session refresh error:', error);
+      return false;
+    }
+  }
+  
+  static async logoutEverywhere(): Promise<void> {
+    try {
+      await authApi.logout();
+    } catch (error) {
+      console.error('Logout everywhere error:', error);
+      clearAuthToken();
+    }
+  }
+}
+
+// ────────────────────────────────────────────────
 // Auth event listeners
 // ────────────────────────────────────────────────
 if (typeof window !== 'undefined') {
@@ -2344,16 +2769,6 @@ export const apiConfig = {
     cars: '/api/v1/cars',
     notifications: '/api/v1/notifications',
     support: '/api/v1/support',
-  },
-  
-  // Using string values instead of type references
-  responseTypes: {
-    user: 'User' as const,
-    hotelSearchParams: 'HotelSearchParams' as const,
-    hotelOffer: 'HotelOffer' as const,
-    hotelSearchResponse: 'HotelSearchResponse' as const,
-    hotelBookingRequest: 'HotelBookingRequest' as const,
-    hotelBookingResponse: 'HotelBookingResponse' as const,
   },
   
   defaultHeaders: {
@@ -2426,6 +2841,12 @@ const api = {
   validateHotelBookingData,
   getCityCode,
   
+  // Flight search functions
+  searchFlightsFixed,
+  searchFlightsWithPagination,
+  validateFlightSearchParams,
+  transformFlightOfferToSearchResult,
+  
   // Hotel booking functions
   createAmadeusHotelBooking,
   
@@ -2439,9 +2860,6 @@ const api = {
   fetchUserProfile,
   updateUserProfile,
   uploadUserAvatar,
-  
-  // Search utilities
-  searchFlightsWithPagination,
   
   // Auth helper functions
   handleForgotPassword,

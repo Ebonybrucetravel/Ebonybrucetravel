@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useLanguage } from "../context/LanguageContext";
 
 interface SearchResult {
@@ -8,7 +8,7 @@ interface SearchResult {
   title: string;
   subtitle: string;
   price: string;
-  totalPrice?: string; // Add this for hotels
+  totalPrice?: string;
   time?: string;
   duration?: string;
   stops?: string;
@@ -20,7 +20,6 @@ interface SearchResult {
   amenities?: string[];
   features?: string[];
   type?: "flights" | "hotels" | "car-rentals";
-  // Add hotel-specific fields
   isRefundable?: boolean;
   cancellationPolicy?: string;
   bedType?: string;
@@ -28,6 +27,12 @@ interface SearchResult {
   roomType?: string;
   nights?: number;
   location?: string;
+  // Add flight-specific fields
+  realData?: {
+    origin?: string;
+    destination?: string;
+    isRoundTrip?: boolean;
+  };
 }
 
 interface SearchResultsProps {
@@ -45,6 +50,75 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 }) => {
   const { currency } = useLanguage();
   const searchType = searchParams?.type || "flights";
+
+  // DEBUG: Log everything on mount
+  useEffect(() => {
+    console.log('🔍 SEARCH RESULTS MOUNTED:', {
+      searchType,
+      totalResults: initialResults.length,
+      searchParams,
+      firstResult: initialResults[0],
+      allSubtitles: initialResults.map(r => r.subtitle)
+    });
+  }, [initialResults, searchParams, searchType]);
+
+  // Extract airport codes with better error handling
+  const extractAirportInfo = (displayValue: string) => {
+    if (!displayValue) return { code: '', city: '', full: '' };
+    
+    console.log('📋 Extracting from:', displayValue);
+    
+    // Handle multiple formats:
+    // 1. "LOS - Lagos, Nigeria" → code: "LOS", city: "Lagos"
+    // 2. "LOS" → code: "LOS", city: "Lagos"
+    // 3. "Lagos (LOS)" → code: "LOS", city: "Lagos"
+    
+    // Try to match IATA code pattern (3 uppercase letters)
+    const iataMatch = displayValue.match(/\b([A-Z]{3})\b/);
+    const code = iataMatch ? iataMatch[1] : '';
+    
+    // Extract city name (everything before comma or dash)
+    let city = '';
+    if (displayValue.includes('-')) {
+      // Format: "LOS - Lagos, Nigeria"
+      const afterDash = displayValue.split('-')[1]?.trim();
+      city = afterDash?.split(',')[0]?.trim() || '';
+    } else if (displayValue.includes('(')) {
+      // Format: "Lagos (LOS)"
+      city = displayValue.split('(')[0]?.trim() || '';
+    } else {
+      // Just a code? Try to get city from known airports
+      city = displayValue;
+    }
+    
+    return { code, city, full: displayValue };
+  };
+
+  // Extract info from search params
+  const originInfo = extractAirportInfo(searchParams?.segments?.[0]?.from || "LOS");
+  const destinationInfo = extractAirportInfo(searchParams?.segments?.[0]?.to || "ABV");
+  
+  const originCode = originInfo.code || "LOS";
+  const destinationCode = destinationInfo.code || "ABV";
+  const originCity = originInfo.city || "Lagos";
+  const destinationCity = destinationInfo.city || "Abuja";
+  
+  console.log('📍 Airport Info:', {
+    fromRaw: searchParams?.segments?.[0]?.from,
+    toRaw: searchParams?.segments?.[0]?.to,
+    originInfo,
+    destinationInfo,
+    originCode,
+    destinationCode
+  });
+
+  const departureDate = searchParams?.segments?.[0]?.date;
+  const returnDate = searchParams?.returnDate;
+  const travellers = searchParams?.travellers || searchParams?.adults || 2;
+  const rooms = searchParams?.rooms || 1;
+  const location = searchParams?.location || "Lagos";
+  const checkInDate = searchParams?.checkInDate || searchParams?.checkIn;
+  const checkOutDate = searchParams?.checkOutDate || searchParams?.checkOut;
 
   // Generic Filters
   const [priceRange, setPriceRange] = useState<number>(500000);
@@ -67,8 +141,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   ]);
   const [propertyTypes, setPropertyTypes] = useState<string[]>(["Hotels"]);
   const [starRatings, setStarRatings] = useState<number[]>([5, 4, 3]);
-
-  const firstSeg = searchParams?.segments?.[0];
 
   const filteredResults = useMemo(() => {
     let filtered = [...initialResults];
@@ -596,95 +668,115 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
 
-  const renderFlightCard = (item: SearchResult) => (
-    <div
-      key={item.id}
-      className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2 duration-300"
-    >
-      <div className="flex flex-col md:flex-row">
-        <div className="flex-1 p-8">
-          <div className="flex flex-wrap items-center justify-between mb-8">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-white border border-gray-100 rounded-lg flex items-center justify-center p-1">
-                <img
-                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(
-                    item.provider || "Airline"
-                  )}&background=f0f9ff&color=33a8da`}
-                  className="w-full h-full object-contain"
-                  alt=""
-                />
+  const renderFlightCard = (item: SearchResult) => {
+    console.log('🛫 Flight card data:', {
+      id: item.id,
+      subtitle: item.subtitle,
+      provider: item.provider,
+      realData: item.realData
+    });
+    
+    // Extract route from subtitle or use fallback
+    let routeDisplay = `${originCode} → ${destinationCode}`;
+    
+    if (item.subtitle) {
+      // Try to extract route from subtitle
+      const subtitleParts = item.subtitle.split('•');
+      if (subtitleParts.length > 1) {
+        routeDisplay = subtitleParts[1]?.trim() || routeDisplay;
+      }
+    }
+    
+    return (
+      <div
+        key={item.id}
+        className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2 duration-300"
+      >
+        <div className="flex flex-col md:flex-row">
+          <div className="flex-1 p-8">
+            <div className="flex flex-wrap items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-white border border-gray-100 rounded-lg flex items-center justify-center p-1">
+                  <img
+                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      item.provider || "Airline"
+                    )}&background=f0f9ff&color=33a8da`}
+                    className="w-full h-full object-contain"
+                    alt=""
+                  />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-gray-900 tracking-tight">
+                    {item.provider || "Airline"}
+                  </h4>
+                  <p className="text-[10px] font-bold text-gray-400">
+                    {item.subtitle || `Flight • ${routeDisplay}`}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h4 className="text-sm font-black text-gray-900 tracking-tight">
-                  {item.provider || "Airline"}
-                </h4>
-                <p className="text-[10px] font-bold text-gray-400">
-                  {item.subtitle || "Flight details"}
+              <div className="bg-yellow-400 text-white font-black text-[10px] px-2 py-0.5 rounded tracking-tighter">
+                {(item.rating || 4.5).toFixed(1)}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-12 lg:gap-20">
+              <div className="text-center">
+                <p className="text-2xl font-black text-gray-900">
+                  {item.time?.split(" - ")[0] || "08:00"}
+                </p>
+                <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">
+                  Depart
+                </p>
+              </div>
+              <div className="flex-1 flex flex-col items-center">
+                <p className="text-[10px] font-bold text-gray-300 uppercase mb-2">
+                  {item.duration || "1h 15m"}
+                </p>
+                <div className="w-full h-[1.5px] bg-gray-100 relative">
+                  <div className="absolute left-1/2 -translate-x-1/2 -top-[6px] text-[#33a8da]">
+                    <svg
+                      className="w-4 h-4"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+                    </svg>
+                  </div>
+                </div>
+                <p className="text-[10px] font-black uppercase mt-2 tracking-widest text-blue-500">
+                  {item.stops || "Direct"}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-black text-gray-900">
+                  {item.time?.split(" - ")[1] || (item.duration?.includes("h") ? "09:15" : "14:45")}
+                </p>
+                <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">
+                  Arrival
                 </p>
               </div>
             </div>
-            <div className="bg-yellow-400 text-white font-black text-[10px] px-2 py-0.5 rounded tracking-tighter">
-              {(item.rating || 4.5).toFixed(1)}
-            </div>
           </div>
 
-          <div className="flex items-center gap-12 lg:gap-20">
-            <div className="text-center">
-              <p className="text-2xl font-black text-gray-900">
-                {item.time?.split(" - ")[0] || "08:00"}
-              </p>
-              <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">
-                Depart
+          <div className="w-full md:w-[220px] bg-[#fdfdfd] border-l border-gray-100 flex flex-col items-center justify-center p-8 text-center">
+            <div className="mb-6">
+              <p className="text-2xl font-black text-gray-900">{item.price || "$0"}</p>
+              <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">
+                Per Traveler
               </p>
             </div>
-            <div className="flex-1 flex flex-col items-center">
-              <p className="text-[10px] font-bold text-gray-300 uppercase mb-2">
-                {item.duration || "1h 15m"}
-              </p>
-              <div className="w-full h-[1.5px] bg-gray-100 relative">
-                <div className="absolute left-1/2 -translate-x-1/2 -top-[6px] text-[#33a8da]">
-                  <svg
-                    className="w-4 h-4"
-                    fill="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-[10px] font-black uppercase mt-2 tracking-widest text-blue-500">
-                {item.stops || "Direct"}
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-2xl font-black text-gray-900">
-                {item.time?.split(" - ")[1] || (item.duration?.includes("h") ? "09:15" : "14:45")}
-              </p>
-              <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">
-                Arrival
-              </p>
-            </div>
+            <button
+              onClick={() => handleSelectResult(item)}
+              disabled={isBooking === item.id}
+              className="w-full bg-[#33a8da] text-white font-black py-3.5 rounded-xl transition shadow-lg active:scale-95 text-sm uppercase"
+            >
+              {isBooking === item.id ? "..." : "Select"}
+            </button>
           </div>
-        </div>
-
-        <div className="w-full md:w-[220px] bg-[#fdfdfd] border-l border-gray-100 flex flex-col items-center justify-center p-8 text-center">
-          <div className="mb-6">
-            <p className="text-2xl font-black text-gray-900">{item.price || "$0"}</p>
-            <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">
-              Per Traveler
-            </p>
-          </div>
-          <button
-            onClick={() => handleSelectResult(item)}
-            disabled={isBooking === item.id}
-            className="w-full bg-[#33a8da] text-white font-black py-3.5 rounded-xl transition shadow-lg active:scale-95 text-sm uppercase"
-          >
-            {isBooking === item.id ? "..." : "Select"}
-          </button>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="bg-[#f8fbfe] -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -705,11 +797,18 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   )}
                 </svg>
               </div>
-              <span className="font-black text-gray-900 text-lg tracking-tight">
-                {searchType === "flights"
-                  ? firstSeg?.from || "Lagos"
-                  : searchParams?.location || "London"}
-              </span>
+              <div>
+                <span className="font-black text-gray-900 text-lg tracking-tight block">
+                  {searchType === "flights"
+                    ? `${originCity} (${originCode}) → ${destinationCity} (${destinationCode})`
+                    : location}
+                </span>
+                <span className="text-[11px] font-bold text-gray-400 block">
+                  {searchType === "flights" 
+                    ? `${searchParams?.segments?.[0]?.from || originCity} to ${searchParams?.segments?.[0]?.to || destinationCity}`
+                    : "Hotel search"}
+                </span>
+              </div>
             </div>
 
             <div className="flex items-center gap-3">
@@ -724,13 +823,23 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               </div>
-              <span className="text-sm font-bold text-gray-500">
-                {searchType === "flights"
-                  ? firstSeg?.date || "Anytime"
-                  : `${searchParams?.checkInDate || searchParams?.checkIn || "Dec 26"} — ${
-                      searchParams?.checkOutDate || searchParams?.checkOut || "Dec 30"
-                    }`}
-              </span>
+              <div>
+                <span className="text-sm font-bold text-gray-500 block">
+                  {searchType === "flights"
+                    ? departureDate || "Anytime"
+                    : checkInDate || "Check-in"}
+                </span>
+                {searchType === "flights" && returnDate && (
+                  <span className="text-[11px] font-bold text-gray-400">
+                    Return: {returnDate}
+                  </span>
+                )}
+                {searchType === "hotels" && checkOutDate && (
+                  <span className="text-[11px] font-bold text-gray-400">
+                    Check-out: {checkOutDate}
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-3">
@@ -743,11 +852,18 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                 </svg>
               </div>
-              <span className="text-sm font-bold text-gray-500">
-                {searchType === "hotels" 
-                  ? `${searchParams?.travellers || searchParams?.adults || 2} Adult${(searchParams?.travellers || searchParams?.adults || 2) > 1 ? 's' : ''}, ${searchParams?.rooms || 1} Room${(searchParams?.rooms || 1) > 1 ? 's' : ''}`
-                  : `${searchParams?.travellers || 2} Adult${(searchParams?.travellers || 2) > 1 ? 's' : ''}, 0 Children`}
-              </span>
+              <div>
+                <span className="text-sm font-bold text-gray-500 block">
+                  {searchType === "hotels" 
+                    ? `${travellers} Adult${travellers > 1 ? 's' : ''}, ${rooms} Room${rooms > 1 ? 's' : ''}`
+                    : `${travellers} Adult${travellers > 1 ? 's' : ''}`}
+                </span>
+                {searchType === "flights" && searchParams?.children && (
+                  <span className="text-[11px] font-bold text-gray-400">
+                    {searchParams.children} Child{searchParams.children > 1 ? 'ren' : ''}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <button

@@ -33,6 +33,13 @@ import {
 } from "../lib/api";
 import { loadStripe } from "@stripe/stripe-js";
 
+import { 
+  SearchParams, 
+  SearchResult, 
+  SearchSegment, 
+  Booking 
+} from '@/lib/types';
+
 // Initialize Stripe
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
@@ -47,113 +54,6 @@ export interface User {
   provider?: "email" | "google" | "facebook";
   role?: "user" | "admin";
   token?: string;
-}
-
-export interface SearchSegment {
-  from: string;
-  to: string;
-  date: string;
-}
-
-export interface SearchParams {
-  type: "flights" | "hotels" | "car-rentals";
-  tripType?: "one-way" | "round-trip" | "multi-city";
-  segments?: SearchSegment[];
-  travellers?: number;
-  cabinClass?: string;
-  returnDate?: string;
-  location?: string;
-  cityCode?: string;
-  checkInDate?: string;
-  checkOutDate?: string;
-  guests?: number;
-  adults?: number; // Added adults field
-  rooms?: number;
-  currency?: string;
-  carPickUp?: string;
-  pickUpDate?: string;
-  dropOffDate?: string;
-  [key: string]: any;
-}
-
-export interface SearchResult {
-  id: string;
-  provider: string;
-  title: string;
-  subtitle: string;
-  price: string;
-  totalPrice?: string;
-  time?: string;
-  duration?: string;
-  stops?: string;
-  rating?: number;
-  baggage?: string;
-  aircraft?: string;
-  layoverDetails?: string;
-  image?: string;
-  amenities?: string[];
-  features?: string[];
-  type?: "flights" | "hotels" | "car-rentals";
-  realData?: {
-    offerId?: string;
-    hotelId?: string;
-    departureTime?: string;
-    arrivalTime?: string;
-    airline?: string;
-    flightNumber?: string;
-    totalDuration?: number;
-    stops?: number;
-    price?: number;
-    basePrice?: number;
-    currency?: string;
-    guests?: number;
-    rooms?: number;
-    nights?: number;
-    checkInDate?: string;
-    checkOutDate?: string;
-    roomType?: string;
-    bedType?: string;
-    beds?: number;
-    isRefundable?: boolean;
-    cancellationDeadline?: string;
-    cancellationPolicy?: string;
-  };
-}
-
-export interface Booking {
-  id: string;
-  type: "flight" | "hotel" | "car";
-  title: string;
-  provider: string;
-  subtitle: string;
-  date: string;
-  duration?: string;
-  status: "Confirmed" | "Completed" | "Cancel" | "Active";
-  price: string;
-  currency: string;
-  iconBg: string;
-  imageUrl?: string;
-  bookingReference?: string;
-  time?: string;
-  paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded';
-  bookingData?: {
-    origin?: string;
-    destination?: string;
-    departureDate?: string;
-    arrivalDate?: string;
-    airline?: string;
-    flightNumber?: string;
-    hotelName?: string;
-    hotelId?: string;
-    carModel?: string;
-    checkInDate?: string;
-    checkOutDate?: string;
-    pickUpDate?: string;
-    dropOffDate?: string;
-    guests?: number;
-    rooms?: number;
-    nights?: number;
-  };
 }
 
 const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
@@ -335,7 +235,7 @@ export default function Home() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
-  const [hotelSearchParams, setHotelSearchParams] = useState<SearchParams | null>(null); // NEW: Separate hotel params
+  const [hotelSearchParams, setHotelSearchParams] = useState<SearchParams | null>(null);
   const [selectedItem, setSelectedItem] = useState<SearchResult | null>(null);
   const [searchTime, setSearchTime] = useState<number>(0);
   const [isRealApiUsed, setIsRealApiUsed] = useState(false);
@@ -344,7 +244,6 @@ export default function Home() {
   const [currentBooking, setCurrentBooking] = useState<any>(null);
   const [showPayment, setShowPayment] = useState(false);
   
-  // SINGLE SOURCE OF TRUTH: Active tab state shared between Navbar and SearchBox
   const [activeTab, setActiveTab] = useState<'flights' | 'hotels' | 'cars'>('flights');
 
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -428,7 +327,7 @@ export default function Home() {
 
   const showNav = currentView !== "admin-login" && currentView !== "admin-dashboard";
 
-  // Restore session (user, token, bookings)
+  // Restore session
   useEffect(() => {
     const savedUser = localStorage.getItem("travelUser");
     const savedToken = localStorage.getItem("authToken");
@@ -459,7 +358,6 @@ export default function Home() {
     }
   }, []);
 
-  // UPDATED useEffect dependencies
   useEffect(() => {
     if (isLoggedIn && user.name && user.email) {
       localStorage.setItem("travelUser", JSON.stringify(user));
@@ -477,19 +375,17 @@ export default function Home() {
   // Helper function to format hotel search data
   const formatHotelSearchData = useCallback(async (data: SearchParams) => {
     try {
-      // Format hotel search parameters using the API helper
       const hotelParams = await formatHotelSearchParams(
         data.location || "Lagos",
         data.checkInDate,
         data.checkOutDate,
-        data.guests || data.adults || 2, // Use adults if guests not provided
+        data.guests || data.adults || 2,
         data.rooms || 1
       );
 
       return hotelParams;
     } catch (error) {
       console.error("❌ Failed to format hotel params:", error);
-      // Return fallback params
       const today = new Date();
       const tomorrow = new Date(today);
       tomorrow.setDate(today.getDate() + 1);
@@ -515,22 +411,18 @@ export default function Home() {
     try {
       console.log("📤 Creating booking with data:", bookingData);
       
-      // Use the booking API from lib/api
       const result = await bookingApi.createBooking(bookingData);
       
       if (result && (result.id || result.data?.id)) {
         console.log("✅ Booking created successfully:", result);
         
-        // Store the booking data for payment
         const bookingId = result.id || result.data?.id;
         const bookingRef = result.bookingReference || result.data?.bookingReference || `#${Date.now().toString().slice(-6)}`;
         
-        // FIX: Use the basePrice directly (it's already in cents/kobo)
-        // Don't divide by 100 since Stripe expects cents/kobo
         const bookingInfo = {
           id: bookingId,
           bookingReference: bookingRef,
-          totalAmount: bookingData.basePrice / 100, // Convert from cents to display amount
+          totalAmount: bookingData.basePrice / 100,
           currency: bookingData.currency,
           passengerInfo: bookingData.passengerInfo,
           isGuest: isGuest,
@@ -538,8 +430,6 @@ export default function Home() {
         };
         
         setCurrentBooking(bookingInfo);
-        
-        // Show payment modal
         setShowPayment(true);
         
         return { 
@@ -568,10 +458,8 @@ export default function Home() {
     try {
       console.log("💳 Processing payment for booking:", bookingId);
       
-      // Close payment modal
       setShowPayment(false);
       
-      // Create local booking record
       if (selectedItem && searchParams) {
         const newBooking: Booking = {
           id: bookingId || Date.now().toString(),
@@ -619,7 +507,6 @@ export default function Home() {
         setUserBookings(prev => [newBooking, ...prev]);
       }
       
-      // Navigate to success page
       setCurrentView("success");
       
       return { success: true };
@@ -633,7 +520,7 @@ export default function Home() {
     }
   }, [selectedItem, searchParams, currentBooking]);
 
-  // UPDATED: Booking completion with payment flow - now handles hotels
+  // UPDATED: Booking completion with payment flow
   const handleBookingComplete = useCallback(async (guestData?: any) => {
     if (!selectedItem || !searchParams) {
       console.error("Cannot complete booking: missing item or params");
@@ -641,12 +528,10 @@ export default function Home() {
       return;
     }
 
-    // Determine booking type
     const isHotel = selectedItem.type === "hotels";
     const isCar = selectedItem.type === "car-rentals";
     const isFlight = selectedItem.type === "flights";
 
-    // Extract numeric price from realData if available, otherwise from price string
     let basePrice = 0;
     if (selectedItem.realData?.price) {
       basePrice = selectedItem.realData.price;
@@ -655,21 +540,17 @@ export default function Home() {
       basePrice = parseFloat(priceStr) || (isHotel ? 95000 : 150);
     }
     
-    const priceInCents = Math.round(basePrice * 100); // Convert to cents/kobo
+    const priceInCents = Math.round(basePrice * 100);
 
-    // Format dates
     const departureDate = new Date(searchParams.segments?.[0]?.date || Date.now());
-    const arrivalDate = new Date(departureDate.getTime() + 90 * 60 * 1000); // 90 minutes later
+    const arrivalDate = new Date(departureDate.getTime() + 90 * 60 * 1000);
 
-    // HOTEL SPECIFIC: Get hotel data from selected item
     const hotelData = selectedItem.realData;
 
-    // Determine provider and product type based on item type
-    let provider = "BOOKING_COM"; // Default for hotels
+    let provider = "BOOKING_COM";
     let productType = "HOTEL";
     
     if (isFlight) {
-      // Check if it's a domestic or international flight
       const isDomesticFlight = selectedItem.type === "flights" && 
         ((selectedItem.subtitle && selectedItem.subtitle.includes("Lagos") && selectedItem.subtitle.includes("Abuja")) ||
          (searchParams.segments?.[0]?.from?.includes("LOS") && searchParams.segments?.[0]?.to?.includes("ABV")) ||
@@ -687,7 +568,6 @@ export default function Home() {
       productType = "CAR_RENTAL";
     }
 
-    // Prepare booking payload - DIFFERENT FOR HOTELS VS FLIGHTS
     const bookingData: any = {
       productType,
       provider,
@@ -708,7 +588,7 @@ export default function Home() {
           offerId: hotelData?.offerId || selectedItem.id,
           hotelName: selectedItem.title,
           checkInDate: hotelData?.checkInDate || searchParams.checkInDate || new Date().toISOString(),
-          checkOutDate: hotelData?.checkOutDate || searchParams.checkOutDate || new Date(Date.now() + 86400000 * 3).toISOString(), // +3 days
+          checkOutDate: hotelData?.checkOutDate || searchParams.checkOutDate || new Date(Date.now() + 86400000 * 3).toISOString(),
           guests: hotelData?.guests || searchParams.guests || 2,
           rooms: hotelData?.rooms || searchParams.rooms || 1,
           location: searchParams.location || "Lagos",
@@ -719,7 +599,7 @@ export default function Home() {
           carId: selectedItem.id,
           carModel: selectedItem.title,
           pickUpDate: searchParams.pickUpDate || new Date().toISOString(),
-          dropOffDate: searchParams.dropOffDate || new Date(Date.now() + 86400000 * 2).toISOString(), // +2 days
+          dropOffDate: searchParams.dropOffDate || new Date(Date.now() + 86400000 * 2).toISOString(),
           pickUpLocation: searchParams.carPickUp || "Lagos Airport"
         })
       },
@@ -734,7 +614,6 @@ export default function Home() {
 
     console.log("🚀 Final booking payload:", bookingData);
     
-    // Create booking (this will trigger payment flow)
     const result = await handleCreateBooking(bookingData, !!guestData);
 
     if (!result.success) {
@@ -743,20 +622,61 @@ export default function Home() {
     }
   }, [selectedItem, searchParams, user, isLoggedIn, handleCreateBooking]);
 
-  // UPDATED: Search handler using the new utility function
   const handleSearch = useCallback(async (data: SearchParams) => {
+    // ✅ FIXED: Ensure data has proper structure before processing
+    console.log('🔍 DEBUG: Data received from SearchBox:', {
+      type: data.type,
+      segments: data.segments,
+      fromRaw: data.segments?.[0]?.from,
+      toRaw: data.segments?.[0]?.to,
+      date: data.segments?.[0]?.date,
+      returnDate: data.returnDate,
+      tripType: data.tripType,
+      cabinClass: data.cabinClass,
+      travellers: data.travellers,
+      // Check for direct properties that might be used
+      directFrom: (data as any).from,
+      directTo: (data as any).to,
+      directDate: (data as any).date
+    });
+    
+    // ✅ FIXED: Reconstruct data if it doesn't have proper segments structure
+    if (!data.segments || !Array.isArray(data.segments) || data.segments.length === 0) {
+      console.log('🔄 Reconstructing segments from direct properties...');
+      
+      // Try to get from/to from direct properties
+      const fromValue = (data as any).from || (data as any).origin || 
+                        (data as any).departure || data.segments?.[0]?.from || "";
+      const toValue = (data as any).to || (data as any).destination || 
+                      (data as any).arrival || data.segments?.[0]?.to || "";
+      const dateValue = (data as any).date || data.segments?.[0]?.date || 
+                        (data as any).departureDate || new Date().toISOString().split('T')[0];
+      
+      // Only reconstruct if we have values
+      if (fromValue && toValue) {
+        data = {
+          ...data,
+          segments: [{
+            from: fromValue,
+            to: toValue,
+            date: dateValue
+          }]
+        };
+        console.log('✅ Reconstructed segments:', data.segments);
+      }
+    }
+    
     const startTime = Date.now();
     setSearchParams(data);
     
-    // Store hotel search parameters separately with adults/guests explicitly set
     if (data.type === "hotels") {
       setHotelSearchParams({
         ...data,
-        adults: data.guests || data.adults || 1, // Ensure adults is set
-        guests: data.guests || data.adults || 1, // Ensure guests is set
+        adults: data.guests || data.adults || 1,
+        guests: data.guests || data.adults || 1,
       });
     } else {
-      setHotelSearchParams(null); // Clear hotel params for non-hotel searches
+      setHotelSearchParams(null);
     }
     
     setIsSearching(true);
@@ -765,21 +685,18 @@ export default function Home() {
     setSearchTime(0);
     setIsRealApiUsed(false);
     setApiValidationErrors([]);
-
+  
     // Handle hotel searches
     if (data.type === "hotels") {
       try {
         console.log("🏨 Starting real hotel search with params:", data);
         
-        // Format hotel search parameters
         const hotelParams = await formatHotelSearchData(data);
-        
-        // Use the hotel API to search and transform results
         const result = await hotelApi.searchAndTransformHotels(
           hotelParams,
           data.location || "Lagos"
         );
-
+  
         if (result.success && result.results.length > 0) {
           setIsRealApiUsed(true);
           setSearchResults(result.results);
@@ -789,7 +706,10 @@ export default function Home() {
           setIsRealApiUsed(false);
         }
       } catch (error: any) {
-        console.error("❌ Hotel search failed:", error);
+        // Use a safer logging approach
+        if (process.env.NODE_ENV === 'development') {
+          console.warn("Hotel search failed:", error);
+        }
         setSearchError("Unable to fetch real hotel data. Showing premium options.");
         setSearchResults(FALLBACK_RESULTS.hotels);
         setIsRealApiUsed(false);
@@ -803,7 +723,7 @@ export default function Home() {
       }
       return;
     }
-
+  
     // Handle car searches
     if (data.type === "car-rentals") {
       const fallbackResults = FALLBACK_RESULTS["car-rentals"];
@@ -820,153 +740,417 @@ export default function Home() {
       }, 100);
       return;
     }
-
+  
     // Handle flight searches
     try {
       console.log("🚀 Starting real flight search with params:", data);
-
-      // Prepare search parameters
-      const origin = (data.segments?.[0]?.from || "LOS").split('(')[1]?.replace(')', '') || "LOS";
-      const destination = (data.segments?.[0]?.to || "ABV").split('(')[1]?.replace(')', '') || "ABV";
+  
+      // ✅ FIXED: Improved airport code extraction function
+      const extractAirportCode = (displayValue: string): string => {
+        if (!displayValue || displayValue.trim() === '') {
+          return '';
+        }
+        
+        console.log('🔍 Extracting airport code from:', displayValue);
+        
+        // Clean the input - remove extra spaces
+        const cleanValue = displayValue.trim();
+        
+        // Try different patterns in order of likelihood:
+        
+        // 1. Exact 3-letter code at start (e.g., "LOS" or "LOS - Lagos")
+        const exactCodeMatch = cleanValue.match(/^([A-Z]{3})$/);
+        if (exactCodeMatch) {
+          console.log('✅ Found exact 3-letter code:', exactCodeMatch[1]);
+          return exactCodeMatch[1];
+        }
+        
+        // 2. 3-letter code at start followed by something (e.g., "LOS - Lagos")
+        const beginningMatch = cleanValue.match(/^([A-Z]{3})\b/);
+        if (beginningMatch) {
+          console.log('✅ Found code at beginning:', beginningMatch[1]);
+          return beginningMatch[1];
+        }
+        
+        // 3. 3-letter code in parentheses (e.g., "Lagos (LOS)")
+        const parenMatch = cleanValue.match(/\(([A-Z]{3})\)/);
+        if (parenMatch) {
+          console.log('✅ Found code in parentheses:', parenMatch[1]);
+          return parenMatch[1];
+        }
+        
+        // 4. Format like "ATA-Huaraz" or "LON-London"
+        const hyphenMatch = cleanValue.match(/^([A-Z]{3})-/);
+        if (hyphenMatch) {
+          console.log('✅ Found code before hyphen:', hyphenMatch[1]);
+          return hyphenMatch[1];
+        }
+        
+        // 5. Format like "LON, London" or "ATA, Huaraz"
+        const commaMatch = cleanValue.match(/^([A-Z]{3}),/);
+        if (commaMatch) {
+          console.log('✅ Found code before comma:', commaMatch[1]);
+          return commaMatch[1];
+        }
+        
+        // 6. Try to find any 3 uppercase letters in the string
+        const anyCodeMatch = cleanValue.match(/([A-Z]{3})/);
+        if (anyCodeMatch) {
+          console.log('✅ Found code anywhere in string:', anyCodeMatch[1]);
+          return anyCodeMatch[1];
+        }
+        
+        // 7. Last resort: take first 3 characters and convert to uppercase
+        const firstThree = cleanValue.substring(0, 3).toUpperCase();
+        if (firstThree.match(/^[A-Z]{3}$/)) {
+          console.log('✅ Using first 3 characters:', firstThree);
+          return firstThree;
+        }
+        
+        console.log('⚠️ Could not extract airport code from:', displayValue);
+        return '';
+      };
+  
+      // ✅ FIXED: Validate search data before extraction - with better error messages
+      if (!data.segments?.[0]?.from || !data.segments?.[0]?.to) {
+        console.log('⚠️ Search data structure:', {
+          hasSegments: !!data.segments,
+          segmentCount: data.segments?.length,
+          firstSegment: data.segments?.[0],
+          dataKeys: Object.keys(data)
+        });
+        
+        setSearchError("Please enter both departure and arrival cities");
+        setIsSearching(false);
+        return;
+      }
+  
+      const origin = extractAirportCode(data.segments[0].from);
+      const destination = extractAirportCode(data.segments[0].to);
+      
+      console.log('📍 Extracted airport codes:', { 
+        fromRaw: data.segments[0].from, 
+        toRaw: data.segments[0].to,
+        origin, 
+        destination 
+      });
+  
+      // ✅ FIXED: Validate extracted codes with better error message
+      if (!origin || !destination) {
+        console.log('❌ Could not extract valid airport codes:', { 
+          fromRaw: data.segments[0].from, 
+          toRaw: data.segments[0].to,
+          origin, 
+          destination 
+        });
+        setSearchError(`Please enter valid airport codes. Could not extract codes from "${data.segments[0].from}" and "${data.segments[0].to}"`);
+        setIsSearching(false);
+        return;
+      }
+  
       let departureDate = data.segments?.[0]?.date;
       if (!departureDate) {
         departureDate = new Date().toISOString().split("T")[0];
       }
-
+  
       let cabinClass = (data.cabinClass ?? "economy").toLowerCase();
-      if (!["economy", "business", "first"].includes(cabinClass)) {
+      if (!["economy", "premium_economy", "business", "first"].includes(cabinClass)) {
         cabinClass = "economy";
       }
-
+  
       const passengers = Math.max(1, Math.min(9, Number(data.travellers) || 1));
-
-      // Use the new utility function
-      const searchRequest = {
+  
+      // Build the search request object
+      const searchRequest: any = {
         origin,
         destination,
         departureDate,
         passengers,
         cabinClass,
-        ...(data.tripType === "round-trip" && data.returnDate && {
-          returnDate: data.returnDate,
-        }),
+        currency: "NGN",
       };
-
-      console.log("🔍 Search request:", searchRequest);
-      
-      const result = await searchFlightsWithPagination(searchRequest, 2); // Max 2 pages for demo
-      
-      if (result.offers.length === 0) {
-        setSearchError("No available flights found for this route and date.");
-        setSearchResults(FALLBACK_RESULTS.flights);
-        setIsRealApiUsed(false);
-      } else {
-        setIsRealApiUsed(true);
-
-        // Transform to SearchResult format
-        const transformedResults: SearchResult[] = result.offers.map((offer: any, index: number) => {
-          const slices = offer.slices || offer.itineraries?.[0]?.slices || [];
-          const firstSegment = slices[0] || {};
-          const lastSegment = slices[slices.length - 1] || {};
-
-          const airline = offer.owner?.name || 
-                         firstSegment.marketing_carrier?.name || 
-                         firstSegment.airline || 
-                         "Unknown Airline";
-          
-          const flightNumber = firstSegment.flight_number || 
-                             firstSegment.flightNumber || 
-                             `FL${1000 + index}`;
-          
-          const totalPrice = offer.total_amount || 
-                            offer.amount || 
-                            offer.price?.amount || 
-                            45000;
-          
-          const currency = offer.total_currency || offer.currency || "NGN";
-
-          const durationMinutes = offer.duration_minutes || offer.total_duration || 90;
-          const hours = Math.floor(durationMinutes / 60);
-          const minutes = durationMinutes % 60;
-          const durationStr = `${hours}h ${minutes.toString().padStart(2, "0")}m`;
-
-          const stopsCount = Math.max(0, slices.length - 1);
-          const stopsText = stopsCount === 0 ? "Direct" : stopsCount === 1 ? "1 stop" : `${stopsCount} stops`;
-
-          let departureTime = firstSegment.departing_at || 
-                            firstSegment.departure_time || 
-                            firstSegment.departs_at;
-          
-          let arrivalTime = lastSegment.arriving_at || 
-                           lastSegment.arrival_time || 
-                           lastSegment.arrives_at;
-
-          let timeDisplay = "08:00 – 09:30";
-          if (departureTime && arrivalTime) {
-            try {
-              const dep = new Date(departureTime).toLocaleTimeString([], { 
-                hour: "2-digit", 
-                minute: "2-digit", 
-                hour12: false 
-              });
-              const arr = new Date(arrivalTime).toLocaleTimeString([], { 
-                hour: "2-digit", 
-                minute: "2-digit", 
-                hour12: false 
-              });
-              timeDisplay = `${dep} – ${arr}`;
-            } catch (e) {
-              console.warn("Time formatting error:", e);
-            }
-          }
-
-          // Format price based on currency
-          const priceSymbol = currency === 'NGN' ? '₦' : currency === 'GBP' ? '£' : '$';
-          const formattedPrice = `${priceSymbol}${Number(totalPrice).toLocaleString()}`;
-
-          return {
-            id: offer.id || `offer-${result.offerRequestId}-${index}`,
-            provider: airline,
-            title: `Flight ${flightNumber}`,
-            subtitle: `${cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1)} • ${origin} → ${destination}`,
-            price: formattedPrice,
-            time: timeDisplay,
-            duration: durationStr,
-            stops: stopsText,
-            rating: 4.3 + Math.random() * 0.6,
-            baggage: "23 kg checked + 8 kg cabin",
-            aircraft: firstSegment.aircraft?.name || "Boeing 737 / Airbus A320",
-            layoverDetails: stopsText === "Direct" ? "Non-stop" : stopsText,
-            image: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400",
-            type: "flights" as const,
-            realData: {
-              offerId: offer.id,
-              departureTime,
-              arrivalTime,
-              airline,
-              flightNumber,
-              totalDuration: durationMinutes,
-              stops: stopsCount,
-              price: Number(totalPrice),
-              currency,
-            },
-          };
+  
+      if (data.tripType === "round-trip" && data.returnDate) {
+        searchRequest.returnDate = data.returnDate;
+      }
+  
+      if (data.maxConnections !== undefined) {
+        searchRequest.maxConnections = data.maxConnections;
+      }
+  
+      console.log("🔍 Search request being sent to API:", searchRequest);
+  
+      // STEP 1: Create offer request
+      console.log("📝 Step 1: Creating offer request...");
+      const offerRequestResponse = await fetch('https://ebony-bruce-production.up.railway.app/api/v1/bookings/search/flights', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(searchRequest)
+      });
+  
+      if (!offerRequestResponse.ok) {
+        throw new Error(`Offer request failed: ${offerRequestResponse.status}`);
+      }
+  
+      const offerRequestResult = await offerRequestResponse.json();
+      console.log("📝 Offer request result:", offerRequestResult);
+  
+      if (!offerRequestResult.success || !offerRequestResult.data?.offer_request_id) {
+        throw new Error('Failed to create offer request: ' + (offerRequestResult.message || 'Unknown error'));
+      }
+  
+      const offerRequestId = offerRequestResult.data.offer_request_id;
+      console.log("🆔 Offer Request ID:", offerRequestId);
+  
+      // STEP 2: Fetch offers using the offer_request_id
+      console.log("📊 Step 2: Fetching offers...");
+      const offersResponse = await fetch(`https://ebony-bruce-production.up.railway.app/api/v1/bookings/offers?offer_request_id=${offerRequestId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+  
+      if (!offersResponse.ok) {
+        throw new Error(`Fetch offers failed: ${offersResponse.status}`);
+      }
+  
+      const offersResult = await offersResponse.json();
+      console.log("📊 Offers result structure:", {
+        success: offersResult.success,
+        hasData: !!offersResult.data,
+        dataType: typeof offersResult.data,
+        dataKeys: offersResult.data ? Object.keys(offersResult.data) : 'no data',
+        offersCount: Array.isArray(offersResult.data?.offers) ? offersResult.data.offers.length : 0,
+        firstOffer: offersResult.data?.offers?.[0]
+      });
+  
+      // Process the offers
+      if (offersResult.success && offersResult.data) {
+        let flightOffers: any[] = [];
+        
+        if (Array.isArray(offersResult.data.offers)) {
+          flightOffers = offersResult.data.offers;
+        } else if (Array.isArray(offersResult.data)) {
+          flightOffers = offersResult.data;
+        } else if (offersResult.data.data && Array.isArray(offersResult.data.data.offers)) {
+          flightOffers = offersResult.data.data.offers;
+        } else if (Array.isArray(offersResult.offers)) {
+          flightOffers = offersResult.offers;
+        }
+  
+        console.log(`✅ Found ${flightOffers.length} flight offers`);
+        console.log('🎯 DEBUG before transformation:', {
+          origin,
+          destination,
+          cabinClass,
+          flightOffersCount: flightOffers.length,
+          isRealApiUsed: true
         });
-
-        console.log(`✅ Transformed ${transformedResults.length} results`);
-        setSearchResults(transformedResults);
+  
+        if (flightOffers.length === 0) {
+          setSearchError("No available flights found for this route and date.");
+          setSearchResults(FALLBACK_RESULTS.flights);
+          setIsRealApiUsed(false);
+        } else {
+          setIsRealApiUsed(true);
+  
+          // Transform to SearchResult format
+          const transformedResults: SearchResult[] = flightOffers.map((offer: any, index: number) => {
+            let slices: any[] = [];
+            
+            if (offer.slices && Array.isArray(offer.slices)) {
+              slices = offer.slices;
+            } else if (offer.itineraries && Array.isArray(offer.itineraries) && offer.itineraries[0]?.slices) {
+              slices = offer.itineraries[0].slices;
+            } else if (offer.segments && Array.isArray(offer.segments)) {
+              slices = offer.segments;
+            }
+  
+            const firstSlice = slices[0] || {};
+            const lastSlice = slices[slices.length - 1] || {};
+  
+            // Get airline name
+            const airline = offer.owner?.name || 
+                           firstSlice.marketing_carrier?.name || 
+                           firstSlice.airline || 
+                           firstSlice.owner?.name || 
+                           "Unknown Airline";
+            
+            // Get flight number
+            const flightNumber = firstSlice.flight_number || 
+                               firstSlice.flightNumber || 
+                               `FL${1000 + index}`;
+            
+            // Get price
+            const totalPrice = offer.total_amount || 
+                              offer.total_price || 
+                              offer.amount || 
+                              offer.price?.amount || 
+                              45000;
+            
+            const currency = offer.total_currency || 
+                            offer.currency || 
+                            offer.price?.currency || 
+                            "NGN";
+  
+            // Calculate duration
+            let durationMinutes = offer.total_duration || 90;
+            if (offer.duration_minutes) {
+              durationMinutes = offer.duration_minutes;
+            } else if (firstSlice.duration_minutes && lastSlice.duration_minutes) {
+              durationMinutes = firstSlice.duration_minutes + (lastSlice.duration_minutes || 0);
+            }
+  
+            const hours = Math.floor(durationMinutes / 60);
+            const minutes = durationMinutes % 60;
+            const durationStr = `${hours}h ${minutes.toString().padStart(2, "0")}m`;
+  
+            // Calculate stops
+            const stopsCount = Math.max(0, slices.length - 1);
+            const stopsText = stopsCount === 0 ? "Direct" : stopsCount === 1 ? "1 stop" : `${stopsCount} stops`;
+  
+            // Get times
+            let departureTime = firstSlice.departing_at || 
+                              firstSlice.departure_time || 
+                              firstSlice.departs_at;
+            
+            let arrivalTime = lastSlice.arriving_at || 
+                             lastSlice.arrival_time || 
+                             lastSlice.arrives_at;
+  
+            // Format time display
+            let timeDisplay = "08:00 – 09:30";
+            if (departureTime && arrivalTime) {
+              try {
+                const dep = new Date(departureTime).toLocaleTimeString([], { 
+                  hour: "2-digit", 
+                  minute: "2-digit", 
+                  hour12: false 
+                });
+                const arr = new Date(arrivalTime).toLocaleTimeString([], { 
+                  hour: "2-digit", 
+                  minute: "2-digit", 
+                  hour12: false 
+                });
+                timeDisplay = `${dep} – ${arr}`;
+              } catch (e) {
+                // Silently handle time formatting errors
+              }
+            }
+  
+            // Format price based on currency
+            const priceSymbol = currency === 'NGN' ? '₦' : 
+                               currency === 'GBP' ? '£' : 
+                               currency === 'EUR' ? '€' : 
+                               currency === 'USD' ? '$' : currency;
+            const formattedPrice = `${priceSymbol}${Number(totalPrice).toLocaleString()}`;
+  
+            // Get aircraft type
+            const aircraft = firstSlice.aircraft?.name || 
+                            firstSlice.aircraft_type || 
+                            "Boeing 737 / Airbus A320";
+  
+            // ✅ FIXED: Get actual flight origin and destination from API response
+            const flightOrigin = firstSlice.origin?.iata_code || 
+                                firstSlice.origin?.code || 
+                                firstSlice.origin || 
+                                origin;
+                                
+            const flightDestination = lastSlice.destination?.iata_code || 
+                                     lastSlice.destination?.code || 
+                                     lastSlice.destination || 
+                                     destination;
+  
+            // ✅ FIXED: Determine if this is round-trip
+            let isRoundTrip = false;
+            let returnOrigin = '';
+            let returnDestination = '';
+  
+            if (slices.length >= 2 && data.tripType === 'round-trip') {
+              const outboundSlice = slices[0];
+              const inboundSlice = slices[1];
+              
+              const outboundOrigin = outboundSlice.origin?.iata_code || outboundSlice.origin?.code || outboundSlice.origin || '';
+              const outboundDest = outboundSlice.destination?.iata_code || outboundSlice.destination?.code || outboundSlice.destination || '';
+              const inboundOrigin = inboundSlice.origin?.iata_code || inboundSlice.origin?.code || inboundSlice.origin || '';
+              const inboundDest = inboundSlice.destination?.iata_code || inboundSlice.destination?.code || inboundSlice.destination || '';
+              
+              isRoundTrip = outboundDest === inboundOrigin && inboundDest === outboundOrigin;
+              
+              if (isRoundTrip) {
+                returnOrigin = inboundOrigin;
+                returnDestination = inboundDest;
+              }
+            }
+  
+            // ✅ FIXED: Build subtitle based on actual flight data
+            let subtitle = '';
+            if (isRoundTrip && returnOrigin && returnDestination) {
+              subtitle = `${cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1)} • ${flightOrigin} → ${flightDestination} • ${returnOrigin} → ${returnDestination}`;
+            } else {
+              subtitle = `${cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1)} • ${flightOrigin} → ${flightDestination}`;
+            }
+  
+            console.log(`📝 Result ${index} subtitle: "${subtitle}" (from actual flight data)`);
+  
+            return {
+              id: offer.id || `offer-${offerRequestId}-${index}`,
+              provider: airline,
+              title: `Flight ${flightNumber}`,
+              subtitle: subtitle,
+              price: formattedPrice,
+              time: timeDisplay,
+              duration: durationStr,
+              stops: stopsText,
+              rating: 4.3 + Math.random() * 0.6,
+              baggage: "23 kg checked + 8 kg cabin",
+              aircraft: aircraft,
+              layoverDetails: stopsText === "Direct" ? "Non-stop" : stopsText,
+              image: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400",
+              type: "flights" as const,
+              realData: {
+                offerId: offer.id,
+                offerRequestId: offerRequestId,
+                departureTime,
+                arrivalTime,
+                airline,
+                flightNumber,
+                totalDuration: durationMinutes,
+                stops: stopsCount,
+                price: Number(totalPrice),
+                currency,
+                isRoundTrip: data.tripType === 'round-trip',
+                slices: slices,
+              },
+            };
+          });
+  
+          console.log(`✅ Transformed ${transformedResults.length} results`);
+          console.log('📋 First result:', transformedResults[0]);
+          setSearchResults(transformedResults);
+        }
+      } else {
+        throw new Error('No flight offers data received: ' + (offersResult.message || 'Unknown error'));
       }
     } catch (error: any) {
-      console.error("❌ Flight search failed:", error);
+      // Use a safer logging approach
+      if (process.env.NODE_ENV === 'development') {
+        console.warn("Flight search failed:", error);
+      }
       
       let errorMessage = "Unable to fetch live flights. Showing curated options.";
       
       if (error.message?.includes("network") || error.message?.includes("fetch")) {
         errorMessage = "Network error. Please check your connection.";
-      } else if (error.message?.includes("No offer request ID")) {
+      } else if (error.message?.includes("No offer request ID") || error.message?.includes("Failed to create offer request")) {
         errorMessage = "Flight search service temporarily unavailable.";
       } else if (error.message?.includes("timed out")) {
         errorMessage = "Search timed out. Please try again.";
+      } else if (error.message) {
+        errorMessage = `Search error: ${error.message}`;
       }
       
       setSearchError(errorMessage);
@@ -975,18 +1159,16 @@ export default function Home() {
     } finally {
       setIsSearching(false);
       setSearchTime(Date.now() - startTime);
-
+  
       setTimeout(() => {
         document.getElementById("search-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 150);
     }
   }, [formatHotelSearchData]);
 
-  // CORRECTED: Handle result selection - removed forced login requirement
   const handleSelectResult = useCallback((item: SearchResult) => {
     setSelectedItem(item);
 
-    // Always proceed to next step regardless of login status
     if (
       item.type === "hotels" ||
       item.id?.includes("h-") ||
@@ -1012,7 +1194,6 @@ export default function Home() {
       setIsLoggedIn(true);
       setIsAuthOpen(false);
   
-      // Store token if provided
       if (userData.token) {
         setAuthToken(userData.token);
         localStorage.setItem("authToken", userData.token);
@@ -1020,7 +1201,6 @@ export default function Home() {
   
       localStorage.setItem("travelUser", JSON.stringify(updatedUser));
   
-      // Navigate to profile unless in booking flow
       if (
         currentView !== "review" &&
         currentView !== "success" &&
@@ -1201,7 +1381,7 @@ export default function Home() {
     setSearchResults([]);
     setSearchError(null);
     setApiValidationErrors([]);
-    setHotelSearchParams(null); // Clear hotel params
+    setHotelSearchParams(null);
   }, []);
 
   const handleBookingFailed = useCallback(() => {
@@ -1277,7 +1457,6 @@ export default function Home() {
         let paymentResult;
         
         if (currentBooking.isGuest) {
-          // Guest payment
           paymentResult = await paymentApi.createGuestStripeIntent(
             currentBooking.bookingReference,
             currentBooking.passengerInfo?.email || "guest@example.com",
@@ -1285,7 +1464,6 @@ export default function Home() {
             currency.toLowerCase()
           );
         } else {
-          // Authenticated user payment
           paymentResult = await paymentApi.createStripeIntent(
             currentBooking.id,
             stripeAmount,
@@ -1296,7 +1474,6 @@ export default function Home() {
         if (paymentResult.clientSecret) {
           setPaymentInitiated(true);
           
-          // Initialize Stripe and redirect to payment
           const stripe = await stripePromise;
           if (stripe) {
             const { error: stripeError } = await stripe.confirmCardPayment(
@@ -1322,7 +1499,6 @@ export default function Home() {
               throw new Error(stripeError.message);
             }
 
-            // Payment successful
             await handlePaymentComplete(currentBooking.id, currentBooking.isGuest);
           }
         } else {
@@ -1422,14 +1598,12 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isAiOpen, isAuthOpen]);
 
-  // Scroll to top on home view
   useEffect(() => {
     if (currentView === "home") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }, [currentView]);
 
-  // Clear search results when leaving home view
   useEffect(() => {
     if (currentView !== "home") {
       setSearchResults([]);
@@ -1466,6 +1640,7 @@ export default function Home() {
             activeSearchTab={activeTab}
             onTabChange={setActiveTab}
           />
+         
           
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-0">
             {(isSearching || searchResults.length > 0 || searchError || apiValidationErrors.length > 0) && (
@@ -1648,9 +1823,7 @@ export default function Home() {
         <HotelDetails
           item={selectedItem}
           searchParams={
-            // Use hotelSearchParams first (contains the actual search values)
             hotelSearchParams || {
-              // Fallback with proper values
               adults: 1,
               guests: 1,
               checkInDate: new Date().toISOString().split('T')[0],
@@ -1664,7 +1837,6 @@ export default function Home() {
           onBack={() => setCurrentView("home")}
           onBook={(room) => {
             setCurrentView("review");
-            // You might want to store the selected room here
           }}
         />
       )}
