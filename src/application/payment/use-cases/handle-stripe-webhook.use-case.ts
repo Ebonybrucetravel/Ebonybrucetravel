@@ -2,7 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/database/prisma.service';
 import { StripeService } from '@domains/payment/services/stripe.service';
 import { CreateDuffelOrderUseCase } from '@application/booking/use-cases/create-duffel-order.use-case';
+import { CreateAmadeusHotelBookingUseCase } from '@application/booking/use-cases/create-amadeus-hotel-booking.use-case';
 import { ResendService } from '@infrastructure/email/resend.service';
+import { Provider } from '@prisma/client';
 import Stripe from 'stripe';
 
 @Injectable()
@@ -13,6 +15,7 @@ export class HandleStripeWebhookUseCase {
     private readonly prisma: PrismaService,
     private readonly stripeService: StripeService,
     private readonly createDuffelOrderUseCase: CreateDuffelOrderUseCase,
+    private readonly createAmadeusHotelBookingUseCase: CreateAmadeusHotelBookingUseCase,
     private readonly resendService: ResendService,
   ) {}
 
@@ -69,7 +72,10 @@ export class HandleStripeWebhookUseCase {
       this.logger.log(`Booking ${bookingId} payment confirmed`);
 
       // If this is a Duffel flight booking, create the Duffel order
-      if (booking.provider === 'DUFFEL' && (booking.productType === 'FLIGHT_INTERNATIONAL' || booking.productType === 'FLIGHT_DOMESTIC')) {
+      if (
+        booking.provider === Provider.DUFFEL &&
+        (booking.productType === 'FLIGHT_INTERNATIONAL' || booking.productType === 'FLIGHT_DOMESTIC')
+      ) {
         try {
           this.logger.log(`Creating Duffel order for booking ${bookingId}...`);
           const { orderId } = await this.createDuffelOrderUseCase.execute(bookingId);
@@ -78,6 +84,32 @@ export class HandleStripeWebhookUseCase {
           // Log error but don't fail the webhook - payment is already confirmed
           this.logger.error(
             `Failed to create Duffel order for booking ${bookingId}. Payment confirmed but order creation failed:`,
+            error,
+          );
+          // Update booking to indicate order creation failed
+          await this.prisma.booking.update({
+            where: { id: bookingId },
+            data: {
+              providerData: {
+                ...(booking.providerData as any),
+                orderCreationError: error instanceof Error ? error.message : 'Unknown error',
+                orderCreationFailedAt: new Date().toISOString(),
+              },
+            },
+          });
+        }
+      }
+
+      // If this is an Amadeus hotel booking, create the Amadeus order
+      if (booking.provider === Provider.AMADEUS && booking.productType === 'HOTEL') {
+        try {
+          this.logger.log(`Creating Amadeus hotel order for booking ${bookingId}...`);
+          const { orderId } = await this.createAmadeusHotelBookingUseCase.createAmadeusBookingAfterPayment(bookingId);
+          this.logger.log(`Successfully created Amadeus hotel order ${orderId} for booking ${bookingId}`);
+        } catch (error) {
+          // Log error but don't fail the webhook - payment is already confirmed
+          this.logger.error(
+            `Failed to create Amadeus hotel order for booking ${bookingId}. Payment confirmed but order creation failed:`,
             error,
           );
           // Update booking to indicate order creation failed

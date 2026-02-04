@@ -109,6 +109,14 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   AMADEUS_ENV?: string; // 'test' or 'production'
+
+  @IsString()
+  @IsOptional()
+  ENCRYPTION_KEY?: string; // 32-byte hex string or password for AES-256-GCM encryption (used for secure card storage)
+
+  @IsString()
+  @IsOptional()
+  GOOGLE_PLACES_API_KEY?: string; // Google Places API key for hotel images
 }
 
 export function validate(config: Record<string, unknown>) {

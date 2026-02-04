@@ -1,6 +1,7 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 // Common
@@ -15,6 +16,8 @@ import { validate } from './config/env.validation';
 import { DatabaseModule } from './infrastructure/database/database.module';
 import { ExternalApisModule } from './infrastructure/external-apis/external-apis.module';
 import { CacheModule } from './infrastructure/cache/cache.module';
+import { HotelImagesModule } from './application/hotel-images/hotel-images.module';
+import { UsageTrackingModule } from './infrastructure/usage-tracking/usage-tracking.module';
 
 // Domains
 import { BookingModule } from './domains/booking/booking.module';
@@ -52,10 +55,15 @@ import { DashboardController } from './presentation/dashboard/dashboard.controll
       },
     ]),
 
+    // Scheduled jobs
+    ScheduleModule.forRoot(),
+
     // Infrastructure
     DatabaseModule,
     ExternalApisModule,
     CacheModule,
+    HotelImagesModule,
+    UsageTrackingModule,
 
     // Domains
     BookingModule,

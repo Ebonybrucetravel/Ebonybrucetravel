@@ -30,6 +30,7 @@ import { SearchAmadeusHotelsUseCase } from '@application/booking/use-cases/searc
 import { FetchHotelRatesUseCase } from '@application/booking/use-cases/fetch-hotel-rates.use-case';
 import { CreateHotelQuoteUseCase } from '@application/booking/use-cases/create-hotel-quote.use-case';
 import { CreateHotelBookingUseCase } from '@application/booking/use-cases/create-hotel-booking.use-case';
+import { CreateAmadeusHotelBookingUseCase } from '@application/booking/use-cases/create-amadeus-hotel-booking.use-case';
 import { GetHotelBookingUseCase } from '@application/booking/use-cases/get-hotel-booking.use-case';
 import { ListHotelBookingsUseCase } from '@application/booking/use-cases/list-hotel-bookings.use-case';
 import { CancelHotelBookingUseCase } from '@application/booking/use-cases/cancel-hotel-booking.use-case';
@@ -39,7 +40,10 @@ import { SearchAccommodationSuggestionsUseCase } from '@application/booking/use-
 import { GetAccommodationReviewsUseCase } from '@application/booking/use-cases/get-accommodation-reviews.use-case';
 import { SearchPlaceSuggestionsUseCase } from '@application/booking/use-cases/search-place-suggestions.use-case';
 import { ListAirlinesUseCase } from '@application/booking/use-cases/list-airlines.use-case';
+import { GetAmadeusHotelDetailsUseCase } from '@application/booking/use-cases/get-amadeus-hotel-details.use-case';
 import { BookingService } from '@domains/booking/services/booking.service';
+import { HotelImageCacheService } from '@application/hotel-images/hotel-image-cache.service';
+import { UsageTrackingService } from '@infrastructure/usage-tracking/usage-tracking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CreateGuestBookingDto } from './dto/create-guest-booking.dto';
 import { SearchFlightsDto } from './dto/search-flights.dto';
@@ -49,8 +53,10 @@ import { SearchHotelsDto } from './dto/search-hotels.dto';
 import { SearchAmadeusHotelsDto } from './dto/search-amadeus-hotels.dto';
 import { CreateHotelQuoteDto } from './dto/create-hotel-quote.dto';
 import { CreateHotelBookingDto } from './dto/create-hotel-booking.dto';
+import { CreateAmadeusHotelBookingDto } from './dto/create-amadeus-hotel-booking.dto';
 import { AccommodationSuggestionsDto } from './dto/accommodation-suggestions.dto';
 import { PlaceSuggestionsDto } from './dto/place-suggestions.dto';
+import { GetAmadeusHotelDetailsDto } from './dto/get-amadeus-hotel-details.dto';
 
 @ApiTags('Bookings')
 @Controller('bookings')
@@ -67,6 +73,7 @@ export class BookingController {
     private readonly fetchHotelRatesUseCase: FetchHotelRatesUseCase,
     private readonly createHotelQuoteUseCase: CreateHotelQuoteUseCase,
     private readonly createHotelBookingUseCase: CreateHotelBookingUseCase,
+    private readonly createAmadeusHotelBookingUseCase: CreateAmadeusHotelBookingUseCase,
     private readonly getHotelBookingUseCase: GetHotelBookingUseCase,
     private readonly listHotelBookingsUseCase: ListHotelBookingsUseCase,
     private readonly cancelHotelBookingUseCase: CancelHotelBookingUseCase,
@@ -75,8 +82,11 @@ export class BookingController {
     private readonly getAccommodationReviewsUseCase: GetAccommodationReviewsUseCase,
     private readonly searchPlaceSuggestionsUseCase: SearchPlaceSuggestionsUseCase,
     private readonly listAirlinesUseCase: ListAirlinesUseCase,
+    private readonly getAmadeusHotelDetailsUseCase: GetAmadeusHotelDetailsUseCase,
     private readonly createDuffelOrderUseCase: CreateDuffelOrderUseCase,
     private readonly bookingService: BookingService,
+    private readonly hotelImageCacheService: HotelImageCacheService,
+    private readonly usageTrackingService: UsageTrackingService,
   ) {}
 
   @Public()
@@ -448,6 +458,36 @@ export class BookingController {
   }
 
   @Public()
+  @Get('hotels/amadeus/:hotelId/details')
+  @ApiOperation({
+    summary: 'Get comprehensive hotel details (Amadeus)',
+    description:
+      'Returns comprehensive hotel information including basic info, ratings, offers, and images. ' +
+      'This is the recommended endpoint for building hotel details pages. ' +
+      'Supports optional filtering and selective data inclusion.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Hotel details retrieved successfully',
+  })
+  @ApiResponse({ status: 400, description: 'Invalid parameters' })
+  @ApiResponse({ status: 404, description: 'Hotel not found' })
+  async getAmadeusHotelDetails(
+    @Param('hotelId') hotelId: string,
+    @Query() query: GetAmadeusHotelDetailsDto,
+  ) {
+    const result = await this.getAmadeusHotelDetailsUseCase.execute({
+      hotelId,
+      ...query,
+    });
+    return {
+      success: true,
+      data: result,
+      message: 'Hotel details retrieved successfully',
+    };
+  }
+
+  @Public()
   @Post('search/hotels/amadeus')
   @ApiOperation({ 
     summary: 'Search for hotels using Amadeus API (no authentication required)',
@@ -587,7 +627,7 @@ export class BookingController {
   @UseGuards(JwtAuthGuard)
   @Post('hotels/bookings')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a hotel booking' })
+  @ApiOperation({ summary: 'Create a hotel booking (Duffel)' })
   @ApiResponse({ status: 201, description: 'Hotel booking created successfully' })
   async createHotelBooking(@Body() bookingDto: CreateHotelBookingDto, @Request() req: any) {
     const result = await this.createHotelBookingUseCase.execute(bookingDto, req.user.id);
@@ -596,6 +636,43 @@ export class BookingController {
       data: result,
       message: 'Hotel booking created successfully',
     };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('hotels/bookings/amadeus')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Create an Amadeus hotel booking',
+    description:
+      'Creates a local booking for an Amadeus hotel offer. After payment succeeds, the actual Amadeus booking will be created. ' +
+      'Use the booking ID to create a payment intent, then complete payment. The booking will be confirmed automatically after payment.',
+  })
+  @ApiResponse({ status: 201, description: 'Hotel booking created successfully. Proceed to payment.' })
+  @ApiResponse({ status: 400, description: 'Invalid booking data or offer price' })
+  async createAmadeusHotelBooking(
+    @Body() bookingDto: CreateAmadeusHotelBookingDto,
+    @Request() req: any,
+  ) {
+    try {
+      const result = await this.createAmadeusHotelBookingUseCase.execute(bookingDto, req.user.id);
+      return {
+        success: true,
+        data: result,
+        message: 'Booking created. Please proceed to payment.',
+      };
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        {
+          success: false,
+          message: error?.message || 'Failed to create booking',
+          error: 'Booking creation failed',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -750,5 +827,91 @@ export class BookingController {
     // but you can add verification if Duffel provides it
     await this.handleDuffelWebhookUseCase.execute(body);
     return { received: true };
+  }
+
+  @Public()
+  @Get('hotels/:hotelId/images')
+  @ApiOperation({
+    summary: 'Get hotel images with caching and fallback support',
+    description:
+      'Fetches hotel images from Google Places API (if configured) and caches them in Cloudinary. ' +
+      'If Google Places API is unavailable, missing, or rate-limited, automatically falls back to ' +
+      'free image services (Unsplash/Placeholder). Images are cached for 60 days. ' +
+      'This endpoint will always return images (either from Google Places or fallback) and never crashes.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Hotel images retrieved successfully (may be from Google Places or fallback)',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            hotelId: { type: 'string', example: 'MCLONGHM' },
+            hotelName: { type: 'string', example: 'JW Marriott Grosvenor House London' },
+            images: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  url: { type: 'string' },
+                  type: { type: 'string', example: 'exterior' },
+                  source: { type: 'string', example: 'google_places' },
+                  attribution: { type: 'string' },
+                },
+              },
+            },
+            cached: { type: 'boolean' },
+            fallbackUsed: { type: 'boolean', example: false },
+            message: { type: 'string' },
+          },
+        },
+        message: { type: 'string' },
+      },
+    },
+  })
+  async getHotelImages(
+    @Param('hotelId') hotelId: string,
+    @Query('hotelName') hotelName?: string,
+    @Query('googlePlaceId') googlePlaceId?: string,
+  ) {
+    // This endpoint never throws - always returns images (either from Google or fallback)
+    const result = await this.hotelImageCacheService.getHotelImages(
+      hotelId,
+      hotelName || 'Unknown Hotel',
+      googlePlaceId,
+    );
+
+    return {
+      success: true,
+      data: result,
+      message:
+        result.message ||
+        (result.cached
+          ? 'Hotel images retrieved from cache'
+          : result.fallbackUsed
+            ? 'Generic hotel images provided (specific hotel images unavailable)'
+            : 'Hotel images fetched and cached successfully'),
+    };
+  }
+
+  @Get('hotels/images/usage-stats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get API usage statistics (Admin Only)',
+    description: 'Returns current usage statistics for Google Places API and Cloudinary to monitor free tier limits.',
+  })
+  @ApiResponse({ status: 200, description: 'Usage statistics retrieved successfully' })
+  async getUsageStats() {
+    const stats = await this.usageTrackingService.getUsageStats();
+    return {
+      success: true,
+      data: stats,
+      message: 'Usage statistics retrieved successfully',
+    };
   }
 }

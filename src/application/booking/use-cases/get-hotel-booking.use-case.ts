@@ -1,11 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DuffelService } from '@infrastructure/external-apis/duffel/duffel.service';
+import { AmadeusService } from '@infrastructure/external-apis/amadeus/amadeus.service';
 import { PrismaService } from '@infrastructure/database/prisma.service';
 
 @Injectable()
 export class GetHotelBookingUseCase {
   constructor(
     private readonly duffelService: DuffelService,
+    private readonly amadeusService: AmadeusService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -25,24 +27,37 @@ export class GetHotelBookingUseCase {
         throw new NotFoundException(`Booking with ID ${bookingId} not found`);
       }
 
-      // Get latest booking data from Duffel
-      let duffelBooking = null;
+      // Get latest booking data from provider
+      let providerBooking = null;
       if (booking.providerBookingId) {
         try {
-          const duffelResponse = await this.duffelService.getHotelBooking(booking.providerBookingId);
-          duffelBooking = duffelResponse.data;
+          if (booking.provider === 'DUFFEL') {
+            const duffelResponse = await this.duffelService.getHotelBooking(booking.providerBookingId);
+            providerBooking = duffelResponse.data;
+          } else if (booking.provider === 'AMADEUS') {
+            const amadeusResponse = await this.amadeusService.getHotelBooking(booking.providerBookingId);
+            providerBooking = amadeusResponse.data;
+          }
         } catch (error) {
-          console.warn(`Failed to fetch booking from Duffel: ${error}`);
+          console.warn(`Failed to fetch booking from ${booking.provider}: ${error}`);
           // Use cached booking data if available
-          if (booking.bookingData && typeof booking.bookingData === 'object') {
-            duffelBooking = (booking.bookingData as any).duffel_booking;
+          if (booking.providerData && typeof booking.providerData === 'object') {
+            providerBooking = booking.providerData;
+          } else if (booking.bookingData && typeof booking.bookingData === 'object') {
+            if (booking.provider === 'DUFFEL') {
+              providerBooking = (booking.bookingData as any).duffel_booking;
+            } else if (booking.provider === 'AMADEUS') {
+              providerBooking = (booking.bookingData as any).amadeus_booking;
+            }
           }
         }
       }
 
       return {
         booking,
-        duffel_booking: duffelBooking,
+        provider_booking: providerBooking,
+        ...(booking.provider === 'DUFFEL' && { duffel_booking: providerBooking }),
+        ...(booking.provider === 'AMADEUS' && { amadeus_booking: providerBooking }),
       };
     } catch (error) {
       if (error instanceof NotFoundException) {

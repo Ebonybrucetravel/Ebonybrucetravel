@@ -10,6 +10,7 @@ import { SearchHotelsUseCase } from './use-cases/search-hotels.use-case';
 import { FetchHotelRatesUseCase } from './use-cases/fetch-hotel-rates.use-case';
 import { CreateHotelQuoteUseCase } from './use-cases/create-hotel-quote.use-case';
 import { CreateHotelBookingUseCase } from './use-cases/create-hotel-booking.use-case';
+import { CreateAmadeusHotelBookingUseCase } from './use-cases/create-amadeus-hotel-booking.use-case';
 import { GetHotelBookingUseCase } from './use-cases/get-hotel-booking.use-case';
 import { ListHotelBookingsUseCase } from './use-cases/list-hotel-bookings.use-case';
 import { CancelHotelBookingUseCase } from './use-cases/cancel-hotel-booking.use-case';
@@ -19,6 +20,7 @@ import { GetAccommodationReviewsUseCase } from './use-cases/get-accommodation-re
 import { SearchPlaceSuggestionsUseCase } from './use-cases/search-place-suggestions.use-case';
 import { ListAirlinesUseCase } from './use-cases/list-airlines.use-case';
 import { SearchAmadeusHotelsUseCase } from './use-cases/search-amadeus-hotels.use-case';
+import { GetAmadeusHotelDetailsUseCase } from './use-cases/get-amadeus-hotel-details.use-case';
 import { BookingModule } from '@domains/booking/booking.module';
 import { MarkupModule } from '@domains/markup/markup.module';
 import { ExternalApisModule } from '@infrastructure/external-apis/external-apis.module';
@@ -26,9 +28,23 @@ import { DatabaseModule } from '@infrastructure/database/database.module';
 import { CacheModule } from '@infrastructure/cache/cache.module';
 import { EmailModule } from '@infrastructure/email/email.module';
 import { CurrencyModule } from '@infrastructure/currency/currency.module';
+import { SecurityModule } from '@infrastructure/security/security.module';
+import { HotelImagesModule } from '@application/hotel-images/hotel-images.module';
+import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracking.module';
 
 @Module({
-  imports: [BookingModule, MarkupModule, ExternalApisModule, DatabaseModule, CacheModule, EmailModule, CurrencyModule],
+  imports: [
+    BookingModule,
+    MarkupModule,
+    ExternalApisModule,
+    DatabaseModule,
+    CacheModule,
+    EmailModule,
+    CurrencyModule,
+    SecurityModule,
+    HotelImagesModule,
+    UsageTrackingModule,
+  ],
   providers: [
     CreateBookingUseCase,
     CreateGuestBookingUseCase,
@@ -41,6 +57,7 @@ import { CurrencyModule } from '@infrastructure/currency/currency.module';
     FetchHotelRatesUseCase,
     CreateHotelQuoteUseCase,
     CreateHotelBookingUseCase,
+    CreateAmadeusHotelBookingUseCase,
     GetHotelBookingUseCase,
     ListHotelBookingsUseCase,
     CancelHotelBookingUseCase,
@@ -50,6 +67,7 @@ import { CurrencyModule } from '@infrastructure/currency/currency.module';
     SearchPlaceSuggestionsUseCase,
     ListAirlinesUseCase,
     SearchAmadeusHotelsUseCase,
+    GetAmadeusHotelDetailsUseCase,
   ],
   exports: [
     CreateBookingUseCase,
@@ -63,6 +81,7 @@ import { CurrencyModule } from '@infrastructure/currency/currency.module';
     FetchHotelRatesUseCase,
     CreateHotelQuoteUseCase,
     CreateHotelBookingUseCase,
+    CreateAmadeusHotelBookingUseCase,
     GetHotelBookingUseCase,
     ListHotelBookingsUseCase,
     CancelHotelBookingUseCase,
@@ -72,6 +91,7 @@ import { CurrencyModule } from '@infrastructure/currency/currency.module';
     SearchPlaceSuggestionsUseCase,
     ListAirlinesUseCase,
     SearchAmadeusHotelsUseCase,
+    GetAmadeusHotelDetailsUseCase,
   ],
 })
 export class BookingApplicationModule {}

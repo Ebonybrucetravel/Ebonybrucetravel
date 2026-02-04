@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "ebony-bruce-travels-api-v2",
 		"name": "Ebony Bruce Travels API",
-		"description": "Complete API collection for Ebony Bruce Travels Booking System\n\n**Base URL:** `{{baseUrl}}/api/v1`\n\n**Authentication:** Most endpoints require JWT Bearer token. Get token from `/auth/login` or `/auth/register`.\n\n**Environment Variables:**\n- `baseUrl`: http://localhost:3001 (or your Railway URL)\n- `token`: JWT token (auto-set after login)\n- `offerRequestId`: Duffel offer request ID (auto-set after flight search)\n- `offerId`: Selected flight offer ID (auto-set after listing offers)\n- `nextCursor`: Pagination cursor for next page (auto-set)\n- `bookingId`: Booking ID (auto-set after creating booking)\n\n**New Features (v2.0):**\n- ✅ Email verification on registration\n- ✅ Password reset/forgot password flow\n- ✅ Rate limiting (login: 5/min, register: 3/min)\n- ✅ Delayed login notification emails (10-20 min security feature)\n- ✅ Health check endpoints\n- ✅ Request correlation IDs\n- ✅ Audit logging for sensitive operations\n- ✅ OAuth (Facebook/Google) with graceful fallback\n\n---\n\n## 📋 API Sections\n\n### 1. Authentication\n- **Register User** - Create new account (sends verification email)\n- **Login** - Get JWT token (triggers delayed security notification)\n- **Forgot Password** - Request password reset email\n- **Reset Password** - Reset password with token\n- **Verify Email** - Verify email address with token\n- **Facebook OAuth** - Social login with Facebook\n- **Google OAuth** - Social login with Google\n\n### 2. User Profile\n- **Get My Profile** - Retrieve current user profile\n- **Update Profile** - Update profile information\n- **Upload Profile Image** - Upload profile picture to Cloudinary\n- **Change Password** - Change password (email/password accounts only)\n- **Delete Account** - Soft delete account\n\n### 3. Health Check\n- **Health Check** - Service health status\n- **Database Health** - Database connection status\n\n### 4. Flight Search & Offers\n- **Search Flights** - Get `offer_request_id` (Step 1 of two-step process)\n- **List Offers** - Get paginated flight offers using `offer_request_id` (Step 2)\n\n### 5. Bookings\n- **Create Booking** - Create a new booking (authenticated users)\n- **Create Guest Booking** - Create booking without account\n- **Get Booking** - Retrieve booking details by ID\n\n### 6. Payments\n- **Create Payment Intent** - Create Stripe payment intent for a booking\n- **Create Guest Payment Intent** - Create payment intent for guest booking\n- **Stripe Webhook** - Handle payment events\n\n---\n\n## 🚀 Quick Start Guide\n\n### Step 1: Authentication\n1. **Register** or **Login** to get JWT token\n2. Token is automatically saved to `{{token}}` environment variable\n3. **Verify Email** after registration (check email for verification link)\n4. **Login** triggers delayed security notification email (10-20 min)\n\n### Step 2: Flight Search (Two-Step Process)\n1. **Search Flights** → Get `offer_request_id` (no auth required)\n   - Returns immediately (2-3 seconds)\n   - Cached for 10 minutes\n2. **List Offers** → Get paginated flights using `offer_request_id`\n   - Returns 20 offers per page\n   - Markup automatically applied\n   - Use `nextCursor` for pagination\n\n### Step 3: Create Booking\n1. Select an offer from List Offers response\n2. **Create Booking** with offer details\n3. Booking ID is saved to `{{bookingId}}`\n\n### Step 4: Payment\n1. **Create Payment Intent** using booking ID\n2. Returns `clientSecret` for Stripe Checkout\n3. Webhook automatically updates booking status on payment\n\n### Step 5: Manage Profile\n1. **Get My Profile** to view current information\n2. **Update Profile** to change name, phone, dateOfBirth, gender\n3. **Upload Profile Image** to set profile picture\n4. **Change Password** if needed (email/password accounts only)\n\n---\n\n## 🔒 Security Features\n\n### Rate Limiting\n- **Login**: 5 requests per minute\n- **Register**: 3 requests per minute\n- **Forgot Password**: 3 requests per minute\n- **Reset Password**: 5 requests per minute\n- **Global**: 100 requests per minute (other endpoints)\n\n### Email Verification\n- New registrations receive verification email\n- Email must be verified (optional, but recommended)\n- Verification token expires in 24 hours\n\n### Password Reset\n- Forgot password sends reset email\n- Reset token expires in 1 hour\n- Security: Doesn't reveal if email exists\n\n### Login Notifications\n- Delayed email notification (10-20 minutes after login)\n- Includes IP address and device information\n- Link to change password if suspicious activity\n- Helps detect unauthorized access\n\n### Audit Logging\n- Password changes are logged\n- Account deletions are logged\n- Includes IP address and user agent\n- Stored in `audit_logs` table\n\n---\n\n## 🔍 Flight Search Flow (Why Two Requests?)\n\n**Step 1: Search** - Get `offer_request_id` (fast, 2-3 seconds)\n- Duffel searches airlines in background\n- Returns immediately with search ID\n- Cached for 10 minutes\n\n**Step 2: List Offers** - Use `offer_request_id` to get flights (fast, 1 second)\n- Paginated results (20 per page)\n- Markup applied automatically\n- Cached for 2 minutes\n\n**Benefits:**\n- ⚡ Faster user experience (3-4 seconds vs 20+ seconds)\n- 📄 Pagination (don't load 500 flights at once)\n- 💾 Caching (reuse searches, reduce costs)\n- 💰 Cost-effective (fetch only what you need)\n\n---\n\n## 💳 Payment Flow\n\n1. **Create Booking** → Get `bookingId`\n2. **Create Payment Intent** → Get `clientSecret`\n3. Use `clientSecret` with Stripe.js on frontend\n4. Stripe sends webhook events to `/payments/stripe/webhook`\n5. Booking status automatically updates:\n   - `payment_intent.succeeded` → Booking status: `CONFIRMED`\n   - `payment_intent.payment_failed` → Booking status: `FAILED`\n   - `charge.refunded` → Booking status: `REFUNDED`\n\n---\n\n## 👤 User Profile Fields\n\n**Editable:**\n- `name` - Full name\n- `phone` - Phone number\n- `dateOfBirth` - Date of birth (YYYY-MM-DD format)\n- `gender` - Gender (Male, Female, Other, Prefer not to say)\n- `image` - Profile picture (via upload endpoint)\n\n**Read-only:**\n- `email` - Cannot be changed (security)\n- `emailVerified` - Email verification status\n- `role` - Set by system\n- `id` - Unique identifier\n\n---\n\n## 📝 Testing Tips\n\n- Search endpoint returns `offer_request_id` (not offers)\n- Use List Offers endpoint to get actual flight options\n- Use `nextCursor` from response to paginate\n- Check `cached` field to see if result was from cache\n- All profile endpoints require authentication\n- Image upload accepts: jpg, jpeg, png, gif, webp (max 5MB)\n- Payment webhook requires Stripe webhook secret for signature verification\n- Rate limiting: If you get 429, wait a minute before retrying\n- Check health endpoint: `GET /api/v1/health` to verify service status\n- Correlation IDs: Check `X-Correlation-ID` header in responses for request tracking",
+		"description": "Complete API collection for Ebony Bruce Travels Booking System\n\n**Base URL:** `{{baseUrl}}/api/v1`\n\n**Authentication:** Most endpoints require JWT Bearer token. Get token from `/auth/login` or `/auth/register`.\n\n**Environment Variables:**\n- `baseUrl`: http://localhost:3001 (or your Railway URL)\n- `token`: JWT token (auto-set after login)\n- `offerRequestId`: Duffel offer request ID (auto-set after flight search)\n- `offerId`: Selected flight offer ID (auto-set after listing offers)\n- `nextCursor`: Pagination cursor for next page (auto-set)\n- `bookingId`: Booking ID (auto-set after creating booking)\n\n**New Features (v2.0):**\n- ✅ Email verification on registration\n- ✅ Password reset/forgot password flow\n- ✅ Rate limiting (login: 5/min, register: 3/min)\n- ✅ Delayed login notification emails (10-20 min security feature)\n- ✅ Health check endpoints\n- ✅ Request correlation IDs\n- ✅ Audit logging for sensitive operations\n- ✅ OAuth (Facebook/Google) with graceful fallback\n\n---\n\n## 📋 API Sections\n\n### 1. Authentication\n- **Register User** - Create new account (sends verification email)\n- **Login** - Get JWT token (triggers delayed security notification)\n- **Forgot Password** - Request password reset email\n- **Reset Password** - Reset password with token\n- **Verify Email** - Verify email address with token\n- **Facebook OAuth** - Social login with Facebook\n- **Google OAuth** - Social login with Google\n\n### 2. User Profile\n- **Get My Profile** - Retrieve current user profile\n- **Update Profile** - Update profile information\n- **Upload Profile Image** - Upload profile picture to Cloudinary\n- **Change Password** - Change password (email/password accounts only)\n- **Delete Account** - Soft delete account\n\n### 3. Health Check\n- **Health Check** - Service health status\n- **Database Health** - Database connection status\n\n### 4. Flight Search & Offers\n- **Search Flights** - Get `offer_request_id` (Step 1 of two-step process)\n- **List Offers** - Get paginated flight offers using `offer_request_id` (Step 2)\n  - Works identically for **one-way and round-trip** searches\n  - Same `offerRequestId` is used; each offer contains both outbound and return slices when `returnDate` is provided\n\n### 5. Bookings\n- **Create Booking** - Create a new booking (authenticated users)\n- **Create Guest Booking** - Create booking without account\n- **Get Booking** - Retrieve booking details by ID\n\n### 6. Payments\n- **Create Payment Intent** - Create Stripe payment intent for a booking\n- **Create Guest Payment Intent** - Create payment intent for guest booking\n- **Stripe Webhook** - Handle payment events\n\n### 7. Hotels & Images\n- **Hotels - Amadeus (Recommended)** - Search and book hotels via Amadeus, with server-side pagination and advanced filters\n- **Hotels - Duffel** - Duffel Stays endpoints (if enabled on your Duffel account)\n- **Hotels - Common Operations** - List/Get/Cancel hotel bookings for both providers\n- **Hotel Images** - Google Places + Cloudinary caching with graceful fallback and usage stats\n\n---\n\n## 🚀 Quick Start Guide\n\n### Step 1: Authentication\n1. **Register** or **Login** to get JWT token\n2. Token is automatically saved to `{{token}}` environment variable\n3. **Verify Email** after registration (check email for verification link)\n4. **Login** triggers delayed security notification email (10-20 min)\n\n### Step 2: Flight Search (Two-Step Process)\n1. **Search Flights** → Get `offer_request_id` (no auth required)\n   - Returns immediately (2-3 seconds)\n   - Cached for 10 minutes\n2. **List Offers** → Get paginated flights using `offer_request_id`\n   - Returns 20 offers per page\n   - Markup automatically applied\n   - Use `nextCursor` for pagination\n\n### Step 3: Create Booking\n1. Select an offer from List Offers response\n2. **Create Booking** with offer details\n3. Booking ID is saved to `{{bookingId}}`\n\n### Step 4: Payment\n1. **Create Payment Intent** using booking ID\n2. Returns `clientSecret` for Stripe Checkout\n3. Webhook automatically updates booking status on payment\n\n### Step 5: Manage Profile\n1. **Get My Profile** to view current information\n2. **Update Profile** to change name, phone, dateOfBirth, gender\n3. **Upload Profile Image** to set profile picture\n4. **Change Password** if needed (email/password accounts only)\n\n### Step 6: Hotels (Amadeus Flow)\n1. **Search Hotels (Amadeus)** → Get hotel offers and `hotelId` / `offer.id`\n2. **Create Hotel Booking (Amadeus)** → Store booking + encrypted card details\n3. **Create Payment Intent** → Stripe payment for hotel booking\n4. **Stripe Webhook** → Automatically creates Amadeus hotel order after payment\n5. **Get Hotel Booking** → Retrieve details from Amadeus via unified booking endpoints\n6. **Get Hotel Images** → Show cached or fallback images for search/detail pages\n\n---\n\n## 🔒 Security Features\n\n### Rate Limiting\n- **Login**: 5 requests per minute\n- **Register**: 3 requests per minute\n- **Forgot Password**: 3 requests per minute\n- **Reset Password**: 5 requests per minute\n- **Global**: 100 requests per minute (other endpoints)\n\n### Email Verification\n- New registrations receive verification email\n- Email must be verified (optional, but recommended)\n- Verification token expires in 24 hours\n\n### Password Reset\n- Forgot password sends reset email\n- Reset token expires in 1 hour\n- Security: Doesn't reveal if email exists\n\n### Login Notifications\n- Delayed email notification (10-20 minutes after login)\n- Includes IP address and device information\n- Link to change password if suspicious activity\n- Helps detect unauthorized access\n\n### Audit Logging\n- Password changes are logged\n- Account deletions are logged\n- Includes IP address and user agent\n- Stored in `audit_logs` table\n\n---\n\n## 🔍 Flight Search Flow (Why Two Requests?)\n\n**Step 1: Search** - Get `offer_request_id` (fast, 2-3 seconds)\n- Duffel searches airlines in background\n- Returns immediately with search ID\n- Cached for 10 minutes\n\n**Step 2: List Offers** - Use `offer_request_id` to get flights (fast, 1 second)\n- Paginated results (20 per page)\n- Markup applied automatically\n- Cached for 2 minutes\n- Works for **one-way and round-trip** searches; offers for round-trips include both slices (outbound + return) in a single priced offer\n\n**Benefits:**\n- ⚡ Faster user experience (3-4 seconds vs 20+ seconds)\n- 📄 Pagination (don't load 500 flights at once)\n- 💾 Caching (reuse searches, reduce costs)\n- 💰 Cost-effective (fetch only what you need)\n\n---\n\n## 💳 Payment Flow\n\n1. **Create Booking** → Get `bookingId`\n2. **Create Payment Intent** → Get `clientSecret`\n3. Use `clientSecret` with Stripe.js on frontend\n4. Stripe sends webhook events to `/payments/stripe/webhook`\n5. Booking status automatically updates:\n   - `payment_intent.succeeded` → Booking status: `CONFIRMED`\n   - `payment_intent.payment_failed` → Booking status: `FAILED`\n   - `charge.refunded` → Booking status: `REFUNDED`\n\n---\n\n## 👤 User Profile Fields\n\n**Editable:**\n- `name` - Full name\n- `phone` - Phone number\n- `dateOfBirth` - Date of birth (YYYY-MM-DD format)\n- `gender` - Gender (Male, Female, Other, Prefer not to say)\n- `image` - Profile picture (via upload endpoint)\n\n**Read-only:**\n- `email` - Cannot be changed (security)\n- `emailVerified` - Email verification status\n- `role` - Set by system\n- `id` - Unique identifier\n\n---\n\n## 📝 Testing Tips\n\n- Search endpoint returns `offer_request_id` (not offers)\n- Use List Offers endpoint to get actual flight options (one-way and round-trip)\n- Use `nextCursor` from response to paginate\n- Check `cached` field to see if result was from cache\n- All profile endpoints require authentication\n- Image upload accepts: jpg, jpeg, png, gif, webp (max 5MB)\n- Payment webhook requires Stripe webhook secret for signature verification\n- Rate limiting: If you get 429, wait a minute before retrying\n- Check health endpoint: `GET /api/v1/health` to verify service status\n- Correlation IDs: Check `X-Correlation-ID` header in responses for request tracking",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -1667,35 +1667,11 @@
 			"name": "Hotels",
 			"item": [
 				{
-					"name": "Search Hotels",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"location\": {\n    \"geographic_coordinates\": {\n      \"latitude\": 51.5071,\n      \"longitude\": -0.1416\n    },\n    \"radius\": 5\n  },\n  \"check_in_date\": \"2026-06-04\",\n  \"check_out_date\": \"2026-06-07\",\n  \"rooms\": 1,\n  \"guests\": [\n    { \"type\": \"adult\" },\n    { \"type\": \"adult\" }\n  ],\n  \"currency\": \"GBP\",\n  \"free_cancellation_only\": false\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/v1/bookings/search/hotels",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "v1", "bookings", "search", "hotels"]
-						},
-						"description": "**Search for hotels/accommodation**\n\n**No authentication required.**\n\n**What This Does:**\n- Searches hotels using Duffel Stays API\n- Returns hotels with prices (converted to selected currency)\n- Applies markup automatically\n- Cached for 5 minutes\n\n**Search Methods:**\n\n**1. Location-Based Search (by coordinates):**\n```json\n{\n  \"location\": {\n    \"geographic_coordinates\": {\n      \"latitude\": 51.5071,\n      \"longitude\": -0.1416\n    },\n    \"radius\": 5\n  },\n  \"check_in_date\": \"2026-06-04\",\n  \"check_out_date\": \"2026-06-07\",\n  \"rooms\": 1,\n  \"guests\": [{ \"type\": \"adult\" }],\n  \"currency\": \"GBP\"\n}\n```\n\n**2. Accommodation-Based Search (by hotel IDs):**\n```json\n{\n  \"accommodation\": {\n    \"ids\": [\"acc_0000AWr2VsUNIF1Vl91xg0\"],\n    \"fetch_rates\": true\n  },\n  \"check_in_date\": \"2026-06-04\",\n  \"check_out_date\": \"2026-06-07\",\n  \"rooms\": 1,\n  \"guests\": [{ \"type\": \"adult\" }],\n  \"currency\": \"GBP\"\n}\n```\n\n**Request Parameters:**\n- `location` (object, optional): Location-based search\n  - `geographic_coordinates`: { `latitude` (-90 to 90), `longitude` (-180 to 180) }\n  - `radius` (number, optional): Search radius in km (1-100, default: 5)\n- `accommodation` (object, optional): Search by hotel IDs\n  - `ids` (array, required): List of accommodation IDs (max 10 with rates, 200 without)\n  - `fetch_rates` (boolean, optional): Whether to fetch rates (default: false)\n- `check_in_date` (string, required): ISO 8601 date (max 330 days in future)\n- `check_out_date` (string, required): ISO 8601 date (max 99 nights stay)\n- `rooms` (number, required): Number of rooms (min: 1)\n- `guests` (array, required): List of guests\n  - `type` (string, required): \"adult\" or \"child\"\n  - `age` (number, optional): Age for children (0-17)\n- `currency` (string, optional): Currency code (default: GBP). Supported: GBP, USD, EUR, NGN, JPY, CNY, GHS, KES, ZAR\n- `free_cancellation_only` (boolean, optional): Filter for free cancellation only (default: false)\n- `mobile` (boolean, optional): Whether search is from mobile (default: false)\n- `negotiated_rate_ids` (array, optional): Corporate/group rate IDs\n\n**Response:**\n- Returns hotels with `cheapest_rate_total_amount` (includes markup and conversion fee)\n- Each hotel includes `accommodation` details and available `rooms`\n- Prices are in selected currency with transparent conversion fee\n\n**Filters:**\n- ✅ Location-based (latitude/longitude with radius)\n- ✅ Accommodation IDs\n- ✅ Free cancellation only\n- ✅ Currency selection\n- ✅ Date range (check-in/check-out)\n- ✅ Number of rooms and guests\n- ✅ Mobile device detection"
-					},
-					"response": []
-				},
-				{
-					"name": "Search Hotels (Amadeus) - Enhanced",
+					"name": "Hotels - Amadeus (Recommended)",
+					"description": "**🎯 RECOMMENDED: Use Amadeus for hotel bookings**\n\n**Why Amadeus?**\n- ✅ Free quota: 2,400-3,000 searches/month\n- ✅ Better test data (use big cities: LON, NYC, PAR)\n- ✅ More reliable and comprehensive\n- ✅ Advanced filtering (amenities, ratings, chain codes)\n- ✅ Map-based search support\n- ✅ Server-side pagination\n\n**📋 Complete Amadeus Hotel Booking Flow:**\n\n**Step 1: Search Hotels**\n`POST /api/v1/bookings/search/hotels/amadeus`\n- Search by city code, geographic coordinates, or hotel IDs\n- Returns hotel offers with pricing, policies, availability\n- Supports pagination, filtering, map-based search\n- **Save `offer.id` from response** (used in Step 2)\n\n**Step 2: Create Booking**\n`POST /api/v1/bookings/hotels/bookings/amadeus`\n- Use `offer.id` from Step 1 as `hotelOfferId`\n- Use `final_price` from offer as `offerPrice`\n- Provide guest details and payment card info\n- **Returns `booking.id`** (used in Step 3)\n- Booking status: `PENDING` (waiting for payment)\n\n**Step 3: Create Payment Intent**\n`POST /api/v1/payments/stripe/create-intent`\n- Use `booking.id` from Step 2\n- Returns `clientSecret` for Stripe Checkout\n\n**Step 4: Complete Payment**\n- Frontend: Use Stripe.js with `clientSecret`\n- User completes payment via Stripe\n\n**Step 5: Automatic Amadeus Booking (Webhook)**\n- After payment success, Stripe webhook triggers\n- System automatically creates Amadeus booking\n- Card details decrypted and sent to Amadeus\n- Booking status updates to `CONFIRMED`\n\n**Step 6: Get Booking (Optional)**\n`GET /api/v1/bookings/hotels/bookings/:bookingId`\n- View booking details from Amadeus\n- Automatically fetches latest data\n\n**Step 7: Cancel Booking (Admin Only)**\n`POST /api/v1/bookings/hotels/bookings/:bookingId/cancel`\n- Admin-only cancellation\n- Cancels in Amadeus system\n- Updates local database\n\n**🔐 Security:**\n- Card details encrypted with AES-256-GCM\n- Encrypted data cleared after successful booking\n- Only last 4 digits stored for display\n\n**📊 API Versions:**\n- **Search**: v3 (`/v3/shopping/hotel-offers`) - Latest\n- **Booking**: v2 (`/v2/booking/hotel-orders`) - Latest\n- *Note: Different endpoints can have different version numbers - this is standard practice*",
+					"item": [
+						{
+							"name": "1. Search Hotels (Amadeus)",
 					"event": [
 						{
 							"listen": "test",
@@ -1766,61 +1742,69 @@
 							"path": ["api", "v1", "bookings", "search", "hotels", "amadeus"]
 						},
 						"description": "**Search for hotels using Amadeus Self-Service API**\n\n**No authentication required.**\n\n**What This Does:**\n- Searches hotels using Amadeus v3 API\n- Returns hotel offers with pricing, policies, and availability\n- Applies currency conversion (2.5% buffer) and markup automatically\n- Cached for 5 minutes\n- Supports search by city code or specific hotel IDs\n\n**⚠️ IMPORTANT - Amadeus v3 API Requirements:**\n- Amadeus v3 `/shopping/hotel-offers` endpoint **requires `hotelIds`** (cityCode is NOT supported in v3)\n- When you provide `cityCode`, the system automatically:\n  1. Calls Hotel List API to get hotel IDs by city\n  2. Then searches for offers using those hotel IDs\n- Either `cityCode` OR `hotelIds` must be provided (not both, not neither)\n- Use big cities like LON (London), NYC (New York), PAR (Paris) for best results in test environment\n- Test environment has limited data - use production for full results\n\n**Search Methods:**\n\n**1. Search by City Code (Recommended - Automatic Hotel ID Lookup):**\n```json\n{\n  \"cityCode\": \"LON\",\n  \"checkInDate\": \"2026-06-04\",\n  \"checkOutDate\": \"2026-06-07\",\n  \"adults\": 2,\n  \"roomQuantity\": 1,\n  \"currency\": \"GBP\",\n  \"limit\": 20,\n  \"page\": 1\n}\n```\n*Note: System automatically fetches hotel IDs for the city, then searches (may take slightly longer)*\n\n**2. Search by Geographic Coordinates (Map-Based Search):**\n```json\n{\n  \"geographicCoordinates\": {\n    \"latitude\": 51.5071,\n    \"longitude\": -0.1416\n  },\n  \"radius\": 5,\n  \"radiusUnit\": \"KM\",\n  \"checkInDate\": \"2026-06-04\",\n  \"checkOutDate\": \"2026-06-07\",\n  \"adults\": 2,\n  \"roomQuantity\": 1,\n  \"currency\": \"GBP\",\n  \"amenities\": [\"SWIMMING_POOL\", \"SPA\", \"FITNESS_CENTER\"],\n  \"ratings\": [4, 5],\n  \"chainCodes\": [\"MC\"],\n  \"limit\": 20,\n  \"page\": 1\n}\n```\n*Note: Perfect for map-based hotel discovery. Supports radius, amenities, ratings, and chain filtering.*\n\n**3. Search by Hotel IDs (Faster - Direct Search):**\n```json\n{\n  \"hotelIds\": [\"MCLONGHM\", \"ADPAR001\"],\n  \"checkInDate\": \"2026-06-04\",\n  \"checkOutDate\": \"2026-06-07\",\n  \"adults\": 2,\n  \"roomQuantity\": 1,\n  \"currency\": \"GBP\",\n  \"limit\": 20,\n  \"page\": 1\n}\n```\n*Note: Get hotel IDs from previous searches or use Hotel List API*\n\n**Request Parameters:**\n\n**Required:**\n- `checkInDate` (string, required): Check-in date (YYYY-MM-DD). Must be today or future.\n- `checkOutDate` (string, required): Check-out date (YYYY-MM-DD). Must be after check-in date.\n- Either `cityCode`, `geographicCoordinates`, OR `hotelIds` (required): Search method\n  - `cityCode` (string): IATA city code (e.g., \"LON\", \"NYC\", \"PAR\")\n  - `geographicCoordinates` (object): Map-based search\n    - `latitude` (number, -90 to 90): Latitude\n    - `longitude` (number, -180 to 180): Longitude\n  - `hotelIds` (array): Amadeus property codes (8 chars each, e.g., [\"MCLONGHM\"])\n\n**Optional - Search Filters:**\n- `radius` (number, optional): Search radius in kilometers when using `geographicCoordinates` (1-100, default: 5)\n- `radiusUnit` (string, optional): Radius unit. Options: `KM`, `MILE` (default: KM)\n- `chainCodes` (array, optional): Hotel chain codes (2 chars each, e.g., [\"MC\", \"HI\"])\n- `amenities` (array, optional): Hotel amenities filter. Options: SWIMMING_POOL, SPA, FITNESS_CENTER, AIR_CONDITIONING, RESTAURANT, PARKING, PETS_ALLOWED, AIRPORT_SHUTTLE, BUSINESS_CENTER, DISABLED_FACILITIES, WIFI, MEETING_ROOMS, NO_KID_ALLOWED, TENNIS, GOLF, KITCHEN, ANIMAL_WATCHING, BABY-SITTING, BEACH, CASINO, JACUZZI, SAUNA, SOLARIUM, MASSAGE, VALET_PARKING, BAR or LOUNGE, KIDS_WELCOME, NO_PORN_FILMS, MINIBAR, TELEVISION, WI-FI_IN_ROOM, ROOM_SERVICE, GUARDED_PARKG, SERV_SPEC_MENU\n- `ratings` (array, optional): Hotel star ratings (1-5, e.g., [4, 5])\n- `hotelSource` (string, optional): Hotel source. Options: `BEDBANK`, `DIRECTCHAIN`, `ALL` (default: ALL)\n\n**Optional - Booking Parameters:**\n- `adults` (number, optional): Number of adults (1-9, default: 1)\n- `roomQuantity` (number, optional): Number of rooms (1-9, default: 1)\n- `currency` (string, optional): Currency code (default: GBP). Supported: GBP, USD, EUR, NGN, JPY, CNY, GHS, KES, ZAR\n- `priceRange` (string, optional): Price per night filter (e.g., \"200-300\", \"-300\", \"100\"). Requires `currency` if set.\n- `paymentPolicy` (string, optional): Filter by payment type. Options: `GUARANTEE`, `DEPOSIT`, `NONE` (default: NONE)\n- `boardType` (string, optional): Filter by meal plan. Options: `ROOM_ONLY`, `BREAKFAST`, `HALF_BOARD`, `FULL_BOARD`, `ALL_INCLUSIVE`\n- `includeClosed` (boolean, optional): Include sold-out properties (default: false)\n- `bestRateOnly` (boolean, optional): Return only cheapest offer per hotel (default: true)\n- `countryOfResidence` (string, optional): ISO 3166-1 country code (e.g., \"GB\")\n- `lang` (string, optional): Language for descriptions (e.g., \"EN\", \"fr-FR\")\n\n**Optional - Pagination:**\n- `limit` (number, optional): Hotels per page (1-100, default: 20)\n- `page` (number, optional): Page number (1-based, default: 1)\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"data\": [\n      {\n        \"type\": \"hotel-offers\",\n        \"hotel\": {\n          \"hotelId\": \"MCLONGHM\",\n          \"name\": \"JW Marriott Grosvenor House London\",\n          \"cityCode\": \"LON\",\n          \"chainCode\": \"MC\"\n        },\n        \"available\": true,\n        \"offers\": [\n          {\n            \"id\": \"TSXOJ6LFQ2\",\n            \"checkInDate\": \"2026-06-04\",\n            \"checkOutDate\": \"2026-06-07\",\n            \"price\": {\n              \"currency\": \"GBP\",\n              \"base\": \"716.00\",\n              \"total\": \"716.00\",\n              \"original_total\": \"716.00\",\n              \"original_currency\": \"GBP\"\n            },\n            \"final_price\": \"734.90\",\n            \"markup_percentage\": 10,\n            \"markup_amount\": \"7.17\",\n            \"conversion_fee\": \"0.00\",\n            \"room\": { ... },\n            \"policies\": { ... }\n          }\n        ]\n      }\n    ],\n    \"meta\": {\n      \"count\": 20,\n      \"total\": 45,\n      \"limit\": 20,\n      \"page\": 1,\n      \"totalPages\": 3,\n      \"hasMore\": true,\n      \"nextPage\": 2,\n      \"prevPage\": null\n    },\n    \"currency\": \"GBP\",\n    \"conversion_note\": \"Prices include a 2.5% conversion fee...\",\n    \"cached\": false\n  },\n  \"message\": \"Hotels retrieved successfully\"\n}\n```\n\n**Pagination Metadata:**\n- `count`: Number of hotels in current page\n- `total`: Total number of hotels matching search criteria\n- `limit`: Hotels per page\n- `page`: Current page number\n- `totalPages`: Total number of pages\n- `hasMore`: Whether there are more pages\n- `nextPage`: Next page number (null if last page)\n- `prevPage`: Previous page number (null if first page)\n\n**Price Breakdown:**\n- `original_price`: Price from Amadeus (before conversion)\n- `original_currency`: Currency from Amadeus (usually USD or hotel local currency)\n- `base_price`: Converted base price (no fees)\n- `conversion_fee`: Currency conversion buffer (2.5% default)\n- `price_after_conversion`: Base + conversion fee\n- `markup_percentage`: Business markup percentage\n- `markup_amount`: Markup amount\n- `final_price`: Total price customer pays (base + conversion fee + markup)\n\n**Common Error Codes:**\n- `61` - INVALID CURRENCY CODE\n- `137` - INVALID ADULTS OCCUPANCY REQUESTED\n- `145` - DURATION PERIOD OR DATES INCORRECT\n- `381` - INVALID CHECK-IN DATE (date in past)\n- `382` - INVALID CHECK-OUT DATE\n- `383` - INVALID CITY CODE\n- `392` - INVALID HOTEL CODE\n- `397` - INVALID NUMBER OF ADULTS\n- `400` - INVALID PROPERTY CODE\n- `404` - CHECK_OUT DATE MUST BE FURTHER IN THE FUTURE THAN CHECK-IN DATE\n- `424` - NO HOTELS FOUND WHICH MATCH THIS INPUT\n- `431` - CHECK-OUT DATE IS TOO FAR IN THE FUTURE\n\n**Error Response Format:**\n```json\n{\n  \"success\": false,\n  \"statusCode\": 400,\n  \"message\": \"INVALID CITY CODE\",\n  \"error\": \"Bad Request\",\n  \"errors\": [\n    {\n      \"status\": 400,\n      \"code\": 383,\n      \"title\": \"INVALID CITY CODE\",\n      \"detail\": \"The city code provided is not valid\",\n      \"source\": {\n        \"parameter\": \"cityCode\"\n      },\n      \"documentation\": \"https://developers.amadeus.com/...\"\n    }\n  ]\n}\n```\n\n**Tips:**\n- Use city codes for broad searches (LON, NYC, PAR, etc.)\n- Use `geographicCoordinates` for map-based hotel discovery\n- Use hotel IDs for specific hotels (get from previous searches)\n- Test environment has limited data - use big cities\n- `bestRateOnly: true` returns only cheapest offer per hotel (faster)\n- `bestRateOnly: false` returns all available offers (more options)\n- Prices are automatically converted to requested currency\n- Markup is applied based on your configuration\n- Use pagination (`limit`, `page`) to navigate through large result sets\n- Filter by `amenities`, `ratings`, `chainCodes` to narrow results\n- Results are cached for 5 minutes (same search returns instantly)\n\n**Free Quota:**\n- 2,400-3,000 free searches per month (depending on API version)\n- Additional requests charged per transaction\n\n**Use Case:**\n- Hotel search by location\n- Hotel search by specific properties\n- Price comparison across hotels\n- Filter by payment policy, meal plans, etc."
-					},
-					"response": []
-				},
-				{
-					"name": "Get Hotel Rates",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/v1/bookings/hotels/rates/:searchResultId?currency=GBP",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "v1", "bookings", "hotels", "rates", ":searchResultId"],
-							"query": [
-								{
-									"key": "currency",
-									"value": "GBP",
-									"description": "Currency code (default: GBP)"
-								}
-							]
 						},
-						"description": "**Get detailed rates for a specific hotel search result**\n\n**No authentication required.**\n\n**What This Does:**\n- Fetches all available rates for a hotel from search results\n- Returns detailed pricing for each room type\n- Applies currency conversion and markup\n\n**URL Parameters:**\n- `searchResultId` (string, required): Search result ID from hotel search\n\n**Query Parameters:**\n- `currency` (string, optional): Currency code (default: GBP)\n\n**Use Case:**\n- User clicks on a hotel from search results\n- Frontend calls this endpoint to get all room types and rates\n- Display detailed pricing options to user"
+						"response": []
 					},
-					"response": []
-				},
-				{
-					"name": "Create Hotel Quote",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"rate_id\": \"rat_0000BTVRuKZTavzrZDJ4cb\",\n  \"search_result_id\": \"srr_0000ASVBuJVLdmqtZDJ4ca\",\n  \"currency\": \"GBP\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
+					{
+						"name": "Get Hotel Details (Amadeus)",
+						"request": {
+							"method": "GET",
+							"header": [],
+							"url": {
+								"raw": "{{baseUrl}}/api/v1/bookings/hotels/amadeus/:hotelId/details?includeImages=true&includeRatings=true&includeOffers=true&checkInDate=2026-06-04&checkOutDate=2026-06-07&adults=2&roomQuantity=1",
+								"host": ["{{baseUrl}}"],
+								"path": ["api", "v1", "bookings", "hotels", "amadeus", ":hotelId", "details"],
+								"query": [
+									{
+										"key": "offerId",
+										"value": "",
+										"description": "Specific offer ID to get detailed pricing for",
+										"disabled": true
+									},
+									{
+										"key": "checkInDate",
+										"value": "2026-06-04",
+										"description": "Check-in date (YYYY-MM-DD) - Required for current offers"
+									},
+									{
+										"key": "checkOutDate",
+										"value": "2026-06-07",
+										"description": "Check-out date (YYYY-MM-DD) - Required for current offers"
+									},
+									{
+										"key": "adults",
+										"value": "2",
+										"description": "Number of adults (for current offers)"
+									},
+									{
+										"key": "roomQuantity",
+										"value": "1",
+										"description": "Number of rooms (for current offers)"
+									},
+									{
+										"key": "includeImages",
+										"value": "true",
+										"description": "Include hotel images (default: true)"
+									},
+									{
+										"key": "includeRatings",
+										"value": "true",
+										"description": "Include hotel ratings/sentiments (default: true)"
+									},
+									{
+										"key": "includeOffers",
+										"value": "true",
+										"description": "Include current offers if dates provided (default: true)"
+									}
+								]
+							},
+							"description": "**Get comprehensive hotel details (Amadeus)**\n\n**No authentication required.**\n\n**🎯 What This Does:**\n- Returns comprehensive hotel information in a single endpoint\n- Combines: hotel basic info, ratings, offers, and images\n- **Recommended endpoint for building hotel details pages**\n- Supports optional filtering and selective data inclusion\n\n**📋 URL Parameters:**\n- `hotelId` (string, required): Amadeus hotel ID (8 characters, e.g., \"MCLONGHM\")\n  - Get this from: `POST /api/v1/bookings/search/hotels/amadeus` → `hotel.hotelId`\n\n**📋 Query Parameters:**\n- `offerId` (string, optional): Specific offer ID to get detailed pricing for\n- `checkInDate` (string, optional): Check-in date (YYYY-MM-DD) - Required if you want current offers\n- `checkOutDate` (string, optional): Check-out date (YYYY-MM-DD) - Required if you want current offers\n- `adults` (number, optional): Number of adults (default: 1)\n- `roomQuantity` (number, optional): Number of rooms (default: 1)\n- `includeImages` (boolean, optional): Include hotel images (default: true)\n- `includeRatings` (boolean, optional): Include hotel ratings/sentiments (default: true)\n- `includeOffers` (boolean, optional): Include current offers if dates provided (default: true)\n\n**✅ Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"hotel\": {\n      \"hotelId\": \"MCLONGHM\",\n      \"name\": \"JW Marriott Grosvenor House London\",\n      \"chainCode\": \"MC\",\n      \"cityCode\": \"LON\",\n      \"latitude\": 51.5074,\n      \"longitude\": -0.1278,\n      \"address\": {...},\n      \"amenities\": [\"WIFI\", \"PARKING\", \"RESTAURANT\"],\n      \"description\": \"...\"\n    },\n    \"ratings\": {\n      \"overallRating\": 4.5,\n      \"numberOfRatings\": 1234,\n      \"sentiment\": \"POSITIVE\",\n      \"categories\": [...]\n    },\n    \"offerPricing\": {...},\n    \"currentOffers\": [\n      {\n        \"id\": \"TSXOJ6LFQ2\",\n        \"price\": {...},\n        \"room\": {...},\n        \"policies\": {...}\n      }\n    ],\n    \"images\": {\n      \"images\": [\n        {\n          \"url\": \"https://res.cloudinary.com/...\",\n          \"type\": \"exterior\",\n          \"source\": \"google_places\"\n        }\n      ],\n      \"cached\": false,\n      \"fallbackUsed\": false\n    },\n    \"metadata\": {\n      \"hotelId\": \"MCLONGHM\",\n      \"offerId\": null,\n      \"checkInDate\": \"2026-06-04\",\n      \"checkOutDate\": \"2026-06-07\",\n      \"fetchedAt\": \"2026-02-03T10:30:00.000Z\"\n    }\n  }\n}\n```\n\n**💡 Usage Examples:**\n\n**1. Basic Hotel Info Only:**\n```\nGET /api/v1/bookings/hotels/amadeus/MCLONGHM/details\n```\n- Returns: Hotel basic info, ratings, images\n- No offers (dates not provided)\n\n**2. With Current Offers:**\n```\nGET /api/v1/bookings/hotels/amadeus/MCLONGHM/details?checkInDate=2026-06-04&checkOutDate=2026-06-07&adults=2\n```\n- Returns: Hotel info + current offers for dates\n- Includes pricing, room types, policies\n\n**3. Specific Offer Pricing:**\n```\nGET /api/v1/bookings/hotels/amadeus/MCLONGHM/details?offerId=TSXOJ6LFQ2\n```\n- Returns: Hotel info + detailed pricing for specific offer\n- Use when user selects a specific offer\n\n**4. Without Images (Faster):**\n```\nGET /api/v1/bookings/hotels/amadeus/MCLONGHM/details?includeImages=false\n```\n- Skips image fetching (faster response)\n- Use if images already loaded\n\n**5. Without Ratings (Faster):**\n```\nGET /api/v1/bookings/hotels/amadeus/MCLONGHM/details?includeRatings=false\n```\n- Skips ratings API call (faster response)\n\n**🎯 Complete Flow for Hotel Details Page:**\n\n```\n1. User clicks hotel from search results\n2. Frontend calls:\n   GET /api/v1/bookings/hotels/amadeus/{hotelId}/details?checkInDate=...&checkOutDate=...\n3. Backend returns:\n   - Hotel basic info\n   - Ratings/sentiments\n   - Current offers (if dates provided)\n   - Images (from Google Places or fallback)\n4. Frontend displays complete hotel details page\n```\n\n**🔗 Related Endpoints:**\n- `POST /api/v1/bookings/search/hotels/amadeus` - Get hotelId from search\n- `GET /api/v1/bookings/hotels/:hotelId/images` - Get images separately (if needed)\n\n**⚠️ Important Notes:**\n- **All data is optional** - If a service fails, others still work\n- **Images always returned** - Uses fallback if Google Places unavailable\n- **Offers require dates** - Won't return offers without checkInDate/checkOutDate\n- **Ratings may be null** - Not all hotels have ratings data\n- **Fast response** - Uses caching where possible\n\n**📊 Performance:**\n- **With all data**: ~2-3 seconds (multiple API calls)\n- **Without images**: ~1-2 seconds\n- **Without ratings**: ~1-2 seconds\n- **Basic info only**: ~0.5-1 second"
 						},
-						"url": {
-							"raw": "{{baseUrl}}/api/v1/bookings/hotels/quotes",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "v1", "bookings", "hotels", "quotes"]
-						},
-						"description": "**Create a hotel quote (reserve rate)**\n\n**No authentication required.**\n\n**What This Does:**\n- Creates a quote for a specific hotel rate\n- Reserves the rate temporarily\n- Returns final pricing with all fees\n\n**Request Body:**\n- `rate_id` (string, required): Rate ID from hotel rates\n- `search_result_id` (string, required): Search result ID\n- `currency` (string, optional): Currency code (default: GBP)\n\n**Response:**\n- Returns quote with `quote_id`\n- Use `quote_id` to create booking\n- Quote includes all pricing breakdown"
+						"response": []
 					},
-					"response": []
-				},
-				{
-					"name": "Create Hotel Booking",
-					"request": {
+					{
+						"name": "2. Create Hotel Booking (Amadeus)",
+							"request": {
 						"method": "POST",
 						"header": [
 							{
@@ -1834,7 +1818,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"quote_id\": \"quo_0000BTVRuKZTavzrZDJ4cb\",\n  \"email\": \"guest@example.com\",\n  \"phone_number\": \"+442080160509\",\n  \"guests\": [\n    {\n      \"given_name\": \"John\",\n      \"family_name\": \"Doe\",\n      \"type\": \"adult\"\n    }\n  ],\n  \"accommodation_special_requests\": \"Late check-in requested\"\n}",
+							"raw": "{\n  \"hotelOfferId\": \"{{amadeusOfferId}}\",\n  \"offerPrice\": 2002.40,\n  \"currency\": \"GBP\",\n  \"guests\": [\n    {\n      \"name\": {\n        \"title\": \"MR\",\n        \"firstName\": \"John\",\n        \"lastName\": \"Doe\"\n      },\n      \"contact\": {\n        \"phone\": \"+33679278416\",\n        \"email\": \"john.doe@example.com\"\n      }\n    }\n  ],\n  \"roomAssociations\": [\n    {\n      \"hotelOfferId\": \"{{amadeusOfferId}}\",\n      \"guestReferences\": [\n        {\n          \"guestReference\": \"1\"\n        }\n      ]\n    }\n  ],\n  \"payment\": {\n    \"method\": \"CREDIT_CARD\",\n    \"paymentCard\": {\n      \"paymentCardInfo\": {\n        \"vendorCode\": \"VI\",\n        \"cardNumber\": \"4151289722471370\",\n        \"expiryDate\": \"2026-08\",\n        \"holderName\": \"JOHN DOE\",\n        \"securityCode\": \"123\"\n      }\n    }\n  },\n  \"travelAgentEmail\": \"agent@example.com\",\n  \"accommodationSpecialRequests\": \"Late check-in requested\"\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -1842,87 +1826,132 @@
 							}
 						},
 						"url": {
-							"raw": "{{baseUrl}}/api/v1/bookings/hotels/bookings",
+							"raw": "{{baseUrl}}/api/v1/bookings/hotels/bookings/amadeus",
 							"host": ["{{baseUrl}}"],
-							"path": ["api", "v1", "bookings", "hotels", "bookings"]
+							"path": ["api", "v1", "bookings", "hotels", "bookings", "amadeus"]
 						},
-						"description": "**Create a hotel booking**\n\n**Authentication required.**\n\n**What This Does:**\n- Creates a confirmed hotel booking\n- Requires quote_id from Create Hotel Quote\n- Stores booking in database\n\n**Request Body:**\n- `quote_id` (string, required): Quote ID from Create Hotel Quote\n- `email` (string, required): Lead guest email\n- `phone_number` (string, required): Phone in E.164 format (e.g., +442080160509)\n- `guests` (array, required): Guest details\n  - `given_name` (string, required): First name\n  - `family_name` (string, required): Last name\n  - `type` (string, required): \"adult\" or \"child\"\n  - `age` (number, optional): Age for children (0-17)\n- `accommodation_special_requests` (string, optional): Special requests\n- `payment` (object, optional): Payment method (if paying via Duffel balance)\n- `metadata` (object, optional): Custom metadata\n\n**Response:**\n- Returns booking with `bookingId`\n- Booking is immediately confirmed\n- Use booking ID for payment processing"
-					},
-					"response": []
+							"description": "**Create an Amadeus hotel booking**\n\n**Authentication required.**\n\n**What This Does:**\n- Creates a local booking for an Amadeus hotel offer\n- Stores booking details and guest information (card details encrypted)\n- Returns booking ID for payment intent creation\n- After payment succeeds, the actual Amadeus booking will be created automatically via webhook\n\n**⚠️ IMPORTANT - Complete Booking Flow:**\n\n**Step 1: Search Hotels (Amadeus)**\n`POST /api/v1/bookings/search/hotels/amadeus`\n- Get hotel offers with pricing\n- **Save `offer.id` from response** (this is your `hotelOfferId`)\n- **Save `final_price` from offer** (this is your `offerPrice`)\n\n**Step 2: Create Booking (This Endpoint)**\n`POST /api/v1/bookings/hotels/bookings/amadeus`\n- Use `offer.id` as `hotelOfferId`\n- Use `final_price` as `offerPrice`\n- Provide guest details and payment card info\n- **Returns `booking.id`** (used in Step 3)\n- Booking status: `PENDING` (waiting for payment)\n- Card details encrypted and stored securely\n\n**Step 3: Create Payment Intent**\n`POST /api/v1/payments/stripe/create-intent`\n- Use `booking.id` from Step 2\n- Returns `clientSecret` for Stripe Checkout\n\n**Step 4: Complete Payment**\n- Frontend: Use Stripe.js with `clientSecret`\n- User completes payment via Stripe\n\n**Step 5: Automatic Amadeus Booking (Webhook)**\n- After payment success, Stripe webhook triggers automatically\n- System decrypts card details\n- Creates actual booking in Amadeus system\n- Booking status updates to `CONFIRMED`\n\n**Request Body:**\n- `hotelOfferId` (string, required): Offer ID from search results (e.g., \"TSXOJ6LFQ2\")\n- `offerPrice` (number, required): Final price from offer (use `final_price` from search results)\n- `currency` (string, required): Currency code (ISO 4217, e.g., \"GBP\")\n- `guests` (array, required): Guest details\n  - `name` (object, required): Guest name\n    - `title` (string, required): MR, MRS, MS, MISS, DR, PROF\n    - `firstName` (string, required): First name\n    - `lastName` (string, required): Last name\n  - `contact` (object, required): Contact information\n    - `phone` (string, required): Phone in E.164 format (e.g., +33679278416)\n    - `email` (string, required): Email address\n- `roomAssociations` (array, required): Room and guest assignments\n  - `hotelOfferId` (string, required): Same as top-level hotelOfferId\n  - `guestReferences` (array, required): Guest references (1-based index)\n    - `guestReference` (string, required): \"1\", \"2\", etc. (matches guest index in `guests` array)\n- `payment` (object, required): Payment card information\n  - `method` (string, required): \"CREDIT_CARD\"\n  - `paymentCard` (object, required): Card details\n    - `paymentCardInfo` (object, required): Card information\n      - `vendorCode` (string, required): VI (Visa), MC (Mastercard), AX (Amex), CA (Carte Blanche), DC (Diners Club), DI (Discover), JC (JCB), TP (Universal Air Travel)\n      - `cardNumber` (string, required): Full card number (16 digits for most cards)\n      - `expiryDate` (string, required): YYYY-MM format (e.g., \"2026-08\")\n      - `holderName` (string, optional): Card holder name (as on card)\n      - `securityCode` (string, optional): CVV/CVC (3-4 digits)\n- `travelAgentEmail` (string, optional): Travel agent email\n- `accommodationSpecialRequests` (string, optional): Special requests (e.g., \"Late check-in requested\")\n\n**Response:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"booking\": {\n      \"id\": \"clx1234567890\",\n      \"reference\": \"EBT-20260203-ABC123\",\n      \"status\": \"PENDING\",\n      \"paymentStatus\": \"PENDING\",\n      \"totalAmount\": \"2002.40\",\n      \"currency\": \"GBP\",\n      \"provider\": \"AMADEUS\"\n    },\n    \"message\": \"Booking created. Please proceed to payment.\"\n  },\n  \"message\": \"Booking created. Please proceed to payment.\"\n}\n```\n\n**Next Steps:**\n1. Use `booking.id` to create payment intent: `POST /api/v1/payments/stripe/create-intent`\n2. Complete payment via Stripe\n3. After payment success, Amadeus booking is created automatically (webhook)\n4. Booking status updates to `CONFIRMED`\n5. Get booking details: `GET /api/v1/bookings/hotels/bookings/:bookingId`\n\n**🔐 Security:**\n- Card details are encrypted with AES-256-GCM before storage\n- Only last 4 digits stored for display\n- Encrypted data cleared after successful Amadeus booking\n- Full card details decrypted only when creating Amadeus booking (after payment)\n\n**Example Request:**\n```json\n{\n  \"hotelOfferId\": \"{{amadeusOfferId}}\",\n  \"offerPrice\": 2002.40,\n  \"currency\": \"GBP\",\n  \"guests\": [\n    {\n      \"name\": {\n        \"title\": \"MR\",\n        \"firstName\": \"John\",\n        \"lastName\": \"Doe\"\n      },\n      \"contact\": {\n        \"phone\": \"+33679278416\",\n        \"email\": \"john.doe@example.com\"\n      }\n    }\n  ],\n  \"roomAssociations\": [\n    {\n      \"hotelOfferId\": \"{{amadeusOfferId}}\",\n      \"guestReferences\": [{\"guestReference\": \"1\"}]\n    }\n  ],\n  \"payment\": {\n    \"method\": \"CREDIT_CARD\",\n    \"paymentCard\": {\n      \"paymentCardInfo\": {\n        \"vendorCode\": \"VI\",\n        \"cardNumber\": \"4151289722471370\",\n        \"expiryDate\": \"2026-08\",\n        \"holderName\": \"JOHN DOE\",\n        \"securityCode\": \"123\"\n      }\n    }\n  }\n}\n```\n\n**Note:** Use `{{amadeusOfferId}}` from Step 1 (Search Hotels) response, and `final_price` as `offerPrice`."
+						},
+						"response": []
+					}
+					]
 				},
 				{
-					"name": "List Hotel Bookings",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{token}}"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/api/v1/bookings/hotels/bookings?limit=20",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "v1", "bookings", "hotels", "bookings"],
-							"query": [
-								{
-									"key": "limit",
-									"value": "20",
-									"description": "Items per page"
+					"name": "Hotels - Duffel",
+					"description": "**Duffel Stays API for hotel bookings**\n\n**⚠️ IMPORTANT:**\n- Requires Duffel Stays account access\n- May return `403 Forbidden` if not enabled for your account\n- Contact Duffel support to enable Stays API access\n\n**📋 Duffel Hotel Booking Flow:**\n\n**Step 1: Search Hotels**\n`POST /api/v1/bookings/search/hotels`\n- Search by location (coordinates) or accommodation IDs\n- Returns hotels with prices\n\n**Step 2: Get Hotel Rates**\n`GET /api/v1/bookings/hotels/rates/:searchResultId`\n- Get detailed rates for a specific hotel\n- Returns all room types and pricing\n\n**Step 3: Create Hotel Quote**\n`POST /api/v1/bookings/hotels/quotes`\n- Reserve a rate temporarily\n- Returns `quote_id`\n\n**Step 4: Create Hotel Booking**\n`POST /api/v1/bookings/hotels/bookings`\n- Use `quote_id` from Step 3\n- Provide guest details\n- Booking is immediately confirmed\n\n**Step 5: List/Get Hotel Bookings**\n- View bookings (see Common Operations)\n\n**Step 6: Cancel Hotel Booking (Admin Only)**\n- Admin-only cancellation (see Common Operations)\n\n**Utilities:**\n- **Get Accommodation Details** - Hotel info by ID\n- **Search Accommodation Suggestions** - Autocomplete\n- **Get Accommodation Reviews** - Guest reviews",
+					"item": [
+						{
+							"name": "Search Hotels (Duffel)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"location\": {\n    \"geographic_coordinates\": {\n      \"latitude\": 51.5071,\n      \"longitude\": -0.1416\n    },\n    \"radius\": 5\n  },\n  \"check_in_date\": \"2026-06-04\",\n  \"check_out_date\": \"2026-06-07\",\n  \"rooms\": 1,\n  \"guests\": [\n    { \"type\": \"adult\" },\n    { \"type\": \"adult\" }\n  ],\n  \"currency\": \"GBP\",\n  \"free_cancellation_only\": false\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
 								},
-								{
-									"key": "cursor",
-									"value": "",
-									"description": "Pagination cursor",
-									"disabled": true
-								}
-							]
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/bookings/search/hotels",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "bookings", "search", "hotels"]
+								},
+								"description": "**Search for hotels/accommodation (Duffel)**\n\n**No authentication required.**\n\n**What This Does:**\n- Searches hotels using Duffel Stays API\n- Returns hotels with prices (converted to selected currency)\n- Applies markup automatically\n- Cached for 5 minutes\n\n**⚠️ IMPORTANT:**\n- Requires Duffel Stays account access\n- May return `403 Forbidden` if not enabled\n- Contact Duffel support to enable Stays API\n\n**Search Methods:**\n\n**1. Location-Based Search (by coordinates):**\n```json\n{\n  \"location\": {\n    \"geographic_coordinates\": {\n      \"latitude\": 51.5071,\n      \"longitude\": -0.1416\n    },\n    \"radius\": 5\n  },\n  \"check_in_date\": \"2026-06-04\",\n  \"check_out_date\": \"2026-06-07\",\n  \"rooms\": 1,\n  \"guests\": [{ \"type\": \"adult\" }],\n  \"currency\": \"GBP\"\n}\n```\n\n**2. Accommodation-Based Search (by hotel IDs):**\n```json\n{\n  \"accommodation\": {\n    \"ids\": [\"acc_0000AWr2VsUNIF1Vl91xg0\"],\n    \"fetch_rates\": true\n  },\n  \"check_in_date\": \"2026-06-04\",\n  \"check_out_date\": \"2026-06-07\",\n  \"rooms\": 1,\n  \"guests\": [{ \"type\": \"adult\" }],\n  \"currency\": \"GBP\"\n}\n```\n\n**Request Parameters:**\n- `location` (object, optional): Location-based search\n  - `geographic_coordinates`: { `latitude` (-90 to 90), `longitude` (-180 to 180) }\n  - `radius` (number, optional): Search radius in km (1-100, default: 5)\n- `accommodation` (object, optional): Search by hotel IDs\n  - `ids` (array, required): List of accommodation IDs (max 10 with rates, 200 without)\n  - `fetch_rates` (boolean, optional): Whether to fetch rates (default: false)\n- `check_in_date` (string, required): ISO 8601 date (max 330 days in future)\n- `check_out_date` (string, required): ISO 8601 date (max 99 nights stay)\n- `rooms` (number, required): Number of rooms (min: 1)\n- `guests` (array, required): List of guests\n  - `type` (string, required): \"adult\" or \"child\"\n  - `age` (number, optional): Age for children (0-17)\n- `currency` (string, optional): Currency code (default: GBP). Supported: GBP, USD, EUR, NGN, JPY, CNY, GHS, KES, ZAR\n- `free_cancellation_only` (boolean, optional): Filter for free cancellation only (default: false)\n- `mobile` (boolean, optional): Whether search is from mobile (default: false)\n- `negotiated_rate_ids` (array, optional): Corporate/group rate IDs\n\n**Response:**\n- Returns hotels with `cheapest_rate_total_amount` (includes markup and conversion fee)\n- Each hotel includes `accommodation` details and available `rooms`\n- Prices are in selected currency with transparent conversion fee"
+							},
+							"response": []
 						},
-						"description": "**List user's hotel bookings**\n\n**Authentication required.**\n\n**Query Parameters:**\n- `limit` (number, optional): Items per page (default: 20, max: 200)\n- `cursor` (string, optional): Pagination cursor\n\n**Response:**\n- Returns paginated list of hotel bookings\n- Includes booking details, dates, pricing"
-					},
-					"response": []
-				},
-				{
-					"name": "Get Hotel Booking",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{token}}"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/api/v1/bookings/hotels/bookings/:bookingId",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "v1", "bookings", "hotels", "bookings", ":bookingId"]
+						{
+							"name": "Get Hotel Rates (Duffel)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/bookings/hotels/rates/:searchResultId?currency=GBP",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "bookings", "hotels", "rates", ":searchResultId"],
+									"query": [
+										{
+											"key": "currency",
+											"value": "GBP",
+											"description": "Currency code (default: GBP)"
+										}
+									]
+								},
+								"description": "**Get detailed rates for a specific hotel search result (Duffel)**\n\n**No authentication required.**\n\n**What This Does:**\n- Fetches all available rates for a hotel from search results\n- Returns detailed pricing for each room type\n- Applies currency conversion and markup\n\n**URL Parameters:**\n- `searchResultId` (string, required): Search result ID from hotel search\n\n**Query Parameters:**\n- `currency` (string, optional): Currency code (default: GBP)\n\n**Use Case:**\n- User clicks on a hotel from search results\n- Frontend calls this endpoint to get all room types and rates\n- Display detailed pricing options to user"
+							},
+							"response": []
 						},
-						"description": "**Get hotel booking details**\n\n**Authentication required.**\n\n**URL Parameters:**\n- `bookingId` (string, required): Booking ID\n\n**Response:**\n- Returns full booking details from Duffel\n- Includes accommodation, guests, dates, pricing"
-					},
-					"response": []
-				},
-				{
-					"name": "Cancel Hotel Booking (Admin Only)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{token}}"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/api/v1/bookings/hotels/bookings/:bookingId/cancel",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "v1", "bookings", "hotels", "bookings", ":bookingId", "cancel"]
+						{
+							"name": "Create Hotel Quote (Duffel)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"rate_id\": \"rat_0000BTVRuKZTavzrZDJ4cb\",\n  \"search_result_id\": \"srr_0000ASVBuJVLdmqtZDJ4ca\",\n  \"currency\": \"GBP\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/bookings/hotels/quotes",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "bookings", "hotels", "quotes"]
+								},
+								"description": "**Create a hotel quote (reserve rate) - Duffel**\n\n**No authentication required.**\n\n**What This Does:**\n- Creates a quote for a specific hotel rate\n- Reserves the rate temporarily\n- Returns final pricing with all fees\n\n**Request Body:**\n- `rate_id` (string, required): Rate ID from hotel rates\n- `search_result_id` (string, required): Search result ID\n- `currency` (string, optional): Currency code (default: GBP)\n\n**Response:**\n- Returns quote with `quote_id`\n- Use `quote_id` to create booking\n- Quote includes all pricing breakdown"
+							},
+							"response": []
 						},
-						"description": "**Cancel a hotel booking**\n\n**Admin authentication required.**\n\n**What This Does:**\n- Cancels hotel booking in Duffel\n- Updates local database\n- Only admins can cancel (same as flight cancellations)\n\n**URL Parameters:**\n- `bookingId` (string, required): Booking ID to cancel\n\n**Response:**\n- Returns cancellation confirmation\n- Booking status updated to CANCELLED"
-					},
-					"response": []
-				},
-				{
-					"name": "Get Accommodation Details",
-					"request": {
+						{
+							"name": "Create Hotel Booking (Duffel)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"quote_id\": \"quo_0000BTVRuKZTavzrZDJ4cb\",\n  \"email\": \"guest@example.com\",\n  \"phone_number\": \"+442080160509\",\n  \"guests\": [\n    {\n      \"given_name\": \"John\",\n      \"family_name\": \"Doe\",\n      \"type\": \"adult\"\n    }\n  ],\n  \"accommodation_special_requests\": \"Late check-in requested\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/bookings/hotels/bookings",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "bookings", "hotels", "bookings"]
+								},
+								"description": "**Create a hotel booking (Duffel)**\n\n**Authentication required.**\n\n**What This Does:**\n- Creates a confirmed hotel booking using Duffel Stays API\n- Requires quote_id from Create Hotel Quote\n- Stores booking in database\n\n**Request Body:**\n- `quote_id` (string, required): Quote ID from Create Hotel Quote\n- `email` (string, required): Lead guest email\n- `phone_number` (string, required): Phone in E.164 format (e.g., +442080160509)\n- `guests` (array, required): Guest details\n  - `given_name` (string, required): First name\n  - `family_name` (string, required): Last name\n  - `type` (string, required): \"adult\" or \"child\"\n  - `age` (number, optional): Age for children (0-17)\n- `accommodation_special_requests` (string, optional): Special requests\n- `payment` (object, optional): Payment method (if paying via Duffel balance)\n- `metadata` (object, optional): Custom metadata\n\n**Response:**\n- Returns booking with `bookingId`\n- Booking is immediately confirmed\n- Use booking ID for payment processing"
+							},
+							"response": []
+						},
+						{
+							"name": "Get Accommodation Details (Duffel)",
+							"request": {
 						"method": "GET",
 						"header": [],
 						"url": {
@@ -1932,12 +1961,12 @@
 						},
 						"description": "**Get accommodation/hotel details by ID**\n\n**No authentication required.**\n\n**URL Parameters:**\n- `accommodationId` (string, required): Accommodation ID\n\n**Use Case:**\n- Display hotel details page\n- Show amenities, location, photos\n- Use before searching for rates"
 					},
-					"response": []
-				},
-				{
-					"name": "Search Accommodation Suggestions",
-					"request": {
-						"method": "POST",
+							"response": []
+						},
+						{
+							"name": "Search Accommodation Suggestions (Duffel)",
+							"request": {
+								"method": "POST",
 						"header": [
 							{
 								"key": "Content-Type",
@@ -1960,12 +1989,12 @@
 						},
 						"description": "**Search for hotel/accommodation suggestions (autocomplete)**\n\n**No authentication required.**\n\n**What This Does:**\n- Provides autocomplete suggestions for hotel search\n- Minimum 3 characters required\n- Optional location-based filtering\n\n**Request Body:**\n- `query` (string, required): Search query (min 3 characters)\n- `location` (object, optional): Location filter\n  - `geographic_coordinates`: { `latitude`, `longitude` }\n  - `radius` (number, optional): Radius in km (1-100, default: 5)\n\n**Use Case:**\n- Hotel search autocomplete\n- Location-based suggestions\n- Find hotels by name or location"
 					},
-					"response": []
-				},
-				{
-					"name": "Get Accommodation Reviews",
-					"request": {
-						"method": "GET",
+							"response": []
+						},
+						{
+							"name": "Get Accommodation Reviews (Duffel)",
+							"request": {
+								"method": "GET",
 						"header": [],
 						"url": {
 							"raw": "{{baseUrl}}/api/v1/bookings/hotels/accommodation/:accommodationId/reviews?limit=20",
@@ -1987,10 +2016,135 @@
 						},
 						"description": "**Get accommodation reviews**\n\n**No authentication required.**\n\n**URL Parameters:**\n- `accommodationId` (string, required): Accommodation ID\n\n**Query Parameters:**\n- `limit` (number, optional): Items per page\n- `after` (string, optional): Pagination cursor\n- `before` (string, optional): Previous page cursor\n\n**Response:**\n- Returns paginated guest reviews\n- Includes ratings, comments, dates"
 					},
-					"response": []
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Hotels - Common Operations",
+					"description": "**Common hotel booking operations that work for both Duffel and Amadeus**\n\nThese endpoints automatically detect the provider (Duffel or Amadeus) and work seamlessly with both.\n\n**Endpoints:**\n- **List Hotel Bookings** - View all user's hotel bookings (both providers)\n- **Get Hotel Booking** - Get booking details (automatically fetches from correct provider)\n- **Cancel Hotel Booking** - Admin-only cancellation (works for both providers)",
+					"item": [
+						{
+							"name": "List Hotel Bookings",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/bookings/hotels/bookings?limit=20",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "bookings", "hotels", "bookings"],
+									"query": [
+										{
+											"key": "limit",
+											"value": "20",
+											"description": "Items per page"
+										},
+										{
+											"key": "cursor",
+											"value": "",
+											"description": "Pagination cursor",
+											"disabled": true
+										}
+									]
+								},
+								"description": "**List user's hotel bookings**\n\n**Authentication required.**\n\n**Query Parameters:**\n- `limit` (number, optional): Items per page (default: 20, max: 200)\n- `cursor` (string, optional): Pagination cursor\n\n**Response:**\n- Returns paginated list of hotel bookings\n- Includes booking details, dates, pricing\n- Works for both Duffel and Amadeus bookings"
+							},
+							"response": []
+						},
+						{
+							"name": "Get Hotel Booking",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/bookings/hotels/bookings/:bookingId",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "bookings", "hotels", "bookings", ":bookingId"]
+								},
+								"description": "**Get hotel booking details**\n\n**Authentication required.**\n\n**URL Parameters:**\n- `bookingId` (string, required): Booking ID\n\n**Response:**\n- Returns full booking details from provider (Duffel or Amadeus)\n- Includes accommodation, guests, dates, pricing\n- Supports both Duffel and Amadeus hotel bookings\n- Automatically fetches latest data from provider API\n- Falls back to cached data if provider API fails"
+							},
+							"response": []
+						},
+						{
+							"name": "Cancel Hotel Booking (Admin Only)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/bookings/hotels/bookings/:bookingId/cancel",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "bookings", "hotels", "bookings", ":bookingId", "cancel"]
+								},
+								"description": "**Cancel a hotel booking (Admin Only)**\n\n**Admin authentication required.**\n\n**What This Does:**\n- Cancels hotel booking in provider (Duffel or Amadeus)\n- Updates local database\n- Only admins can cancel (same as flight cancellations)\n- Supports both Duffel and Amadeus hotel bookings\n\n**URL Parameters:**\n- `bookingId` (string, required): Booking ID to cancel\n\n**Response:**\n- Returns cancellation confirmation\n- Booking status updated to CANCELLED\n- Refund status updated if applicable\n\n**Note:**\n- Works for both Duffel and Amadeus hotel bookings\n- Cancellation policies depend on hotel provider\n- Refunds processed according to hotel cancellation policy"
+							},
+							"response": []
+						},
+						{
+							"name": "Get Hotel Images",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/bookings/hotels/:hotelId/images?hotelName=JW+Marriott+Grosvenor+House+London&googlePlaceId=",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "bookings", "hotels", ":hotelId", "images"],
+									"query": [
+										{
+											"key": "hotelName",
+											"value": "JW Marriott Grosvenor House London",
+											"description": "Hotel name (required for Google Places search)",
+											"disabled": false
+										},
+										{
+											"key": "googlePlaceId",
+											"value": "",
+											"description": "Google Place ID (optional, if you have it)",
+											"disabled": true
+										}
+									]
+								},
+								"description": "**Get hotel images with caching and fallback support**\n\n**No authentication required.**\n\n**🎯 What This Does:**\n- Fetches hotel images from Google Places API (if configured)\n- Caches images in Cloudinary for 60 days\n- **Automatically falls back to placeholder images** if:\n  - Google Places API key is missing/invalid\n  - Hotel not found in Google Places\n  - Rate limit reached\n  - Any error occurs\n- **Never crashes** - always returns images\n\n**📋 URL Parameters:**\n- `hotelId` (string, required): Hotel ID from search results (e.g., \"MCLONGHM\")\n  - Get this from: `POST /api/v1/bookings/search/hotels/amadeus` → `hotel.hotelId`\n\n**📋 Query Parameters:**\n- `hotelName` (string, required): Hotel name for Google Places search\n  - Get this from: `POST /api/v1/bookings/search/hotels/amadeus` → `hotel.name`\n  - Example: \"JW Marriott Grosvenor House London\"\n- `googlePlaceId` (string, optional): Google Place ID if you have it (skips search step)\n\n**✅ Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"hotelId\": \"MCLONGHM\",\n    \"hotelName\": \"JW Marriott Grosvenor House London\",\n    \"images\": [\n      {\n        \"url\": \"https://res.cloudinary.com/.../hotel_MCLONGHM_0.jpg\",\n        \"type\": \"exterior\",\n        \"source\": \"google_places\",\n        \"attribution\": \"Photo from Google Places\"\n      }\n    ],\n    \"details\": {\n      \"address\": \"86-90 Park Lane, London\",\n      \"rating\": 4.5,\n      \"totalReviews\": 1234\n    },\n    \"cached\": false,\n    \"fallbackUsed\": false,\n    \"message\": \"Hotel images retrieved successfully\"\n  }\n}\n```\n\n**🔄 Fallback Response (when Google Places unavailable):**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"hotelId\": \"MCLONGHM\",\n    \"hotelName\": \"JW Marriott Grosvenor House London\",\n    \"images\": [\n      {\n        \"url\": \"https://via.placeholder.com/800x600/4A90E2/FFFFFF?text=Hotel+Exterior\",\n        \"type\": \"exterior\",\n        \"source\": \"placeholder\",\n        \"attribution\": \"Generic hotel image\"\n      }\n    ],\n    \"cached\": false,\n    \"fallbackUsed\": true,\n    \"message\": \"Hotel-specific images are currently unavailable. Showing generic hotel images for reference.\"\n  }\n}\n```\n\n**🧪 Testing Scenarios:**\n\n**Scenario 1: Hotel with Google Places Images**\n```\nGET /api/v1/bookings/hotels/MCLONGHM/images?hotelName=JW+Marriott+Grosvenor+House+London\n```\n- ✅ Returns Google Places images (if API key configured)\n- ✅ Caches in database for 60 days\n- ✅ Returns hotel details (address, rating, reviews)\n\n**Scenario 2: Hotel Not Found in Google Places**\n```\nGET /api/v1/bookings/hotels/UNKNOWNHM/images?hotelName=Very+New+Hotel+London\n```\n- ✅ Returns placeholder images (fallback)\n- ✅ `fallbackUsed: true`\n- ✅ User-friendly message\n- ✅ **No error - always succeeds**\n\n**Scenario 3: Google Places API Key Missing**\n```\n# Remove GOOGLE_PLACES_API_KEY from .env\nGET /api/v1/bookings/hotels/MCLONGHM/images?hotelName=JW+Marriott\n```\n- ✅ Returns placeholder images (fallback)\n- ✅ `fallbackUsed: true`\n- ✅ **Works perfectly without API key**\n\n**Scenario 4: Cached Images**\n```\n# First request: Fetches from Google Places, caches\nGET /api/v1/bookings/hotels/MCLONGHM/images?hotelName=JW+Marriott\n\n# Second request (within 60 days): Returns from cache\nGET /api/v1/bookings/hotels/MCLONGHM/images?hotelName=JW+Marriott\n```\n- ✅ `cached: true` in response\n- ✅ Fast response (no API calls)\n- ✅ No Google Places API usage\n\n**📊 Response Fields:**\n- `images[]`: Array of image objects\n  - `url`: Image URL (Cloudinary or placeholder)\n  - `type`: Image type (exterior, interior, room, amenity, other)\n  - `source`: Image source (google_places, placeholder)\n  - `attribution`: Attribution text (if required)\n- `details`: Hotel details from Google Places (if available)\n  - `address`: Full address\n  - `rating`: Hotel rating (1-5)\n  - `totalReviews`: Number of reviews\n- `cached`: Boolean - true if from cache\n- `fallbackUsed`: Boolean - true if using placeholder images\n- `message`: User-friendly message about image source\n\n**💡 Usage Tips:**\n1. **For Hotel Listings:** Lazy load images when card enters viewport\n2. **For Hotel Details Page:** Fetch images immediately on page load\n3. **Cache Strategy:** Frontend can cache image URLs for 24 hours\n4. **Error Handling:** Not needed - endpoint always returns success\n5. **Attribution:** Display \"Powered by Google\" if `source === \"google_places\"`\n\n**🔗 Related Endpoints:**\n- `POST /api/v1/bookings/search/hotels/amadeus` - Get hotelId and hotelName\n- `GET /api/v1/bookings/hotels/accommodation/:accommodationId` - Get Duffel hotel details (may include images)\n\n**⚠️ Important Notes:**\n- **Always returns images** - never returns empty array (unless last resort)\n- **Never crashes** - all errors handled gracefully\n- **Works without Google Places API** - uses fallback images\n- **Caching:** Images cached for 60 days, then auto-deleted\n- **Rate Limiting:** Automatically falls back when Google Places limit reached\n- **Cost Control:** Free tier limits enforced, circuit breaker at 90%\n\n**🎯 Complete Flow Example:**\n```\n1. Search Hotels:\n   POST /api/v1/bookings/search/hotels/amadeus\n   → Get: hotelId=\"MCLONGHM\", hotelName=\"JW Marriott...\"\n\n2. Get Hotel Images:\n   GET /api/v1/bookings/hotels/MCLONGHM/images?hotelName=JW+Marriott+...\n   → Get: images array with URLs\n\n3. Display Hotel Details Page:\n   → Combine search data + images\n   → Show full gallery, hotel info, pricing\n```"
+							},
+							"response": []
+						},
+						{
+							"name": "Get Hotel Images Usage Stats (Admin Only)",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/bookings/hotels/images/usage-stats",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "bookings", "hotels", "images", "usage-stats"]
+								},
+								"description": "**Get Google Places API and Cloudinary usage statistics (Admin Only)**\n\n**Admin authentication required.**\n\n**🎯 What This Does:**\n- Returns current month usage for Google Places API requests\n- Returns Cloudinary storage and bandwidth usage\n- Helps monitor costs and free tier limits\n- Shows circuit breaker status (if limits reached)\n\n**✅ Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"googlePlaces\": {\n      \"currentValue\": 150,\n      \"limitValue\": 1000,\n      \"isLimitReached\": false,\n      \"percentageUsed\": 15.0\n    },\n    \"cloudinaryStorage\": {\n      \"currentValue\": 0.5,\n      \"limitValue\": 25.0,\n      \"isLimitReached\": false,\n      \"percentageUsed\": 2.0\n    },\n    \"cloudinaryBandwidth\": {\n      \"currentValue\": 2.3,\n      \"limitValue\": 25.0,\n      \"isLimitReached\": false,\n      \"percentageUsed\": 9.2\n    }\n  }\n}\n```\n\n**📊 Response Fields:**\n- `googlePlaces`: Google Places API usage\n  - `currentValue`: Current requests this month\n  - `limitValue`: Free tier limit (default: 1000)\n  - `isLimitReached`: Circuit breaker status (true if ≥90% used)\n  - `percentageUsed`: Percentage of limit used\n- `cloudinaryStorage`: Cloudinary storage usage (GB)\n- `cloudinaryBandwidth`: Cloudinary bandwidth usage (GB)\n\n**💡 Usage Tips:**\n- Check monthly to monitor API costs\n- Circuit breaker activates at 90% of free tier limit\n- Usage resets automatically on 1st of each month\n- If `isLimitReached: true`, images endpoint uses fallback only\n\n**⚠️ Important:**\n- Only admins can access this endpoint\n- Usage tracking prevents exceeding free tier limits\n- Circuit breaker stops API calls when limit approached"
+							},
+							"response": []
+						}
+					]
 				}
 			],
-			"description": "Hotel/Stays booking endpoints using Duffel Stays API and Amadeus Self-Service API.\n\n**⚠️ IMPORTANT:**\n- **Duffel Hotels** (`/search/hotels`) - Requires Duffel Stays account access (may return 403 if not enabled)\n- **Amadeus Hotels** (`/search/hotels/amadeus`) - Uses Amadeus Self-Service API (recommended, free quota available)\n\n**Hotel Booking Flow (Duffel):**\n1. **Search Hotels** → Get list of hotels with prices (Duffel)\n2. **Get Hotel Rates** → Get detailed rates for a hotel\n3. **Create Hotel Quote** → Reserve a rate (get quote_id)\n4. **Create Hotel Booking** → Confirm booking with guest details\n5. **List/Get Hotel Bookings** → View bookings\n6. **Cancel Hotel Booking** → Admin-only cancellation\n\n**Hotel Search Flow (Amadeus):**\n1. **Search Hotels (Amadeus)** → Get hotel offers with pricing, policies, and availability\n2. Use offer ID to create booking (booking endpoints coming soon)\n\n**Search Methods:**\n\n**Duffel:**\n- Location-based (latitude/longitude with radius)\n- Accommodation-based (by hotel IDs)\n\n**Amadeus:**\n- City code search (e.g., LON, NYC, PAR) - Recommended for test environment\n- Hotel ID search (by Amadeus property codes, e.g., MCLONGHM)\n\n**Filters Available:**\n\n**Duffel:**\n- ✅ Location (coordinates + radius)\n- ✅ Accommodation IDs\n- ✅ Free cancellation only\n- ✅ Currency selection (GBP, USD, EUR, NGN, JPY, CNY, GHS, KES, ZAR)\n- ✅ Date range (check-in/check-out)\n- ✅ Number of rooms and guests\n- ✅ Mobile device detection\n\n**Amadeus:**\n- ✅ City code or hotel IDs (required - either one)\n- ✅ Payment policy (GUARANTEE, DEPOSIT, NONE)\n- ✅ Board type (ROOM_ONLY, BREAKFAST, HALF_BOARD, FULL_BOARD, ALL_INCLUSIVE)\n- ✅ Price range per night (e.g., \"200-300\", \"-300\", \"100\")\n- ✅ Include sold-out properties\n- ✅ Best rate only (cheapest per hotel)\n- ✅ Country of residence (ISO 3166-1)\n- ✅ Language selection\n\n**Pricing:**\n- All prices include currency conversion fee (2.5% default)\n- Markup applied automatically based on configuration\n- Transparent fee breakdown in response\n- Conversion fee protects against exchange rate fluctuations\n\n**Cancellation:**\n- **Admin-only** - Only administrators (ADMIN, SUPER_ADMIN) can cancel hotel bookings\n- Same restriction as flight cancellations\n- Customers must contact support for cancellations\n\n**Utilities (Duffel):**\n- **Accommodation Suggestions** - Autocomplete for hotel search\n- **Get Accommodation** - Hotel details by ID\n- **Get Reviews** - Guest reviews for hotels\n\n**API Providers:**\n- **Duffel Stays** - Requires account access (may return 403 if not enabled)\n- **Amadeus** - Self-Service API with free quota (2,400-3,000 searches/month)\n\n**Recommendation:**\n- Use **Amadeus** (`/search/hotels/amadeus`) for hotel search (more reliable, better test data, free quota)\n- Use **Duffel** (`/search/hotels`) if you have Duffel Stays access enabled\n\n**Error Handling:**\n- Amadeus returns detailed error codes (e.g., 383 = INVALID CITY CODE, 381 = INVALID CHECK-IN DATE)\n- All errors include user-friendly messages and error details\n- Check `errors` array in error responses for specific issues"
+			"description": "**Hotel booking endpoints - Organized by provider**\n\n**📁 Folder Structure:**\n1. **Hotels - Amadeus (Recommended)** - Complete Amadeus hotel booking flow\n2. **Hotels - Duffel** - Duffel Stays API endpoints\n3. **Hotels - Common Operations** - Shared endpoints (List, Get, Cancel, Images)\n\n**🎯 Quick Start:**\n- **For Amadeus**: See \"Hotels - Amadeus (Recommended)\" folder for complete flow\n- **For Duffel**: See \"Hotels - Duffel\" folder (requires account access)\n- **Common Operations**: Works for both providers\n\n**🖼️ Hotel Images Flow:**\n1. **Search Hotels** → Get `hotelId` and `hotelName`\n2. **Get Hotel Images** → `GET /api/v1/bookings/hotels/:hotelId/images?hotelName=...`\n3. **Display** → Show images in hotel cards or details page\n\n**💡 Recommendation:**\n- Use **Amadeus** for hotel bookings (free quota, better test data, more features)\n- Use **Duffel** only if you have Duffel Stays access enabled\n- **Hotel Images** endpoint works for both Amadeus and Duffel hotels\n\n**🔐 Security:**\n- Card details encrypted with AES-256-GCM\n- Admin-only cancellations\n- Secure payment flow with Stripe\n\n**🛡️ Image Fallback:**\n- Hotel images endpoint **never crashes**\n- Automatically falls back to placeholder images if Google Places unavailable\n- Works perfectly without Google Places API key\n- Always returns images (Google Places or fallback)"
 		},
 		{
 			"name": "Flight Utilities",

@@ -207,3 +207,42 @@ model AuditLog {
   @@index([createdAt])
   @@map("audit_logs")
 }
+
+// Hotel images cache for Google Places API
+model HotelImage {
+  id          String   @id @default(cuid())
+  hotelId     String   // Amadeus hotelId or Google Place ID
+  hotelName   String?
+  imageUrl    String   // Cloudinary URL
+  imageType   String?  // 'exterior', 'interior', 'room', etc.
+  publicId    String?  // Cloudinary public ID for deletion
+  source      String   @default("google_places") // 'google_places', 'duffel', etc.
+  expiresAt   DateTime // When to delete from cache (30-90 days)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([hotelId])
+  @@index([expiresAt])
+  @@index([source])
+  @@map("hotel_images")
+}
+
+// API usage tracking to prevent exceeding free tier limits
+model ApiUsageTracking {
+  id              String   @id @default(cuid())
+  service         String   // 'google_places', 'cloudinary'
+  metric          String   // 'requests', 'storage_gb', 'bandwidth_gb'
+  currentValue    Decimal  @db.Decimal(12, 2) // Current usage this month
+  limitValue      Decimal  @db.Decimal(12, 2) // Free tier limit
+  month           Int      // 1-12
+  year            Int      // e.g., 2024
+  isLimitReached  Boolean  @default(false) // Circuit breaker flag
+  lastResetAt     DateTime @default(now()) // When usage was last reset
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([service, metric, month, year])
+  @@index([service, month, year])
+  @@index([isLimitReached])
+  @@map("api_usage_tracking")
+}

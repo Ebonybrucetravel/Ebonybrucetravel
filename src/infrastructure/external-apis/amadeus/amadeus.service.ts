@@ -278,45 +278,108 @@ export class AmadeusService {
   }
 
   /**
-   * Create hotel booking
-   * POST /v1/booking/hotel-bookings
+   * Create hotel booking (order)
+   * POST /v2/booking/hotel-orders
+   * 
+   * Note: Uses v2 API - This is the LATEST version for booking operations.
+   * Amadeus has different version numbers for different API categories:
+   * - Hotel Search/Shopping: v3 (latest)
+   * - Hotel Booking/Orders: v2 (latest)
+   * This is standard practice - different endpoints can have different version numbers.
    */
   async createHotelBooking(params: {
-    offerId: string;
+    hotelOfferId: string;
     guests: Array<{
-      name: {
-        title: string; // MR, MRS, MS, etc.
-        firstName: string;
-        lastName: string;
-      };
-      contact: {
-        phone: string;
-        email: string;
-      };
+      title: string; // MR, MRS, MS, MISS, DR, PROF
+      firstName: string;
+      lastName: string;
+      phone: string;
+      email: string;
     }>;
-    payments: Array<{
-      method: string; // CREDIT_CARD, etc.
-      card?: {
-        vendorCode: string;
-        cardNumber: string;
-        expiryDate: string; // YYYY-MM
-      };
-    }>;
-    rooms: Array<{
-      guests: Array<{
-        lastName: string;
-        firstName: string;
+    roomAssociations: Array<{
+      hotelOfferId: string;
+      guestReferences: Array<{
+        guestReference: string; // "1", "2", etc. (1-based index)
       }>;
     }>;
+    payment: {
+      method: 'CREDIT_CARD';
+      paymentCard: {
+        paymentCardInfo: {
+          vendorCode: string; // VI, MC, AX, etc.
+          cardNumber: string;
+          expiryDate: string; // YYYY-MM
+          holderName?: string;
+          securityCode?: string;
+        };
+      };
+    };
+    travelAgentEmail?: string;
+    accommodationSpecialRequests?: string;
   }): Promise<any> {
-    return this.makeRequest('/v1/booking/hotel-bookings', {
+    // Transform guests to Amadeus format (with tid - traveler ID)
+    const amadeusGuests = params.guests.map((guest, index) => ({
+      tid: index + 1, // Traveler ID (1-based)
+      title: guest.title,
+      firstName: guest.firstName,
+      lastName: guest.lastName,
+      phone: guest.phone,
+      email: guest.email,
+    }));
+
+    // Transform room associations
+    const amadeusRoomAssociations = params.roomAssociations.map((room) => ({
+      guestReferences: room.guestReferences,
+      hotelOfferId: room.hotelOfferId,
+    }));
+
+    // Build request body
+    const requestBody: any = {
+      data: {
+        type: 'hotel-order',
+        guests: amadeusGuests,
+        roomAssociations: amadeusRoomAssociations,
+        payment: params.payment,
+      },
+    };
+
+    // Add travel agent if provided
+    if (params.travelAgentEmail) {
+      requestBody.data.travelAgent = {
+        contact: {
+          email: params.travelAgentEmail,
+        },
+      };
+    }
+
+    return this.makeRequest('/v2/booking/hotel-orders', {
+      method: 'POST',
+      body: requestBody,
+    });
+  }
+
+  /**
+   * Get hotel booking (order) by ID
+   * GET /v2/booking/hotel-orders/{orderId}
+   */
+  async getHotelBooking(orderId: string): Promise<any> {
+    return this.makeRequest(`/v2/booking/hotel-orders/${orderId}`, {
+      method: 'GET',
+    });
+  }
+
+  /**
+   * Cancel hotel booking (order)
+   * POST /v2/booking/hotel-orders/{orderId}/cancellation
+   * Note: Amadeus v2 booking API supports cancellation
+   */
+  async cancelHotelBooking(orderId: string): Promise<any> {
+    return this.makeRequest(`/v2/booking/hotel-orders/${orderId}/cancellation`, {
       method: 'POST',
       body: {
         data: {
-          offerId: params.offerId,
-          guests: params.guests,
-          payments: params.payments,
-          rooms: params.rooms,
+          // Amadeus may require additional cancellation details
+          // Check documentation for required fields
         },
       },
     });

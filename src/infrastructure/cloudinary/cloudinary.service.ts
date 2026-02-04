@@ -16,31 +16,41 @@ export class CloudinaryService {
 
   /**
    * Upload image to Cloudinary
-   * @param file - File buffer or stream
+   * @param file - File buffer, stream, or URL string
    * @param folder - Folder path in Cloudinary (optional)
    * @param publicId - Custom public ID (optional)
    * @returns Cloudinary upload result with secure URL
    */
   async uploadImage(
-    file: Buffer | Express.Multer.File,
+    file: Buffer | Express.Multer.File | string,
     folder?: string,
     publicId?: string,
   ): Promise<{ url: string; publicId: string }> {
-    return new Promise((resolve, reject) => {
-      const uploadOptions: any = {
-        resource_type: 'image',
-        folder: folder || 'ebony-bruce-travels/users',
-        transformation: [
-          { width: 400, height: 400, crop: 'fill', gravity: 'face' },
-          { quality: 'auto' },
-          { format: 'auto' },
-        ],
+    const uploadOptions: any = {
+      resource_type: 'image',
+      folder: folder || 'ebony-bruce-travels/users',
+      transformation: [
+        { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+        { quality: 'auto' },
+        { format: 'auto' },
+      ],
+    };
+
+    if (publicId) {
+      uploadOptions.public_id = publicId;
+    }
+
+    // Handle URL string (for fetching from external source)
+    if (typeof file === 'string') {
+      const result = await cloudinary.uploader.upload(file, uploadOptions);
+      return {
+        url: result.secure_url,
+        publicId: result.public_id,
       };
+    }
 
-      if (publicId) {
-        uploadOptions.public_id = publicId;
-      }
-
+    // Handle Buffer or Multer file
+    return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         uploadOptions,
         (error, result) => {
@@ -55,7 +65,6 @@ export class CloudinaryService {
         },
       );
 
-      // Handle both Buffer and Multer file
       if (Buffer.isBuffer(file)) {
         Readable.from(file).pipe(uploadStream);
       } else {
