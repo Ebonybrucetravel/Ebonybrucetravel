@@ -76,7 +76,7 @@ model Booking {
   markupAmount Decimal @db.Decimal(12, 2) // Calculated markup
   serviceFee   Decimal @db.Decimal(12, 2) // Service fee
   totalAmount  Decimal @db.Decimal(12, 2) // Total customer pays
-  currency     String  @default("NGN") // ISO 4217 code
+  currency     String  @default("GBP") // ISO 4217 code - Default to GBP to match API default
 
   // Booking details (stored as JSON for flexibility)
   bookingData   Json // Product-specific data (flight details, hotel info, car details)

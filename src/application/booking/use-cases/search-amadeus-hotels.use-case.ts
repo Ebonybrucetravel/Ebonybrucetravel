@@ -194,14 +194,21 @@ export class SearchAmadeusHotelsUseCase {
           // Process each offer within the hotel
           const processedOffers = await Promise.all(
             (hotelOffer.offers || []).map(async (offer: any) => {
-              // Extract price from Amadeus structure: offer.price.total
-              const basePrice = parseFloat(offer.price?.total || offer.price?.base || '0');
-              const amadeusCurrency = offer.price?.currency || 'USD';
+              // IMPORTANT: Use original currency/price from Amadeus if available
+              // Amadeus may have already converted to requested currency, but we want
+              // to use our own exchange rate API for consistency and accuracy
+              const originalPrice = offer.price?.original_total 
+                ? parseFloat(offer.price.original_total) 
+                : parseFloat(offer.price?.total || offer.price?.base || '0');
+              const originalCurrency = offer.price?.original_currency 
+                ? offer.price.original_currency 
+                : (offer.price?.currency || 'USD');
 
-              // Convert currency
+              // Convert currency using our own exchange rate API
+              // This ensures we use consistent rates, not Amadeus's rates
               const convertedBasePrice = await this.currencyService.convert(
-                basePrice,
-                amadeusCurrency,
+                originalPrice,
+                originalCurrency,
                 targetCurrency,
               );
 
@@ -227,7 +234,7 @@ export class SearchAmadeusHotelsUseCase {
               // Calculate conversion fee and markup
               const conversionDetails = this.currencyService.calculateConversionFee(
                 convertedBasePrice,
-                amadeusCurrency,
+                originalCurrency,
                 targetCurrency,
               );
 
@@ -239,8 +246,8 @@ export class SearchAmadeusHotelsUseCase {
 
               return {
                 ...offer,
-                original_price: basePrice.toString(),
-                original_currency: amadeusCurrency,
+                original_price: originalPrice.toString(),
+                original_currency: originalCurrency,
                 base_price: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
                 currency: targetCurrency,
                 conversion_fee: this.currencyService.formatAmount(
@@ -248,7 +255,7 @@ export class SearchAmadeusHotelsUseCase {
                   targetCurrency,
                 ),
                 conversion_fee_percentage:
-                  amadeusCurrency !== targetCurrency
+                  originalCurrency !== targetCurrency
                     ? this.currencyService.getConversionBuffer()
                     : 0,
                 price_after_conversion: this.currencyService.formatAmount(
@@ -265,8 +272,8 @@ export class SearchAmadeusHotelsUseCase {
                   currency: targetCurrency,
                   base: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
                   total: this.currencyService.formatAmount(finalPrice, targetCurrency),
-                  original_total: offer.price.total,
-                  original_currency: amadeusCurrency,
+                  original_total: originalPrice.toString(),
+                  original_currency: originalCurrency,
                 },
               };
             }),

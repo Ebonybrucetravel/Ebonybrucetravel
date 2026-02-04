@@ -23,7 +23,7 @@ export class BookingRepositoryImpl implements BookingRepository {
         markupAmount: booking.markupAmount!,
         serviceFee: booking.serviceFee!,
         totalAmount: booking.totalAmount!,
-        currency: booking.currency || 'NGN',
+        currency: booking.currency || 'GBP', // Default to GBP to match API default, not NGN
         bookingData: booking.bookingData || {},
         passengerInfo: booking.passengerInfo,
         paymentInfo: booking.paymentInfo,
