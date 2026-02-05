@@ -58,6 +58,10 @@ export class SearchCarRentalsUseCase {
 
     try {
       // Search transfers (Amadeus transfer API can be used for car rentals)
+      this.logger.log(
+        `Searching car rentals: ${pickupLocationCode} -> ${dropoffLocationCode || pickupLocationCode}, ${pickupDateTime} to ${dropoffDateTime || dropoff.toISOString()}, passengers: ${passengers}`,
+      );
+      
       const response = await this.amadeusService.searchTransfers({
         originLocationCode: pickupLocationCode,
         destinationLocationCode: dropoffLocationCode || pickupLocationCode,
@@ -67,9 +71,47 @@ export class SearchCarRentalsUseCase {
         vehicleTypes: vehicleTypes || undefined,
       });
 
+      this.logger.log(`Amadeus transfer search response: ${JSON.stringify(response)}`);
+
+      // Check if response has data
+      if (!response || !response.data) {
+        this.logger.warn('Amadeus transfer search returned no data. Response:', JSON.stringify(response, null, 2));
+        return {
+          data: [],
+          meta: {
+            count: 0,
+            total: 0,
+            limit,
+            page,
+            totalPages: 0,
+            hasMore: false,
+            nextPage: null,
+            prevPage: null,
+          },
+          currency: targetCurrency,
+          conversion_note: `Prices include a ${this.currencyService.getConversionBuffer()}% conversion fee to protect against exchange rate fluctuations.`,
+          cached: false,
+          message: 'No car rental offers found. The Amadeus test environment has limited data. Try major airports (JFK, CDG, LHR) with dates within 1-3 months from today.',
+        };
+      }
+
+      const offers = Array.isArray(response.data) ? response.data : [];
+      
+      if (offers.length === 0) {
+        this.logger.warn(
+          `No car rental offers found for ${pickupLocationCode} on ${pickupDateTime}. Full response:`,
+          JSON.stringify(response, null, 2),
+        );
+        this.logger.warn('Possible reasons:');
+        this.logger.warn('1. Test environment has limited data - try major airports like JFK, CDG, LHR');
+        this.logger.warn('2. Dates too far in the future (try dates within 1-3 months from today)');
+        this.logger.warn('3. No transfers available for the selected location/date combination');
+        this.logger.warn('4. Location code format might not be recognized (try airport IATA codes)');
+      }
+
       // Process results with currency conversion and markup
       const processedResults = await Promise.all(
-        (response.data || []).map(async (offer: any) => {
+        offers.map(async (offer: any) => {
           const basePrice = parseFloat(offer.price?.total || offer.price?.base || '0');
           const amadeusCurrency = offer.price?.currency || 'USD';
 
@@ -173,6 +215,9 @@ export class SearchCarRentalsUseCase {
         currency: targetCurrency,
         conversion_note: `Prices include a ${this.currencyService.getConversionBuffer()}% conversion fee to protect against exchange rate fluctuations.`,
         cached: false,
+        ...(totalResults === 0 && {
+          message: 'No car rental offers found. The Amadeus test environment has limited data. Try: 1) Major airports (JFK, CDG, LHR), 2) Dates within 1-3 months from today, 3) Different location codes.',
+        }),
       };
 
       this.cacheService.set(cacheKey, result, 5 * 60 * 1000); // 5 minutes

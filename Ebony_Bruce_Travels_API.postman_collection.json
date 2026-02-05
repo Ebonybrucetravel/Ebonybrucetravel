@@ -385,9 +385,51 @@
 						"description": "Verify email address with token from registration email.\n\n**No authentication required.**\n\n**Rate Limit:** 10 requests per minute\n\n**Request Body:**\n- `token` (string, required): Verification token from registration email\n\n**Response:**\n- Returns success message\n- Email is marked as verified\n- `emailVerified` field set to `true`\n\n**Error Responses:**\n- `400 Bad Request` - Invalid or expired token\n- `400 Bad Request` - Email already verified\n- `429 Too Many Requests` - Rate limit exceeded (10/min)\n\n**Note:**\n- Token expires in 24 hours\n- Token can only be used once\n- Email verification is optional but recommended\n- Verification link is sent in welcome email after registration"
 					},
 					"response": []
+				},
+				{
+					"name": "Logout User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('success', true);",
+									"    console.log('✅ Logout successful');",
+									"    console.log('💡 Note: Remove token from client storage on frontend');",
+									"    // Optionally clear token from environment (uncomment if desired)",
+									"    // pm.environment.unset('token');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/auth/logout",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "auth", "logout"]
+						},
+						"description": "Logout the current user.\n\n**Authentication required.**\n\n**What This Does:**\n- Confirms logout on the server side\n- Since we use stateless JWT tokens, logout is primarily handled client-side\n- Client should remove the token from storage (localStorage/sessionStorage)\n- This endpoint is useful for:\n  - Audit logging\n  - Confirming logout action\n  - Optional: Server-side token blacklisting (if implemented)\n\n**Response:**\n- Returns success message\n- Client should remove token from storage\n\n**Note:**\n- JWT tokens are stateless - they remain valid until expiration\n- Frontend must remove token from storage to complete logout\n- Token expiration is handled by JWT expiry time\n- If you implement token blacklisting, this endpoint would add token to blacklist"
+					},
+					"response": []
 				}
 			],
-			"description": "Authentication endpoints for user registration, login, password reset, email verification, and OAuth (Facebook/Google).\n\n**OAuth Flow:**\n1. User clicks \"Login with Facebook/Google\" on frontend\n2. Frontend redirects to `/auth/facebook` or `/auth/google`\n3. Backend redirects to OAuth provider (Facebook/Google)\n4. User authorizes on OAuth provider\n5. OAuth provider redirects to callback endpoint\n6. Backend creates/updates user and generates JWT token\n7. Backend redirects to frontend with token: `{FRONTEND_URL}/auth/callback?token=...&user=...`\n8. Frontend extracts token and stores it (localStorage/sessionStorage)\n9. Frontend redirects user to dashboard\n\n**Account Linking:**\n- If user logs in with OAuth and email already exists, OAuth account is linked to existing email account\n- If user logs in with email/password and then uses OAuth with same email, accounts are automatically linked"
+			"description": "Authentication endpoints for user registration, login, logout, password reset, email verification, and OAuth (Facebook/Google).\n\n**OAuth Flow:**\n1. User clicks \"Login with Facebook/Google\" on frontend\n2. Frontend redirects to `/auth/facebook` or `/auth/google`\n3. Backend redirects to OAuth provider (Facebook/Google)\n4. User authorizes on OAuth provider\n5. OAuth provider redirects to callback endpoint\n6. Backend creates/updates user and generates JWT token\n7. Backend redirects to frontend with token: `{FRONTEND_URL}/auth/callback?token=...&user=...`\n8. Frontend extracts token and stores it (localStorage/sessionStorage)\n9. Frontend redirects user to dashboard\n\n**Account Linking:**\n- If user logs in with OAuth and email already exists, OAuth account is linked to existing email account\n- If user logs in with email/password and then uses OAuth with same email, accounts are automatically linked"
 		},
 		{
 			"name": "User Profile",
@@ -2150,6 +2192,34 @@
 							"response": []
 						},
 						{
+							"name": "Search Hotel Suggestions (List Hotels by Region)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"keyword\": \"London\",\n  \"subType\": \"HOTEL_GD\",\n  \"countryCode\": \"GB\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/bookings/hotels/accommodation/suggestions",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "bookings", "hotels", "accommodation", "suggestions"]
+								},
+								"description": "**Search for hotel suggestions (autocomplete) - List hotels available per region**\n\n**No authentication required.**\n\n**What This Does:**\n- Provides hotel suggestions/autocomplete similar to flight place suggestions\n- Searches for hotels by keyword (city name, hotel name, etc.)\n- Returns list of hotels available in the specified region\n- Uses Amadeus Hotel List API to find hotels by location\n\n**Request Body:**\n```json\n{\n  \"keyword\": \"London\",\n  \"subType\": \"HOTEL_GD\",\n  \"countryCode\": \"GB\"\n}\n```\n\n**Required Parameters:**\n- `keyword` (string, required): Search keyword (city name, hotel name, etc.)\n  - Examples: \"London\", \"Marriott\", \"Paris\", \"New York\"\n\n**Optional Parameters:**\n- `subType` (string, optional): Hotel subtype filter (e.g., \"HOTEL_GD\")\n- `countryCode` (string, optional): ISO country code (e.g., \"GB\", \"US\", \"FR\")\n\n**Response:**\n- Returns list of hotels matching the keyword\n- Includes hotel IDs, names, locations\n- Use for hotel search autocomplete\n- Similar to flight place suggestions but for hotels\n\n**Use Case:**\n- Hotel search autocomplete\n- List hotels available in a region\n- Find hotels by name or location\n\n**Note:**\n- This endpoint uses Amadeus Hotel List API\n- Returns hotels that can be used in hotel search\n- Hotel IDs from this endpoint can be used in `POST /api/v1/bookings/search/hotels/amadeus` with `hotelIds` parameter"
+							},
+							"response": []
+						},
+						{
 							"name": "Get Hotel Images Usage Stats (Admin Only)",
 							"request": {
 								"method": "GET",
@@ -2250,6 +2320,596 @@
 				}
 			],
 			"description": "Utility endpoints for flight search.\n\n**Place Suggestions:**\n- Autocomplete for origin/destination fields\n- Search by airport name, city name, or IATA code\n- Optional location-based filtering\n- Minimum 3 characters required\n\n**List Airlines:**\n- Get all airlines with logos and IATA codes\n- Paginated results\n- Use for displaying airline information in flight results"
+		},
+		{
+			"name": "Car Rentals",
+			"item": [
+				{
+					"name": "Search Car Rentals",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('success', true);",
+									"    pm.expect(response).to.have.property('data');",
+									"    ",
+									"    if (response.data && response.data.data && response.data.data.length > 0) {",
+									"        const firstOffer = response.data.data[0];",
+									"        if (firstOffer.id) {",
+									"            pm.environment.set('carOfferId', firstOffer.id);",
+									"            console.log('✅ Car rental offer ID saved:', firstOffer.id);",
+									"        }",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pickupLocationCode\": \"LHR\",\n  \"pickupDateTime\": \"2026-03-15T10:00:00\",\n  \"dropoffLocationCode\": \"CDG\",\n  \"dropoffDateTime\": \"2026-03-18T10:00:00\",\n  \"currency\": \"GBP\",\n  \"passengers\": 2\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/search/car-rentals",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "search", "car-rentals"]
+						},
+						"description": "**Search for car rental/transfer options using Amadeus API**\n\n**No authentication required.**\n\n**What This Does:**\n- Searches for car rental and transfer options using Amadeus Transfers API\n- Returns available vehicles with pricing, features, and policies\n- Applies currency conversion and markup automatically\n- Supports filtering by vehicle type, location, and dates\n\n**Request Body Examples:**\n\n**Example 1: Same Location Return (Round Trip)**\n```json\n{\n  \"pickupLocationCode\": \"LHR\",\n  \"pickupDateTime\": \"2026-06-04T10:00:00\",\n  \"dropoffLocationCode\": \"LHR\",\n  \"dropoffDateTime\": \"2026-06-07T10:00:00\",\n  \"currency\": \"GBP\"\n}\n```\n*Note: You can omit `dropoffLocationCode` and `dropoffDateTime` for same location return*\n\n**Example 2: One-Way Rental (Different Dropoff Location)**\n```json\n{\n  \"pickupLocationCode\": \"LHR\",\n  \"pickupDateTime\": \"2026-06-04T10:00:00\",\n  \"dropoffLocationCode\": \"CDG\",\n  \"dropoffDateTime\": \"2026-06-07T10:00:00\",\n  \"currency\": \"GBP\"\n}\n```\n*Pick up in London, drop off in Paris - perfect for one-way trips!*\n\n**Example 3: Minimal Request (Defaults to Same Location)**\n```json\n{\n  \"pickupLocationCode\": \"JFK\",\n  \"pickupDateTime\": \"2026-03-15T10:00:00\",\n  \"currency\": \"USD\"\n}\n```\n*Dropoff defaults to pickup location, dropoff date defaults to pickup + 1 day*\n\n**Required Parameters:**\n- `pickupLocationCode` (string, required): Airport IATA code or city code for pickup (e.g., \"LHR\", \"LON\", \"JFK\")\n- `pickupDateTime` (string, required): Pickup date and time (ISO 8601 format: YYYY-MM-DDTHH:mm:ss)\n\n**Optional Parameters:**\n- `dropoffLocationCode` (string, optional): Airport IATA code or city code for dropoff. **If not provided, defaults to pickup location** (same location return). **You CAN use a different location for one-way rentals!**\n- `dropoffDateTime` (string, optional): Dropoff date and time (ISO 8601 format). If not provided, defaults to pickup + 1 day\n\n**Optional Parameters:**\n- `currency` (string, optional): Currency code (default: GBP). Supported: GBP, USD, EUR, NGN, etc.\n- `vehicleTypes` (array, optional): Filter by vehicle types (e.g., [\"SEDAN\", \"SUV\", \"VAN\"])\n- `passengers` (number, optional): Number of passengers (1-9, default: 1)\n- `luggage` (number, optional): Number of luggage pieces (0-9, default: 0)\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"data\": [\n      {\n        \"id\": \"offer-id-123\",\n        \"type\": \"transfer-offer\",\n        \"vehicle\": {\n          \"type\": \"SEDAN\",\n          \"name\": \"Standard Sedan\",\n          \"passengers\": 4,\n          \"luggage\": 2\n        },\n        \"price\": {\n          \"currency\": \"GBP\",\n          \"base\": \"150.00\",\n          \"total\": \"165.00\",\n          \"final_price\": \"172.50\"\n        },\n        \"pickup\": {\n          \"locationCode\": \"LHR\",\n          \"dateTime\": \"2026-06-04T10:00:00\"\n        },\n        \"dropoff\": {\n          \"locationCode\": \"LHR\",\n          \"dateTime\": \"2026-06-07T10:00:00\"\n        },\n        \"policies\": { ... },\n        \"markup_percentage\": 10,\n        \"markup_amount\": \"15.00\",\n        \"service_fee\": \"7.50\"\n      }\n    ],\n    \"meta\": {\n      \"count\": 10,\n      \"total\": 10\n    },\n    \"currency\": \"GBP\"\n  },\n  \"message\": \"Car rentals retrieved successfully\"\n}\n```\n\n**Price Breakdown:**\n- `base`: Base price from Amadeus\n- `total`: Base + conversion fees\n- `final_price`: Total price customer pays (base + markup + service fee)\n- `markup_percentage`: Business markup percentage\n- `markup_amount`: Markup amount\n- `service_fee`: Fixed service fee\n\n**Tips:**\n- **One-Way Rentals**: You CAN use different pickup and dropoff locations! This is perfect for road trips (e.g., pick up in London, drop off in Paris)\n- **Same Location Return**: If you omit `dropoffLocationCode`, it defaults to pickup location (round trip)\n- Use airport IATA codes (LHR, JFK, CDG) for best results\n- Vehicle types: SEDAN, SUV, VAN, LUXURY, etc.\n- Prices include currency conversion and markup automatically\n- Save `offer.id` from response for booking creation\n\n**Common Use Cases:**\n- **Round Trip**: Pick up and drop off at same airport (e.g., LHR → LHR)\n- **One-Way**: Pick up at one location, drop off at another (e.g., LHR → CDG, JFK → BOS)\n- **City to Airport**: Pick up in city, drop off at airport (e.g., LON → LHR)\n- **Airport to City**: Pick up at airport, drop off in city (e.g., LHR → LON)\n\n**⚠️ Troubleshooting Empty Results:**\nIf you get empty results (`data: []`), this is common in the Amadeus test environment:\n1. **Try major airports**: JFK (New York), CDG (Paris), LHR (London), FRA (Frankfurt)\n2. **Use dates within 1-3 months**: Test environment has limited future data\n3. **Check server logs**: The backend logs the full Amadeus API response for debugging\n4. **Try different dates**: Some dates may not have available transfers\n5. **Verify location codes**: Use official IATA airport codes (3 letters)\n\n**Note:** The Amadeus test environment has limited transfer/car rental data. Production environment will have more comprehensive results."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Car Rental Booking",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('success', true);",
+									"    pm.expect(response).to.have.property('data');",
+									"    ",
+									"    if (response.data && response.data.booking && response.data.booking.id) {",
+									"        pm.environment.set('carBookingId', response.data.booking.id);",
+									"        pm.environment.set('bookingId', response.data.booking.id);",
+									"        console.log('✅ Car rental booking ID saved:', response.data.booking.id);",
+									"        console.log('💡 Use this booking ID to create payment intent');",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"offerId\": \"{{carOfferId}}\",\n  \"pickupLocationCode\": \"LHR\",\n  \"pickupDateTime\": \"2026-06-04T10:00:00\",\n  \"dropoffLocationCode\": \"LHR\",\n  \"dropoffDateTime\": \"2026-06-07T10:00:00\",\n  \"passengerInfo\": {\n    \"firstName\": \"John\",\n    \"lastName\": \"Doe\",\n    \"email\": \"john.doe@example.com\",\n    \"phone\": \"+1234567890\"\n  },\n  \"specialRequests\": \"Child seat required\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/car-rentals/bookings",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "car-rentals", "bookings"]
+						},
+						"description": "**Create a car rental booking**\n\n**Authentication required.**\n\n**What This Does:**\n- Creates a local booking for a car rental/transfer offer\n- Stores booking details and passenger information\n- Booking status: `PENDING` (waiting for payment)\n- After payment succeeds, the actual Amadeus transfer order will be created automatically\n\n**Request Body:**\n```json\n{\n  \"offerId\": \"offer-id-from-search\",\n  \"pickupLocationCode\": \"LHR\",\n  \"pickupDateTime\": \"2026-06-04T10:00:00\",\n  \"dropoffLocationCode\": \"LHR\",\n  \"dropoffDateTime\": \"2026-06-07T10:00:00\",\n  \"passengerInfo\": {\n    \"firstName\": \"John\",\n    \"lastName\": \"Doe\",\n    \"email\": \"john.doe@example.com\",\n    \"phone\": \"+1234567890\"\n  },\n  \"specialRequests\": \"Child seat required\"\n}\n```\n\n**Required Parameters:**\n- `offerId` (string, required): Offer ID from car rental search results\n- `pickupLocationCode` (string, required): Pickup location code\n- `pickupDateTime` (string, required): Pickup date and time (ISO 8601)\n- `dropoffLocationCode` (string, required): Dropoff location code\n- `dropoffDateTime` (string, required): Dropoff date and time (ISO 8601)\n- `passengerInfo` (object, required): Passenger details\n  - `firstName` (string, required)\n  - `lastName` (string, required)\n  - `email` (string, required)\n  - `phone` (string, required)\n\n**Optional Parameters:**\n- `specialRequests` (string, optional): Special requests or notes\n\n**Response:**\n- Returns booking object with `id`\n- Booking status: `PENDING`\n- **Next Step:** Create payment intent using booking ID\n\n**Complete Flow:**\n1. **Search Car Rentals** → Get `offerId`\n2. **Create Car Rental Booking** → Get `bookingId`\n3. **Create Payment Intent** → Get `clientSecret`\n4. **Complete Payment** → Stripe webhook automatically creates Amadeus transfer order\n5. **Get Booking** → View confirmed booking details"
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Car Rental Booking (Admin Only)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('success', true);",
+									"    console.log('✅ Car rental booking cancelled successfully');",
+									"} else if (pm.response.code === 403) {",
+									"    console.error('❌ Access denied. Only administrators can cancel car rental bookings.');",
+									"    console.log('💡 Tip: Use an admin account token');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/bookings/car-rentals/bookings/:bookingId/cancel",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "bookings", "car-rentals", "bookings", ":bookingId", "cancel"],
+							"variable": [
+								{
+									"key": "bookingId",
+									"value": "{{carBookingId}}",
+									"description": "Car rental booking ID to cancel"
+								}
+							]
+						},
+						"description": "**Cancel a car rental booking (Admin Only)**\n\n**⚠️ RESTRICTIONS:**\n- **Admin Only:** Only administrators (ADMIN, SUPER_ADMIN) can cancel bookings\n- **Time Restriction:** Cancellations may be subject to provider policies\n- **After Departure:** Cannot cancel after pickup time has passed\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Requirements:**\n- Booking must be a car rental booking (`productType: CAR_RENTAL`)\n- Booking must be in `CONFIRMED` status\n- User must have ADMIN or SUPER_ADMIN role\n- Pickup must not have occurred yet\n\n**Process:**\n1. Validates cancellation restrictions\n2. Cancels transfer order in Amadeus\n3. Updates booking status to `CANCELLED`\n4. Processes refund if applicable\n5. Sends cancellation email to customer\n\n**URL Parameters:**\n- `bookingId` (string, required): Car rental booking ID to cancel\n\n**Response:**\n- Returns cancellation confirmation\n- Booking status updated to `CANCELLED`\n- Refund status updated if applicable\n\n**Error Responses:**\n- `403 Forbidden` - Not an admin user\n- `404 Not Found` - Booking not found\n- `400 Bad Request` - Booking cannot be cancelled (already cancelled, pickup passed, etc.)\n\n**Note:**\n- Only admins can cancel car rental bookings\n- Cancellation policies depend on Amadeus provider\n- Refunds processed according to provider cancellation policy"
+					},
+					"response": []
+				}
+			],
+			"description": "**Car rental/transfer booking endpoints using Amadeus Transfers API**\n\n**📋 Complete Car Rental Booking Flow:**\n\n**Step 1: Search Car Rentals**\n`POST /api/v1/bookings/search/car-rentals`\n- Search by pickup/dropoff locations and dates\n- Returns available vehicles with pricing\n- **Save `offer.id` from response** (used in Step 2)\n\n**Step 2: Create Booking**\n`POST /api/v1/bookings/car-rentals/bookings`\n- Use `offer.id` from Step 1 as `offerId`\n- Provide passenger details\n- **Returns `booking.id`** (used in Step 3)\n- Booking status: `PENDING` (waiting for payment)\n\n**Step 3: Create Payment Intent**\n`POST /api/v1/payments/stripe/create-intent`\n- Use `booking.id` from Step 2\n- Returns `clientSecret` for Stripe Checkout\n\n**Step 4: Complete Payment**\n- Frontend: Use Stripe.js with `clientSecret`\n- User completes payment via Stripe\n\n**Step 5: Automatic Amadeus Transfer Order (Webhook)**\n- After payment success, Stripe webhook triggers\n- System automatically creates Amadeus transfer order\n- Booking status updates to `CONFIRMED`\n\n**Step 6: Cancel Booking (Admin Only)**\n`POST /api/v1/bookings/car-rentals/bookings/:bookingId/cancel`\n- Admin-only cancellation\n- Cancels in Amadeus system\n- Updates local database\n\n**🔐 Security:**\n- Admin-only cancellations\n- Secure payment flow with Stripe\n- Booking data encrypted\n\n**💡 Tips:**\n- **One-Way Rentals Supported**: Pick up at one location, drop off at another (e.g., LHR → CDG)\n- **Round Trip**: Omit `dropoffLocationCode` to return to pickup location\n- Use airport IATA codes for best results (LHR, JFK, CDG, etc.)\n- Vehicle types: SEDAN, SUV, VAN, LUXURY\n- Prices include currency conversion and markup automatically\n\n**Example Scenarios:**\n- **Round Trip**: LHR → LHR (same location)\n- **One-Way**: LHR → CDG (London to Paris)\n- **City Transfer**: LON → LHR (city to airport)"
+		},
+		{
+			"name": "Admin",
+			"item": [
+				{
+					"name": "User Management",
+					"item": [
+						{
+							"name": "Create Admin User (Super Admin Only)",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test('Status code is 201', function () {",
+											"    pm.response.to.have.status(201);",
+											"});",
+											"",
+											"if (pm.response.code === 201) {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response).to.have.property('success', true);",
+											"    if (response.data && response.data.id) {",
+											"        pm.environment.set('adminUserId', response.data.id);",
+											"        console.log('✅ Admin user created:', response.data.email);",
+											"    }",
+											"} else if (pm.response.code === 403) {",
+											"    console.error('❌ Access denied. Only Super Admin can create admin users.');",
+											"}"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"email\": \"admin@example.com\",\n  \"name\": \"Admin User\",\n  \"password\": \"SecurePassword123!\",\n  \"role\": \"ADMIN\",\n  \"phone\": \"+1234567890\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/users",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "users"]
+								},
+								"description": "**Create a new admin user (Super Admin only)**\n\n**⚠️ RESTRICTIONS:**\n- **Super Admin Only:** Only SUPER_ADMIN users can create admin users\n- **Role Validation:** Can only create ADMIN or SUPER_ADMIN roles\n- **Super Admin Creation:** Only SUPER_ADMIN can create other SUPER_ADMIN users\n\n**Authentication required:** JWT Bearer token (Super Admin role)\n\n**Request Body:**\n```json\n{\n  \"email\": \"admin@example.com\",\n  \"name\": \"Admin User\",\n  \"password\": \"SecurePassword123!\",\n  \"role\": \"ADMIN\",\n  \"phone\": \"+1234567890\"\n}\n```\n\n**Required Parameters:**\n- `email` (string, required): Admin email address (must be unique)\n- `name` (string, required): Admin full name\n- `password` (string, required): Password (min 6 characters)\n- `role` (string, required): Role - must be `ADMIN` or `SUPER_ADMIN`\n- `phone` (string, optional): Phone number\n\n**Response:**\n- Returns created admin user object (without password)\n- Action logged in audit log\n\n**Error Responses:**\n- `403 Forbidden` - Not a Super Admin user\n- `400 Bad Request` - Email already exists\n- `400 Bad Request` - Invalid role (must be ADMIN or SUPER_ADMIN)\n- `400 Bad Request` - Only Super Admin can create Super Admin users\n\n**Note:**\n- Password is hashed before storage\n- Admin creation is logged in audit log\n- Regular ADMIN users cannot create other admins (only SUPER_ADMIN can)"
+							},
+							"response": []
+						},
+						{
+							"name": "List Admin Users (Super Admin Only)",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/users?role=ADMIN",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "users"],
+									"query": [
+										{
+											"key": "role",
+											"value": "ADMIN",
+											"description": "Filter by role (ADMIN or SUPER_ADMIN)",
+											"disabled": true
+										}
+									]
+								},
+								"description": "**List all admin users (Super Admin only)**\n\n**Authentication required:** JWT Bearer token (Super Admin role)\n\n**Query Parameters:**\n- `role` (string, optional): Filter by role - `ADMIN` or `SUPER_ADMIN`\n\n**Response:**\n- Returns list of all admin users (ADMIN and SUPER_ADMIN roles)\n- Excludes deleted users\n- Ordered by creation date (newest first)\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": [\n    {\n      \"id\": \"user-id\",\n      \"email\": \"admin@example.com\",\n      \"name\": \"Admin User\",\n      \"role\": \"ADMIN\",\n      \"phone\": \"+1234567890\",\n      \"image\": null,\n      \"createdAt\": \"2026-02-05T10:00:00.000Z\",\n      \"updatedAt\": \"2026-02-05T10:00:00.000Z\"\n    }\n  ],\n  \"message\": \"Admin users retrieved successfully\"\n}\n```\n\n**Error Responses:**\n- `403 Forbidden` - Not a Super Admin user"
+							},
+							"response": []
+						},
+						{
+							"name": "Get Admin User by ID (Super Admin Only)",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/users/:id",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "users", ":id"],
+									"variable": [
+										{
+											"key": "id",
+											"value": "{{adminUserId}}",
+											"description": "Admin user ID"
+										}
+									]
+								},
+								"description": "**Get admin user details by ID (Super Admin only)**\n\n**Authentication required:** JWT Bearer token (Super Admin role)\n\n**URL Parameters:**\n- `id` (string, required): Admin user ID\n\n**Response:**\n- Returns admin user details including permissions\n- Excludes password\n\n**Error Responses:**\n- `403 Forbidden` - Not a Super Admin user\n- `404 Not Found` - Admin user not found"
+							},
+							"response": []
+						},
+						{
+							"name": "Update Admin User (Super Admin Only)",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Updated Admin Name\",\n  \"phone\": \"+9876543210\",\n  \"role\": \"ADMIN\",\n  \"permissions\": {\n    \"canManageBookings\": true,\n    \"canManageUsers\": false,\n    \"canManageMarkups\": true,\n    \"canViewReports\": true,\n    \"canCancelBookings\": true,\n    \"canViewAllBookings\": true\n  }\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/users/:id",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "users", ":id"],
+									"variable": [
+										{
+											"key": "id",
+											"value": "{{adminUserId}}",
+											"description": "Admin user ID to update"
+										}
+									]
+								},
+								"description": "**Update admin user (Super Admin only)**\n\n**Authentication required:** JWT Bearer token (Super Admin role)\n\n**Request Body (all fields optional):**\n```json\n{\n  \"name\": \"Updated Admin Name\",\n  \"phone\": \"+9876543210\",\n  \"role\": \"ADMIN\",\n  \"permissions\": {\n    \"canManageBookings\": true,\n    \"canManageUsers\": false,\n    \"canManageMarkups\": true,\n    \"canViewReports\": true,\n    \"canCancelBookings\": true,\n    \"canViewAllBookings\": true\n  }\n}\n```\n\n**Optional Parameters:**\n- `name` (string, optional): Updated name\n- `phone` (string, optional): Updated phone number\n- `role` (string, optional): Updated role (ADMIN or SUPER_ADMIN)\n- `permissions` (object, optional): Fine-grained permissions for regular admins\n  - `canManageBookings`: Can manage bookings\n  - `canManageUsers`: Can manage users\n  - `canManageMarkups`: Can manage markups\n  - `canViewReports`: Can view reports\n  - `canCancelBookings`: Can cancel bookings\n  - `canViewAllBookings`: Can view all bookings\n\n**Response:**\n- Returns updated admin user object\n- Action logged in audit log\n\n**Error Responses:**\n- `403 Forbidden` - Not a Super Admin user\n- `404 Not Found` - Admin user not found\n\n**Note:**\n- Only SUPER_ADMIN can update admin users\n- Permissions are only applicable to regular ADMIN users (SUPER_ADMIN has all permissions)"
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Admin User (Super Admin Only)",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/users/:id",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "users", ":id"],
+									"variable": [
+										{
+											"key": "id",
+											"value": "{{adminUserId}}",
+											"description": "Admin user ID to delete"
+										}
+									]
+								},
+								"description": "**Delete (soft delete) admin user (Super Admin only)**\n\n**Authentication required:** JWT Bearer token (Super Admin role)\n\n**URL Parameters:**\n- `id` (string, required): Admin user ID to delete\n\n**Response:**\n- Returns success message\n- User is soft deleted (marked as deleted, not removed from database)\n- Action logged in audit log\n\n**Error Responses:**\n- `403 Forbidden` - Not a Super Admin user\n- `404 Not Found` - Admin user not found\n\n**Note:**\n- Soft delete: User is marked as deleted but data is preserved\n- Deleted users cannot log in\n- Only SUPER_ADMIN can delete admin users"
+							},
+							"response": []
+						},
+						{
+							"name": "Assign Permissions to Admin (Super Admin Only)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"permissions\": {\n    \"canManageBookings\": true,\n    \"canManageUsers\": false,\n    \"canManageMarkups\": true,\n    \"canViewReports\": true,\n    \"canCancelBookings\": true,\n    \"canViewAllBookings\": true\n  }\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/users/:id/permissions",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "users", ":id", "permissions"],
+									"variable": [
+										{
+											"key": "id",
+											"value": "{{adminUserId}}",
+											"description": "Admin user ID"
+										}
+									]
+								},
+								"description": "**Assign permissions to admin user (Super Admin only)**\n\n**Authentication required:** JWT Bearer token (Super Admin role)\n\n**Request Body:**\n```json\n{\n  \"permissions\": {\n    \"canManageBookings\": true,\n    \"canManageUsers\": false,\n    \"canManageMarkups\": true,\n    \"canViewReports\": true,\n    \"canCancelBookings\": true,\n    \"canViewAllBookings\": true\n  }\n}\n```\n\n**Permissions Object:**\n- `canManageBookings` (boolean): Can manage bookings\n- `canManageUsers` (boolean): Can manage users\n- `canManageMarkups` (boolean): Can manage markups\n- `canViewReports` (boolean): Can view reports\n- `canCancelBookings` (boolean): Can cancel bookings\n- `canViewAllBookings` (boolean): Can view all bookings\n\n**Response:**\n- Returns updated admin user with new permissions\n- Action logged in audit log\n\n**Error Responses:**\n- `403 Forbidden` - Not a Super Admin user\n- `404 Not Found` - Admin user not found\n\n**Note:**\n- Permissions are only applicable to regular ADMIN users\n- SUPER_ADMIN has all permissions by default\n- Use this endpoint to grant/revoke specific permissions to regular admins"
+							},
+							"response": []
+						}
+					],
+					"description": "**Admin user management endpoints (Super Admin only)**\n\n**⚠️ RESTRICTIONS:**\n- **Super Admin Only:** All endpoints require SUPER_ADMIN role\n- **Admin Creation:** Only SUPER_ADMIN can create ADMIN or SUPER_ADMIN users\n- **Super Admin Creation:** Only SUPER_ADMIN can create other SUPER_ADMIN users\n\n**Endpoints:**\n- **Create Admin User** - Create new admin (ADMIN or SUPER_ADMIN)\n- **List Admin Users** - List all admin users (with optional role filter)\n- **Get Admin User** - Get admin user details by ID\n- **Update Admin User** - Update admin details, role, and permissions\n- **Delete Admin User** - Soft delete admin user\n- **Assign Permissions** - Assign fine-grained permissions to admin\n\n**Permissions System:**\n- Regular ADMIN users can have fine-grained permissions\n- SUPER_ADMIN has all permissions by default\n- Permissions control access to specific features:\n  - `canManageBookings`: Can manage bookings\n  - `canManageUsers`: Can manage users\n  - `canManageMarkups`: Can manage markups\n  - `canViewReports`: Can view reports\n  - `canCancelBookings`: Can cancel bookings\n  - `canViewAllBookings`: Can view all bookings\n\n**Audit Logging:**\n- All admin user management actions are logged\n- Includes who performed the action, what changed, and when"
+				},
+				{
+					"name": "Booking Management",
+					"item": [
+						{
+							"name": "List All Bookings (Admin Only)",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/bookings?status=CONFIRMED&productType=HOTEL&limit=20",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "bookings"],
+									"query": [
+										{
+											"key": "status",
+											"value": "CONFIRMED",
+											"description": "Filter by booking status",
+											"disabled": true
+										},
+										{
+											"key": "productType",
+											"value": "HOTEL",
+											"description": "Filter by product type (FLIGHT, HOTEL, CAR_RENTAL)",
+											"disabled": true
+										},
+										{
+											"key": "provider",
+											"value": "",
+											"description": "Filter by provider (DUFFEL, AMADEUS)",
+											"disabled": true
+										},
+										{
+											"key": "paymentStatus",
+											"value": "",
+											"description": "Filter by payment status (PENDING, COMPLETED, FAILED, REFUNDED)",
+											"disabled": true
+										},
+										{
+											"key": "userId",
+											"value": "",
+											"description": "Filter by user ID",
+											"disabled": true
+										},
+										{
+											"key": "startDate",
+											"value": "",
+											"description": "Filter bookings from this date (ISO string)",
+											"disabled": true
+										},
+										{
+											"key": "endDate",
+											"value": "",
+											"description": "Filter bookings until this date (ISO string)",
+											"disabled": true
+										},
+										{
+											"key": "limit",
+											"value": "20",
+											"description": "Items per page (default: 20, max: 200)"
+										},
+										{
+											"key": "cursor",
+											"value": "",
+											"description": "Pagination cursor",
+											"disabled": true
+										}
+									]
+								},
+								"description": "**List all bookings across all users (Admin only)**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Query Parameters (all optional):**\n- `status` (string): Filter by booking status (PENDING, CONFIRMED, CANCELLED, FAILED)\n- `productType` (string): Filter by product type (FLIGHT, HOTEL, CAR_RENTAL)\n- `provider` (string): Filter by provider (DUFFEL, AMADEUS)\n- `paymentStatus` (string): Filter by payment status (PENDING, COMPLETED, FAILED, REFUNDED)\n- `userId` (string): Filter by user ID\n- `startDate` (string): Filter bookings from this date (ISO string)\n- `endDate` (string): Filter bookings until this date (ISO string)\n- `limit` (number): Items per page (default: 20, max: 200)\n- `cursor` (string): Pagination cursor\n\n**Response:**\n- Returns paginated list of all bookings\n- Includes user information\n- Supports multiple filters\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"bookings\": [\n      {\n        \"id\": \"booking-id\",\n        \"reference\": \"EBT-20260205-123456\",\n        \"userId\": \"user-id\",\n        \"user\": {\n          \"id\": \"user-id\",\n          \"email\": \"user@example.com\",\n          \"name\": \"User Name\"\n        },\n        \"productType\": \"HOTEL\",\n        \"status\": \"CONFIRMED\",\n        \"provider\": \"AMADEUS\",\n        \"totalAmount\": \"2002.40\",\n        \"currency\": \"GBP\",\n        \"paymentStatus\": \"COMPLETED\",\n        \"createdAt\": \"2026-02-05T10:00:00.000Z\"\n      }\n    ],\n    \"meta\": {\n      \"count\": 20,\n      \"hasMore\": true,\n      \"nextCursor\": \"cursor-string\"\n    }\n  },\n  \"message\": \"Bookings retrieved successfully\"\n}\n```\n\n**Error Responses:**\n- `403 Forbidden` - Not an admin user\n\n**Note:**\n- Only admins can view all bookings\n- Regular users can only view their own bookings via `/api/v1/bookings`"
+							},
+							"response": []
+						}
+					],
+					"description": "**Admin booking management endpoints**\n\n**⚠️ RESTRICTIONS:**\n- **Admin Only:** All endpoints require ADMIN or SUPER_ADMIN role\n\n**Endpoints:**\n- **List All Bookings** - View all bookings across all users with filters\n\n**Filtering:**\n- Filter by status, product type, provider, payment status\n- Filter by user ID, date range\n- Pagination support\n\n**Note:**\n- Regular users can only view their own bookings\n- Admins can view all bookings with comprehensive filtering"
+				},
+				{
+					"name": "Audit Logs",
+					"item": [
+						{
+							"name": "Get Audit Logs (Super Admin Only)",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/audit-logs?limit=50",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "audit-logs"],
+									"query": [
+										{
+											"key": "action",
+											"value": "",
+											"description": "Filter by action type",
+											"disabled": true
+										},
+										{
+											"key": "userId",
+											"value": "",
+											"description": "Filter by user ID who performed the action",
+											"disabled": true
+										},
+										{
+											"key": "entityType",
+											"value": "",
+											"description": "Filter by entity type (User, Booking, etc.)",
+											"disabled": true
+										},
+										{
+											"key": "startDate",
+											"value": "",
+											"description": "Filter logs from this date (ISO string)",
+											"disabled": true
+										},
+										{
+											"key": "endDate",
+											"value": "",
+											"description": "Filter logs until this date (ISO string)",
+											"disabled": true
+										},
+										{
+											"key": "limit",
+											"value": "50",
+											"description": "Items per page (default: 50, max: 200)"
+										},
+										{
+											"key": "cursor",
+											"value": "",
+											"description": "Pagination cursor",
+											"disabled": true
+										}
+									]
+								},
+								"description": "**Get audit logs (Super Admin only)**\n\n**Authentication required:** JWT Bearer token (Super Admin role)\n\n**What This Does:**\n- Returns audit log of all sensitive admin actions\n- Tracks who performed what action, when, and what changed\n- Includes IP address and user agent for security\n\n**Query Parameters (all optional):**\n- `action` (string): Filter by action type (e.g., \"CREATE_ADMIN_USER\", \"UPDATE_ADMIN_USER\", \"DELETE_ADMIN_USER\", \"CANCEL_BOOKING\")\n- `userId` (string): Filter by user ID who performed the action\n- `entityType` (string): Filter by entity type (User, Booking, etc.)\n- `startDate` (string): Filter logs from this date (ISO string)\n- `endDate` (string): Filter logs until this date (ISO string)\n- `limit` (number): Items per page (default: 50, max: 200)\n- `cursor` (string): Pagination cursor\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"logs\": [\n      {\n        \"id\": \"log-id\",\n        \"userId\": \"admin-user-id\",\n        \"user\": {\n          \"id\": \"admin-user-id\",\n          \"email\": \"admin@example.com\",\n          \"name\": \"Admin User\"\n        },\n        \"action\": \"CREATE_ADMIN_USER\",\n        \"entityType\": \"User\",\n        \"entityId\": \"created-user-id\",\n        \"changes\": {\n          \"email\": \"newadmin@example.com\",\n          \"role\": \"ADMIN\",\n          \"createdBy\": \"admin@example.com\"\n        },\n        \"ipAddress\": \"192.168.1.1\",\n        \"userAgent\": \"Mozilla/5.0...\",\n        \"createdAt\": \"2026-02-05T10:00:00.000Z\"\n      }\n    ],\n    \"meta\": {\n      \"count\": 50,\n      \"hasMore\": true,\n      \"nextCursor\": \"cursor-string\"\n    }\n  },\n  \"message\": \"Audit logs retrieved successfully\"\n}\n```\n\n**Tracked Actions:**\n- `CREATE_ADMIN_USER` - Admin user creation\n- `UPDATE_ADMIN_USER` - Admin user updates\n- `DELETE_ADMIN_USER` - Admin user deletion\n- `ASSIGN_PERMISSIONS` - Permission assignments\n- `CANCEL_BOOKING` - Booking cancellations\n- `CHANGE_PASSWORD` - Password changes\n- `DELETE_ACCOUNT` - Account deletions\n\n**Error Responses:**\n- `403 Forbidden` - Not a Super Admin user\n\n**Note:**\n- Only SUPER_ADMIN can view audit logs\n- Logs include IP address and user agent for security\n- All sensitive admin actions are automatically logged"
+							},
+							"response": []
+						}
+					],
+					"description": "**Audit logging endpoints (Super Admin only)**\n\n**⚠️ RESTRICTIONS:**\n- **Super Admin Only:** Only SUPER_ADMIN can view audit logs\n\n**What This Does:**\n- Tracks all sensitive admin actions\n- Includes who, what, when, and what changed\n- Includes IP address and user agent for security\n- Helps with compliance and security monitoring\n\n**Tracked Actions:**\n- Admin user management (create, update, delete)\n- Permission assignments\n- Booking cancellations\n- Password changes\n- Account deletions\n\n**Use Cases:**\n- Security monitoring\n- Compliance auditing\n- Troubleshooting\n- User activity tracking"
+				},
+				{
+					"name": "Dashboard",
+					"item": [
+						{
+							"name": "Get Dashboard Statistics (Admin Only)",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/dashboard/stats?startDate=2026-01-01T00:00:00Z&endDate=2026-02-05T23:59:59Z",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "dashboard", "stats"],
+									"query": [
+										{
+											"key": "startDate",
+											"value": "2026-01-01T00:00:00Z",
+											"description": "Start date for statistics (ISO string). Defaults to 30 days ago.",
+											"disabled": true
+										},
+										{
+											"key": "endDate",
+											"value": "2026-02-05T23:59:59Z",
+											"description": "End date for statistics (ISO string). Defaults to today.",
+											"disabled": true
+										}
+									]
+								},
+								"description": "**Get dashboard statistics (Admin only)**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**What This Does:**\n- Returns comprehensive dashboard statistics\n- Includes total bookings, revenue, breakdowns by status, product type, provider, payment status\n- Includes recent bookings\n- Supports date range filtering\n\n**Query Parameters (optional):**\n- `startDate` (string): Start date for statistics (ISO string). Defaults to 30 days ago.\n- `endDate` (string): End date for statistics (ISO string). Defaults to today.\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"period\": {\n      \"start\": \"2026-01-01T00:00:00.000Z\",\n      \"end\": \"2026-02-05T23:59:59.999Z\"\n    },\n    \"totalBookings\": 150,\n    \"totalRevenue\": 250000.50,\n    \"bookingsByStatus\": {\n      \"CONFIRMED\": 120,\n      \"PENDING\": 20,\n      \"CANCELLED\": 10\n    },\n    \"bookingsByProductType\": {\n      \"FLIGHT\": {\n        \"count\": 80,\n        \"revenue\": 150000.00\n      },\n      \"HOTEL\": {\n        \"count\": 60,\n        \"revenue\": 90000.50\n      },\n      \"CAR_RENTAL\": {\n        \"count\": 10,\n        \"revenue\": 10000.00\n      }\n    },\n    \"bookingsByProvider\": {\n      \"DUFFEL\": 100,\n      \"AMADEUS\": 50\n    },\n    \"paymentStatusBreakdown\": {\n      \"COMPLETED\": 120,\n      \"PENDING\": 20,\n      \"FAILED\": 10\n    },\n    \"recentBookings\": [\n      {\n        \"id\": \"booking-id\",\n        \"reference\": \"EBT-20260205-123456\",\n        \"productType\": \"HOTEL\",\n        \"status\": \"CONFIRMED\",\n        \"totalAmount\": 2002.40,\n        \"currency\": \"GBP\",\n        \"user\": {\n          \"id\": \"user-id\",\n          \"email\": \"user@example.com\",\n          \"name\": \"User Name\"\n        },\n        \"createdAt\": \"2026-02-05T10:00:00.000Z\"\n      }\n    ]\n  },\n  \"message\": \"Dashboard statistics retrieved successfully\"\n}\n```\n\n**Response Fields:**\n- `period`: Date range for statistics\n- `totalBookings`: Total number of bookings in period\n- `totalRevenue`: Total revenue from completed bookings\n- `bookingsByStatus`: Breakdown by booking status\n- `bookingsByProductType`: Breakdown by product type with count and revenue\n- `bookingsByProvider`: Breakdown by provider (DUFFEL, AMADEUS)\n- `paymentStatusBreakdown`: Breakdown by payment status\n- `recentBookings`: Last 10 bookings (all time, not filtered by date range)\n\n**Error Responses:**\n- `403 Forbidden` - Not an admin user\n\n**Note:**\n- Only admins can access dashboard statistics\n- Revenue is calculated from bookings with `paymentStatus: COMPLETED`\n- Recent bookings show last 10 bookings regardless of date range filter"
+							},
+							"response": []
+						}
+					],
+					"description": "**Dashboard statistics endpoints (Admin only)**\n\n**⚠️ RESTRICTIONS:**\n- **Admin Only:** All endpoints require ADMIN or SUPER_ADMIN role\n\n**Endpoints:**\n- **Get Dashboard Statistics** - Comprehensive statistics with breakdowns\n\n**Statistics Include:**\n- Total bookings and revenue\n- Breakdowns by status, product type, provider, payment status\n- Recent bookings\n- Date range filtering\n\n**Use Cases:**\n- Admin dashboard overview\n- Business analytics\n- Performance monitoring\n- Revenue tracking"
+				}
+			],
+			"description": "**Admin endpoints for managing users, bookings, and viewing statistics**\n\n**⚠️ RESTRICTIONS:**\n- **Super Admin Only:** User management endpoints require SUPER_ADMIN role\n- **Admin Only:** Booking management and dashboard require ADMIN or SUPER_ADMIN role\n\n**Sections:**\n1. **User Management** - Create, list, get, update, delete admin users; assign permissions\n2. **Booking Management** - List all bookings with filters\n3. **Audit Logs** - View audit log of sensitive admin actions\n4. **Dashboard** - View dashboard statistics\n\n**Permissions System:**\n- Regular ADMIN users can have fine-grained permissions\n- SUPER_ADMIN has all permissions by default\n- Permissions control access to specific features\n\n**Audit Logging:**\n- All sensitive admin actions are logged\n- Includes who, what, when, and what changed\n- Includes IP address and user agent\n\n**Note:**\n- Only SUPER_ADMIN can create other admins\n- Only SUPER_ADMIN can view audit logs\n- Regular admins can view bookings and dashboard stats"
 		}
 	],
 	"event": [
