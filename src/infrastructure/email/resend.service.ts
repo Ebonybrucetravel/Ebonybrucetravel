@@ -54,6 +54,57 @@ export interface LoginNotificationEmailData {
   changePasswordUrl: string;
 }
 
+export interface BookingConfirmationEmailData {
+  to: string;
+  customerName: string;
+  bookingReference: string;
+  productType: string;
+  provider: string;
+  bookingDetails: {
+    checkInDate?: string;
+    checkOutDate?: string;
+    departureDate?: string;
+    arrivalDate?: string;
+    origin?: string;
+    destination?: string;
+    hotelName?: string;
+    roomType?: string;
+    guests?: number;
+    adults?: number;
+    children?: number;
+  };
+  pricing: {
+    basePrice: number;
+    markupAmount: number;
+    serviceFee: number;
+    totalAmount: number;
+    currency: string;
+  };
+  confirmationDate: Date;
+  bookingId?: string;
+}
+
+export interface PaymentReceiptEmailData {
+  to: string;
+  customerName: string;
+  bookingReference: string;
+  paymentIntentId: string;
+  amount: number;
+  currency: string;
+  paymentDate: Date;
+  paymentMethod?: string;
+  productType: string;
+  bookingDetails?: {
+    checkInDate?: string;
+    checkOutDate?: string;
+    departureDate?: string;
+    arrivalDate?: string;
+    origin?: string;
+    destination?: string;
+    hotelName?: string;
+  };
+}
+
 @Injectable()
 export class ResendService {
   private readonly resend: Resend;
@@ -202,6 +253,50 @@ export class ResendService {
     } catch (error) {
       this.logger.error(`Failed to send login notification email to ${data.to}:`, error);
       // Don't throw - email failure shouldn't break the login flow
+    }
+  }
+
+  /**
+   * Send booking confirmation email
+   */
+  async sendBookingConfirmationEmail(data: BookingConfirmationEmailData): Promise<void> {
+    try {
+      const subject = `Booking Confirmed - ${data.bookingReference}`;
+      const html = this.getBookingConfirmationEmailTemplate(data);
+
+      await this.resend.emails.send({
+        from: this.fromEmail,
+        to: data.to,
+        subject,
+        html,
+      });
+
+      this.logger.log(`Booking confirmation email sent to ${data.to} for booking ${data.bookingReference}`);
+    } catch (error) {
+      this.logger.error(`Failed to send booking confirmation email to ${data.to}:`, error);
+      // Don't throw - email failure shouldn't break the booking flow
+    }
+  }
+
+  /**
+   * Send payment receipt/invoice email
+   */
+  async sendPaymentReceiptEmail(data: PaymentReceiptEmailData): Promise<void> {
+    try {
+      const subject = `Payment Receipt - ${data.bookingReference}`;
+      const html = this.getPaymentReceiptEmailTemplate(data);
+
+      await this.resend.emails.send({
+        from: this.fromEmail,
+        to: data.to,
+        subject,
+        html,
+      });
+
+      this.logger.log(`Payment receipt email sent to ${data.to} for booking ${data.bookingReference}`);
+    } catch (error) {
+      this.logger.error(`Failed to send payment receipt email to ${data.to}:`, error);
+      // Don't throw - email failure shouldn't break the payment flow
     }
   }
 
@@ -625,6 +720,209 @@ export class ResendService {
           
           <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
             <p>This is an automated email. Please do not reply to this message.</p>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Booking confirmation email template
+   */
+  private getBookingConfirmationEmailTemplate(data: BookingConfirmationEmailData): string {
+    const productTypeLabel = data.productType === 'HOTEL' ? 'Hotel' : data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC' ? 'Flight' : data.productType === 'CAR_RENTAL' ? 'Car Rental' : 'Booking';
+    
+    const bookingDetailsSection = data.bookingDetails.hotelName
+      ? `
+        <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
+          <h3 style="margin-top: 0;">Hotel Details</h3>
+          <p style="margin: 5px 0;"><strong>Hotel:</strong> ${data.bookingDetails.hotelName}</p>
+          ${data.bookingDetails.roomType ? `<p style="margin: 5px 0;"><strong>Room Type:</strong> ${data.bookingDetails.roomType}</p>` : ''}
+          ${data.bookingDetails.checkInDate ? `<p style="margin: 5px 0;"><strong>Check-in:</strong> ${new Date(data.bookingDetails.checkInDate).toLocaleDateString()}</p>` : ''}
+          ${data.bookingDetails.checkOutDate ? `<p style="margin: 5px 0;"><strong>Check-out:</strong> ${new Date(data.bookingDetails.checkOutDate).toLocaleDateString()}</p>` : ''}
+          ${data.bookingDetails.guests ? `<p style="margin: 5px 0;"><strong>Guests:</strong> ${data.bookingDetails.guests}</p>` : ''}
+          ${data.bookingDetails.adults ? `<p style="margin: 5px 0;"><strong>Adults:</strong> ${data.bookingDetails.adults}</p>` : ''}
+          ${data.bookingDetails.children ? `<p style="margin: 5px 0;"><strong>Children:</strong> ${data.bookingDetails.children}</p>` : ''}
+        </div>
+      `
+      : data.bookingDetails.origin && data.bookingDetails.destination
+        ? `
+        <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
+          <h3 style="margin-top: 0;">Flight Details</h3>
+          <p style="margin: 5px 0;"><strong>Route:</strong> ${data.bookingDetails.origin} → ${data.bookingDetails.destination}</p>
+          ${data.bookingDetails.departureDate ? `<p style="margin: 5px 0;"><strong>Departure:</strong> ${new Date(data.bookingDetails.departureDate).toLocaleDateString()}</p>` : ''}
+          ${data.bookingDetails.arrivalDate ? `<p style="margin: 5px 0;"><strong>Arrival:</strong> ${new Date(data.bookingDetails.arrivalDate).toLocaleDateString()}</p>` : ''}
+        </div>
+      `
+        : '';
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Booking Confirmed</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
+            <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
+          </div>
+          
+          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 10px;">
+              Booking Confirmed! 🎉
+            </h2>
+            
+            <p>Dear ${data.customerName || 'Valued Customer'},</p>
+            
+            <p>We're excited to confirm that your ${productTypeLabel.toLowerCase()} booking has been successfully confirmed!</p>
+            
+            <div style="background-color: #d4edda; border-left: 4px solid #27ae60; padding: 15px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #155724;">Booking Reference</h3>
+              <p style="margin: 5px 0; font-size: 24px; font-weight: bold; color: #155724;">${data.bookingReference}</p>
+              <p style="margin: 5px 0; font-size: 12px; color: #666;">Please keep this reference number for your records</p>
+            </div>
+            
+            ${bookingDetailsSection}
+            
+            <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <h3 style="margin-top: 0;">Pricing Summary</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;">Base Price:</td>
+                  <td style="text-align: right; padding: 8px 0; border-bottom: 1px solid #ddd;">${data.pricing.currency} ${data.pricing.basePrice.toFixed(2)}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;">Service Fee:</td>
+                  <td style="text-align: right; padding: 8px 0; border-bottom: 1px solid #ddd;">${data.pricing.currency} ${data.pricing.serviceFee.toFixed(2)}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;">Markup:</td>
+                  <td style="text-align: right; padding: 8px 0; border-bottom: 1px solid #ddd;">${data.pricing.currency} ${data.pricing.markupAmount.toFixed(2)}</td>
+                </tr>
+                <tr style="font-weight: bold; font-size: 18px;">
+                  <td style="padding: 12px 0; border-top: 2px solid #2c3e50;">Total Amount:</td>
+                  <td style="text-align: right; padding: 12px 0; border-top: 2px solid #2c3e50;">${data.pricing.currency} ${data.pricing.totalAmount.toFixed(2)}</td>
+                </tr>
+              </table>
+            </div>
+            
+            <div style="background-color: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #0c5460;">What's Next?</h3>
+              <p>Your booking is confirmed and you should receive a separate payment receipt shortly.</p>
+              <p>You can view your booking details and manage your reservation by logging into your account.</p>
+            </div>
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+              <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
+              <p>Thank you for choosing Ebony Bruce Travels!</p>
+              <p style="margin-top: 20px;">
+                Best regards,<br>
+                <strong>The Ebony Bruce Travels Team</strong>
+              </p>
+            </div>
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+            <p>This is an automated email. Please do not reply to this message.</p>
+            <p>Confirmation Date: ${data.confirmationDate.toLocaleString()}</p>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Payment receipt/invoice email template
+   */
+  private getPaymentReceiptEmailTemplate(data: PaymentReceiptEmailData): string {
+    const productTypeLabel = data.productType === 'HOTEL' ? 'Hotel' : data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC' ? 'Flight' : data.productType === 'CAR_RENTAL' ? 'Car Rental' : 'Booking';
+    
+    const bookingDetailsSection = data.bookingDetails
+      ? data.bookingDetails.hotelName
+        ? `
+          <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
+            <h3 style="margin-top: 0;">Booking Details</h3>
+            <p style="margin: 5px 0;"><strong>Hotel:</strong> ${data.bookingDetails.hotelName}</p>
+            ${data.bookingDetails.checkInDate ? `<p style="margin: 5px 0;"><strong>Check-in:</strong> ${new Date(data.bookingDetails.checkInDate).toLocaleDateString()}</p>` : ''}
+            ${data.bookingDetails.checkOutDate ? `<p style="margin: 5px 0;"><strong>Check-out:</strong> ${new Date(data.bookingDetails.checkOutDate).toLocaleDateString()}</p>` : ''}
+          </div>
+        `
+        : data.bookingDetails.origin && data.bookingDetails.destination
+          ? `
+          <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
+            <h3 style="margin-top: 0;">Booking Details</h3>
+            <p style="margin: 5px 0;"><strong>Route:</strong> ${data.bookingDetails.origin} → ${data.bookingDetails.destination}</p>
+            ${data.bookingDetails.departureDate ? `<p style="margin: 5px 0;"><strong>Departure:</strong> ${new Date(data.bookingDetails.departureDate).toLocaleDateString()}</p>` : ''}
+            ${data.bookingDetails.arrivalDate ? `<p style="margin: 5px 0;"><strong>Arrival:</strong> ${new Date(data.bookingDetails.arrivalDate).toLocaleDateString()}</p>` : ''}
+          </div>
+        `
+          : ''
+      : '';
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Payment Receipt</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
+            <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
+          </div>
+          
+          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
+              Payment Receipt
+            </h2>
+            
+            <p>Dear ${data.customerName || 'Valued Customer'},</p>
+            
+            <p>Thank you for your payment. This email serves as your receipt for the ${productTypeLabel.toLowerCase()} booking.</p>
+            
+            <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <h3 style="margin-top: 0;">Payment Information</h3>
+              <p style="margin: 5px 0;"><strong>Booking Reference:</strong> ${data.bookingReference}</p>
+              <p style="margin: 5px 0;"><strong>Payment Intent ID:</strong> ${data.paymentIntentId}</p>
+              <p style="margin: 5px 0;"><strong>Payment Date:</strong> ${data.paymentDate.toLocaleString()}</p>
+              ${data.paymentMethod ? `<p style="margin: 5px 0;"><strong>Payment Method:</strong> ${data.paymentMethod}</p>` : ''}
+            </div>
+            
+            ${bookingDetailsSection}
+            
+            <div style="background-color: #e8f4f8; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #0c5460;">Amount Paid</h3>
+              <p style="font-size: 32px; font-weight: bold; color: #0c5460; margin: 10px 0;">
+                ${data.currency.toUpperCase()} ${(data.amount / 100).toFixed(2)}
+              </p>
+              <p style="font-size: 12px; color: #666; margin: 5px 0;">Payment processed successfully</p>
+            </div>
+            
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #856404;">Important Notes</h3>
+              <ul style="margin: 10px 0; padding-left: 20px; color: #856404;">
+                <li>Please keep this receipt for your records</li>
+                <li>This receipt confirms that your payment has been processed</li>
+                <li>If you have any questions about this payment, please contact our support team</li>
+              </ul>
+            </div>
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+              <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
+              <p>Thank you for choosing Ebony Bruce Travels!</p>
+              <p style="margin-top: 20px;">
+                Best regards,<br>
+                <strong>The Ebony Bruce Travels Team</strong>
+              </p>
+            </div>
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+            <p>This is an automated email. Please do not reply to this message.</p>
+            <p>This receipt is for your records. Please save or print this email for your files.</p>
           </div>
         </body>
       </html>

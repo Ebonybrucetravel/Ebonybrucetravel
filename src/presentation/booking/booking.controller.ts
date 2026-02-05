@@ -57,6 +57,10 @@ import { CreateAmadeusHotelBookingDto } from './dto/create-amadeus-hotel-booking
 import { AccommodationSuggestionsDto } from './dto/accommodation-suggestions.dto';
 import { PlaceSuggestionsDto } from './dto/place-suggestions.dto';
 import { GetAmadeusHotelDetailsDto } from './dto/get-amadeus-hotel-details.dto';
+import { SearchCarRentalsDto } from './dto/search-car-rentals.dto';
+import { CreateCarRentalBookingDto } from './dto/create-car-rental-booking.dto';
+import { SearchCarRentalsUseCase } from '@application/booking/use-cases/search-car-rentals.use-case';
+import { CreateCarRentalBookingUseCase } from '@application/booking/use-cases/create-car-rental-booking.use-case';
 
 @ApiTags('Bookings')
 @Controller('bookings')
@@ -87,6 +91,8 @@ export class BookingController {
     private readonly bookingService: BookingService,
     private readonly hotelImageCacheService: HotelImageCacheService,
     private readonly usageTrackingService: UsageTrackingService,
+    private readonly searchCarRentalsUseCase: SearchCarRentalsUseCase,
+    private readonly createCarRentalBookingUseCase: CreateCarRentalBookingUseCase,
   ) {}
 
   @Public()
@@ -912,6 +918,46 @@ export class BookingController {
       success: true,
       data: stats,
       message: 'Usage statistics retrieved successfully',
+    };
+  }
+
+  // ==================== CAR RENTALS ====================
+
+  @Public()
+  @Post('search/car-rentals')
+  @ApiOperation({
+    summary: 'Search for car rentals',
+    description:
+      'Search for car rental/transfer options using Amadeus API. Returns available vehicles with pricing, ' +
+      'applies currency conversion and markup automatically. Supports filtering by vehicle type, location, and dates.',
+  })
+  @ApiResponse({ status: 200, description: 'Car rental search results' })
+  @ApiResponse({ status: 400, description: 'Invalid search parameters' })
+  async searchCarRentals(@Body() searchDto: SearchCarRentalsDto) {
+    const results = await this.searchCarRentalsUseCase.execute(searchDto);
+    return {
+      success: true,
+      data: results,
+      message: 'Car rentals retrieved successfully',
+    };
+  }
+
+  @Post('car-rentals/bookings')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Create a car rental booking',
+    description:
+      'Creates a local booking for a car rental/transfer offer. After payment succeeds, the actual Amadeus transfer order will be created automatically. ' +
+      'Use the booking ID to create a payment intent, then complete payment. The booking will be confirmed automatically after payment.',
+  })
+  @ApiResponse({ status: 201, description: 'Car rental booking created successfully. Proceed to payment.' })
+  async createCarRentalBooking(@Body() dto: CreateCarRentalBookingDto, @Request() req) {
+    const result = await this.createCarRentalBookingUseCase.execute(dto, req.user.id);
+    return {
+      success: true,
+      data: result,
+      message: 'Booking created. Please proceed to payment.',
     };
   }
 }

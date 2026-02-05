@@ -1,13 +1,9 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean, IsInt, Min, IsDateString } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsBoolean, IsInt, Min, IsDateString, IsString } from 'class-validator';
 
 export class GetAmadeusHotelDetailsDto {
-  @ApiProperty({
-    description: 'Amadeus hotel ID (8 characters)',
-    example: 'MCLONGHM',
-  })
-  @IsString()
-  hotelId: string;
+  // Note: hotelId comes from path parameter, not query string
+  // It's extracted via @Param('hotelId') in the controller
 
   @ApiPropertyOptional({
     description: 'Specific offer ID to get detailed pricing for',

@@ -21,6 +21,8 @@ import { SearchPlaceSuggestionsUseCase } from './use-cases/search-place-suggesti
 import { ListAirlinesUseCase } from './use-cases/list-airlines.use-case';
 import { SearchAmadeusHotelsUseCase } from './use-cases/search-amadeus-hotels.use-case';
 import { GetAmadeusHotelDetailsUseCase } from './use-cases/get-amadeus-hotel-details.use-case';
+import { SearchCarRentalsUseCase } from './use-cases/search-car-rentals.use-case';
+import { CreateCarRentalBookingUseCase } from './use-cases/create-car-rental-booking.use-case';
 import { BookingModule } from '@domains/booking/booking.module';
 import { MarkupModule } from '@domains/markup/markup.module';
 import { ExternalApisModule } from '@infrastructure/external-apis/external-apis.module';
@@ -68,6 +70,8 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     ListAirlinesUseCase,
     SearchAmadeusHotelsUseCase,
     GetAmadeusHotelDetailsUseCase,
+    SearchCarRentalsUseCase,
+    CreateCarRentalBookingUseCase,
   ],
   exports: [
     CreateBookingUseCase,
@@ -92,6 +96,8 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     ListAirlinesUseCase,
     SearchAmadeusHotelsUseCase,
     GetAmadeusHotelDetailsUseCase,
+    SearchCarRentalsUseCase,
+    CreateCarRentalBookingUseCase,
   ],
 })
 export class BookingApplicationModule {}

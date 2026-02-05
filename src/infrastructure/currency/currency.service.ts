@@ -3,14 +3,16 @@ import { ConfigService } from '@nestjs/config';
 
 /**
  * Currency conversion service
- * Uses exchangerate-api.com (free tier: 1,500 requests/month)
+ * Uses exchangerate-api.com v6 API
+ * Free tier: 1,500 requests/month (without API key)
+ * With API key: Higher limits and better rate updates
  * Alternative: fixer.io, openexchangerates.org
  */
 @Injectable()
 export class CurrencyService {
   private readonly logger = new Logger(CurrencyService.name);
   private readonly apiKey: string | undefined;
-  private readonly baseUrl = 'https://api.exchangerate-api.com/v4';
+  private readonly baseUrl: string;
   private readonly cache: Map<string, { rate: number; timestamp: number }> = new Map();
   private readonly cacheTTL = 60 * 60 * 1000; // 1 hour cache
 
@@ -36,9 +38,19 @@ export class CurrencyService {
   private readonly conversionBuffer: number;
 
   constructor(private readonly configService: ConfigService) {
-    // exchangerate-api.com doesn't require API key for free tier
-    // But we can use EXCHANGE_RATE_API_KEY if provided
+    // exchangerate-api.com v6 API key (optional - works without key on free tier)
     this.apiKey = this.configService.get<string>('EXCHANGE_RATE_API_KEY');
+    
+    // Set base URL based on whether API key is provided
+    // v6 API format: https://v6.exchangerate-api.com/v6/{apiKey}/latest/USD
+    // v4 API format: https://api.exchangerate-api.com/v4/latest/USD (no key needed)
+    if (this.apiKey) {
+      this.baseUrl = `https://v6.exchangerate-api.com/v6/${this.apiKey}`;
+      this.logger.log('Using exchangerate-api.com v6 API with API key');
+    } else {
+      this.baseUrl = 'https://api.exchangerate-api.com/v4';
+      this.logger.log('Using exchangerate-api.com v4 API (free tier, no API key)');
+    }
 
     // Get conversion buffer from environment (default: 2.5%)
     // This protects against exchange rate fluctuations between display and payment
