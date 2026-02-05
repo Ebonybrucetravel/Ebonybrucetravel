@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/database/prisma.service';
 import { StripeService } from '@domains/payment/services/stripe.service';
+import { toNumber } from '@common/utils/decimal.util';
 
 @Injectable()
 export class CreatePaymentIntentUseCase {
@@ -31,15 +32,18 @@ export class CreatePaymentIntentUseCase {
     const currency = booking.currency.toUpperCase();
     const multiplier = currency === 'JPY' ? 1 : 100; // JPY has no decimal places
 
-    let amountToCharge = booking.totalAmount;
+    // Convert Prisma Decimal to number using utility function
+    // This properly handles Decimal objects, numbers, strings, and null/undefined
+    let amountToCharge = toNumber(booking.totalAmount);
 
     // If this is an Amadeus hotel booking, only charge our margin (markup + service fee)
     if (booking.provider === 'AMADEUS' && booking.productType === 'HOTEL') {
-      // Convert Prisma Decimal types to numbers for proper addition
-      amountToCharge = Number(booking.markupAmount) + Number(booking.serviceFee);
+      const markup = toNumber(booking.markupAmount);
+      const serviceFee = toNumber(booking.serviceFee);
+      amountToCharge = markup + serviceFee;
     }
 
-    const amountInSmallestUnit = Math.round(Number(amountToCharge) * multiplier);
+    const amountInSmallestUnit = Math.round(amountToCharge * multiplier);
 
     // Create payment intent
     const paymentIntent = await this.stripeService.createPaymentIntent({

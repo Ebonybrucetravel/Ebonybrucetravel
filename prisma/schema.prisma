@@ -35,6 +35,10 @@ model User {
   resetPasswordToken      String?
   resetPasswordExpires    DateTime?
 
+  // Admin permissions (JSON field for flexible permission management)
+  // Only used for ADMIN role; SUPER_ADMIN has all permissions by default
+  permissions             Json? // { canManageBookings, canManageUsers, canManageMarkups, canViewReports, etc. }
+
   // Relations
   bookings          Booking[] // User's bookings
   auditLogs         AuditLog[] // Admin actions performed by user

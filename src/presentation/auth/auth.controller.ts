@@ -1,9 +1,10 @@
-import { Controller, Post, Body, Get, UseGuards, Request, Req, Res } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Controller, Post, Body, Get, UseGuards, Request, Req, Res, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import * as requestIp from 'request-ip';
 import { Public } from '@common/decorators/public.decorator';
 import { Throttle } from '@common/decorators/throttle.decorator';
+import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -173,6 +174,27 @@ export class AuthController {
     return {
       success: true,
       message: 'Email verified successfully.',
+    };
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Logout user',
+    description:
+      'Logs out the current user. Since we use stateless JWT tokens, the client should remove the token from storage. ' +
+      'This endpoint confirms logout and can be used for audit logging.',
+  })
+  @ApiResponse({ status: 200, description: 'Logout successful' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async logout(@Request() req: any) {
+    // Since we use stateless JWT, logout is handled client-side by removing the token
+    // This endpoint confirms logout and can be used for audit logging
+    return {
+      success: true,
+      message: 'Logout successful. Please remove the token from client storage.',
     };
   }
 }

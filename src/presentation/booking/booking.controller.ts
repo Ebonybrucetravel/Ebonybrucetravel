@@ -61,6 +61,7 @@ import { SearchCarRentalsDto } from './dto/search-car-rentals.dto';
 import { CreateCarRentalBookingDto } from './dto/create-car-rental-booking.dto';
 import { SearchCarRentalsUseCase } from '@application/booking/use-cases/search-car-rentals.use-case';
 import { CreateCarRentalBookingUseCase } from '@application/booking/use-cases/create-car-rental-booking.use-case';
+import { CancelCarRentalBookingUseCase } from '@application/booking/use-cases/cancel-car-rental-booking.use-case';
 
 @ApiTags('Bookings')
 @Controller('bookings')
@@ -93,6 +94,7 @@ export class BookingController {
     private readonly usageTrackingService: UsageTrackingService,
     private readonly searchCarRentalsUseCase: SearchCarRentalsUseCase,
     private readonly createCarRentalBookingUseCase: CreateCarRentalBookingUseCase,
+    private readonly cancelCarRentalBookingUseCase: CancelCarRentalBookingUseCase,
   ) {}
 
   @Public()
@@ -958,6 +960,26 @@ export class BookingController {
       success: true,
       data: result,
       message: 'Booking created. Please proceed to payment.',
+    };
+  }
+
+  @Post('car-rentals/bookings/:bookingId/cancel')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Cancel a car rental booking (Admin only)',
+    description:
+      'Only administrators can cancel car rental bookings. Cancels the booking in Amadeus and updates the local booking status.',
+  })
+  @ApiResponse({ status: 200, description: 'Car rental booking cancelled successfully' })
+  @ApiResponse({ status: 403, description: 'Only administrators can cancel bookings' })
+  async cancelCarRentalBooking(@Param('bookingId') bookingId: string, @Request() req) {
+    const result = await this.cancelCarRentalBookingUseCase.execute(bookingId, req.user.id);
+    return {
+      success: true,
+      data: result,
+      message: 'Car rental booking cancelled successfully',
     };
   }
 }
