@@ -1802,30 +1802,24 @@ export const bookingApi = {
 };
 
 // ────────────────────────────────────────────────
-// Payment API
+// Payment API - FIXED VERSION
 // ────────────────────────────────────────────────
 export const paymentApi = {
   // Create Stripe intent for authenticated users
-  createStripeIntent: (bookingId: string, amount?: number, currency?: string) => {
-    const body: any = { bookingId };
-    if (amount !== undefined) body.amount = amount;
-    if (currency !== undefined) body.currency = currency;
-    
+  createStripeIntent: (bookingId: string) => {
+    // Amount and currency are derived from the booking on the backend
     return request<any>('/api/v1/payments/stripe/create-intent', {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ bookingId }), // Only send bookingId
     });
   },
   
   // Create Stripe intent for guests
-  createGuestStripeIntent: (bookingReference: string, email: string, amount?: number, currency?: string) => {
-    const body: any = { bookingReference, email };
-    if (amount !== undefined) body.amount = amount;
-    if (currency !== undefined) body.currency = currency;
-    
+  createGuestStripeIntent: (bookingReference: string, email: string) => {
+    // Amount and currency are derived from the booking on the backend
     return request<any>('/api/v1/payments/stripe/create-intent/guest', {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ bookingReference, email }), // Only send bookingReference and email
     });
   },
   
@@ -1854,8 +1848,22 @@ export const paymentApi = {
       body: JSON.stringify(body),
     });
   },
+  
+  // Additional payment methods if needed
+  createPaypalPayment: (bookingId: string) => {
+    return request<any>('/api/v1/payments/paypal/create', {
+      method: 'POST',
+      body: JSON.stringify({ bookingId }),
+    });
+  },
+  
+  createFlutterwavePayment: (bookingId: string) => {
+    return request<any>('/api/v1/payments/flutterwave/create', {
+      method: 'POST',
+      body: JSON.stringify({ bookingId }),
+    });
+  },
 };
-
 // ────────────────────────────────────────────────
 // Hotels API with Amadeus endpoint
 // ────────────────────────────────────────────────

@@ -32,7 +32,12 @@ import {
   formatHotelSearchParams 
 } from "../lib/api";
 import { loadStripe } from "@stripe/stripe-js";
-
+import { 
+  Elements,
+  CardElement,
+  useStripe,
+  useElements 
+} from '@stripe/react-stripe-js';
 import { 
   SearchParams, 
   SearchResult, 
@@ -211,6 +216,257 @@ const FALLBACK_RESULTS: Record<string, SearchResult[]> = {
       type: "car-rentals" as const,
     },
   ],
+};
+
+// PaymentForm component that uses Stripe hooks
+const PaymentForm = ({ 
+  currentBooking, 
+  showPayment, 
+  setShowPayment, 
+  handlePaymentComplete, 
+  isLoggedIn, 
+  setIsLoggedIn, 
+  setIsAuthOpen, 
+  setAuthMode 
+}: any) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [paymentInitiated, setPaymentInitiated] = useState(false);
+  const [cardComplete, setCardComplete] = useState(false);
+
+  const formatAmount = useCallback((amount: number, currency: string | undefined) => {
+    if (!currency) return `₦${amount.toLocaleString()}`;
+    
+    const symbols: Record<string, string> = {
+      'USD': '$',
+      'GBP': '£',
+      'EUR': '€',
+      'NGN': '₦',
+    };
+    
+    const symbol = symbols[currency.toUpperCase()] || currency;
+    return `${symbol}${amount.toLocaleString()}`;
+  }, []);
+
+  const getActualAmount = useCallback(() => {
+    if (!currentBooking) {
+      return { 
+        displayAmount: 0, 
+        currency: 'NGN' as string 
+      };
+    }
+    
+    let amount = 0;
+    if (typeof currentBooking.totalAmount === 'number') {
+      amount = currentBooking.totalAmount;
+    } else if (typeof currentBooking.totalAmount === 'string') {
+      const cleaned = currentBooking.totalAmount.replace(/[^\d.]/g, '');
+      amount = parseFloat(cleaned) || 0;
+    } else if (currentBooking.basePrice) {
+      amount = currentBooking.basePrice / 100;
+    }
+    
+    const currency = currentBooking.currency || 'NGN';
+    
+    return { 
+      displayAmount: amount, 
+      currency 
+    };
+  }, [currentBooking]);
+
+  const handlePayment = useCallback(async () => {
+    if (!currentBooking || !stripe || !elements) return;
+    
+    setLoading(true);
+    setError(null);
+  
+    try {
+      console.log("💳 Payment request data:", {
+        bookingId: currentBooking.id,
+        bookingReference: currentBooking.bookingReference,
+        passengerEmail: currentBooking.passengerInfo?.email
+      });
+      
+      // Get the CardElement
+      const cardElement = elements.getElement(CardElement);
+      if (!cardElement) {
+        throw new Error("Card element not found");
+      }
+      
+      let paymentResult;
+      
+      if (currentBooking.isGuest) {
+        paymentResult = await paymentApi.createGuestStripeIntent(
+          currentBooking.bookingReference,
+          currentBooking.passengerInfo?.email || "guest@example.com"
+        );
+      } else {
+        if (!isLoggedIn) {
+          throw new Error("Please log in to complete payment");
+        }
+        
+        paymentResult = await paymentApi.createStripeIntent(currentBooking.id);
+      }
+  
+      console.log("💰 Payment API response:", paymentResult);
+  
+      if (paymentResult.clientSecret) {
+        setPaymentInitiated(true);
+        
+        // ✅ FIXED: Use confirmCardPayment with Stripe Elements
+        const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
+          paymentResult.clientSecret,
+          {
+            payment_method: {
+              card: cardElement,
+              billing_details: {
+                name: `${currentBooking.passengerInfo?.firstName || 'Guest'} ${currentBooking.passengerInfo?.lastName || 'User'}`,
+                email: currentBooking.passengerInfo?.email || 'guest@example.com',
+                phone: currentBooking.passengerInfo?.phone || '+2348012345678',
+              },
+            },
+          }
+        );
+
+        if (stripeError) {
+          throw new Error(stripeError.message);
+        }
+
+        console.log("✅ Payment successful:", paymentIntent);
+        
+        // After successful payment, complete the booking
+        await handlePaymentComplete(currentBooking.id, currentBooking.isGuest);
+      } else {
+        throw new Error(paymentResult.message || paymentResult.error || 'Failed to create payment intent');
+      }
+    } catch (err: any) {
+      console.error('Payment error:', err);
+      
+      if (err.message?.includes("401") || err.message?.includes("Session expired")) {
+        setError("Your session has expired. Please log in again.");
+        
+        localStorage.removeItem("authToken");
+        setIsLoggedIn(false);
+        
+        setTimeout(() => {
+          setIsAuthOpen(true);
+          setAuthMode("login");
+          setShowPayment(false);
+        }, 2000);
+      } else {
+        setError(err.message || 'Payment failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [currentBooking, stripe, elements, handlePaymentComplete, isLoggedIn, setIsLoggedIn, setIsAuthOpen, setAuthMode, setShowPayment]);
+
+  const handleCardChange = (event: any) => {
+    setCardComplete(event.complete);
+    if (event.error) {
+      setError(event.error.message);
+    } else {
+      setError(null);
+    }
+  };
+
+  if (!showPayment || !currentBooking) return null;
+
+  const { displayAmount, currency } = getActualAmount();
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-bold text-gray-900">Complete Payment</h2>
+          <button
+            onClick={() => setShowPayment(false)}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            ✕
+          </button>
+        </div>
+        
+        <div className="mb-6">
+          <div className="bg-gray-50 rounded-xl p-4 mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-gray-600">Booking Reference</span>
+              <span className="font-bold text-gray-900">{currentBooking.bookingReference}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Total Amount</span>
+              <span className="text-2xl font-bold text-gray-900">
+                {formatAmount(displayAmount, currency)}
+              </span>
+            </div>
+          </div>
+          
+          {/* Stripe Card Element */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Card Details
+            </label>
+            <div className="border border-gray-300 rounded-lg p-3">
+              <CardElement 
+                options={{
+                  style: {
+                    base: {
+                      fontSize: '16px',
+                      color: '#424770',
+                      '::placeholder': {
+                        color: '#aab7c4',
+                      },
+                      fontFamily: 'Inter, system-ui, sans-serif',
+                    },
+                    invalid: {
+                      color: '#9e2146',
+                    },
+                  },
+                  hidePostalCode: true,
+                }}
+                onChange={handleCardChange}
+              />
+            </div>
+            <div className="text-xs text-gray-500 mt-2">
+              Test card: 4242 4242 4242 4242 | 12/26 | 123
+            </div>
+          </div>
+          
+          {error && (
+            <div className="bg-red-50 text-red-700 p-3 rounded-lg mb-4">
+              {error}
+            </div>
+          )}
+          
+          {paymentInitiated && (
+            <div className="text-sm text-gray-500 mb-4 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-2"></div>
+              Processing payment...
+            </div>
+          )}
+        </div>
+        
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowPayment(false)}
+            className="flex-1 py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition"
+            disabled={loading || paymentInitiated}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handlePayment}
+            disabled={loading || paymentInitiated || !stripe || !cardComplete}
+            className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold rounded-xl shadow-lg hover:from-blue-600 hover:to-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading || paymentInitiated ? "Processing..." : "Pay Now"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default function Home() {
@@ -1411,177 +1667,6 @@ export default function Home() {
     setIsAuthOpen(true);
   }, []);
 
-  // PaymentModal component
-  const PaymentModal = () => {
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [paymentInitiated, setPaymentInitiated] = useState(false);
-
-    const getCurrencySymbol = useCallback((currency: string) => {
-      const symbols: Record<string, string> = {
-        'USD': '$',
-        'GBP': '£',
-        'EUR': '€',
-        'NGN': '₦',
-      };
-      return symbols[currency.toUpperCase()] || currency;
-    }, []);
-
-    const formatAmount = useCallback((amount: number, currency: string) => {
-      const symbol = getCurrencySymbol(currency);
-      return `${symbol}${amount.toLocaleString()}`;
-    }, [getCurrencySymbol]);
-
-    const getActualAmount = useCallback(() => {
-      if (!currentBooking) return { amount: 0, currency: 'NGN' };
-      
-      const amount = currentBooking.totalAmount || 0;
-      const currency = currentBooking.currency || 'NGN';
-      
-      return { 
-        displayAmount: amount, 
-        stripeAmount: Math.round(amount * 100),
-        currency 
-      };
-    }, [currentBooking]);
-
-    const handlePayment = useCallback(async () => {
-      if (!currentBooking) return;
-      
-      setLoading(true);
-      setError(null);
-
-      try {
-        const { stripeAmount, currency } = getActualAmount();
-        
-        let paymentResult;
-        
-        if (currentBooking.isGuest) {
-          paymentResult = await paymentApi.createGuestStripeIntent(
-            currentBooking.bookingReference,
-            currentBooking.passengerInfo?.email || "guest@example.com",
-            stripeAmount,
-            currency.toLowerCase()
-          );
-        } else {
-          paymentResult = await paymentApi.createStripeIntent(
-            currentBooking.id,
-            stripeAmount,
-            currency.toLowerCase()
-          );
-        }
-
-        if (paymentResult.clientSecret) {
-          setPaymentInitiated(true);
-          
-          const stripe = await stripePromise;
-          if (stripe) {
-            const { error: stripeError } = await stripe.confirmCardPayment(
-              paymentResult.clientSecret,
-              {
-                payment_method: {
-                  card: {
-                    number: '4242424242424242',
-                    exp_month: 12,
-                    exp_year: 2026,
-                    cvc: '123',
-                  } as any,
-                  billing_details: {
-                    name: `${currentBooking.passengerInfo?.firstName || 'Guest'} ${currentBooking.passengerInfo?.lastName || 'User'}`,
-                    email: currentBooking.passengerInfo?.email || 'guest@example.com',
-                    phone: currentBooking.passengerInfo?.phone || '+2348012345678',
-                  },
-                },
-              }
-            );
-
-            if (stripeError) {
-              throw new Error(stripeError.message);
-            }
-
-            await handlePaymentComplete(currentBooking.id, currentBooking.isGuest);
-          }
-        } else {
-          throw new Error('Failed to create payment intent');
-        }
-      } catch (err: any) {
-        console.error('Payment error:', err);
-        setError(err.message || 'Payment failed. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    }, [currentBooking, getActualAmount, handlePaymentComplete]);
-
-    if (!showPayment || !currentBooking) return null;
-
-    const { displayAmount, currency } = getActualAmount();
-
-    return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold text-gray-900">Complete Payment</h2>
-            <button
-              onClick={() => setShowPayment(false)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              ✕
-            </button>
-          </div>
-          
-          <div className="mb-6">
-            <div className="bg-gray-50 rounded-xl p-4 mb-4">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-gray-600">Booking Reference</span>
-                <span className="font-bold text-gray-900">{currentBooking.bookingReference}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600">Total Amount</span>
-                <span className="text-2xl font-bold text-gray-900">
-                  {formatAmount(displayAmount, currency)}
-                </span>
-              </div>
-            </div>
-            
-            {error && (
-              <div className="bg-red-50 text-red-700 p-3 rounded-lg mb-4">
-                {error}
-              </div>
-            )}
-            
-            <div className="text-sm text-gray-500 mb-4">
-              {paymentInitiated ? (
-                <div className="flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-2"></div>
-                  Processing payment...
-                </div>
-              ) : (
-                "Click 'Pay Now' to proceed with secure payment"
-              )}
-            </div>
-          </div>
-          
-          <div className="flex gap-3">
-            <button
-              onClick={() => setShowPayment(false)}
-              className="flex-1 py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition"
-              disabled={loading || paymentInitiated}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handlePayment}
-              disabled={loading || paymentInitiated}
-              className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold rounded-xl shadow-lg hover:from-blue-600 hover:to-blue-700 transition disabled:opacity-50"
-            >
-              {loading || paymentInitiated ? "Processing..." : "Pay Now"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
@@ -1614,7 +1699,21 @@ export default function Home() {
 
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      <PaymentModal />
+      {/* Payment Modal wrapped with Elements provider */}
+      {showPayment && currentBooking && (
+        <Elements stripe={stripePromise}>
+          <PaymentForm 
+            currentBooking={currentBooking}
+            showPayment={showPayment}
+            setShowPayment={setShowPayment}
+            handlePaymentComplete={handlePaymentComplete}
+            isLoggedIn={isLoggedIn}
+            setIsLoggedIn={setIsLoggedIn}
+            setIsAuthOpen={setIsAuthOpen}
+            setAuthMode={setAuthMode}
+          />
+        </Elements>
+      )}
       
       {showNav && (
         <Navbar
