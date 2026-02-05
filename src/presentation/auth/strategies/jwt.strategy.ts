@@ -18,7 +18,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         if (!secret && process.env.NODE_ENV === 'production') {
           throw new Error('JWT_SECRET is required in production environment');
         }
-        return secret || 'dev-secret-key-change-in-production';
+        return secret || 'CbWF7ge7Qse7xl4oHZR1sj8VL8LI8tWZ2iLnZR+3rgc=';
       })(),
     });
   }
