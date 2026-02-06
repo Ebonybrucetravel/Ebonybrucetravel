@@ -62,11 +62,43 @@ export class SearchCarRentalsUseCase {
         `Searching car rentals: ${pickupLocationCode} -> ${dropoffLocationCode || pickupLocationCode}, ${pickupDateTime} to ${dropoffDateTime || dropoff.toISOString()}, passengers: ${passengers}`,
       );
       
+      // Format dates for Amadeus API
+      // Amadeus transfer API expects ISO 8601 format: YYYY-MM-DDTHH:mm:ss
+      // Ensure dates are valid and properly formatted
+      const pickupDate = new Date(pickupDateTime);
+      const dropoffDate = dropoffDateTime ? new Date(dropoffDateTime) : dropoff;
+      
+      // Validate dates are not too far in the future (Amadeus may have limits)
+      const maxFutureDate = new Date();
+      maxFutureDate.setMonth(maxFutureDate.getMonth() + 12); // 12 months ahead
+      
+      if (pickupDate > maxFutureDate) {
+        throw new BadRequestException(
+          `Pickup date (${pickupDateTime}) is too far in the future. Amadeus API supports dates up to 12 months ahead.`,
+        );
+      }
+      
+      // Format as ISO 8601 without milliseconds (Amadeus may prefer this format)
+      const formatAmadeusDateTime = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+      };
+      
+      const formattedPickupDateTime = formatAmadeusDateTime(pickupDate);
+      const formattedDropoffDateTime = formatAmadeusDateTime(dropoffDate);
+      
+      this.logger.log(`Formatted dates for Amadeus - Pickup: ${formattedPickupDateTime}, Dropoff: ${formattedDropoffDateTime}`);
+      
       const response = await this.amadeusService.searchTransfers({
         originLocationCode: pickupLocationCode,
         destinationLocationCode: dropoffLocationCode || pickupLocationCode,
-        departureDateTime: pickupDateTime,
-        returnDateTime: dropoffDateTime || dropoff.toISOString(),
+        departureDateTime: formattedPickupDateTime,
+        returnDateTime: formattedDropoffDateTime,
         passengers,
         vehicleTypes: vehicleTypes || undefined,
       });

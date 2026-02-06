@@ -51,22 +51,29 @@ export class LocationDto {
 
 export class AccommodationSuggestionsDto {
   @ApiProperty({
-    description: 'Search query (minimum 3 characters)',
-    example: 'london',
+    description: 'Search keyword (minimum 3 characters) - city name, hotel name, or location. Uses Amadeus Hotel Name Search API.',
+    example: 'London',
     minLength: 3,
   })
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
-  query: string;
+  keyword: string;
 
   @ApiPropertyOptional({
-    description: 'Location filter (optional)',
-    type: LocationDto,
+    description: 'Hotel subtype filter (e.g., "HOTEL_GD")',
+    example: 'HOTEL_GD',
   })
   @IsOptional()
-  @ValidateNested()
-  @Type(() => LocationDto)
-  location?: LocationDto;
+  @IsString()
+  subType?: string;
+
+  @ApiPropertyOptional({
+    description: 'ISO country code (e.g., "GB", "US", "FR")',
+    example: 'GB',
+  })
+  @IsOptional()
+  @IsString()
+  countryCode?: string;
 }
 

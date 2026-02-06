@@ -1,28 +1,33 @@
-import { Injectable } from '@nestjs/common';
-import { DuffelService } from '@infrastructure/external-apis/duffel/duffel.service';
+import { Injectable, Logger } from '@nestjs/common';
+import { AmadeusService } from '@infrastructure/external-apis/amadeus/amadeus.service';
 import { AccommodationSuggestionsDto } from '@presentation/booking/dto/accommodation-suggestions.dto';
 
 @Injectable()
 export class SearchAccommodationSuggestionsUseCase {
-  constructor(private readonly duffelService: DuffelService) {}
+  private readonly logger = new Logger(SearchAccommodationSuggestionsUseCase.name);
+
+  constructor(private readonly amadeusService: AmadeusService) {}
 
   async execute(dto: AccommodationSuggestionsDto) {
     try {
-      const params: any = {
-        query: dto.query,
+      const response = await this.amadeusService.searchHotelNames({
+        keyword: dto.keyword,
+        ...(dto.subType && { subType: dto.subType }),
+        ...(dto.countryCode && { countryCode: dto.countryCode }),
+        page: {
+          limit: 20,
+          offset: 0,
+        },
+      });
+
+      // Amadeus returns { data: [{ type: 'hotel', hotelId: '...', name: '...', ... }] }
+      return {
+        success: true,
+        data: response.data || [],
+        message: 'Hotel suggestions retrieved successfully',
       };
-
-      if (dto.location) {
-        params.location = {
-          geographic_coordinates: dto.location.geographic_coordinates,
-          ...(dto.location.radius && { radius: dto.location.radius }),
-        };
-      }
-
-      const response = await this.duffelService.searchAccommodationSuggestions(params);
-      return response.data;
     } catch (error) {
-      console.error('Error searching accommodation suggestions:', error);
+      this.logger.error('Error searching hotel suggestions:', error);
       throw error;
     }
   }
