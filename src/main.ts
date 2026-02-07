@@ -10,7 +10,6 @@ async function bootstrap() {
   });
 
   // Enable CORS
-  
   const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
     : ['http://localhost:3000', 'https://ebonybrucetravel-a4uy.vercel.app'];
@@ -46,6 +45,26 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/docs', app, document);
   }
+
+  // Root health check endpoint for Railway/load balancers
+  app.getHttpAdapter().get('/', (req, res) => {
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development',
+    });
+  });
+
+  // Alternative health check at /health (common for Railway)
+  app.getHttpAdapter().get('/health', (req, res) => {
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development',
+    });
+  });
 
   const port = process.env.PORT || 3001;
   await app.listen(port);
