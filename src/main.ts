@@ -6,10 +6,11 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    rawBody: true, // Enable raw body for Stripe webhook signature verification
+    rawBody: true,
   });
 
   // Enable CORS
+  
   const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
     : ['http://localhost:3000', 'https://ebonybrucetravel-a4uy.vercel.app'];
