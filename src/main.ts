@@ -73,9 +73,10 @@ async function bootstrap() {
   });
 
   const port = process.env.PORT || 3001;
-  await app.listen(port);
-  console.log(`🚀 Application is running on: http://localhost:${port}`);
-  console.log(`📚 Swagger docs available at: http://localhost:${port}/api/docs`);
+  const host = process.env.HOST || '0.0.0.0'; // Use 0.0.0.0 for Railway/external access
+  await app.listen(port, host);
+  console.log(`🚀 Application is running on: http://${host}:${port}`);
+  console.log(`📚 Swagger docs available at: http://${host}:${port}/api/docs`);
 }
 
 bootstrap();
