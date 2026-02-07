@@ -547,26 +547,80 @@ export class AmadeusService {
     originLocationCode: string; // Airport or location code
     destinationLocationCode?: string; // Optional destination
     departureDateTime: string; // ISO 8601
-    returnDateTime?: string; // ISO 8601
+    returnDateTime?: string; // ISO 8601 - Not used by API, but kept for reference
     passengers: number;
-    vehicleTypes?: string[]; // SEDAN, SUV, VAN, etc.
+    vehicleTypes?: string[]; // SEDAN, SUV, VAN, etc. - Maps to vehicleCode in API
     includedServices?: string[];
+    transferType?: string; // PRIVATE, SHARED, TAXI, HOURLY, AIRPORT_EXPRESS, AIRPORT_BUS
+    duration?: string; // ISO8601 duration format (PT2H30M) - Required for HOURLY transfers
+    currency?: string; // ISO 4217 currency code
   }): Promise<any> {
+    // Amadeus Transfer API expects fields at root level (NOT wrapped in 'data' object)
+    // Field names: startDateTime, startLocationCode, endLocationCode (not departureDateTime, originLocationCode, destinationLocationCode)
+    // According to the API docs (TransferSearch_v1_Version_1.11), the body structure is:
+    // {
+    //   "startDateTime": "2024-04-10T10:30:00",
+    //   "startLocationCode": "CDG",
+    //   "endLocationCode": "LHR",  // optional
+    //   "passengers": 2,
+    //   "transferType": "PRIVATE",  // optional
+    //   "duration": "PT2H30M",     // required for HOURLY transfers
+    //   "currency": "GBP"           // optional
+    // }
+    const requestBody: any = {
+      startDateTime: params.departureDateTime, // API expects startDateTime (not departureDateTime)
+      startLocationCode: params.originLocationCode, // API expects startLocationCode (not originLocationCode)
+      passengers: params.passengers,
+    };
+    
+    // Add end location if provided (for one-way transfers)
+    // If not provided and same as start, API will treat as round trip
+    if (params.destinationLocationCode && params.destinationLocationCode !== params.originLocationCode) {
+      requestBody.endLocationCode = params.destinationLocationCode;
+    }
+    
+    // Add transfer type if specified (defaults to all types if not specified)
+    if (params.transferType) {
+      requestBody.transferType = params.transferType;
+    }
+    
+    // Add duration for HOURLY transfers (required for HOURLY type, optional for others)
+    if (params.duration) {
+      requestBody.duration = params.duration;
+    }
+    
+    // Add currency if specified
+    if (params.currency) {
+      requestBody.currency = params.currency;
+    }
+    
+    // Map vehicleTypes to vehicleCode (API expects single vehicleCode enum value)
+    // API vehicleCode enum: CAR, SED, WGN, ELC, VAN, SUV, LMS, MBR, TRN, BUS
+    // Note: API only accepts single vehicleCode, not array. We'll use the first one if provided.
+    if (params.vehicleTypes && params.vehicleTypes.length > 0) {
+      // Map our vehicle types to Amadeus vehicle codes
+      const vehicleCodeMap: Record<string, string> = {
+        SEDAN: 'SED',
+        SUV: 'SUV',
+        VAN: 'VAN',
+        CONVERTIBLE: 'CAR',
+        COUPE: 'CAR',
+        HATCHBACK: 'CAR',
+        WAGON: 'WGN',
+        PICKUP: 'VAN',
+      };
+      const mappedCode = vehicleCodeMap[params.vehicleTypes[0].toUpperCase()];
+      if (mappedCode) {
+        requestBody.vehicleCode = mappedCode;
+      }
+    }
+    
+    // Log the exact request being sent to Amadeus for debugging
+    this.logger.log(`Amadeus transfer search request body: ${JSON.stringify(requestBody, null, 2)}`);
+    
     return this.makeRequest('/v1/shopping/transfer-offers', {
       method: 'POST',
-      body: {
-        data: {
-          originLocationCode: params.originLocationCode,
-          ...(params.destinationLocationCode && {
-            destinationLocationCode: params.destinationLocationCode,
-          }),
-          departureDateTime: params.departureDateTime,
-          ...(params.returnDateTime && { returnDateTime: params.returnDateTime }),
-          passengers: params.passengers,
-          ...(params.vehicleTypes && { vehicleTypes: params.vehicleTypes }),
-          ...(params.includedServices && { includedServices: params.includedServices }),
-        },
-      },
+      body: requestBody,
     });
   }
 

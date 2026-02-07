@@ -163,10 +163,17 @@ export class CurrencyService {
         // Direct conversion from USD
         const response = await fetch(`${this.baseUrl}/latest/USD`);
         if (!response.ok) {
-          throw new Error(`Exchange rate API error: ${response.status}`);
+          const errorText = await response.text();
+          throw new Error(`Exchange rate API error: ${response.status} - ${errorText}`);
         }
         const data = await response.json();
-        rate = data.rates[toCurrency];
+        // v4 API uses 'conversion_rates', v6 API uses 'rates'
+        const rates = data.conversion_rates || data.rates;
+        if (!data || !rates) {
+          this.logger.error(`Invalid API response structure:`, JSON.stringify(data).substring(0, 200));
+          throw new Error(`Invalid API response structure: rates not found`);
+        }
+        rate = rates[toCurrency];
         if (!rate) {
           throw new Error(`Exchange rate not found for ${toCurrency}`);
         }
@@ -177,7 +184,12 @@ export class CurrencyService {
           throw new Error(`Exchange rate API error: ${response.status}`);
         }
         const data = await response.json();
-        const fromRate = data.rates[fromCurrency];
+        // v4 API uses 'conversion_rates', v6 API uses 'rates'
+        const rates = data.conversion_rates || data.rates;
+        if (!data || !rates) {
+          throw new Error(`Invalid API response structure: rates not found`);
+        }
+        const fromRate = rates[fromCurrency];
         if (!fromRate) {
           throw new Error(`Exchange rate not found for ${fromCurrency}`);
         }
@@ -189,8 +201,13 @@ export class CurrencyService {
           throw new Error(`Exchange rate API error: ${response.status}`);
         }
         const data = await response.json();
-        const fromRate = data.rates[fromCurrency];
-        const toRate = data.rates[toCurrency];
+        // v4 API uses 'conversion_rates', v6 API uses 'rates'
+        const rates = data.conversion_rates || data.rates;
+        if (!data || !rates) {
+          throw new Error(`Invalid API response structure: rates not found`);
+        }
+        const fromRate = rates[fromCurrency];
+        const toRate = rates[toCurrency];
         if (!fromRate || !toRate) {
           throw new Error(`Exchange rate not found for ${fromCurrency} or ${toCurrency}`);
         }
