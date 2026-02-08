@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
-  private readonly maxRetries = 5;
+  private readonly maxRetries = 3;
   private readonly retryDelay = 2000; // 2 seconds
 
   constructor(private readonly configService: ConfigService) {
@@ -35,7 +35,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
-    await this.connectWithRetry();
+    // Connect in background - don't block app startup
+    // This allows the server to start listening immediately
+    // while the database connection is being established
+    this.connectWithRetry().catch((error) => {
+      this.logger.error('Background database connection failed:', error?.message);
+    });
   }
 
   async onModuleDestroy() {
