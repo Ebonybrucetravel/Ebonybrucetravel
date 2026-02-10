@@ -1,4 +1,4 @@
-// api.ts - COMPLETE VERSION with Amadeus hotel booking and FIXED flight search
+// api.ts - COMPLETE VERSION with Unified Payment System for all booking types
 const API_BASE = 'https://ebony-bruce-production.up.railway.app';
 
 // Define ApiError class with enhanced error handling
@@ -280,6 +280,233 @@ export interface FlightSearchResponse {
   [key: string]: any;
 }
 
+// Car Rental Interfaces
+export interface CarRentalSearchParams {
+  pickupLocationCode: string;
+  pickupDateTime: string; // Format: "YYYY-MM-DDTHH:mm:ss"
+  dropoffLocationCode: string;
+  dropoffDateTime: string; // Format: "YYYY-MM-DDTHH:mm:ss"
+  currency?: string;
+  passengers?: number;
+  [key: string]: any;
+}
+
+export interface CarRentalOffer {
+  id: string;
+  type: string;
+  transferType: string;
+  start: {
+    dateTime: string;
+    locationCode: string;
+    address?: {
+      countryCode: string;
+    };
+  };
+  end: {
+    dateTime: string;
+    locationCode: string;
+    address?: {
+      countryCode: string;
+    };
+  };
+  cancellationRules?: Array<{
+    ruleDescription: string;
+    feeType?: string;
+    feeValue?: string;
+    metricType?: string;
+    metricMin?: string;
+    metricMax?: string;
+  }>;
+  duration: string;
+  vehicle: {
+    code: string;
+    category: string;
+    description: string;
+    imageURL: string;
+    baggages?: Array<{
+      count?: number;
+      size?: string;
+    }>;
+    seats?: Array<{
+      count: number;
+    }>;
+  };
+  distance?: {
+    value: number;
+    unit: string;
+  };
+  serviceProvider: {
+    code: string;
+    name: string;
+    logoUrl?: string;
+    settings?: string[];
+    termsUrl?: string;
+    isPreferred?: boolean;
+  };
+  partnerInfo?: {
+    serviceProvider: {
+      code: string;
+      name: string;
+      termsUrl?: string;
+      isPreferred?: boolean;
+      logoUrl?: string;
+    };
+  };
+  quotation: {
+    monetaryAmount: string;
+    currencyCode: string;
+    taxes?: Array<{
+      monetaryAmount: string;
+    }>;
+    totalTaxes?: {
+      monetaryAmount: string;
+    };
+    isEstimated?: boolean;
+    base?: {
+      monetaryAmount: string;
+    };
+    totalFees?: {
+      monetaryAmount: string;
+    };
+  };
+  converted: {
+    monetaryAmount: string;
+    currencyCode: string;
+    taxes?: Array<{
+      monetaryAmount: string;
+    }>;
+    base?: {
+      monetaryAmount: string;
+    };
+    isEstimated?: boolean;
+    totalTaxes?: {
+      monetaryAmount: string;
+    };
+    totalFees?: {
+      monetaryAmount: string;
+    };
+  };
+  supportedPaymentInstruments: Array<{
+    vendorCode: string;
+    description: string;
+  }>;
+  methodsOfPaymentAccepted: string[];
+  conditionSummary?: Array<{
+    descriptions: Array<{
+      descriptionType: string;
+      text: string;
+    }>;
+  }>;
+  original_price?: string;
+  original_currency?: string;
+  base_price?: string;
+  currency?: string;
+  conversion_fee?: string;
+  conversion_fee_percentage?: number;
+  price_after_conversion?: string;
+  markup_percentage?: number;
+  markup_amount?: string;
+  service_fee?: string;
+  final_price?: string;
+  price?: {
+    currency: string;
+    base: string;
+    total: string;
+    original_total?: string;
+    original_currency?: string;
+  };
+}
+
+export interface CarRentalSearchResponse {
+  success?: boolean;
+  data?: {
+    data: CarRentalOffer[];
+    meta?: {
+      count: number;
+      total: number;
+      limit: number;
+      page: number;
+      totalPages: number;
+      hasMore: boolean;
+      nextPage?: number;
+      prevPage?: number;
+    };
+    currency?: string;
+    conversion_note?: string;
+    cached?: boolean;
+  };
+  message?: string;
+  [key: string]: any;
+}
+
+// Update the interface at the top of the file
+export interface CarRentalBookingRequest {
+  offerId: string;
+  pickupLocationCode: string;
+  pickupDateTime: string; // Format: "YYYY-MM-DDTHH:mm:ss"
+  dropoffLocationCode: string;
+  dropoffDateTime: string; // Format: "YYYY-MM-DDTHH:mm:ss"
+  passengerInfo: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    // Do NOT include a 'name' property here
+  };
+  specialRequests?: string;
+  flightNumber?: string;
+  // Remove provider and totalAmount from here
+  [key: string]: any; // Keep this for flexibility
+}
+
+export interface CarRentalBookingResponse {
+  success?: boolean;
+  data?: {
+    bookingId: string;
+    confirmationNumber?: string;
+    status?: string;
+    provider?: string;
+    vehicle?: {
+      description: string;
+      category: string;
+    };
+    pickup?: {
+      location: string;
+      dateTime: string;
+    };
+    dropoff?: {
+      location: string;
+      dateTime: string;
+    };
+    totalPrice?: number;
+    currency?: string;
+    passenger?: {
+      name: string;
+      email: string;
+      phone: string;
+    };
+    specialRequests?: string;
+    cancellationPolicy?: string;
+    bookingDate?: string;
+  };
+  message?: string;
+  [key: string]: any;
+}
+
+export interface CarRentalCancellationResponse {
+  success?: boolean;
+  data?: {
+    bookingId: string;
+    status: string;
+    cancellationDate: string;
+    refundAmount?: number;
+    cancellationFee?: number;
+    message?: string;
+  };
+  message?: string;
+  [key: string]: any;
+}
+
 // ────────────────────────────────────────────────
 // Helper: get current auth token from localStorage
 // ────────────────────────────────────────────────
@@ -345,12 +572,20 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       data = { message: text || response.statusText };
     }
 
-    // Handle common auth errors
-    if (response.status === 401) {
-      clearAuthToken();
-      window.dispatchEvent(new CustomEvent('auth-expired'));
-      throw new ApiError('Session expired. Please sign in again.', 401, 'UNAUTHORIZED');
-    }
+   // In the request function, around line 577:
+if (response.status === 401) {
+  const currentToken = getAuthToken();
+  
+  // FIXED: Only throw "session expired" if there actually was a token
+  if (!currentToken || currentToken.trim() === '') {
+    // This is a fresh login attempt that failed, not an expired session
+    throw new ApiError('Invalid credentials. Please check your email and password.', 401, 'INVALID_CREDENTIALS');
+  }
+  
+  clearAuthToken();
+  window.dispatchEvent(new CustomEvent('auth-expired'));
+  throw new ApiError('Session expired. Please sign in again.', 401, 'UNAUTHORIZED');
+}
 
     if (response.status === 403) {
       throw new ApiError('You do not have permission to perform this action.', 403, 'FORBIDDEN');
@@ -443,7 +678,7 @@ export const getCityCode = (cityName: string): string => {
     'lagos': 'LOS',
     
     // International destinations with available hotels
-    'london': 'LON',
+    'london': 'LHR',
     'new york': 'NYC',
     'paris': 'PAR',
     'dubai': 'DXB',
@@ -1461,6 +1696,1306 @@ export async function searchFlightsWithPagination(
 }
 
 // ────────────────────────────────────────────────
+// Car Rental Search API - Enhanced Implementation
+// ────────────────────────────────────────────────
+export const searchCarRentals = async (
+  searchParams: CarRentalSearchParams
+): Promise<CarRentalSearchResponse> => {
+  try {
+    console.log('🚗 Starting car rental search with params:', searchParams);
+    
+    const response = await request<CarRentalSearchResponse>(
+      '/api/v1/bookings/search/car-rentals',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          pickupLocationCode: searchParams.pickupLocationCode,
+          pickupDateTime: searchParams.pickupDateTime,
+          dropoffLocationCode: searchParams.dropoffLocationCode,
+          dropoffDateTime: searchParams.dropoffDateTime,
+          currency: searchParams.currency || 'GBP',
+          passengers: searchParams.passengers || 2,
+        }),
+      }
+    );
+
+    console.log('✅ Car rental search response structure:', {
+      success: response.success,
+      message: response.message,
+      hasData: !!response.data?.data,
+      carCount: response.data?.data?.length || 0,
+      meta: response.data?.meta,
+    });
+    
+    return response;
+    
+  } catch (error: any) {
+    console.error('❌ Car rental search failed:', error);
+    
+    // Provide more specific error messages
+    if (error.message?.includes('location')) {
+      throw new ApiError('Invalid location code. Please check the pickup/dropoff locations.', 400, 'INVALID_LOCATION_CODE');
+    }
+    
+    if (error.message?.includes('date')) {
+      throw new ApiError('Invalid date format. Please use YYYY-MM-DDTHH:mm:ss format.', 400, 'INVALID_DATE_FORMAT');
+    }
+    
+    if (error.message?.includes('time')) {
+      throw new ApiError('Pickup time must be before dropoff time.', 400, 'INVALID_TIME_RANGE');
+    }
+    
+    throw error;
+  }
+};
+
+// ────────────────────────────────────────────────
+// Car rental search with pagination and filtering
+// ────────────────────────────────────────────────
+export async function searchCarRentalsWithPagination(
+  params: CarRentalSearchParams & {
+    minPrice?: number;
+    maxPrice?: number;
+    vehicleTypes?: string[];
+    providers?: string[];
+    sortBy?: 'price' | 'vehicle_category' | 'provider';
+    sortOrder?: 'asc' | 'desc';
+    page?: number;
+    limit?: number;
+  },
+  maxPages: number = 3
+): Promise<{
+  success: boolean;
+  data: CarRentalOffer[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasMore: boolean;
+  meta?: any;
+}> {
+  try {
+    console.log('🔍 Starting car rental search with pagination:', params);
+    
+    // Step 1: Initial search
+    const response = await searchCarRentals({
+      pickupLocationCode: params.pickupLocationCode,
+      pickupDateTime: params.pickupDateTime,
+      dropoffLocationCode: params.dropoffLocationCode,
+      dropoffDateTime: params.dropoffDateTime,
+      currency: params.currency,
+      passengers: params.passengers,
+    });
+    
+    if (!response.success) {
+      throw new ApiError(response.message || 'Car rental search failed', 400, 'CAR_RENTAL_SEARCH_FAILED');
+    }
+    
+    let allCars = response.data?.data || [];
+    
+    console.log(`✅ Initial car rental results: ${allCars.length} cars`);
+    
+    // Step 2: Apply filters locally
+    if (allCars.length > 0) {
+      // Filter by price range
+      if (params.minPrice !== undefined || params.maxPrice !== undefined) {
+        allCars = allCars.filter(car => {
+          const offerPrice = parseFloat(car.final_price || car.converted?.monetaryAmount || '0');
+          const minPrice = params.minPrice || 0;
+          const maxPrice = params.maxPrice || Number.MAX_SAFE_INTEGER;
+          return offerPrice >= minPrice && offerPrice <= maxPrice;
+        });
+      }
+      
+      // Filter by vehicle types
+      if (params.vehicleTypes && params.vehicleTypes.length > 0) {
+        allCars = allCars.filter(car => {
+          const vehicleType = car.vehicle.code.toLowerCase();
+          return params.vehicleTypes!.some(type => 
+            vehicleType.includes(type.toLowerCase()) || 
+            car.vehicle.description.toLowerCase().includes(type.toLowerCase())
+          );
+        });
+      }
+      
+      // Filter by providers
+      if (params.providers && params.providers.length > 0) {
+        allCars = allCars.filter(car => {
+          const providerName = car.serviceProvider.name.toLowerCase();
+          return params.providers!.some(provider => 
+            providerName.includes(provider.toLowerCase())
+          );
+        });
+      }
+      
+      // Sort results
+      if (params.sortBy) {
+        allCars.sort((a, b) => {
+          let aValue: any, bValue: any;
+          
+          switch (params.sortBy) {
+            case 'price':
+              aValue = parseFloat(a.final_price || a.converted?.monetaryAmount || '0');
+              bValue = parseFloat(b.final_price || b.converted?.monetaryAmount || '0');
+              break;
+            case 'vehicle_category':
+              aValue = a.vehicle.category || '';
+              bValue = b.vehicle.category || '';
+              break;
+            case 'provider':
+              aValue = a.serviceProvider.name || '';
+              bValue = b.serviceProvider.name || '';
+              break;
+            default:
+              return 0;
+          }
+          
+          const order = params.sortOrder === 'desc' ? -1 : 1;
+          
+          if (aValue < bValue) return -1 * order;
+          if (aValue > bValue) return 1 * order;
+          return 0;
+        });
+      }
+      
+      // Apply pagination
+      const page = params.page || 1;
+      const limit = params.limit || 10;
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedCars = allCars.slice(startIndex, endIndex);
+      
+      return {
+        success: true,
+        data: paginatedCars,
+        total: allCars.length,
+        page,
+        limit,
+        totalPages: Math.ceil(allCars.length / limit),
+        hasMore: endIndex < allCars.length,
+        meta: response.data?.meta,
+      };
+    }
+    
+    return {
+      success: true,
+      data: [],
+      total: 0,
+      page: 1,
+      limit: params.limit || 10,
+      totalPages: 0,
+      hasMore: false,
+    };
+    
+  } catch (error: any) {
+    console.error('❌ Car rental search with pagination failed:', error);
+    
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    throw new ApiError(
+      error.message || 'Car rental search failed',
+      error.status || 500,
+      'CAR_RENTAL_SEARCH_ERROR'
+    );
+  }
+}
+
+// ────────────────────────────────────────────────
+// Transform car rental API data to SearchResult format for your frontend
+// ────────────────────────────────────────────────
+export function transformCarRentalToSearchResult(
+  car: CarRentalOffer | null | undefined, 
+  pickupLocation: string,  // This should be the location name, not code
+  dropoffLocation: string, // This should be the location name, not code
+  index: number
+): any {
+  // Handle null/undefined car
+  if (!car) {
+    // Return a fallback result
+    return {
+      id: `car-${index}`,
+      provider: "Premium Car Rental",
+      title: "Car Rental",
+      subtitle: `${pickupLocation} → ${dropoffLocation} • Standard Car`,
+      price: "₦0/day",
+      totalPrice: "₦0 total",
+      rating: 4.0,
+      image: "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=400",
+      amenities: ["Air Conditioning", "Automatic Transmission", "GPS"],
+      features: ["Standard Car", "2 passengers", "Unlimited mileage"],
+      type: "car-rentals" as const,
+      realData: {
+        offerId: `car-${index}`,
+        pickupLocation,
+        dropoffLocation,
+        pickupDateTime: new Date().toISOString(),
+        dropoffDateTime: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        price: 0,
+        currency: 'GBP',
+        passengers: 2,
+        vehicleType: "Standard Car",
+      },
+    };
+  }
+  
+  const carInfo = car;
+  
+  // Calculate price
+  const finalPrice = parseFloat(carInfo.final_price || carInfo.converted?.monetaryAmount || '0');
+  const currency = carInfo.currency || carInfo.converted?.currencyCode || 'GBP';
+  
+  // Convert currency symbols
+  const getCurrencySymbol = (curr: string): string => {
+    const symbols: Record<string, string> = {
+      'GBP': '£',
+      'USD': '$',
+      'EUR': '€',
+      'NGN': '₦',
+    };
+    return symbols[curr.toUpperCase()] || curr;
+  };
+  
+  const priceSymbol = getCurrencySymbol(currency);
+  
+  // Calculate rental days - handle potential missing start/end dates
+  const pickupDate = carInfo.start?.dateTime ? new Date(carInfo.start.dateTime) : new Date();
+  const dropoffDate = carInfo.end?.dateTime ? new Date(carInfo.end.dateTime) : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  const days = Math.ceil((dropoffDate.getTime() - pickupDate.getTime()) / (1000 * 60 * 60 * 24));
+  const pricePerDay = days > 0 ? finalPrice / days : finalPrice;
+  
+  // Extract vehicle info with fallbacks
+  const vehicleType = carInfo.vehicle?.description || "Car";
+  const vehicleCategory = carInfo.vehicle?.category || "Standard";
+  const seats = carInfo.vehicle?.seats?.[0]?.count || 4;
+  const baggage = carInfo.vehicle?.baggages?.[0]?.count || 2;
+  
+  // Generate amenities based on vehicle category and provider
+  const amenities = extractCarAmenities(carInfo.vehicle?.category, carInfo.serviceProvider?.name);
+  
+  // Determine rating based on provider and vehicle category
+  const rating = calculateCarRentalRating(carInfo.serviceProvider?.name, carInfo.vehicle?.category);
+  
+  // Format pickup and dropoff times
+  const formatDateTime = (dateTime: string | undefined) => {
+    if (!dateTime) return 'N/A';
+    try {
+      const date = new Date(dateTime);
+      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return dateTime;
+    }
+  };
+  
+  // Handle cancellation rules safely
+  const cancellationRules = carInfo.cancellationRules || [];
+  const isRefundable = cancellationRules.length === 0 || 
+                      !cancellationRules[0]?.feeValue?.includes('100');
+  
+  // Extract location codes from the car object itself
+  const pickupCode = carInfo.start?.locationCode || 'Unknown';
+  const dropoffCode = carInfo.end?.locationCode || 'Unknown';
+  
+  return {
+    id: carInfo.id || `car-${index}`,
+    provider: getCarProviderName(carInfo.serviceProvider?.name),
+    title: vehicleType,
+    subtitle: `${pickupLocation} → ${dropoffLocation} • ${vehicleCategory}`,
+    price: `${priceSymbol}${Math.round(pricePerDay).toLocaleString()}/day`,
+    totalPrice: `${priceSymbol}${Math.round(finalPrice).toLocaleString()} total`,
+    rating: parseFloat(rating.toFixed(1)),
+    image: getCarImage(carInfo.vehicle?.code, carInfo.vehicle?.category, index),
+    amenities: amenities.slice(0, 6),
+    features: [
+      `${seats} seats`,
+      `${baggage} baggage${baggage > 1 ? 's' : ''}`,
+      `${days} day${days !== 1 ? 's' : ''} rental`,
+      `Pickup: ${formatDateTime(carInfo.start?.dateTime)}`,
+      vehicleCategory,
+    ],
+    type: "car-rentals" as const,
+    realData: {
+      offerId: carInfo.id,
+      pickupLocation: pickupCode,
+      dropoffLocation: dropoffCode,
+      pickupDateTime: carInfo.start?.dateTime || pickupDate.toISOString(),
+      dropoffDateTime: carInfo.end?.dateTime || dropoffDate.toISOString(),
+      price: finalPrice,
+      basePrice: parseFloat(carInfo.base_price || '0'),
+      currency,
+      passengers: seats,
+      vehicleType: vehicleType,
+      vehicleCategory: vehicleCategory,
+      seats: seats,
+      baggage: baggage,
+      days: days,
+      isRefundable: isRefundable,
+      cancellationPolicy: cancellationRules[0]?.ruleDescription || "Standard cancellation policy applies",
+      providerName: carInfo.serviceProvider?.name,
+      providerCode: carInfo.serviceProvider?.code,
+      distance: carInfo.distance ? `${carInfo.distance.value} ${carInfo.distance.unit}` : null,
+      duration: carInfo.duration,
+      finalPrice: finalPrice,
+      markupAmount: parseFloat(carInfo.markup_amount || '0'),
+      serviceFee: parseFloat(carInfo.service_fee || '0'),
+      // Do NOT include totalAmount or provider fields here
+    },
+  };
+}
+
+// Helper function to extract car amenities
+function extractCarAmenities(category?: string, providerName?: string): string[] {
+  const amenities: string[] = [];
+  
+  // Add category-based amenities
+  if (category?.includes('FC') || category?.includes('Luxury')) {
+    amenities.push('Premium Sound System', 'Leather Seats', 'Climate Control', 'Premium Package');
+  } else if (category?.includes('BU') || category?.includes('Business')) {
+    amenities.push('Business Class', 'WiFi', 'Charging Ports', 'Comfort Package');
+  } else {
+    amenities.push('Air Conditioning', 'Radio', 'Basic Package');
+  }
+  
+  // Add provider-specific amenities
+  if (providerName?.includes('Sixt')) {
+    amenities.push('24/7 Roadside Assistance', 'Premium Service');
+  } else if (providerName?.includes('GroundSpan') || providerName?.includes('Amadeus')) {
+    amenities.push('Professional Driver', 'Meet & Greet');
+  }
+  
+  // Add standard amenities
+  amenities.push(
+    'Unlimited Mileage',
+    'Full Insurance',
+    '24/7 Customer Support',
+    'Free Cancellation',
+    'Child Seats Available'
+  );
+  
+  return Array.from(new Set(amenities)); // Remove duplicates
+}
+
+// Helper function to calculate car rental rating
+function calculateCarRentalRating(providerName?: string, category?: string): number {
+  let baseRating = 4.0;
+  
+  // Adjust based on provider
+  if (providerName?.includes('Sixt')) {
+    baseRating = 4.5;
+  } else if (providerName?.includes('GroundSpan') || providerName?.includes('Amadeus')) {
+    baseRating = 4.3;
+  }
+  
+  // Adjust based on category
+  if (category?.includes('FC') || category?.includes('Luxury')) {
+    baseRating += 0.3;
+  } else if (category?.includes('BU') || category?.includes('Business')) {
+    baseRating += 0.2;
+  }
+  
+  // Add some random variation
+  const variation = (Math.random() * 0.4) - 0.2; // -0.2 to +0.2
+  const finalRating = Math.min(5.0, Math.max(3.0, baseRating + variation));
+  
+  return parseFloat(finalRating.toFixed(1));
+}
+
+// Helper function to get car provider name
+function getCarProviderName(providerName?: string): string {
+  if (!providerName) return 'Premium Car Rental';
+  
+  if (providerName.includes('Sixt')) {
+    return 'Sixt Ride';
+  } else if (providerName.includes('GroundSpan')) {
+    return 'GroundSpan';
+  } else if (providerName.includes('Amadeus')) {
+    return 'Amadeus Cars';
+  }
+  
+  return providerName;
+}
+
+// Helper function to get car image
+function getCarImage(vehicleCode?: string, category?: string, index: number = 0): string {
+  const carImages = [
+    'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=400', // Sedan
+    'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&q=80&w=400', // SUV
+    'https://images.unsplash.com/photo-1511919884226-fd3cad34687c?auto=format&fit=crop&q=80&w=400', // Luxury
+    'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=400', // Van
+    'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=400', // Convertible
+    'https://images.unsplash.com/photo-1563720223486-3294265d5a7c?auto=format&fit=crop&q=80&w=400', // Electric
+  ];
+  
+  // Map vehicle codes to images
+  if (vehicleCode?.includes('CAR') && category?.includes('FC')) {
+    return carImages[2]; // Luxury car
+  } else if (vehicleCode?.includes('SUV')) {
+    return carImages[1]; // SUV
+  } else if (vehicleCode?.includes('VAN')) {
+    return carImages[3]; // Van
+  } else if (category?.includes('BU')) {
+    return carImages[5]; // Business/Electric
+  }
+  
+  return carImages[index % carImages.length]; // Default to sedan
+}
+
+// ────────────────────────────────────────────────
+// Format car rental search parameters
+// ────────────────────────────────────────────────
+export async function formatCarRentalSearchParams(
+  pickupLocation: string,
+  dropoffLocation: string,
+  pickupDate?: string,
+  dropoffDate?: string,
+  pickupTime?: string,
+  dropoffTime?: string,
+  passengers?: number
+): Promise<CarRentalSearchParams> {
+  // Get location codes (using same getCityCode function or a similar one)
+  const pickupCode = getCityCode(pickupLocation);
+  const dropoffCode = getCityCode(dropoffLocation);
+  
+  // Set default dates if not provided
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  
+  const pickup = pickupDate || tomorrow.toISOString().split('T')[0];
+  const dropoff = dropoffDate || (() => {
+    const dropoffDate = new Date(pickup);
+    dropoffDate.setDate(dropoffDate.getDate() + 3); // Default 3-day rental
+    return dropoffDate.toISOString().split('T')[0];
+  })();
+  
+  // Set default times
+  const pickupTimeStr = pickupTime || '10:00:00';
+  const dropoffTimeStr = dropoffTime || '10:00:00';
+  
+  return {
+    pickupLocationCode: pickupCode,
+    pickupDateTime: `${pickup}T${pickupTimeStr}`,
+    dropoffLocationCode: dropoffCode,
+    dropoffDateTime: `${dropoff}T${dropoffTimeStr}`,
+    currency: 'GBP', // Default to GBP
+    passengers: Math.max(1, passengers || 2),
+  };
+}
+
+// ────────────────────────────────────────────────
+// Search car rentals and transform results for frontend
+// ────────────────────────────────────────────────
+export async function searchAndTransformCarRentals(
+  searchParams: CarRentalSearchParams,
+  pickupLocation: string,
+  dropoffLocation: string
+): Promise<{
+  success: boolean;
+  results: any[];
+  message?: string;
+  total: number;
+  isRealData: boolean;
+}> {
+  try {
+    console.log('🔍 Searching and transforming car rentals...');
+    
+    const response = await searchCarRentals(searchParams);
+    
+    // Handle case where API returns success but no data
+    if (!response.data?.data || response.data.data.length === 0) {
+      return {
+        success: false,
+        results: [],
+        message: 'No car rentals found for your search criteria',
+        total: 0,
+        isRealData: false,
+      };
+    }
+    
+    const cars = response.data.data;
+    const transformedResults = cars.map((car, index) =>
+      transformCarRentalToSearchResult(car, pickupLocation, dropoffLocation, index)
+    );
+    
+    return {
+      success: true,
+      results: transformedResults,
+      message: response.message,
+      total: cars.length,
+      isRealData: true,
+    };
+    
+  } catch (error: any) {
+    console.error('❌ Search and transform car rentals failed:', error);
+    
+    // Special handling for "no cars found" error
+    if (error.message?.includes('Nothing found') || 
+        error.message?.includes('No car rentals found') ||
+        error.status === 404) {
+      return {
+        success: false,
+        results: [],
+        message: 'No car rentals found for your search criteria. Please try different dates or locations.',
+        total: 0,
+        isRealData: false,
+      };
+    }
+    
+    return {
+      success: false,
+      results: [],
+      message: error.message || 'Failed to search car rentals',
+      total: 0,
+      isRealData: false,
+    };
+  }
+}
+
+// ────────────────────────────────────────────────
+// Validate car rental booking data
+// ────────────────────────────────────────────────
+export function validateCarRentalBookingData(bookingData: CarRentalBookingRequest): {
+  isValid: boolean;
+  errors: string[];
+} {
+  const errors: string[] = [];
+
+  // Validate offerId
+  if (!bookingData.offerId || bookingData.offerId.trim() === '') {
+    errors.push('Offer ID is required');
+  }
+
+  // Validate pickup location
+  if (!bookingData.pickupLocationCode || bookingData.pickupLocationCode.trim() === '') {
+    errors.push('Pickup location code is required');
+  }
+
+  // Validate pickup date/time
+  if (!bookingData.pickupDateTime || bookingData.pickupDateTime.trim() === '') {
+    errors.push('Pickup date and time are required');
+  } else if (!isValidDateTime(bookingData.pickupDateTime)) {
+    errors.push('Pickup date must be in YYYY-MM-DDTHH:mm:ss format');
+  }
+
+  // Validate dropoff location
+  if (!bookingData.dropoffLocationCode || bookingData.dropoffLocationCode.trim() === '') {
+    errors.push('Dropoff location code is required');
+  }
+
+  // Validate dropoff date/time
+  if (!bookingData.dropoffDateTime || bookingData.dropoffDateTime.trim() === '') {
+    errors.push('Dropoff date and time are required');
+  } else if (!isValidDateTime(bookingData.dropoffDateTime)) {
+    errors.push('Dropoff date must be in YYYY-MM-DDTHH:mm:ss format');
+  }
+
+  // Validate passenger info
+  if (!bookingData.passengerInfo) {
+    errors.push('Passenger information is required');
+  } else {
+    const { firstName, lastName, email, phone } = bookingData.passengerInfo;
+    
+    if (!firstName || firstName.trim() === '') {
+      errors.push('First name is required');
+    }
+    if (!lastName || lastName.trim() === '') {
+      errors.push('Last name is required');
+    }
+    if (!email || !isValidEmail(email)) {
+      errors.push('Valid email is required');
+    }
+    if (!phone || phone.trim() === '') {
+      errors.push('Phone number is required');
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+  };
+}
+
+// Helper function to validate date-time format
+function isValidDateTime(dateTime: string): boolean {
+  if (!dateTime || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(dateTime)) return false;
+  
+  try {
+    const date = new Date(dateTime);
+    return !isNaN(date.getTime());
+  } catch {
+    return false;
+  }
+}
+
+// ────────────────────────────────────────────────
+// Create car rental booking - FIXED VERSION
+// ────────────────────────────────────────────────
+export const createCarRentalBooking = async (
+  bookingData: CarRentalBookingRequest
+): Promise<CarRentalBookingResponse> => {
+  try {
+    console.log('🚗 Creating car rental booking...');
+    
+    // Validate booking data
+    const validation = validateCarRentalBookingData(bookingData);
+    if (!validation.isValid) {
+      throw new ApiError(
+        `Booking validation failed: ${validation.errors.join(', ')}`,
+        400,
+        'BOOKING_VALIDATION_FAILED'
+      );
+    }
+    
+    // Create properly formatted request payload according to backend expectations
+    // The backend expects a generic booking structure, not car-specific fields
+    const requestPayload = {
+      productType: 'CAR_RENTAL',
+      provider: 'AMADEUS', // Must be one of: DUFFEL, TRIPS_AFRICA, BOOKING_COM, AMADEUS
+      
+      // Use car data from the offer (not from bookingData)
+      bookingData: {
+        offerId: bookingData.offerId,
+        pickupLocationCode: bookingData.pickupLocationCode,
+        pickupDateTime: bookingData.pickupDateTime,
+        dropoffLocationCode: bookingData.dropoffLocationCode,
+        dropoffDateTime: bookingData.dropoffDateTime,
+        specialRequests: bookingData.specialRequests,
+        flightNumber: bookingData.flightNumber,
+      },
+      
+      // Base price should come from the offer lookup, not bookingData
+      basePrice: 0, // This should be populated from the offer
+      currency: 'GBP', // Default currency
+      
+      // Passenger info in correct format
+      passengerInfo: {
+        firstName: bookingData.passengerInfo.firstName,
+        lastName: bookingData.passengerInfo.lastName,
+        email: bookingData.passengerInfo.email,
+        phone: bookingData.passengerInfo.phone,
+      }
+    };
+    
+    console.log('📤 Sending car rental booking request:', JSON.stringify(requestPayload, null, 2));
+    
+    // Use the generic booking endpoint, not car-specific endpoint
+    const response = await request<CarRentalBookingResponse>(
+      '/api/v1/bookings', // Generic bookings endpoint
+      {
+        method: 'POST',
+        body: JSON.stringify(requestPayload),
+      }
+    );
+
+    console.log('✅ Car rental booking response:', {
+      success: response.success,
+      message: response.message,
+      bookingId: response.data?.bookingId,
+    });
+    
+    return response;
+    
+  } catch (error: any) {
+    console.error('❌ Car rental booking failed:', error);
+    
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    throw new ApiError(
+      error.message || 'Failed to create car rental booking',
+      error.status || 500,
+      'CAR_RENTAL_BOOKING_ERROR'
+    );
+  }
+};
+
+// ────────────────────────────────────────────────
+// Cancel car rental booking
+// ────────────────────────────────────────────────
+export const cancelCarRentalBooking = async (
+  bookingId: string
+): Promise<CarRentalCancellationResponse> => {
+  try {
+    console.log(`🚗 Cancelling car rental booking: ${bookingId}`);
+    
+    const response = await request<CarRentalCancellationResponse>(
+      `/api/v1/bookings/car-rentals/bookings/${bookingId}/cancel`,
+      {
+        method: 'POST',
+      }
+    );
+
+    console.log('✅ Car rental cancellation response:', {
+      success: response.success,
+      message: response.message,
+      status: response.data?.status,
+    });
+    
+    return response;
+    
+  } catch (error: any) {
+    console.error('❌ Car rental cancellation failed:', error);
+    
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    // Provide more specific error messages
+    if (error.message?.includes('not found')) {
+      throw new ApiError('Booking not found. Please check the booking ID.', 404, 'BOOKING_NOT_FOUND');
+    }
+    
+    if (error.message?.includes('cannot be cancelled')) {
+      throw new ApiError('This booking cannot be cancelled. Please check the cancellation policy.', 400, 'CANCELLATION_NOT_ALLOWED');
+    }
+    
+    throw new ApiError(
+      error.message || 'Failed to cancel car rental booking',
+      error.status || 500,
+      'CAR_RENTAL_CANCELLATION_ERROR'
+    );
+  }
+};
+
+// ────────────────────────────────────────────────
+// Get car rental booking details
+// ────────────────────────────────────────────────
+export const getCarRentalBooking = async (
+  bookingId: string
+): Promise<CarRentalBookingResponse> => {
+  try {
+    console.log(`🚗 Fetching car rental booking: ${bookingId}`);
+    
+    const response = await request<CarRentalBookingResponse>(
+      `/api/v1/bookings/car-rentals/bookings/${bookingId}`,
+      {
+        method: 'GET',
+      }
+    );
+
+    console.log('✅ Car rental booking details:', {
+      success: response.success,
+      status: response.data?.status,
+    });
+    
+    return response;
+    
+  } catch (error: any) {
+    console.error('❌ Failed to fetch car rental booking:', error);
+    
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    throw new ApiError(
+      error.message || 'Failed to fetch car rental booking',
+      error.status || 500,
+      'CAR_RENTAL_BOOKING_FETCH_ERROR'
+    );
+  }
+};
+
+// ────────────────────────────────────────────────
+// Enhanced function to create car rental booking with all details - FIXED
+// ────────────────────────────────────────────────
+export async function createCompleteCarRentalBooking(
+  offerId: string,
+  carData: any,
+  passengerInfo: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+  },
+  specialRequests?: string,
+  flightNumber?: string
+): Promise<CarRentalBookingResponse> {
+  try {
+    console.log('🚗 Creating complete car rental booking...');
+    
+    // Validate car data
+    if (!carData || !carData.realData) {
+      throw new ApiError('Invalid car data', 400, 'INVALID_CAR_DATA');
+    }
+    
+    const realData = carData.realData;
+    
+    // Prepare booking data with correct field structure
+    const bookingData: CarRentalBookingRequest = {
+      offerId: offerId,
+      pickupLocationCode: realData.pickupLocation,
+      pickupDateTime: realData.pickupDateTime,
+      dropoffLocationCode: realData.dropoffLocation,
+      dropoffDateTime: realData.dropoffDateTime,
+      passengerInfo: {
+        firstName: passengerInfo.firstName,
+        lastName: passengerInfo.lastName,
+        email: passengerInfo.email,
+        phone: passengerInfo.phone,
+        // Do NOT include a 'name' property - use firstName and lastName directly
+      },
+      specialRequests: specialRequests,
+      flightNumber: flightNumber,
+    };
+    
+    // Create booking using the fixed function
+    const response = await createCarRentalBooking(bookingData);
+    
+    if (!response.success) {
+      throw new ApiError(
+        response.message || 'Car rental booking failed',
+        response.status || 500,
+        'CAR_RENTAL_BOOKING_FAILED'
+      );
+    }
+    
+    console.log('✅ Car rental booking created successfully:', response);
+    return response;
+    
+  } catch (error: any) {
+    console.error('❌ Complete car rental booking failed:', error);
+    
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    throw new ApiError(
+      error.message || 'Failed to create car rental booking',
+      error.status || 500,
+      'CAR_RENTAL_BOOKING_ERROR'
+    );
+  }
+}
+
+// ────────────────────────────────────────────────
+// NEW: Unified Payment Functions for ALL booking types
+// ────────────────────────────────────────────────
+
+// ────────────────────────────────────────────────
+// Payment status tracker
+// ────────────────────────────────────────────────
+export const trackPaymentStatus = async (
+  paymentIntentId: string,
+  interval: number = 2000,
+  maxAttempts: number = 30
+): Promise<{
+  status: string;
+  succeeded: boolean;
+  error?: string;
+}> => {
+  let attempts = 0;
+  
+  return new Promise((resolve, reject) => {
+    const checkStatus = async () => {
+      attempts++;
+      
+      try {
+        const status = await paymentApi.getPaymentStatus(paymentIntentId);
+        
+        if (status.succeeded || status.status === 'succeeded') {
+          resolve({ status: 'succeeded', succeeded: true });
+        } else if (status.status === 'requires_action' || status.status === 'requires_payment_method') {
+          // Payment needs additional action
+          resolve({ 
+            status: status.status, 
+            succeeded: false,
+            error: status.error?.message 
+          });
+        } else if (attempts >= maxAttempts) {
+          resolve({ 
+            status: 'timeout', 
+            succeeded: false,
+            error: 'Payment verification timed out' 
+          });
+        } else {
+          // Check again after interval
+          setTimeout(checkStatus, interval);
+        }
+      } catch (error) {
+        if (attempts >= maxAttempts) {
+          reject(new Error('Payment verification failed'));
+        } else {
+          setTimeout(checkStatus, interval);
+        }
+      }
+    };
+    
+    checkStatus();
+  });
+};
+
+// ────────────────────────────────────────────────
+// Unified payment processing for all booking types
+// ────────────────────────────────────────────────
+export const processBookingPayment = async (
+  bookingType: 'flights' | 'hotels' | 'car-rentals',
+  bookingData: any,
+  userInfo: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    [key: string]: any;
+  },
+  isAuthenticated: boolean = false
+): Promise<{
+  success: boolean;
+  paymentIntent?: any;
+  clientSecret?: string;
+  error?: string;
+}> => {
+  try {
+    console.log(`💳 Processing payment for ${bookingType}...`);
+    
+    // Generate a unique booking reference
+    const bookingReference = `BOOK-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Get price from booking data
+    const realData = bookingData.realData || bookingData;
+    const amount = realData.price || realData.totalPrice || 0;
+    const currency = realData.currency || 'GBP';
+    
+    // Create payment intent based on authentication status
+    let paymentIntent;
+    
+    if (isAuthenticated) {
+      // Authenticated user - create payment with booking reference
+      paymentIntent = await paymentApi.createStripeIntent(bookingReference, amount, currency);
+    } else {
+      // Guest user - create guest payment intent
+      paymentIntent = await paymentApi.createGuestStripeIntent(bookingReference, userInfo.email, amount, currency);
+    }
+    
+    if (!paymentIntent?.clientSecret) {
+      return {
+        success: false,
+        error: 'Failed to initialize payment. Please try again.',
+      };
+    }
+    
+    return {
+      success: true,
+      paymentIntent,
+      clientSecret: paymentIntent.clientSecret,
+    };
+    
+  } catch (error: any) {
+    console.error('❌ Payment processing failed:', error);
+    return {
+      success: false,
+      error: error.message || 'Payment processing failed',
+    };
+  }
+};
+
+// ────────────────────────────────────────────────
+// Create booking after successful payment
+// ────────────────────────────────────────────────
+export const createBookingAfterPayment = async (
+  bookingType: 'flights' | 'hotels' | 'car-rentals',
+  selectedResult: any,
+  userInfo: any,
+  paymentIntentId: string,
+  specialRequests?: string
+): Promise<{
+  success: boolean;
+  bookingId?: string;
+  message?: string;
+  error?: string;
+}> => {
+  try {
+    console.log(`📝 Creating ${bookingType} booking after payment...`);
+    
+    switch (bookingType) {
+      case 'flights':
+        return await createFlightBookingAfterPayment(selectedResult, userInfo, paymentIntentId);
+      
+      case 'hotels':
+        return await createHotelBookingAfterPayment(selectedResult, userInfo, paymentIntentId, specialRequests);
+      
+      case 'car-rentals':
+        return await createCarRentalBookingAfterPayment(selectedResult, userInfo, paymentIntentId, specialRequests);
+      
+      default:
+        throw new ApiError(`Unsupported booking type: ${bookingType}`, 400);
+    }
+    
+  } catch (error: any) {
+    console.error(`❌ ${bookingType} booking creation failed:`, error);
+    return {
+      success: false,
+      error: error.message || `Failed to create ${bookingType} booking`,
+    };
+  }
+};
+
+// ────────────────────────────────────────────────
+// Flight booking creator (after payment)
+// ────────────────────────────────────────────────
+async function createFlightBookingAfterPayment(
+  flightData: any,
+  userInfo: any,
+  paymentIntentId: string
+) {
+  const realData = flightData.realData || flightData;
+  
+  const bookingPayload = {
+    productType: 'FLIGHT',
+    provider: realData.airlineCode ? 'DUFFEL' : 'TRIPS_AFRICA',
+    basePrice: realData.price || 0,
+    currency: realData.currency || 'GBP',
+    bookingData: {
+      offerId: realData.offerId,
+      origin: realData.departureAirport,
+      destination: realData.arrivalAirport,
+      departureDate: realData.departureTime,
+      returnDate: realData.returnDate,
+      airline: realData.airlineCode,
+      flightNumber: realData.flightNumber,
+      cabinClass: realData.cabinClass,
+      passengers: realData.passengers || 1,
+    },
+    passengerInfo: {
+      firstName: userInfo.firstName,
+      lastName: userInfo.lastName,
+      email: userInfo.email,
+      phone: userInfo.phone,
+      dateOfBirth: userInfo.dateOfBirth,
+    },
+    paymentIntentId, // Link to the successful payment
+  };
+  
+  const response = await bookingApi.createBooking(bookingPayload);
+  return {
+    success: response.success || false,
+    bookingId: response.data?.bookingId || response.id,
+    message: response.message,
+  };
+}
+
+// ────────────────────────────────────────────────
+// Hotel booking creator (after payment)
+// ────────────────────────────────────────────────
+async function createHotelBookingAfterPayment(
+  hotelData: any,
+  userInfo: any,
+  paymentIntentId: string,
+  specialRequests?: string
+) {
+  const realData = hotelData.realData || hotelData;
+  
+  const bookingPayload = {
+    productType: 'HOTEL',
+    provider: 'AMADEUS', // or 'BOOKING_COM'
+    basePrice: realData.price || 0,
+    currency: realData.currency || 'GBP',
+    bookingData: {
+      hotelId: realData.hotelId,
+      offerId: realData.offerId,
+      hotelName: realData.hotelName,
+      checkInDate: realData.checkInDate,
+      checkOutDate: realData.checkOutDate,
+      guests: realData.guests || 2,
+      rooms: realData.rooms || 1,
+      location: realData.location,
+      roomType: realData.roomType,
+      specialRequests: specialRequests,
+    },
+    passengerInfo: {
+      firstName: userInfo.firstName,
+      lastName: userInfo.lastName,
+      email: userInfo.email,
+      phone: userInfo.phone,
+    },
+    paymentIntentId,
+  };
+  
+  const response = await bookingApi.createBooking(bookingPayload);
+  return {
+    success: response.success || false,
+    bookingId: response.data?.bookingId || response.id,
+    message: response.message,
+  };
+}
+
+// ────────────────────────────────────────────────
+// Car rental booking creator (after payment) - FIXED VERSION
+// ────────────────────────────────────────────────
+async function createCarRentalBookingAfterPayment(
+  carData: any,
+  userInfo: any,
+  paymentIntentId: string,
+  specialRequests?: string
+) {
+  const realData = carData.realData || carData;
+  
+  const bookingPayload = {
+    productType: 'CAR_RENTAL',
+    provider: 'AMADEUS', // Must match backend expected values
+    basePrice: realData.price || 0,
+    currency: realData.currency || 'GBP',
+    bookingData: {
+      offerId: realData.offerId,
+      pickupLocationCode: realData.pickupLocation,
+      pickupDateTime: realData.pickupDateTime,
+      dropoffLocationCode: realData.dropoffLocation,
+      dropoffDateTime: realData.dropoffDateTime,
+      vehicleType: realData.vehicleType,
+      vehicleCategory: realData.vehicleCategory,
+      specialRequests: specialRequests,
+      // DO NOT include totalAmount or provider here
+    },
+    passengerInfo: {
+      firstName: userInfo.firstName,
+      lastName: userInfo.lastName,
+      email: userInfo.email,
+      phone: userInfo.phone,
+      // DO NOT include a 'name' property here
+    },
+    paymentIntentId,
+  };
+  
+  console.log('📤 Car rental booking payload (after payment):', JSON.stringify(bookingPayload, null, 2));
+  
+  const response = await bookingApi.createBooking(bookingPayload);
+  return {
+    success: response.success || false,
+    bookingId: response.data?.bookingId || response.id,
+    message: response.message,
+  };
+}
+
+// ────────────────────────────────────────────────
+// Complete booking function with integrated payment
+// ────────────────────────────────────────────────
+export const completeBookingWithPayment = async (
+  bookingType: 'flights' | 'hotels' | 'car-rentals',
+  selectedResult: any,
+  userInfo: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    [key: string]: any;
+  },
+  stripe: any,
+  elements: any,
+  isAuthenticated: boolean = false,
+  specialRequests?: string
+): Promise<{
+  success: boolean;
+  bookingId?: string;
+  message?: string;
+  error?: string;
+  paymentIntentId?: string;
+}> => {
+  try {
+    console.log(`🎯 Starting complete booking process for ${bookingType}...`);
+    
+    // Step 1: Process payment
+    console.log('💳 Step 1: Processing payment...');
+    const paymentResult = await processBookingPayment(
+      bookingType,
+      selectedResult,
+      userInfo,
+      isAuthenticated
+    );
+    
+    if (!paymentResult.success || !paymentResult.clientSecret) {
+      throw new Error(paymentResult.error || 'Payment initialization failed');
+    }
+    
+    // Step 2: Confirm payment with Stripe
+    console.log('💳 Step 2: Confirming payment with Stripe...');
+    const stripeResult = await stripe.confirmPayment({
+      elements,
+      clientSecret: paymentResult.clientSecret,
+      confirmParams: {
+        return_url: `${window.location.origin}/booking/confirmation`,
+        payment_method_data: {
+          billing_details: {
+            name: `${userInfo.firstName} ${userInfo.lastName}`,
+            email: userInfo.email,
+            phone: userInfo.phone,
+          },
+        },
+      },
+      redirect: 'if_required',
+    });
+    
+    if (stripeResult.error) {
+      throw new Error(stripeResult.error.message);
+    }
+    
+    // Step 3: Verify payment succeeded
+    console.log('✅ Step 3: Verifying payment succeeded...');
+    const paymentStatus = await trackPaymentStatus(stripeResult.paymentIntent.id);
+    
+    if (!paymentStatus.succeeded) {
+      throw new Error(paymentStatus.error || 'Payment verification failed');
+    }
+    
+    // Step 4: Create booking after successful payment
+    console.log('📝 Step 4: Creating booking...');
+    const bookingResult = await createBookingAfterPayment(
+      bookingType,
+      selectedResult,
+      userInfo,
+      stripeResult.paymentIntent.id,
+      specialRequests
+    );
+    
+    if (!bookingResult.success) {
+      // If booking fails, try to refund the payment
+      try {
+        await paymentApi.refundPayment(stripeResult.paymentIntent.id);
+      } catch (refundError) {
+        console.error('Failed to refund payment after booking error:', refundError);
+      }
+      throw new Error(bookingResult.error || 'Booking creation failed');
+    }
+    
+    // Step 5: Send confirmation email
+    console.log('📧 Step 5: Sending confirmation email...');
+    try {
+      await paymentApi.sendConfirmation(bookingResult.bookingId!, userInfo.email);
+    } catch (emailError) {
+      console.warn('Email sending failed, but booking was created:', emailError);
+    }
+    
+    return {
+      success: true,
+      bookingId: bookingResult.bookingId,
+      message: bookingResult.message || `${bookingType} booked successfully!`,
+      paymentIntentId: stripeResult.paymentIntent.id,
+    };
+    
+  } catch (error: any) {
+    console.error('❌ Complete booking process failed:', error);
+    
+    // Provide user-friendly error messages
+    let errorMessage = error.message || 'Booking failed. Please try again.';
+    
+    if (error.message.includes('payment')) {
+      errorMessage = 'Payment failed. Please check your payment details and try again.';
+    } else if (error.message.includes('unavailable')) {
+      errorMessage = 'The selected option is no longer available. Please search again.';
+    } else if (error.message.includes('network')) {
+      errorMessage = 'Network error. Please check your connection and try again.';
+    } else if (error.message.includes('expired')) {
+      errorMessage = 'Session expired. Please refresh the page and try again.';
+    }
+    
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
+};
+
+// ────────────────────────────────────────────────
 // Auth API
 // ────────────────────────────────────────────────
 export const authApi = {
@@ -1675,35 +3210,32 @@ export const bookingApi = {
     });
   },
 
-  // Create authenticated booking
-  createBooking: (bookingData: {
-    productType: string;
-    provider: string;
-    basePrice: number;
-    currency: string;
-    bookingData: {
-      offerId: string;
-      origin: string;
-      destination: string;
-      departureDate?: string;
-      airline?: string;
-      [key: string]: any;
-    };
-    passengerInfo: {
-      firstName: string;
-      lastName: string;
-      email: string;
-      phone: string;
-      dateOfBirth?: string;
-      [key: string]: any;
-    };
+// In the bookingApi object, replace the createBooking function with:
+createBooking: (bookingData: {
+  productType: string;
+  provider: string;
+  basePrice: number;
+  currency: string;
+  bookingData: {
     [key: string]: any;
-  }) => {
-    return request<any>('/api/v1/bookings', {
-      method: 'POST',
-      body: JSON.stringify(bookingData),
-    });
-  },
+    offerId: string;
+  };
+  passengerInfo: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    dateOfBirth?: string;
+    [key: string]: any;
+  };
+  paymentIntentId?: string;
+  [key: string]: any;
+}) => {
+  return request<any>('/api/v1/bookings', {
+    method: 'POST',
+    body: JSON.stringify(bookingData),
+  });
+},
   
   // Create guest booking
   createGuestBooking: (bookingData: {
@@ -1802,28 +3334,42 @@ export const bookingApi = {
 };
 
 // ────────────────────────────────────────────────
-// Payment API - FIXED VERSION
+// UPDATED: Payment API with amount and currency support
 // ────────────────────────────────────────────────
 export const paymentApi = {
   // Create Stripe intent for authenticated users
-  createStripeIntent: (bookingId: string) => {
-    // Amount and currency are derived from the booking on the backend
+  createStripeIntent: (bookingReference: string, amount?: number, currency?: string) => {
     return request<any>('/api/v1/payments/stripe/create-intent', {
       method: 'POST',
-      body: JSON.stringify({ bookingId }), // Only send bookingId
+      body: JSON.stringify({ 
+        bookingReference,
+        ...(amount !== undefined && { amount: Math.round(amount * 100) }), // Convert to cents
+        ...(currency && { currency }),
+      }),
     });
   },
   
   // Create Stripe intent for guests
-  createGuestStripeIntent: (bookingReference: string, email: string) => {
-    // Amount and currency are derived from the booking on the backend
+  createGuestStripeIntent: (bookingReference: string, email: string, amount?: number, currency?: string) => {
     return request<any>('/api/v1/payments/stripe/create-intent/guest', {
       method: 'POST',
-      body: JSON.stringify({ bookingReference, email }), // Only send bookingReference and email
+      body: JSON.stringify({ 
+        bookingReference,
+        email,
+        ...(amount !== undefined && { amount: Math.round(amount * 100) }), // Convert to cents
+        ...(currency && { currency }),
+      }),
     });
   },
   
-  // Send booking confirmation email
+  // Verify payment status
+  getPaymentStatus: (paymentIntentId: string) => {
+    return request<any>(`/api/v1/payments/${paymentIntentId}/status`, {
+      method: 'GET',
+    });
+  },
+  
+  // Send booking confirmation
   sendConfirmation: (bookingId: string, email: string) => {
     return request<any>('/api/v1/bookings/send-confirmation', {
       method: 'POST',
@@ -1831,39 +3377,42 @@ export const paymentApi = {
     });
   },
   
-  // Get payment status
-  getPaymentStatus: (paymentId: string) => {
-    return request<any>(`/api/v1/payments/${paymentId}/status`, {
-      method: 'GET',
-    });
-  },
-  
   // Refund payment
-  refundPayment: (paymentId: string, amount?: number) => {
-    const body: any = { paymentId };
-    if (amount !== undefined) body.amount = amount;
-    
-    return request<any>(`/api/v1/payments/${paymentId}/refund`, {
+  refundPayment: (paymentIntentId: string, amount?: number) => {
+    return request<any>(`/api/v1/payments/${paymentIntentId}/refund`, {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ 
+        paymentIntentId,
+        ...(amount !== undefined && { amount: Math.round(amount * 100) }), // Convert to cents
+      }),
     });
   },
   
-  // Additional payment methods if needed
-  createPaypalPayment: (bookingId: string) => {
+  // Create PayPal payment
+  createPaypalPayment: (bookingId: string, amount?: number, currency?: string) => {
     return request<any>('/api/v1/payments/paypal/create', {
       method: 'POST',
-      body: JSON.stringify({ bookingId }),
+      body: JSON.stringify({ 
+        bookingId,
+        ...(amount !== undefined && { amount }),
+        ...(currency && { currency }),
+      }),
     });
   },
   
-  createFlutterwavePayment: (bookingId: string) => {
+  // Create Flutterwave payment
+  createFlutterwavePayment: (bookingId: string, amount?: number, currency?: string) => {
     return request<any>('/api/v1/payments/flutterwave/create', {
       method: 'POST',
-      body: JSON.stringify({ bookingId }),
+      body: JSON.stringify({ 
+        bookingId,
+        ...(amount !== undefined && { amount }),
+        ...(currency && { currency }),
+      }),
     });
   },
 };
+
 // ────────────────────────────────────────────────
 // Hotels API with Amadeus endpoint
 // ────────────────────────────────────────────────
@@ -2053,7 +3602,7 @@ export const hotelApi = {
       // Return default destinations if API fails
       return [
         { cityCode: 'LOS', cityName: 'Lagos', country: 'Nigeria', image: 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D' },
-        { cityCode: 'LON', cityName: 'London', country: 'UK', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
+        { cityCode: 'LHR', cityName: 'London', country: 'UK', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
         { cityCode: 'NYC', cityName: 'New York', country: 'USA', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400' },
         { cityCode: 'PAR', cityName: 'Paris', country: 'France', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400' },
         { cityCode: 'DXB', cityName: 'Dubai', country: 'UAE', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400' },
@@ -2064,9 +3613,10 @@ export const hotelApi = {
 };
 
 // ────────────────────────────────────────────────
-// Car Rentals API
+// Car Rentals API - Enhanced with all search functions
 // ────────────────────────────────────────────────
 export const carApi = {
+  // Existing search function (keep for backward compatibility)
   searchCars: (params: any) => {
     return request<any>('/api/v1/cars/search', {
       method: 'POST',
@@ -2074,11 +3624,61 @@ export const carApi = {
     });
   },
   
-  // Car rental booking
+  // New car rental search functions
+  searchCarRentals: searchCarRentals,
+  searchCarRentalsWithPagination: searchCarRentalsWithPagination,
+  searchAndTransformCarRentals: searchAndTransformCarRentals,
+  formatCarRentalSearchParams: formatCarRentalSearchParams,
+  transformCarRentalToSearchResult: transformCarRentalToSearchResult,
+  validateCarRentalBookingData: validateCarRentalBookingData,
+  
+  // Car rental booking functions
+  createCarRentalBooking: createCarRentalBooking,
+  createCompleteCarRentalBooking: createCompleteCarRentalBooking,
+  cancelCarRentalBooking: cancelCarRentalBooking,
+  getCarRentalBooking: getCarRentalBooking,
+  
+  // Car rental booking (generic - backward compatibility)
   bookCar: (carId: string, bookingData: any) => {
     return request<any>(`/api/v1/cars/${carId}/book`, {
       method: 'POST',
       body: JSON.stringify(bookingData),
+    });
+  },
+  
+  // Get popular car rental locations
+  getPopularLocations: () => {
+    return request<any[]>('/api/v1/cars/popular-locations', {
+      method: 'GET',
+    }).catch(() => {
+      // Return default locations if API fails
+      return [
+        { locationCode: 'LOS', locationName: 'Lagos', country: 'Nigeria', image: 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D' },
+        { locationCode: 'LHR', locationName: 'London', country: 'UK', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
+        { locationCode: 'NYC', locationName: 'New York', country: 'USA', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400' },
+        { locationCode: 'PAR', locationName: 'Paris', country: 'France', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400' },
+        { locationCode: 'DXB', locationName: 'Dubai', country: 'UAE', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400' },
+        { locationCode: 'SYD', locationName: 'Sydney', country: 'Australia', image: 'https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?auto=format&fit=crop&q=80&w=400' },
+      ];
+    });
+  },
+  
+  // Get available vehicle types
+  getAvailableVehicleTypes: () => {
+    return request<string[]>('/api/v1/cars/vehicle-types', {
+      method: 'GET',
+    }).catch(() => {
+      // Return default vehicle types if API fails
+      return [
+        'Sedan',
+        'SUV',
+        'Van',
+        'Luxury',
+        'Convertible',
+        'Electric',
+        'Business',
+        'Standard',
+      ];
     });
   },
 };
@@ -2826,6 +4426,18 @@ export function isHotelBookingResponse(obj: any): obj is HotelBookingResponse {
          ('success' in obj || 'data' in obj || 'message' in obj);
 }
 
+export function isCarRentalOffer(obj: any): obj is CarRentalOffer {
+  return obj && typeof obj === 'object' && 
+         'id' in obj && 
+         'vehicle' in obj && 
+         'serviceProvider' in obj;
+}
+
+export function isCarRentalSearchResponse(obj: any): obj is CarRentalSearchResponse {
+  return obj && typeof obj === 'object' && 
+         ('success' in obj || 'data' in obj || 'message' in obj);
+}
+
 // ────────────────────────────────────────────────
 // Export everything as an API object
 // ────────────────────────────────────────────────
@@ -2855,8 +4467,26 @@ const api = {
   validateFlightSearchParams,
   transformFlightOfferToSearchResult,
   
+  // Car rental functions
+  searchCarRentals,
+  searchCarRentalsWithPagination,
+  searchAndTransformCarRentals,
+  formatCarRentalSearchParams,
+  transformCarRentalToSearchResult,
+  validateCarRentalBookingData,
+  createCarRentalBooking,
+  createCompleteCarRentalBooking,
+  cancelCarRentalBooking,
+  getCarRentalBooking,
+  
   // Hotel booking functions
   createAmadeusHotelBooking,
+  
+  // NEW: Unified Payment Functions
+  processBookingPayment,
+  createBookingAfterPayment,
+  completeBookingWithPayment,
+  trackPaymentStatus,
   
   // Token management
   setAuthToken,
@@ -2889,6 +4519,8 @@ const api = {
   isHotelSearchResponse,
   isHotelBookingRequest,
   isHotelBookingResponse,
+  isCarRentalOffer,
+  isCarRentalSearchResponse,
   
   // Classes
   ApiError,

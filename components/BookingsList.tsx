@@ -35,5 +35,4 @@ const BookingsList: React.FC = () => {
   );
 };
 
-// Fix: Added missing default export
 export default BookingsList;

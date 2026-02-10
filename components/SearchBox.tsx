@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLanguage } from '../context/LanguageContext';
-import { getCityCode } from '../lib/api'; // Import the city code helper
+import { airports as airportData, airports, type Airport as AirportData } from '../lib/airportData';
 
 interface Segment {
   from: string;
@@ -31,12 +31,55 @@ interface HotelDestination {
   image?: string;
 }
 
+interface CarLocationSuggestion extends AirportData {
+  display: string;
+}
+
 interface SearchBoxProps {
   onSearch: (data: any) => void;
   loading: boolean;
   activeTab?: 'flights' | 'hotels' | 'cars';
   onTabChange?: (tab: 'flights' | 'hotels' | 'cars') => void;
 }
+
+const airportsWithCities: AirportData[] = [
+  // City centers (CRITICAL for car rentals)
+  { code: 'PAR', name: 'Paris City Center', city: 'Paris', country: 'France', type: 'city' },
+  { code: 'LHR', name: 'London City Center', city: 'London', country: 'UK', type: 'city' },
+  { code: 'NYC', name: 'New York City Center', city: 'New York', country: 'USA', type: 'city' },
+  { code: 'LAX', name: 'Los Angeles City Center', city: 'Los Angeles', country: 'USA', type: 'city' },
+  { code: 'CHI', name: 'Chicago City Center', city: 'Chicago', country: 'USA', type: 'city' },
+  { code: 'MIA', name: 'Miami City Center', city: 'Miami', country: 'USA', type: 'city' },
+  { code: 'LAS', name: 'Las Vegas City Center', city: 'Las Vegas', country: 'USA', type: 'city' },
+  { code: 'SFO', name: 'San Francisco City Center', city: 'San Francisco', country: 'USA', type: 'city' },
+  { code: 'BOS', name: 'Boston City Center', city: 'Boston', country: 'USA', type: 'city' },
+  { code: 'WAS', name: 'Washington D.C. City Center', city: 'Washington', country: 'USA', type: 'city' },
+  { code: 'DFW', name: 'Dallas City Center', city: 'Dallas', country: 'USA', type: 'city' },
+  { code: 'IAH', name: 'Houston City Center', city: 'Houston', country: 'USA', type: 'city' },
+  { code: 'PHX', name: 'Phoenix City Center', city: 'Phoenix', country: 'USA', type: 'city' },
+  { code: 'SEA', name: 'Seattle City Center', city: 'Seattle', country: 'USA', type: 'city' },
+  { code: 'MCO', name: 'Orlando City Center', city: 'Orlando', country: 'USA', type: 'city' },
+  { code: 'ATL', name: 'Atlanta City Center', city: 'Atlanta', country: 'USA', type: 'city' },
+  
+  // Nigeria city centers
+  { code: 'LOS', name: 'Lagos City Center', city: 'Lagos', country: 'Nigeria', type: 'city' },
+  { code: 'ABV', name: 'Abuja City Center', city: 'Abuja', country: 'Nigeria', type: 'city' },
+  { code: 'PHC', name: 'Port Harcourt City Center', city: 'Port Harcourt', country: 'Nigeria', type: 'city' },
+  { code: 'KAN', name: 'Kano City Center', city: 'Kano', country: 'Nigeria', type: 'city' },
+  
+  // Other international city centers
+  { code: 'DXB', name: 'Dubai City Center', city: 'Dubai', country: 'UAE', type: 'city' },
+  { code: 'SIN', name: 'Singapore City Center', city: 'Singapore', country: 'Singapore', type: 'city' },
+  { code: 'HKG', name: 'Hong Kong City Center', city: 'Hong Kong', country: 'China', type: 'city' },
+  { code: 'TYO', name: 'Tokyo City Center', city: 'Tokyo', country: 'Japan', type: 'city' },
+  { code: 'SYD', name: 'Sydney City Center', city: 'Sydney', country: 'Australia', type: 'city' },
+  { code: 'ROM', name: 'Rome City Center', city: 'Rome', country: 'Italy', type: 'city' },
+  { code: 'MAD', name: 'Madrid City Center', city: 'Madrid', country: 'Spain', type: 'city' },
+  { code: 'BER', name: 'Berlin City Center', city: 'Berlin', country: 'Germany', type: 'city' },
+  
+  // Import all airports from the airportData file
+  ...airportData
+];
 
 const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: activeTabProp, onTabChange }) => {
   const { t, currency } = useLanguage();
@@ -80,12 +123,23 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
   // Car Rental State
   const [carPickUp, setCarPickUp] = useState('');
+  const [carDropOff, setCarDropOff] = useState('');
   const [carPickUpDate, setCarPickUpDate] = useState('');
   const [carPickUpTime, setCarPickUpTime] = useState('10:00');
   const [carDropOffDate, setCarDropOffDate] = useState('');
   const [carDropOffTime, setCarDropOffTime] = useState('10:00');
+  const [carTravellers, setCarTravellers] = useState(2);
+  const [showCarTravellerDropdown, setShowCarTravellerDropdown] = useState(false);
   const [differentLocation, setDifferentLocation] = useState(false);
   const [driverAged, setDriverAged] = useState(true);
+  
+  // Car Rental Autocomplete State
+  const [showCarPickUpDropdown, setShowCarPickUpDropdown] = useState(false);
+  const [showCarDropOffDropdown, setShowCarDropOffDropdown] = useState(false);
+  const [carPickUpSuggestions, setCarPickUpSuggestions] = useState<CarLocationSuggestion[]>([]);
+  const [carDropOffSuggestions, setCarDropOffSuggestions] = useState<CarLocationSuggestion[]>([]);
+  const [loadingCarPickUpSuggestions, setLoadingCarPickUpSuggestions] = useState(false);
+  const [loadingCarDropOffSuggestions, setLoadingCarDropOffSuggestions] = useState(false);
   
   // Common State
   const [travellers, setTravellers] = useState<Travellers>({ adults: 1, children: 0, infants: 0 });
@@ -93,18 +147,46 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const [showRoomDropdown, setShowRoomDropdown] = useState(false);
 
   const travellerRef = useRef<HTMLDivElement>(null);
+  const carTravellerRef = useRef<HTMLDivElement>(null);
   const roomRef = useRef<HTMLDivElement>(null);
   const cabinRef = useRef<HTMLDivElement>(null);
   const filtersRef = useRef<HTMLDivElement>(null);
   const fromRef = useRef<HTMLDivElement>(null);
   const toRef = useRef<HTMLDivElement>(null);
   const hotelLocationRef = useRef<HTMLDivElement>(null);
+  const carPickUpRef = useRef<HTMLDivElement>(null);
+  const carDropOffRef = useRef<HTMLDivElement>(null);
   const today = new Date().toISOString().split('T')[0];
+
+  // Create local getCityCode function
+  const getCityCode = (location: string): string => {
+    if (!location) return 'LOS';
+    
+    // Check if location contains a code in parentheses
+    const match = location.match(/\(([A-Z]{3})\)/);
+    if (match) return match[1];
+    
+    // Check if it starts with a 3-letter code like "LOS - "
+    const codeMatch = location.match(/^([A-Z]{3})\s*-\s*/);
+    if (codeMatch) return codeMatch[1];
+    
+    // Try to find in popular hotel destinations
+    const popularDest = popularHotelDestinations.find(dest => 
+      location.toLowerCase().includes(dest.city.toLowerCase()) ||
+      location.toLowerCase().includes(dest.name.toLowerCase())
+    );
+    
+    if (popularDest) return popularDest.cityCode;
+    
+    // Default to first 3 uppercase letters
+    const anyCode = location.match(/([A-Z]{3})/);
+    return anyCode ? anyCode[1] : 'LOS'; // Default fallback
+  };
 
   // Popular hotel destinations
   const popularHotelDestinations: HotelDestination[] = [
     { name: 'Lagos', city: 'Lagos', country: 'Nigeria', cityCode: 'LOS', image: 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D' },
-    { name: 'London', city: 'London', country: 'United Kingdom', cityCode: 'LON', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
+    { name: 'London', city: 'London', country: 'United Kingdom', cityCode: 'LHR', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
     { name: 'New York', city: 'New York', country: 'USA', cityCode: 'NYC', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400' },
     { name: 'Dubai', city: 'Dubai', country: 'UAE', cityCode: 'DXB', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400' },
     { name: 'Paris', city: 'Paris', country: 'France', cityCode: 'PAR', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400' },
@@ -175,6 +257,45 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     { code: 'MEL', name: 'Melbourne Airport', city: 'Melbourne', country: 'Australia', type: 'airport' },
     { code: 'AKL', name: 'Auckland Airport', city: 'Auckland', country: 'New Zealand', type: 'airport' },
   ];
+
+  // Fetch car location suggestions (UPDATED from first code block)
+  const fetchCarLocationSuggestions = useCallback(async (query: string): Promise<CarLocationSuggestion[]> => {
+    if (!query || query.length < 1) {
+      const popularCarLocations = airportsWithCities
+        .filter(location => ['PAR', 'LHR', 'NYC', 'CDG', 'LOS', 'ABV'].includes(location.code))
+        .slice(0, 8);
+      return popularCarLocations.map(location => ({
+        ...location,
+        display: `${location.code} - ${location.name}, ${location.city}`
+      }));
+    }
+    const queryLower = query.toLowerCase().trim();
+    try {
+      const response = await fetch(`https://ebony-bruce-production.up.railway.app/api/v1/bookings/flights/places/suggestions?query=${encodeURIComponent(query)}`);
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && Array.isArray(result.data)) {
+          return result.data.map((place: any) => ({
+            code: place.iata_code || place.code || '',
+            name: place.name || '',
+            city: place.city_name || place.city || place.name || '',
+            country: place.country_name || place.country || '',
+            type: place.type === 'city' ? 'city' : 'airport',
+            display: `${place.iata_code || place.code} - ${place.name}, ${place.city_name || place.city}`
+          })).slice(0, 10);
+        }
+      }
+    } catch (e) {}
+    const filtered = airportsWithCities.filter(location => 
+      location.code.toLowerCase().includes(queryLower) || 
+      location.city.toLowerCase().includes(queryLower) || 
+      location.name.toLowerCase().includes(queryLower)
+    ).slice(0, 10);
+    return filtered.map(location => ({
+      ...location,
+      display: `${location.code} - ${location.name}, ${location.city}`
+    }));
+  }, []);
 
   const fetchAirportSuggestions = useCallback(async (query: string): Promise<Airport[]> => {
     if (!query || query.length < 2) {
@@ -340,28 +461,69 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     }
   }, [fetchHotelLocationSuggestions]);
 
-// Update the handleAirportSelect function to handle duplicates
-const handleAirportSelect = useCallback((airport: Airport, type: 'from' | 'to', index: number = 0) => {
-  const newSegments = [...segments];
-  const displayValue = `${airport.code} - ${airport.city}, ${airport.country}`;
-  
-  if (type === 'from') {
-    newSegments[index].from = displayValue;
-    setShowFromDropdown(false);
-  } else {
-    newSegments[index].to = displayValue;
-    setShowToDropdown(false);
-  }
-  
-  setSegments(newSegments);
-  
-  // Clear suggestions to avoid duplicates
-  if (type === 'from') {
-    setFromSuggestions([]);
-  } else {
-    setToSuggestions([]);
-  }
-}, [segments]);
+  // Handle car pick-up input changes (UPDATED from first code block)
+  const handleCarPickUpChange = useCallback(async (value: string) => {
+    setCarPickUp(value);
+    if (value.length >= 1) {
+      setLoadingCarPickUpSuggestions(true);
+      const suggestions = await fetchCarLocationSuggestions(value);
+      setCarPickUpSuggestions(suggestions);
+      setShowCarPickUpDropdown(true);
+      setLoadingCarPickUpSuggestions(false);
+    } else {
+      setShowCarPickUpDropdown(false);
+    }
+  }, [fetchCarLocationSuggestions]);
+
+  // Handle car drop-off input changes (UPDATED from first code block)
+  const handleCarDropOffChange = useCallback(async (value: string) => {
+    setCarDropOff(value);
+    if (value.length >= 1) {
+      setLoadingCarDropOffSuggestions(true);
+      const suggestions = await fetchCarLocationSuggestions(value);
+      setCarDropOffSuggestions(suggestions);
+      setShowCarDropOffDropdown(true);
+      setLoadingCarDropOffSuggestions(false);
+    } else {
+      setShowCarDropOffDropdown(false);
+    }
+  }, [fetchCarLocationSuggestions]);
+
+  // Update the handleAirportSelect function to handle duplicates
+  const handleAirportSelect = useCallback((airport: Airport, type: 'from' | 'to', index: number = 0) => {
+    const newSegments = [...segments];
+    const displayValue = `${airport.code} - ${airport.city}, ${airport.country}`;
+    
+    if (type === 'from') {
+      newSegments[index].from = displayValue;
+      setShowFromDropdown(false);
+    } else {
+      newSegments[index].to = displayValue;
+      setShowToDropdown(false);
+    }
+    
+    setSegments(newSegments);
+    
+    // Clear suggestions to avoid duplicates
+    if (type === 'from') {
+      setFromSuggestions([]);
+    } else {
+      setToSuggestions([]);
+    }
+  }, [segments]);
+
+  // Handle car location selection (UPDATED from first code block)
+  const handleCarLocationSelect = useCallback((location: CarLocationSuggestion, type: 'pickUp' | 'dropOff') => {
+    const displayValue = `${location.code} - ${location.name}, ${location.city}`;
+    if (type === 'pickUp') {
+      setCarPickUp(displayValue);
+      setShowCarPickUpDropdown(false);
+      if (!differentLocation) setCarDropOff(displayValue);
+    } else {
+      setCarDropOff(displayValue);
+      setShowCarDropOffDropdown(false);
+    }
+  }, [differentLocation]);
 
   // Handle hotel destination selection
   const handleHotelDestinationSelect = useCallback((destination: HotelDestination) => {
@@ -374,6 +536,9 @@ const handleAirportSelect = useCallback((airport: Airport, type: 'from' | 'to', 
     const handleClickOutside = (event: MouseEvent) => {
       if (travellerRef.current && !travellerRef.current.contains(event.target as Node)) {
         setShowTravellerDropdown(false);
+      }
+      if (carTravellerRef.current && !carTravellerRef.current.contains(event.target as Node)) {
+        setShowCarTravellerDropdown(false);
       }
       if (roomRef.current && !roomRef.current.contains(event.target as Node)) {
         setShowRoomDropdown(false);
@@ -392,6 +557,12 @@ const handleAirportSelect = useCallback((airport: Airport, type: 'from' | 'to', 
       }
       if (hotelLocationRef.current && !hotelLocationRef.current.contains(event.target as Node)) {
         setShowHotelLocationDropdown(false);
+      }
+      if (carPickUpRef.current && !carPickUpRef.current.contains(event.target as Node)) {
+        setShowCarPickUpDropdown(false);
+      }
+      if (carDropOffRef.current && !carDropOffRef.current.contains(event.target as Node)) {
+        setShowCarDropOffDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -494,6 +665,10 @@ const handleAirportSelect = useCallback((airport: Airport, type: 'from' | 'to', 
     });
   };
 
+  const updateCarTravellers = (increment: boolean) => {
+    setCarTravellers(prev => increment ? Math.min(10, prev + 1) : Math.max(1, prev - 1));
+  };
+
   const updateRooms = (increment: boolean) => {
     setRooms(prev => increment ? Math.min(5, prev + 1) : Math.max(1, prev - 1));
   };
@@ -512,159 +687,244 @@ const handleAirportSelect = useCallback((airport: Airport, type: 'from' | 'to', 
     return `${totalGuests} Guest${totalGuests > 1 ? 's' : ''}, ${rooms} Room${rooms > 1 ? 's' : ''}`;
   };
 
-// Replace the extractAirportCode function with this more robust version:
-const extractAirportCode = (displayValue: string): string => {
-  if (!displayValue) return '';
+  const extractAirportCode = (displayValue: string): string => {
+    if (!displayValue) return '';
+    
+    console.log('Extracting code from:', displayValue);
+    
+    // If it's already just a 3-letter code, return it uppercase
+    if (/^[A-Z]{3}$/.test(displayValue.trim())) {
+      return displayValue.trim();
+    }
+    
+    // Pattern 1: "LOS - Lagos, Nigeria" or "LHR - Heathrow Airport, London"
+    const pattern1 = displayValue.match(/([A-Z]{3})\s*-\s*/);
+    if (pattern1) {
+      console.log('Pattern 1 match:', pattern1[1]);
+      return pattern1[1];
+    }
+    
+    // Pattern 2: Extract from parentheses like "Lagos (LOS)"
+    const pattern2 = displayValue.match(/\(([A-Z]{3})\)/);
+    if (pattern2) {
+      console.log('Pattern 2 match:', pattern2[1]);
+      return pattern2[1];
+    }
+    
+    // Pattern 3: Find any 3 uppercase letters at the beginning
+    const pattern3 = displayValue.match(/^([A-Z]{3})/);
+    if (pattern3) {
+      console.log('Pattern 3 match:', pattern3[1]);
+      return pattern3[1];
+    }
+    
+    // Try to match from airports list by searching the entire string
+    const lowerValue = displayValue.toLowerCase();
+    const matchedAirport = airports.find(airport => {
+      // Check if airport code is in the string
+      if (lowerValue.includes(airport.code.toLowerCase())) {
+        return true;
+      }
+      // Check if city name is in the string
+      if (airport.city.toLowerCase().includes(lowerValue) || 
+          lowerValue.includes(airport.city.toLowerCase())) {
+        return true;
+      }
+      // Check if airport name contains the search
+      if (airport.name.toLowerCase().includes(lowerValue)) {
+        return true;
+      }
+      return false;
+    });
+    
+    if (matchedAirport) {
+      console.log('Matched from airports list:', matchedAirport.code);
+      return matchedAirport.code;
+    }
+    
+    // Try popular airports as fallback
+    const popularMatch = popularAirports.find(airport => 
+      airport.city.toLowerCase().includes(lowerValue) ||
+      lowerValue.includes(airport.city.toLowerCase())
+    );
+    
+    if (popularMatch) {
+      console.log('Matched from popular airports:', popularMatch.code);
+      return popularMatch.code;
+    }
+    
+    // Last resort: extract any 3 consecutive uppercase letters
+    const anyCode = displayValue.match(/\b([A-Z]{3})\b/);
+    if (anyCode) {
+      console.log('Extracted any 3 uppercase letters:', anyCode[1]);
+      return anyCode[1];
+    }
+    
+    // If all else fails, return empty string
+    console.log('No airport code found');
+    return '';
+  };
   
-  console.log('Extracting code from:', displayValue);
-  
-  // Handle multiple formats:
-  // 1. "LOS - Lagos, Nigeria" → Extract "LOS"
-  // 2. "LOS" → Return "LOS"
-  // 3. "Lagos" → Try to find matching airport code
-  
-  // Try to extract IATA code (3 uppercase letters at start)
-  const iataMatch = displayValue.match(/^([A-Z]{3})\b/);
-  if (iataMatch) {
-    console.log('Found IATA code:', iataMatch[1]);
-    return iataMatch[1];
-  }
-  
-  // Try to find IATA code anywhere in the string
-  const anyIataMatch = displayValue.match(/\b([A-Z]{3})\b/);
-  if (anyIataMatch) {
-    console.log('Found IATA code in string:', anyIataMatch[1]);
-    return anyIataMatch[1];
-  }
-  
-  // If no IATA code found, try to match with popular airports
-  const lowerValue = displayValue.toLowerCase();
-  const matchedAirport = popularAirports.find(airport => 
-    airport.city.toLowerCase().includes(lowerValue) ||
-    airport.name.toLowerCase().includes(lowerValue)
-  );
-  
-  if (matchedAirport) {
-    console.log('Matched airport:', matchedAirport.code);
-    return matchedAirport.code;
-  }
-  
-  // Last resort: return first word
-  const firstWord = displayValue.split(' ')[0];
-  console.log('Using first word:', firstWord);
-  return firstWord;
-};
+  const extractLocationCode = (input: string): string => {
+    if (!input) return '';
+    if (/^[A-Z]{3}$/.test(input.trim())) return input.trim();
+    const match = input.match(/^([A-Z]{3})\s*-\s*/);
+    if (match) return match[1];
+    const anyCode = input.match(/\b([A-Z]{3})\b/);
+    return anyCode ? anyCode[1] : '';
+  };
 
-const handleSubmit = (e: React.FormEvent) => {
-  e.preventDefault();
-  
-  if (activeTab === 'flights') {
-    // Extract airport codes with better logging
-    const origin = extractAirportCode(segments[0].from);
-    const destination = extractAirportCode(segments[0].to);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     
-    console.log('🔍 Flight Search Details:');
-    console.log('From (raw):', segments[0].from);
-    console.log('To (raw):', segments[0].to);
-    console.log('Origin (extracted):', origin);
-    console.log('Destination (extracted):', destination);
-    console.log('Departure Date:', segments[0].date);
-    console.log('Return Date:', returnDate);
-    console.log('Trip Type:', tripType);
-    
-    // Calculate total passengers
-    const totalPassengers = travellers.adults + travellers.children + travellers.infants;
-    
-    // Convert stops filter to maxConnections
-    let maxConnections: number | undefined;
-    switch (stopsFilter) {
-      case 'Non-stop':
-        maxConnections = 0;
-        break;
-      case '1 Stop':
-        maxConnections = 1;
-        break;
-      case '2+ Stops':
-        maxConnections = 2;
-        break;
-      default:
-        maxConnections = undefined; // Any = no filter
-    }
-    
-    // Prepare the data in EXACT format the API expects
-    const data: any = {
-      origin: origin,
-      destination: destination,
-      departureDate: segments[0].date || today,
-      passengers: totalPassengers,
-      cabinClass: cabinClass.toLowerCase(),
-      currency: currency.code || 'NGN',
-    };
-    
-    // Add returnDate only for round-trip
-    if (tripType === 'round-trip' && returnDate) {
-      data.returnDate = returnDate;
-    }
-    
-    // Add maxConnections only if specified
-    if (maxConnections !== undefined) {
-      data.maxConnections = maxConnections;
-    }
-    
-    // Add maxPrice only if it's meaningful
-    if (maxPrice > 0 && maxPrice < 10000) {
-      data.maxPrice = maxPrice;
-    }
-    
-    console.log('📦 Final API Payload:', JSON.stringify(data, null, 2));
-    
-    // Validate required fields
-    const errors = [];
-    
-    // Validate airport codes (should be 3-letter IATA codes)
-    if (!origin || !/^[A-Z]{3}$/.test(origin)) {
-      errors.push(`Invalid origin airport code: "${origin}". Please select from the suggestions.`);
-    }
-    
-    if (!destination || !/^[A-Z]{3}$/.test(destination)) {
-      errors.push(`Invalid destination airport code: "${destination}". Please select from the suggestions.`);
-    }
-    
-    if (origin === destination) {
-      errors.push('Origin and destination cannot be the same');
-    }
-    
-    if (!segments[0].date) {
-      errors.push('Please select a departure date');
-    }
-    
-    if (tripType === 'round-trip' && !returnDate) {
-      errors.push('Please select a return date for round-trip');
-    }
-    
-    if (segments[0].date && returnDate && segments[0].date > returnDate) {
-      errors.push('Return date cannot be before departure date');
-    }
-    
-    if (errors.length > 0) {
-      alert(errors.join('\n'));
-      return;
-    }
-    
-    // For multi-city trips, need special handling
-    if (tripType === 'multi-city') {
-      alert('Multi-city search requires a different API endpoint or format. Using first segment for now.');
-    }
-    
-    onSearch(data);
-    
-  } else if (activeTab === 'hotels') {
-    // ... hotel code remains the same ...
-  } else {
-    // ... car rental code remains the same ...
-  }
-};
+    if (activeTab === 'cars') {
+      console.log('🚗 Car rental search - Starting...');
+      
+      const pickUpCode = extractLocationCode(carPickUp);
+      const dropOffCode = extractLocationCode(carDropOff);
+      
+      if (!pickUpCode || !dropOffCode || !carPickUpDate || !carDropOffDate) {
+        alert('Please fill in all rental details including locations and dates.');
+        return;
+      }
 
+      const formatDT = (d: string, t: string) => {
+        const date = new Date(d);
+        const [h, m] = t.split(':');
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${h}:${m}:00`;
+      };
+
+      onSearch({
+        type: 'car-rentals',
+        pickupLocationCode: pickUpCode,
+        dropoffLocationCode: dropOffCode,
+        pickupDateTime: formatDT(carPickUpDate, carPickUpTime),
+        dropoffDateTime: formatDT(carDropOffDate, carDropOffTime),
+        passengers: carTravellers,
+        currency: 'GBP'
+      });
+    } else if (activeTab === 'flights') {
+      console.log('✈️ Flight search - Starting...');
+      
+      // Extract airport codes and validate
+      const errors = [];
+      const flightSegments = segments.map((segment, index) => {
+        const fromCode = extractAirportCode(segment.from);
+        const toCode = extractAirportCode(segment.to);
+        
+        if (!fromCode) errors.push(`Segment ${index + 1}: Invalid departure location`);
+        if (!toCode) errors.push(`Segment ${index + 1}: Invalid arrival location`);
+        if (!segment.date) errors.push(`Segment ${index + 1}: Date is required`);
+        
+        return {
+          from: fromCode,
+          to: toCode,
+          date: segment.date
+        };
+      });
+      
+      if (tripType === 'round-trip' && !returnDate) {
+        errors.push('Return date is required for round-trip flights');
+      }
+      
+      if (flightSegments.length === 0) {
+        errors.push('At least one flight segment is required');
+      }
+      
+      // Check for duplicate segments
+      const segmentKeys = flightSegments.map(s => `${s.from}-${s.to}`);
+      const uniqueSegments = new Set(segmentKeys);
+      if (uniqueSegments.size !== segmentKeys.length) {
+        errors.push('Duplicate flight segments detected');
+      }
+      
+      if (errors.length > 0) {
+        alert(errors.join('\n'));
+        return;
+      }
+      
+      // Create flight search payload
+      const data = {
+        type: 'flights',
+        tripType,
+        segments: flightSegments,
+        returnDate: tripType === 'round-trip' ? returnDate : undefined,
+        passengers: {
+          adults: travellers.adults,
+          children: travellers.children,
+          infants: travellers.infants
+        },
+        cabinClass,
+        stopsFilter,
+        maxPrice,
+        currency: currency.code || 'USD'
+      };
+      
+      console.log('📦 FINAL Flight Payload:', JSON.stringify(data, null, 2));
+      
+      // Send to API
+      onSearch(data);
+    } else if (activeTab === 'hotels') {
+      console.log('🏨 Hotel search - Starting...');
+      
+      // Validate hotel search
+      const errors = [];
+      
+      if (!hotelLocation) {
+        errors.push('Hotel location is required');
+      }
+      
+      if (!checkInDate) {
+        errors.push('Check-in date is required');
+      }
+      
+      if (!checkOutDate) {
+        errors.push('Check-out date is required');
+      }
+      
+      if (checkInDate && checkOutDate) {
+        const checkIn = new Date(checkInDate);
+        const checkOut = new Date(checkOutDate);
+        if (checkIn >= checkOut) {
+          errors.push('Check-out date must be after check-in date');
+        }
+      }
+      
+      if (travellers.adults < 1) {
+        errors.push('At least one adult is required');
+      }
+      
+      if (rooms < 1) {
+        errors.push('At least one room is required');
+      }
+      
+      if (errors.length > 0) {
+        alert(errors.join('\n'));
+        return;
+      }
+      
+      // Create hotel search payload
+      const data = {
+        type: 'hotels',
+        location: hotelLocation,
+        cityCode: getCityCode(hotelLocation),
+        checkInDate,
+        checkOutDate,
+        travellers: {
+          adults: travellers.adults,
+          children: travellers.children
+        },
+        rooms,
+        currency: currency.code || 'USD'
+      };
+      
+      console.log('📦 FINAL Hotel Payload:', JSON.stringify(data, null, 2));
+      
+      // Send to API
+      onSearch(data);
+    }
+  };
+  
   const triggerPicker = (e: React.MouseEvent<HTMLInputElement>) => {
     try { 
       if ('showPicker' in HTMLInputElement.prototype) {
@@ -704,6 +964,24 @@ const handleSubmit = (e: React.FormEvent) => {
             </div>
           </div>
           <button type="button" onClick={() => setShowTravellerDropdown(false)} className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors">Done</button>
+        </div>
+      </div>
+    )
+  );
+
+  const renderCarTravellerDropdown = () => (
+    showCarTravellerDropdown && (
+      <div className="absolute top-full right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-50 animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <div><span className="block font-bold text-gray-800 text-sm">Passengers</span></div>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => updateCarTravellers(false)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">-</button>
+              <span className="font-bold w-4 text-center text-base">{carTravellers}</span>
+              <button type="button" onClick={() => updateCarTravellers(true)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">+</button>
+            </div>
+          </div>
+          <button type="button" onClick={() => setShowCarTravellerDropdown(false)} className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors">Done</button>
         </div>
       </div>
     )
@@ -777,6 +1055,7 @@ const handleSubmit = (e: React.FormEvent) => {
       )}
     </div>
   );
+  
   const renderHotelLocationDropdown = () => (
     showHotelLocationDropdown && (
       <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-gray-200 max-h-60 overflow-y-auto z-50">
@@ -830,6 +1109,20 @@ const handleSubmit = (e: React.FormEvent) => {
         )}
       </div>
     )
+  );
+
+  // Render car location dropdown (UPDATED from first code block)
+  const renderCarLocationDropdown = (suggestions: CarLocationSuggestion[], type: 'pickUp' | 'dropOff') => (
+    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-gray-200 max-h-60 overflow-y-auto z-50">
+      {suggestions.map((location, idx) => (
+        <button key={`${location.code}-${idx}`} type="button" className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 group" onClick={() => handleCarLocationSelect(location, type)}>
+          <div className="flex items-start gap-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold ${location.type === 'city' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>{location.code}</div>
+            <div className="flex-1 min-w-0"><div className="font-bold text-gray-900 truncate">{location.city}, {location.country}</div><div className="text-xs text-gray-500 truncate">{location.name}</div></div>
+          </div>
+        </button>
+      ))}
+    </div>
   );
 
   const renderFlightSegmentRow = (segment: Segment, index: number) => {
@@ -1178,110 +1471,136 @@ const handleSubmit = (e: React.FormEvent) => {
                 </div>
 
                 {/* Check-in Date */}
-                <div className="md:col-span-3 bg-white p-3 md:p-4 flex items-center gap-3 relative border-t md:border-t-0 md:border-l border-gray-100">
+                <div className="md:col-span-4 bg-white p-3 md:p-4 flex items-center gap-3 relative border-t md:border-t-0 md:border-l border-gray-100">
                   <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                  <div className="flex-1 relative h-9 flex flex-col justify-center">
-                    <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Check-in</label>
-                    <span className={`block font-bold text-xs md:text-sm truncate ${checkInDate ? 'text-gray-900' : 'text-gray-400'}`}>
-                      {checkInDate ? new Date(checkInDate).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'Select date'}
-                    </span>
-                    <input 
-                      type="date" 
-                      min={today} 
-                      value={checkInDate} 
-                      onChange={(e) => setCheckInDate(e.target.value)} 
-                      onClick={triggerPicker}
-                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20" 
-                    />
-                  </div>
-                </div>
-
-                {/* Check-out Date */}
-                <div className="md:col-span-3 bg-white p-3 md:p-4 flex items-center gap-3 relative border-t md:border-t-0 md:border-l border-gray-100">
-                  <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                  <div className="flex-1 relative h-9 flex flex-col justify-center">
-                    <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Check-out</label>
-                    <span className={`block font-bold text-xs md:text-sm truncate ${checkOutDate ? 'text-gray-900' : 'text-gray-400'}`}>
-                      {checkOutDate ? new Date(checkOutDate).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'Select date'}
-                    </span>
-                    <input 
-                      type="date" 
-                      min={checkInDate || today} 
-                      value={checkOutDate} 
-                      onChange={(e) => setCheckOutDate(e.target.value)} 
-                      onClick={triggerPicker}
-                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20" 
-                    />
+                  <div className="flex-1 grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">In</label>
+                      <input 
+                        type="date" 
+                        min={today} 
+                        value={checkInDate} 
+                        onChange={(e) => setCheckInDate(e.target.value)} 
+                        className="w-full font-bold outline-none text-xs bg-transparent p-0" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Out</label>
+                      <input 
+                        type="date" 
+                        min={checkInDate || today} 
+                        value={checkOutDate} 
+                        onChange={(e) => setCheckOutDate(e.target.value)} 
+                        className="w-full font-bold outline-none text-xs bg-transparent p-0" 
+                      />
+                    </div>
                   </div>
                 </div>
 
                 {/* Guests & Rooms */}
-                <div className="md:col-span-2 grid grid-cols-2 gap-1">
-                  <div ref={travellerRef} onClick={() => setShowTravellerDropdown(!showTravellerDropdown)} className="bg-white p-3 md:p-4 flex items-center gap-3 relative border-t md:border-t-0 md:border-l border-gray-100 rounded-bl-lg md:rounded-bl-none">
-                    <svg className="w-6 h-6 text-gray-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-                    <div className="flex-1 truncate">
-                      <label className="block text-[8px] font-bold text-gray-500 uppercase mb-0.5">Guests</label>
-                      <span className="block font-bold text-gray-900 text-xs md:text-sm truncate">{travellers.adults + travellers.children}</span>
-                    </div>
-                    {renderTravellerDropdown()}
+                <div className="md:col-span-4 bg-white p-3 md:p-4 rounded-b-lg md:rounded-r-lg md:rounded-bl-none flex items-center justify-between border-t md:border-t-0 md:border-l border-gray-100">
+                  <div onClick={() => setShowTravellerDropdown(!showTravellerDropdown)} className="cursor-pointer">
+                    <span className="block text-[9px] font-bold text-gray-400 uppercase">Guests</span>
+                    <span className="text-xs font-bold">{travellers.adults} Adults, {rooms} Room</span>
                   </div>
-                  
-                  <div ref={roomRef} onClick={() => setShowRoomDropdown(!showRoomDropdown)} className="bg-white p-3 md:p-4 flex items-center gap-3 relative border-t md:border-t-0 md:border-l border-gray-100 rounded-br-lg md:rounded-r-lg md:rounded-bl-none">
-                    <svg className="w-6 h-6 text-gray-500" fill="currentColor" viewBox="0 0 24 24"><path d="M19 5v14H5V5h14m0-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
-                    <div className="flex-1 truncate">
-                      <label className="block text-[8px] font-bold text-gray-500 uppercase mb-0.5">Rooms</label>
-                      <span className="block font-bold text-gray-900 text-xs md:text-sm truncate">{rooms}</span>
-                    </div>
-                    {renderRoomDropdown()}
-                  </div>
+                  <button type="submit" disabled={loading} className="bg-black text-white px-8 py-3 rounded-xl font-bold uppercase text-xs">{loading ? '...' : 'Find Hotels'}</button>
                 </div>
               </div>
-              <button 
-                type="submit" 
-                disabled={loading || !hotelLocation || !checkInDate || !checkOutDate} 
-                className="w-full lg:w-auto bg-black text-white px-8 py-4 lg:py-5 font-bold text-lg rounded-xl lg:rounded-lg hover:bg-gray-900 transition shadow-xl mt-2 lg:mt-0 lg:ml-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Searching...
-                  </>
-                ) : 'Search'}
-              </button>
             </div>
           )}
 
           {activeTab === 'cars' && (
             <div className="flex flex-col lg:flex-row items-stretch gap-1 bg-[#33a8da] rounded-xl p-1">
               <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-1">
-                <div className="md:col-span-6 bg-white p-3 md:p-4 flex items-center gap-3 rounded-t-lg md:rounded-l-lg md:rounded-tr-none">
-                  <svg className="w-6 h-6 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                  <div className="flex-1">
-                    <label className="block text-[9px] font-bold text-gray-400 uppercase mb-0.5">Pick-up</label>
-                    <input type="text" value={carPickUp} onChange={(e) => setCarPickUp(e.target.value)} className="w-full font-bold text-gray-900 focus:outline-none text-sm md:text-base bg-transparent p-0" placeholder="City or Airport" />
+                {/* Pick-up Location with Autocomplete */}
+                <div className="md:col-span-3 relative" ref={carPickUpRef}>
+                  <div className="bg-white p-3 md:p-4 rounded-t-lg md:rounded-l-lg">
+                    <span className="block text-[9px] font-bold text-gray-400 uppercase">Pick-up Location</span>
+                    <input 
+                      type="text" 
+                      value={carPickUp} 
+                      onChange={(e) => handleCarPickUpChange(e.target.value)} 
+                      onFocus={() => setShowCarPickUpDropdown(true)} 
+                      placeholder="City or Airport" 
+                      className="w-full font-bold focus:outline-none bg-transparent p-0" 
+                    />
+                  </div>
+                  {showCarPickUpDropdown && renderCarLocationDropdown(carPickUpSuggestions, 'pickUp')}
+                </div>
+                
+                {/* Drop-off Location with Autocomplete */}
+                <div className="md:col-span-3 relative" ref={carDropOffRef}>
+                  <div className="bg-white p-3 md:p-4 border-t md:border-t-0 md:border-l border-gray-100">
+                    <span className="block text-[9px] font-bold text-gray-400 uppercase">Drop-off Location</span>
+                    <input 
+                      type="text" 
+                      value={carDropOff} 
+                      onChange={(e) => handleCarDropOffChange(e.target.value)} 
+                      onFocus={() => setShowCarDropOffDropdown(true)} 
+                      placeholder="City or Airport" 
+                      className="w-full font-bold focus:outline-none bg-transparent p-0" 
+                    />
+                  </div>
+                  {showCarDropOffDropdown && renderCarLocationDropdown(carDropOffSuggestions, 'dropOff')}
+                </div>
+                
+                {/* Pick-up & Drop-off Dates */}
+                <div className="md:col-span-3 bg-white p-3 md:p-4 border-t md:border-t-0 md:border-l border-gray-100 grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="block text-[9px] font-bold text-gray-400 uppercase">Pick-up Date</span>
+                    <input 
+                      type="date" 
+                      min={today} 
+                      value={carPickUpDate} 
+                      onChange={(e) => setCarPickUpDate(e.target.value)} 
+                      className="w-full font-bold outline-none text-xs bg-transparent p-0" 
+                    />
+                  </div>
+                  <div>
+                    <span className="block text-[9px] font-bold text-gray-400 uppercase">Drop-off Date</span>
+                    <input 
+                      type="date" 
+                      min={carPickUpDate || today} 
+                      value={carDropOffDate} 
+                      onChange={(e) => setCarDropOffDate(e.target.value)} 
+                      className="w-full font-bold outline-none text-xs bg-transparent p-0" 
+                    />
                   </div>
                 </div>
-                <div className="md:col-span-6 bg-white p-3 md:p-4 flex items-center gap-3 relative border-t md:border-t-0 md:border-l border-gray-100 rounded-b-lg md:rounded-r-lg md:rounded-bl-none">
-                  <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                  <div className="flex-1 relative h-9 flex flex-col justify-center">
-                    <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Rental Window</label>
-                    <span className="text-gray-900 font-bold text-xs md:text-sm">
-                      {carPickUpDate ? `${new Date(carPickUpDate).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})} — ${carDropOffDate ? new Date(carDropOffDate).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '...'}` : 'Dates'}
-                    </span>
-                    <div className="absolute inset-0 flex opacity-0 cursor-pointer">
-                       <input type="date" min={today} className="flex-1" onChange={(e) => setCarPickUpDate(e.target.value)} onClick={triggerPicker} />
-                       <input type="date" min={carPickUpDate || today} className="flex-1" onChange={(e) => setCarDropOffDate(e.target.value)} onClick={triggerPicker} />
-                    </div>
+                
+                {/* Passengers & Search Button */}
+                <div className="md:col-span-3 bg-white p-3 md:p-4 rounded-b-lg md:rounded-r-lg border-t md:border-t-0 md:border-l border-gray-100 flex items-center justify-between">
+                  <div onClick={() => setShowCarTravellerDropdown(!showCarTravellerDropdown)} className="cursor-pointer">
+                    <span className="block text-[9px] font-bold text-gray-400 uppercase">Passengers</span>
+                    <span className="text-xs font-bold">{carTravellers} People</span>
                   </div>
+                  <button type="submit" disabled={loading} className="bg-black text-white px-6 py-3 rounded-xl font-bold uppercase text-[10px]">{loading ? '...' : 'Search Transfers'}</button>
                 </div>
               </div>
-              <button type="submit" disabled={loading} className="w-full lg:w-auto bg-black text-white px-8 py-4 lg:py-5 font-bold text-lg rounded-xl lg:rounded-lg hover:bg-gray-900 transition shadow-xl mt-2 lg:mt-0 lg:ml-1">
-                {loading ? '...' : 'Search'}
-              </button>
             </div>
           )}
         </form>
       </div>
+      
+      {/* Car Traveller Dropdown (moved outside main container) */}
+      {showCarTravellerDropdown && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm" onClick={() => setShowCarTravellerDropdown(false)}>
+          <div className="bg-white p-6 rounded-2xl w-full max-w-xs shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h4 className="font-black text-gray-900 mb-4 uppercase text-xs tracking-widest">Passengers</h4>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-sm">Passengers</span>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => updateCarTravellers(false)} className="w-8 h-8 rounded-full border border-gray-200">-</button>
+                  <span className="font-bold">{carTravellers}</span>
+                  <button type="button" onClick={() => updateCarTravellers(true)} className="w-8 h-8 rounded-full border border-gray-200">+</button>
+                </div>
+              </div>
+            </div>
+            <button type="button" onClick={() => setShowCarTravellerDropdown(false)} className="w-full bg-[#33a8da] text-white py-3 rounded-xl font-bold mt-6 text-xs uppercase tracking-widest">Done</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -7,6 +7,13 @@ import { useRouter } from 'next/navigation';
 
 interface BookingSuccessProps {
   bookingId: string;
+  bookingDetails?: {
+    productType?: string;
+    provider?: string;
+    title?: string;
+    amount?: string | number;
+    passengerName?: string;
+  };
   onBack: () => void;
   isGuest?: boolean;
 
@@ -343,36 +350,94 @@ const BookingSuccess: React.FC<BookingSuccessProps> = ({ bookingId, onBack, isGu
     try {
       setLoading(true);
       
-      // Try authenticated route first if not guest
+      // First, try to determine what type of booking this is
+      // We'll try multiple endpoints in sequence
+      
+      // 1. Try authenticated booking endpoint (for all types)
       if (!isGuest) {
         const token = localStorage.getItem('token');
         if (token) {
-          const response = await fetch(`https://ebony-bruce-production.up.railway.app/api/v1/bookings/${bookingId}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`
+          try {
+            const response = await fetch(`https://ebony-bruce-production.up.railway.app/api/v1/bookings/${bookingId}`, {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              setBooking(data);
+              setPaymentCompleted(data.paymentStatus === 'paid');
+              return;
             }
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            setBooking(data);
-            setPaymentCompleted(data.paymentStatus === 'paid');
-            return;
+          } catch (authError) {
+            console.warn('Authenticated booking fetch failed:', authError);
           }
         }
       }
       
-      // Fallback to public endpoint or guest access
-      const response = await fetch(`https://ebony-bruce-production.up.railway.app/api/v1/bookings/public/${bookingId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setBooking(data);
-        setPaymentCompleted(data.paymentStatus === 'paid');
-      } else {
-        throw new Error('Booking not found');
+      // 2. Try public booking endpoint (for guests)
+      try {
+        const publicResponse = await fetch(`https://ebony-bruce-production.up.railway.app/api/v1/bookings/public/${bookingId}`);
+        
+        if (publicResponse.ok) {
+          const data = await publicResponse.json();
+          setBooking(data);
+          setPaymentCompleted(data.paymentStatus === 'paid');
+          return;
+        }
+      } catch (publicError) {
+        console.warn('Public booking endpoint failed:', publicError);
       }
+      
+      // 3. Try specific booking type endpoints (in case it's a car rental or hotel booking)
+      // Note: You might need to adjust these based on your actual API structure
+      
+      // Try car rental endpoint
+      try {
+        const carResponse = await fetch(`https://ebony-bruce-production.up.railway.app/api/v1/bookings/car-rentals/bookings/${bookingId}`);
+        if (carResponse.ok) {
+          const data = await carResponse.json();
+          setBooking(data);
+          setPaymentCompleted(data.paymentStatus === 'paid');
+          return;
+        }
+      } catch (carError) {
+        console.warn('Car rental booking endpoint failed:', carError);
+      }
+      
+      // Try hotel booking endpoint
+      try {
+        const hotelResponse = await fetch(`https://ebony-bruce-production.up.railway.app/api/v1/bookings/hotels/bookings/amadeus/${bookingId}`);
+        if (hotelResponse.ok) {
+          const data = await hotelResponse.json();
+          setBooking(data);
+          setPaymentCompleted(data.paymentStatus === 'paid');
+          return;
+        }
+      } catch (hotelError) {
+        console.warn('Hotel booking endpoint failed:', hotelError);
+      }
+      
+      // Try general bookings endpoint
+      try {
+        const bookingsResponse = await fetch(`https://ebony-bruce-production.up.railway.app/api/v1/bookings/${bookingId}`);
+        if (bookingsResponse.ok) {
+          const data = await bookingsResponse.json();
+          setBooking(data);
+          setPaymentCompleted(data.paymentStatus === 'paid');
+          return;
+        }
+      } catch (generalError) {
+        console.warn('General bookings endpoint failed:', generalError);
+      }
+      
+      // If all endpoints fail, show booking not found
+      setBooking(null);
+      
     } catch (error) {
       console.error('Error loading booking:', error);
+      setBooking(null);
     } finally {
       setLoading(false);
     }
