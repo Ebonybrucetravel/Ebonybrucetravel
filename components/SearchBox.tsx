@@ -43,7 +43,6 @@ interface SearchBoxProps {
 }
 
 const airportsWithCities: AirportData[] = [
-  // City centers (CRITICAL for car rentals)
   { code: 'PAR', name: 'Paris City Center', city: 'Paris', country: 'France', type: 'city' },
   { code: 'LHR', name: 'London City Center', city: 'London', country: 'UK', type: 'city' },
   { code: 'NYC', name: 'New York City Center', city: 'New York', country: 'USA', type: 'city' },
@@ -60,14 +59,10 @@ const airportsWithCities: AirportData[] = [
   { code: 'SEA', name: 'Seattle City Center', city: 'Seattle', country: 'USA', type: 'city' },
   { code: 'MCO', name: 'Orlando City Center', city: 'Orlando', country: 'USA', type: 'city' },
   { code: 'ATL', name: 'Atlanta City Center', city: 'Atlanta', country: 'USA', type: 'city' },
-  
-  // Nigeria city centers
   { code: 'LOS', name: 'Lagos City Center', city: 'Lagos', country: 'Nigeria', type: 'city' },
   { code: 'ABV', name: 'Abuja City Center', city: 'Abuja', country: 'Nigeria', type: 'city' },
   { code: 'PHC', name: 'Port Harcourt City Center', city: 'Port Harcourt', country: 'Nigeria', type: 'city' },
   { code: 'KAN', name: 'Kano City Center', city: 'Kano', country: 'Nigeria', type: 'city' },
-  
-  // Other international city centers
   { code: 'DXB', name: 'Dubai City Center', city: 'Dubai', country: 'UAE', type: 'city' },
   { code: 'SIN', name: 'Singapore City Center', city: 'Singapore', country: 'Singapore', type: 'city' },
   { code: 'HKG', name: 'Hong Kong City Center', city: 'Hong Kong', country: 'China', type: 'city' },
@@ -76,8 +71,6 @@ const airportsWithCities: AirportData[] = [
   { code: 'ROM', name: 'Rome City Center', city: 'Rome', country: 'Italy', type: 'city' },
   { code: 'MAD', name: 'Madrid City Center', city: 'Madrid', country: 'Spain', type: 'city' },
   { code: 'BER', name: 'Berlin City Center', city: 'Berlin', country: 'Germany', type: 'city' },
-  
-  // Import all airports from the airportData file
   ...airportData
 ];
 
@@ -85,14 +78,12 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const { t, currency } = useLanguage();
   const [activeTab, setActiveTab] = useState<'flights' | 'hotels' | 'cars'>(activeTabProp || 'flights');
 
-  // Synchronize internal activeTab with the prop from the navbar
   useEffect(() => {
     if (activeTabProp) {
       setActiveTab(activeTabProp);
     }
   }, [activeTabProp]);
-  
-  // Flight Specific State
+
   const [tripType, setTripType] = useState<'round-trip' | 'one-way' | 'multi-city'>('round-trip');
   const [cabinClass, setCabinClass] = useState('economy');
   const [showCabinDropdown, setShowCabinDropdown] = useState(false);
@@ -103,16 +94,12 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     { from: 'LOS - Lagos, Nigeria', to: 'ABV - Abuja, Nigeria', date: '' }
   ]);
   const [returnDate, setReturnDate] = useState('');
-  
-  // Autocomplete state
   const [showFromDropdown, setShowFromDropdown] = useState(false);
   const [showToDropdown, setShowToDropdown] = useState(false);
   const [fromSuggestions, setFromSuggestions] = useState<Airport[]>([]);
   const [toSuggestions, setToSuggestions] = useState<Airport[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [activeSegmentIndex, setActiveSegmentIndex] = useState(0);
-  
-  // Hotel Specific State
   const [hotelLocation, setHotelLocation] = useState('');
   const [checkInDate, setCheckInDate] = useState('');
   const [checkOutDate, setCheckOutDate] = useState('');
@@ -120,8 +107,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const [showHotelLocationDropdown, setShowHotelLocationDropdown] = useState(false);
   const [hotelLocationSuggestions, setHotelLocationSuggestions] = useState<HotelDestination[]>([]);
   const [loadingHotelSuggestions, setLoadingHotelSuggestions] = useState(false);
-
-  // Car Rental State
   const [carPickUp, setCarPickUp] = useState('');
   const [carDropOff, setCarDropOff] = useState('');
   const [carPickUpDate, setCarPickUpDate] = useState('');
@@ -132,16 +117,12 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const [showCarTravellerDropdown, setShowCarTravellerDropdown] = useState(false);
   const [differentLocation, setDifferentLocation] = useState(false);
   const [driverAged, setDriverAged] = useState(true);
-  
-  // Car Rental Autocomplete State
   const [showCarPickUpDropdown, setShowCarPickUpDropdown] = useState(false);
   const [showCarDropOffDropdown, setShowCarDropOffDropdown] = useState(false);
   const [carPickUpSuggestions, setCarPickUpSuggestions] = useState<CarLocationSuggestion[]>([]);
   const [carDropOffSuggestions, setCarDropOffSuggestions] = useState<CarLocationSuggestion[]>([]);
   const [loadingCarPickUpSuggestions, setLoadingCarPickUpSuggestions] = useState(false);
   const [loadingCarDropOffSuggestions, setLoadingCarDropOffSuggestions] = useState(false);
-  
-  // Common State
   const [travellers, setTravellers] = useState<Travellers>({ adults: 1, children: 0, infants: 0 });
   const [showTravellerDropdown, setShowTravellerDropdown] = useState(false);
   const [showRoomDropdown, setShowRoomDropdown] = useState(false);
@@ -158,19 +139,15 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const carDropOffRef = useRef<HTMLDivElement>(null);
   const today = new Date().toISOString().split('T')[0];
 
-  // Create local getCityCode function
   const getCityCode = (location: string): string => {
     if (!location) return 'LOS';
     
-    // Check if location contains a code in parentheses
     const match = location.match(/\(([A-Z]{3})\)/);
     if (match) return match[1];
     
-    // Check if it starts with a 3-letter code like "LOS - "
     const codeMatch = location.match(/^([A-Z]{3})\s*-\s*/);
     if (codeMatch) return codeMatch[1];
     
-    // Try to find in popular hotel destinations
     const popularDest = popularHotelDestinations.find(dest => 
       location.toLowerCase().includes(dest.city.toLowerCase()) ||
       location.toLowerCase().includes(dest.name.toLowerCase())
@@ -178,12 +155,10 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     
     if (popularDest) return popularDest.cityCode;
     
-    // Default to first 3 uppercase letters
     const anyCode = location.match(/([A-Z]{3})/);
-    return anyCode ? anyCode[1] : 'LOS'; // Default fallback
+    return anyCode ? anyCode[1] : 'LOS';
   };
 
-  // Popular hotel destinations
   const popularHotelDestinations: HotelDestination[] = [
     { name: 'Lagos', city: 'Lagos', country: 'Nigeria', cityCode: 'LOS', image: 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D' },
     { name: 'London', city: 'London', country: 'United Kingdom', cityCode: 'LHR', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
@@ -196,9 +171,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     { name: 'Accra', city: 'Accra', country: 'Ghana', cityCode: 'ACC', image: 'https://images.unsplash.com/photo-1587496679742-bad502958c4a?auto=format&fit=crop&q=80&w=400' },
   ];
 
-  // Popular airports for the whole world (updated with more airports)
   const popularAirports: Airport[] = [
-    // Africa
     { code: 'LOS', name: 'Murtala Muhammed International Airport', city: 'Lagos', country: 'Nigeria', type: 'airport' },
     { code: 'ABV', name: 'Nnamdi Azikiwe International Airport', city: 'Abuja', country: 'Nigeria', type: 'airport' },
     { code: 'ACC', name: 'Kotoka International Airport', city: 'Accra', country: 'Ghana', type: 'airport' },
@@ -208,15 +181,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     { code: 'CAI', name: 'Cairo International Airport', city: 'Cairo', country: 'Egypt', type: 'airport' },
     { code: 'ADD', name: 'Bole International Airport', city: 'Addis Ababa', country: 'Ethiopia', type: 'airport' },
     { code: 'DAR', name: 'Julius Nyerere International Airport', city: 'Dar es Salaam', country: 'Tanzania', type: 'airport' },
-    
-    // Middle East
     { code: 'DXB', name: 'Dubai International Airport', city: 'Dubai', country: 'UAE', type: 'airport' },
     { code: 'AUH', name: 'Abu Dhabi International Airport', city: 'Abu Dhabi', country: 'UAE', type: 'airport' },
     { code: 'DOH', name: 'Hamad International Airport', city: 'Doha', country: 'Qatar', type: 'airport' },
     { code: 'IST', name: 'Istanbul Airport', city: 'Istanbul', country: 'Turkey', type: 'airport' },
     { code: 'SAW', name: 'Sabiha Gökçen International Airport', city: 'Istanbul', country: 'Turkey', type: 'airport' },
-    
-    // Europe
     { code: 'LHR', name: 'Heathrow Airport', city: 'London', country: 'UK', type: 'airport' },
     { code: 'LGW', name: 'Gatwick Airport', city: 'London', country: 'UK', type: 'airport' },
     { code: 'CDG', name: 'Charles de Gaulle Airport', city: 'Paris', country: 'France', type: 'airport' },
@@ -225,22 +194,16 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     { code: 'MAD', name: 'Adolfo Suárez Madrid–Barajas Airport', city: 'Madrid', country: 'Spain', type: 'airport' },
     { code: 'BCN', name: 'Barcelona–El Prat Airport', city: 'Barcelona', country: 'Spain', type: 'airport' },
     { code: 'FCO', name: 'Leonardo da Vinci–Fiumicino Airport', city: 'Rome', country: 'Italy', type: 'airport' },
-    
-    // North America
     { code: 'JFK', name: 'John F. Kennedy International Airport', city: 'New York', country: 'USA', type: 'airport' },
     { code: 'LAX', name: 'Los Angeles International Airport', city: 'Los Angeles', country: 'USA', type: 'airport' },
     { code: 'ORD', name: "O'Hare International Airport", city: 'Chicago', country: 'USA', type: 'airport' },
     { code: 'YYZ', name: 'Toronto Pearson International Airport', city: 'Toronto', country: 'Canada', type: 'airport' },
     { code: 'YVR', name: 'Vancouver International Airport', city: 'Vancouver', country: 'Canada', type: 'airport' },
     { code: 'MEX', name: 'Mexico City International Airport', city: 'Mexico City', country: 'Mexico', type: 'airport' },
-    
-    // South America
     { code: 'GRU', name: 'Guarulhos International Airport', city: 'São Paulo', country: 'Brazil', type: 'airport' },
     { code: 'GIG', name: 'Galeão International Airport', city: 'Rio de Janeiro', country: 'Brazil', type: 'airport' },
     { code: 'EZE', name: 'Ministro Pistarini International Airport', city: 'Buenos Aires', country: 'Argentina', type: 'airport' },
     { code: 'LIM', name: 'Jorge Chávez International Airport', city: 'Lima', country: 'Peru', type: 'airport' },
-    
-    // Asia
     { code: 'HND', name: 'Haneda Airport', city: 'Tokyo', country: 'Japan', type: 'airport' },
     { code: 'NRT', name: 'Narita International Airport', city: 'Tokyo', country: 'Japan', type: 'airport' },
     { code: 'PVG', name: 'Shanghai Pudong International Airport', city: 'Shanghai', country: 'China', type: 'airport' },
@@ -251,14 +214,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     { code: 'DEL', name: 'Indira Gandhi International Airport', city: 'Delhi', country: 'India', type: 'airport' },
     { code: 'BOM', name: 'Chhatrapati Shivaji Maharaj International Airport', city: 'Mumbai', country: 'India', type: 'airport' },
     { code: 'ICN', name: 'Incheon International Airport', city: 'Seoul', country: 'South Korea', type: 'airport' },
-    
-    // Australia/Oceania
     { code: 'SYD', name: 'Sydney Kingsford Smith Airport', city: 'Sydney', country: 'Australia', type: 'airport' },
     { code: 'MEL', name: 'Melbourne Airport', city: 'Melbourne', country: 'Australia', type: 'airport' },
     { code: 'AKL', name: 'Auckland Airport', city: 'Auckland', country: 'New Zealand', type: 'airport' },
   ];
 
-  // Fetch car location suggestions (UPDATED from first code block)
   const fetchCarLocationSuggestions = useCallback(async (query: string): Promise<CarLocationSuggestion[]> => {
     if (!query || query.length < 1) {
       const popularCarLocations = airportsWithCities
@@ -271,7 +231,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     }
     const queryLower = query.toLowerCase().trim();
     try {
-      const response = await fetch(`https://ebony-bruce-production.up.railway.app/api/v1/bookings/flights/places/suggestions?query=${encodeURIComponent(query)}`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ebony-bruce-production.up.railway.app'}/api/v1/bookings/flights/places/suggestions?query=${encodeURIComponent(query)}`);
       if (response.ok) {
         const result = await response.json();
         if (result.success && Array.isArray(result.data)) {
@@ -304,17 +264,14 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     
     try {
       setLoadingSuggestions(true);
-      
-      // Try using the real API for suggestions
       const response = await fetch(
-        `https://ebony-bruce-production.up.railway.app/api/v1/bookings/flights/places/suggestions?query=${encodeURIComponent(query)}`
+        `${process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ebony-bruce-production.up.railway.app'}/api/v1/bookings/flights/places/suggestions?query=${encodeURIComponent(query)}`
       );
       
       if (response.ok) {
         const result = await response.json();
         
         if (result.success && Array.isArray(result.data)) {
-          // Transform API response to your Airport interface
           const suggestions: Airport[] = result.data
             .map((place: any) => ({
               code: place.iata_code || place.code || '',
@@ -323,9 +280,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
               country: place.country_name || place.country || '',
               type: place.type === 'city' ? 'city' : 'airport'
             }))
-            .filter((place: Airport) => place.code && place.name); // Filter valid results
-          
-          // Remove duplicates based on code + city combination
+            .filter((place: Airport) => place.code && place.name);
           const uniqueSuggestions = suggestions.filter(
             (airport, index, self) =>
               index === self.findIndex((a) => 
@@ -333,22 +288,16 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
               )
           );
           
-          console.log('Unique API suggestions:', uniqueSuggestions.length);
           return uniqueSuggestions.slice(0, 12);
         }
       }
-      
-      // Fallback to local search if API fails
-      console.log('Using fallback airport search');
       const lowerQuery = query.toLowerCase();
-      const filtered = popularAirports.filter(airport => 
+      const filtered = popularAirports.filter(airport =>
         airport.code.toLowerCase().includes(lowerQuery) ||
         airport.city.toLowerCase().includes(lowerQuery) ||
         airport.country.toLowerCase().includes(lowerQuery) ||
         airport.name.toLowerCase().includes(lowerQuery)
       );
-      
-      // Remove duplicates from local search too
       const uniqueFiltered = filtered.filter(
         (airport, index, self) =>
           index === self.findIndex((a) => 
@@ -360,7 +309,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       
     } catch (error) {
       console.error('Error fetching airport suggestions:', error);
-      // Fallback to local search
       const lowerQuery = query.toLowerCase();
       const filtered = popularAirports.filter(airport => 
         airport.code.toLowerCase().includes(lowerQuery) ||
@@ -368,22 +316,18 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         airport.country.toLowerCase().includes(lowerQuery) ||
         airport.name.toLowerCase().includes(lowerQuery)
       );
-      
-      // Remove duplicates
       const uniqueFiltered = filtered.filter(
         (airport, index, self) =>
-          index === self.findIndex((a) => 
+          index === self.findIndex((a) =>
             a.code === airport.code && a.city === airport.city
           )
       );
-      
       return uniqueFiltered.slice(0, 10);
     } finally {
       setLoadingSuggestions(false);
     }
   }, []);
 
-  // Fetch hotel location suggestions
   const fetchHotelLocationSuggestions = useCallback(async (query: string): Promise<HotelDestination[]> => {
     if (!query || query.length < 2) {
       return popularHotelDestinations.slice(0, 6);
@@ -391,8 +335,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     
     try {
       setLoadingHotelSuggestions(true);
-      
-      // Filter from popular destinations
       const lowerQuery = query.toLowerCase();
       const filtered = popularHotelDestinations.filter(dest => 
         dest.city.toLowerCase().includes(lowerQuery) ||
@@ -400,8 +342,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         dest.name.toLowerCase().includes(lowerQuery) ||
         dest.cityCode.toLowerCase().includes(lowerQuery)
       );
-      
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 200));
       return filtered.length > 0 ? filtered.slice(0, 8) : [];
       
@@ -413,7 +353,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     }
   }, []);
 
-  // Handle From input changes
   const handleFromInputChange = useCallback(async (value: string, index: number = 0) => {
     const newSegments = [...segments];
     newSegments[index].from = value;
@@ -430,7 +369,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     }
   }, [segments, fetchAirportSuggestions]);
 
-  // Handle To input changes
   const handleToInputChange = useCallback(async (value: string, index: number = 0) => {
     const newSegments = [...segments];
     newSegments[index].to = value;
@@ -447,7 +385,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     }
   }, [segments, fetchAirportSuggestions]);
 
-  // Handle hotel location input changes
   const handleHotelLocationChange = useCallback(async (value: string) => {
     setHotelLocation(value);
     
@@ -461,7 +398,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     }
   }, [fetchHotelLocationSuggestions]);
 
-  // Handle car pick-up input changes (UPDATED from first code block)
   const handleCarPickUpChange = useCallback(async (value: string) => {
     setCarPickUp(value);
     if (value.length >= 1) {
@@ -475,7 +411,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     }
   }, [fetchCarLocationSuggestions]);
 
-  // Handle car drop-off input changes (UPDATED from first code block)
   const handleCarDropOffChange = useCallback(async (value: string) => {
     setCarDropOff(value);
     if (value.length >= 1) {
@@ -489,7 +424,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     }
   }, [fetchCarLocationSuggestions]);
 
-  // Update the handleAirportSelect function to handle duplicates
   const handleAirportSelect = useCallback((airport: Airport, type: 'from' | 'to', index: number = 0) => {
     const newSegments = [...segments];
     const displayValue = `${airport.code} - ${airport.city}, ${airport.country}`;
@@ -512,7 +446,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     }
   }, [segments]);
 
-  // Handle car location selection (UPDATED from first code block)
   const handleCarLocationSelect = useCallback((location: CarLocationSuggestion, type: 'pickUp' | 'dropOff') => {
     const displayValue = `${location.code} - ${location.name}, ${location.city}`;
     if (type === 'pickUp') {
@@ -525,13 +458,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     }
   }, [differentLocation]);
 
-  // Handle hotel destination selection
   const handleHotelDestinationSelect = useCallback((destination: HotelDestination) => {
     setHotelLocation(`${destination.city}, ${destination.country}`);
     setShowHotelLocationDropdown(false);
   }, []);
 
-  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (travellerRef.current && !travellerRef.current.contains(event.target as Node)) {
@@ -569,7 +500,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Initialize dates
   useEffect(() => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);

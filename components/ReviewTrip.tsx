@@ -1,36 +1,19 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
-import api from '../lib/api';
-// ADD THESE IMPORT STATEMENTS
-import { SearchResult, SearchParams } from '../lib/types';
-import { User } from '../app/page'; // Or wherever your User type is defined
+import type { SearchResult, SearchParams, PassengerInfo, User } from '../lib/types';
+import { userApi, ApiError } from '../lib/api';
+import { formatPrice, currencySymbol } from '../lib/utils';
 
-// ReviewTrip component props interface
 interface ReviewTripProps {
   item: SearchResult | null;
   searchParams: SearchParams | null;
   onBack: () => void;
   isLoggedIn: boolean;
-  user: User;
-  onFlightBooking?: (
-      onSuccess: () => void,
-      onFailure: () => void
-  ) => void;
-  onHotelBooking?: (
-      hotelData: any,
-      dates: any,
-      passengerInfo: any
-  ) => void;
-  onCarBooking?: (
-      carData: any,
-      dates: any,
-      passengerInfo: any
-  ) => void;
-  onSuccess: () => void;
-  onFailure: () => void;
-  onOpenPaymentModal?: (bookingData: any) => void;
-  productType: 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL';
+  user?: User | null;
+  isCreating?: boolean;
+  onProceedToPayment: (passengerInfo: PassengerInfo, voucherCode?: string) => Promise<void>;
+  onSignInRequired?: () => void;
 }
 
 const ReviewTrip: React.FC<ReviewTripProps> = ({ 
@@ -39,14 +22,14 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   onBack, 
   isLoggedIn, 
   user, 
-  onSuccess, 
-  onFailure,
-  onOpenPaymentModal,
-  productType
+  isCreating,
+  onProceedToPayment,
+  onSignInRequired,
 }) => {
-  const { currency } = useLanguage();
+  useLanguage(); // keep for any future display preference
+  // Use offer currency for checkout (backend expects amount in offer currency)
+  const offerCurrency = (item?.realData?.currency ?? 'GBP').toUpperCase();
   
-  // Add null check for item
   if (!item) {
     return (
       <div className="bg-[#f8fbfe] min-h-screen py-12">
@@ -65,178 +48,106 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const isCar = rawType.includes('car');
   const isFlight = !isHotel && !isCar;
 
-  const [isBooking, setIsBooking] = useState(false);
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState(isLoggedIn ? user?.email || '' : '');
-  const [phone, setPhone] = useState(isLoggedIn ? user?.phone || '' : '');
+  // Pre-fill from user profile when logged in
+  const splitName = (user?.name || '').trim().split(/\s+/);
+  const defaultFirstName = splitName[0] || '';
+  const defaultLastName = splitName.slice(1).join(' ') || '';
 
-  const getProviderForProductType = (): 'DUFFEL' | 'AMADEUS' | 'TRIPS_AFRICA' | 'BOOKING_COM' => {
-    switch (productType) {
-      case 'FLIGHT_INTERNATIONAL':
-        return 'DUFFEL';
-      case 'HOTEL':
-        return 'AMADEUS';
-      case 'CAR_RENTAL':
-        return 'AMADEUS';
-      default:
-        // Fallback based on item type
-        if (isFlight) return 'DUFFEL';
-        if (isHotel) return 'AMADEUS';
-        return 'AMADEUS'; // Default for car rentals
+  const [isBooking, setIsBooking] = useState(false);
+  const [firstName, setFirstName] = useState(defaultFirstName);
+  const [lastName, setLastName] = useState(defaultLastName);
+  const [email, setEmail] = useState(user?.email || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [voucherCode, setVoucherCode] = useState('');
+  const [voucherApplied, setVoucherApplied] = useState<any | null>(null);
+  const [isValidatingVoucher, setIsValidatingVoucher] = useState(false);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
+
+  // Sync if user data loads after mount
+  useEffect(() => {
+    if (user) {
+      const parts = (user.name || '').trim().split(/\s+/);
+      if (!firstName) setFirstName(parts[0] || '');
+      if (!lastName) setLastName(parts.slice(1).join(' ') || '');
+      if (!email) setEmail(user.email || '');
+      if (!phone) setPhone(user.phone || '');
+    }
+  }, [user]);
+
+  // Total for the stay/trip in offer currency
+  const subtotal = typeof item.realData?.price === 'number'
+    ? item.realData.price
+    : parseFloat((item.price || '0').replace(/[^\d.]/g, '') || '0');
+  const serviceFeeAmount = typeof item.realData?.serviceFee === 'number' ? item.realData.serviceFee : 0;
+  // Amadeus hotel flow: total is final_price (no extra markup); generic hotel flow: backend adds 15% + service
+  const isAmadeusHotel = isHotel && !!item.realData?.offerId && (typeof item.realData?.finalPrice === 'number' || typeof item.realData?.price === 'number');
+  const effectiveSubtotal = voucherApplied?.finalAmount ?? (isAmadeusHotel && typeof item.realData?.finalPrice === 'number' ? item.realData.finalPrice : subtotal);
+  const BACKEND_MARKUP_PERCENT_HOTEL = 0.15;
+  const markupAmount = isHotel && !isAmadeusHotel ? effectiveSubtotal * BACKEND_MARKUP_PERCENT_HOTEL : 0;
+  const totalDue = isAmadeusHotel ? effectiveSubtotal : (effectiveSubtotal + markupAmount + serviceFeeAmount);
+  const formattedReservation = formatPrice(effectiveSubtotal, offerCurrency);
+  const formattedMarkup = formatPrice(markupAmount, offerCurrency);
+  const formattedTotalDue = formatPrice(totalDue, offerCurrency);
+
+  const productTypeForVoucher = (() => {
+    if (isHotel) return 'HOTEL';
+    if (isCar) return 'CAR_RENTAL';
+    return 'FLIGHT_INTERNATIONAL';
+  })();
+
+  const handleApplyVoucher = async () => {
+    const code = voucherCode.trim();
+    if (!code) {
+      setVoucherError('Enter a voucher code');
+      return;
+    }
+    setVoucherError(null);
+    setIsValidatingVoucher(true);
+    try {
+      const result = await userApi.validateVoucher({
+        voucherCode: code,
+        productType: productTypeForVoucher,
+        bookingAmount: subtotal,
+        currency: offerCurrency,
+      });
+      if (!result.valid) {
+        setVoucherApplied(null);
+        setVoucherError(result.message || 'Voucher is not valid for this booking');
+      } else {
+        setVoucherApplied(result);
+      }
+    } catch (error: any) {
+      console.error('Failed to validate voucher:', error);
+      const msg =
+        error instanceof ApiError ? error.message : (error?.message || 'Failed to validate voucher');
+      setVoucherError(msg);
+      setVoucherApplied(null);
+    } finally {
+      setIsValidatingVoucher(false);
     }
   };
 
-  useEffect(() => {
-    if (isLoggedIn && user?.name) {
-      const parts = user.name.trim().split(/\s+/);
-      setFirstName(parts[0] || '');
-      setLastName(parts.slice(1).join(' ') || 'User');
-    }
-    if (isLoggedIn && user?.email) setEmail(user.email);
-    if (isLoggedIn && user?.phone) setPhone(user.phone);
-  }, [isLoggedIn, user]);
-
-  // Fix: Add null check for item.price
-  const subtotal = parseFloat((item.price || '0').replace(/[^\d.]/g, '') || '0');
-  const formattedTotal = `${currency.symbol}${subtotal.toLocaleString()}`;
-
   const handleCompleteBooking = async () => {
     if (!firstName || !lastName || !email || !phone) {
-      alert('Identity fields required.');
+      alert('All passenger fields are required.');
       return;
     }
   
     setIsBooking(true);
     try {
-      // IMPORTANT: DON'T create booking here - just prepare data for payment
-      
-      // Extract origin and destination from item or searchParams
-      let origin = 'LOS';
-      let destination = 'ABV';
-      let departureDate = searchParams?.segments?.[0]?.date || new Date().toISOString().split('T')[0];
-      
-      // Try to extract from subtitle (e.g., "Lagos (LOS) → Abuja (ABV)")
-      if (item.subtitle) {
-        const match = item.subtitle.match(/([A-Z]{3})\s*→\s*([A-Z]{3})/);
-        if (match) {
-          origin = match[1];
-          destination = match[2];
-        }
-      }
-      
-      // Try to extract from searchParams
-      if (searchParams?.segments?.[0]?.from) {
-        const fromMatch = searchParams.segments[0].from.match(/\(([A-Z]{3})\)/);
-        if (fromMatch) origin = fromMatch[1];
-      }
-      
-      if (searchParams?.segments?.[0]?.to) {
-        const toMatch = searchParams.segments[0].to.match(/\(([A-Z]{3})\)/);
-        if (toMatch) destination = toMatch[1];
-      }
-  
-      // Get correct provider based on product type
-      const getCorrectProvider = () => {
-        switch (productType) {
-          case 'FLIGHT_INTERNATIONAL':
-            return 'DUFFEL';
-          case 'HOTEL':
-            return 'AMADEUS';
-          case 'CAR_RENTAL':
-            return 'AMADEUS';
-          default:
-            return isFlight ? 'DUFFEL' : 'AMADEUS';
-        }
-      };
-  
-      // Prepare passenger info WITHOUT nested 'name' field
-      const passengerInfo = { 
-        firstName, 
-        lastName, 
-        email, 
-        phone
-        // REMOVED: name: `${firstName} ${lastName}` - this causes backend error
-      };
-  
-      // Calculate amount (do NOT send totalAmount to backend)
-      const amount = subtotal; // Keep as number
-  
-      // Prepare data for payment modal ONLY (no API call yet)
-      const paymentData = {
-        // Core booking info
-        productType: productType || (isFlight ? "FLIGHT_INTERNATIONAL" : isHotel ? "HOTEL" : "CAR_RENTAL"),
-        provider: getCorrectProvider(),
-        
-        // Price info (for display only)
-        price: amount,
-        basePrice: amount,
-        currency: currency.code,
-        
-        // Item info
-        itemId: item.id,
-        title: item.title,
-        subtitle: item.subtitle,
-        offerId: item.realData?.id || item.id,
-        offerRequestId: item.realData?.offerRequestId,
-        
-        // Flight-specific data (if applicable)
-        ...(isFlight && {
-          origin,
-          destination,
-          departureDate,
-          airline: item.provider,
-          flightNumber: item.title?.match(/\d+/)?.[0] || 'N/A',
-        }),
-        
-        // Hotel-specific data (if applicable)
-        ...(isHotel && searchParams && {
-          hotelId: item.id,
-          checkInDate: searchParams.checkInDate,
-          checkOutDate: searchParams.checkOutDate,
-          guests: searchParams.adults || 1,
-        }),
-        
-        // Car rental-specific data (if applicable)
-        ...(isCar && searchParams && {
-          carRentalId: item.id,
-          pickupDate: searchParams.pickupDateTime,
-          dropoffDate: searchParams.dropoffDateTime,
-          pickupLocation: searchParams.carPickUp,
-          dropoffLocation: searchParams.carDropOff,
-        }),
-        
-        // Passenger info (for payment modal)
-        passengerInfo,
-        
-        // Also include passenger fields separately for easier access
-        firstName,
-        lastName,
-        email,
-        phone,
-        
-        // DO NOT include totalAmount - this causes backend error
-        // DO NOT call bookingApi.createBooking here - wait until after payment
-      };
-  
-      console.log('📤 Sending data to payment modal:', paymentData);
-      
-      // IMPORTANT: Only call the payment modal callback
-      // The actual booking creation will happen in PaymentModal AFTER successful payment
-      if (onOpenPaymentModal) {
-        onOpenPaymentModal(paymentData);
-      } else {
-        // Fallback: If no payment modal, proceed directly (for testing)
-        console.warn('No payment modal handler available');
-        onSuccess?.();
-      }
-    } catch (error) {
-      console.error('Error preparing booking:', error);
-      alert('Failed to prepare booking. Please try again.');
+      await onProceedToPayment(
+        { firstName, lastName, email, phone },
+        voucherApplied?.valid ? voucherCode.trim() : undefined
+      );
+    } catch (error: any) {
+      console.error('Booking preparation error:', error);
     } finally {
       setIsBooking(false);
     }
   };
+
+  // Common input styles
+  const inputCls = 'w-full px-6 py-5 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold text-gray-900 focus:border-[#33a8da] outline-none transition-all placeholder-gray-400';
 
   return (
     <div className="bg-[#f8fbfe] min-h-screen py-12">
@@ -250,28 +161,73 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         
         <div className="flex flex-col lg:flex-row gap-8">
           <div className="flex-1 space-y-8">
+            {/* ── Identity & Contact ── */}
             <section className="bg-white rounded-[32px] p-10 shadow-xl border border-gray-100">
-              <h2 className="text-2xl font-black text-[#001f3f] mb-10 uppercase">Identity & Contact</h2>
+              <div className="flex items-center justify-between mb-10">
+                <h2 className="text-2xl font-black text-[#001f3f] uppercase">Identity & Contact</h2>
+                {isLoggedIn && user && (
+                  <span className="text-[10px] font-black text-green-500 bg-green-50 px-3 py-1 rounded-full uppercase tracking-widest">
+                    ✓ From your profile
+                  </span>
+                )}
+              </div>
+
+              {isLoggedIn && user ? (
+                /* ── Logged-in: Show pre-filled summary (editable) ── */
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">First Name</label>
+                    <input value={firstName} onChange={e => setFirstName(e.target.value)} className={inputCls} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Last Name</label>
+                    <input value={lastName} onChange={e => setLastName(e.target.value)} className={inputCls} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Email Address</label>
+                    <input value={email} onChange={e => setEmail(e.target.value)} className={inputCls} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Phone Number</label>
+                    <input value={phone} onChange={e => setPhone(e.target.value)} className={inputCls} placeholder="+234..." />
+                  </div>
+                </div>
+              ) : (
+                /* ── Guest: Empty form ── */
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">First Name</label>
-                  <input value={firstName} onChange={e => setFirstName(e.target.value)} className="w-full px-6 py-5 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold focus:border-[#33a8da] outline-none transition-all" placeholder="Enter first name" />
+                    <input value={firstName} onChange={e => setFirstName(e.target.value)} className={inputCls} placeholder="Enter first name" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Last Name</label>
-                  <input value={lastName} onChange={e => setLastName(e.target.value)} className="w-full px-6 py-5 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold focus:border-[#33a8da] outline-none transition-all" placeholder="Enter last name" />
+                    <input value={lastName} onChange={e => setLastName(e.target.value)} className={inputCls} placeholder="Enter last name" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Email Address</label>
-                  <input value={email} onChange={e => setEmail(e.target.value)} className="w-full px-6 py-5 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold focus:border-[#33a8da] outline-none transition-all" placeholder="name@example.com" />
+                    <input value={email} onChange={e => setEmail(e.target.value)} className={inputCls} placeholder="name@example.com" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Phone Number</label>
-                  <input value={phone} onChange={e => setPhone(e.target.value)} className="w-full px-6 py-5 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold focus:border-[#33a8da] outline-none transition-all" placeholder="+234..." />
+                    <input value={phone} onChange={e => setPhone(e.target.value)} className={inputCls} placeholder="+234..." />
                 </div>
               </div>
+              )}
+
+              {!isLoggedIn && (
+                <div className="mt-6 p-4 bg-blue-50 rounded-xl flex items-center gap-3">
+                  <svg className="w-5 h-5 text-[#33a8da] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs text-gray-600">
+                    <button onClick={onSignInRequired} className="font-bold text-[#33a8da] hover:underline">Sign in</button>
+                    {' '}to auto-fill your details and track your booking.
+                  </p>
+                </div>
+              )}
             </section>
 
+            {/* ── Trip Summary ── */}
             <section className="bg-white rounded-[32px] p-10 shadow-xl border border-gray-100">
                <h2 className="text-2xl font-black text-[#001f3f] mb-8 uppercase">Trip Summary</h2>
                <div className="flex items-center gap-6 p-6 bg-gray-50 rounded-3xl border border-gray-100">
@@ -286,31 +242,75 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
             </section>
           </div>
 
+          {/* ── Price Sidebar ── */}
           <aside className="w-full lg:w-[460px]">
             <div className="bg-white rounded-[32px] shadow-2xl p-10 sticky top-24 border border-gray-100">
               <h3 className="text-xl font-black text-gray-900 mb-8 uppercase tracking-tight">Price Breakdown</h3>
               <div className="space-y-6 mb-10">
                  <div className="flex justify-between items-center">
                     <span className="text-sm font-bold text-gray-400">Reservation Amount</span>
-                    <span className="text-lg font-bold text-gray-900">{formattedTotal}</span>
+                    <span className="text-lg font-bold text-gray-900">{formattedReservation}</span>
                  </div>
+                 {markupAmount > 0 && (
+                   <div className="flex justify-between items-center">
+                     <span className="text-sm font-bold text-gray-400">Markup</span>
+                     <span className="text-sm font-bold text-gray-900">{formattedMarkup}</span>
+                   </div>
+                 )}
                  <div className="flex justify-between items-center">
                     <span className="text-sm font-bold text-gray-400">Service Fee</span>
-                    <span className="text-[10px] font-black text-green-500 uppercase">Waived</span>
+                    {isAmadeusHotel ? (
+                      <span className="text-[10px] font-black text-gray-500 uppercase">Included</span>
+                    ) : serviceFeeAmount > 0 ? (
+                      <span className="text-sm font-bold text-gray-900">{formatPrice(serviceFeeAmount, offerCurrency)}</span>
+                    ) : (
+                      <span className="text-[10px] font-black text-green-500 uppercase">Waived</span>
+                    )}
+                 </div>
+                 <div className="pt-2 border-t border-gray-100">
+                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
+                     Voucher Code (optional)
+                   </label>
+                   <div className="flex gap-2">
+                     <input
+                       type="text"
+                       value={voucherCode}
+                       onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+                       placeholder="EBT-V-ABC123"
+                       className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]"
+                     />
+                     <button
+                       type="button"
+                       disabled={isValidatingVoucher || !voucherCode.trim()}
+                       onClick={handleApplyVoucher}
+                       className="px-4 py-2.5 bg-[#33a8da] text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-[#2c98c7] disabled:opacity-50"
+                     >
+                       {isValidatingVoucher ? 'Checking…' : 'Apply'}
+                     </button>
+                   </div>
+                   {voucherError && (
+                     <p className="mt-2 text-[11px] text-red-500 font-bold">{voucherError}</p>
+                   )}
+                   {voucherApplied?.valid && (
+                     <p className="mt-2 text-[11px] text-green-600 font-bold">
+                       Discount applied: {currencySymbol(offerCurrency)}
+                       {voucherApplied.discountAmount?.toLocaleString()} off
+                     </p>
+                   )}
                  </div>
                  <div className="h-px bg-gray-100 w-full"></div>
                  <div className="flex justify-between items-center">
                     <span className="text-xl font-black text-gray-900 uppercase">Total Due</span>
-                    <span className="text-3xl font-black text-[#33a8da] tracking-tighter">{formattedTotal}</span>
+                    <span className="text-3xl font-black text-[#33a8da] tracking-tighter">{formattedTotalDue}</span>
                  </div>
               </div>
               
               <button 
   onClick={handleCompleteBooking} 
-  disabled={isBooking} 
+                disabled={isBooking || isCreating} 
   className="w-full bg-[#33a8da] text-white font-black py-6 rounded-2xl shadow-xl hover:bg-[#2c98c7] transition transform active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm"
 >
-  {isBooking ? 'Preparing Payment...' : 'Proceed to Payment'}
+                {isCreating ? 'Creating Booking...' : isBooking ? 'Preparing Payment...' : 'Proceed to Payment'}
 </button>
 
               <div className="mt-8 flex items-center justify-center gap-2">

@@ -40,7 +40,7 @@ const currencies: Currency[] = [
 
 interface NavbarProps {
   isLoggedIn?: boolean;
-  user?: { name: string; email: string; profilePicture?: string };
+  user?: { name: string; email: string; image?: string; profilePicture?: string };
   activeTab?: 'flights' | 'hotels' | 'cars';
   onSignIn?: () => void;
   onRegister?: () => void;
@@ -137,7 +137,7 @@ const Navbar: React.FC<NavbarProps> = ({
     return 'https://ui-avatars.com/api/?name=User&background=32A6D7&color=fff';
   };
 
-  const avatarUrl = user?.profilePicture || getAvatarFallback();
+  const avatarUrl = user?.image || user?.profilePicture || getAvatarFallback();
 
   // Profile menu items from new code
   const profileMenuItems = [

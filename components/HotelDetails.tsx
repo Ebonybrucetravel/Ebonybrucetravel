@@ -20,14 +20,17 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
     window.scrollTo(0, 0);
   }, []);
 
-  // COHESIVE HOTEL GALLERY - Single premium resort property from different views
-  const images = [
-    "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=1200", // View 1: Main Facade
-    "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=1200", // View 2: Infinity Pool
-    "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=1200", // View 3: Master Suite
-    "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=1200", // View 4: Grand Lobby
-    "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=1200", // View 5: Suite Bathroom
+  // Use server image when available (from Amadeus/search), then fallback gallery
+  const fallbackImages = [
+    "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=1200",
+    "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=1200",
+    "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=1200",
+    "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=1200",
+    "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=1200",
   ];
+  const images = (item?.image || item?.imageUrl)
+    ? [item.image || item.imageUrl, ...fallbackImages]
+    : fallbackImages;
 
   const nextImage = useCallback(() => {
     setCurrentImageIndex((prev) => (prev + 1) % images.length);
@@ -45,12 +48,16 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
     { type: 'Classic room', guests: 3, price: 165.00, options: ['Free cancellation', 'Extra bed'] },
   ];
 
-  const amenities = [
+  // Use server amenities when available (from search/API), else default
+  const defaultAmenities = [
     { group: 'Common', items: ['Free Wi-Fi', 'Swimming Pool', 'Air Conditioning', 'Flat-screen TV', 'Ensuite Bathroom', 'Balcony'] },
     { group: 'Kitchen', items: ['Refrigerator', 'Kitchenette', 'Electric kettle', 'Microwave', 'Dining area', 'Coffee machine'] },
     { group: 'Wellness', items: ['Fitness center', 'Spa and wellness center', 'Massage', 'Hot tub/Jacuzzi'] },
     { group: 'Services', items: ['Room service', '24-hour front desk', 'Concierge service', 'Laundry', 'Airport shuttle'] }
   ];
+  const amenities = Array.isArray(item?.amenities) && item.amenities.length > 0
+    ? [{ group: 'Amenities', items: item.amenities }]
+    : defaultAmenities;
 
   const policies = [
     { label: 'Check-in', value: 'From 2:00 PM' },
@@ -403,11 +410,21 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
                <div className="space-y-4 mb-10">
                   <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Dates</p>
-                    <p className="text-sm font-bold text-gray-900">Oct 24, 2024 - Oct 27, 2024</p>
+                    <p className="text-sm font-bold text-gray-900">
+                      {searchParams?.checkInDate && searchParams?.checkOutDate
+                        ? `${new Date(searchParams.checkInDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} - ${new Date(searchParams.checkOutDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                        : (item?.realData?.checkInDate && item?.realData?.checkOutDate
+                          ? `${new Date(item.realData.checkInDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} - ${new Date(item.realData.checkOutDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                          : 'Oct 24, 2024 - Oct 27, 2024')}
+                    </p>
                   </div>
                   <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Guests</p>
-                    <p className="text-sm font-bold text-gray-900">2 Adults, 1 Room</p>
+                    <p className="text-sm font-bold text-gray-900">
+                      {searchParams?.adults != null && searchParams?.rooms != null
+                        ? `${searchParams.adults} Adults, ${searchParams.rooms} Room${searchParams.rooms !== 1 ? 's' : ''}`
+                        : (item?.realData?.guests != null ? `${item.realData.guests} Adults, ${item.realData.rooms ?? 1} Room(s)` : '2 Adults, 1 Room')}
+                    </p>
                   </div>
                </div>
 

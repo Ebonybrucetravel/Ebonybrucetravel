@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useMemo, useEffect } from "react";
 import { useLanguage } from "../context/LanguageContext";
+import { HotelListImage } from "./HotelListImage";
 
 interface SearchResult {
   id: string;
@@ -14,6 +15,7 @@ interface SearchResult {
   stops?: string;
   rating?: number;
   image?: string;
+  primaryImageUrl?: string | null;
   amenities?: string[];
   features?: string[];
   type?: "flights" | "hotels" | "car-rentals";
@@ -149,11 +151,24 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
   const renderHotelCard = (item: SearchResult) => {
     const starRating = Math.floor(item.rating || 4);
+    const isHotelFromSearch = item.type === 'hotels' && item.id;
     return (
       <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
         <div className="flex flex-col md:flex-row">
           <div className="w-full md:w-[320px] h-64 md:h-auto overflow-hidden relative flex-shrink-0">
-            <img src={item.image || `https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600`} className="w-full h-full object-cover group-hover:scale-110 transition duration-500" alt={item.title} />
+            {item.primaryImageUrl ? (
+              <img src={item.primaryImageUrl} className="w-full h-full object-cover group-hover:scale-110 transition duration-500" alt={item.title} />
+            ) : isHotelFromSearch ? (
+              <HotelListImage
+                hotelId={item.id}
+                hotelName={item.title}
+                fallbackSrc={item.image || undefined}
+                alt={item.title}
+                className="w-full h-full"
+              />
+            ) : (
+              <img src={item.image || `https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600`} className="w-full h-full object-cover group-hover:scale-110 transition duration-500" alt={item.title} />
+            )}
             <button onClick={(e) => { e.stopPropagation(); setSavedItems(p => { const n = new Set(p); n.has(item.id) ? n.delete(item.id) : n.add(item.id); return n; }); }} className={`absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition backdrop-blur-md ${savedItems.has(item.id) ? "bg-red-500 text-white" : "bg-white/40 text-gray-400 hover:bg-white"}`}>
               <svg className="w-5 h-5" fill={savedItems.has(item.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" strokeWidth={2}/></svg>
             </button>

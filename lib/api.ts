@@ -1,7 +1,5 @@
-// api.ts - COMPLETE VERSION with Unified Payment System for all booking types
-const API_BASE = 'https://ebony-bruce-production.up.railway.app';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'https://ebony-bruce-production.up.railway.app';
 
-// Define ApiError class with enhanced error handling
 export class ApiError extends Error {
   status: number;
   code?: string;
@@ -25,11 +23,11 @@ interface ApiResponse<T> {
   [key: string]: any;
 }
 
-// User interface
 export interface User {
   id?: string;
   name: string;
   email: string;
+  image?: string;
   profilePicture?: string;
   dob?: string;
   gender?: string;
@@ -47,7 +45,6 @@ export interface User {
   isVerified?: boolean;
 }
 
-// Hotel search interfaces
 export interface HotelSearchParams {
   cityCode: string;
   checkInDate: string;
@@ -212,9 +209,9 @@ export interface RoomAssociation {
 export interface PaymentCardInfo {
   vendorCode: string;
   cardNumber: string;
-  expiryDate: string; // Format: "YYYY-MM"
-  holderName: string;
-  securityCode: string;
+  expiryDate: string; // YYYY-MM
+  holderName?: string;
+  securityCode?: string;
 }
 
 export interface HotelBookingRequest {
@@ -236,7 +233,21 @@ export interface HotelBookingRequest {
 export interface HotelBookingResponse {
   success?: boolean;
   data?: {
-    bookingId: string;
+    booking?: {
+      id: string;
+      reference?: string;
+      productType?: string;
+      provider?: string;
+      status?: string;
+      paymentStatus?: string;
+      basePrice?: number;
+      markupAmount?: number;
+      serviceFee?: number;
+      totalAmount?: number;
+      currency?: string;
+      [key: string]: any;
+    };
+    bookingId?: string;
     confirmationNumber?: string;
     status?: string;
     hotelName?: string;
@@ -248,6 +259,7 @@ export interface HotelBookingResponse {
     roomType?: string;
     cancellationPolicy?: string;
     bookingDate?: string;
+    message?: string;
   };
   message?: string;
   [key: string]: any;
@@ -507,23 +519,20 @@ export interface CarRentalCancellationResponse {
   [key: string]: any;
 }
 
-// ────────────────────────────────────────────────
-// Helper: get current auth token from localStorage
-// ────────────────────────────────────────────────
 function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
-  
-  const token = 
-    localStorage.getItem('travelToken') || 
+  const fromTravelUser = localStorage.getItem('travelUser')
+    ? JSON.parse(localStorage.getItem('travelUser') || '{}').token
+    : null;
+  return (
+    localStorage.getItem('travelToken') ||
     localStorage.getItem('authToken') ||
-    localStorage.getItem('travelUser') ? JSON.parse(localStorage.getItem('travelUser') || '{}').token : null;
-  
-  return token;
+    localStorage.getItem('token') ||
+    fromTravelUser ||
+    null
+  );
 }
 
-// ────────────────────────────────────────────────
-// Core request function with enhanced error handling
-// ────────────────────────────────────────────────
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const url = `${API_BASE}${cleanEndpoint}`;
@@ -535,12 +544,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
   };
 
-  // Add Content-Type only if body is not FormData
   if (!(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
 
-  // Merge custom headers
   if (options.headers) {
     Object.entries(options.headers).forEach(([key, value]) => {
       if (value !== undefined) {
@@ -554,9 +561,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers,
   };
 
-  // Add timeout using AbortController
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   config.signal = controller.signal;
 
@@ -572,20 +578,15 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       data = { message: text || response.statusText };
     }
 
-   // In the request function, around line 577:
-if (response.status === 401) {
-  const currentToken = getAuthToken();
-  
-  // FIXED: Only throw "session expired" if there actually was a token
-  if (!currentToken || currentToken.trim() === '') {
-    // This is a fresh login attempt that failed, not an expired session
-    throw new ApiError('Invalid credentials. Please check your email and password.', 401, 'INVALID_CREDENTIALS');
-  }
-  
-  clearAuthToken();
-  window.dispatchEvent(new CustomEvent('auth-expired'));
-  throw new ApiError('Session expired. Please sign in again.', 401, 'UNAUTHORIZED');
-}
+    if (response.status === 401) {
+      const currentToken = getAuthToken();
+      if (!currentToken || currentToken.trim() === '') {
+        throw new ApiError('Invalid credentials. Please check your email and password.', 401, 'INVALID_CREDENTIALS');
+      }
+      clearAuthToken();
+      window.dispatchEvent(new CustomEvent('auth-expired'));
+      throw new ApiError('Session expired. Please sign in again.', 401, 'UNAUTHORIZED');
+    }
 
     if (response.status === 403) {
       throw new ApiError('You do not have permission to perform this action.', 403, 'FORBIDDEN');
@@ -596,7 +597,6 @@ if (response.status === 401) {
       throw new ApiError(errorMessage, response.status, data?.code, data);
     }
 
-    // Return the full response
     return data as T;
 
   } catch (error: any) {
@@ -628,9 +628,6 @@ if (response.status === 401) {
   }
 }
 
-// ────────────────────────────────────────────────
-// Token management helpers
-// ────────────────────────────────────────────────
 export function setAuthToken(token: string, user?: User) {
   if (typeof window !== 'undefined') {
     localStorage.setItem('travelToken', token);
@@ -656,7 +653,13 @@ export function clearAuthToken() {
 
 export function getStoredAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('travelToken') || localStorage.getItem('authToken');
+  return (
+    localStorage.getItem('travelToken') ||
+    localStorage.getItem('authToken') ||
+    localStorage.getItem('token') ||
+    (localStorage.getItem('travelUser') ? JSON.parse(localStorage.getItem('travelUser') || '{}').token : null) ||
+    null
+  );
 }
 
 export function getStoredUser(): User | null {
@@ -669,9 +672,7 @@ export function getStoredUser(): User | null {
   }
 }
 
-// ────────────────────────────────────────────────
 // City code helper function
-// ────────────────────────────────────────────────
 export const getCityCode = (cityName: string): string => {
   const cityMap: Record<string, string> = {
     // Nigeria - Only Lagos for now (Abuja has no hotels in API)
@@ -726,9 +727,7 @@ export const getCityCode = (cityName: string): string => {
   return cityName.slice(0, 3).toUpperCase();
 };
 
-// ────────────────────────────────────────────────
 // Hotel Search API - Amadeus Endpoint
-// ────────────────────────────────────────────────
 export const searchHotelsAmadeus = async (
   searchParams: HotelSearchParams
 ): Promise<HotelSearchResponse> => {
@@ -776,9 +775,7 @@ export const searchHotelsAmadeus = async (
   }
 };
 
-// ────────────────────────────────────────────────
 // Hotel search with pagination and filtering
-// ────────────────────────────────────────────────
 export async function searchHotelsWithPagination(
   params: HotelSearchParams & {
     minPrice?: number;
@@ -915,9 +912,7 @@ export async function searchHotelsWithPagination(
   }
 }
 
-// ────────────────────────────────────────────────
 // Transform hotel API data to SearchResult format for your frontend
-// ────────────────────────────────────────────────
 export function transformHotelToSearchResult(
   hotel: HotelOffer, 
   location: string,
@@ -929,7 +924,7 @@ export function transformHotelToSearchResult(
   const offer = hotel.offers?.[0];
   
   if (!offer) {
-    // Return a fallback result if no offer
+    const noOfferPrimary = (hotel as any).primaryImageUrl ?? null;
     return {
       id: hotelInfo.hotelId || `hotel-${index}`,
       provider: hotelInfo.chainCode ? `${hotelInfo.chainCode} Hotels` : "Premium Hotels",
@@ -938,7 +933,8 @@ export function transformHotelToSearchResult(
       price: "₦0/night",
       totalPrice: "₦0 total",
       rating: 4.0,
-      image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400",
+      image: noOfferPrimary ?? "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400",
+      primaryImageUrl: noOfferPrimary,
       amenities: ["Free WiFi", "Air Conditioning", "TV", "Private Bathroom"],
       features: ["Standard Room", "2 guests", "1 night"],
       type: "hotels" as const,
@@ -997,6 +993,7 @@ export function transformHotelToSearchResult(
   // Determine hotel star rating
   const starRating = determineStarRating(rating, hotelInfo.chainCode);
   
+  const primaryImageUrl = (hotel as any).primaryImageUrl ?? null;
   return {
     id: hotelInfo.hotelId || `hotel-${index}`,
     provider: getHotelProviderName(hotelInfo.chainCode),
@@ -1005,7 +1002,8 @@ export function transformHotelToSearchResult(
     price: `${priceSymbol}${Math.round(pricePerNight).toLocaleString()}/night`,
     totalPrice: `${priceSymbol}${Math.round(totalPrice).toLocaleString()} total`,
     rating: parseFloat(rating.toFixed(1)),
-    image: getHotelImage(hotelInfo.chainCode, index),
+    image: primaryImageUrl ?? getHotelImage(hotelInfo.chainCode, index),
+    primaryImageUrl,
     amenities: amenities.slice(0, 6),
     features: [
       roomType,
@@ -1210,9 +1208,7 @@ function getHotelImage(chainCode?: string, index: number = 0): string {
   return hotelImages[index % hotelImages.length];
 }
 
-// ────────────────────────────────────────────────
 // Format hotel search parameters
-// ────────────────────────────────────────────────
 export async function formatHotelSearchParams(
   location: string,
   checkInDate?: string,
@@ -1247,9 +1243,7 @@ export async function formatHotelSearchParams(
   };
 }
 
-// ────────────────────────────────────────────────
 // Search hotels and transform results for frontend
-// ────────────────────────────────────────────────
 export async function searchAndTransformHotels(
   searchParams: HotelSearchParams,
   location: string
@@ -1315,9 +1309,7 @@ export async function searchAndTransformHotels(
   }
 }
 
-// ────────────────────────────────────────────────
 // Validate hotel booking data
-// ────────────────────────────────────────────────
 export function validateHotelBookingData(bookingData: HotelBookingRequest): {
   isValid: boolean;
   errors: string[];
@@ -1460,9 +1452,7 @@ function isValidExpiryDate(expiryDate: string): boolean {
   return true;
 }
 
-// ────────────────────────────────────────────────
 // FIXED: Flight Search API with correct parameters
-// ────────────────────────────────────────────────
 export const searchFlightsFixed = async (
   params: FlightSearchParams
 ): Promise<FlightSearchResponse> => {
@@ -1536,9 +1526,7 @@ export const searchFlightsFixed = async (
   }
 };
 
-// ────────────────────────────────────────────────
 // Enhanced flight search with pagination
-// ────────────────────────────────────────────────
 export async function searchFlightsWithPagination(
   params: FlightSearchParams,
   maxPages: number = 3
@@ -1695,9 +1683,7 @@ export async function searchFlightsWithPagination(
   }
 }
 
-// ────────────────────────────────────────────────
 // Car Rental Search API - Enhanced Implementation
-// ────────────────────────────────────────────────
 export const searchCarRentals = async (
   searchParams: CarRentalSearchParams
 ): Promise<CarRentalSearchResponse> => {
@@ -1749,9 +1735,7 @@ export const searchCarRentals = async (
   }
 };
 
-// ────────────────────────────────────────────────
 // Car rental search with pagination and filtering
-// ────────────────────────────────────────────────
 export async function searchCarRentalsWithPagination(
   params: CarRentalSearchParams & {
     minPrice?: number;
@@ -1902,9 +1886,7 @@ export async function searchCarRentalsWithPagination(
   }
 }
 
-// ────────────────────────────────────────────────
 // Transform car rental API data to SearchResult format for your frontend
-// ────────────────────────────────────────────────
 export function transformCarRentalToSearchResult(
   car: CarRentalOffer | null | undefined, 
   pickupLocation: string,  // This should be the location name, not code
@@ -2141,9 +2123,7 @@ function getCarImage(vehicleCode?: string, category?: string, index: number = 0)
   return carImages[index % carImages.length]; // Default to sedan
 }
 
-// ────────────────────────────────────────────────
 // Format car rental search parameters
-// ────────────────────────────────────────────────
 export async function formatCarRentalSearchParams(
   pickupLocation: string,
   dropoffLocation: string,
@@ -2183,9 +2163,7 @@ export async function formatCarRentalSearchParams(
   };
 }
 
-// ────────────────────────────────────────────────
 // Search car rentals and transform results for frontend
-// ────────────────────────────────────────────────
 export async function searchAndTransformCarRentals(
   searchParams: CarRentalSearchParams,
   pickupLocation: string,
@@ -2252,9 +2230,7 @@ export async function searchAndTransformCarRentals(
   }
 }
 
-// ────────────────────────────────────────────────
 // Validate car rental booking data
-// ────────────────────────────────────────────────
 export function validateCarRentalBookingData(bookingData: CarRentalBookingRequest): {
   isValid: boolean;
   errors: string[];
@@ -2328,9 +2304,7 @@ function isValidDateTime(dateTime: string): boolean {
   }
 }
 
-// ────────────────────────────────────────────────
 // Create car rental booking - FIXED VERSION
-// ────────────────────────────────────────────────
 export const createCarRentalBooking = async (
   bookingData: CarRentalBookingRequest
 ): Promise<CarRentalBookingResponse> => {
@@ -2411,9 +2385,7 @@ export const createCarRentalBooking = async (
   }
 };
 
-// ────────────────────────────────────────────────
 // Cancel car rental booking
-// ────────────────────────────────────────────────
 export const cancelCarRentalBooking = async (
   bookingId: string
 ): Promise<CarRentalCancellationResponse> => {
@@ -2459,9 +2431,7 @@ export const cancelCarRentalBooking = async (
   }
 };
 
-// ────────────────────────────────────────────────
 // Get car rental booking details
-// ────────────────────────────────────────────────
 export const getCarRentalBooking = async (
   bookingId: string
 ): Promise<CarRentalBookingResponse> => {
@@ -2497,9 +2467,7 @@ export const getCarRentalBooking = async (
   }
 };
 
-// ────────────────────────────────────────────────
 // Enhanced function to create car rental booking with all details - FIXED
-// ────────────────────────────────────────────────
 export async function createCompleteCarRentalBooking(
   offerId: string,
   carData: any,
@@ -2569,13 +2537,8 @@ export async function createCompleteCarRentalBooking(
   }
 }
 
-// ────────────────────────────────────────────────
 // NEW: Unified Payment Functions for ALL booking types
-// ────────────────────────────────────────────────
-
-// ────────────────────────────────────────────────
 // Payment status tracker
-// ────────────────────────────────────────────────
 export const trackPaymentStatus = async (
   paymentIntentId: string,
   interval: number = 2000,
@@ -2626,9 +2589,7 @@ export const trackPaymentStatus = async (
   });
 };
 
-// ────────────────────────────────────────────────
 // Unified payment processing for all booking types
-// ────────────────────────────────────────────────
 export const processBookingPayment = async (
   bookingType: 'flights' | 'hotels' | 'car-rentals',
   bookingData: any,
@@ -2661,11 +2622,11 @@ export const processBookingPayment = async (
     let paymentIntent;
     
     if (isAuthenticated) {
-      // Authenticated user - create payment with booking reference
-      paymentIntent = await paymentApi.createStripeIntent(bookingReference, amount, currency);
+      // Authenticated user — server calculates amount from booking
+      paymentIntent = await paymentApi.createStripeIntent(bookingReference);
     } else {
-      // Guest user - create guest payment intent
-      paymentIntent = await paymentApi.createGuestStripeIntent(bookingReference, userInfo.email, amount, currency);
+      // Guest user
+      paymentIntent = await paymentApi.createGuestStripeIntent(bookingReference, userInfo.email);
     }
     
     if (!paymentIntent?.clientSecret) {
@@ -2690,9 +2651,7 @@ export const processBookingPayment = async (
   }
 };
 
-// ────────────────────────────────────────────────
 // Create booking after successful payment
-// ────────────────────────────────────────────────
 export const createBookingAfterPayment = async (
   bookingType: 'flights' | 'hotels' | 'car-rentals',
   selectedResult: any,
@@ -2731,9 +2690,7 @@ export const createBookingAfterPayment = async (
   }
 };
 
-// ────────────────────────────────────────────────
 // Flight booking creator (after payment)
-// ────────────────────────────────────────────────
 async function createFlightBookingAfterPayment(
   flightData: any,
   userInfo: any,
@@ -2775,9 +2732,7 @@ async function createFlightBookingAfterPayment(
   };
 }
 
-// ────────────────────────────────────────────────
 // Hotel booking creator (after payment)
-// ────────────────────────────────────────────────
 async function createHotelBookingAfterPayment(
   hotelData: any,
   userInfo: any,
@@ -2820,9 +2775,7 @@ async function createHotelBookingAfterPayment(
   };
 }
 
-// ────────────────────────────────────────────────
 // Car rental booking creator (after payment) - FIXED VERSION
-// ────────────────────────────────────────────────
 async function createCarRentalBookingAfterPayment(
   carData: any,
   userInfo: any,
@@ -2867,9 +2820,7 @@ async function createCarRentalBookingAfterPayment(
   };
 }
 
-// ────────────────────────────────────────────────
 // Complete booking function with integrated payment
-// ────────────────────────────────────────────────
 export const completeBookingWithPayment = async (
   bookingType: 'flights' | 'hotels' | 'car-rentals',
   selectedResult: any,
@@ -2995,9 +2946,7 @@ export const completeBookingWithPayment = async (
   }
 };
 
-// ────────────────────────────────────────────────
 // Auth API
-// ────────────────────────────────────────────────
 export const authApi = {
   login: (credentials: { email: string; password: string }) => {
     return request<any>('/api/v1/auth/login', {
@@ -3036,12 +2985,6 @@ export const authApi = {
     }).catch(() => {
       clearAuthToken();
       return { message: 'Logged out locally' };
-    });
-  },
-
-  verifyToken: () => {
-    return request<ApiResponse<{ valid: boolean; user: User }>>('/api/v1/auth/verify', {
-      method: 'GET',
     });
   },
 
@@ -3115,9 +3058,7 @@ export const authApi = {
   },
 };
 
-// ────────────────────────────────────────────────
 // User Profile API
-// ────────────────────────────────────────────────
 export const userApi = {
   getProfile: () => {
     return request<User>('/api/v1/users/me', {
@@ -3136,7 +3077,7 @@ export const userApi = {
     const formData = new FormData();
     formData.append('image', file);
     
-    return request<{ avatar: string; url: string; imageUrl: string; profilePicture: string }>('/api/v1/users/me/avatar', {
+    return request<{ image?: string; avatar?: string; url?: string; imageUrl?: string; profilePicture?: string }>('/api/v1/users/me/avatar', {
       method: 'PUT',
       body: formData,
     });
@@ -3144,7 +3085,7 @@ export const userApi = {
 
   changePassword: (data: { currentPassword: string; newPassword: string }) => {
     return request<{ message: string }>('/api/v1/users/me/password', {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   },
@@ -3169,11 +3110,242 @@ export const userApi = {
       method: 'GET',
     });
   },
+
+  // Loyalty, vouchers, dashboard (v3.0)
+  // Get current user's loyalty account details
+  getLoyaltyAccount: () => {
+    return request<any>('/api/v1/users/me/loyalty', {
+      method: 'GET',
+    });
+  },
+
+  // Get loyalty transactions
+  getLoyaltyTransactions: () => {
+    return request<any[]>('/api/v1/users/me/loyalty/transactions', {
+      method: 'GET',
+    });
+  },
+
+  // Get available rewards the user can redeem
+  getAvailableRewards: () => {
+    return request<any[]>('/api/v1/users/me/loyalty/available-rewards', {
+      method: 'GET',
+    });
+  },
+
+  // Redeem loyalty points for a voucher
+  redeemReward: (rewardRuleId: string) => {
+    return request<any>('/api/v1/users/me/loyalty/redeem', {
+      method: 'POST',
+      body: JSON.stringify({ rewardRuleId }),
+    });
+  },
+
+  // Validate a voucher code before payment
+  validateVoucher: (payload: {
+    voucherCode: string;
+    productType: string;
+    bookingAmount: number;
+    currency: string;
+  }) => {
+    return request<any>('/api/v1/users/me/vouchers/validate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  // Get all vouchers for current user
+  getMyVouchers: () => {
+    return request<any[]>('/api/v1/users/me/vouchers', {
+      method: 'GET',
+    });
+  },
+
+  // User dashboard (aggregated profile/loyalty/stats)
+  getDashboard: () => {
+    return request<any>('/api/v1/users/me/dashboard', {
+      method: 'GET',
+    });
+  },
+
+  // Saved items / wishlist (v3.0)
+  // Save an item to wishlist
+  saveItem: (data: {
+    itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+    itemId: string;
+    itemDetails?: Record<string, any>;
+    notes?: string;
+  }) => {
+    return request<any>('/api/v1/users/me/saved-items', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Get saved items, optionally filtered by type
+  getSavedItems: (itemType?: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL') => {
+    const params = new URLSearchParams();
+    if (itemType) params.set('itemType', itemType);
+    const query = params.toString();
+    const path = query ? `/api/v1/users/me/saved-items?${query}` : '/api/v1/users/me/saved-items';
+
+    return request<any[]>(path, {
+      method: 'GET',
+    });
+  },
+
+  // Get counts of saved items by type
+  getSavedItemCounts: () => {
+    return request<any>('/api/v1/users/me/saved-items/counts', {
+      method: 'GET',
+    });
+  },
+
+  // Toggle saved / unsaved for an item
+  toggleSavedItem: (data: {
+    itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+    itemId: string;
+    itemDetails?: Record<string, any>;
+  }) => {
+    return request<any>('/api/v1/users/me/saved-items/toggle', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Check if an item is saved
+  checkSavedItem: (data: {
+    itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+    itemId: string;
+  }) => {
+    return request<any>('/api/v1/users/me/saved-items/check', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Update notes on a saved item
+  updateSavedItemNotes: (id: string, notes: string) => {
+    return request<any>(`/api/v1/users/me/saved-items/${id}/notes`, {
+      method: 'PATCH',
+      body: JSON.stringify({ notes }),
+    });
+  },
+
+  // Remove saved item
+  removeSavedItem: (id: string) => {
+    return request<any>(`/api/v1/users/me/saved-items/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Saved travelers (v3.0)
+  // Create saved traveler
+  createTraveler: (data: {
+    firstName: string;
+    lastName: string;
+    dateOfBirth?: string;
+    gender?: string;
+    passportNumber?: string;
+    passportExpiry?: string;
+    nationality?: string;
+    frequentFlyerNumber?: string;
+  }) => {
+    return request<any>('/api/v1/users/me/travelers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // List all saved travelers
+  listTravelers: () => {
+    return request<any[]>('/api/v1/users/me/travelers', {
+      method: 'GET',
+    });
+  },
+
+  // Get single traveler
+  getTraveler: (id: string) => {
+    return request<any>(`/api/v1/users/me/travelers/${id}`, {
+      method: 'GET',
+    });
+  },
+
+  // Update traveler
+  updateTraveler: (id: string, data: Partial<{
+    firstName: string;
+    lastName: string;
+    dateOfBirth: string;
+    gender: string;
+    passportNumber: string;
+    passportExpiry: string;
+    nationality: string;
+    frequentFlyerNumber: string;
+  }>) => {
+    return request<any>(`/api/v1/users/me/travelers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete traveler
+  deleteTraveler: (id: string) => {
+    return request<any>(`/api/v1/users/me/travelers/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Batch get travelers (for multi-passenger checkout)
+  getTravelersBatch: (travelerIds: string[]) => {
+    return request<any[]>('/api/v1/users/me/travelers/batch', {
+      method: 'POST',
+      body: JSON.stringify({ travelerIds }),
+    });
+  },
+
+  // Saved payment methods (v3.0, Stripe SetupIntent)
+  // Create a Stripe SetupIntent to save a new payment method
+  createPaymentMethodSetup: () => {
+    return request<{ clientSecret: string; setupIntentId: string }>(
+      '/api/v1/users/me/payment-methods/setup',
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }
+    );
+  },
+
+  // Confirm and persist a payment method after Stripe SetupIntent succeeds
+  confirmPaymentMethodSetup: (setupIntentId: string) => {
+    return request<any>('/api/v1/users/me/payment-methods/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ setupIntentId }),
+    });
+  },
+
+  // List saved payment methods
+  listPaymentMethods: () => {
+    return request<any[]>('/api/v1/users/me/payment-methods', {
+      method: 'GET',
+    });
+  },
+
+  // Set default payment method
+  setDefaultPaymentMethod: (id: string) => {
+    return request<any>(`/api/v1/users/me/payment-methods/${id}/default`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Delete saved payment method
+  deletePaymentMethod: (id: string) => {
+    return request<any>(`/api/v1/users/me/payment-methods/${id}`, {
+      method: 'DELETE',
+    });
+  },
 };
 
-// ────────────────────────────────────────────────
 // FIXED: Booking API with corrected flight search
-// ────────────────────────────────────────────────
 export const bookingApi = {
   // Flight search - FIXED version with all parameters
   searchFlights: searchFlightsFixed,
@@ -3281,13 +3453,11 @@ createBooking: (bookingData: {
     });
   },
   
-  // Public/guest endpoint for accessing bookings
-  getPublicBooking: (id: string) => {
-    return request<any>(`/api/v1/bookings/public/${id}`, { 
-      method: 'GET' 
-    });
+  // Public endpoint: load booking by reference only (e.g. EBT-2...). By-ID requires auth: GET /bookings/:id
+  getPublicBookingByReference: (reference: string) => {
+    return request<any>(`/api/v1/bookings/public/by-reference/${encodeURIComponent(reference)}`, { method: 'GET' });
   },
-  
+
   // Cancel booking
   cancelBooking: (id: string) => {
     return request<any>(`/api/v1/bookings/${id}/cancel`, { 
@@ -3333,31 +3503,28 @@ createBooking: (bookingData: {
   },
 };
 
-// ────────────────────────────────────────────────
-// UPDATED: Payment API with amount and currency support
-// ────────────────────────────────────────────────
+// FIXED: Payment API – uses bookingId (server calculates amount from booking)
 export const paymentApi = {
   // Create Stripe intent for authenticated users
-  createStripeIntent: (bookingReference: string, amount?: number, currency?: string) => {
+  // Server expects { bookingId, voucherCode? } — it calculates amount from booking
+  createStripeIntent: (bookingId: string, voucherCode?: string) => {
     return request<any>('/api/v1/payments/stripe/create-intent', {
       method: 'POST',
       body: JSON.stringify({ 
-        bookingReference,
-        ...(amount !== undefined && { amount: Math.round(amount * 100) }), // Convert to cents
-        ...(currency && { currency }),
+        bookingId,
+        ...(voucherCode && { voucherCode }),
       }),
     });
   },
   
   // Create Stripe intent for guests
-  createGuestStripeIntent: (bookingReference: string, email: string, amount?: number, currency?: string) => {
+  // Server expects { bookingReference, email } — it calculates amount from booking
+  createGuestStripeIntent: (bookingReference: string, email: string) => {
     return request<any>('/api/v1/payments/stripe/create-intent/guest', {
       method: 'POST',
       body: JSON.stringify({ 
         bookingReference,
         email,
-        ...(amount !== undefined && { amount: Math.round(amount * 100) }), // Convert to cents
-        ...(currency && { currency }),
       }),
     });
   },
@@ -3411,11 +3578,31 @@ export const paymentApi = {
       }),
     });
   },
+
+  getHotelImages: (hotelId: string, params?: { hotelName?: string; googlePlaceId?: string }) => {
+    const search = new URLSearchParams();
+    if (params?.hotelName) search.set('hotelName', params.hotelName);
+    if (params?.googlePlaceId) search.set('googlePlaceId', params.googlePlaceId);
+    const query = search.toString();
+    return request<{
+      success?: boolean;
+      data?: {
+        hotelId?: string;
+        hotelName?: string;
+        images?: Array<{ url: string; type?: string; source?: string; attribution?: string }>;
+        cached?: boolean;
+        fallbackUsed?: boolean;
+        message?: string;
+      };
+      message?: string;
+    }>(
+      `/api/v1/bookings/hotels/${encodeURIComponent(hotelId)}/images${query ? `?${query}` : ''}`,
+      { method: 'GET' }
+    );
+  },
 };
 
-// ────────────────────────────────────────────────
 // Hotels API with Amadeus endpoint
-// ────────────────────────────────────────────────
 export const hotelApi = {
   // Amadeus hotel search
   searchHotelsAmadeus: searchHotelsAmadeus,
@@ -3612,9 +3799,7 @@ export const hotelApi = {
   },
 };
 
-// ────────────────────────────────────────────────
 // Car Rentals API - Enhanced with all search functions
-// ────────────────────────────────────────────────
 export const carApi = {
   // Existing search function (keep for backward compatibility)
   searchCars: (params: any) => {
@@ -3683,9 +3868,7 @@ export const carApi = {
   },
 };
 
-// ────────────────────────────────────────────────
 // Notification API
-// ────────────────────────────────────────────────
 export const notificationApi = {
   getNotifications: () => {
     return request<any[]>('/api/v1/notifications', {
@@ -3712,9 +3895,7 @@ export const notificationApi = {
   },
 };
 
-// ────────────────────────────────────────────────
 // Support/Contact API
-// ────────────────────────────────────────────────
 export const supportApi = {
   contactUs: (data: {
     name: string;
@@ -3755,9 +3936,7 @@ export const supportApi = {
   },
 };
 
-// ────────────────────────────────────────────────
 // Utility functions
-// ────────────────────────────────────────────────
 export async function fetchUserProfile(): Promise<User | null> {
   try {
     const token = getAuthToken();
@@ -3790,16 +3969,14 @@ export async function uploadUserAvatar(file: File): Promise<string | null> {
     if (!token) throw new ApiError('Not authenticated', 401);
 
     const response = await userApi.uploadProfileImage(file);
-    return response?.avatar || response?.url || response?.imageUrl || response?.profilePicture || null;
+    return response?.image || response?.avatar || response?.url || response?.imageUrl || response?.profilePicture || null;
   } catch (error) {
     console.error('Failed to upload avatar:', error);
     throw error;
   }
 }
 
-// ────────────────────────────────────────────────
 // Auth helper functions
-// ────────────────────────────────────────────────
 export async function handleForgotPassword(email: string): Promise<{ success: boolean; message: string }> {
   try {
     const response = await authApi.forgotPassword(email);
@@ -3877,9 +4054,7 @@ export async function resendVerificationEmail(email: string): Promise<{ success:
   }
 }
 
-// ────────────────────────────────────────────────
 // Flight search helper functions
-// ────────────────────────────────────────────────
 export function validateFlightSearchParams(params: FlightSearchParams): {
   isValid: boolean;
   errors: string[];
@@ -3988,9 +4163,7 @@ export function validateFlightSearchParams(params: FlightSearchParams): {
   };
 }
 
-// ────────────────────────────────────────────────
 // Hotel booking helper function
-// ────────────────────────────────────────────────
 export async function createAmadeusHotelBooking(
   offerId: string,
   hotelData: any,
@@ -4020,8 +4193,8 @@ export async function createAmadeusHotelBooking(
     // Prepare booking data
     const bookingData: HotelBookingRequest = {
       hotelOfferId: offerId,
-      offerPrice: realData.price,
-      currency: realData.currency || 'GBP',
+      offerPrice: realData.finalPrice ?? realData.price,
+      currency: (realData.currency || 'GBP').toUpperCase(),
       guests: [
         {
           name: {
@@ -4107,36 +4280,22 @@ export async function createAmadeusHotelBooking(
   }
 }
 
-// Helper function to get vendor code from card number
-function getVendorCodeFromCardNumber(cardNumber: string): string {
-  if (!cardNumber) return 'VI'; // Default to Visa
-  
+/** Card brand to Amadeus vendor code. Export for Amadeus hotel booking flow. */
+export function getVendorCodeFromCardNumber(cardNumber: string): string {
+  if (!cardNumber) return 'VI';
+
   const cleanNumber = cardNumber.replace(/\s+/g, '').replace(/-/g, '');
-  
-  // Visa cards start with 4
+
   if (cleanNumber.startsWith('4')) return 'VI';
-  
-  // MasterCard starts with 51-55
   if (/^5[1-5]/.test(cleanNumber)) return 'MC';
-  
-  // American Express starts with 34 or 37
   if (/^3[47]/.test(cleanNumber)) return 'AX';
-  
-  // Discover starts with 6011, 644-649, or 65
   if (/^6(011|4[4-9]|5)/.test(cleanNumber)) return 'DS';
-  
-  // Diners Club starts with 300-305, 36, or 38
   if (/^3(0[0-5]|6|8)/.test(cleanNumber)) return 'DC';
-  
-  // JCB starts with 3528-3589
-  if (/^35/.test(cleanNumber)) return 'JC';
-  
-  return 'VI'; // Default to Visa
+  if (/^35(2[8-9]|[3-8][0-9])/.test(cleanNumber)) return 'JC';
+  return 'VI';
 }
 
-// ────────────────────────────────────────────────
 // Transform flight data for frontend
-// ────────────────────────────────────────────────
 export function transformFlightOfferToSearchResult(
   offer: any,
   index: number,
@@ -4299,18 +4458,14 @@ function getAirlineImage(code: string): string {
   return airlineImages[code] || 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400';
 }
 
-// ────────────────────────────────────────────────
 // Session management helper
-// ────────────────────────────────────────────────
 export class SessionManager {
   static async validateSession(): Promise<boolean> {
     try {
       const token = getAuthToken();
       if (!token) return false;
-      
-      // Check if token is expired
-      const response = await authApi.verifyToken();
-      return response?.data?.valid || false;
+      const profile = await userApi.getProfile();
+      return !!profile;
     } catch (error) {
       console.error('Session validation error:', error);
       return false;
@@ -4341,9 +4496,7 @@ export class SessionManager {
   }
 }
 
-// ────────────────────────────────────────────────
 // Auth event listeners
-// ────────────────────────────────────────────────
 if (typeof window !== 'undefined') {
   window.addEventListener('auth-expired', () => {
     clearAuthToken();
@@ -4364,9 +4517,7 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// ────────────────────────────────────────────────
 // API Configuration
-// ────────────────────────────────────────────────
 export const apiConfig = {
   endpoints: {
     user: '/api/v1/users',
@@ -4388,9 +4539,7 @@ export const apiConfig = {
   retryAttempts: 3,
 };
 
-// ────────────────────────────────────────────────
 // Type guard utilities
-// ────────────────────────────────────────────────
 export function isUser(obj: any): obj is User {
   return obj && typeof obj === 'object' && 'email' in obj && 'name' in obj;
 }
@@ -4438,9 +4587,7 @@ export function isCarRentalSearchResponse(obj: any): obj is CarRentalSearchRespo
          ('success' in obj || 'data' in obj || 'message' in obj);
 }
 
-// ────────────────────────────────────────────────
 // Export everything as an API object
-// ────────────────────────────────────────────────
 const api = {
   // API modules
   authApi,

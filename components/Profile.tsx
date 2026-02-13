@@ -1,10 +1,13 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
-import { User } from '../app/page';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import type { User } from '@/lib/types';
 import ManageBookingModal from './ManageBookingModal';
 import { useLanguage } from '../context/LanguageContext';
 import CancelBooking from './CancelBooking'; 
 import { userApi, ApiError } from '../lib/api';
+import { config } from '../lib/config';
 
 interface ProfileProps {
   user: User;
@@ -13,6 +16,7 @@ interface ProfileProps {
   onBack: () => void;
   onSignOut: () => void;
   onBookItem: (item: any) => void;
+  onTabChange?: (tab: string) => void;
   onCancelRequest?: (booking: any) => void;
   isDrawerOpen?: boolean;
   onCloseDrawer?: () => void;
@@ -62,6 +66,8 @@ interface SavedItem {
 
 type ProfileTab = 'details' | 'travelers' | 'bookings' | 'saved' | 'rewards' | 'security' | 'preferences' | 'payment';
 
+const stripePromise = loadStripe(config.stripePublishableKey);
+
 const CURRENCY_OPTIONS = [
   { code: 'USD', symbol: '$', name: 'US Dollar' },
   { code: 'EUR', symbol: '€', name: 'Euro' },
@@ -78,6 +84,7 @@ const Profile: React.FC<ProfileProps> = ({
   onBack, 
   onSignOut, 
   onBookItem, 
+  onTabChange,
   onCancelRequest, 
   isDrawerOpen, 
   onCloseDrawer,
@@ -109,26 +116,28 @@ const Profile: React.FC<ProfileProps> = ({
   const [prefLang, setPrefLang] = useState<'EN' | 'FR' | 'ES'>(currentLang as 'EN' | 'FR' | 'ES');
   const [prefCurrCode, setPrefCurrCode] = useState<'USD' | 'EUR' | 'GBP' | 'NGN' | 'JPY' | 'CNY'>(currentCurr.code as 'USD' | 'EUR' | 'GBP' | 'NGN' | 'JPY' | 'CNY');
 
-  const [savedItems, setSavedItems] = useState<SavedItem[]>([
-    { id: 's1', name: 'Luxury Suite Colosseum', location: 'Rome, Italy . 5 Star Hotel', price: '$150.00', image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600', type: 'Hotels' },
-    { id: 's2', name: 'Passi Al Colosseo B&B', location: 'Rome, Italy . Boutique', price: '$110.00', image: 'https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=600', type: 'Hotels' },
-    { id: 's3', name: 'Tesla Model 3 Rental', location: 'San Francisco, USA', price: '$85.00', image: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=800', type: 'Car Rentals' }
-  ]);
+  const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
+  const [isLoadingSavedItems, setIsLoadingSavedItems] = useState(false);
+  const [hasLoadedSavedItems, setHasLoadedSavedItems] = useState(false);
 
-  const [travelers, setTravelers] = useState<OtherTraveler[]>([
-    { id: 't1', name: 'Amara Bruce', relationship: 'Spouse', dob: '1994-08-22', gender: 'Female' },
-    { id: 't2', name: 'Leo Bruce', relationship: 'Child', dob: '2018-11-12', gender: 'Male' }
-  ]);
+  const [travelers, setTravelers] = useState<OtherTraveler[]>([]);
+  const [isLoadingTravelers, setIsLoadingTravelers] = useState(false);
+  const [hasLoadedTravelers, setHasLoadedTravelers] = useState(false);
   const [showAddTravelerForm, setShowAddTravelerForm] = useState(false);
   const [newTraveler, setNewTraveler] = useState<Omit<OtherTraveler, 'id'>>({ name: '', relationship: 'Spouse', dob: '', gender: 'Male' });
 
-  const [savedCards, setSavedCards] = useState<PaymentCard[]>([
-    { id: 'c1', brand: 'Visa', last4: '4324', expiry: '12/26', icon: 'https://upload.wikimedia.org/wikipedia/commons/d/d6/Visa_2021.svg', isDefault: true },
-    { id: 'c2', brand: 'Mastercard', last4: '8821', expiry: '08/25', icon: 'https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg' }
-  ]);
+  const [savedCards, setSavedCards] = useState<PaymentCard[]>([]);
+  const [isLoadingCards, setIsLoadingCards] = useState(false);
+  const [hasLoadedCards, setHasLoadedCards] = useState(false);
   const [showAddPaymentForm, setShowAddPaymentForm] = useState(false);
   const [isSavingCard, setIsSavingCard] = useState(false);
-  const [newCardData, setNewCardData] = useState({ holderName: '', number: '', expiry: '', cvv: '' });
+  const [newCardData, setNewCardData] = useState({ holderName: '' });
+
+  const [loyalty, setLoyalty] = useState<any | null>(null);
+  const [availableRewards, setAvailableRewards] = useState<any[]>([]);
+  const [isLoadingRewards, setIsLoadingRewards] = useState(false);
+  const [hasLoadedRewards, setHasLoadedRewards] = useState(false);
+  const [isRedeemingReward, setIsRedeemingReward] = useState(false);
 
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -139,15 +148,185 @@ const Profile: React.FC<ProfileProps> = ({
     searchParams: any;
   } | null>(null);
 
-  const [mockBookings, setMockBookings] = useState<Booking[]>([
-    { id: '1', type: 'flight', title: 'Lagos(LOS) to Abuja(ABJ)', provider: 'Air Peace', subtitle: 'Flight BA117 . Economy', date: 'Dec 26-Dec 28, 2025', duration: '1h 15m Non-Stop', status: 'Confirmed', price: '75,000.00', currency: 'NGN', iconBg: 'bg-blue-50', imageUrl: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&q=80&w=600' },
-    { id: '2', type: 'hotel', title: 'Hyatt Tokyo', provider: 'Hyatt', subtitle: 'Standard King Room . 2 Guests, 5 Nights', date: 'Dec 26-Dec 28, 2025', duration: '1h 15m Non-Stop', status: 'Completed', price: '1,500.00', currency: '$', iconBg: 'bg-yellow-50', imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600' },
-    { id: '3', type: 'car', title: 'Tesla Model', provider: 'Hertz', subtitle: 'San Francisco Int. Airport . Hertz', date: 'Dec 26-Dec 28, 2025', duration: '1h 15m Non-Stop', status: 'Cancel', price: '1,500.00', currency: '$', iconBg: 'bg-purple-50', imageUrl: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=800' }
-  ]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+  const [hasLoadedBookings, setHasLoadedBookings] = useState(false);
 
   useEffect(() => {
     setFormData({ ...user });
   }, [user]);
+
+  useEffect(() => {
+    if (activeTab !== 'bookings' || hasLoadedBookings || isLoadingBookings) return;
+    setIsLoadingBookings(true);
+    import('../lib/api').then(({ bookingApi }) => {
+      bookingApi.listBookings()
+        .then((data: any) => {
+          const items = Array.isArray(data) ? data : (data?.data || data?.bookings || []);
+          const mapped: Booking[] = items.map((b: any) => {
+            const pt = (b.productType || '').toLowerCase();
+            const type: 'flight' | 'hotel' | 'car' = pt.includes('hotel') ? 'hotel' : pt.includes('car') ? 'car' : 'flight';
+            const statusMap: Record<string, 'Confirmed' | 'Completed' | 'Cancel' | 'Active'> = {
+              CONFIRMED: 'Confirmed', COMPLETED: 'Completed', CANCELLED: 'Cancel', CANCELED: 'Cancel',
+              PENDING: 'Active', PAYMENT_PENDING: 'Active', PROCESSING: 'Active',
+            };
+            return {
+              id: b.id,
+              type,
+              title: b.bookingData?.title || b.reference || `Booking ${b.reference}`,
+              provider: b.provider || '',
+              subtitle: b.bookingData?.subtitle || '',
+              date: b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
+              duration: b.bookingData?.duration || '',
+              status: statusMap[b.status?.toUpperCase()] || 'Active',
+              price: (b.totalAmount || b.finalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+              currency: b.currency || 'USD',
+              iconBg: type === 'flight' ? 'bg-blue-50' : type === 'hotel' ? 'bg-yellow-50' : 'bg-purple-50',
+            };
+          });
+          setBookings(mapped);
+          setHasLoadedBookings(true);
+        })
+        .catch((err: any) => {
+          setHasLoadedBookings(true);
+          console.error('Failed to fetch bookings:', err);
+        })
+        .finally(() => setIsLoadingBookings(false));
+    });
+  }, [activeTab, hasLoadedBookings, isLoadingBookings]);
+
+  useEffect(() => {
+    if (activeTab === 'saved' && !hasLoadedSavedItems && !isLoadingSavedItems) {
+      setIsLoadingSavedItems(true);
+      userApi.getSavedItems()
+        .then((data: any) => {
+          const items = Array.isArray(data) ? data : (data?.data || []);
+          const mapped: SavedItem[] = items.map((s: any) => {
+            const details = s.itemDetails || {};
+            const title = details.name || details.title || s.itemId || 'Saved item';
+            const location =
+              [details.city, details.country]
+                .filter(Boolean)
+                .join(', ') ||
+              details.location ||
+              'Saved for later';
+            const priceValue = details.pricePerNight ?? details.price ?? details.amount;
+            const price =
+              typeof priceValue === 'number'
+                ? `$${priceValue.toFixed(2)}`
+                : (priceValue || '');
+            const image =
+              details.image ||
+              details.imageUrl ||
+              'https://images.unsplash.com/photo-1526779259212-939e64788e3c?auto=format&fit=crop&q=80&w=800';
+            const type =
+              s.itemType === 'HOTEL'
+                ? 'Hotels'
+                : s.itemType === 'CAR_RENTAL'
+                ? 'Car Rentals'
+                : 'Flights';
+
+            return {
+              id: s.id,
+              name: title,
+              location,
+              price,
+              image,
+              type,
+            };
+          });
+          setSavedItems(mapped);
+          setHasLoadedSavedItems(true);
+        })
+        .catch((error: any) => {
+          setHasLoadedSavedItems(true);
+          console.error('Failed to load saved items:', error);
+        })
+        .finally(() => setIsLoadingSavedItems(false));
+    }
+  }, [activeTab, hasLoadedSavedItems, isLoadingSavedItems]);
+
+  useEffect(() => {
+    if (activeTab === 'travelers' && !hasLoadedTravelers && !isLoadingTravelers) {
+      setIsLoadingTravelers(true);
+      userApi.listTravelers()
+        .then((data: any) => {
+          const items = Array.isArray(data) ? data : (data?.data || []);
+          const mapped: OtherTraveler[] = items.map((t: any) => ({
+            id: t.id,
+            name: `${t.firstName || ''} ${t.lastName || ''}`.trim() || 'Traveler',
+            relationship: 'Traveler',
+            dob: t.dateOfBirth || '',
+            gender: t.gender || 'Other',
+          }));
+          setTravelers(mapped);
+          setHasLoadedTravelers(true);
+        })
+        .catch((error: any) => {
+          setHasLoadedTravelers(true);
+          console.error('Failed to load travelers:', error);
+        })
+        .finally(() => setIsLoadingTravelers(false));
+    }
+  }, [activeTab, hasLoadedTravelers, isLoadingTravelers]);
+
+  useEffect(() => {
+    if (activeTab !== 'payment' || hasLoadedCards || isLoadingCards) return;
+    let cancelled = false;
+    setIsLoadingCards(true);
+    userApi
+      .listPaymentMethods()
+      .then((data: any) => {
+        if (cancelled) return;
+        const items = Array.isArray(data) ? data : (data?.data || []);
+        const mapped: PaymentCard[] = items.map((pm: any) => {
+          const brand = (pm.brand || '').toLowerCase();
+          const isVisa = brand === 'visa';
+          const icon = isVisa
+            ? 'https://upload.wikimedia.org/wikipedia/commons/d/d6/Visa_2021.svg'
+            : 'https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg';
+          const month = String(pm.expiryMonth || '').padStart(2, '0');
+          const year = pm.expiryYear ? String(pm.expiryYear).slice(-2) : '';
+          const expiry = month && year ? `${month}/${year}` : '';
+          return {
+            id: pm.id,
+            brand: pm.brand || 'Card',
+            last4: pm.last4 || '',
+            expiry,
+            icon,
+            isDefault: !!pm.isDefault,
+          };
+        });
+        setSavedCards(mapped);
+        setHasLoadedCards(true);
+      })
+      .catch((error: any) => {
+        if (!cancelled) setHasLoadedCards(true);
+        console.error('Failed to load payment methods:', error);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingCards(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeTab, hasLoadedCards, isLoadingCards]);
+
+  useEffect(() => {
+    if (activeTab === 'rewards' && !hasLoadedRewards && !isLoadingRewards) {
+      setIsLoadingRewards(true);
+      Promise.all([userApi.getLoyaltyAccount(), userApi.getAvailableRewards()])
+        .then(([loyaltyData, rewards]) => {
+          setLoyalty(loyaltyData);
+          const items = Array.isArray(rewards) ? rewards : (rewards?.data || []);
+          setAvailableRewards(items);
+          setHasLoadedRewards(true);
+        })
+        .catch((error: any) => {
+          setHasLoadedRewards(true);
+          console.error('Failed to load loyalty data:', error);
+        })
+        .finally(() => setIsLoadingRewards(false));
+    }
+  }, [activeTab, hasLoadedRewards, isLoadingRewards]);
 
   useEffect(() => {
     if (activeTabProp) {
@@ -177,6 +356,7 @@ const Profile: React.FC<ProfileProps> = ({
 
   const handleTabClick = (tabId: ProfileTab) => {
     setActiveTab(tabId);
+    onTabChange?.(tabId);
     if (onCloseDrawer) onCloseDrawer();
     if (contentTopRef.current) {
       const offset = 100;
@@ -203,82 +383,43 @@ const Profile: React.FC<ProfileProps> = ({
       lastModified: new Date(file.lastModified).toLocaleString()
     });
   
-    // Check file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       alert('Image size should be less than 5MB');
       return;
     }
   
-    // Check file type
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     if (!validTypes.includes(file.type)) {
       alert('Please upload an image file (JPEG, PNG, GIF, or WebP)');
       return;
     }
   
-    // Show immediate preview
     const reader = new FileReader();
     reader.onloadend = () => {
       const imageUrl = reader.result as string;
-      setFormData(prev => ({ 
-        ...prev, 
-        profilePicture: imageUrl,
-        avatar: imageUrl
-      }));
+      setFormData(prev => ({ ...prev, image: imageUrl }));
     };
     reader.readAsDataURL(file);
   
     setIsSaving(true);
   
     try {
-      console.log('📤 Uploading profile image to API...');
-      
-      // Upload to the API with field name "image"
       const uploadResult = await userApi.uploadProfileImage(file);
-      
-      console.log('✅ Upload successful, response:', uploadResult);
-      
-      // Get the image URL from the response - check all possible field names
-      // FIXED: Remove .data since uploadResult doesn't have a data property
-      const imageUrl = uploadResult.avatar || 
-                      uploadResult.url || 
-                      uploadResult.imageUrl || 
+      const imageUrl = uploadResult.image ||
+                      uploadResult.avatar ||
+                      uploadResult.url ||
+                      uploadResult.imageUrl ||
                       uploadResult.profilePicture;
-                      // REMOVED: uploadResult.data?.url ||
-                      // REMOVED: uploadResult.data?.avatar;
-      
+
       if (!imageUrl) {
         throw new Error('No image URL returned from server');
       }
       
-      // Update the form data with the new image URL
-      const updatedData = {
-        ...formData,
-        profilePicture: imageUrl,
-        avatar: imageUrl
-      };
-      
-      setFormData(updatedData);
-      
-      // Save to user profile via API
-      const profileResult = await userApi.updateProfile({
-        profilePicture: imageUrl,
-        avatar: imageUrl
-      });
-      
-      if (profileResult) {
-        console.log('✅ Profile updated with new image');
-        
-        // Call the parent update function
-        onUpdateUser({
-          ...profileResult,
-          profilePicture: imageUrl,
-          avatar: imageUrl
-        });
-        
-        // Show success message
-        alert('Profile picture updated successfully!');
-      }
+      setFormData(prev => ({ ...prev, image: imageUrl }));
+      const userFromUpload = (uploadResult as any)?.id != null ? uploadResult : { ...user, image: imageUrl };
+      onUpdateUser(userFromUpload as Partial<User>);
+      console.log('✅ Profile picture updated');
+      alert('Profile picture updated successfully!');
     } catch (error: any) {
       console.error('❌ Failed to upload profile picture:', error);
       
@@ -296,12 +437,10 @@ const Profile: React.FC<ProfileProps> = ({
       
       alert(`Failed to upload image: ${errorMessage}`);
       
-      // Revert to original image
       setFormData({ ...user });
     } finally {
       setIsSaving(false);
       
-      // Clear file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -314,26 +453,16 @@ const Profile: React.FC<ProfileProps> = ({
     try {
       console.log('🔄 Saving profile updates:', formData);
       
-      // Create a safe object without avatar property
-      const safeFormData = { ...formData };
-      // Remove avatar if it exists since it's not part of User type
-      if ('avatar' in safeFormData) {
-        delete safeFormData.avatar;
-      }
-      
-      // Update via API
-      const result = await userApi.updateProfile(safeFormData);
-      
+      const payload: Record<string, any> = {};
+      if (formData.name) payload.name = formData.name;
+      if (formData.phone) payload.phone = formData.phone;
+      if (formData.dob) payload.dateOfBirth = formData.dob;
+      if (formData.gender) payload.gender = formData.gender;
+
+      const result = await userApi.updateProfile(payload as any);
       if (result) {
-        console.log('✅ Profile saved successfully:', result);
-        
-        // Update parent component with the full result
         onUpdateUser(result);
-        
-        // Show success
         alert('Profile updated successfully!');
-        
-        // Exit edit mode
         setIsEditing(false);
       } else {
         throw new Error('Failed to save profile');
@@ -371,78 +500,126 @@ const Profile: React.FC<ProfileProps> = ({
     }
   };
 
-  const handleRemoveSaved = (id: string) => {
+  const handleRemoveSaved = async (id: string) => {
+    const previous = savedItems;
     setSavedItems(prev => prev.filter(item => item.id !== id));
+    try {
+      await userApi.removeSavedItem(id);
+    } catch (error) {
+      console.error('Failed to remove saved item:', error);
+      // Revert on error
+      setSavedItems(previous);
+      alert(error instanceof ApiError ? error.message : 'Failed to remove saved item');
+    }
   };
 
-  const handleUpdatePassword = () => {
-    if (!passwords.new || passwords.new !== passwords.confirm) {
+  const handleUpdatePassword = async () => {
+    if (!passwords.current) {
+      alert('Please enter your current password');
+      return;
+    }
+    if (!passwords.new || passwords.new.length < 6) {
+      alert('New password must be at least 6 characters');
+      return;
+    }
+    if (passwords.new !== passwords.confirm) {
       alert('New passwords do not match');
       return;
     }
     
     setIsUpdatingPassword(true);
-    setTimeout(() => {
-      setIsUpdatingPassword(false);
+    try {
+      await userApi.changePassword({
+        currentPassword: passwords.current,
+        newPassword: passwords.new,
+      });
       setPasswords({ current: '', new: '', confirm: '' });
       alert('Password updated successfully!');
-    }, 1500);
+    } catch (error: any) {
+      const msg = error instanceof ApiError ? error.message : (error?.message || 'Failed to update password');
+      alert(msg);
+    } finally {
+      setIsUpdatingPassword(false);
+    }
   };
 
-  const handleAddTraveler = () => {
-    if (newTraveler.name && newTraveler.dob) {
-      setTravelers([...travelers, { ...newTraveler, id: Date.now().toString() }]);
+  const handleDeleteAccount = async () => {
+    if (!window.confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      const result = await userApi.deleteAccount();
+      alert(result?.message || 'Your account has been deleted.');
+      onSignOut();
+    } catch (error: any) {
+      console.error('Failed to delete account:', error);
+      const msg =
+        error instanceof ApiError
+          ? error.message
+          : (error?.message || 'Failed to delete account');
+      alert(msg);
+    }
+  };
+
+  const handleAddTraveler = async () => {
+    if (!newTraveler.name || !newTraveler.dob) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    const [firstName, ...rest] = newTraveler.name.trim().split(/\s+/);
+    const lastName = rest.join(' ') || firstName;
+
+    try {
+      const created = await userApi.createTraveler({
+        firstName,
+        lastName,
+        dateOfBirth: newTraveler.dob,
+        gender: newTraveler.gender,
+      });
+
+      const traveler: OtherTraveler = {
+        id: created.id,
+        name: `${created.firstName} ${created.lastName}`.trim(),
+        relationship: newTraveler.relationship,
+        dob: created.dateOfBirth || newTraveler.dob,
+        gender: created.gender || newTraveler.gender,
+      };
+
+      setTravelers(prev => [...prev, traveler]);
       setNewTraveler({ name: '', relationship: 'Spouse', dob: '', gender: 'Male' });
       setShowAddTravelerForm(false);
-    } else {
-      alert('Please fill in all required fields');
+    } catch (error: any) {
+      console.error('Failed to create traveler:', error);
+      const msg = error instanceof ApiError ? error.message : (error?.message || 'Failed to save traveler');
+      alert(msg);
     }
   };
 
-  const handleRemoveTraveler = (id: string) => {
+  const handleRemoveTraveler = async (id: string) => {
+    const previous = travelers;
     setTravelers(travelers.filter(t => t.id !== id));
-  };
-
-  const formatCardNumber = (value: string) => {
-    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-    const matches = v.match(/\d{4,16}/g);
-    const match = matches && matches[0] || '';
-    const parts = [];
-    for (let i = 0, len = match.length; i < len; i += 4) {
-      parts.push(match.substring(i, i + 4));
-    }
-    return parts.length ? parts.join(' ') : v;
-  };
-
-  const handleAddPayment = (e: React.FormEvent) => {
-    e.preventDefault();
-    const rawNumber = newCardData.number.replace(/\s/g, '');
-    if (rawNumber.length >= 15 && newCardData.expiry && newCardData.cvv && newCardData.holderName) {
-      setIsSavingCard(true);
-      setTimeout(() => {
-        const isVisa = rawNumber.startsWith('4');
-        const brand = isVisa ? 'Visa' : 'Mastercard';
-        const icon = isVisa ? 'https://upload.wikimedia.org/wikipedia/commons/d/d6/Visa_2021.svg' : 'https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg';
-        const newCard: PaymentCard = {
-          id: Date.now().toString(),
-          brand,
-          last4: rawNumber.slice(-4),
-          expiry: newCardData.expiry,
-          icon,
-          isDefault: savedCards.length === 0
-        };
-        setSavedCards([newCard, ...savedCards]);
-        setNewCardData({ holderName: '', number: '', expiry: '', cvv: '' });
-        setIsSavingCard(false);
-        setShowAddPaymentForm(false);
-      }, 1000);
-    } else {
-      alert('Please fill in all card details');
+    try {
+      await userApi.deleteTraveler(id);
+    } catch (error: any) {
+      console.error('Failed to delete traveler:', error);
+      setTravelers(previous);
+      const msg = error instanceof ApiError ? error.message : (error?.message || 'Failed to remove traveler');
+      alert(msg);
     }
   };
 
-  const handleRemoveCard = (id: string) => {
+  const handleRemoveCard = async (id: string) => {
+    const previous = savedCards;
     setSavedCards(savedCards.filter(c => c.id !== id));
+    try {
+      await userApi.deletePaymentMethod(id);
+    } catch (error: any) {
+      console.error('Failed to delete payment method:', error);
+      setSavedCards(previous);
+      const msg = error instanceof ApiError ? error.message : (error?.message || 'Failed to remove payment method');
+      alert(msg);
+    }
   };
 
   const handleManageBooking = (booking: Booking) => {
@@ -454,14 +631,12 @@ const Profile: React.FC<ProfileProps> = ({
     if (selectedBooking) {
       console.log('Cancelling booking:', selectedBooking.id);
       
-      // Update the booking status locally
-      setMockBookings(prev => prev.map(b => 
+      setBookings(prev => prev.map(b => 
         b.id === selectedBooking.id 
           ? { ...b, status: 'Cancel' as const } 
           : b
       ));
       
-      // Call the onCancelRequest prop if provided
       if (onCancelRequest) {
         onCancelRequest(selectedBooking);
       }
@@ -469,7 +644,6 @@ const Profile: React.FC<ProfileProps> = ({
       // Close the modal
       setIsManageModalOpen(false);
       
-      // Prepare the data for CancelBooking page
       const cancelData = {
         item: {
           id: selectedBooking.id,
@@ -494,7 +668,6 @@ const Profile: React.FC<ProfileProps> = ({
         }
       };
       
-      // Set the data and show the cancel page
       setCancellationData(cancelData);
       setShowCancelPage(true);
     }
@@ -546,7 +719,7 @@ const Profile: React.FC<ProfileProps> = ({
     if (faStep === 'success') setFaStep('otp');
   };
 
-  const filteredBookings = mockBookings.filter(b => {
+  const filteredBookings = bookings.filter(b => {
     if (bookingFilter === 'All') return true;
     return b.type.toLowerCase() === bookingFilter.toLowerCase();
   });
@@ -624,7 +797,6 @@ const Profile: React.FC<ProfileProps> = ({
     );
   };
 
-  // If showCancelPage is true, render the CancelBooking component
   if (showCancelPage && cancellationData) {
     return (
       <CancelBooking 
@@ -698,8 +870,9 @@ const Profile: React.FC<ProfileProps> = ({
                 <div className="w-14 h-14 bg-[#f4d9c6] rounded-full flex items-center justify-center text-[#9a7d6a] border-2 border-white shadow-sm overflow-hidden shrink-0">
                   <img 
                     src={
-                      formData.profilePicture || 
-                      formData.avatar || 
+                      formData.image ||
+                      formData.profilePicture ||
+                      formData.avatar ||
                       `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=56`
                     } 
                     className="w-full h-full object-cover" 
@@ -756,8 +929,9 @@ const Profile: React.FC<ProfileProps> = ({
                       <div className="w-24 h-24 bg-[#f4d9c6] rounded-full flex items-center justify-center border-4 border-white shadow-sm overflow-hidden">
                         <img 
                           src={
-                            formData.profilePicture || 
-                            formData.avatar || 
+                            formData.image ||
+                            formData.profilePicture ||
+                            formData.avatar ||
                             `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=96`
                           } 
                           className="w-full h-full object-cover" 
@@ -809,7 +983,7 @@ const Profile: React.FC<ProfileProps> = ({
                         value={formData.name || ''} 
                         onChange={(e) => handleInputChange('name', e.target.value)} 
                         placeholder="Full Name" 
-                        className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold text-gray-900 transition-all outline-none ${isEditing ? 'border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'border-transparent opacity-70 cursor-not-allowed'}`} 
+                        className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold transition-all outline-none ${isEditing ? 'text-gray-900 border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'text-gray-700 border-transparent cursor-not-allowed'}`} 
                       />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -820,7 +994,7 @@ const Profile: React.FC<ProfileProps> = ({
                           disabled={!isEditing} 
                           value={formData.dob || '1992-05-15'} 
                           onChange={(e) => handleInputChange('dob', e.target.value)} 
-                          className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold text-gray-900 transition-all outline-none ${isEditing ? 'border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'border-transparent opacity-70 cursor-not-allowed'}`} 
+                          className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold transition-all outline-none ${isEditing ? 'text-gray-900 border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'text-gray-700 border-transparent cursor-not-allowed'}`} 
                         />
                       </div>
                       <div>
@@ -829,7 +1003,7 @@ const Profile: React.FC<ProfileProps> = ({
                           disabled={!isEditing} 
                           value={formData.gender || 'Male'} 
                           onChange={(e) => handleInputChange('gender', e.target.value)} 
-                          className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold text-gray-900 transition-all outline-none appearance-none ${isEditing ? 'border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'border-transparent opacity-70 cursor-not-allowed'}`}
+                          className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold transition-all outline-none appearance-none ${isEditing ? 'text-gray-900 border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'text-gray-700 border-transparent cursor-not-allowed'}`}
                         >
                           <option value="Male">Male</option>
                           <option value="Female">Female</option>
@@ -856,7 +1030,7 @@ const Profile: React.FC<ProfileProps> = ({
                           disabled={!isEditing} 
                           value={formData.email || ''} 
                           onChange={(e) => handleInputChange('email', e.target.value)} 
-                          className={`w-full bg-transparent font-bold text-gray-900 border-none outline-none p-0 focus:ring-0 ${!isEditing && 'opacity-70 cursor-not-allowed'}`} 
+                          className={`w-full bg-transparent font-bold border-none outline-none p-0 focus:ring-0 ${isEditing ? 'text-gray-900' : 'text-gray-700 cursor-not-allowed'}`} 
                         />
                       </div>
                       {isEditing && <span className="text-[10px] font-black uppercase text-green-500 bg-green-50 px-2 py-0.5 rounded">Verified</span>}
@@ -874,7 +1048,7 @@ const Profile: React.FC<ProfileProps> = ({
                           disabled={!isEditing} 
                           value={formData.phone || ''} 
                           onChange={(e) => handleInputChange('phone', e.target.value)} 
-                          className={`w-full bg-transparent font-bold text-gray-900 border-none outline-none p-0 focus:ring-0 ${!isEditing && 'opacity-70 cursor-not-allowed'}`} 
+                          className={`w-full bg-transparent font-bold border-none outline-none p-0 focus:ring-0 ${isEditing ? 'text-gray-900' : 'text-gray-700 cursor-not-allowed'}`} 
                         />
                       </div>
                       {isEditing && <button className="text-[10px] font-bold uppercase text-gray-400 hover:text-[#33a8da] transition">Update</button>}
@@ -949,107 +1123,93 @@ const Profile: React.FC<ProfileProps> = ({
                   </div>
                 </div>
                 <div className="space-y-4">
-                  {filteredBookings.map(renderBookingCard)}
+                  {isLoadingBookings ? (
+                    <div className="bg-white rounded-[24px] p-16 text-center border border-gray-100">
+                      <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
+                      <p className="text-gray-500 font-bold">Loading your bookings…</p>
+                    </div>
+                  ) : filteredBookings.length > 0 ? (
+                    filteredBookings.map(renderBookingCard)
+                  ) : (
+                    <div className="bg-white rounded-[24px] p-16 text-center border-2 border-dashed border-gray-100">
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">No bookings yet</h3>
+                      <p className="text-gray-400 font-bold">Your upcoming and past trips will appear here.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
             {activeTab === 'payment' && (
-              <div className="animate-in fade-in duration-500 space-y-8">
-                <div className="bg-white rounded-[24px] p-8 md:p-10 shadow-sm border border-gray-100/50">
-                  <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Payment Methods</h1>
-                  <p className="text-gray-400 font-bold text-sm mt-1">Stored cards for faster checkout.</p>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div 
-                    onClick={() => !isSavingCard && setShowAddPaymentForm(!showAddPaymentForm)} 
-                    className={`bg-white rounded-[32px] p-8 border-2 ${showAddPaymentForm ? 'border-[#33a8da]' : 'border-dashed border-gray-100'} flex flex-col items-center justify-center text-center group hover:border-[#33a8da]/50 transition cursor-pointer h-[200px]`}
-                  >
-                    <div className={`w-12 h-12 ${showAddPaymentForm ? 'bg-blue-50 text-[#33a8da]' : 'bg-gray-50 text-gray-300'} rounded-full flex items-center justify-center mb-4 transition`}>
-                      <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path d={showAddPaymentForm ? "M18 12H6" : "M12 4v16m8-8H4"} />
-                      </svg>
-                    </div>
-                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight">{showAddPaymentForm ? 'Cancel' : 'Add Card'}</h3>
+              <Elements stripe={stripePromise}>
+                <div className="animate-in fade-in duration-500 space-y-8">
+                  <div className="bg-white rounded-[24px] p-8 md:p-10 shadow-sm border border-gray-100/50">
+                    <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Payment Methods</h1>
+                    <p className="text-gray-400 font-bold text-sm mt-1">Stored cards for faster checkout.</p>
                   </div>
                   
-                  {showAddPaymentForm && (
-                    <div className="bg-white rounded-[32px] p-8 border border-[#33a8da] shadow-sm animate-in slide-in-from-right duration-300">
-                      <form onSubmit={handleAddPayment} className="space-y-4">
-                        <input 
-                          required 
-                          type="text" 
-                          value={newCardData.holderName} 
-                          onChange={(e) => setNewCardData({...newCardData, holderName: e.target.value.toUpperCase()})} 
-                          className="w-full px-4 py-2.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
-                          placeholder="CARDHOLDER NAME" 
-                        />
-                        <input 
-                          required 
-                          type="text" 
-                          maxLength={19} 
-                          value={newCardData.number} 
-                          onChange={(e) => setNewCardData({...newCardData, number: formatCardNumber(e.target.value)})} 
-                          className="w-full px-4 py-2.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
-                          placeholder="CARD NUMBER" 
-                        />
-                        <div className="grid grid-cols-2 gap-4">
-                          <input 
-                            required 
-                            type="text" 
-                            maxLength={5} 
-                            value={newCardData.expiry} 
-                            onChange={(e) => { 
-                              let v = e.target.value.replace(/\D/g, ''); 
-                              if (v.length >= 2) v = v.substring(0, 2) + '/' + v.substring(2, 4); 
-                              setNewCardData({...newCardData, expiry: v}); 
-                            }} 
-                            className="w-full px-4 py-2.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
-                            placeholder="MM/YY" 
-                          />
-                          <input 
-                            required 
-                            type="password" 
-                            maxLength={4} 
-                            value={newCardData.cvv} 
-                            onChange={(e) => setNewCardData({...newCardData, cvv: e.target.value.replace(/\D/g, '')})} 
-                            className="w-full px-4 py-2.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
-                            placeholder="CVV" 
-                          />
-                        </div>
-                        <button 
-                          type="submit" 
-                          disabled={isSavingCard} 
-                          className="w-full bg-[#33a8da] text-white py-3 rounded-xl font-bold uppercase text-xs tracking-widest hover:bg-[#2c98c7] transition disabled:opacity-50"
-                        >
-                          {isSavingCard ? 'Saving...' : 'Save Card'}
-                        </button>
-                      </form>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="space-y-4">
-                  {savedCards.map(card => (
-                    <div key={card.id} className="flex items-center justify-between p-6 bg-white rounded-2xl border border-gray-100 hover:border-[#33a8da]/50 transition-colors">
-                      <div className="flex items-center gap-6">
-                        <img src={card.icon} className="h-8 w-auto opacity-70" alt={card.brand} />
-                        <div>
-                          <p className="font-bold text-gray-900">•••• •••• {card.last4}</p>
-                          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{card.expiry}</p>
-                        </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div 
+                      onClick={() => !isSavingCard && setShowAddPaymentForm(!showAddPaymentForm)} 
+                      className={`bg-white rounded-[32px] p-8 border-2 ${showAddPaymentForm ? 'border-[#33a8da]' : 'border-dashed border-gray-100'} flex flex-col items-center justify-center text-center group hover:border-[#33a8da]/50 transition cursor-pointer h-[200px]`}
+                    >
+                      <div className={`w-12 h-12 ${showAddPaymentForm ? 'bg-blue-50 text-[#33a8da]' : 'bg-gray-50 text-gray-300'} rounded-full flex items-center justify-center mb-4 transition`}>
+                        <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path d={showAddPaymentForm ? "M18 12H6" : "M12 4v16m8-8H4"} />
+                        </svg>
                       </div>
-                      <button 
-                        onClick={() => handleRemoveCard(card.id)} 
-                        className="text-[10px] font-bold text-red-400 hover:text-red-600 uppercase tracking-widest transition"
-                      >
-                        Remove
-                      </button>
+                      <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight">{showAddPaymentForm ? 'Cancel' : 'Add Card'}</h3>
                     </div>
-                  ))}
+                    
+                    {showAddPaymentForm && (
+                      <div className="bg-white rounded-[32px] p-8 border border-[#33a8da] shadow-sm animate-in slide-in-from-right duration-300">
+                        <AddPaymentMethodForm
+                          holderName={newCardData.holderName}
+                          setHolderName={(value: string) => setNewCardData({ holderName: value })}
+                          onSaved={(card: PaymentCard) => {
+                            setSavedCards(prev => [card, ...prev]);
+                            setShowAddPaymentForm(false);
+                          }}
+                          isSaving={isSavingCard}
+                          setIsSaving={setIsSavingCard}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-4">
+                    {isLoadingCards ? (
+                      <div className="bg-white rounded-[24px] p-8 text-center border border-gray-100">
+                        <div className="animate-spin w-6 h-6 border-2 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-3" />
+                        <p className="text-gray-500 font-bold text-sm">Loading saved payment methods…</p>
+                      </div>
+                    ) : savedCards.length > 0 ? (
+                      savedCards.map(card => (
+                        <div key={card.id} className="flex items-center justify-between p-6 bg-white rounded-2xl border border-gray-100 hover:border-[#33a8da]/50 transition-colors">
+                          <div className="flex items-center gap-6">
+                            <img src={card.icon} className="h-8 w-auto opacity-70" alt={card.brand} />
+                            <div>
+                              <p className="font-bold text-gray-900">•••• •••• {card.last4}</p>
+                              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{card.expiry}</p>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => handleRemoveCard(card.id)} 
+                            className="text-[10px] font-bold text-red-400 hover:text-red-600 uppercase tracking-widest transition"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="bg-white rounded-[24px] p-12 text-center border-2 border-dashed border-gray-100">
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">No saved cards yet</h3>
+                        <p className="text-gray-400 font-bold text-sm">Add a card to speed up future checkouts.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </Elements>
             )}
 
             {activeTab === 'saved' && (
@@ -1074,7 +1234,14 @@ const Profile: React.FC<ProfileProps> = ({
                   </button>
                 </div>
                 <div className="space-y-4">
-                  {savedItems.length > 0 ? savedItems.map(renderSavedCard) : (
+                  {isLoadingSavedItems ? (
+                    <div className="bg-white rounded-[32px] p-16 text-center border border-gray-100">
+                      <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
+                      <p className="text-gray-500 font-bold">Loading your saved items…</p>
+                    </div>
+                  ) : savedItems.length > 0 ? (
+                    savedItems.map(renderSavedCard)
+                  ) : (
                     <div className="bg-white rounded-[32px] p-16 text-center border-4 border-dashed border-gray-100">
                       <h3 className="text-xl font-bold text-gray-900 mb-2">No saved items</h3>
                       <p className="text-gray-400 font-bold">Items you "love" will appear here.</p>
@@ -1088,25 +1255,82 @@ const Profile: React.FC<ProfileProps> = ({
               <div className="animate-in fade-in duration-500 space-y-8">
                 <div>
                   <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Rewards</h1>
-                  <p className="text-gray-400 font-bold text-sm mt-1">Track your loyalty points.</p>
+                  <p className="text-gray-400 font-bold text-sm mt-1">Track your loyalty points and redeem rewards.</p>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
-                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Current Balance</p>
-                    <p className="text-5xl font-black text-gray-900">45,000 <span className="text-sm font-bold text-gray-400">pts</span></p>
+                {isLoadingRewards && !loyalty ? (
+                  <div className="bg-white rounded-[24px] p-10 border border-gray-100 shadow-sm">
+                    <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
+                    <p className="text-center text-gray-500 font-bold">Loading your loyalty data…</p>
                   </div>
-                  <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
-                    <h3 className="font-bold text-gray-900 uppercase text-xs mb-4">Quick Perks</h3>
-                    <ul className="space-y-3 text-xs font-bold text-gray-600">
-                      {['Priority Check-in', 'Free Shuttle', '15% Off Hotels'].map(p => (
-                        <li key={p} className="flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 bg-[#33a8da] rounded-full"></div>
-                          {p}
-                        </li>
-                      ))}
-                    </ul>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
+                      <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Current Balance</p>
+                      <p className="text-5xl font-black text-gray-900">
+                        {loyalty?.points ?? 0}{' '}
+                        <span className="text-sm font-bold text-gray-400">pts</span>
+                      </p>
+                      {loyalty?.tier && (
+                        <p className="mt-3 text-xs font-bold text-gray-500 uppercase tracking-widest">
+                          Tier: {loyalty.tierName || loyalty.tier}
+                        </p>
+                      )}
+                      {loyalty?.nextTier && (
+                        <p className="mt-1 text-[11px] text-gray-400 font-bold">
+                          {loyalty.pointsToNextTier} pts to {loyalty.nextTier}
+                        </p>
+                      )}
+                    </div>
+                    <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
+                      <h3 className="font-bold text-gray-900 uppercase text-xs mb-4">Available Rewards</h3>
+                      {availableRewards.length === 0 ? (
+                        <p className="text-xs font-bold text-gray-400">
+                          No rewards available yet. Complete bookings to earn points.
+                        </p>
+                      ) : (
+                        <ul className="space-y-3 text-xs font-bold text-gray-600">
+                          {availableRewards.map((r: any) => (
+                            <li key={r.id} className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-gray-900">{r.name}</p>
+                                <p className="text-[10px] text-gray-400 uppercase tracking-widest">
+                                  {r.pointsCost} pts • {r.discountType} {r.discountValue}
+                                </p>
+                              </div>
+                              <button
+                                disabled={isRedeemingReward || r.canAfford === false}
+                                onClick={async () => {
+                                  if (!r.id) return;
+                                  setIsRedeemingReward(true);
+                                  try {
+                                    const result = await userApi.redeemReward(r.id);
+                                    const code = result?.voucher?.code;
+                                    alert(
+                                      code
+                                        ? `Voucher redeemed: ${code}. You can apply it at checkout.`
+                                        : 'Reward redeemed successfully.'
+                                    );
+                                  } catch (error: any) {
+                                    const msg =
+                                      error instanceof ApiError
+                                        ? error.message
+                                        : (error?.message || 'Failed to redeem reward');
+                                    alert(msg);
+                                  } finally {
+                                    setIsRedeemingReward(false);
+                                  }
+                                }}
+                                className="px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-[#33a8da] text-[#33a8da] hover:bg-[#33a8da] hover:text-white transition disabled:opacity-40"
+                              >
+                                {r.canAfford === false ? 'Not enough pts' : 'Redeem'}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -1117,24 +1341,41 @@ const Profile: React.FC<ProfileProps> = ({
                   <p className="text-gray-400 font-bold text-sm mt-1">Update passwords and 2FA settings.</p>
                 </div>
                 <div className="bg-white rounded-[32px] p-8 border border-gray-100">
-                  <div className="space-y-6">
-                    <input 
-                      type="password" 
-                      value={passwords.current} 
-                      onChange={(e) => setPasswords({...passwords, current: e.target.value})} 
-                      className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
-                      placeholder="Current Password" 
-                    />
-                    <input 
-                      type="password" 
-                      value={passwords.new} 
-                      onChange={(e) => setPasswords({...passwords, new: e.target.value})} 
-                      className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
-                      placeholder="New Password" 
-                    />
+                  <h3 className="text-lg font-bold text-gray-900 mb-6">Change Password</h3>
+                  <div className="space-y-5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Current Password</label>
+                      <input 
+                        type="password" 
+                        value={passwords.current} 
+                        onChange={(e) => setPasswords({...passwords, current: e.target.value})} 
+                        className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
+                        placeholder="Enter current password" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">New Password</label>
+                      <input 
+                        type="password" 
+                        value={passwords.new} 
+                        onChange={(e) => setPasswords({...passwords, new: e.target.value})} 
+                        className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
+                        placeholder="Enter new password (min 6 chars)" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Confirm New Password</label>
+                      <input 
+                        type="password" 
+                        value={passwords.confirm} 
+                        onChange={(e) => setPasswords({...passwords, confirm: e.target.value})} 
+                        className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
+                        placeholder="Re-enter new password" 
+                      />
+                    </div>
                     <button 
                       onClick={handleUpdatePassword} 
-                      disabled={isUpdatingPassword || !passwords.new} 
+                      disabled={isUpdatingPassword || !passwords.current || !passwords.new} 
                       className="bg-[#33a8da] text-white px-8 py-3.5 rounded-xl font-bold uppercase text-xs tracking-widest hover:bg-[#2c98c7] transition disabled:opacity-50"
                     >
                       {isUpdatingPassword ? 'Updating...' : 'Change Password'}
@@ -1257,29 +1498,41 @@ const Profile: React.FC<ProfileProps> = ({
                 )}
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {travelers.map(t => (
-                    <div key={t.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex items-center justify-between hover:border-[#33a8da]/50 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-[#33a8da]">
-                          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                          </svg>
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-gray-900">{t.name}</h4>
-                          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{t.relationship} • {t.dob}</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => handleRemoveTraveler(t.id)} 
-                        className="text-gray-300 hover:text-red-500 transition p-2"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
+                  {isLoadingTravelers ? (
+                    <div className="bg-white rounded-[24px] p-10 text-center border border-gray-100 col-span-2">
+                      <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
+                      <p className="text-gray-500 font-bold">Loading saved travelers…</p>
                     </div>
-                  ))}
+                  ) : travelers.length > 0 ? (
+                    travelers.map(t => (
+                      <div key={t.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex items-center justify-between hover:border-[#33a8da]/50 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-[#33a8da]">
+                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-gray-900">{t.name}</h4>
+                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{t.relationship} • {t.dob}</p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => handleRemoveTraveler(t.id)} 
+                          className="text-gray-300 hover:text-red-500 transition p-2"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="bg-white rounded-[24px] p-12 text-center border-2 border-dashed border-gray-100 col-span-2">
+                      <h3 className="text-lg font-bold text-gray-900 mb-2">No saved travelers yet</h3>
+                      <p className="text-gray-400 font-bold text-sm">Add travelers to speed up future bookings.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1344,6 +1597,130 @@ const Profile: React.FC<ProfileProps> = ({
         </div>
       )}
     </div>
+  );
+};
+
+
+interface AddPaymentMethodFormProps {
+  holderName: string;
+  setHolderName: (value: string) => void;
+  onSaved: (card: PaymentCard) => void;
+  isSaving: boolean;
+  setIsSaving: (value: boolean) => void;
+}
+
+const AddPaymentMethodForm: React.FC<AddPaymentMethodFormProps> = ({
+  holderName,
+  setHolderName,
+  onSaved,
+  isSaving,
+  setIsSaving,
+}) => {
+  const stripe = useStripe();
+  const elements = useElements();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    if (!holderName.trim()) {
+      alert('Please enter cardholder name');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const setup = await userApi.createPaymentMethodSetup();
+      const clientSecret = (setup as any)?.data?.clientSecret ?? (setup as any)?.clientSecret;
+      const setupIntentIdFromSetup = (setup as any)?.data?.setupIntentId ?? (setup as any)?.setupIntentId;
+
+      if (!clientSecret || typeof clientSecret !== 'string') {
+        throw new Error('No client secret received from server. Please try again.');
+      }
+
+      const cardEl = elements.getElement(CardElement);
+      if (!cardEl) {
+        throw new Error('Card element not found');
+      }
+
+      const { error, setupIntent } = await stripe.confirmCardSetup(clientSecret, {
+        payment_method: {
+          card: cardEl,
+          billing_details: {
+            name: holderName,
+          },
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Card setup failed');
+      }
+
+      const setupIntentId = setupIntentIdFromSetup || setupIntent?.id;
+      if (!setupIntentId) {
+        throw new Error('Could not complete card setup. Please try again.');
+      }
+      const confirmed = await userApi.confirmPaymentMethodSetup(setupIntentId);
+      const brand = (confirmed.brand || '').toLowerCase();
+      const isVisa = brand === 'visa';
+      const icon = isVisa
+        ? 'https://upload.wikimedia.org/wikipedia/commons/d/d6/Visa_2021.svg'
+        : 'https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg';
+      const month = String(confirmed.expiryMonth || '').padStart(2, '0');
+      const year = confirmed.expiryYear ? String(confirmed.expiryYear).slice(-2) : '';
+
+      const card: PaymentCard = {
+        id: confirmed.id,
+        brand: confirmed.brand || 'Card',
+        last4: confirmed.last4 || '',
+        expiry: month && year ? `${month}/${year}` : '',
+        icon,
+        isDefault: !!confirmed.isDefault,
+      };
+
+      onSaved(card);
+      setHolderName('');
+    } catch (err: any) {
+      console.error('Failed to save payment method:', err);
+      const msg = err instanceof ApiError ? err.message : (err?.message || 'Failed to save payment method');
+      alert(msg);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <input 
+        required 
+        type="text" 
+        value={holderName} 
+        onChange={(e) => setHolderName(e.target.value.toUpperCase())} 
+        className="w-full px-4 py-2.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
+        placeholder="CARDHOLDER NAME" 
+      />
+      <div className="p-3 border border-gray-200 rounded-xl bg-gray-50">
+        <CardElement
+          options={{
+            style: {
+              base: {
+                fontSize: '14px',
+                color: '#111827',
+                '::placeholder': { color: '#9ca3af' },
+              },
+              invalid: { color: '#dc2626' },
+            },
+            hidePostalCode: true,
+          }}
+        />
+      </div>
+      <button 
+        type="submit" 
+        disabled={isSaving || !stripe}
+        className="w-full bg-[#33a8da] text-white py-3 rounded-xl font-bold uppercase text-xs tracking-widest hover:bg-[#2c98c7] transition disabled:opacity-50"
+      >
+        {isSaving ? 'Saving...' : 'Save Card'}
+      </button>
+    </form>
   );
 };
 

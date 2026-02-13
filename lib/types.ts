@@ -1,4 +1,4 @@
-
+// ─── Search ─────────────────────────────────────────
 export interface SearchSegment {
   from: string;
   to: string;
@@ -27,9 +27,7 @@ export interface SearchParams {
   dropoffLocationCode?: string;
   dropoffDateTime?: string;
   carPickUp?: string;
-  // Added carDropOff to SearchParams
   carDropOff?: string;
-  // Added travellers to SearchParams
   travellers?: number;
   pickUpDate?: string;
   dropOffDate?: string;
@@ -50,7 +48,7 @@ export interface SearchResult {
   image?: string;
   amenities?: string[];
   features?: string[];
-  type?: "flights" | "hotels" | "car-rentals";
+  type?: 'flights' | 'hotels' | 'car-rentals';
   isRefundable?: boolean;
   realData?: any;
   baggage?: string;
@@ -59,29 +57,52 @@ export interface SearchResult {
   imageUrl?: string;
 }
 
+// ─── User / Auth ────────────────────────────────────
+export interface User {
+  id?: string;
+  name: string;
+  email: string;
+  image?: string;
+  profilePicture?: string;
+  avatar?: string;
+  dob?: string;
+  gender?: string;
+  phone?: string;
+  provider?: 'email' | 'google' | 'facebook';
+  role?: 'user' | 'admin';
+  token?: string;
+}
+
+// ─── Booking ────────────────────────────────────────
 export interface Booking {
   id: string;
-  type: 'flight' | 'hotel' | 'car';
-  title: string;
+  reference: string;
+  status: string;
+  paymentStatus: string;
+  productType: string;
   provider: string;
-  subtitle: string;
-  date: string;
-  duration?: string;
-  status: 'Confirmed' | 'Completed' | 'Cancel' | 'Active';
-  price: string;
+  basePrice: number;
+  totalAmount: number;
   currency: string;
-  iconBg: string;
-  imageUrl?: string;
-  bookingReference?: string;
-  time?: string;
-  paymentStatus?: string;
-  bookingData?: any;
-  isGuest?: boolean;
-  passengerInfo?: {
+  bookingData: Record<string, any>;
+  passengerInfo: {
     firstName: string;
     lastName: string;
     email: string;
     phone: string;
-    [key: string]: any;
   };
+  createdAt: string;
+  voucherId?: string;
+  voucherCode?: string;
+  voucherDiscount?: number;
+  finalAmount?: number;
+  markupAmount?: number;
+  serviceFee?: number;
+}
+
+export interface PassengerInfo {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { useLanguage } from "../context/LanguageContext";
 
 interface FooterProps {
@@ -14,6 +15,7 @@ const Footer: React.FC<FooterProps> = ({
   setIsMobileMenuOpen,
   onAdminClick,
 }) => {
+  const router = useRouter();
   const { t, language, currency } = useLanguage();
 
   const currencyCode = currency?.code || "USD";
@@ -23,40 +25,38 @@ const Footer: React.FC<FooterProps> = ({
   const handleLogoClick = () => {
     onLogoClick?.();
     setIsMobileMenuOpen?.(false);
-    window.location.hash = '#home';
   };
 
   const handleAdminClick = () => {
     onAdminClick?.();
     setIsMobileMenuOpen?.(false);
-    window.location.hash = '#admin';
   };
 
   const categories = [
     {
       title: t?.("footer.company") || "Company",
       links: [
-        { label: t?.("About Us") || "About Us", hash: '#about' },
-        { label: t?.("Services") || "Services", hash: '#home' },
-        { label: t?.("Career") || "Career", hash: '#content/Career' },
-        { label: t?.("Sustainability") || "Sustainability", hash: '#content/Sustainability' },
+        { label: t?.("About Us") || "About Us", href: '/about' },
+        { label: t?.("Services") || "Services", href: '/content/Services' },
+        { label: t?.("Career") || "Career", href: '/content/Career' },
+        { label: t?.("Sustainability") || "Sustainability", href: '/content/Sustainability' },
       ],
     },
     {
       title: t?.("Support") || "Support",
       links: [
-        { label: t?.("Help Center") || "Help Center", hash: '#content/Help Center' },
-        { label: t?.("Terms of Service") || "Terms of Service", hash: '#content/Terms of Service' },
-        { label: t?.("Privacy Policy") || "Privacy Policy", hash: '#content/Privacy Policy' },
+        { label: t?.("Help Center") || "Help Center", href: '/content/Help Center' },
+        { label: t?.("Terms of Service") || "Terms of Service", href: '/content/Terms of Service' },
+        { label: t?.("Privacy Policy") || "Privacy Policy", href: '/content/Privacy Policy' },
       ],
     },
     {
       title: t?.("Discover") || "Discover",
       links: [
-        { label: t?.("Flights") || "Flights", hash: '#flights' },
-        { label: t?.("Hotels") || "Hotels", hash: '#hotels' },
-        { label: t?.("Car Rentals") || "Car Rentals", hash: '#cars' },
-        { label: t?.("My Bookings") || "My Bookings", hash: '#bookings' },
+        { label: t?.("Flights") || "Flights", href: '/flights' },
+        { label: t?.("Hotels") || "Hotels", href: '/hotels' },
+        { label: t?.("Car Rentals") || "Car Rentals", href: '/cars' },
+        { label: t?.("My Bookings") || "My Bookings", href: '/profile?tab=bookings' },
       ],
     },
   ];
@@ -122,15 +122,15 @@ const Footer: React.FC<FooterProps> = ({
                 <ul className="space-y-4">
                   {cat.links.map((link, index) => (
                     <li key={index}>
-                      <a
-                        href={link.hash}
-                        className="text-gray-500 hover:text-blue-600 transition-colors duration-200 text-sm flex items-center gap-2 group"
+                      <button
+                        onClick={() => router.push(link.href)}
+                        className="text-gray-500 hover:text-blue-600 transition-colors duration-200 text-sm flex items-center gap-2 group text-left"
                       >
                         <svg className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
                         {link.label}
-                      </a>
+                      </button>
                     </li>
                   ))}
                 </ul>
