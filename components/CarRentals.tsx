@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { carApi, formatCarRentalSearchParams, searchAndTransformCarRentals } from "../lib/api";
 import type { SearchResult } from "../lib/types";
 
-// Define the car rental type from API response
+// Define the car rental type
 interface CarDisplay {
   id: string;
   name: string;
@@ -30,34 +30,11 @@ interface CarDisplay {
   duration?: string;
   distance?: string;
   isRefundable?: boolean;
-  originalCar?: SearchResult;
   cityName?: string;
   locationCode?: string;
   description?: string;
   vehicleCode?: string;
   location?: string;
-}
-
-// Define the transformed car type from searchAndTransformCarRentals
-interface TransformedCar extends SearchResult {
-  realData?: {
-    price?: number;
-    finalPrice?: number;
-    offerId?: string;
-    passengers?: number;
-    seats?: number;
-    baggage?: string;
-    vehicleType?: string;
-    vehicleCategory?: string;
-    vehicleDescription?: string;
-    pickupLocation?: string;
-    dropoffLocation?: string;
-    pickupDateTime?: string;
-    dropoffDateTime?: string;
-    duration?: string;
-    distance?: string;
-    [key: string]: any;
-  };
 }
 
 const CarRentals: React.FC = () => {
@@ -66,7 +43,6 @@ const CarRentals: React.FC = () => {
   const [cars, setCars] = useState<CarDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searching, setSearching] = useState(false);
 
   // Force currency to GBP/pounds
   const currencySymbol = "£";
@@ -94,231 +70,23 @@ const CarRentals: React.FC = () => {
   ];
 
   useEffect(() => {
-    fetchCarsFromAPI();
-  }, []);
-
-  const fetchCarsFromAPI = async () => {
+    // Always use fallback data - no API calls
     setLoading(true);
-    setError(null);
-    
     try {
-      // Calculate dates (today + 7 days for pickup)
-      const today = new Date();
-      
-      // Set pickup date to 7 days from now at 10:00 AM
-      const pickupDate = new Date(today);
-      pickupDate.setDate(today.getDate() + 7);
-      pickupDate.setHours(10, 0, 0, 0);
-      
-      // Set dropoff date to 6 hours after pickup (minimum 4 hours required)
-      const dropoffDate = new Date(pickupDate);
-      dropoffDate.setHours(pickupDate.getHours() + 6); // 6 hours later
-      
-      // Format dates properly for API (ISO 8601)
-      const pickupDateTime = pickupDate.toISOString();
-      const dropoffDateTime = dropoffDate.toISOString();
-      
-      console.log('📅 Formatted dates for API:', { 
-        pickupDateTime, 
-        dropoffDateTime,
-        durationHours: (dropoffDate.getTime() - pickupDate.getTime()) / (1000 * 60 * 60)
-      });
-      
-      // Fetch cars for each popular route (take first 3 routes to get up to 6 cars)
-      const carPromises = popularRoutes.slice(0, 3).map(async (route) => {
-        try {
-          // Format search params with GBP currency
-          const searchParams = await formatCarRentalSearchParams(
-            route.from.city,
-            route.to.city,
-            pickupDateTime,
-            dropoffDateTime,
-            "10:00",
-            "16:00", // 6 hours later
-            2 // 2 passengers
-          );
-          
-          // Override currency to GBP
-          searchParams.currency = 'GBP';
-          
-          console.log(`🚗 Searching cars from ${route.from.city} to ${route.to.city} with params:`, searchParams);
-          
-          // Search cars
-          const result = await searchAndTransformCarRentals(
-            searchParams,
-            route.from.city,
-            route.to.city
-          );
-          
-          console.log(`✅ Results for ${route.from.city} to ${route.to.city}:`, result);
-          
-          if (result.success && result.results.length > 0) {
-            // Get first 2 cars from each route to total 6
-            return result.results.slice(0, 2).map((car: SearchResult, index: number) => {
-              // Cast to TransformedCar to access realData
-              const transformedCar = car as TransformedCar;
-              const realData = transformedCar.realData || {};
-              
-              // Map to your original car images based on index
-              const imageIndex = (popularRoutes.indexOf(route) * 2 + index) % carImages.length;
-              
-              // Extract vehicle info from realData
-              const vehicleDescription = realData.vehicleDescription || 
-                                         (car as any).vehicleDescription || 
-                                         car.title || 
-                                         getCarNameFromImage(imageIndex);
-              
-              const seats = realData.seats || 
-                           (car as any).seats || 
-                           getCarSeatsFromImage(imageIndex);
-              
-              const baggage = realData.baggage || 
-                             (car as any).baggage || 
-                             getCarBaggageFromImage(imageIndex);
-              
-              const vehicleCategory = realData.vehicleCategory || 
-                                      (car as any).vehicleCategory || 
-                                      getCarCategoryFromImage(imageIndex);
-              
-              return {
-                id: car.id,
-                name: vehicleDescription,
-                provider: car.provider || "Premium Transfers",
-                vehicleCategory: vehicleCategory,
-                vehicleDescription: vehicleDescription,
-                location: `${route.from.city} → ${route.to.city}`,
-                cityName: route.from.city,
-                locationCode: route.from.code,
-                price: realData.price || 
-                       realData.finalPrice || 
-                       getCarPriceFromImage(imageIndex),
-                discountedPrice: realData.finalPrice ? 
-                  Math.round(realData.finalPrice * 0.9) : getDiscountedPriceFromImage(imageIndex),
-                rating: car.rating || 4.5,
-                reviews: Math.floor(Math.random() * 300) + 50,
-                image: car.image || carImages[imageIndex].image,
-                providerLogo: (car as any).providerLogo,
-                amenities: car.amenities || getDefaultAmenitiesForCar(),
-                seats: seats,
-                baggage: `${baggage} bags`,
-                transmission: (car as any).transmission || "Automatic",
-                pickupLocation: route.from.code,
-                dropoffLocation: route.to.code,
-                pickupDateTime,
-                dropoffDateTime,
-                duration: realData.duration || (car as any).duration || "6 hours",
-                distance: realData.distance || (car as any).distance,
-                isRefundable: (car as any).isRefundable || true,
-                vehicleCode: (car as any).vehicleCode,
-                originalCar: car
-              };
-            });
-          }
-          
-          // Fallback to default cars if API fails for this route
-          console.log(`⚠️ No results for ${route.from.city} to ${route.to.city}, using fallback`);
-          return getFallbackCarsForRoute(route, pickupDateTime, dropoffDateTime);
-        } catch (err) {
-          console.error(`Error fetching cars for ${route.from.city} to ${route.to.city}:`, err);
-          return getFallbackCarsForRoute(route, pickupDateTime, dropoffDateTime);
-        }
-      });
-      
-      const results = await Promise.all(carPromises);
-      const flattenedCars = results.flat().slice(0, 6); // Limit to 6 cars
-      
-      // If we don't have enough cars from API, fill with fallbacks
-      if (flattenedCars.length < 6) {
-        const fallbackCars = getFallbackCars().slice(0, 6 - flattenedCars.length);
-        setCars([...flattenedCars, ...fallbackCars]);
-      } else {
-        setCars(flattenedCars);
-      }
+      // Set fallback cars directly
+      const fallbackCars = generateFallbackCars();
+      setCars(fallbackCars);
+      setError(null);
     } catch (err: any) {
-      console.error("Error fetching cars:", err);
+      console.error("Error generating fallback cars:", err);
       setError(err.message || "Failed to load car rentals");
-      
-      // Set fallback cars if API fails
-      setCars(getFallbackCars().slice(0, 6));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Helper functions to map to your original images
-  const getCarNameFromImage = (index: number): string => {
-    const names = ["Premium SUV", "Executive Sedan", "Luxury SUV", "Comfort SUV", "Sport Crossover", "Black SUV"];
-    return names[index % names.length] || "Premium Car";
-  };
-
-  const getCarCategoryFromImage = (index: number): string => {
-    const categories = ["SUV", "Sedan", "SUV", "SUV", "Crossover", "SUV"];
-    return categories[index % categories.length] || "Standard";
-  };
-
-  const getCarPriceFromImage = (index: number): number => {
-    const prices = [95, 75, 110, 85, 89, 99];
-    return prices[index % prices.length] || 85;
-  };
-
-  const getDiscountedPriceFromImage = (index: number): number | undefined => {
-    const prices = [85, 67, 99, 76, 80, 89]; // ~10% off
-    return prices[index % prices.length];
-  };
-
-  const getCarSeatsFromImage = (index: number): number => {
-    const seats = [5, 4, 7, 5, 4, 5];
-    return seats[index % seats.length] || 5;
-  };
-
-  const getCarBaggageFromImage = (index: number): string => {
-    const baggage = ["3", "2", "4", "3", "2", "3"];
-    return baggage[index % baggage.length];
-  };
-
-  // Helper function to get default amenities
-  const getDefaultAmenitiesForCar = (): string[] => {
-    return [
-      "Air Conditioning",
-      "Professional Driver",
-      "Meet & Greet",
-      "Flight Tracking"
-    ];
-  };
-
-  // Fallback cars for when API fails
-  const getFallbackCarsForRoute = (route: any, pickupDateTime: string, dropoffDateTime: string) => {
-    // Use your original car images
-    return carImages.slice(0, 2).map((car, index) => ({
-      id: `fallback-${route.from.code}-${route.to.code}-${index + 1}`,
-      name: car.name,
-      provider: index === 0 ? "GroundSpan" : "Sixt Ride",
-      vehicleCategory: car.name.includes("SUV") ? "SUV" : "Sedan",
-      vehicleDescription: car.name,
-      location: `${route.from.city} → ${route.to.city}`,
-      cityName: route.from.city,
-      locationCode: route.from.code,
-      price: car.name.includes("SUV") ? 95 : 75,
-      discountedPrice: car.name.includes("SUV") ? 85 : 67,
-      rating: 4.7,
-      reviews: Math.floor(Math.random() * 400) + 100,
-      image: car.image,
-      amenities: getDefaultAmenitiesForCar(),
-      seats: car.name.includes("SUV") ? 5 : 4,
-      baggage: car.name.includes("SUV") ? "3 bags" : "2 bags",
-      transmission: "Automatic",
-      pickupLocation: route.from.code,
-      dropoffLocation: route.to.code,
-      pickupDateTime,
-      dropoffDateTime,
-      duration: "6 hours",
-      distance: "294 MI",
-      isRefundable: true,
-      description: `Premium ${car.name} transfer from ${route.from.city} to ${route.to.city}`
-    }));
-  };
-
-  const getFallbackCars = (): CarDisplay[] => {
+  // Generate fallback cars based on popular routes and car images
+  const generateFallbackCars = (): CarDisplay[] => {
     // Calculate dates for fallback
     const today = new Date();
     const pickupDate = new Date(today);
@@ -331,65 +99,136 @@ const CarRentals: React.FC = () => {
     const pickupDateTime = pickupDate.toISOString();
     const dropoffDateTime = dropoffDate.toISOString();
     
-    return popularRoutes.slice(0, 6).map((route, index) => {
-      const imageIndex = index % carImages.length;
-      const car = carImages[imageIndex];
-      
-      return {
-        id: `fallback-${index + 1}`,
-        name: car.name,
-        provider: index % 2 === 0 ? "GroundSpan" : "Sixt Ride",
-        vehicleCategory: car.name.includes("SUV") ? "SUV" : 
-                         car.name.includes("Sedan") ? "Sedan" : 
-                         car.name.includes("Crossover") ? "Crossover" : "Standard",
-        vehicleDescription: car.name,
-        location: `${route.from.city} → ${route.to.city}`,
-        cityName: route.from.city,
-        locationCode: route.from.code,
-        price: car.name.includes("SUV") ? 95 : 
-               car.name.includes("Sedan") ? 75 : 
-               car.name.includes("Crossover") ? 89 : 85,
-        discountedPrice: car.name.includes("SUV") ? 85 : 
-                         car.name.includes("Sedan") ? 67 : 
-                         car.name.includes("Crossover") ? 80 : 76,
-        rating: 4.8,
-        reviews: 250 + index * 50,
-        image: car.image,
-        amenities: getDefaultAmenitiesForCar(),
-        seats: car.name.includes("SUV") ? 5 : 4,
-        baggage: car.name.includes("SUV") ? "3 bags" : "2 bags",
-        transmission: "Automatic",
-        pickupLocation: route.from.code,
-        dropoffLocation: route.to.code,
-        pickupDateTime,
-        dropoffDateTime,
-        duration: "6 hours",
-        distance: "294 MI",
-        isRefundable: true
-      };
+    // Generate cars for each route (2 per route to get 12 total, but we'll take first 6)
+    const allCars: CarDisplay[] = [];
+    
+    popularRoutes.forEach((route, routeIndex) => {
+      // Add 2 cars per route
+      for (let i = 0; i < 2; i++) {
+        const carIndex = (routeIndex * 2 + i) % carImages.length;
+        const car = carImages[carIndex];
+        
+        // Determine if this is a premium/suv or standard/sedan
+        const isSUV = car.name.includes("SUV");
+        const isSedan = car.name.includes("Sedan");
+        const isCrossover = car.name.includes("Crossover");
+        
+        // Set price based on car type
+        const basePrice = isSUV ? 95 : isSedan ? 75 : isCrossover ? 89 : 85;
+        const discountedPrice = isSUV ? 85 : isSedan ? 67 : isCrossover ? 80 : 76;
+        
+        // Set seats and baggage based on car type
+        const seats = isSUV ? 5 : isSedan ? 4 : isCrossover ? 4 : 5;
+        const baggage = isSUV ? "3" : isSedan ? "2" : isCrossover ? "2" : "3";
+        
+        // Set provider based on index
+        const provider = i % 2 === 0 ? "GroundSpan" : "Sixt Ride";
+        
+        // Generate random rating between 4.2 and 4.9
+        const rating = 4.2 + Math.random() * 0.7;
+        
+        // Generate random reviews count
+        const reviews = Math.floor(Math.random() * 400) + 100;
+        
+        // Create car display object
+        allCars.push({
+          id: `car-${routeIndex}-${i}-${Date.now()}`,
+          name: car.name,
+          provider: provider,
+          vehicleCategory: isSUV ? "SUV" : isSedan ? "Sedan" : isCrossover ? "Crossover" : "Standard",
+          vehicleDescription: car.name,
+          location: `${route.from.city} → ${route.to.city}`,
+          cityName: route.from.city,
+          locationCode: route.from.code,
+          price: basePrice,
+          discountedPrice: discountedPrice,
+          rating: parseFloat(rating.toFixed(1)),
+          reviews: reviews,
+          image: car.image,
+          amenities: getDefaultAmenitiesForCar(provider),
+          seats: seats,
+          baggage: `${baggage} bags`,
+          transmission: "Automatic",
+          pickupLocation: route.from.code,
+          dropoffLocation: route.to.code,
+          pickupDateTime: pickupDateTime,
+          dropoffDateTime: dropoffDateTime,
+          duration: "6 hours",
+          distance: getDistanceForRoute(route.from.city, route.to.city),
+          isRefundable: true,
+          description: `Premium ${car.name} transfer from ${route.from.city} to ${route.to.city}`
+        });
+      }
     });
+    
+    // Shuffle array to mix up cars from different routes
+    const shuffled = [...allCars].sort(() => 0.5 - Math.random());
+    
+    // Return first 6 cars
+    return shuffled.slice(0, 6);
+  };
+
+  // Helper function to get distance between cities (mock data)
+  const getDistanceForRoute = (fromCity: string, toCity: string): string => {
+    const distances: {[key: string]: string} = {
+      "London-Paris": "294 MI",
+      "New York-Los Angeles": "2,789 MI",
+      "Dubai-Abu Dhabi": "82 MI",
+      "Manchester-London": "209 MI",
+      "Los Angeles-San Francisco": "383 MI",
+      "Paris-Amsterdam": "267 MI"
+    };
+    
+    const key = `${fromCity}-${toCity}`;
+    return distances[key] || "200 MI";
+  };
+
+  // Helper function to get amenities based on provider
+  const getDefaultAmenitiesForCar = (provider: string): string[] => {
+    const baseAmenities = [
+      "Air Conditioning",
+      "Professional Driver",
+      "Meet & Greet",
+      "Flight Tracking"
+    ];
+    
+    if (provider === "GroundSpan") {
+      return [...baseAmenities, "Water Bottles", "Wi-Fi"];
+    } else {
+      return [...baseAmenities, "Phone Charger", "Music System"];
+    }
   };
 
   const handleCarClick = (car: CarDisplay) => {
     // Format dates for search
     const today = new Date();
     const pickupDate = new Date(today);
-    pickupDate.setDate(today.getDate() + 7); // 7 days from now
+    pickupDate.setDate(today.getDate() + 7);
     pickupDate.setHours(10, 0, 0, 0);
     
     const dropoffDate = new Date(pickupDate);
-    dropoffDate.setHours(pickupDate.getHours() + 6); // 6 hours later
+    dropoffDate.setHours(pickupDate.getHours() + 6);
     
     const pickupDateStr = pickupDate.toISOString().split('T')[0];
     const dropoffDateStr = dropoffDate.toISOString().split('T')[0];
     
     // Format times
     const pickupTime = "10:00";
-    const dropoffTime = "16:00"; // 6 hours later
+    const dropoffTime = "16:00";
     
-    // Get pickup and dropoff locations
-    const pickupCity = car.cityName || "London";
-    const dropoffCity = car.location?.split('→')[1]?.trim() || "Paris";
+    // Get pickup and dropoff locations from the car object
+    // If the car was clicked from the list, it should have these properties
+    let pickupCity = car.cityName || "London";
+    let dropoffCity = "Paris"; // Default
+    
+    // Try to extract dropoff city from location string
+    if (car.location && car.location.includes('→')) {
+      const parts = car.location.split('→');
+      if (parts.length > 1) {
+        pickupCity = parts[0].trim();
+        dropoffCity = parts[1].trim();
+      }
+    }
     
     // Get location codes
     const pickupCode = car.pickupLocation || "LHR";
@@ -415,13 +254,14 @@ const CarRentals: React.FC = () => {
     );
   };
 
-  const handleSearchMore = async () => {
-    setSearching(true);
-    try {
-      await fetchCarsFromAPI();
-    } finally {
-      setSearching(false);
-    }
+  const handleSearchMore = () => {
+    // Regenerate fallback cars with new random data
+    setLoading(true);
+    setTimeout(() => {
+      const newCars = generateFallbackCars();
+      setCars(newCars);
+      setLoading(false);
+    }, 500); // Small delay to show loading state
   };
 
   const formatPrice = (price: number) => `£${price.toFixed(2)}`;
@@ -490,22 +330,22 @@ const CarRentals: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-4">
-        <button
-  onClick={handleSearchMore}
-  disabled={searching}
-  className="px-4 py-2 text-sm font-semibold rounded-lg transition-colors duration-200 flex items-center gap-2"
-  style={{
-    backgroundColor: brandBlueLight,
-    color: brandBlue,
-  }}
->
-  {searching ? (
-    <>
-      <div className="w-4 h-4 border-2 border-[#32A6D7] border-t-transparent rounded-full animate-spin"></div>
-      <span>Loading...</span>
-    </>
-  ) : "Refresh"}
-</button>
+          <button
+            onClick={handleSearchMore}
+            disabled={loading}
+            className="px-4 py-2 text-sm font-semibold rounded-lg transition-colors duration-200 flex items-center gap-2"
+            style={{
+              backgroundColor: brandBlueLight,
+              color: brandBlue,
+            }}
+          >
+            {loading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-[#32A6D7] border-t-transparent rounded-full animate-spin"></div>
+                <span>Loading...</span>
+              </>
+            ) : "Refresh"}
+          </button>
           <button
             onClick={() => router.push("/search?type=car-rentals&currency=GBP")}
             className="font-semibold transition-colors duration-200 flex items-center gap-2 group"
@@ -520,13 +360,13 @@ const CarRentals: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-        {cars.slice(0, 6).map((car) => (
+        {cars.map((car) => (
           <div 
             key={car.id}
             onClick={() => handleCarClick(car)}
             className="group relative bg-white rounded-3xl overflow-hidden shadow-md hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 border border-gray-100 cursor-pointer"
           >
-            {/* Price tag – using your new blue color */}
+            {/* Price tag */}
             <div className="absolute top-4 right-4 z-10">
               <div 
                 className="text-white font-bold px-5 py-2 rounded-full text-lg shadow-md flex items-center gap-1"

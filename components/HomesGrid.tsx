@@ -3,10 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { useLanguage } from "../context/LanguageContext";
 import { useRouter } from "next/navigation";
-import { hotelApi, formatHotelSearchParams, searchAndTransformHotels } from "../lib/api";
-import type { HotelOffer, SearchResult } from "../lib/types";
 
-// Define the hotel type from API response
+// Define the hotel type
 interface HotelDisplay {
   id: string;
   name: string;
@@ -19,20 +17,9 @@ interface HotelDisplay {
   image: string;
   amenities: string[];
   chainCode?: string;
-  originalHotel?: SearchResult;
   cityName?: string;
   description?: string;
-}
-
-// Define the transformed hotel type from searchAndTransformHotels
-interface TransformedHotel extends SearchResult {
-  realData?: {
-    price?: number;
-    finalPrice?: number;
-    hotelId?: string;
-    guests?: number;
-    [key: string]: any;
-  };
+  country?: string;
 }
 
 const HomesGrid: React.FC = () => {
@@ -41,7 +28,6 @@ const HomesGrid: React.FC = () => {
   const [hotels, setHotels] = useState<HotelDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searching, setSearching] = useState(false);
 
   // Force currency to GBP/pounds
   const currencySymbol = "£";
@@ -59,361 +45,353 @@ const HomesGrid: React.FC = () => {
   ];
 
   useEffect(() => {
-    fetchHotelsFromAPI();
-  }, []);
-
-  const fetchHotelsFromAPI = async () => {
+    // Always use fallback data - no API calls
     setLoading(true);
-    setError(null);
-    
     try {
-      // Calculate dates (today + 7 days for check-in, +10 days for check-out)
-      const today = new Date();
-      const checkIn = new Date(today);
-      checkIn.setDate(today.getDate() + 7);
-      
-      const checkOut = new Date(checkIn);
-      checkOut.setDate(checkIn.getDate() + 3);
-      
-      const checkInDate = checkIn.toISOString().split('T')[0];
-      const checkOutDate = checkOut.toISOString().split('T')[0];
-      
-      console.log('📅 Search dates:', { checkInDate, checkOutDate });
-      
-      // Fetch hotels for each popular destination - only try first 3 to avoid rate limiting
-      const hotelPromises = popularDestinations.slice(0, 3).map(async (dest) => {
-        try {
-          console.log(`🏨 Searching hotels in ${dest.city} with code ${dest.code}...`);
-          
-          // Create search params directly without using formatHotelSearchParams
-          const searchParams = {
-            cityCode: dest.code,
-            checkInDate,
-            checkOutDate,
-            adults: 2,
-            roomQuantity: 1,
-            currency: 'GBP',
-            bestRateOnly: true
-          };
-          
-          console.log('📤 Search params:', searchParams);
-          
-          // Search hotels
-          const result = await searchAndTransformHotels(
-            searchParams,
-            dest.city
-          );
-          
-          console.log(`✅ Results for ${dest.city}:`, result);
-          
-          if (result.success && result.results.length > 0) {
-            // Get first 2 hotels from each destination
-            return result.results.slice(0, 2).map((hotel: SearchResult) => {
-              // Cast to TransformedHotel to access realData
-              const transformedHotel = hotel as TransformedHotel;
-              
-              // Parse price from string (e.g., "£95/night" -> 95)
-              let priceValue = 200;
-              if (hotel.price) {
-                const priceMatch = hotel.price.match(/[0-9.]+/);
-                if (priceMatch) {
-                  priceValue = parseFloat(priceMatch[0]);
-                }
-              }
-              
-              return {
-                id: hotel.id,
-                name: hotel.title,
-                location: `${dest.city}, ${dest.country}`,
-                cityName: dest.city,
-                code: dest.code,
-                price: transformedHotel.realData?.price || 
-                       transformedHotel.realData?.finalPrice || 
-                       priceValue,
-                discountedPrice: transformedHotel.realData?.finalPrice ? 
-                  Math.round(transformedHotel.realData.finalPrice * 0.85) : undefined,
-                rating: hotel.rating || 4.5,
-                reviews: Math.floor(Math.random() * 500) + 100,
-                image: hotel.image || getFallbackImageForCity(dest.city),
-                amenities: hotel.amenities || getDefaultAmenitiesForCity(dest.city),
-                chainCode: transformedHotel.realData?.hotelId?.substring(0, 2),
-                originalHotel: hotel
-              };
-            });
-          }
-          
-          // Fallback to default hotels if API fails for this destination
-          console.log(`⚠️ No results for ${dest.city}, using fallback`);
-          return getFallbackHotelsForDestination(dest, checkInDate, checkOutDate);
-        } catch (err) {
-          console.error(`Error fetching hotels for ${dest.city}:`, err);
-          return getFallbackHotelsForDestination(dest, checkInDate, checkOutDate);
-        }
-      });
-      
-      const results = await Promise.all(hotelPromises);
-      const flattenedHotels = results.flat().slice(0, 6); // Limit to 6 hotels
-      
-      // If we have no hotels from API, use all fallbacks
-      if (flattenedHotels.length === 0 || flattenedHotels.every(h => h.id.startsWith('fallback'))) {
-        console.log('Using all fallback hotels');
-        setHotels(getFallbackHotels().slice(0, 6));
-      } else {
-        setHotels(flattenedHotels);
-      }
+      // Set fallback hotels directly
+      const fallbackHotels = generateFallbackHotels();
+      setHotels(fallbackHotels);
+      setError(null);
     } catch (err: any) {
-      console.error("Error fetching hotels:", err);
+      console.error("Error generating fallback hotels:", err);
       setError(err.message || "Failed to load hotels");
-      
-      // Set fallback hotels if API fails
-      setHotels(getFallbackHotels().slice(0, 6));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Helper function to get fallback images
-  const getFallbackImageForCity = (city: string): string => {
-    const images: Record<string, string> = {
-      "London": "https://images.unsplash.com/photo-1551632436-cbf8dd35adfa?auto=format&fit=crop&q=80&w=600",
-      "Dubai": "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=600",
-      "New York": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=600",
-      "Tokyo": "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
-      "Paris": "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&q=80&w=600",
-      "Singapore": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=600"
-    };
-    return images[city] || images["London"];
-  };
-
-  // Helper function to get default amenities
-  const getDefaultAmenitiesForCity = (city: string): string[] => {
-    const amenities: Record<string, string[]> = {
-      "London": ["Free Wi-Fi", "Restaurant", "Bar", "24-hour front desk"],
-      "Dubai": ["Private Beach", "Pool", "Spa", "Butler Service"],
-      "New York": ["Central Location", "Concierge", "Fitness Center", "Business Center"],
-      "Tokyo": ["Japanese Garden", "Hot Spring", "Tea House", "Massage"],
-      "Paris": ["Eiffel Tower View", "Concierge", "Bar", "Restaurant"],
-      "Singapore": ["Infinity Pool", "Sky Bar", "Casino", "Shopping"]
-    };
-    return amenities[city] || amenities["London"];
-  };
-
-  // Fallback hotels for when API fails
-  const getFallbackHotelsForDestination = (dest: any, checkInDate: string, checkOutDate: string) => {
-    const hotelsByDest: Record<string, any[]> = {
+  // Generate fallback hotels based on popular destinations
+  const generateFallbackHotels = (): HotelDisplay[] => {
+    // Luxury hotels database by destination
+    const hotelsByDestination: Record<string, HotelDisplay[]> = {
       "LON": [
         {
+          id: "lon-ritz-1",
           name: "The Ritz London",
+          location: "London, United Kingdom",
+          cityName: "London",
+          country: "United Kingdom",
+          code: "LON",
           price: 850,
-          amenities: ["Spa", "Michelin Restaurant", "Afternoon Tea", "Concierge"],
+          discountedPrice: 720,
+          rating: 4.9,
+          reviews: 1250,
           image: "https://images.unsplash.com/photo-1551632436-cbf8dd35adfa?auto=format&fit=crop&q=80&w=600",
-          description: "Iconic 5-star hotel in Piccadilly"
+          amenities: ["Spa", "Michelin Restaurant", "Afternoon Tea", "Concierge", "Butler Service"],
+          chainCode: "RL",
+          description: "Iconic 5-star hotel in Piccadilly with stunning views"
         },
         {
+          id: "lon-savoy-2",
           name: "The Savoy",
+          location: "London, United Kingdom",
+          cityName: "London",
+          country: "United Kingdom",
+          code: "LON",
           price: 780,
-          amenities: ["River View", "Luxury Spa", "Fine Dining", "Theatre"],
+          discountedPrice: 660,
+          rating: 4.8,
+          reviews: 2100,
           image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
-          description: "Historic hotel on the Strand"
+          amenities: ["River View", "Luxury Spa", "Fine Dining", "Theatre", "Afternoon Tea"],
+          chainCode: "FAIRMONT",
+          description: "Historic hotel on the Strand with river views"
+        },
+        {
+          id: "lon-claridges-3",
+          name: "Claridge's",
+          location: "London, United Kingdom",
+          cityName: "London",
+          country: "United Kingdom",
+          code: "LON",
+          price: 920,
+          discountedPrice: 820,
+          rating: 4.9,
+          reviews: 980,
+          image: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=600",
+          amenities: ["Art Deco", "Michelin Star", "Spa", "Butler Service", "Afternoon Tea"],
+          chainCode: "MAYBOURNE",
+          description: "Legendary Art Deco hotel in Mayfair"
         }
       ],
       "DXB": [
         {
+          id: "dxb-burj-1",
           name: "Burj Al Arab Jumeirah",
+          location: "Dubai, UAE",
+          cityName: "Dubai",
+          country: "UAE",
+          code: "DXB",
           price: 1200,
-          amenities: ["Private Beach", "Helicopter Pad", "Underwater Restaurant", "Butler Service"],
+          discountedPrice: 1050,
+          rating: 5.0,
+          reviews: 2340,
           image: "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=600",
-          description: "World's only 7-star hotel"
+          amenities: ["Private Beach", "Helicopter Pad", "Underwater Restaurant", "Butler Service", "Infinity Pool"],
+          chainCode: "JUMEIRAH",
+          description: "World's only 7-star hotel on its own island"
         },
         {
+          id: "dxb-atlantis-2",
           name: "Atlantis The Palm",
+          location: "Dubai, UAE",
+          cityName: "Dubai",
+          country: "UAE",
+          code: "DXB",
           price: 650,
-          amenities: ["Aquaventure", "Dolphin Bay", "Private Beach", "Kids Club"],
+          discountedPrice: 550,
+          rating: 4.8,
+          reviews: 4560,
           image: "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=600",
-          description: "Iconic resort on Palm Jumeirah"
+          amenities: ["Aquaventure", "Dolphin Bay", "Private Beach", "Kids Club", "Water Park"],
+          chainCode: "ATLANTIS",
+          description: "Iconic resort on Palm Jumeirah with underwater suites"
+        },
+        {
+          id: "dxb-address-3",
+          name: "Address Boulevard",
+          location: "Dubai, UAE",
+          cityName: "Dubai",
+          country: "UAE",
+          code: "DXB",
+          price: 480,
+          discountedPrice: 420,
+          rating: 4.7,
+          reviews: 1870,
+          image: "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=600",
+          amenities: ["Pool", "Spa", "Burj Khalifa View", "Fine Dining", "Shopping Mall Access"],
+          chainCode: "ADDRESS",
+          description: "Luxury hotel connected to Dubai Mall"
         }
       ],
       "NYC": [
         {
+          id: "nyc-plaza-1",
           name: "The Plaza Hotel",
+          location: "New York, USA",
+          cityName: "New York",
+          country: "USA",
+          code: "NYC",
           price: 950,
-          amenities: ["Central Park View", "Luxury Spa", "Fine Dining", "Historic Landmark"],
+          discountedPrice: 820,
+          rating: 4.8,
+          reviews: 3150,
           image: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=600",
+          amenities: ["Central Park View", "Luxury Spa", "Fine Dining", "Historic Landmark", "Afternoon Tea"],
+          chainCode: "FAIRMONT",
           description: "Legendary hotel facing Central Park"
         },
         {
+          id: "nyc-ritz-2",
           name: "The Ritz-Carlton",
+          location: "New York, USA",
+          cityName: "New York",
+          country: "USA",
+          code: "NYC",
           price: 820,
-          amenities: ["Central Park View", "Spa", "Michelin Restaurant", "Butler Service"],
+          discountedPrice: 720,
+          rating: 4.7,
+          reviews: 1890,
           image: "https://images.unsplash.com/photo-1618773928121-c32242e63f39?auto=format&fit=crop&q=80&w=600",
+          amenities: ["Central Park View", "Spa", "Michelin Restaurant", "Butler Service", "Fitness Center"],
+          chainCode: "RC",
           description: "Luxury in the heart of Manhattan"
+        },
+        {
+          id: "nyc-peninsula-3",
+          name: "The Peninsula",
+          location: "New York, USA",
+          cityName: "New York",
+          country: "USA",
+          code: "NYC",
+          price: 890,
+          discountedPrice: 780,
+          rating: 4.8,
+          reviews: 1430,
+          image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
+          amenities: ["Rooftop Terrace", "Spa", "Michelin Star", "Business Center", "Chauffeur Service"],
+          chainCode: "PENINSULA",
+          description: "Elegant hotel on Fifth Avenue"
         }
       ],
       "TYO": [
         {
+          id: "tyo-park-1",
           name: "Park Hyatt Tokyo",
+          location: "Tokyo, Japan",
+          cityName: "Tokyo",
+          country: "Japan",
+          code: "TYO",
           price: 680,
-          amenities: ["Mountain Views", "Japanese Garden", "Michelin Star", "Zen Spa"],
+          discountedPrice: 590,
+          rating: 4.8,
+          reviews: 1870,
           image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
-          description: "Luxury hotel in Shinjuku"
+          amenities: ["Mountain Views", "Japanese Garden", "Michelin Star", "Zen Spa", "Sky Bar"],
+          chainCode: "HY",
+          description: "Luxury hotel in Shinjuku featured in Lost in Translation"
         },
         {
+          id: "tyo-aman-2",
           name: "Aman Tokyo",
+          location: "Tokyo, Japan",
+          cityName: "Tokyo",
+          country: "Japan",
+          code: "TYO",
           price: 950,
-          amenities: ["Skyline Views", "Traditional Onsen", "Tea House", "Zen Garden"],
+          discountedPrice: 850,
+          rating: 4.9,
+          reviews: 920,
           image: "https://images.unsplash.com/photo-1606402179428-a57976d71fa4?auto=format&fit=crop&q=80&w=600",
-          description: "Serene luxury in Otemachi"
+          amenities: ["Skyline Views", "Traditional Onsen", "Tea House", "Zen Garden", "Spa"],
+          chainCode: "AMAN",
+          description: "Serene luxury in Otemachi with traditional Japanese elements"
+        },
+        {
+          id: "tyo-imperial-3",
+          name: "The Imperial Hotel",
+          location: "Tokyo, Japan",
+          cityName: "Tokyo",
+          country: "Japan",
+          code: "TYO",
+          price: 520,
+          discountedPrice: 460,
+          rating: 4.6,
+          reviews: 3240,
+          image: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=600",
+          amenities: ["Historic", "Japanese Garden", "Multiple Restaurants", "Spa", "Shopping Arcade"],
+          chainCode: "IH",
+          description: "Historic hotel near the Imperial Palace"
         }
       ],
       "PAR": [
         {
+          id: "par-plaza-1",
           name: "Hotel Plaza Athénée",
+          location: "Paris, France",
+          cityName: "Paris",
+          country: "France",
+          code: "PAR",
           price: 1100,
-          amenities: ["Eiffel Tower View", "Dior Spa", "Michelin Dining", "Fashion District"],
+          discountedPrice: 950,
+          rating: 4.9,
+          reviews: 1420,
           image: "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&q=80&w=600",
+          amenities: ["Eiffel Tower View", "Dior Spa", "Michelin Dining", "Fashion District", "Courtyard"],
+          chainCode: "DORCHESTER",
           description: "Palace hotel on Avenue Montaigne"
         },
         {
+          id: "par-meurice-2",
           name: "Le Meurice",
+          location: "Paris, France",
+          cityName: "Paris",
+          country: "France",
+          code: "PAR",
           price: 890,
-          amenities: ["Tuileries View", "Art Deco Spa", "Michelin Star", "Palace Hotel"],
+          discountedPrice: 780,
+          rating: 4.8,
+          reviews: 1150,
           image: "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=600",
-          description: "Historic palace hotel in Paris"
+          amenities: ["Tuileries View", "Art Deco Spa", "Michelin Star", "Palace Hotel", "Afternoon Tea"],
+          chainCode: "DORCHESTER",
+          description: "Historic palace hotel with art-inspired decor"
+        },
+        {
+          id: "par-ritz-3",
+          name: "Ritz Paris",
+          location: "Paris, France",
+          cityName: "Paris",
+          country: "France",
+          code: "PAR",
+          price: 1200,
+          discountedPrice: 1050,
+          rating: 5.0,
+          reviews: 890,
+          image: "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&q=80&w=600",
+          amenities: ["Michelin Dining", "Spa", "Jardins", "Bar Hemingway", "Luxury Suites"],
+          chainCode: "RITZ",
+          description: "Legendary Place Vendôme palace hotel"
         }
       ],
       "SIN": [
         {
+          id: "sin-mbs-1",
           name: "Marina Bay Sands",
+          location: "Singapore",
+          cityName: "Singapore",
+          country: "Singapore",
+          code: "SIN",
           price: 780,
-          amenities: ["Infinity Pool", "SkyPark", "Casino", "Luxury Shopping"],
+          discountedPrice: 680,
+          rating: 4.8,
+          reviews: 4250,
           image: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=600",
-          description: "Iconic resort with infinity pool"
+          amenities: ["Infinity Pool", "SkyPark", "Casino", "Luxury Shopping", "Observation Deck"],
+          chainCode: "MBS",
+          description: "Iconic resort with infinity pool overlooking the city"
         },
         {
+          id: "sin-raffles-2",
           name: "Raffles Singapore",
+          location: "Singapore",
+          cityName: "Singapore",
+          country: "Singapore",
+          code: "SIN",
           price: 850,
-          amenities: ["Colonial Heritage", "Singapore Sling", "Butler Service", "Courtyard"],
+          discountedPrice: 750,
+          rating: 4.9,
+          reviews: 1870,
           image: "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=600",
-          description: "Historic luxury hotel"
+          amenities: ["Colonial Heritage", "Singapore Sling", "Butler Service", "Courtyard", "Luxury Spa"],
+          chainCode: "ACCOR",
+          description: "Historic luxury hotel where the Singapore Sling was invented"
+        },
+        {
+          id: "sin-fullerton-3",
+          name: "The Fullerton Hotel",
+          location: "Singapore",
+          cityName: "Singapore",
+          country: "Singapore",
+          code: "SIN",
+          price: 580,
+          discountedPrice: 520,
+          rating: 4.7,
+          reviews: 2980,
+          image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
+          amenities: ["Heritage Building", "River View", "Pool", "Spa", "Multiple Restaurants"],
+          chainCode: "FULLERTON",
+          description: "Historic building at the mouth of the Singapore River"
         }
       ]
     };
-    
-    const destHotels = hotelsByDest[dest.code] || hotelsByDest["LON"];
-    
-    return destHotels.map((hotel, index) => ({
-      id: `fallback-${dest.code}-${index + 1}`,
-      name: hotel.name,
-      location: `${dest.city}, ${dest.country}`,
-      cityName: dest.city,
-      code: dest.code,
-      price: hotel.price,
-      discountedPrice: Math.round(hotel.price * 0.85),
-      rating: 4.8,
-      reviews: Math.floor(Math.random() * 1000) + 500,
-      image: hotel.image,
-      amenities: hotel.amenities,
-      chainCode: hotel.name.substring(0, 2).toUpperCase(),
-      description: hotel.description
-    }));
-  };
 
-  const getFallbackHotels = (): HotelDisplay[] => {
-    return [
-      {
-        id: "1",
-        name: "The Ritz London",
-        location: "London, United Kingdom",
-        cityName: "London",
-        code: "LON",
-        price: 850.0,
-        discountedPrice: 720.0,
-        rating: 5,
-        reviews: 1250,
-        image: "https://images.unsplash.com/photo-1551632436-cbf8dd35adfa?auto=format&fit=crop&q=80&w=600",
-        amenities: ["Spa", "Michelin Restaurant", "Afternoon Tea", "Concierge"],
-        chainCode: "RL"
-      },
-      {
-        id: "2",
-        name: "Burj Al Arab Jumeirah",
-        location: "Dubai, UAE",
-        cityName: "Dubai",
-        code: "DXB",
-        price: 1200.0,
-        discountedPrice: 1050.0,
-        rating: 5,
-        reviews: 2340,
-        image: "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=600",
-        amenities: ["Private Beach", "Helicopter Pad", "Underwater Restaurant", "Butler Service"],
-        chainCode: "JUMEIRAH"
-      },
-      {
-        id: "3",
-        name: "The Plaza Hotel",
-        location: "New York, USA",
-        cityName: "New York",
-        code: "NYC",
-        price: 950.0,
-        discountedPrice: 820.0,
-        rating: 5,
-        reviews: 3150,
-        image: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=600",
-        amenities: ["Central Park View", "Luxury Spa", "Fine Dining", "Historic Landmark"],
-        chainCode: "FAIRMONT"
-      },
-      {
-        id: "4",
-        name: "Park Hyatt Tokyo",
-        location: "Tokyo, Japan",
-        cityName: "Tokyo",
-        code: "TYO",
-        price: 680.0,
-        discountedPrice: 590.0,
-        rating: 5,
-        reviews: 1870,
-        image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
-        amenities: ["Mountain Views", "Japanese Garden", "Michelin Star", "Zen Spa"],
-        chainCode: "HY"
-      },
-      {
-        id: "5",
-        name: "Hotel Plaza Athénée",
-        location: "Paris, France",
-        cityName: "Paris",
-        code: "PAR",
-        price: 1100.0,
-        discountedPrice: 950.0,
-        rating: 5,
-        reviews: 1420,
-        image: "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&q=80&w=600",
-        amenities: ["Eiffel Tower View", "Dior Spa", "Michelin Dining", "Fashion District"],
-        chainCode: "DORCHESTER"
-      },
-      {
-        id: "6",
-        name: "Marina Bay Sands",
-        location: "Singapore",
-        cityName: "Singapore",
-        code: "SIN",
-        price: 780.0,
-        discountedPrice: 680.0,
-        rating: 5,
-        reviews: 4250,
-        image: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=600",
-        amenities: ["Infinity Pool", "SkyPark", "Casino", "Luxury Shopping"],
-        chainCode: "MBS"
-      }
-    ];
-  };
+    // Collect hotels from all destinations and flatten
+    const allHotels: HotelDisplay[] = [];
+    
+    // Get 2 hotels from each destination for variety (total 12, but we'll take first 6 after shuffle)
+    popularDestinations.forEach(dest => {
+      const destHotels = hotelsByDestination[dest.code] || hotelsByDestination["LON"];
+      // Take first 2 hotels from each destination
+      const hotelsToAdd = destHotels.slice(0, 2).map(hotel => ({
+        ...hotel,
+        // Ensure each hotel has unique ID with timestamp to avoid React key issues
+        id: `${hotel.id}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        // Randomize reviews slightly for realism
+        reviews: Math.floor(hotel.reviews * (0.9 + Math.random() * 0.2))
+      }));
+      allHotels.push(...hotelsToAdd);
+    });
 
-  // Helper function to extract city code
-  const getCityCodeFromHotel = (hotel: HotelDisplay): string => {
-    return hotel.code || "LON";
+    // Shuffle to mix hotels from different destinations
+    const shuffled = [...allHotels].sort(() => 0.5 - Math.random());
+    
+    // Return first 6 hotels
+    return shuffled.slice(0, 6);
   };
 
   const handleHotelClick = (hotel: HotelDisplay) => {
-    // Calculate dates for search (same as SearchBox default)
+    // Calculate dates for search (tomorrow for check-in)
     const today = new Date();
     const checkIn = new Date(today);
     checkIn.setDate(today.getDate() + 1); // Tomorrow
@@ -427,10 +405,9 @@ const HomesGrid: React.FC = () => {
     // Get city name and code
     const cityName = hotel.cityName || "London";
     const cityCode = hotel.code || "LON";
+    const country = hotel.country || "United Kingdom";
     
     // Format location
-    const locationParts = hotel.location.split(',');
-    const country = locationParts.length > 1 ? locationParts[1].trim() : 'United Kingdom';
     const formattedLocation = `${cityName}, ${country}`;
     
     // Get guest count
@@ -442,22 +419,24 @@ const HomesGrid: React.FC = () => {
       checkInDate,
       checkOutDate,
       guests,
-      rooms: 1
+      rooms: 1,
+      hotel: hotel.name
     });
     
-    // Navigate to search page
+    // Navigate to search page with hotel parameters
     router.push(
       `/search?type=hotels&location=${encodeURIComponent(formattedLocation)}&cityCode=${cityCode}&checkIn=${checkInDate}&checkOut=${checkOutDate}&guests=${guests}&rooms=1&currency=GBP`
     );
   };
 
-  const handleSearchMore = async () => {
-    setSearching(true);
-    try {
-      await fetchHotelsFromAPI();
-    } finally {
-      setSearching(false);
-    }
+  const handleSearchMore = () => {
+    // Regenerate fallback hotels with new random data
+    setLoading(true);
+    setTimeout(() => {
+      const newHotels = generateFallbackHotels();
+      setHotels(newHotels);
+      setLoading(false);
+    }, 500); // Small delay to show loading state
   };
 
   const formatPrice = (price: number) => `£${price.toFixed(2)}`;
@@ -530,22 +509,22 @@ const HomesGrid: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-4">
-        <button
-  onClick={handleSearchMore}
-  disabled={searching}
-  className="px-4 py-2 text-sm font-semibold rounded-lg transition-colors duration-200 flex items-center gap-2"
-  style={{
-    backgroundColor: brandBlueLight,
-    color: brandBlue,
-  }}
->
-  {searching ? (
-    <>
-      <div className="w-4 h-4 border-2 border-[#32A6D7] border-t-transparent rounded-full animate-spin"></div>
-      <span>Loading...</span>
-    </>
-  ) : "Refresh"}
-</button>
+          <button
+            onClick={handleSearchMore}
+            disabled={loading}
+            className="px-4 py-2 text-sm font-semibold rounded-lg transition-colors duration-200 flex items-center gap-2"
+            style={{
+              backgroundColor: brandBlueLight,
+              color: brandBlue,
+            }}
+          >
+            {loading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-[#32A6D7] border-t-transparent rounded-full animate-spin"></div>
+                <span>Loading...</span>
+              </>
+            ) : "Refresh"}
+          </button>
           <button
             onClick={() => router.push("/search?type=hotels&currency=GBP")}
             className="font-semibold transition-colors duration-200 flex items-center gap-2 group"
@@ -556,7 +535,7 @@ const HomesGrid: React.FC = () => {
               className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200"
               fill="none"
               viewBox="0 0 24 24"
-              stroke={brandBlue}
+              stroke="currentColor"
             >
               <path
                 strokeLinecap="round"
