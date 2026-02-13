@@ -314,9 +314,27 @@ const Profile: React.FC<ProfileProps> = ({
     if (activeTab === 'rewards' && !hasLoadedRewards && !isLoadingRewards) {
       setIsLoadingRewards(true);
       Promise.all([userApi.getLoyaltyAccount(), userApi.getAvailableRewards()])
-        .then(([loyaltyData, rewards]) => {
+        .then(([loyaltyData, rewardsResponse]) => {
           setLoyalty(loyaltyData);
-          const items = Array.isArray(rewards) ? rewards : (rewards?.data || []);
+          
+          // Safe extraction of rewards array
+          let items: any[] = [];
+          
+          if (rewardsResponse) {
+            if (Array.isArray(rewardsResponse)) {
+              items = rewardsResponse;
+            } else {
+              // Try to extract from common response structures
+              const response = rewardsResponse as Record<string, any>;
+              items = response.data || response.rewards || response.items || [];
+              
+              // Ensure items is an array
+              if (!Array.isArray(items)) {
+                items = [];
+              }
+            }
+          }
+          
           setAvailableRewards(items);
           setHasLoadedRewards(true);
         })
