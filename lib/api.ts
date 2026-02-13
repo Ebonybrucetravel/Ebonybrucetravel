@@ -303,6 +303,7 @@ export interface CarRentalSearchParams {
   [key: string]: any;
 }
 
+
 export interface CarRentalOffer {
   id: string;
   type: string;
@@ -334,7 +335,7 @@ export interface CarRentalOffer {
     code: string;
     category: string;
     description: string;
-    imageURL: string;
+    imageURL: string; // ADD THIS LINE - the property exists in the API response
     baggages?: Array<{
       count?: number;
       size?: string;
@@ -1886,16 +1887,15 @@ export async function searchCarRentalsWithPagination(
   }
 }
 
-// Transform car rental API data to SearchResult format for your frontend
+// Update transformCarRentalToSearchResult 
+
 export function transformCarRentalToSearchResult(
   car: CarRentalOffer | null | undefined, 
-  pickupLocation: string,  // This should be the location name, not code
-  dropoffLocation: string, // This should be the location name, not code
+  pickupLocation: string,
+  dropoffLocation: string,
   index: number
 ): any {
-  // Handle null/undefined car
   if (!car) {
-    // Return a fallback result
     return {
       id: `car-${index}`,
       provider: "Premium Car Rental",
@@ -1924,11 +1924,9 @@ export function transformCarRentalToSearchResult(
   
   const carInfo = car;
   
-  // Calculate price
   const finalPrice = parseFloat(carInfo.final_price || carInfo.converted?.monetaryAmount || '0');
   const currency = carInfo.currency || carInfo.converted?.currencyCode || 'GBP';
   
-  // Convert currency symbols
   const getCurrencySymbol = (curr: string): string => {
     const symbols: Record<string, string> = {
       'GBP': '£',
@@ -1941,25 +1939,19 @@ export function transformCarRentalToSearchResult(
   
   const priceSymbol = getCurrencySymbol(currency);
   
-  // Calculate rental days - handle potential missing start/end dates
   const pickupDate = carInfo.start?.dateTime ? new Date(carInfo.start.dateTime) : new Date();
   const dropoffDate = carInfo.end?.dateTime ? new Date(carInfo.end.dateTime) : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
   const days = Math.ceil((dropoffDate.getTime() - pickupDate.getTime()) / (1000 * 60 * 60 * 24));
   const pricePerDay = days > 0 ? finalPrice / days : finalPrice;
   
-  // Extract vehicle info with fallbacks
   const vehicleType = carInfo.vehicle?.description || "Car";
   const vehicleCategory = carInfo.vehicle?.category || "Standard";
   const seats = carInfo.vehicle?.seats?.[0]?.count || 4;
   const baggage = carInfo.vehicle?.baggages?.[0]?.count || 2;
   
-  // Generate amenities based on vehicle category and provider
   const amenities = extractCarAmenities(carInfo.vehicle?.category, carInfo.serviceProvider?.name);
-  
-  // Determine rating based on provider and vehicle category
   const rating = calculateCarRentalRating(carInfo.serviceProvider?.name, carInfo.vehicle?.category);
   
-  // Format pickup and dropoff times
   const formatDateTime = (dateTime: string | undefined) => {
     if (!dateTime) return 'N/A';
     try {
@@ -1970,14 +1962,18 @@ export function transformCarRentalToSearchResult(
     }
   };
   
-  // Handle cancellation rules safely
   const cancellationRules = carInfo.cancellationRules || [];
   const isRefundable = cancellationRules.length === 0 || 
                       !cancellationRules[0]?.feeValue?.includes('100');
   
-  // Extract location codes from the car object itself
   const pickupCode = carInfo.start?.locationCode || 'Unknown';
   const dropoffCode = carInfo.end?.locationCode || 'Unknown';
+  
+  // CRITICAL: Get the image URL from the API response
+  const imageUrl = carInfo.vehicle?.imageURL || null;
+  
+  // Log for debugging (remove in production)
+  console.log(`Car ${vehicleType} image URL:`, imageUrl);
   
   return {
     id: carInfo.id || `car-${index}`,
@@ -1987,7 +1983,10 @@ export function transformCarRentalToSearchResult(
     price: `${priceSymbol}${Math.round(pricePerDay).toLocaleString()}/day`,
     totalPrice: `${priceSymbol}${Math.round(finalPrice).toLocaleString()} total`,
     rating: parseFloat(rating.toFixed(1)),
-    image: getCarImage(carInfo.vehicle?.code, carInfo.vehicle?.category, index),
+    // Set the image to the API URL, fallback to Unsplash if not available
+    image: imageUrl || getCarImage(carInfo.vehicle?.code, carInfo.vehicle?.category, index),
+    // Also pass provider logo separately
+    providerLogo: carInfo.serviceProvider?.logoUrl || carInfo.partnerInfo?.serviceProvider?.logoUrl,
     amenities: amenities.slice(0, 6),
     features: [
       `${seats} seats`,
@@ -1997,6 +1996,27 @@ export function transformCarRentalToSearchResult(
       vehicleCategory,
     ],
     type: "car-rentals" as const,
+    
+    // Car-specific fields
+    vehicleCode: carInfo.vehicle?.code,
+    vehicleCategory: carInfo.vehicle?.category,
+    seats: seats,
+    baggage: baggage.toString(),
+    transmission: carInfo.vehicle?.code?.includes('AUTO') ? 'Automatic' : 'Manual',
+    distance: carInfo.distance ? `${carInfo.distance.value} ${carInfo.distance.unit}` : undefined,
+    cancellationPolicy: cancellationRules[0]?.ruleDescription || (isRefundable ? 'Free cancellation' : 'Non-refundable'),
+    isRefundable: isRefundable,
+    termsUrl: carInfo.serviceProvider?.termsUrl,
+    pickupLocation: pickupCode,
+    dropoffLocation: dropoffCode,
+    pickupDateTime: carInfo.start?.dateTime,
+    dropoffDateTime: carInfo.end?.dateTime,
+    duration: carInfo.duration,
+    originalPrice: carInfo.original_price,
+    originalCurrency: carInfo.original_currency,
+    conversionFee: carInfo.conversion_fee,
+    conversionNote: carInfo.conversion_fee_percentage ? `Includes ${carInfo.conversion_fee_percentage}% conversion fee` : undefined,
+    
     realData: {
       offerId: carInfo.id,
       pickupLocation: pickupCode,
@@ -2021,7 +2041,9 @@ export function transformCarRentalToSearchResult(
       finalPrice: finalPrice,
       markupAmount: parseFloat(carInfo.markup_amount || '0'),
       serviceFee: parseFloat(carInfo.service_fee || '0'),
-      // Do NOT include totalAmount or provider fields here
+      // Include vehicle.imageURL in realData for component access
+      vehicle: {
+        imageURL: carInfo.vehicle?.imageURL    }
     },
   };
 }
@@ -2133,36 +2155,72 @@ export async function formatCarRentalSearchParams(
   dropoffTime?: string,
   passengers?: number
 ): Promise<CarRentalSearchParams> {
-  // Get location codes (using same getCityCode function or a similar one)
+  // Get location codes
   const pickupCode = getCityCode(pickupLocation);
   const dropoffCode = getCityCode(dropoffLocation);
   
-  // Set default dates if not provided
+  console.log('📍 Location codes:', { pickupLocation, dropoffLocation, pickupCode, dropoffCode });
+  
+  // Create proper Date objects
   const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
   
-  const pickup = pickupDate || tomorrow.toISOString().split('T')[0];
-  const dropoff = dropoffDate || (() => {
-    const dropoffDate = new Date(pickup);
-    dropoffDate.setDate(dropoffDate.getDate() + 3); // Default 3-day rental
-    return dropoffDate.toISOString().split('T')[0];
-  })();
+  let pickupDateTime: Date;
+  let dropoffDateTime: Date;
   
-  // Set default times
-  const pickupTimeStr = pickupTime || '10:00:00';
-  const dropoffTimeStr = dropoffTime || '10:00:00';
+  if (pickupDate) {
+    // If pickupDate is provided (format: YYYY-MM-DD)
+    pickupDateTime = new Date(pickupDate);
+    if (pickupTime) {
+      const [hours, minutes] = pickupTime.split(':').map(Number);
+      pickupDateTime.setHours(hours || 10, minutes || 0, 0, 0);
+    } else {
+      pickupDateTime.setHours(10, 0, 0, 0);
+    }
+  } else {
+    // Default to tomorrow at 10:00 AM
+    pickupDateTime = new Date(today);
+    pickupDateTime.setDate(today.getDate() + 1);
+    pickupDateTime.setHours(10, 0, 0, 0);
+  }
   
+  if (dropoffDate) {
+    // If dropoffDate is provided (format: YYYY-MM-DD)
+    dropoffDateTime = new Date(dropoffDate);
+    if (dropoffTime) {
+      const [hours, minutes] = dropoffTime.split(':').map(Number);
+      dropoffDateTime.setHours(hours || 10, minutes || 0, 0, 0);
+    } else {
+      dropoffDateTime.setHours(10, 0, 0, 0);
+    }
+  } else {
+    // Default to 3 days after pickup at 10:00 AM
+    dropoffDateTime = new Date(pickupDateTime);
+    dropoffDateTime.setDate(pickupDateTime.getDate() + 3);
+  }
+  
+  // Ensure dropoff is after pickup
+  if (dropoffDateTime <= pickupDateTime) {
+    dropoffDateTime = new Date(pickupDateTime);
+    dropoffDateTime.setDate(pickupDateTime.getDate() + 1);
+    dropoffDateTime.setHours(10, 0, 0, 0);
+  }
+  
+  // Format as ISO strings
+  const pickupDateTimeStr = pickupDateTime.toISOString();
+  const dropoffDateTimeStr = dropoffDateTime.toISOString();
+  
+  console.log('📅 Formatted dates:', { pickupDateTimeStr, dropoffDateTimeStr });
+  
+  // Return ALL required fields
   return {
     pickupLocationCode: pickupCode,
-    pickupDateTime: `${pickup}T${pickupTimeStr}`,
-    dropoffLocationCode: dropoffCode,
-    dropoffDateTime: `${dropoff}T${dropoffTimeStr}`,
-    currency: 'GBP', // Default to GBP
+    pickupDateTime: pickupDateTimeStr,
+    dropoffLocationCode: dropoffCode,  // ✅ This was missing!
+    dropoffDateTime: dropoffDateTimeStr,
+    currency: 'GBP',
     passengers: Math.max(1, passengers || 2),
   };
 }
-
 // Search car rentals and transform results for frontend
 export async function searchAndTransformCarRentals(
   searchParams: CarRentalSearchParams,

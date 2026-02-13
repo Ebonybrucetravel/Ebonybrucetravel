@@ -139,6 +139,102 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const carDropOffRef = useRef<HTMLDivElement>(null);
   const today = new Date().toISOString().split('T')[0];
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const type = params.get('type');
+      
+      if (type === 'hotels') {
+        setActiveTab('hotels');
+        
+        const location = params.get('location');
+        const cityCode = params.get('cityCode');
+        const checkIn = params.get('checkIn');
+        const checkOut = params.get('checkOut');
+        const guests = params.get('guests');
+        const rooms_param = params.get('rooms');
+        
+        if (location) setHotelLocation(decodeURIComponent(location));
+        if (checkIn) setCheckInDate(checkIn);
+        if (checkOut) setCheckOutDate(checkOut);
+        if (guests) {
+          setTravellers(prev => ({ ...prev, adults: parseInt(guests) }));
+        }
+        if (rooms_param) setRooms(parseInt(rooms_param));
+        
+        // Trigger search automatically after a short delay to ensure state is updated
+        setTimeout(() => {
+          const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+          handleSubmit(fakeEvent);
+        }, 500);
+      }
+      
+      else if (type === 'car-rentals') {
+        setActiveTab('cars');
+        
+        const location = params.get('location');
+        const pickupCode = params.get('pickupCode');
+        const dropoffCode = params.get('dropoffCode');
+        const pickupDate = params.get('pickupDate');
+        const dropoffDate = params.get('dropoffDate');
+        const pickupTime = params.get('pickupTime') || '10:00';
+        const dropoffTime = params.get('dropoffTime') || '16:00';
+        const passengers = params.get('passengers');
+        
+        if (location) {
+          // Try to parse location string like "London to Paris"
+          const parts = decodeURIComponent(location).split(' to ');
+          if (parts.length === 2) {
+            // Find matching locations
+            const fromMatch = airportsWithCities.find(a => 
+              a.city.toLowerCase().includes(parts[0].toLowerCase()) ||
+              a.code.toLowerCase() === parts[0].toUpperCase()
+            );
+            const toMatch = airportsWithCities.find(a => 
+              a.city.toLowerCase().includes(parts[1].toLowerCase()) ||
+              a.code.toLowerCase() === parts[1].toUpperCase()
+            );
+            
+            if (fromMatch) {
+              setCarPickUp(`${fromMatch.code} - ${fromMatch.name}, ${fromMatch.city}`);
+            }
+            if (toMatch) {
+              setCarDropOff(`${toMatch.code} - ${toMatch.name}, ${toMatch.city}`);
+            }
+          }
+        }
+        
+        // If we have direct codes, use those
+        if (pickupCode) {
+          const match = airportsWithCities.find(a => a.code === pickupCode);
+          if (match) {
+            setCarPickUp(`${match.code} - ${match.name}, ${match.city}`);
+          }
+        }
+        
+        if (dropoffCode) {
+          const match = airportsWithCities.find(a => a.code === dropoffCode);
+          if (match) {
+            setCarDropOff(`${match.code} - ${match.name}, ${match.city}`);
+          }
+        }
+        
+        if (pickupDate) setCarPickUpDate(pickupDate);
+        if (dropoffDate) setCarDropOffDate(dropoffDate);
+        if (pickupTime) setCarPickUpTime(pickupTime);
+        if (dropoffTime) setCarDropOffTime(dropoffTime);
+        if (passengers) setCarTravellers(parseInt(passengers));
+        
+        // Trigger search automatically
+        setTimeout(() => {
+          const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+          handleSubmit(fakeEvent);
+        }, 500);
+      }
+    }
+  }, []); 
+
+
   const getCityCode = (location: string): string => {
     if (!location) return 'LOS';
     
@@ -1433,7 +1529,18 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                     <span className="block text-[9px] font-bold text-gray-400 uppercase">Guests</span>
                     <span className="text-xs font-bold">{travellers.adults} Adults, {rooms} Room</span>
                   </div>
-                  <button type="submit" disabled={loading} className="bg-black text-white px-8 py-3 rounded-xl font-bold uppercase text-xs">{loading ? '...' : 'Find Hotels'}</button>
+                  <button 
+  type="submit" 
+  disabled={loading} 
+  className="bg-black text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-gray-800 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex items-center justify-center min-w-[80px]"
+>
+  {loading ? (
+    <div className="flex items-center gap-2">
+      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+      <span>...</span>
+    </div>
+  ) : 'Search'}
+</button>
                 </div>
               </div>
             </div>
@@ -1504,7 +1611,19 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                     <span className="block text-[9px] font-bold text-gray-400 uppercase">Passengers</span>
                     <span className="text-xs font-bold">{carTravellers} People</span>
                   </div>
-                  <button type="submit" disabled={loading} className="bg-black text-white px-6 py-3 rounded-xl font-bold uppercase text-[10px]">{loading ? '...' : 'Search Transfers'}</button>
+                  <button 
+  type="submit" 
+  disabled={loading || !carPickUp || !carDropOff || !carPickUpDate || !carDropOffDate} 
+  className="w-full bg-black text-white px-4 py-3 lg:py-0 font-bold text-sm lg:text-base rounded-lg hover:bg-gray-800 transition-all active:scale-[0.98] shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 whitespace-nowrap"
+>
+  {loading ? (
+    <div className="flex items-center gap-2">
+      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+      <span className="hidden sm:inline">Searching</span>
+      <span className="sm:hidden">...</span>
+    </div>
+  ) : 'Search'}
+</button>
                 </div>
               </div>
             </div>

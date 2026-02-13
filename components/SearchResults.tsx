@@ -1,33 +1,44 @@
 "use client";
 import React, { useState, useMemo, useEffect } from "react";
 import { useLanguage } from "../context/LanguageContext";
-import { HotelListImage } from "./HotelListImage";
+import type { SearchResult as BaseSearchResult } from "../lib/types";
 
-interface SearchResult {
-  id: string;
-  provider: string;
-  title: string;
-  subtitle: string;
-  price: string;
-  totalPrice?: string;
-  time?: string;
-  duration?: string;
+interface ExtendedSearchResult extends BaseSearchResult {
   stops?: string;
-  rating?: number;
-  image?: string;
-  primaryImageUrl?: string | null;
-  amenities?: string[];
-  features?: string[];
-  type?: "flights" | "hotels" | "car-rentals";
+  vehicleCode?: string;
+  vehicleCategory?: string;
+  seats?: number;
+  transmission?: string;
+  fuelType?: string;
+  distance?: string;
+  cancellationPolicy?: string;
+  providerLogo?: string;
+  termsUrl?: string;
+  pickupLocation?: string;
+  dropoffLocation?: string;
+  pickupDateTime?: string;
+  dropoffDateTime?: string;
+  originalPrice?: string;
+  originalCurrency?: string;
+  conversionFee?: string;
+  conversionNote?: string;
+  duration?: string;
   isRefundable?: boolean;
-  realData?: any;
+  // Add realData structure
+  realData?: {
+    vehicle?: {
+      imageURL?: string;
+    };
+    imageURL?: string;
+    [key: string]: any;
+  };
 }
 
 interface SearchResultsProps {
-  results: SearchResult[];
+  results: ExtendedSearchResult[]; 
   searchParams: any;
   onClear: () => void;
-  onSelect?: (item: SearchResult) => void;
+  onSelect?: (item: ExtendedSearchResult) => void; 
   isLoading?: boolean;
 }
 
@@ -58,10 +69,33 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   // Car Specific Filters
   const [carTypeFilter, setCarTypeFilter] = useState<string[]>([]);
   const [transmissionFilter, setTransmissionFilter] = useState<string[]>([]);
+  const [seatCapacityFilter, setSeatCapacityFilter] = useState<number[]>([]);
+  const [providerFilter, setProviderFilter] = useState<string[]>([]);
 
   // Extract dynamic options from results
-  const uniqueAirlines = useMemo(() => Array.from(new Set(initialResults.filter(r => r.type === 'flights').map(r => r.provider))), [initialResults]);
-  const uniqueCarTypes = useMemo(() => Array.from(new Set(initialResults.filter(r => r.type === 'car-rentals').flatMap(r => r.features || []).filter(f => !f.includes('Seats')))), [initialResults]);
+  const uniqueCarTypes = useMemo(() => {
+    const types = initialResults
+      .filter(r => r.type === 'car-rentals')
+      .map(r => r.vehicleCode || '')
+      .filter(Boolean);
+    return Array.from(new Set(types));
+  }, [initialResults]);
+
+  const uniqueSeatCapacities = useMemo(() => {
+    const seats = initialResults
+      .filter(r => r.type === 'car-rentals')
+      .map(r => r.seats || 0)
+      .filter(s => s > 0);
+    return Array.from(new Set(seats)).sort((a, b) => a - b);
+  }, [initialResults]);
+
+  const uniqueProviders = useMemo(() => {
+    const providers = initialResults
+      .filter(r => r.type === 'car-rentals')
+      .map(r => r.provider)
+      .filter(Boolean);
+    return Array.from(new Set(providers));
+  }, [initialResults]);
 
   const filteredResults = useMemo(() => {
     let filtered = [...initialResults];
@@ -95,10 +129,24 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     // Car Rental Filtering
     else if (searchType === "car-rentals") {
       if (carTypeFilter.length > 0) {
-        filtered = filtered.filter(item => item.features?.some(f => carTypeFilter.includes(f)));
+        filtered = filtered.filter(item => 
+          item.vehicleCode && carTypeFilter.includes(item.vehicleCode)
+        );
       }
       if (transmissionFilter.length > 0) {
-        filtered = filtered.filter(item => item.amenities?.some(a => transmissionFilter.includes(a)));
+        filtered = filtered.filter(item => 
+          item.transmission && transmissionFilter.includes(item.transmission)
+        );
+      }
+      if (seatCapacityFilter.length > 0) {
+        filtered = filtered.filter(item => 
+          item.seats && seatCapacityFilter.includes(item.seats)
+        );
+      }
+      if (providerFilter.length > 0) {
+        filtered = filtered.filter(item => 
+          item.provider && providerFilter.includes(item.provider)
+        );
       }
     }
 
@@ -114,7 +162,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     }
 
     return filtered;
-  }, [initialResults, searchType, priceRange, sortBy, stopsFilter, airlinesFilter, starRatings, amenitiesFilter, carTypeFilter, transmissionFilter]);
+  }, [initialResults, searchType, priceRange, sortBy, stopsFilter, airlinesFilter, starRatings, amenitiesFilter, carTypeFilter, transmissionFilter, seatCapacityFilter, providerFilter]);
 
   const toggleFilter = (set: React.Dispatch<React.SetStateAction<any[]>>, current: any[], value: any) => {
     set(current.includes(value) ? current.filter(i => i !== value) : [...current, value]);
@@ -128,6 +176,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     setAmenitiesFilter([]);
     setCarTypeFilter([]);
     setTransmissionFilter([]);
+    setSeatCapacityFilter([]);
+    setProviderFilter([]);
   };
 
   const renderFilterSection = (title: string, content: React.ReactNode) => (
@@ -149,28 +199,39 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     </label>
   );
 
-  const renderHotelCard = (item: SearchResult) => {
+  // Format duration from ISO 8601 (e.g., "PT5H36M" -> "5h 36m")
+  const formatDuration = (duration?: string): string => {
+    if (!duration) return '';
+    const hours = duration.match(/(\d+)H/);
+    const minutes = duration.match(/(\d+)M/);
+    return `${hours ? hours[1] + 'h ' : ''}${minutes ? minutes[1] + 'm' : ''}`;
+  };
+
+  const renderHotelCard = (item: ExtendedSearchResult) => {
     const starRating = Math.floor(item.rating || 4);
-    const isHotelFromSearch = item.type === 'hotels' && item.id;
     return (
       <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
         <div className="flex flex-col md:flex-row">
           <div className="w-full md:w-[320px] h-64 md:h-auto overflow-hidden relative flex-shrink-0">
-            {item.primaryImageUrl ? (
-              <img src={item.primaryImageUrl} className="w-full h-full object-cover group-hover:scale-110 transition duration-500" alt={item.title} />
-            ) : isHotelFromSearch ? (
-              <HotelListImage
-                hotelId={item.id}
-                hotelName={item.title}
-                fallbackSrc={item.image || undefined}
-                alt={item.title}
-                className="w-full h-full"
-              />
-            ) : (
-              <img src={item.image || `https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600`} className="w-full h-full object-cover group-hover:scale-110 transition duration-500" alt={item.title} />
-            )}
-            <button onClick={(e) => { e.stopPropagation(); setSavedItems(p => { const n = new Set(p); n.has(item.id) ? n.delete(item.id) : n.add(item.id); return n; }); }} className={`absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition backdrop-blur-md ${savedItems.has(item.id) ? "bg-red-500 text-white" : "bg-white/40 text-gray-400 hover:bg-white"}`}>
-              <svg className="w-5 h-5" fill={savedItems.has(item.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" strokeWidth={2}/></svg>
+            <img 
+              src={item.image || `https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600`} 
+              className="w-full h-full object-cover group-hover:scale-110 transition duration-500" 
+              alt={item.title} 
+            />
+            <button 
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                setSavedItems(p => { 
+                  const n = new Set(p); 
+                  n.has(item.id) ? n.delete(item.id) : n.add(item.id); 
+                  return n; 
+                }); 
+              }} 
+              className={`absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition backdrop-blur-md ${savedItems.has(item.id) ? "bg-red-500 text-white" : "bg-white/40 text-gray-400 hover:bg-white"}`}
+            >
+              <svg className="w-5 h-5" fill={savedItems.has(item.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" strokeWidth={2}/>
+              </svg>
             </button>
           </div>
           <div className="flex-1 p-8">
@@ -178,12 +239,23 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             <p className="text-[11px] font-bold text-gray-400 uppercase mt-1">{item.subtitle}</p>
             <div className="flex items-center gap-4 mt-4 mb-6">
               <div className="flex text-yellow-400">
-                {[...Array(5)].map((_, i) => <svg key={i} className={`w-3.5 h-3.5 ${i < starRating ? "fill-current" : "text-gray-200"}`} viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>)}
+                {[...Array(5)].map((_, i) => (
+                  <svg key={i} className={`w-3.5 h-3.5 ${i < starRating ? "fill-current" : "text-gray-200"}`} viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                ))}
               </div>
             </div>
             <div className="flex items-end justify-between pt-6 border-t border-gray-50">
-              <div><p className="text-2xl font-black text-[#33a8da]">{item.price}</p></div>
-              <button onClick={() => onSelect?.(item)} className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]">Book Hotel</button>
+              <div>
+                <p className="text-2xl font-black text-[#33a8da]">{item.price}</p>
+              </div>
+              <button 
+                onClick={() => onSelect?.(item)} 
+                className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]"
+              >
+                Book Hotel
+              </button>
             </div>
           </div>
         </div>
@@ -191,58 +263,315 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
 
-  const renderFlightCard = (item: SearchResult) => (
+  const renderFlightCard = (item: ExtendedSearchResult) => (
     <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden animate-in fade-in slide-in-from-bottom-2">
       <div className="flex flex-col md:flex-row p-8 gap-8">
         <div className="flex-1">
           <div className="flex items-center gap-4 mb-6">
-            <img src={item.image || `https://ui-avatars.com/api/?name=${item.provider}`} className="w-10 h-10 object-contain rounded" alt="" />
-            <div><h4 className="text-sm font-black text-gray-900">{item.provider}</h4><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{item.subtitle}</p></div>
+            <img 
+              src={item.image || `https://ui-avatars.com/api/?name=${item.provider}`} 
+              className="w-10 h-10 object-contain rounded" 
+              alt="" 
+            />
+            <div>
+              <h4 className="text-sm font-black text-gray-900">{item.provider}</h4>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{item.subtitle}</p>
+            </div>
           </div>
           <div className="flex items-center justify-between">
-            <div className="text-center"><p className="text-2xl font-black text-gray-900">{item.realData?.departureTime?.split('T')[1]?.substring(0,5) || "08:00"}</p><p className="text-[10px] font-black text-gray-400 uppercase">Depart</p></div>
-            <div className="flex-1 px-8"><div className="w-full h-[1.5px] bg-gray-100 relative"><div className="absolute left-1/2 -translate-x-1/2 -top-[6px] text-[#33a8da]"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg></div></div></div>
-            <div className="text-center"><p className="text-2xl font-black text-gray-900">{item.realData?.arrivalTime?.split('T')[1]?.substring(0,5) || "10:15"}</p><p className="text-[10px] font-black text-gray-400 uppercase">Arrive</p></div>
+            <div className="text-center">
+              <p className="text-2xl font-black text-gray-900">{item.realData?.departureTime?.split('T')[1]?.substring(0,5) || "08:00"}</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase">Depart</p>
+            </div>
+            <div className="flex-1 px-8">
+              <div className="w-full h-[1.5px] bg-gray-100 relative">
+                <div className="absolute left-1/2 -translate-x-1/2 -top-[6px] text-[#33a8da]">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-black text-gray-900">{item.realData?.arrivalTime?.split('T')[1]?.substring(0,5) || "10:15"}</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase">Arrive</p>
+            </div>
           </div>
         </div>
         <div className="w-full md:w-[240px] flex flex-col items-center justify-center text-center border-l border-gray-50 pl-8">
           <p className="text-2xl font-black text-gray-900 mb-4">{item.price}</p>
-          <button onClick={() => onSelect?.(item)} className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]">Select Flight</button>
+          <button 
+            onClick={() => onSelect?.(item)} 
+            className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]"
+          >
+            Select Flight
+          </button>
         </div>
       </div>
     </div>
   );
 
-  const renderCarCard = (item: SearchResult) => (
-    <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
-      <div className="flex flex-col md:flex-row">
-        <div className="w-full md:w-[320px] h-56 bg-gray-50 flex items-center justify-center p-8">
-          <img src={item.image} className="max-w-full max-h-full object-contain group-hover:scale-105 transition" alt={item.title} />
-        </div>
-        <div className="flex-1 p-8">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <h3 className="text-xl font-black text-gray-900 group-hover:text-[#33a8da] transition">{item.title}</h3>
-              <p className="text-[11px] font-bold text-gray-400 uppercase mt-1">{item.provider} • {item.subtitle}</p>
-            </div>
-            <span className="bg-blue-50 text-[#33a8da] text-[9px] font-black px-3 py-1 rounded-full uppercase">Live Deal</span>
-          </div>
-          <div className="flex flex-wrap gap-4 mb-8">
-            {item.amenities?.map((a, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <div className="w-1 h-1 bg-[#33a8da] rounded-full"></div>
-                <span className="text-[10px] font-bold text-gray-500 uppercase">{a}</span>
+  const renderCarCard = (item: ExtendedSearchResult) => {
+    // Parse duration if available
+    const formatDuration = (duration?: string): string => {
+      if (!duration) return '';
+      const hours = duration.match(/(\d+)H/);
+      const minutes = duration.match(/(\d+)M/);
+      return `${hours ? hours[1] + 'h ' : ''}${minutes ? minutes[1] + 'm' : ''}`;
+    };
+  
+    const duration = formatDuration(item.duration);
+    
+    // Determine if it's a long-distance transfer (Amadeus) or quick transfer (Sixt)
+    const isLongDistance = item.distance && item.distance.includes('MI');
+    const isSixt = item.provider?.includes('Sixt');
+    
+    // Parse baggage count to number for comparison
+    const baggageCount = item.baggage ? parseInt(item.baggage) : 0;
+    
+    // Get the correct image URL from the API response
+    const getCarImageUrl = () => {
+      // Priority 1: Direct image property (set by transform function)
+      if (item.image && !item.image.includes('unsplash') && !item.image.includes('placeholder')) {
+        return item.image;
+      }
+      
+      // Priority 2: Check realData.vehicle.imageURL (API structure)
+      if (item.realData?.vehicle?.imageURL) {
+        return item.realData.vehicle.imageURL;
+      }
+      
+      // Priority 3: Check if image is directly in realData
+      if (item.realData?.imageURL) {
+        return item.realData.imageURL;
+      }
+      
+      // Priority 4: Use provider logo as fallback
+      if (item.providerLogo) {
+        return item.providerLogo;
+      }
+      
+      // Priority 5: Fallback to Unsplash based on vehicle type
+      if (item.vehicleCode?.includes('SUV')) {
+        return 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&q=80&w=600';
+      } else if (item.vehicleCode?.includes('VAN')) {
+        return 'https://images.unsplash.com/photo-1511919884226-fd3cad34687c?auto=format&fit=crop&q=80&w=600';
+      } else if (item.vehicleCode?.includes('FC') || item.vehicleCategory?.includes('Luxury')) {
+        return 'https://images.unsplash.com/photo-1556189250-72ba954cfc2b?auto=format&fit=crop&q=80&w=600';
+      } else if (item.vehicleCategory?.includes('BU') || item.vehicleCategory?.includes('Business')) {
+        return 'https://images.unsplash.com/photo-1563720223486-3294265d5a7c?auto=format&fit=crop&q=80&w=600';
+      }
+      
+      // Default fallback
+      return 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600';
+    };
+  
+    const carImageUrl = getCarImageUrl();
+  
+    // Log for debugging (remove in production)
+    console.log(`Rendering car ${item.id}:`, {
+      title: item.title,
+      imageUrl: carImageUrl,
+      originalImage: item.image,
+      vehicleImageURL: item.realData?.vehicle?.imageURL,
+      providerLogo: item.providerLogo
+    });
+  
+    return (
+      <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
+        <div className="flex flex-col md:flex-row">
+          {/* Vehicle Image Section - Using REAL image from API */}
+          <div className="w-full md:w-[320px] h-56 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-8 relative">
+            <img 
+              src={carImageUrl}
+              className="max-w-full max-h-full object-contain group-hover:scale-105 transition duration-300" 
+              alt={item.title}
+              onError={(e) => {
+                console.log(`Failed to load image for ${item.title}, using fallback`);
+                const target = e.target as HTMLImageElement;
+                // Try provider logo first if available and not already tried
+                if (item.providerLogo && target.src !== item.providerLogo) {
+                  target.src = item.providerLogo;
+                  return;
+                }
+                // Then try vehicle type specific fallback
+                if (item.vehicleCode?.includes('SUV')) {
+                  target.src = 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&q=80&w=600';
+                } else if (item.vehicleCode?.includes('VAN')) {
+                  target.src = 'https://images.unsplash.com/photo-1511919884226-fd3cad34687c?auto=format&fit=crop&q=80&w=600';
+                } else if (item.vehicleCode?.includes('FC') || item.vehicleCategory?.includes('Luxury')) {
+                  target.src = 'https://images.unsplash.com/photo-1556189250-72ba954cfc2b?auto=format&fit=crop&q=80&w=600';
+                } else if (item.vehicleCategory?.includes('BU') || item.vehicleCategory?.includes('Business')) {
+                  target.src = 'https://images.unsplash.com/photo-1563720223486-3294265d5a7c?auto=format&fit=crop&q=80&w=600';
+                } else {
+                  target.src = 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600';
+                }
+              }}
+            />
+            
+            {/* Provider Logo Overlay (only if different from main image) */}
+            {item.providerLogo && item.providerLogo !== carImageUrl && (
+              <div className="absolute top-4 left-4 bg-white rounded-lg p-2 shadow-md">
+                <img 
+                  src={item.providerLogo} 
+                  alt={item.provider} 
+                  className="w-8 h-8 object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
               </div>
-            ))}
+            )}
+            
+            {/* Vehicle Type Badge */}
+            <div className="absolute top-4 right-4 bg-[#33a8da]/90 backdrop-blur-sm text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider">
+              {item.vehicleCode || item.vehicleCategory || 'CAR'}
+            </div>
           </div>
-          <div className="flex items-end justify-between pt-6 border-t border-gray-50">
-            <div><p className="text-2xl font-black text-[#33a8da]">{item.price}</p><p className="text-[9px] font-bold text-gray-400">Total for duration</p></div>
-            <button onClick={() => onSelect?.(item)} className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]">Rent Now</button>
+          
+          {/* Vehicle Details Section */}
+          <div className="flex-1 p-8">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="text-xl font-black text-gray-900 group-hover:text-[#33a8da] transition">
+                  {item.title}
+                </h3>
+                <p className="text-[11px] font-bold text-gray-400 uppercase mt-1">
+                  {item.provider} • {item.vehicleCategory || 'Standard'}
+                </p>
+              </div>
+              {!isSixt && (
+                <span className="bg-blue-50 text-[#33a8da] text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider border border-blue-100">
+                  Live Deal
+                </span>
+              )}
+            </div>
+            
+            {/* Vehicle Specifications */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              {item.seats && item.seats > 0 && (
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path d="M12 4.5v15m7.5-7.5h-15" strokeWidth={1.5} />
+                  </svg>
+                  <span className="text-[10px] font-bold text-gray-600 uppercase">
+                    {item.seats} Seats
+                  </span>
+                </div>
+              )}
+              
+              {baggageCount > 0 && (
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeWidth={1.5} />
+                  </svg>
+                  <span className="text-[10px] font-bold text-gray-600 uppercase">
+                    {baggageCount} Bags
+                  </span>
+                </div>
+              )}
+              
+              {item.transmission && (
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path d="M9 3v18M15 3v18M3 9h18M3 15h18" strokeWidth={1.5} />
+                  </svg>
+                  <span className="text-[10px] font-bold text-gray-600 uppercase">
+                    {item.transmission}
+                  </span>
+                </div>
+              )}
+              
+              {duration && (
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth={1.5} />
+                  </svg>
+                  <span className="text-[10px] font-bold text-gray-600 uppercase">
+                    {duration}
+                  </span>
+                </div>
+              )}
+            </div>
+            
+            {/* Trip Details */}
+            <div className="bg-gray-50 rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-between text-[10px]">
+                <div>
+                  <p className="text-gray-500 font-bold uppercase">Pick-up</p>
+                  <p className="font-bold text-gray-900 mt-1">
+                    {item.pickupLocation || searchParams?.pickupLocationCode || 'LHR'}
+                  </p>
+                  <p className="text-gray-500 text-[9px] mt-0.5">
+                    {item.pickupDateTime ? new Date(item.pickupDateTime).toLocaleDateString() : searchParams?.pickupDateTime?.split('T')[0]}
+                  </p>
+                </div>
+                <div className="text-[#33a8da]">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeWidth={2} stroke="currentColor" fill="none" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-gray-500 font-bold uppercase">Drop-off</p>
+                  <p className="font-bold text-gray-900 mt-1">
+                    {item.dropoffLocation || searchParams?.dropoffLocationCode || 'CDG'}
+                  </p>
+                  <p className="text-gray-500 text-[9px] mt-0.5">
+                    {item.dropoffDateTime ? new Date(item.dropoffDateTime).toLocaleDateString() : searchParams?.dropoffDateTime?.split('T')[0]}
+                  </p>
+                </div>
+              </div>
+              {item.distance && (
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <p className="text-[9px] font-bold text-gray-400 uppercase">
+                    Distance: {item.distance}
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            {/* Price and CTA */}
+            <div className="flex items-end justify-between pt-4 border-t border-gray-100">
+              <div>
+                <p className="text-2xl font-black text-[#33a8da]">
+                  {item.price}
+                </p>
+                {item.originalPrice && item.originalCurrency !== currency.code && (
+                  <p className="text-[9px] font-bold text-gray-400 mt-1">
+                    Original: {item.originalCurrency} {item.originalPrice}
+                    {item.conversionNote && ` • ${item.conversionNote}`}
+                  </p>
+                )}
+                <p className="text-[9px] font-bold text-gray-400 mt-1">
+                  {isLongDistance ? 'Total for transfer' : 'Total for duration'}
+                </p>
+              </div>
+              <button 
+                onClick={() => onSelect?.(item)} 
+                className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px] shadow-lg hover:shadow-xl"
+              >
+                {isLongDistance ? 'Book Transfer' : 'Rent Now'}
+              </button>
+            </div>
+            
+            {/* Cancellation Policy */}
+            {item.cancellationPolicy && (
+              <div className="mt-4 pt-3 border-t border-gray-50">
+                <div className="flex items-center gap-2">
+                  <svg className="w-3 h-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path d="M5 13l4 4L19 7" strokeWidth={3} />
+                  </svg>
+                  <p className="text-[9px] font-bold text-gray-500">
+                    {item.cancellationPolicy}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   if (isLoading) {
     return (
@@ -261,11 +590,17 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   return (
     <div className="bg-[#f8fbfe] -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-10">
       <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-10">
+        {/* Filters Sidebar */}
         <aside className="w-full lg:w-[300px] shrink-0 space-y-6">
           <div className="bg-white rounded-[24px] p-8 shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-8">
               <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest">Filters</h4>
-              <button onClick={clearAllFilters} className="text-[9px] font-black text-[#33a8da] uppercase tracking-widest hover:underline">Clear all</button>
+              <button 
+                onClick={clearAllFilters} 
+                className="text-[9px] font-black text-[#33a8da] uppercase tracking-widest hover:underline"
+              >
+                Clear all
+              </button>
             </div>
 
             {/* Price Range - Common */}
@@ -299,7 +634,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 ))}
                 {renderFilterSection("Airlines", (
                   <>
-                    {uniqueAirlines.map(airline => 
+                    {Array.from(new Set(initialResults.filter(r => r.type === 'flights').map(r => r.provider))).map(airline => 
                       renderCheckbox(airline, airlinesFilter.includes(airline), () => toggleFilter(setAirlinesFilter, airlinesFilter, airline))
                     )}
                   </>
@@ -337,10 +672,27 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                     )}
                   </>
                 ))}
+                
+                {renderFilterSection("Seat Capacity", (
+                  <>
+                    {uniqueSeatCapacities.map(seats => 
+                      renderCheckbox(`${seats} Seats`, seatCapacityFilter.includes(seats), () => toggleFilter(setSeatCapacityFilter, seatCapacityFilter, seats))
+                    )}
+                  </>
+                ))}
+                
                 {renderFilterSection("Transmission", (
                   <>
                     {["Automatic", "Manual"].map(trans => 
                       renderCheckbox(trans, transmissionFilter.includes(trans), () => toggleFilter(setTransmissionFilter, transmissionFilter, trans))
+                    )}
+                  </>
+                ))}
+                
+                {renderFilterSection("Provider", (
+                  <>
+                    {uniqueProviders.map(provider => 
+                      renderCheckbox(provider, providerFilter.includes(provider), () => toggleFilter(setProviderFilter, providerFilter, provider))
                     )}
                   </>
                 ))}
@@ -349,35 +701,57 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           </div>
         </aside>
 
+        {/* Results Section */}
         <div className="flex-1 space-y-6">
           <div className="flex items-center justify-between mb-4 px-2">
-            <h3 className="font-black text-gray-900 uppercase text-xs tracking-widest">{filteredResults.length} options found</h3>
+            <h3 className="font-black text-gray-900 uppercase text-xs tracking-widest">
+              {filteredResults.length} {filteredResults.length === 1 ? 'option' : 'options'} found
+            </h3>
             <div className="flex items-center gap-3">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sort by:</span>
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="bg-transparent border-none text-[10px] font-black uppercase text-[#33a8da] focus:ring-0 cursor-pointer">
+              <select 
+                value={sortBy} 
+                onChange={(e) => setSortBy(e.target.value as any)} 
+                className="bg-transparent border-none text-[10px] font-black uppercase text-[#33a8da] focus:ring-0 cursor-pointer"
+              >
                 <option value="match">Best Match</option>
                 <option value="price">Lowest Price</option>
                 <option value="rating">Top Rated</option>
               </select>
             </div>
           </div>
+          
           <div className="space-y-4">
-            {filteredResults.length > 0 ? filteredResults.slice(0, visibleCount).map(item => {
-              if (item.type?.includes('car')) return renderCarCard(item);
-              if (item.type === 'hotels') return renderHotelCard(item);
-              return renderFlightCard(item);
-            }) : (
+            {filteredResults.length > 0 ? (
+              filteredResults.slice(0, visibleCount).map(item => {
+                if (item.type === 'car-rentals') return renderCarCard(item);
+                if (item.type === 'hotels') return renderHotelCard(item);
+                return renderFlightCard(item);
+              })
+            ) : (
               <div className="bg-white rounded-[32px] p-20 text-center border-2 border-dashed border-gray-100">
                 <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                   <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
                 </div>
                 <h3 className="text-xl font-black text-gray-900 uppercase">No matching results</h3>
-                <p className="text-sm text-gray-400 font-bold mt-2 uppercase tracking-widest">Try adjusting your filters to find more options.</p>
+                <p className="text-sm text-gray-400 font-bold mt-2 uppercase tracking-widest">
+                  Try adjusting your filters to find more options.
+                </p>
               </div>
             )}
           </div>
+          
           {filteredResults.length > visibleCount && (
-            <div className="pt-10 flex justify-center"><button onClick={() => setVisibleCount(p => p + 6)} className="px-16 py-4 bg-[#33a8da] text-white font-black rounded-2xl shadow-xl hover:bg-[#2c98c7] transition uppercase text-xs">Show More</button></div>
+            <div className="pt-10 flex justify-center">
+              <button 
+                onClick={() => setVisibleCount(p => p + 6)} 
+                className="px-16 py-4 bg-[#33a8da] text-white font-black rounded-2xl shadow-xl hover:bg-[#2c98c7] transition uppercase text-xs"
+              >
+                Show More
+              </button>
+            </div>
           )}
         </div>
       </div>

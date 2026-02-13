@@ -28,10 +28,10 @@ const Hero: React.FC<HeroProps> = ({
 
   // Car rental placeholder data
   const carRentalLocations = [
-    { name: 'Lagos Airport', code: 'LOS', image: 'https://images.unsplash.com/photo-1595428774223-ef52624120d2?auto=format&fit=crop&q=80&w=400' },
-    { name: 'London Heathrow', code: 'LHR', image: 'https://images.unsplash.com/photo-1580554530778-ca369439bcb8?auto=format&fit=crop&q=80&w=400' },
-    { name: 'Dubai Airport', code: 'DXB', image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80&w=400' },
-    { name: 'New York JFK', code: 'JFK', image: 'https://images.unsplash.com/photo-1563720223486-3294265d5a7c?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Lagos', code: 'LOS', image: 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D' },
+    { name: 'London Heathrow', code: 'LHR', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Dubai', code: 'DXB', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400' },
+    { name: 'New York JFK', code: 'JFK', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400' },
   ];
   
   // Get default dates for hotel/car search

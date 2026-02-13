@@ -57,6 +57,129 @@ export interface SearchResult {
   imageUrl?: string;
 }
 
+// ─── Hotel Offer Interface (ADD THIS) ──────────────
+export interface HotelOffer {
+  type: string;
+  hotel: {
+    type: string;
+    hotelId: string;
+    chainCode?: string;
+    dupeId?: string;
+    name: string;
+    cityCode: string;
+    latitude?: number;
+    longitude?: number;
+    rating?: number;
+    amenities?: string[];
+    description?: {
+      text?: string;
+      lang?: string;
+    };
+    address?: {
+      cityName?: string;
+      countryCode?: string;
+      postalCode?: string;
+      lines?: string[];
+    };
+  };
+  available: boolean;
+  offers: Array<{
+    id: string;
+    checkInDate: string;
+    checkOutDate: string;
+    rateCode?: string;
+    boardType?: string;
+    room: {
+      type: string;
+      typeEstimated?: {
+        category?: string;
+        beds?: number;
+        bedType?: string;
+      };
+      description?: {
+        text?: string;
+        lang?: string;
+      };
+    };
+    isLoyaltyRate?: string;
+    guests: {
+      adults: number;
+    };
+    price: {
+      currency: string;
+      base: string;
+      total: string;
+      taxes?: Array<{
+        code?: string;
+        percentage?: string;
+        included?: boolean;
+      }>;
+      variations?: {
+        average?: {
+          base?: string;
+        };
+        changes?: Array<{
+          startDate: string;
+          endDate: string;
+          base?: string;
+          total?: string;
+        }>;
+      };
+      original_total?: string;
+      original_currency?: string;
+    };
+    policies?: {
+      cancellations?: Array<{
+        description?: {
+          text?: string;
+        };
+        numberOfNights?: number;
+        deadline?: string;
+        amount?: string;
+        policyType: string;
+      }>;
+      prepay?: {
+        acceptedPayments?: {
+          creditCards?: string[];
+          methods?: string[];
+          creditCardPolicies?: Array<{
+            vendorCode: string;
+          }>;
+        };
+      };
+      paymentType?: string;
+      refundable?: {
+        cancellationRefund?: string;
+      };
+    };
+    self?: string;
+    roomInformation?: {
+      description: string;
+      type: string;
+      typeEstimated?: {
+        category?: string;
+        beds?: number;
+        bedType?: string;
+      };
+    };
+    original_price?: string;
+    original_currency?: string;
+    base_price?: string;
+    currency?: string;
+    conversion_fee?: string;
+    conversion_fee_percentage?: number;
+    price_after_conversion?: string;
+    markup_percentage?: number;
+    markup_amount?: string;
+    service_fee?: string;
+    final_price?: string;
+  }>;
+  self?: string;
+  currency?: string;
+  // Additional fields that might be added by our API
+  primaryImageUrl?: string;
+}
+
 // ─── User / Auth ────────────────────────────────────
 export interface User {
   id?: string;

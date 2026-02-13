@@ -16,39 +16,39 @@ const TrendingDestinations: React.FC<TrendingDestinationsProps> = ({ onCityClick
   const destinations = [
     {
       id: '1',
-      city: 'Abuja',
-      country: 'Nigeria',
-      code: 'ABV',
-      image: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?auto=format&fit=crop&q=80&w=800',
-      flights: '45',
-      hotels: '120'
+      city: 'London',
+      country: 'United Kingdom',
+      code: 'LHR', // Heathrow - busiest in Europe
+      image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=800',
+      flights: '245',
+      hotels: '850'
     },
     {
       id: '2',
-      city: 'Lagos',
-      country: 'Nigeria',
-      code: 'LOS',
-      image: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?auto=format&fit=crop&q=80&w=800',
-      flights: '78',
-      hotels: '210'
+      city: 'Dubai',
+      country: 'UAE',
+      code: 'DXB', // Dubai International - busiest for international travel
+      image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=800',
+      flights: '289',
+      hotels: '620'
     },
     {
       id: '3',
-      city: 'Accra',
-      country: 'Ghana',
-      code: 'ACC',
-      image: 'https://images.unsplash.com/photo-1523805009345-7448845a9e53?auto=format&fit=crop&q=80&w=800',
-      flights: '32',
-      hotels: '95'
+      city: 'New York',
+      country: 'USA',
+      code: 'JFK', // John F. Kennedy - busiest US international gateway
+      image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=800',
+      flights: '425',
+      hotels: '1200'
     },
     {
       id: '4',
-      city: 'Nairobi',
-      country: 'Kenya',
-      code: 'NBO',
-      image: 'https://images.unsplash.com/photo-1547471080-7cc2caa01a7e?auto=format&fit=crop&q=80&w=800',
-      flights: '56',
-      hotels: '150'
+      city: 'Tokyo',
+      country: 'Japan',
+      code: 'HND', // Haneda - busiest in Asia
+      image: 'https://images.unsplash.com/photo-1536098561742-ca998e48cbcc?auto=format&fit=crop&q=80&w=800',
+      flights: '312',
+      hotels: '750'
     }
   ];
 

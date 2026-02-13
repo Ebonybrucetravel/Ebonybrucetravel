@@ -1,6 +1,8 @@
+// components/CarDetails.tsx
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
+import api from '../lib/api';
 
 interface CarDetailsProps {
   item: any;
@@ -9,420 +11,912 @@ interface CarDetailsProps {
   onBook: () => void;
 }
 
-const CarDetails: React.FC<CarDetailsProps> = ({ item, searchParams, onBack, onBook }) => {
+const CarDetails: React.FC<CarDetailsProps> = ({ 
+  item, 
+  searchParams, 
+  onBack, 
+  onBook 
+}) => {
   const { currency } = useLanguage();
-  const [activeTab, setActiveTab] = useState('Overview');
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
-  
+  const [promoCode, setPromoCode] = useState('');
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [detailedCarData, setDetailedCarData] = useState<any>(item?.realData || null);
+  const [error, setError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState(false);
+  const [appliedPromo, setAppliedPromo] = useState<{
+    code: string;
+    discount: number;
+    type: 'percentage' | 'fixed';
+  } | null>(null);
+
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, []);
-
-  // Check if item exists
-  if (!item) {
-    return (
-      <div className="bg-[#f8fbfe] min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-black text-gray-900 mb-4">No Car Selected</h1>
-          <button 
-            onClick={onBack}
-            className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-full hover:bg-[#2c98c7] transition"
-          >
-            Back to Results
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Extract real data from the API response
-  const carData = item.realData || {};
-  const vehicle = carData.vehicle || {};
-  const provider = carData.serviceProvider || carData.partnerInfo?.serviceProvider || {};
-  
-  const seats = vehicle.seats?.[0]?.count || 5;
-  const baggageLarge = vehicle.baggages?.find((b: any) => b.size === 'Large')?.count || 2;
-  const baggageSmall = vehicle.baggages?.find((b: any) => b.size === 'Small')?.count || 1;
-  const category = vehicle.category || 'Standard';
-  const transmission = item.amenities?.includes('Manual') ? 'Manual' : 'Automatic';
-
-  // Calculate total price based on duration from searchParams
-  const extractPrice = (priceString: string) => {
-    return parseFloat(priceString.replace(/[^\d.]/g, '')) || 0;
-  };
-
-  const dailyPrice = extractPrice(item.price);
-  
-  // Calculate duration in days from searchParams
-  const calculateDuration = () => {
-    if (!searchParams?.pickupDate || !searchParams?.returnDate) return 1;
     
-    const pickup = new Date(searchParams.pickupDate);
-    const returnDate = new Date(searchParams.returnDate);
-    const diffTime = Math.abs(returnDate.getTime() - pickup.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays || 1;
+    const fetchCarDetails = async () => {
+      if (!item) return;
+      
+      // If we already have full realData with vehicle and imageURL, use it
+      if (item.realData?.vehicle?.imageURL || item.realData?.imageURL) {
+        setDetailedCarData(item.realData);
+        return;
+      }
+      
+      setIsLoadingDetails(true);
+      setError(null);
+      setImageError(false);
+      
+      try {
+        const offerId = item.id || item.realData?.offerId || item.realData?.id;
+        
+        if (!offerId) {
+          throw new Error('No offer ID found');
+        }
+
+        // Extract search parameters from the correct locations
+        // The searchParams from the parent component might be in different formats
+        
+        // Try to get pickup location from various sources
+        let pickupLocationCode = 'LOS';
+        let pickupDateTime = new Date().toISOString();
+        let dropoffLocationCode = 'LOS';
+        let dropoffDateTime = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+        let passengers = 2;
+
+        // Check searchParams structure from Home.tsx
+        if (searchParams) {
+          console.log('🔍 Search params received:', searchParams);
+          
+          // For car rentals, the params might be under carPickUp/carDropOff
+          if (searchParams.carPickUp) {
+            pickupLocationCode = searchParams.carPickUp;
+            // Try to extract airport code from display name
+            const match = searchParams.carPickUp.match(/\(([A-Z]{3})\)/);
+            if (match) {
+              pickupLocationCode = match[1];
+            }
+          }
+          
+          if (searchParams.carDropOff) {
+            dropoffLocationCode = searchParams.carDropOff;
+            const match = searchParams.carDropOff.match(/\(([A-Z]{3})\)/);
+            if (match) {
+              dropoffLocationCode = match[1];
+            }
+          } else {
+            dropoffLocationCode = pickupLocationCode;
+          }
+          
+          // Handle dates
+          if (searchParams.pickUpDate) {
+            const time = searchParams.pickUpTime || '10:00';
+            pickupDateTime = `${searchParams.pickUpDate}T${time}:00`;
+          }
+          
+          if (searchParams.dropOffDate) {
+            const time = searchParams.dropOffTime || '10:00';
+            dropoffDateTime = `${searchParams.dropOffDate}T${time}:00`;
+          }
+          
+          if (searchParams.passengers) {
+            passengers = parseInt(searchParams.passengers) || 2;
+          }
+        }
+
+        // Also check if the item itself has the location data
+        if (item.realData) {
+          if (item.realData.pickupLocation) {
+            pickupLocationCode = item.realData.pickupLocation;
+          }
+          if (item.realData.pickupDateTime) {
+            pickupDateTime = item.realData.pickupDateTime;
+          }
+          if (item.realData.dropoffLocation) {
+            dropoffLocationCode = item.realData.dropoffLocation;
+          }
+          if (item.realData.dropoffDateTime) {
+            dropoffDateTime = item.realData.dropoffDateTime;
+          }
+        }
+
+        console.log('📅 Using search params:', {
+          pickupLocationCode,
+          pickupDateTime,
+          dropoffLocationCode,
+          dropoffDateTime,
+          passengers
+        });
+
+        // Search for cars with the same parameters to get the full offer with images
+        const searchResponse = await api.carApi.searchCarRentals({
+          pickupLocationCode,
+          pickupDateTime,
+          dropoffLocationCode,
+          dropoffDateTime,
+          currency: 'GBP',
+          passengers
+        });
+
+        if (searchResponse.success && searchResponse.data?.data) {
+          // Find the specific offer by ID
+          const fullOffer = searchResponse.data.data.find(
+            (offer: any) => offer.id === offerId
+          );
+
+          if (fullOffer) {
+            console.log('✅ Found full car offer:', {
+              id: fullOffer.id,
+              pickup: fullOffer.start?.locationCode,
+              dropoff: fullOffer.end?.locationCode,
+              pickupTime: fullOffer.start?.dateTime,
+              dropoffTime: fullOffer.end?.dateTime
+            });
+            setDetailedCarData(fullOffer);
+          } else {
+            setDetailedCarData(item.realData);
+          }
+        } else {
+          setDetailedCarData(item.realData);
+        }
+      } catch (err: any) {
+        console.error('Failed to fetch car details:', err);
+        setError(err.message || 'Unable to load additional car details');
+        setDetailedCarData(item.realData);
+      } finally {
+        setIsLoadingDetails(false);
+      }
+    };
+    
+    fetchCarDetails();
+  }, [item, searchParams]);
+
+  if (!item && !detailedCarData) return null;
+
+  // Use detailedCarData if available, otherwise fallback to item.realData or item
+  const carData = detailedCarData || item.realData || item;
+  
+  // Extract all possible data structures
+  const vehicle = carData.vehicle || {};
+  const serviceProvider = carData.serviceProvider || 
+                         carData.partnerInfo?.serviceProvider || 
+                         {};
+  const partnerInfo = carData.partnerInfo || {};
+  
+  // --- IMAGE HANDLING ---
+  const getCarImage = (): string => {
+    if (vehicle.imageURL) return vehicle.imageURL;
+    if (carData.imageURL) return carData.imageURL;
+    if (partnerInfo.serviceProvider?.logoUrl) return partnerInfo.serviceProvider.logoUrl;
+    if (serviceProvider.logoUrl) return serviceProvider.logoUrl;
+    if (item.image) return item.image;
+    
+    // Unsplash fallbacks by vehicle type
+    if (vehicle.category === 'FC' || vehicle.code === 'FC') {
+      return 'https://images.unsplash.com/photo-1556189250-72ba954cfc2b?auto=format&fit=crop&q=80&w=600';
+    } else if (vehicle.category === 'BU' || vehicle.code === 'BU') {
+      return 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600';
+    } else if (vehicle.code === 'SUV') {
+      return 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&q=80&w=600';
+    } else if (vehicle.code === 'VAN') {
+      return 'https://images.unsplash.com/photo-1511919884226-fd3cad34687c?auto=format&fit=crop&q=80&w=600';
+    } else {
+      return 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600';
+    }
   };
 
-  const durationInDays = calculateDuration();
-  const totalPrice = dailyPrice * durationInDays;
-  
-  // Format price display
-  const formatPrice = (amount: number) => {
-    return `${currency.symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const carImage = getCarImage();
+
+  const handleImageError = () => {
+    setImageError(true);
+    console.log('❌ Failed to load image:', carImage);
   };
+
+  const getFallbackImage = (): string => {
+    if (vehicle.category === 'FC' || vehicle.code === 'FC') {
+      return 'https://images.unsplash.com/photo-1556189250-72ba954cfc2b?auto=format&fit=crop&q=80&w=600';
+    } else if (vehicle.category === 'BU' || vehicle.code === 'BU') {
+      return 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600';
+    } else if (vehicle.code === 'SUV') {
+      return 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&q=80&w=600';
+    } else if (vehicle.code === 'VAN') {
+      return 'https://images.unsplash.com/photo-1511919884226-fd3cad34687c?auto=format&fit=crop&q=80&w=600';
+    } else {
+      return 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600';
+    }
+  };
+  
+  // --- EXTRACT PICKUP AND DROPOFF LOCATIONS CORRECTLY ---
+  // Priority: 1. API response data, 2. item.realData, 3. searchParams, 4. defaults
+  
+  const getPickupLocation = (): { code: string; display: string; dateTime: string } => {
+    // Try API response first
+    if (carData.start?.locationCode) {
+      return {
+        code: carData.start.locationCode,
+        display: carData.start.locationCode,
+        dateTime: carData.start.dateTime || ''
+      };
+    }
+    
+    // Try item.realData
+    if (item.realData?.pickupLocation) {
+      return {
+        code: item.realData.pickupLocation,
+        display: item.realData.pickupLocation,
+        dateTime: item.realData.pickupDateTime || ''
+      };
+    }
+    
+    // Try searchParams
+    if (searchParams) {
+      // Try to get the display name with airport code
+      if (searchParams.carPickUp) {
+        const display = searchParams.carPickUp;
+        const match = display.match(/\(([A-Z]{3})\)/);
+        const code = match ? match[1] : display.substring(0, 3).toUpperCase();
+        
+        // Construct dateTime
+        let dateTime = '';
+        if (searchParams.pickUpDate) {
+          const time = searchParams.pickUpTime || '10:00';
+          dateTime = `${searchParams.pickUpDate}T${time}:00`;
+        }
+        
+        return { code, display, dateTime };
+      }
+    }
+    
+    return { code: 'LOS', display: 'Lagos (LOS)', dateTime: '' };
+  };
+
+  const getDropoffLocation = (): { code: string; display: string; dateTime: string } => {
+    // Try API response first
+    if (carData.end?.locationCode) {
+      return {
+        code: carData.end.locationCode,
+        display: carData.end.locationCode,
+        dateTime: carData.end.dateTime || ''
+      };
+    }
+    
+    // Try item.realData
+    if (item.realData?.dropoffLocation) {
+      return {
+        code: item.realData.dropoffLocation,
+        display: item.realData.dropoffLocation,
+        dateTime: item.realData.dropoffDateTime || ''
+      };
+    }
+    
+    // Try searchParams
+    if (searchParams) {
+      if (searchParams.carDropOff) {
+        const display = searchParams.carDropOff;
+        const match = display.match(/\(([A-Z]{3})\)/);
+        const code = match ? match[1] : display.substring(0, 3).toUpperCase();
+        
+        let dateTime = '';
+        if (searchParams.dropOffDate) {
+          const time = searchParams.dropOffTime || '10:00';
+          dateTime = `${searchParams.dropOffDate}T${time}:00`;
+        }
+        
+        return { code, display, dateTime };
+      }
+      
+      // If no dropoff, use pickup
+      if (searchParams.carPickUp) {
+        const pickup = getPickupLocation();
+        return { 
+          code: pickup.code, 
+          display: pickup.display,
+          dateTime: pickup.dateTime
+        };
+      }
+    }
+    
+    const pickup = getPickupLocation();
+    return { code: pickup.code, display: pickup.display, dateTime: '' };
+  };
+
+  const pickupLocation = getPickupLocation();
+  const dropoffLocation = getDropoffLocation();
+
+  // --- CALCULATE RENTAL DURATION CORRECTLY ---
+  const calculateRentalDuration = (): { days: number; hours: number; minutes: number; totalMinutes: number } => {
+    // Try to get dates from various sources
+    let startDate: Date | null = null;
+    let endDate: Date | null = null;
+    
+    // 1. From API response
+    if (carData.start?.dateTime) {
+      try {
+        startDate = new Date(carData.start.dateTime);
+      } catch (e) {}
+    }
+    
+    if (carData.end?.dateTime) {
+      try {
+        endDate = new Date(carData.end.dateTime);
+      } catch (e) {}
+    }
+    
+    // 2. From item.realData
+    if (!startDate && item.realData?.pickupDateTime) {
+      try {
+        startDate = new Date(item.realData.pickupDateTime);
+      } catch (e) {}
+    }
+    
+    if (!endDate && item.realData?.dropoffDateTime) {
+      try {
+        endDate = new Date(item.realData.dropoffDateTime);
+      } catch (e) {}
+    }
+    
+    // 3. From searchParams
+    if (!startDate && searchParams) {
+      if (searchParams.pickUpDate) {
+        const time = searchParams.pickUpTime || '10:00';
+        try {
+          startDate = new Date(`${searchParams.pickUpDate}T${time}:00`);
+        } catch (e) {}
+      }
+    }
+    
+    if (!endDate && searchParams) {
+      if (searchParams.dropOffDate) {
+        const time = searchParams.dropOffTime || '10:00';
+        try {
+          endDate = new Date(`${searchParams.dropOffDate}T${time}:00`);
+        } catch (e) {}
+      } else if (searchParams.pickUpDate) {
+        // Default to 3 days after pickup
+        const date = new Date(`${searchParams.pickUpDate}T10:00:00`);
+        date.setDate(date.getDate() + 3);
+        endDate = date;
+      }
+    }
+    
+    // 4. Default values
+    if (!startDate) {
+      startDate = new Date();
+    }
+    
+    if (!endDate) {
+      endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 3);
+    }
+    
+    const diffMs = Math.abs(endDate.getTime() - startDate.getTime());
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    const remainingHours = diffHours % 24;
+    const remainingMinutes = diffMinutes % 60;
+    
+    return {
+      days: Math.max(1, diffDays),
+      hours: remainingHours,
+      minutes: remainingMinutes,
+      totalMinutes: diffMinutes
+    };
+  };
+
+  const duration = calculateRentalDuration();
+  const rentalDays = duration.days;
+  const rentalHours = duration.hours;
+  const rentalMinutes = duration.minutes;
 
   // Format date for display
-  const formatDate = (dateString: string) => {
-    if (!dateString) return 'Not specified';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      month: 'short', 
-      day: 'numeric',
-      year: 'numeric'
-    });
+  const formatDate = (dateTimeStr: string): string => {
+    if (!dateTimeStr) return 'N/A';
+    try {
+      const date = new Date(dateTimeStr);
+      return date.toLocaleDateString('en-GB', { 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric' 
+      });
+    } catch {
+      return dateTimeStr;
+    }
   };
 
-  // COHESIVE CAR GALLERY - Single Mercedes AMG from different views
-  const galleryImages = [
-    "https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?auto=format&fit=crop&q=80&w=1200", // View 1: Front 3/4
-    "https://images.unsplash.com/photo-1617531653332-bd46c24f2068?auto=format&fit=crop&q=80&w=1200", // View 2: Side Profile
-    "https://images.unsplash.com/photo-1618843479619-f4190600b91e?auto=format&fit=crop&q=80&w=1200", // View 3: Rear View
-    "https://images.unsplash.com/photo-1603584173870-7f1ef91207ac?auto=format&fit=crop&q=80&w=1200", // View 4: Cockpit/Interior
-    "https://images.unsplash.com/photo-1618843479373-5b6cb8a0ac0a?auto=format&fit=crop&q=80&w=1200", // View 5: Wheel Detail
-  ];
+  const formatTime = (dateTimeStr: string): string => {
+    if (!dateTimeStr) return 'N/A';
+    try {
+      const date = new Date(dateTimeStr);
+      return date.toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    } catch {
+      return dateTimeStr;
+    }
+  };
 
-  const nextImage = useCallback(() => {
-    setCurrentImageIndex((prev) => (prev + 1) % galleryImages.length);
-  }, [galleryImages.length]);
+  // Get display date/time strings
+  const pickupDisplayDateTime = pickupLocation.dateTime || 
+                                (searchParams?.pickUpDate ? `${searchParams.pickUpDate}T${searchParams.pickUpTime || '10:00'}:00` : '');
+  
+  const dropoffDisplayDateTime = dropoffLocation.dateTime || 
+                                 (searchParams?.dropOffDate ? `${searchParams.dropOffDate}T${searchParams.dropOffTime || '10:00'}:00` : '');
 
-  const prevImage = useCallback(() => {
-    setCurrentImageIndex((prev) => (prev - 1 + galleryImages.length) % galleryImages.length);
-  }, [galleryImages.length]);
+  // Vehicle specs
+  const seats = vehicle.seats?.[0]?.count || 4;
+  const baggage = vehicle.baggages?.reduce((total: number, bag: any) => 
+    total + (bag.count || 0), 0) || 2;
+  const vehicleCategory = vehicle.category || carData.vehicleCategory || 'ST';
+  const vehicleCode = vehicle.code || carData.vehicleCode || 'CAR';
+  const vehicleDescription = vehicle.description || 
+                            carData.vehicleType || 
+                            item.title || 
+                            'Luxury Vehicle';
+  
+  // --- PRICING ---
+  let basePrice = 0;
+  let currencyCode = 'GBP';
+  
+  // Try to get price from API response
+  if (carData.final_price) {
+    basePrice = parseFloat(carData.final_price);
+    currencyCode = carData.currency || 'GBP';
+  } else if (carData.converted?.monetaryAmount) {
+    basePrice = parseFloat(carData.converted.monetaryAmount);
+    currencyCode = carData.converted.currencyCode || 'GBP';
+  } else if (carData.quotation?.monetaryAmount) {
+    basePrice = parseFloat(carData.quotation.monetaryAmount);
+    currencyCode = carData.quotation.currencyCode || 'GBP';
+  } else if (carData.price?.total) {
+    basePrice = parseFloat(carData.price.total);
+    currencyCode = carData.price.currency || 'GBP';
+  } else if (item.price) {
+    // Parse from price string (e.g., "£494.76" or "₦731.00")
+    const priceStr = item.price.toString();
+    const numericMatch = priceStr.match(/[\d,.]+/);
+    if (numericMatch) {
+      basePrice = parseFloat(numericMatch[0].replace(/,/g, ''));
+    }
+    
+    // Detect currency
+    if (priceStr.includes('£')) currencyCode = 'GBP';
+    else if (priceStr.includes('₦')) currencyCode = 'NGN';
+    else if (priceStr.includes('€')) currencyCode = 'EUR';
+    else if (priceStr.includes('$')) currencyCode = 'USD';
+  }
 
-  const specifications = [
-    { label: 'Transmission', value: transmission, icon: '⚙️' },
-    { label: 'Category', value: category, icon: '🏷️' },
-    { label: 'Passengers', value: `${seats} Seats`, icon: '👥' },
-    { label: 'Baggage', value: `${baggageLarge}L, ${baggageSmall}S`, icon: '🧳' },
-    { label: 'Air Conditioning', value: 'Included', icon: '❄️' },
-    { label: 'Fuel Policy', value: 'Full to Full', icon: '⛽' },
-  ];
+  // Use currency from context or detected currency
+  const displayCurrency = currency || { 
+    symbol: currencyCode === 'GBP' ? '£' : 
+           currencyCode === 'USD' ? '$' : 
+           currencyCode === 'EUR' ? '€' : 
+           currencyCode === 'NGN' ? '₦' : '£',
+    code: currencyCode 
+  };
 
-  const renderOverview = () => (
-    <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-      <div className="space-y-12">
-        <div>
-          <h2 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.2em] mb-6">Vehicle Specification</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {specifications.map(spec => (
-              <div key={spec.label} className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-blue-100 transition-colors">
-                 <span className="text-2xl mb-3 block">{spec.icon}</span>
-                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">{spec.label}</p>
-                 <p className="text-sm font-black text-gray-900">{spec.value}</p>
-              </div>
-            ))}
-          </div>
-        </div>
+  // Calculate price per day
+  const pricePerDay = rentalDays > 0 ? basePrice / rentalDays : basePrice;
+  
+  const formattedBasePrice = `${displayCurrency.symbol}${basePrice.toLocaleString(undefined, { 
+    minimumFractionDigits: 2, 
+    maximumFractionDigits: 2 
+  })}`;
+  
+  const formattedPricePerDay = `${displayCurrency.symbol}${pricePerDay.toLocaleString(undefined, { 
+    minimumFractionDigits: 2, 
+    maximumFractionDigits: 2 
+  })}`;
 
-        <div>
-          <h2 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.2em] mb-6">About this rental</h2>
-          <div className="text-base text-gray-500 font-medium leading-relaxed space-y-4">
-            <p>Travel in style with the {item.title}. This vehicle is part of the {category} fleet, known for its reliability and modern safety assists. Perfect for both business professionals and small families exploring the region.</p>
-            <p>Managed by <span className="text-black font-black">{item.provider}</span>, you are guaranteed a professional handover and 24/7 roadside assistance throughout your rental period.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  // Handle promo code
+  const handleApplyPromo = async () => {
+    if (!promoCode.trim()) {
+      alert('Please enter a promo code');
+      return;
+    }
+    
+    setIsLoadingDetails(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      if (promoCode.toUpperCase() === 'SAVE10') {
+        setAppliedPromo({ code: 'SAVE10', discount: 10, type: 'percentage' });
+        alert('Promo code applied! 10% discount');
+      } else if (promoCode.toUpperCase() === 'CAR50') {
+        setAppliedPromo({ code: 'CAR50', discount: 50, type: 'fixed' });
+        alert('Promo code applied! £50 off');
+      } else {
+        alert('Invalid promo code');
+        setAppliedPromo(null);
+      }
+    } catch (error) {
+      console.error('Failed to apply promo:', error);
+      alert('Failed to apply promo code');
+    } finally {
+      setIsLoadingDetails(false);
+    }
+  };
 
-  const renderTerms = () => (
-    <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-      <div className="bg-white border border-gray-100 rounded-[32px] overflow-hidden shadow-sm">
-        {[
-          { label: 'Driver Requirements', value: 'Valid driving license held for at least 1 year. Minimum age 21 (young driver fee may apply under 25).' },
-          { label: 'Security Deposit', value: `${currency.symbol}250.00 will be blocked on your credit card at pick-up.` },
-          { label: 'Payment Policy', value: 'A credit card in the lead driver\'s name is required for the security deposit.' },
-          { label: 'Mileage', value: 'Unlimited mileage included for the duration of this rental.' },
-          { label: 'Fuel Policy', value: 'Pick up full, return full. Avoid local refueling surcharges.' }
-        ].map((term, i) => (
-          <div key={i} className={`flex flex-col md:flex-row p-8 ${i !== 4 ? 'border-b border-gray-50' : ''}`}>
-            <div className="w-full md:w-56 shrink-0 mb-2 md:mb-0">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{term.label}</span>
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-bold text-gray-700 leading-relaxed">{term.value}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  // Calculate discounted price
+  const getDiscountedTotal = (): number => {
+    if (!appliedPromo) return basePrice;
+    
+    if (appliedPromo.type === 'percentage') {
+      return basePrice * (1 - appliedPromo.discount / 100);
+    } else {
+      return Math.max(0, basePrice - appliedPromo.discount);
+    }
+  };
+
+  const discountedTotal = getDiscountedTotal();
+  const formattedDiscountedTotal = `${displayCurrency.symbol}${discountedTotal.toLocaleString(undefined, { 
+    minimumFractionDigits: 2, 
+    maximumFractionDigits: 2 
+  })}`;
 
   return (
-    <div className="bg-[#f8fbfe] min-h-screen">
-      {/* Immersive BLURRED Glass Lightbox Gallery */}
-      {isLightboxOpen && (
-        <div className="fixed inset-0 z-[100] bg-gray-900/60 backdrop-blur-[60px] flex flex-col animate-in fade-in duration-300">
-          <div className="flex justify-between items-center p-6 text-white relative z-10">
-            <div className="flex flex-col">
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#33a8da]">Ebony Bruce Gallery</p>
-              <h3 className="text-lg font-bold">{item.title}</h3>
-            </div>
-            <button onClick={() => setIsLightboxOpen(false)} className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center border border-white/10">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          </div>
-          
-          <div className="flex-1 relative flex items-center justify-center px-4 md:px-20">
-            <button onClick={prevImage} className="absolute left-6 md:left-10 w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md transition flex items-center justify-center border border-white/10 text-white active:scale-95 z-20">
-              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M15 19l-7-7 7-7" /></svg>
-            </button>
-            
-            <div className="w-full max-w-5xl h-full flex items-center justify-center p-4">
-              <img 
-                src={galleryImages[currentImageIndex]} 
-                className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl animate-in zoom-in-95 duration-500" 
-                alt={`${item.title} view ${currentImageIndex + 1}`} 
-              />
-            </div>
-
-            <button onClick={nextImage} className="absolute right-6 md:right-10 w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md transition flex items-center justify-center border border-white/10 text-white active:scale-95 z-20">
-              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 5l7 7-7 7" /></svg>
-            </button>
-          </div>
-
-          <div className="p-10 flex justify-center gap-3 overflow-x-auto hide-scrollbar relative z-10">
-            {galleryImages.map((img, i) => (
-              <button 
-                key={i} 
-                onClick={() => setCurrentImageIndex(i)}
-                className={`w-20 h-20 rounded-xl overflow-hidden border-2 transition-all shrink-0 ${currentImageIndex === i ? 'border-[#33a8da] scale-110 shadow-2xl' : 'border-transparent opacity-50 hover:opacity-100'}`}
-              >
-                <img src={img} className="w-full h-full object-cover" alt="" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div className="bg-gray-50 min-h-screen py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
-        {/* Nav & Action Bar */}
-        <div className="flex justify-between items-center mb-12">
-          <button onClick={onBack} className="flex items-center gap-2 text-[11px] font-black text-gray-400 uppercase tracking-widest hover:text-[#33a8da] transition group">
-            <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M15 19l-7-7 7-7" /></svg>
-            Back to Results
-          </button>
-          <div className="flex gap-3">
-             <button className="p-3 bg-white border border-gray-100 rounded-xl text-gray-400 hover:text-[#33a8da] transition shadow-sm">
-               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
-             </button>
-             <button className="p-3 bg-white border border-gray-100 rounded-xl text-gray-400 hover:text-[#33a8da] transition shadow-sm">
-               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
-             </button>
+        {/* Navigation */}
+        <button 
+          onClick={onBack} 
+          className="mb-8 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-[#33a8da] transition group"
+          disabled={isLoadingDetails}
+        >
+          <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Selection
+        </button>
+
+        {/* Loading Overlay */}
+        {isLoadingDetails && (
+          <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md text-center">
+              <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-[#33a8da] mb-4"></div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Loading Car Details</h3>
+              <p className="text-sm text-gray-500">Fetching the latest vehicle information...</p>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Hero Car Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-16">
-          <div className="lg:col-span-8 bg-white rounded-[48px] p-6 md:p-12 border border-gray-100 shadow-xl shadow-blue-500/5 flex flex-col relative overflow-hidden group">
+        {/* Error Banner */}
+        {error && (
+          <div className="mb-8 bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-start gap-3">
+            <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div>
+              <p className="text-sm font-bold text-yellow-800">Using cached car details</p>
+              <p className="text-xs text-yellow-700 mt-1">{error}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col lg:flex-row gap-8 items-start">
+          
+          {/* Left Column: Information (65%) */}
+          <div className="flex-1 space-y-6">
             
-            <div className="relative z-10 mb-10">
-               <h1 className="text-4xl md:text-6xl font-black text-gray-900 tracking-tighter leading-none mb-4">{item.title}</h1>
-               <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                    <svg className="w-4 h-4 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+            {/* Main Car Card */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col md:flex-row min-h-[340px]">
+              <div className="md:w-1/3 flex items-center justify-center p-8 bg-gray-50/50">
+                <img 
+                  src={!imageError ? carImage : getFallbackImage()}
+                  className="max-w-full max-h-48 object-contain transition-all duration-300 hover:scale-110" 
+                  alt={vehicleDescription}
+                  onError={handleImageError}
+                  loading="lazy"
+                />
+              </div>
+              
+              <div className="flex-1 p-8">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900 uppercase tracking-tight">
+                      {vehicleDescription}
+                    </h1>
+                    <div className="flex items-center gap-4 mt-2 text-sm font-semibold text-gray-500 flex-wrap">
+                      <span>{seats} Passengers</span>
+                      <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                      <span>Automatic</span>
+                      <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                      <div className="flex items-center gap-1">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M17,14H15V12H17M13,14H11V12H13M9,14H7V12H9M17,10H15V8H17M13,10H11V8H13M9,10H7V8H9M19,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3Z" />
+                        </svg>
+                        {baggage}
+                      </div>
+                    </div>
+                    
+                    {/* Provider Info */}
+                    <div className="mt-4 flex items-center gap-3 flex-wrap">
+                      <span className="text-xs font-bold text-gray-400 uppercase">Provided by</span>
+                      <span className="text-sm font-black text-gray-900">
+                        {serviceProvider.name || partnerInfo.serviceProvider?.name || 'Amadeus Cars'}
+                      </span>
+                      {serviceProvider.isPreferred && (
+                        <span className="bg-blue-50 text-blue-600 text-xs font-black px-2 py-1 rounded">
+                          Preferred Partner
+                        </span>
+                      )}
+                    </div>
+                    
+                    {/* Vehicle Code Badge */}
+                    <div className="mt-3 flex items-center gap-2">
+                      <span className="bg-gray-100 text-gray-700 text-[10px] font-black px-2 py-1 rounded-full uppercase">
+                        {vehicleCode}
+                      </span>
+                      <span className="bg-gray-100 text-gray-700 text-[10px] font-black px-2 py-1 rounded-full uppercase">
+                        {vehicleCategory}
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">{carData.pickupLocation || 'Lagos Airport'}</p>
-               </div>
+                </div>
+
+                {/* Vehicle Features Grid */}
+                <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <p className="text-[10px] font-black text-gray-400 uppercase">Vehicle Code</p>
+                    <p className="text-sm font-bold text-gray-900">{vehicleCode}</p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <p className="text-[10px] font-black text-gray-400 uppercase">Category</p>
+                    <p className="text-sm font-bold text-gray-900">
+                      {vehicleCategory === 'FC' ? 'First Class' : 
+                       vehicleCategory === 'BU' ? 'Business' : 
+                       vehicleCategory === 'ST' ? 'Standard' : vehicleCategory}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <p className="text-[10px] font-black text-gray-400 uppercase">Seats</p>
+                    <p className="text-sm font-bold text-gray-900">{seats}</p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <p className="text-[10px] font-black text-gray-400 uppercase">Baggage</p>
+                    <p className="text-sm font-bold text-gray-900">{baggage}</p>
+                  </div>
+                </div>
+
+                {/* Vehicle Description */}
+                {vehicle.description && (
+                  <div className="mt-6 p-4 bg-blue-50/50 rounded-lg">
+                    <p className="text-sm text-gray-700 italic">"{vehicle.description}"</p>
+                  </div>
+                )}
+              </div>
             </div>
-            
-            {/* Functional Image Slider */}
-            <div className="relative flex-1 flex items-center justify-center min-h-[300px] mb-8">
-               <div className="absolute inset-0 flex items-center justify-between z-20 px-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <button onClick={prevImage} className="w-12 h-12 rounded-full bg-white/80 backdrop-blur-md shadow-lg flex items-center justify-center text-[#33a8da] hover:bg-white transition active:scale-90">
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M15 19l-7-7 7-7" /></svg>
-                  </button>
-                  <button onClick={nextImage} className="w-12 h-12 rounded-full bg-white/80 backdrop-blur-md shadow-lg flex items-center justify-center text-[#33a8da] hover:bg-white transition active:scale-90">
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M9 5l7 7-7 7" /></svg>
-                  </button>
-               </div>
 
-               <div className="w-full h-full flex items-center justify-center transition-all duration-700">
-                 <img 
-                    src={galleryImages[currentImageIndex]} 
-                    className="max-w-full max-h-[400px] object-contain drop-shadow-2xl animate-in fade-in duration-700" 
-                    alt={item.title} 
-                 />
-               </div>
+            {/* Pickup & Dropoff Details Card - CORRECTED */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+              <h3 className="text-xl font-bold text-gray-900 mb-6">Trip Details</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Pickup */}
+                <div className="space-y-4">
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center flex-shrink-0">
+                      <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path d="M5 13l4 4L19 7" strokeWidth={2} />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-black text-gray-900 uppercase mb-1">Pickup Location</p>
+                      <p className="text-sm font-bold text-gray-900">
+                        {pickupLocation.display}
+                      </p>
+                      {pickupDisplayDateTime && (
+                        <>
+                          <p className="text-xs font-medium text-gray-600 mt-2">
+                            {formatDate(pickupDisplayDateTime)}
+                          </p>
+                          <p className="text-xs font-bold text-gray-800">
+                            {formatTime(pickupDisplayDateTime)}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
-               {/* View All Photos Button Overlay */}
-               <button 
-                onClick={() => setIsLightboxOpen(true)}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-md border border-gray-100 px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-gray-900 shadow-xl hover:bg-white transition flex items-center gap-2 z-30"
-               >
-                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                 View all {galleryImages.length} photos
-               </button>
+                {/* Dropoff */}
+                <div className="space-y-4">
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 bg-red-50 rounded-full flex items-center justify-center flex-shrink-0">
+                      <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path d="M6 18L18 6M6 6l12 12" strokeWidth={2} />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-black text-gray-900 uppercase mb-1">Dropoff Location</p>
+                      <p className="text-sm font-bold text-gray-900">
+                        {dropoffLocation.display}
+                      </p>
+                      {dropoffDisplayDateTime && (
+                        <>
+                          <p className="text-xs font-medium text-gray-600 mt-2">
+                            {formatDate(dropoffDisplayDateTime)}
+                          </p>
+                          <p className="text-xs font-bold text-gray-800">
+                            {formatTime(dropoffDisplayDateTime)}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Duration Display - CORRECTED */}
+              <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-sm font-bold text-gray-700">Rental Duration</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-black text-gray-900">
+                      {rentalDays} day{rentalDays !== 1 ? 's' : ''}
+                    </span>
+                    {(rentalHours > 0 || rentalMinutes > 0) && (
+                      <span className="text-xs font-medium text-gray-600 block">
+                        {rentalHours > 0 && `${rentalHours} hour${rentalHours !== 1 ? 's' : ''}`}
+                        {rentalHours > 0 && rentalMinutes > 0 && ' '}
+                        {rentalMinutes > 0 && `${rentalMinutes} min`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
+          </div>
 
-            {/* Thumbnails strip with See More functionality */}
-            <div className="flex gap-3 justify-center">
-               {galleryImages.slice(0, 4).map((img, i) => (
-                 <div 
-                   key={i} 
-                   onClick={() => setCurrentImageIndex(i)}
-                   className={`w-20 h-20 bg-gray-50 rounded-2xl border-2 p-1 flex items-center justify-center cursor-pointer transition relative overflow-hidden ${currentImageIndex === i ? 'border-[#33a8da] scale-105 shadow-md' : 'border-gray-100 hover:border-blue-200'}`}
-                 >
-                    <img src={img} className="w-full h-full object-cover rounded-xl" alt="" />
-                    {i === 3 && galleryImages.length > 4 && (
-                      <div 
-                        onClick={(e) => { e.stopPropagation(); setIsLightboxOpen(true); }}
-                        className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white"
-                      >
-                        <span className="text-lg font-black leading-none">+{galleryImages.length - 4}</span>
-                        <span className="text-[8px] font-bold uppercase tracking-widest mt-1">More</span>
+          {/* Right Column: Booking Summary (35%) - CORRECTED */}
+          <aside className="w-full lg:w-[440px] sticky top-24">
+            <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+              <div className="p-8 border-b border-gray-50 bg-gray-50/30">
+                <h2 className="text-2xl font-bold text-gray-900 mb-8">Booking Summary</h2>
+                
+                {/* Timeline with CORRECT locations and times */}
+                <div className="space-y-8 relative">
+                  <div className="absolute left-[7px] top-[14px] bottom-[14px] w-px bg-gray-200"></div>
+                  
+                  {/* Pickup */}
+                  <div className="flex items-start gap-6 relative">
+                    <div className="w-4 h-4 rounded-full bg-green-500 mt-1 flex-shrink-0 z-10 border-4 border-white"></div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-black text-gray-900 uppercase">Pick Up</p>
+                      <p className="text-xs font-bold text-gray-900 mt-1">
+                        {pickupLocation.display}
+                      </p>
+                      {pickupDisplayDateTime && (
+                        <p className="text-[10px] font-bold text-gray-400 mt-1">
+                          {formatDate(pickupDisplayDateTime)} {formatTime(pickupDisplayDateTime)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Dropoff */}
+                  <div className="flex items-start gap-6 relative">
+                    <div className="w-4 h-4 rounded-full bg-red-500 mt-1 flex-shrink-0 z-10 border-4 border-white"></div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-black text-gray-900 uppercase">Drop Off</p>
+                      <p className="text-xs font-bold text-gray-900 mt-1">
+                        {dropoffLocation.display}
+                      </p>
+                      {dropoffDisplayDateTime && (
+                        <p className="text-[10px] font-bold text-gray-400 mt-1">
+                          {formatDate(dropoffDisplayDateTime)} {formatTime(dropoffDisplayDateTime)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Duration and Price Summary */}
+                <div className="mt-10 grid grid-cols-2 gap-y-4">
+                  <span className="text-sm font-bold text-gray-900">Duration</span>
+                  <span className="text-sm font-bold text-gray-900 text-right">
+                    {rentalDays} day{rentalDays !== 1 ? 's' : ''}
+                    {rentalHours > 0 && ` ${rentalHours}h`}
+                  </span>
+                  
+                  <span className="text-sm font-bold text-gray-900">Price per day</span>
+                  <span className="text-sm font-bold text-gray-900 text-right">
+                    {formattedPricePerDay}
+                  </span>
+                  
+                  {carData.distance && (
+                    <>
+                      <span className="text-sm font-bold text-gray-900">Distance</span>
+                      <span className="text-sm font-bold text-gray-900 text-right">
+                        {carData.distance.value} {carData.distance.unit}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Fare Breakdown */}
+              <div className="p-8 space-y-6">
+                <div>
+                  <h3 className="text-sm font-black text-gray-900 mb-4 uppercase">Fare Breakdown</h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center text-xs font-bold text-gray-400">
+                      <span>Base Fare ({rentalDays} days)</span>
+                      <span className="text-gray-900">{formattedBasePrice}</span>
+                    </div>
+                    
+                    {carData.conversion_fee && (
+                      <div className="flex justify-between items-center text-xs font-bold text-gray-400">
+                        <span>Conversion Fee ({carData.conversion_fee_percentage}%)</span>
+                        <span className="text-gray-900">
+                          {displayCurrency.symbol}{parseFloat(carData.conversion_fee).toFixed(2)}
+                        </span>
                       </div>
                     )}
-                 </div>
-               ))}
-            </div>
-          </div>
+                    
+                    {appliedPromo && (
+                      <div className="flex justify-between items-center text-xs font-bold text-green-600">
+                        <span>Discount ({appliedPromo.code})</span>
+                        <span>- {formattedDiscountedTotal}</span>
+                      </div>
+                    )}
+                    
+                    <div className="flex justify-between items-center text-sm font-black text-gray-900 pt-2 border-t border-gray-100">
+                      <span>Total Fare</span>
+                      <span className="text-lg font-black text-[#33a8da]">
+                        {appliedPromo ? formattedDiscountedTotal : formattedBasePrice}
+                      </span>
+                    </div>
+                  </div>
+                </div>
 
-          <div className="lg:col-span-4 space-y-6">
-            <div className="bg-[#001f3f] rounded-[40px] p-10 text-white shadow-2xl relative overflow-hidden">
-               <div className="absolute top-0 right-0 p-8 opacity-10">
-                 <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z"/></svg>
-               </div>
-               
-               <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mb-8">Rental Summary</p>
-               
-               <div className="space-y-8 mb-10">
-                 <div className="grid grid-cols-2 gap-6">
-                   <div>
-                     <p className="text-sm font-bold opacity-60 mb-1">Daily Rate</p>
-                     <p className="text-3xl font-black tracking-tighter">{formatPrice(dailyPrice)}</p>
-                   </div>
-                   <div>
-                     <p className="text-sm font-bold opacity-60 mb-1">Duration</p>
-                     <p className="text-xl font-black">{durationInDays} Day{durationInDays > 1 ? 's' : ''}</p>
-                   </div>
-                 </div>
+                <div className="h-px bg-gray-100 border-dashed border-t w-full"></div>
 
-                 {/* Rental Dates Section */}
-                 {searchParams?.pickupDate && searchParams?.returnDate && (
-                   <>
-                     <div className="h-px bg-white/10"></div>
-                     <div className="space-y-4">
-                       <div className="flex justify-between items-center">
-                         <span className="text-sm font-bold opacity-60">Pick-up</span>
-                         <span className="text-base font-black">{formatDate(searchParams.pickupDate)}</span>
-                       </div>
-                       <div className="flex justify-between items-center">
-                         <span className="text-sm font-bold opacity-60">Return</span>
-                         <span className="text-base font-black">{formatDate(searchParams.returnDate)}</span>
-                       </div>
-                     </div>
-                   </>
-                 )}
-
-                 <div className="h-px bg-white/10"></div>
-
-                 <div className="flex justify-between items-center">
-                   <span className="text-lg font-bold">Total Estimated</span>
-                   <span className="text-3xl font-black text-[#33a8da]">{formatPrice(totalPrice)}</span>
-                 </div>
-               </div>
-
-               <button onClick={onBook} className="w-full bg-[#33a8da] text-white font-black py-5 rounded-2xl shadow-xl shadow-blue-500/20 hover:bg-[#2c98c7] transition active:scale-95 text-base uppercase tracking-widest">
-                 Reserve Vehicle
-               </button>
-               
-               <p className="text-[10px] font-bold text-center mt-6 opacity-40 uppercase tracking-widest">Free cancellation up to 48h</p>
-            </div>
-
-            <div className="bg-white rounded-[32px] p-8 border border-gray-100 flex items-center gap-6 shadow-sm">
-               <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center p-3 shrink-0 border border-gray-50">
-                  {provider.logoUrl ? (
-                    <img src={provider.logoUrl} className="max-w-full max-h-full object-contain" alt={item.provider} />
-                  ) : (
-                    <span className="text-xl font-black text-[#33a8da]">{item.provider?.substring(0, 1) || 'C'}</span>
+                {/* Promo Code */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-black text-gray-900 uppercase">Promo Code</h3>
+                  <div className="flex gap-2">
+                    <input 
+                      value={promoCode}
+                      onChange={e => setPromoCode(e.target.value.toUpperCase())}
+                      placeholder="Enter Promo Code" 
+                      className="flex-1 px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm font-medium focus:ring-1 focus:ring-[#33a8da] outline-none transition-all"
+                      disabled={isLoadingDetails}
+                    />
+                    <button 
+                      onClick={handleApplyPromo}
+                      disabled={isLoadingDetails || !promoCode.trim()}
+                      className="px-6 py-3 border border-[#33a8da] text-[#33a8da] font-bold text-sm rounded-lg hover:bg-blue-50 transition active:scale-95 disabled:opacity-50"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                  {appliedPromo && (
+                    <p className="text-xs text-green-600 font-bold">
+                      ✓ Promo code {appliedPromo.code} applied!
+                    </p>
                   )}
-               </div>
-               <div>
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Fleet Provider</p>
-                  <h4 className="text-lg font-black text-gray-900 leading-none">{item.provider || 'Car Rental Company'}</h4>
-                  <p className="text-xs font-bold text-green-500 mt-2 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                    Verified Elite Partner
-                  </p>
-               </div>
+                </div>
+
+                {/* Book Button */}
+                <div className="pt-6 border-t border-gray-100">
+                  <button 
+                    onClick={onBook}
+                    disabled={isLoadingDetails}
+                    className="w-full bg-[#33a8da] text-white font-black py-5 rounded-xl shadow-xl shadow-blue-500/10 hover:bg-[#2c98c7] transition active:scale-95 text-base uppercase tracking-widest disabled:opacity-50"
+                  >
+                    {isLoadingDetails ? 'Loading...' : 'Confirm & Book Now'}
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-
-        {/* Detailed Tabs */}
-        <div className="border-b border-gray-100 mb-12 flex gap-12 overflow-x-auto hide-scrollbar sticky top-20 bg-[#f8fbfe] z-20 pt-4">
-          {['Overview', 'Rental Terms', 'Insurance', 'Location Details'].map((tab) => (
-            <button 
-              key={tab} 
-              onClick={() => setActiveTab(tab)}
-              className={`pb-5 text-[11px] font-black uppercase tracking-widest transition relative shrink-0 ${activeTab === tab ? 'text-[#33a8da]' : 'text-gray-400 hover:text-gray-600'}`}
-            >
-              {tab}
-              {activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-[#33a8da] rounded-full animate-in fade-in duration-300" />}
-            </button>
-          ))}
-        </div>
-
-        <div className="max-w-4xl">
-           {activeTab === 'Overview' && renderOverview()}
-           {activeTab === 'Rental Terms' && renderTerms()}
-           {activeTab === 'Insurance' && (
-             <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="bg-white p-10 rounded-[32px] border-2 border-blue-50 relative">
-                   <div className="bg-green-500 text-white text-[9px] font-black px-3 py-1 rounded-full absolute top-6 right-6 uppercase">Standard</div>
-                   <h3 className="text-xl font-black text-gray-900 mb-8 uppercase tracking-tight">Basic Protection</h3>
-                   <ul className="space-y-4 text-sm font-bold text-gray-500">
-                      <li className="flex items-center gap-3"><svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M5 13l4 4L19 7" /></svg> Collision Damage Waiver</li>
-                      <li className="flex items-center gap-3"><svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M5 13l4 4L19 7" /></svg> Theft Protection</li>
-                      <li className="flex items-center gap-3"><svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M5 13l4 4L19 7" /></svg> 24/7 Roadside Assistance</li>
-                   </ul>
-                </div>
-                <div className="bg-white p-10 rounded-[32px] border border-gray-100 hover:border-blue-300 transition-colors group">
-                   <h3 className="text-xl font-black text-gray-900 mb-8 uppercase tracking-tight">Premium Full Cover</h3>
-                   <ul className="space-y-4 text-sm font-bold text-gray-400 mb-8">
-                      <li className="flex items-center gap-3"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M5 13l4 4L19 7" /></svg> Zero Excess Liability</li>
-                      <li className="flex items-center gap-3"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M5 13l4 4L19 7" /></svg> Tires & Windshield</li>
-                      <li className="flex items-center gap-3"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M5 13l4 4L19 7" /></svg> Personal Accident Cover</li>
-                   </ul>
-                   <button className="w-full py-4 border-2 border-gray-100 rounded-2xl text-[11px] font-black uppercase text-gray-400 group-hover:border-[#33a8da] group-hover:text-[#33a8da] transition">Upgrade at Counter</button>
-                </div>
-             </div>
-           )}
-           {activeTab === 'Location Details' && (
-             <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 bg-white p-10 rounded-[32px] shadow-sm border border-gray-100">
-                <div className="flex flex-col md:flex-row gap-12">
-                   <div className="flex-1 space-y-8">
-                      <div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Pick-up Location</p>
-                        <h4 className="text-2xl font-black text-gray-900 tracking-tight">{carData.pickupLocation || 'International Terminal'}</h4>
-                        <p className="text-sm text-gray-500 font-medium mt-2">Head to the {item.provider} desk in the arrivals hall. A staff member will be waiting with your name plate.</p>
-                      </div>
-                      <div className="flex items-center gap-4 p-5 bg-blue-50 rounded-2xl border border-blue-100">
-                        <svg className="w-6 h-6 text-[#33a8da]" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" /></svg>
-                        <p className="text-xs font-black text-blue-800 uppercase">Operational Hours: 24/7</p>
-                      </div>
-                   </div>
-                   <div className="w-full md:w-80 h-64 bg-gray-100 rounded-[24px] overflow-hidden border border-gray-200 shadow-inner">
-                      <img src="https://images.unsplash.com/photo-1526772662000-3f88f10405ff?auto=format&fit=crop&q=80&w=600" className="w-full h-full object-cover opacity-80" alt="Map Location" />
-                   </div>
-                </div>
-             </div>
-           )}
+          </aside>
         </div>
       </div>
     </div>

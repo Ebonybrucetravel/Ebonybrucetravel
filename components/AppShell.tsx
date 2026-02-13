@@ -43,7 +43,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     router.push(returnTo);
   };
 
-  const handleAuthSuccess = () => {
+  const handleAuthSuccess = (userData: { name: string; email: string; token?: string; expiresIn?: number }) => {
+    // Update user in auth context if needed
+    if (updateUser) {
+      updateUser(userData);
+    }
+    
     const returnTo = sessionStorage.getItem('authReturnTo') || '/';
     sessionStorage.removeItem('authReturnTo');
     // Full navigation to refresh auth state
@@ -83,9 +88,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* Auth popup overlay — shown when on an auth route */}
       {isAuthRoute && (
         <AuthModal
-          initialMode={authMode as any}
-          onSuccess={handleAuthSuccess}
+          isOpen={isAuthRoute}
+          initialMode={authMode}
+          onLoginSuccess={handleAuthSuccess}
           onClose={closeAuth}
+          // Optional: Add resetToken if needed from URL params
+          // resetToken={resetTokenFromUrl}
         />
       )}
 
