@@ -42,13 +42,17 @@ export function HotelListImage({
         if (!entry?.isIntersecting || loaded) return;
         setLoaded(true);
 
-        api.bookingApi
+        api.paymentApi
           .getHotelImages(hotelId, { hotelName: hotelName || undefined })
-          .then((res) => {
+          .then((res: { data?: { images?: unknown[] }; images?: unknown[] }) => {
             const list = res?.data?.images ?? res?.images ?? [];
             const first = Array.isArray(list) && list.length > 0 ? list[0] : null;
-            const url = first && (typeof first === 'string' ? first : (first as { url?: string }).url);
-            if (url) {
+            const url: string | undefined = first === null || first === undefined
+              ? undefined
+              : typeof first === 'string'
+                ? first
+                : (first as { url?: string }).url;
+            if (typeof url === 'string' && url) {
               imageCache.set(hotelId, url);
               setSrc(url);
             }

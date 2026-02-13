@@ -1,15 +1,18 @@
 'use client';
 import React, { useState } from 'react';
+import { bookingApi } from '@/lib/api';
 
 interface CancelBookingProps {
   item: any;
   searchParams: any;
+  booking?: { id: string; productType: string };
   onBack: () => void;
 }
 
-const CancelBooking: React.FC<CancelBookingProps> = ({ item, searchParams, onBack }) => {
+const CancelBooking: React.FC<CancelBookingProps> = ({ item, searchParams, booking, onBack }) => {
   const [isCancelling, setIsCancelling] = useState(false);
-  const [isCancelled, setIsCancelled] = useState(false);
+  const [cancelResult, setCancelResult] = useState<'cancelled' | 'submitted' | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const destination = searchParams?.segments?.[0]?.to || 'Abuja';
   const origin = searchParams?.segments?.[0]?.from || 'Lagos';
@@ -25,15 +28,33 @@ const CancelBooking: React.FC<CancelBookingProps> = ({ item, searchParams, onBac
   const originCity = origin.split('(')[0].trim();
   const destCity = destination.split('(')[0].trim();
 
-  const handleConfirmCancellation = () => {
+  const isHotel = booking?.productType === 'hotel';
+
+  const handleConfirmCancellation = async () => {
+    setCancelError(null);
     setIsCancelling(true);
-    setTimeout(() => {
+    try {
+      if (isHotel && booking?.id) {
+        const res = await bookingApi.requestCancelAmadeusHotel(booking.id);
+        if (res.cancelled) {
+          setCancelResult('cancelled');
+        } else if (res.submitted) {
+          setCancelResult('submitted');
+        } else {
+          setCancelResult('cancelled');
+        }
+      } else {
+        await new Promise((r) => setTimeout(r, 1500));
+        setCancelResult('cancelled');
+      }
+    } catch (err: any) {
+      setCancelError(err?.message ?? 'Failed to submit cancellation.');
+    } finally {
       setIsCancelling(false);
-      setIsCancelled(true);
-    }, 2000);
+    }
   };
 
-  if (isCancelled) {
+  if (cancelResult === 'cancelled') {
     return (
       <div className="bg-[#f8fafc] min-h-screen flex flex-col items-center justify-center p-4">
         <div className="max-w-md w-full text-center space-y-6 bg-white p-12 rounded-[32px] shadow-sm border border-gray-100">
@@ -42,6 +63,21 @@ const CancelBooking: React.FC<CancelBookingProps> = ({ item, searchParams, onBac
            </div>
            <h1 className="text-2xl font-black text-gray-900">Cancellation Confirmed</h1>
            <p className="text-gray-500 font-medium">Your refund is being processed. You will receive an email confirmation shortly.</p>
+           <button onClick={onBack} className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl shadow-lg">Back to Profile</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (cancelResult === 'submitted') {
+    return (
+      <div className="bg-[#f8fafc] min-h-screen flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full text-center space-y-6 bg-white p-12 rounded-[32px] shadow-sm border border-gray-100">
+           <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center text-amber-600 mx-auto">
+             <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+           </div>
+           <h1 className="text-2xl font-black text-gray-900">Request Submitted</h1>
+           <p className="text-gray-500 font-medium">Cancellation request received. Our team will review and respond within 3–5 business days.</p>
            <button onClick={onBack} className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl shadow-lg">Back to Profile</button>
         </div>
       </div>
@@ -201,6 +237,12 @@ const CancelBooking: React.FC<CancelBookingProps> = ({ item, searchParams, onBac
             </p>
           </div>
         </div>
+
+        {cancelError && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-800">
+            {cancelError}
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="flex flex-col md:flex-row items-center justify-center gap-10 pt-4">

@@ -1,41 +1,30 @@
 'use client';
 
 import React, { useState } from 'react';
-import { loadStripe } from '@stripe/stripe-js';
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
-import { config } from '@/lib/config';
 import { formatPrice } from '@/lib/utils';
 import type { SearchResult, Booking, PassengerInfo } from '@/lib/types';
 import { useBooking } from '@/hooks/useBooking';
 
-const stripePromise = loadStripe(config.stripePublishableKey);
-
-const cardElementOptions = {
-  style: { base: { fontSize: '16px', color: '#1f2937', '::placeholder': { color: '#9ca3af' } }, invalid: { color: '#dc2626' } },
-  hidePostalCode: true,
-};
-
 export interface AmadeusHotelPaymentModalProps {
   item: SearchResult;
   passengerInfo: PassengerInfo;
+  isGuest: boolean;
   voucherCode?: string;
   onSuccess: (confirmedBooking: Booking) => void;
   onCancel: () => void;
-  /** Called when backend returns 401 (e.g. guest trying to use Amadeus flow); caller should persist selection and redirect to login */
+  /** Called when backend returns 401; caller should persist selection and redirect to login */
   onSignInRequired?: () => void;
 }
 
 function AmadeusHotelPaymentForm({
   item,
   passengerInfo,
-  voucherCode,
+  isGuest,
   onSuccess,
   onCancel,
   onSignInRequired,
 }: AmadeusHotelPaymentModalProps) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const { createAmadeusHotelBooking, createPaymentIntent, pollBookingStatus } = useBooking();
+  const { createAmadeusHotelBooking, chargeMarginAmadeusHotel } = useBooking();
 
   const [cardNumber, setCardNumber] = useState('');
   const [expiryMonth, setExpiryMonth] = useState('');
@@ -44,10 +33,9 @@ function AmadeusHotelPaymentForm({
   const [holderName, setHolderName] = useState(
     () => `${passengerInfo.firstName} ${passengerInfo.lastName}`.trim(),
   );
-  const [booking, setBooking] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<'idle' | 'securing' | 'paying' | 'confirming'>('idle');
+  const [status, setStatus] = useState<'idle' | 'securing' | 'charging'>('idle');
 
   const currency = (item.realData?.currency ?? 'GBP').toUpperCase();
   const totalStay = typeof item.realData?.finalPrice === 'number'
@@ -55,9 +43,14 @@ function AmadeusHotelPaymentForm({
     : (typeof item.realData?.price === 'number' ? item.realData.price : 0);
   const displayTotal = formatPrice(totalStay, currency);
 
-  const phase2 = !!booking;
+  const statusMessage =
+    status === 'securing'
+      ? 'Securing your reservation…'
+      : status === 'charging'
+        ? 'Processing your payment…'
+        : null;
 
-  const handleSecureReservation = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const rawNumber = cardNumber.replace(/\s+/g, '').replace(/-/g, '');
     if (rawNumber.length < 13) {
@@ -83,97 +76,29 @@ function AmadeusHotelPaymentForm({
         expiryYear: expiryYear.length === 2 ? `20${expiryYear}` : expiryYear,
         cvc,
         holderName: holderName || undefined,
-      });
-      setBooking(created);
+      }, isGuest);
+
+      setStatus('charging');
+      const confirmed = await chargeMarginAmadeusHotel(created, isGuest);
+      onSuccess(confirmed);
     } catch (err: any) {
       if (err?.status === 401 && onSignInRequired) {
         onSignInRequired();
         onCancel();
         return;
       }
-      setError(err?.message ?? 'Could not secure your reservation. Please try again.');
+      setError(err?.message ?? 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
       setStatus('idle');
     }
   };
-
-  const handlePayFees = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!stripe || !elements || !booking) return;
-
-    const cardEl = elements.getElement(CardElement);
-    if (!cardEl) {
-      setError('Please enter your card details for the service fee.');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setStatus('paying');
-    try {
-      const { clientSecret } = await createPaymentIntent(
-        booking.id,
-        false,
-        undefined,
-        undefined,
-        voucherCode,
-      );
-
-      const { error: stripeErr, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: {
-          card: cardEl,
-          billing_details: {
-            name: `${booking.passengerInfo.firstName} ${booking.passengerInfo.lastName}`,
-            email: booking.passengerInfo.email,
-            phone: booking.passengerInfo.phone,
-          },
-        },
-      });
-
-      if (stripeErr) throw new Error(stripeErr.message ?? 'Payment failed');
-
-      if (paymentIntent?.status === 'succeeded' || paymentIntent?.status === 'processing') {
-        setStatus('confirming');
-        try {
-          const confirmed = await pollBookingStatus(booking.id, 10, 3000);
-          onSuccess(confirmed);
-        } catch {
-          onSuccess({ ...booking, paymentStatus: 'COMPLETED', status: 'CONFIRMED' });
-        }
-      } else {
-        throw new Error(`Unexpected payment status: ${paymentIntent?.status}`);
-      }
-    } catch (err: any) {
-      setError(err.message ?? 'Payment failed. Please try again.');
-    } finally {
-      setLoading(false);
-      setStatus('idle');
-    }
-  };
-
-  const statusMessage =
-    status === 'securing'
-      ? 'Securing your reservation…'
-      : status === 'paying'
-        ? 'Processing your payment…'
-        : status === 'confirming'
-          ? 'Confirming your booking…'
-          : null;
-
-  const marginAmount =
-    booking && typeof booking.markupAmount === 'number' && typeof booking.serviceFee === 'number'
-      ? booking.markupAmount + booking.serviceFee
-      : booking?.finalAmount ?? booking?.totalAmount ?? 0;
-  const displayFee = formatPrice(marginAmount, booking?.currency ?? currency);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl p-6 md:p-8 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">
-            {phase2 ? 'Pay service & booking fees' : 'Complete your booking'}
-          </h2>
+          <h2 className="text-2xl font-bold text-gray-900">Complete your booking</h2>
           <button
             type="button"
             onClick={onCancel}
@@ -188,9 +113,7 @@ function AmadeusHotelPaymentForm({
         </div>
 
         <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-100 space-y-2">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">
-            {phase2 ? 'Reservation secured' : 'Your stay'}
-          </h3>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Your stay</h3>
           <div className="flex justify-between">
             <span className="text-gray-600">{item.title}</span>
           </div>
@@ -198,16 +121,9 @@ function AmadeusHotelPaymentForm({
             <span>Total for your stay</span>
             <span className="font-medium text-gray-700">{displayTotal}</span>
           </div>
-          {phase2 ? (
-            <p className="text-xs text-gray-600 mt-3 pt-3 border-t border-blue-200">
-              Your reservation is secured. Pay the service and booking fees below to complete.
-            </p>
-          ) : (
-            <p className="text-xs text-gray-600 mt-3 pt-3 border-t border-blue-200">
-              Your card will be used to secure this reservation. You will then pay our service and
-              booking fees in the next step. The hotel will charge the rest when they confirm.
-            </p>
-          )}
+          <p className="text-xs text-gray-600 mt-3 pt-3 border-t border-blue-200">
+            Your card will be used to secure this reservation and to pay our service and booking fees. You enter it once; we handle the rest.
+          </p>
         </div>
 
         {statusMessage && (
@@ -220,12 +136,11 @@ function AmadeusHotelPaymentForm({
           </div>
         )}
 
-        {!phase2 ? (
-          <form onSubmit={handleSecureReservation}>
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Card to secure your reservation</label>
-                <p className="text-xs text-gray-500 mb-2">Used only to hold your stay; the hotel charges this when they confirm.</p>
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4 mb-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Card details</label>
+              <p className="text-xs text-gray-500 mb-2">Used to secure your stay and pay our service and booking fees.</p>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -301,65 +216,28 @@ function AmadeusHotelPaymentForm({
                 <p className="text-xs text-green-600 mt-1">Your card details are encrypted and only used to secure this reservation.</p>
               </div>
             </div>
-            <div className="space-y-3">
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold rounded-lg hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg"
-              >
-                {loading ? (
-                  <><svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Securing…</>
-                ) : (
-                  'Secure my reservation'
-                )}
-              </button>
-              <button type="button" onClick={onCancel} disabled={loading} className="w-full py-3 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 border border-gray-300 disabled:opacity-50">
-                Cancel
-              </button>
-            </div>
-          </form>
-        ) : (
-          <form onSubmit={handlePayFees}>
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Card for service & booking fees</label>
-              <p className="text-xs text-gray-500 mb-2">You will be charged {displayFee} now.</p>
-              <div className="p-4 border border-gray-300 rounded-lg bg-white focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500">
-                <CardElement options={cardElementOptions} />
-              </div>
-              <div className="mt-3 p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
-                <p className="font-medium text-gray-700">Test card: 4242 4242 4242 4242 · Any future expiry · Any 3 digits</p>
-              </div>
-            </div>
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>
-            )}
-            <div className="space-y-3">
-              <button
-                type="submit"
-                disabled={!stripe || loading}
-                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold rounded-lg hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg"
-              >
-                {loading ? (
-                  <><svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> {statusMessage || 'Processing…'}</>
-                ) : (
-                  <>Pay {displayFee}</>
-                )}
-              </button>
-              <button type="button" onClick={onCancel} disabled={loading} className="w-full py-3 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 border border-gray-300 disabled:opacity-50">
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
+          <div className="space-y-3">
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold rounded-lg hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg"
+            >
+              {loading ? (
+                <><svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> {statusMessage || 'Processing…'}</>
+              ) : (
+                'Complete booking'
+              )}
+            </button>
+            <button type="button" onClick={onCancel} disabled={loading} className="w-full py-3 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 border border-gray-300 disabled:opacity-50">
+              Cancel
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
 }
 
 export default function AmadeusHotelPaymentModal(props: AmadeusHotelPaymentModalProps) {
-  return (
-    <Elements stripe={stripePromise}>
-      <AmadeusHotelPaymentForm {...props} />
-    </Elements>
-  );
+  return <AmadeusHotelPaymentForm {...props} />;
 }

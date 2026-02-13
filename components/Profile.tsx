@@ -146,6 +146,7 @@ const Profile: React.FC<ProfileProps> = ({
   const [cancellationData, setCancellationData] = useState<{
     item: any;
     searchParams: any;
+    booking: { id: string; productType: string };
   } | null>(null);
 
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -316,7 +317,7 @@ const Profile: React.FC<ProfileProps> = ({
       Promise.all([userApi.getLoyaltyAccount(), userApi.getAvailableRewards()])
         .then(([loyaltyData, rewards]) => {
           setLoyalty(loyaltyData);
-          const items = Array.isArray(rewards) ? rewards : (rewards?.data || []);
+          const items = Array.isArray(rewards) ? rewards : ((rewards as { data?: unknown[] })?.data ?? []);
           setAvailableRewards(items);
           setHasLoadedRewards(true);
         })
@@ -665,7 +666,8 @@ const Profile: React.FC<ProfileProps> = ({
           ],
           travellers: '1 Traveller',
           bookingReference: `#${selectedBooking.id}`
-        }
+        },
+        booking: { id: selectedBooking.id, productType: selectedBooking.type }
       };
       
       setCancellationData(cancelData);
@@ -802,6 +804,7 @@ const Profile: React.FC<ProfileProps> = ({
       <CancelBooking 
         item={cancellationData.item}
         searchParams={cancellationData.searchParams}
+        booking={cancellationData.booking}
         onBack={handleBackFromCancel}
       />
     );

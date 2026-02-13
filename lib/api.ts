@@ -3464,6 +3464,14 @@ createBooking: (bookingData: {
       method: 'POST' 
     });
   },
+
+  /** Amadeus hotel: request cancellation. Before deadline → cancelled + refund; after → submitted to admin queue. */
+  requestCancelAmadeusHotel: (bookingId: string) => {
+    return request<{ cancelled?: boolean; submitted?: boolean; cancellationRequestId?: string; message?: string }>(
+      `/api/v1/bookings/hotels/bookings/${encodeURIComponent(bookingId)}/request-cancel`,
+      { method: 'POST' }
+    );
+  },
   
   // Hotel booking (generic)
   createHotelBooking: (hotelBookingData: {

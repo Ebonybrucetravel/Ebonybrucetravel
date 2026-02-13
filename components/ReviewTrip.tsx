@@ -62,6 +62,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [voucherApplied, setVoucherApplied] = useState<any | null>(null);
   const [isValidatingVoucher, setIsValidatingVoucher] = useState(false);
   const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [policyAccepted, setPolicyAccepted] = useState(false);
 
   // Sync if user data loads after mount
   useEffect(() => {
@@ -145,6 +146,22 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       setIsBooking(false);
     }
   };
+
+  // Format cancellation deadline for display (e.g. "14 Feb 2026 23:59 UTC")
+  const formatCancellationDeadline = (raw: string | undefined): string => {
+    if (!raw) return '';
+    try {
+      const d = new Date(raw.indexOf('Z') >= 0 || /[+-]\d{2}:?\d{2}$/.test(raw) ? raw : raw + 'Z');
+      if (isNaN(d.getTime())) return raw;
+      return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC';
+    } catch {
+      return raw;
+    }
+  };
+
+  const cancellationPolicyText = typeof item.realData?.cancellationPolicy === 'string' ? item.realData.cancellationPolicy : 'Standard cancellation policy applies.';
+  const cancellationDeadlineDisplay = formatCancellationDeadline(item.realData?.cancellationDeadline);
+  const isRefundable = item.realData?.isRefundable !== false;
 
   // Common input styles
   const inputCls = 'w-full px-6 py-5 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold text-gray-900 focus:border-[#33a8da] outline-none transition-all placeholder-gray-400';
@@ -240,6 +257,35 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                   </div>
                </div>
             </section>
+
+            {/* ── Cancellation policy (Amadeus hotel only) ── */}
+            {isAmadeusHotel && (
+              <section className="bg-white rounded-[32px] p-10 shadow-xl border border-gray-100">
+                <h2 className="text-2xl font-black text-[#001f3f] mb-6 uppercase">Cancellation &amp; no-show</h2>
+                <div className="space-y-4 text-sm">
+                  <p className="font-bold text-gray-900">{cancellationPolicyText}</p>
+                  {cancellationDeadlineDisplay ? (
+                    <p className="font-bold text-gray-700">
+                      {isRefundable ? `Free cancellation until ${cancellationDeadlineDisplay}.` : `Non-refundable after ${cancellationDeadlineDisplay}.`}
+                    </p>
+                  ) : null}
+                  <p className="text-gray-600 font-medium">
+                    In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.
+                  </p>
+                </div>
+                <label className="mt-6 flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={policyAccepted}
+                    onChange={(e) => setPolicyAccepted(e.target.checked)}
+                    className="mt-1 w-5 h-5 rounded border-2 border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                  />
+                  <span className="text-sm font-bold text-gray-800 group-hover:text-gray-900">
+                    By booking, I agree to the cancellation and no-show policy.
+                  </span>
+                </label>
+              </section>
+            )}
           </div>
 
           {/* ── Price Sidebar ── */}
@@ -307,7 +353,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
               
               <button 
   onClick={handleCompleteBooking} 
-                disabled={isBooking || isCreating} 
+                disabled={isBooking || isCreating || (isAmadeusHotel && !policyAccepted)} 
   className="w-full bg-[#33a8da] text-white font-black py-6 rounded-2xl shadow-xl hover:bg-[#2c98c7] transition transform active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm"
 >
                 {isCreating ? 'Creating Booking...' : isBooking ? 'Preparing Payment...' : 'Proceed to Payment'}

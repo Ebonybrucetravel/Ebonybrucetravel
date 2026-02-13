@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
 import { useAuth } from '@/context/AuthContext';
 import { useBooking } from '@/hooks/useBooking';
+import { config } from '@/lib/config';
 import ReviewTrip from '@/components/ReviewTrip';
 import PaymentModal from '@/components/payment/PaymentModal';
 import AmadeusHotelPaymentModal from '@/components/payment/AmadeusHotelPaymentModal';
@@ -23,7 +24,8 @@ export default function BookingReviewPage() {
   const router = useRouter();
   const { selectedItem, searchParams, persistSelectionForReturn } = useSearch();
   const { isLoggedIn, user } = useAuth();
-  const { createBooking, isCreating } = useBooking();
+  const { createBooking, createAmadeusHotelBooking, isCreating } = useBooking();
+  const isMerchantPaymentModel = config.paymentModel === 'merchant';
 
   const [booking, setBooking] = useState<Booking | null>(null);
   const [showPayment, setShowPayment] = useState(false);
@@ -50,13 +52,24 @@ export default function BookingReviewPage() {
   const useAmadeusFlow = isAmadeusHotel(selectedItem);
 
   const handleProceedToPayment = async (passengerInfo: PassengerInfo, voucherCode?: string) => {
+    const isGuest = !isLoggedIn;
+    if (useAmadeusFlow && isMerchantPaymentModel) {
+      try {
+        const newBooking = await createAmadeusHotelBooking(selectedItem, passengerInfo, undefined, isGuest);
+        setBooking(newBooking);
+        setAppliedVoucherCode(voucherCode);
+        setShowPayment(true);
+      } catch (err: any) {
+        alert(err?.message ?? 'Failed to create booking. Please try again.');
+      }
+      return;
+    }
     if (useAmadeusFlow) {
       setPendingPassengerInfo(passengerInfo);
       setAppliedVoucherCode(voucherCode);
       setShowAmadeusPayment(true);
       return;
     }
-    const isGuest = !isLoggedIn;
     try {
       const newBooking = await createBooking(selectedItem, searchParams, passengerInfo, isGuest);
       setBooking(newBooking);
@@ -101,6 +114,7 @@ export default function BookingReviewPage() {
         <AmadeusHotelPaymentModal
           item={selectedItem}
           passengerInfo={pendingPassengerInfo}
+          isGuest={!isLoggedIn}
           voucherCode={appliedVoucherCode}
           onSuccess={handlePaymentSuccess}
           onCancel={() => {

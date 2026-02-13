@@ -211,7 +211,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
           <div key={group.group}>
             <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6 border-b border-gray-50 pb-2">{group.group}</h3>
             <div className="grid grid-cols-2 gap-y-4">
-              {group.items.map((amenity) => (
+              {group.items.map((amenity: string) => (
                 <div key={amenity} className="flex items-center gap-3">
                   <div className="w-1.5 h-1.5 bg-[#33a8da] rounded-full"></div>
                   <span className="text-sm font-bold text-gray-700">{amenity}</span>

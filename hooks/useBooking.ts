@@ -159,12 +159,13 @@ export function useBooking() {
     [BASE],
   );
 
-  /** Amadeus hotel flow: create booking with card (backend charges hotel via Amadeus; we then charge margin via Stripe). */
+  /** Amadeus hotel: create booking. When card provided (guest_card model), send payment; when omitted (merchant model), backend uses agency card after Stripe payment. */
   const createAmadeusHotelBooking = useCallback(
     async (
       item: SearchResult,
       passenger: PassengerInfo,
-      card: { cardNumber: string; expiryMonth: string; expiryYear: string; cvc: string; holderName?: string },
+      card: { cardNumber: string; expiryMonth: string; expiryYear: string; cvc: string; holderName?: string } | undefined,
+      isGuest: boolean,
     ): Promise<Booking> => {
       setIsCreating(true);
       setError(null);
@@ -174,10 +175,34 @@ export function useBooking() {
           ? item.realData.finalPrice
           : (typeof item.realData?.price === 'number' ? item.realData.price : 0);
         const currency = (item.realData?.currency ?? 'GBP').toUpperCase();
-        const cardNumber = card.cardNumber.replace(/\s+/g, '').replace(/-/g, '');
-        const expiryDate = `${card.expiryYear}-${card.expiryMonth.padStart(2, '0')}`;
 
-        const body = {
+        const checkInStr = item.realData?.checkInDate ?? '';
+        const cancellationPolicySnapshot =
+          typeof item.realData?.cancellationPolicy === 'string'
+            ? item.realData.cancellationPolicy
+            : 'Standard cancellation policy applies';
+        let cancellationDeadline = item.realData?.cancellationDeadline;
+        if (!cancellationDeadline && checkInStr) {
+          try {
+            const checkIn = new Date(checkInStr);
+            const deadline = new Date(checkIn);
+            deadline.setUTCDate(deadline.getUTCDate() - 1);
+            deadline.setUTCHours(23, 59, 0, 0);
+            cancellationDeadline = deadline.toISOString();
+          } catch {
+            cancellationDeadline = new Date(Date.now() + 86400000).toISOString();
+          }
+        } else if (!cancellationDeadline) {
+          cancellationDeadline = new Date(Date.now() + 86400000).toISOString();
+        } else if (typeof cancellationDeadline === 'string' && !/Z$|[\+\-]\d{2}:?\d{2}$/.test(cancellationDeadline)) {
+          try {
+            cancellationDeadline = new Date(cancellationDeadline + 'Z').toISOString();
+          } catch {
+            cancellationDeadline = new Date(cancellationDeadline).toISOString();
+          }
+        }
+
+        const body: Record<string, unknown> = {
           hotelOfferId: offerId,
           offerPrice,
           currency,
@@ -188,7 +213,15 @@ export function useBooking() {
             },
           ],
           roomAssociations: [{ hotelOfferId: offerId, guestReferences: [{ guestReference: '1' }] }],
-          payment: {
+          cancellationDeadline: typeof cancellationDeadline === 'string' ? cancellationDeadline : (cancellationDeadline as any)?.toISOString?.() ?? new Date().toISOString(),
+          cancellationPolicySnapshot,
+          policyAccepted: true,
+        };
+
+        if (card) {
+          const cardNumber = card.cardNumber.replace(/\s+/g, '').replace(/-/g, '');
+          const expiryDate = `${card.expiryYear}-${card.expiryMonth.padStart(2, '0')}`;
+          body.payment = {
             method: 'CREDIT_CARD',
             paymentCard: {
               paymentCardInfo: {
@@ -199,14 +232,17 @@ export function useBooking() {
                 ...(card.cvc && { securityCode: card.cvc }),
               },
             },
-          },
-        };
+          };
+        }
 
         const token = getStoredAuthToken();
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
+        if (!isGuest && token) headers['Authorization'] = `Bearer ${token}`;
 
-        const res = await fetch(`${BASE}/api/v1/bookings/hotels/bookings/amadeus`, {
+        const endpoint = isGuest
+          ? '/api/v1/bookings/hotels/bookings/amadeus/guest'
+          : '/api/v1/bookings/hotels/bookings/amadeus';
+        const res = await fetch(`${BASE}${endpoint}`, {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
@@ -257,6 +293,43 @@ export function useBooking() {
     [BASE],
   );
 
+  /** One-step payment: server charges margin (and creates Amadeus order) with the stored card. No Stripe Elements. */
+  const chargeMarginAmadeusHotel = useCallback(
+    async (booking: Booking, isGuest: boolean): Promise<Booking> => {
+      setError(null);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (!isGuest) {
+        const token = getStoredAuthToken();
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const url = isGuest
+        ? `${BASE}/api/v1/payments/amadeus-hotel/charge-margin/guest`
+        : `${BASE}/api/v1/payments/amadeus-hotel/charge-margin`;
+      const body = isGuest
+        ? { bookingReference: booking.reference, email: booking.passengerInfo.email }
+        : { bookingId: booking.id };
+
+      const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+      const data = await res.json();
+
+      if (!res.ok) {
+        const msg = data.message ?? data.error ?? 'Payment could not be completed';
+        const err = new Error(msg) as Error & { status?: number };
+        err.status = res.status;
+        throw err;
+      }
+
+      const updated = data.booking ?? data.data?.booking ?? data.data;
+      if (updated) {
+        setBooking(updated);
+        return updated as Booking;
+      }
+      return { ...booking, status: 'CONFIRMED', paymentStatus: 'COMPLETED' };
+    },
+    [BASE],
+  );
+
   const pollBookingStatus = useCallback(
     async (bookingId: string, maxAttempts = 10, intervalMs = 3000): Promise<Booking> => {
       const token = getStoredAuthToken();
@@ -293,6 +366,7 @@ export function useBooking() {
     error,
     createBooking,
     createAmadeusHotelBooking,
+    chargeMarginAmadeusHotel,
     createPaymentIntent,
     pollBookingStatus,
     reset,
