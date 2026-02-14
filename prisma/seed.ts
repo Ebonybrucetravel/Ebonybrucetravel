@@ -212,7 +212,28 @@ async function main() {
       markupPercentage: 10.0,
       serviceFeeAmount: 3000.0,
       currency: 'NGN',
-      description: 'Default markup for car rental bookings',
+      description: 'Default markup for car rental bookings (NGN)',
+    },
+    {
+      productType: ProductType.CAR_RENTAL,
+      markupPercentage: 10.0,
+      serviceFeeAmount: 15.0,
+      currency: 'GBP',
+      description: 'Default markup for car rental bookings in GBP (Amadeus)',
+    },
+    {
+      productType: ProductType.CAR_RENTAL,
+      markupPercentage: 10.0,
+      serviceFeeAmount: 20.0,
+      currency: 'USD',
+      description: 'Default markup for car rental bookings in USD (Amadeus)',
+    },
+    {
+      productType: ProductType.CAR_RENTAL,
+      markupPercentage: 10.0,
+      serviceFeeAmount: 18.0,
+      currency: 'EUR',
+      description: 'Default markup for car rental bookings in EUR (Amadeus)',
     },
   ];
 

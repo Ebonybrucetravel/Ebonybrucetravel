@@ -174,13 +174,15 @@ export class CreateCarRentalBookingDto {
   @Type(() => CarRentalDriverDto)
   driver: CarRentalDriverDto;
 
-  @ApiProperty({
-    description: 'Payment information',
+  @ApiPropertyOptional({
+    description:
+      'Payment card (guest card). Omit when using merchant payment model: customer pays via Stripe, agency pays Amadeus.',
     type: CarRentalPaymentDto,
   })
+  @IsOptional()
   @ValidateNested()
   @Type(() => CarRentalPaymentDto)
-  payment: CarRentalPaymentDto;
+  payment?: CarRentalPaymentDto;
 
   @ApiPropertyOptional({
     description: 'Special requests or notes',

@@ -11,6 +11,7 @@ import { FetchHotelRatesUseCase } from './use-cases/fetch-hotel-rates.use-case';
 import { CreateHotelQuoteUseCase } from './use-cases/create-hotel-quote.use-case';
 import { CreateHotelBookingUseCase } from './use-cases/create-hotel-booking.use-case';
 import { CreateAmadeusHotelBookingUseCase } from './use-cases/create-amadeus-hotel-booking.use-case';
+import { CreateGuestAmadeusHotelBookingUseCase } from './use-cases/create-guest-amadeus-hotel-booking.use-case';
 import { GetHotelBookingUseCase } from './use-cases/get-hotel-booking.use-case';
 import { ListHotelBookingsUseCase } from './use-cases/list-hotel-bookings.use-case';
 import { CancelHotelBookingUseCase } from './use-cases/cancel-hotel-booking.use-case';
@@ -24,7 +25,10 @@ import { GetAmadeusHotelDetailsUseCase } from './use-cases/get-amadeus-hotel-det
 import { SearchCarRentalsUseCase } from './use-cases/search-car-rentals.use-case';
 import { CreateCarRentalBookingUseCase } from './use-cases/create-car-rental-booking.use-case';
 import { CancelCarRentalBookingUseCase } from './use-cases/cancel-car-rental-booking.use-case';
+import { RequestHotelCancellationUseCase } from './use-cases/request-hotel-cancellation.use-case';
+import { ProcessCancellationRequestUseCase } from './use-cases/process-cancellation-request.use-case';
 import { BookingModule } from '@domains/booking/booking.module';
+import { PaymentModule } from '@domains/payment/payment.module';
 import { MarkupModule } from '@domains/markup/markup.module';
 import { ExternalApisModule } from '@infrastructure/external-apis/external-apis.module';
 import { DatabaseModule } from '@infrastructure/database/database.module';
@@ -47,6 +51,7 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     SecurityModule,
     HotelImagesModule,
     UsageTrackingModule,
+    PaymentModule,
   ],
   providers: [
     CreateBookingUseCase,
@@ -61,6 +66,7 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     CreateHotelQuoteUseCase,
     CreateHotelBookingUseCase,
     CreateAmadeusHotelBookingUseCase,
+    CreateGuestAmadeusHotelBookingUseCase,
     GetHotelBookingUseCase,
     ListHotelBookingsUseCase,
     CancelHotelBookingUseCase,
@@ -74,6 +80,8 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     SearchCarRentalsUseCase,
     CreateCarRentalBookingUseCase,
     CancelCarRentalBookingUseCase,
+    RequestHotelCancellationUseCase,
+    ProcessCancellationRequestUseCase,
   ],
   exports: [
     CreateBookingUseCase,
@@ -88,6 +96,7 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     CreateHotelQuoteUseCase,
     CreateHotelBookingUseCase,
     CreateAmadeusHotelBookingUseCase,
+    CreateGuestAmadeusHotelBookingUseCase,
     GetHotelBookingUseCase,
     ListHotelBookingsUseCase,
     CancelHotelBookingUseCase,
@@ -101,6 +110,8 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     SearchCarRentalsUseCase,
     CreateCarRentalBookingUseCase,
     CancelCarRentalBookingUseCase,
+    RequestHotelCancellationUseCase,
+    ProcessCancellationRequestUseCase,
   ],
 })
 export class BookingApplicationModule {}

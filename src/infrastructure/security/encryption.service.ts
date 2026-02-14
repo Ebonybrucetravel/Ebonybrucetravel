@@ -17,13 +17,18 @@ export class EncryptionService {
   constructor(private configService: ConfigService) {
     // Get encryption key from environment (32 bytes for AES-256)
     const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
-    
+    const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+
     if (!encryptionKey) {
+      if (isProduction) {
+        throw new Error(
+          'ENCRYPTION_KEY is required in production for PCI-safe card storage. Set ENCRYPTION_KEY (32-byte hex or strong password) in environment.',
+        );
+      }
       this.logger.warn(
         'ENCRYPTION_KEY not set. Using a default key (NOT SECURE FOR PRODUCTION). ' +
-          'Please set ENCRYPTION_KEY environment variable with a 32-byte key.',
+          'Set ENCRYPTION_KEY for production.',
       );
-      // Default key for development (DO NOT USE IN PRODUCTION)
       this.key = crypto.scryptSync('default-key-change-in-production', 'salt', 32);
     } else {
       // Convert hex string to buffer, or use scrypt if it's a password
@@ -52,8 +57,8 @@ export class EncryptionService {
 
       // Return: iv:authTag:encrypted (all hex-encoded)
       return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
-    } catch (error) {
-      this.logger.error('Encryption failed:', error);
+    } catch {
+      this.logger.error('Encryption failed (no sensitive details logged per PCI).');
       throw new Error('Failed to encrypt data');
     }
   }
@@ -79,8 +84,8 @@ export class EncryptionService {
       decrypted += decipher.final('utf8');
 
       return decrypted;
-    } catch (error) {
-      this.logger.error('Decryption failed:', error);
+    } catch {
+      this.logger.error('Decryption failed (no sensitive details logged per PCI).');
       throw new Error('Failed to decrypt data');
     }
   }

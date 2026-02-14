@@ -27,13 +27,49 @@ export class CreateBookingUseCase {
       );
     }
 
-    // Calculate pricing
-    const pricing = this.markupCalculationService.calculateTotal(
-      dto.basePrice,
-      dto.productType,
-      dto.currency,
-      markupConfig,
-    );
+    let pricing: {
+      basePrice: number;
+      markupAmount: number;
+      serviceFee: number;
+      totalAmount: number;
+    };
+    let bookingData = { ...dto.bookingData };
+
+    // Amadeus hotel via generic POST /bookings: frontend often sends final_price as basePrice.
+    // Treat it as final total and reverse-calculate so we don't double-add markup.
+    const isAmadeusHotel =
+      dto.productType === 'HOTEL' && (dto.provider as string) === 'AMADEUS';
+    if (isAmadeusHotel) {
+      const serviceFee = markupConfig.serviceFeeAmount || 0;
+      const markupPct = markupConfig.markupPercentage || 0;
+      const baseFromFinal = (dto.basePrice - serviceFee) / (1 + markupPct / 100);
+      if (baseFromFinal > 0) {
+        pricing = this.markupCalculationService.calculateTotal(
+          baseFromFinal,
+          dto.productType,
+          dto.currency,
+          markupConfig,
+        );
+        // Normalize: store amadeus_offer_id for webhook (createAmadeusBookingAfterPayment)
+        if (bookingData.offerId && !bookingData.amadeus_offer_id) {
+          bookingData = { ...bookingData, amadeus_offer_id: bookingData.offerId };
+        }
+      } else {
+        pricing = this.markupCalculationService.calculateTotal(
+          dto.basePrice,
+          dto.productType,
+          dto.currency,
+          markupConfig,
+        );
+      }
+    } else {
+      pricing = this.markupCalculationService.calculateTotal(
+        dto.basePrice,
+        dto.productType,
+        dto.currency,
+        markupConfig,
+      );
+    }
 
     // Create booking with calculated amounts
     const booking = await this.bookingService.createBooking({
@@ -46,7 +82,7 @@ export class CreateBookingUseCase {
       serviceFee: pricing.serviceFee,
       totalAmount: pricing.totalAmount,
       currency: dto.currency,
-      bookingData: dto.bookingData,
+      bookingData,
       passengerInfo: dto.passengerInfo,
       status: BookingStatus.PENDING,
       paymentStatus: 'PENDING',

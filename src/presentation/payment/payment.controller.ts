@@ -16,6 +16,7 @@ import { Public } from '@common/decorators/public.decorator';
 import { CreatePaymentIntentUseCase } from '@application/payment/use-cases/create-payment-intent.use-case';
 import { CreateGuestPaymentIntentUseCase } from '@application/payment/use-cases/create-guest-payment-intent.use-case';
 import { HandleStripeWebhookUseCase } from '@application/payment/use-cases/handle-stripe-webhook.use-case';
+import { ChargeAmadeusHotelMarginUseCase } from '@application/payment/use-cases/charge-amadeus-hotel-margin.use-case';
 import { StripeService } from '@domains/payment/services/stripe.service';
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { CreateGuestPaymentIntentDto } from './dto/create-guest-payment-intent.dto';
@@ -27,17 +28,58 @@ export class PaymentController {
     private readonly createPaymentIntentUseCase: CreatePaymentIntentUseCase,
     private readonly createGuestPaymentIntentUseCase: CreateGuestPaymentIntentUseCase,
     private readonly handleStripeWebhookUseCase: HandleStripeWebhookUseCase,
+    private readonly chargeAmadeusHotelMarginUseCase: ChargeAmadeusHotelMarginUseCase,
     private readonly stripeService: StripeService,
   ) {}
 
   @Post('stripe/create-intent')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create Stripe payment intent for a booking (authenticated user)' })
+  @ApiOperation({
+    summary: 'Create Stripe payment intent for a booking (authenticated user)',
+    description: 'Optionally include voucherCode to apply discount. Voucher must be validated first.',
+  })
   @ApiBody({ type: CreatePaymentIntentDto })
   async createPaymentIntent(@Request() req, @Body() dto: CreatePaymentIntentDto) {
     // Authenticated users create payment intents by booking ID
-    return this.createPaymentIntentUseCase.execute(dto.bookingId);
+    return this.createPaymentIntentUseCase.execute(dto.bookingId, dto.voucherCode, req.user.id);
+  }
+
+  @Post('amadeus-hotel/charge-margin')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'One-step Amadeus hotel payment (server-side, authenticated)',
+    description:
+      'After creating an Amadeus hotel booking with card (POST /bookings/hotels/bookings/amadeus), ' +
+      'call this to create the Amadeus order and charge the margin (markup + service fee) via Stripe with the same card. ' +
+      'No second card entry or Stripe Elements on the frontend.',
+  })
+  @ApiBody({ schema: { type: 'object', required: ['bookingId'], properties: { bookingId: { type: 'string' } } } })
+  async chargeAmadeusHotelMargin(@Request() req, @Body() body: { bookingId: string }) {
+    return this.chargeAmadeusHotelMarginUseCase.execute(body.bookingId, req.user.id);
+  }
+
+  @Post('amadeus-hotel/charge-margin/guest')
+  @Public()
+  @ApiOperation({
+    summary: 'One-step Amadeus hotel payment (guest, no authentication)',
+    description:
+      'For guest Amadeus hotel bookings. Call with booking reference and email (must match lead guest). ' +
+      'Creates the Amadeus order and charges the margin via Stripe with the stored card. One card entry.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['bookingReference', 'email'],
+      properties: { bookingReference: { type: 'string' }, email: { type: 'string', format: 'email' } },
+    },
+  })
+  async chargeAmadeusHotelMarginGuest(@Body() body: { bookingReference: string; email: string }) {
+    return this.chargeAmadeusHotelMarginUseCase.executeByReferenceAndEmail(
+      body.bookingReference,
+      body.email,
+    );
   }
 
   @Post('stripe/create-intent/guest')

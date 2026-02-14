@@ -40,6 +40,7 @@ export class StripeService {
         },
         automatic_payment_methods: {
           enabled: true,
+          allow_redirects: 'never', // Server-side card confirmation only; no redirect-based methods (e.g. some 3DS)
         },
       });
 
@@ -114,6 +115,41 @@ export class StripeService {
         `Webhook signature verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
     }
+  }
+
+  /**
+   * Create a PaymentMethod from card details (server-side).
+   * Use only when you already have the card for another charge (e.g. Amadeus); prefer Stripe.js when possible.
+   * Card expiry: YYYY-MM string → exp_month (1-12), exp_year (e.g. 2026).
+   */
+  async createPaymentMethodFromCard(card: {
+    number: string;
+    exp_month: number;
+    exp_year: number;
+    cvc?: string;
+  }): Promise<Stripe.PaymentMethod> {
+    const params: Stripe.PaymentMethodCreateParams = {
+      type: 'card',
+      card: {
+        number: card.number.replace(/\s/g, ''),
+        exp_month: card.exp_month,
+        exp_year: card.exp_year,
+        cvc: card.cvc,
+      },
+    };
+    return await this.stripe.paymentMethods.create(params);
+  }
+
+  /**
+   * Confirm a PaymentIntent with an existing PaymentMethod (server-side).
+   */
+  async confirmPaymentIntent(
+    paymentIntentId: string,
+    paymentMethodId: string,
+  ): Promise<Stripe.PaymentIntent> {
+    return await this.stripe.paymentIntents.confirm(paymentIntentId, {
+      payment_method: paymentMethodId,
+    });
   }
 
   /**

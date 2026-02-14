@@ -8,6 +8,7 @@ import {
   IsEmail,
   Matches,
   IsNumber,
+  IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -217,13 +218,15 @@ export class CreateAmadeusHotelBookingDto {
   @Type(() => AmadeusRoomAssociationDto)
   roomAssociations: AmadeusRoomAssociationDto[];
 
-  @ApiProperty({
-    description: 'Payment information',
+  @ApiPropertyOptional({
+    description:
+      'Payment card (guest card). Omit when using merchant payment model: customer pays via Stripe only, agency pays Amadeus.',
     type: AmadeusPaymentDto,
   })
+  @IsOptional()
   @ValidateNested()
   @Type(() => AmadeusPaymentDto)
-  payment: AmadeusPaymentDto;
+  payment?: AmadeusPaymentDto;
 
   @ApiPropertyOptional({
     description: 'Travel agent contact email (optional)',
@@ -240,5 +243,44 @@ export class CreateAmadeusHotelBookingDto {
   @IsOptional()
   @IsString()
   accommodationSpecialRequests?: string;
+
+  // BOOKING_OPERATIONS_AND_RISK: required at checkout for dispute defense
+  @ApiProperty({
+    description: 'Cancellation deadline in UTC (ISO 8601). e.g. "2026-02-14T23:59:00.000Z"',
+    example: '2026-02-14T23:59:00.000Z',
+  })
+  @IsString()
+  @IsNotEmpty()
+  cancellationDeadline: string;
+
+  @ApiProperty({
+    description:
+      'Exact cancellation policy text shown at checkout (snapshot for dispute evidence). Must match what the guest saw.',
+    example: 'Free cancellation until 14 Feb 2026 23:59 UTC. Non-refundable after that.',
+  })
+  @IsString()
+  @IsNotEmpty()
+  cancellationPolicySnapshot: string;
+
+  @ApiProperty({
+    description: 'Guest must confirm they agree to the cancellation and no-show policy (required)',
+    example: true,
+  })
+  @IsBoolean()
+  policyAccepted: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Client IP (set by server from request; used for dispute evidence)',
+  })
+  @IsOptional()
+  @IsString()
+  clientIp?: string;
+
+  @ApiPropertyOptional({
+    description: 'User agent (set by server from request; used for dispute evidence)',
+  })
+  @IsOptional()
+  @IsString()
+  userAgent?: string;
 }
 

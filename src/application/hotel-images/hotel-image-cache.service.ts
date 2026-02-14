@@ -258,6 +258,28 @@ export class HotelImageCacheService {
   }
 
   /**
+   * Get primary (first) image URL per hotel from cache only (no Google/Cloudinary).
+   * Used to attach primaryImageUrl to search/list responses when we already have cached images.
+   */
+  async getPrimaryImageUrls(hotelIds: string[]): Promise<Record<string, string>> {
+    if (!hotelIds.length) return {};
+    const now = new Date();
+    const rows = await this.prisma.hotelImage.findMany({
+      where: {
+        hotelId: { in: hotelIds },
+        expiresAt: { gt: now },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { hotelId: true, imageUrl: true },
+    });
+    const map: Record<string, string> = {};
+    for (const row of rows) {
+      if (!map[row.hotelId]) map[row.hotelId] = row.imageUrl;
+    }
+    return map;
+  }
+
+  /**
    * Check if Google Places API is available and configured
    */
   private async isGooglePlacesAvailable(): Promise<boolean> {

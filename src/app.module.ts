@@ -23,6 +23,9 @@ import { UsageTrackingModule } from './infrastructure/usage-tracking/usage-track
 import { BookingModule } from './domains/booking/booking.module';
 import { PaymentModule } from './domains/payment/payment.module';
 import { MarkupModule } from './domains/markup/markup.module';
+import { LoyaltyModule } from './domains/loyalty/loyalty.module';
+import { SavedItemsModule } from './domains/saved-items/saved-items.module';
+import { SavedTravelersModule } from './domains/saved-travelers/saved-travelers.module';
 
 // Application
 import { BookingApplicationModule } from './application/booking/booking-application.module';
@@ -69,6 +72,9 @@ import { DashboardController } from './presentation/dashboard/dashboard.controll
     BookingModule,
     PaymentModule,
     MarkupModule,
+    LoyaltyModule,
+    SavedItemsModule,
+    SavedTravelersModule,
 
     // Application
     BookingApplicationModule,

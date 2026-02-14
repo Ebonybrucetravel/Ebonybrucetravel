@@ -1,6 +1,8 @@
 import { Injectable, Logger, HttpException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/database/prisma.service';
 import { StripeService } from '@domains/payment/services/stripe.service';
+import { LoyaltyService } from '@domains/loyalty/loyalty.service';
+import { VoucherService } from '@domains/loyalty/voucher.service';
 import { CreateDuffelOrderUseCase } from '@application/booking/use-cases/create-duffel-order.use-case';
 import { CreateAmadeusHotelBookingUseCase } from '@application/booking/use-cases/create-amadeus-hotel-booking.use-case';
 import { CreateCarRentalBookingUseCase } from '@application/booking/use-cases/create-car-rental-booking.use-case';
@@ -15,6 +17,8 @@ export class HandleStripeWebhookUseCase {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stripeService: StripeService,
+    private readonly loyaltyService: LoyaltyService,
+    private readonly voucherService: VoucherService,
     private readonly createDuffelOrderUseCase: CreateDuffelOrderUseCase,
     private readonly createAmadeusHotelBookingUseCase: CreateAmadeusHotelBookingUseCase,
     private readonly createCarRentalBookingUseCase: CreateCarRentalBookingUseCase,
@@ -85,8 +89,13 @@ export class HandleStripeWebhookUseCase {
       return; // DO NOT process if we can't verify - this is a security requirement
     }
 
+    const chargeId =
+      typeof paymentIntent.latest_charge === 'string'
+        ? paymentIntent.latest_charge
+        : (paymentIntent.latest_charge as any)?.id ?? null;
+
     try {
-      // First, update booking payment status
+      // First, update booking payment status and store Stripe charge ID for dispute evidence
       const booking = await this.prisma.booking.update({
         where: { id: bookingId },
         include: {
@@ -101,25 +110,68 @@ export class HandleStripeWebhookUseCase {
         data: {
           paymentStatus: 'COMPLETED',
           status: 'CONFIRMED',
+          ...(chargeId && { stripeChargeId: chargeId }),
           paymentInfo: {
             paymentIntentId: paymentIntent.id,
             amount: paymentIntent.amount,
             currency: paymentIntent.currency,
             status: paymentIntent.status,
             paidAt: new Date(),
-            verified: true, // Flag to indicate we verified with Stripe
+            verified: true,
+            ...(chargeId && { chargeId }),
           },
         },
       });
 
       this.logger.log(`Booking ${bookingId} payment confirmed`);
 
-      // Send booking confirmation and payment receipt emails
+      // Mark voucher as used if one was applied
+      if (booking.voucherId) {
+        this.voucherService
+          .markVoucherAsUsed(booking.voucherId, bookingId)
+          .then(() => {
+            this.logger.log(`Voucher ${booking.voucherId} marked as used for booking ${bookingId}`);
+          })
+          .catch((error) => {
+            this.logger.error(`Failed to mark voucher as used for booking ${bookingId}:`, error);
+            // Don't throw - voucher marking failure shouldn't break the webhook
+          });
+      }
+
+      // Award loyalty points for the completed booking
       // Process asynchronously to avoid blocking webhook response
-      this.sendBookingEmails(booking, paymentIntent).catch((error) => {
-        this.logger.error(`Failed to send booking emails for ${bookingId}:`, error);
-        // Don't throw - email failure shouldn't break the webhook
-      });
+      this.loyaltyService
+        .earnPointsFromBooking(
+          booking.userId,
+          bookingId,
+          booking.productType,
+          Number(booking.totalAmount),
+          booking.currency,
+        )
+        .then(({ pointsEarned, newBalance }) => {
+          if (pointsEarned > 0) {
+            this.logger.log(
+              `Awarded ${pointsEarned} loyalty points to user ${booking.userId} for booking ${bookingId}. Balance: ${newBalance}`,
+            );
+          }
+        })
+        .catch((error) => {
+          this.logger.error(`Failed to award loyalty points for booking ${bookingId}:`, error);
+          // Don't throw - loyalty failure shouldn't break the webhook
+        });
+
+      // Send booking confirmation and payment receipt emails
+      // Process asynchronously to avoid blocking webhook response; log send time for dispute evidence
+      this.sendBookingEmails(booking, paymentIntent)
+        .then(() =>
+          this.prisma.booking.update({
+            where: { id: bookingId },
+            data: { confirmationEmailSentAt: new Date() },
+          }),
+        )
+        .catch((error) => {
+          this.logger.error(`Failed to send booking emails for ${bookingId}:`, error);
+        });
 
       // If this is a Duffel flight booking, create the Duffel order
       if (
@@ -408,7 +460,7 @@ export class HandleStripeWebhookUseCase {
         bookingDetails.dropoffDateTime = bookingData.dropoffDateTime || bookingData.dropoff_date_time;
       }
 
-      // Send booking confirmation email
+      // Send booking confirmation email (with cancellation/no-show for hotels per BOOKING_OPERATIONS_AND_RISK)
       await this.resendService.sendBookingConfirmationEmail({
         to: user.email,
         customerName: user.name || passengerInfo?.firstName || 'Valued Customer',
@@ -425,6 +477,12 @@ export class HandleStripeWebhookUseCase {
         },
         confirmationDate: new Date(),
         bookingId: booking.id,
+        cancellationDeadline: (booking as any).cancellationDeadline ?? undefined,
+        cancellationPolicySummary: (booking as any).cancellationPolicySnapshot ?? undefined,
+        noShowWording:
+          (booking as any).productType === 'HOTEL'
+            ? 'In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.'
+            : undefined,
       });
 
       // Send payment receipt email

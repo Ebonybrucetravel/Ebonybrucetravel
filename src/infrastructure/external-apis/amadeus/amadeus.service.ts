@@ -1,5 +1,6 @@
 import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { redactCardFromString } from '@common/utils/pci-redaction.util';
 
 @Injectable()
 export class AmadeusService {
@@ -117,6 +118,7 @@ export class AmadeusService {
 
       if (!response.ok) {
         const errorText = await response.text();
+        this.logger.warn(`Amadeus API error ${response.status} ${endpoint}: ${redactCardFromString(errorText, 500)}`);
         let errorMessage = `Amadeus API error: ${response.status}`;
         let errorDetails: any[] = [];
 
@@ -137,10 +139,10 @@ export class AmadeusService {
             const firstError = errorJson.errors[0];
             errorMessage = firstError.detail || firstError.title || errorMessage;
           } else {
-            errorMessage += ` - ${errorText}`;
+            errorMessage += ` - ${redactCardFromString(errorText, 200)}`;
           }
         } catch {
-          errorMessage += ` - ${errorText}`;
+          errorMessage += ` - ${redactCardFromString(errorText, 200)}`;
         }
 
         // Map HTTP status codes based on Amadeus error codes
@@ -333,24 +335,31 @@ export class AmadeusService {
       hotelOfferId: room.hotelOfferId,
     }));
 
-    // Build request body
+    // Amadeus v2 requires travelAgent. Use only request or configured agency email (never guest email).
+    const travelAgentEmail =
+      params.travelAgentEmail ||
+      this.configService.get<string>('AMADEUS_TRAVEL_AGENT_EMAIL');
+
+    if (!travelAgentEmail?.trim()) {
+      throw new HttpException(
+        'Amadeus requires a travel agent contact. Set AMADEUS_TRAVEL_AGENT_EMAIL in env or send travelAgentEmail in the booking request.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
     const requestBody: any = {
       data: {
         type: 'hotel-order',
         guests: amadeusGuests,
         roomAssociations: amadeusRoomAssociations,
         payment: params.payment,
+        travelAgent: {
+          contact: {
+            email: travelAgentEmail.trim(),
+          },
+        },
       },
     };
-
-    // Add travel agent if provided
-    if (params.travelAgentEmail) {
-      requestBody.data.travelAgent = {
-        contact: {
-          email: params.travelAgentEmail,
-        },
-      };
-    }
 
     return this.makeRequest('/v2/booking/hotel-orders', {
       method: 'POST',
@@ -572,12 +581,10 @@ export class AmadeusService {
       startLocationCode: params.originLocationCode, // API expects startLocationCode (not originLocationCode)
       passengers: params.passengers,
     };
-    
-    // Add end location if provided (for one-way transfers)
-    // If not provided and same as start, API will treat as round trip
-    if (params.destinationLocationCode && params.destinationLocationCode !== params.originLocationCode) {
-      requestBody.endLocationCode = params.destinationLocationCode;
-    }
+
+    // Amadeus requires endLocationCode (drop-off). For round-trip use same as start; for one-way use destination.
+    requestBody.endLocationCode =
+      params.destinationLocationCode ?? params.originLocationCode;
     
     // Add transfer type if specified (defaults to all types if not specified)
     if (params.transferType) {

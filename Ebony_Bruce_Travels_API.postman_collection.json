@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "ebony-bruce-travels-api-v2",
 		"name": "Ebony Bruce Travels API",
-		"description": "Complete API collection for Ebony Bruce Travels Booking System\n\n**Base URL:** `{{baseUrl}}/api/v1`\n\n**Authentication:** Most endpoints require JWT Bearer token. Get token from `/auth/login` or `/auth/register`.\n\n**Environment Variables:**\n- `baseUrl`: http://localhost:3001 (or your Railway URL)\n- `token`: JWT token (auto-set after login)\n- `offerRequestId`: Duffel offer request ID (auto-set after flight search)\n- `offerId`: Selected flight offer ID (auto-set after listing offers)\n- `nextCursor`: Pagination cursor for next page (auto-set)\n- `bookingId`: Booking ID (auto-set after creating booking)\n\n**New Features (v2.0):**\n- ✅ Email verification on registration\n- ✅ Password reset/forgot password flow\n- ✅ Rate limiting (login: 5/min, register: 3/min)\n- ✅ Delayed login notification emails (10-20 min security feature)\n- ✅ Health check endpoints\n- ✅ Request correlation IDs\n- ✅ Audit logging for sensitive operations\n- ✅ OAuth (Facebook/Google) with graceful fallback\n\n---\n\n## 📋 API Sections\n\n### 1. Authentication\n- **Register User** - Create new account (sends verification email)\n- **Login** - Get JWT token (triggers delayed security notification)\n- **Forgot Password** - Request password reset email\n- **Reset Password** - Reset password with token\n- **Verify Email** - Verify email address with token\n- **Facebook OAuth** - Social login with Facebook\n- **Google OAuth** - Social login with Google\n\n### 2. User Profile\n- **Get My Profile** - Retrieve current user profile\n- **Update Profile** - Update profile information\n- **Upload Profile Image** - Upload profile picture to Cloudinary\n- **Change Password** - Change password (email/password accounts only)\n- **Delete Account** - Soft delete account\n\n### 3. Health Check\n- **Health Check** - Service health status\n- **Database Health** - Database connection status\n\n### 4. Flight Search & Offers\n- **Search Flights** - Get `offer_request_id` (Step 1 of two-step process)\n- **List Offers** - Get paginated flight offers using `offer_request_id` (Step 2)\n  - Works identically for **one-way and round-trip** searches\n  - Same `offerRequestId` is used; each offer contains both outbound and return slices when `returnDate` is provided\n\n### 5. Bookings\n- **Create Booking** - Create a new booking (authenticated users)\n- **Create Guest Booking** - Create booking without account\n- **Get Booking** - Retrieve booking details by ID\n\n### 6. Payments\n- **Create Payment Intent** - Create Stripe payment intent for a booking\n- **Create Guest Payment Intent** - Create payment intent for guest booking\n- **Stripe Webhook** - Handle payment events\n\n### 7. Hotels & Images\n- **Hotels - Amadeus (Recommended)** - Search and book hotels via Amadeus, with server-side pagination and advanced filters\n- **Hotels - Duffel** - Duffel Stays endpoints (if enabled on your Duffel account)\n- **Hotels - Common Operations** - List/Get/Cancel hotel bookings for both providers\n- **Hotel Images** - Google Places + Cloudinary caching with graceful fallback and usage stats\n\n---\n\n## 🚀 Quick Start Guide\n\n### Step 1: Authentication\n1. **Register** or **Login** to get JWT token\n2. Token is automatically saved to `{{token}}` environment variable\n3. **Verify Email** after registration (check email for verification link)\n4. **Login** triggers delayed security notification email (10-20 min)\n\n### Step 2: Flight Search (Two-Step Process)\n1. **Search Flights** → Get `offer_request_id` (no auth required)\n   - Returns immediately (2-3 seconds)\n   - Cached for 10 minutes\n2. **List Offers** → Get paginated flights using `offer_request_id`\n   - Returns 20 offers per page\n   - Markup automatically applied\n   - Use `nextCursor` for pagination\n\n### Step 3: Create Booking\n1. Select an offer from List Offers response\n2. **Create Booking** with offer details\n3. Booking ID is saved to `{{bookingId}}`\n\n### Step 4: Payment\n1. **Create Payment Intent** using booking ID\n2. Returns `clientSecret` for Stripe Checkout\n3. Webhook automatically updates booking status on payment\n\n### Step 5: Manage Profile\n1. **Get My Profile** to view current information\n2. **Update Profile** to change name, phone, dateOfBirth, gender\n3. **Upload Profile Image** to set profile picture\n4. **Change Password** if needed (email/password accounts only)\n\n### Step 6: Hotels (Amadeus Flow)\n1. **Search Hotels (Amadeus)** → Get hotel offers and `hotelId` / `offer.id`\n2. **Create Hotel Booking (Amadeus)** → Store booking + encrypted card details\n3. **Create Payment Intent** → Stripe payment for hotel booking\n4. **Stripe Webhook** → Automatically creates Amadeus hotel order after payment\n5. **Get Hotel Booking** → Retrieve details from Amadeus via unified booking endpoints\n6. **Get Hotel Images** → Show cached or fallback images for search/detail pages\n\n---\n\n## 🔒 Security Features\n\n### Rate Limiting\n- **Login**: 5 requests per minute\n- **Register**: 3 requests per minute\n- **Forgot Password**: 3 requests per minute\n- **Reset Password**: 5 requests per minute\n- **Global**: 100 requests per minute (other endpoints)\n\n### Email Verification\n- New registrations receive verification email\n- Email must be verified (optional, but recommended)\n- Verification token expires in 24 hours\n\n### Password Reset\n- Forgot password sends reset email\n- Reset token expires in 1 hour\n- Security: Doesn't reveal if email exists\n\n### Login Notifications\n- Delayed email notification (10-20 minutes after login)\n- Includes IP address and device information\n- Link to change password if suspicious activity\n- Helps detect unauthorized access\n\n### Audit Logging\n- Password changes are logged\n- Account deletions are logged\n- Includes IP address and user agent\n- Stored in `audit_logs` table\n\n---\n\n## 🔍 Flight Search Flow (Why Two Requests?)\n\n**Step 1: Search** - Get `offer_request_id` (fast, 2-3 seconds)\n- Duffel searches airlines in background\n- Returns immediately with search ID\n- Cached for 10 minutes\n\n**Step 2: List Offers** - Use `offer_request_id` to get flights (fast, 1 second)\n- Paginated results (20 per page)\n- Markup applied automatically\n- Cached for 2 minutes\n- Works for **one-way and round-trip** searches; offers for round-trips include both slices (outbound + return) in a single priced offer\n\n**Benefits:**\n- ⚡ Faster user experience (3-4 seconds vs 20+ seconds)\n- 📄 Pagination (don't load 500 flights at once)\n- 💾 Caching (reuse searches, reduce costs)\n- 💰 Cost-effective (fetch only what you need)\n\n---\n\n## 💳 Payment Flow\n\n1. **Create Booking** → Get `bookingId`\n2. **Create Payment Intent** → Get `clientSecret`\n3. Use `clientSecret` with Stripe.js on frontend\n4. Stripe sends webhook events to `/payments/stripe/webhook`\n5. Booking status automatically updates:\n   - `payment_intent.succeeded` → Booking status: `CONFIRMED`\n   - `payment_intent.payment_failed` → Booking status: `FAILED`\n   - `charge.refunded` → Booking status: `REFUNDED`\n\n---\n\n## 👤 User Profile Fields\n\n**Editable:**\n- `name` - Full name\n- `phone` - Phone number\n- `dateOfBirth` - Date of birth (YYYY-MM-DD format)\n- `gender` - Gender (Male, Female, Other, Prefer not to say)\n- `image` - Profile picture (via upload endpoint)\n\n**Read-only:**\n- `email` - Cannot be changed (security)\n- `emailVerified` - Email verification status\n- `role` - Set by system\n- `id` - Unique identifier\n\n---\n\n## 📝 Testing Tips\n\n- Search endpoint returns `offer_request_id` (not offers)\n- Use List Offers endpoint to get actual flight options (one-way and round-trip)\n- Use `nextCursor` from response to paginate\n- Check `cached` field to see if result was from cache\n- All profile endpoints require authentication\n- Image upload accepts: jpg, jpeg, png, gif, webp (max 5MB)\n- Payment webhook requires Stripe webhook secret for signature verification\n- Rate limiting: If you get 429, wait a minute before retrying\n- Check health endpoint: `GET /api/v1/health` to verify service status\n- Correlation IDs: Check `X-Correlation-ID` header in responses for request tracking",
+		"description": "Complete API collection for Ebony Bruce Travels Booking System\n\n**Base URL:** `{{baseUrl}}/api/v1`\n\n**Authentication:** Most endpoints require JWT Bearer token. Get token from `/auth/login` or `/auth/register`.\n\n**Environment Variables:**\n- `baseUrl`: http://localhost:3001 (or your Railway URL)\n- `token`: JWT token (auto-set after login)\n- `userId`: User ID (auto-set after login)\n- `offerRequestId`: Duffel offer request ID (auto-set after flight search)\n- `offerId`: Selected flight offer ID (auto-set after listing offers)\n- `nextCursor`: Pagination cursor for next page (auto-set)\n- `bookingId`: Booking ID (auto-set after creating booking)\n- `voucherCode`: Voucher code (auto-set after redeeming loyalty points)\n- `setupIntentClientSecret`: Stripe SetupIntent secret (auto-set after payment method setup)\n\n**Features (v3.0 - Complete):**\n- Authentication (register, login, OAuth, password reset, email verification)\n- User Profile (CRUD, avatar, password change, soft delete)\n- Loyalty Points System (earn, redeem, tiers, transactions)\n- Rewards & Vouchers (admin-configurable rules, percentage/fixed discounts)\n- Saved Payment Methods (PCI-compliant via Stripe tokenization)\n- Saved Items / Wishlist (hotels, flights, car rentals)\n- Saved Travelers (passport, nationality, frequent flyer)\n- User Dashboard (aggregated profile data)\n- Flight Search (Duffel - two-step with pagination)\n- Hotel Search & Booking (Amadeus recommended + Duffel)\n- Car Rental Search & Booking (Amadeus Transfers)\n- Payments (Stripe with voucher support)\n- Admin Management (users, bookings, rewards, audit logs, dashboard)\n- Health Check endpoints\n- Rate Limiting, CORS, Correlation IDs\n\n---\n\n## API Sections\n\n### 1. Authentication\nRegister, Login, OAuth (Facebook/Google), Password Reset, Email Verification, Logout\n\n### 2. User Profile\nGet/Update Profile, Upload Avatar, Change Password, Delete Account\n\n### 3. Loyalty & Rewards\nGet Loyalty Account, Transaction History, Available Rewards, Redeem Points, Validate/Get Vouchers\n\n### 4. Saved Payment Methods\nSetup (Stripe SetupIntent), Confirm, List, Set Default, Delete\n\n### 5. Saved Items (Wishlist)\nSave/Unsave Items, Toggle, Check Status, Get Counts, Update Notes\n\n### 6. Saved Travelers\nCreate/List/Get/Update/Delete Travelers, Batch Fetch\n\n### 7. User Dashboard\nAggregated profile data (loyalty, bookings, stats) in single call\n\n### 8. Health Check\nService health, Database health\n\n### 9. Flight Search & Offers\nTwo-step search (offer_request_id -> paginated offers)\n\n### 10. Bookings\nCreate (auth/guest), List, Get, Cancel\n\n### 11. Payments\nCreate Payment Intent (with optional voucher), Guest Payment Intent, Stripe Webhook\n\n### 12. Hotels\nAmadeus (recommended), Duffel, Common Operations, Images\n\n### 13. Car Rentals\nSearch, Create Booking, Cancel\n\n### 14. Flight Utilities\nPlace Suggestions, Airlines List\n\n### 15. Admin\nUser Management, Booking Management, Rewards Management, Audit Logs, Dashboard\n\n---\n\n## Quick Start Guide\n\n### Step 1: Authentication\n1. Register or Login to get JWT token\n2. Token auto-saved to `{{token}}`\n\n### Step 2: Initial Setup (Admin - Run Once)\n1. Seed loyalty tiers: `POST /admin/rewards/tiers/seed-defaults`\n2. Seed earning rules: `POST /admin/rewards/earning-rules/seed-defaults`\n3. Create reward rules: `POST /admin/rewards/rules`\n\n### Step 3: Search & Book\n1. Search flights/hotels/cars\n2. Create booking with offer details\n3. Optionally validate and apply voucher\n4. Create payment intent (with optional `voucherCode`)\n5. Complete payment via Stripe.js\n6. Webhook confirms booking + awards loyalty points\n\n### Step 4: Profile Features\n1. Check loyalty points: `GET /users/me/loyalty`\n2. Save items to wishlist: `POST /users/me/saved-items`\n3. Add travelers: `POST /users/me/travelers`\n4. Save payment methods: `POST /users/me/payment-methods/setup`\n5. View dashboard: `GET /users/me/dashboard`\n\n---\n\n## Loyalty & Voucher Flow\n\n1. **Earn Points**: Automatically on completed bookings (via webhook)\n2. **Check Balance**: `GET /users/me/loyalty`\n3. **Browse Rewards**: `GET /users/me/loyalty/available-rewards`\n4. **Redeem Points**: `POST /users/me/loyalty/redeem` -> Get voucher code\n5. **Validate Voucher**: `POST /users/me/vouchers/validate`\n6. **Apply at Payment**: `POST /payments/stripe/create-intent` with `voucherCode`\n7. **Auto-Complete**: Webhook marks voucher USED, awards points on new booking\n\n**Tiers:** BRONZE (1x) -> SILVER (1.5x) -> GOLD (2x) -> PLATINUM (3x)\n\n---\n\n## Payment Flow\n\n1. **Create Booking** -> Get `bookingId`\n2. **Optional: Validate Voucher** -> Preview discount\n3. **Create Payment Intent** -> Get `clientSecret` (with optional `voucherCode`)\n4. Use `clientSecret` with Stripe.js on frontend\n5. Webhook updates booking + awards loyalty points + marks voucher used\n\n---\n\n## Security\n\n- Rate limiting on auth endpoints\n- JWT authentication\n- PCI-compliant payment method storage (Stripe tokenization)\n- AES-256-GCM encryption for hotel card details\n- Audit logging for admin actions\n- CORS configuration\n- Request correlation IDs\n- Email verification\n- Delayed login notifications",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -736,6 +736,621 @@
 				}
 			],
 			"description": "User profile management endpoints.\n\n**All endpoints require authentication.**\n\n**Features:**\n- Get profile information\n- Update profile (name, phone, date of birth, gender)\n- Upload profile image to Cloudinary\n- Change password (email/password accounts only)\n- Delete account (soft delete)\n\n**Security & Audit:**\n- Password changes are logged to audit table\n- Account deletions are logged to audit table\n- Includes IP address and user agent in audit logs\n\n**Note:** Email cannot be changed (security requirement). OAuth users cannot change password."
+		},
+		{
+			"name": "Loyalty & Rewards",
+			"item": [
+				{
+					"name": "Get My Loyalty Account",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/loyalty",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "loyalty"]
+						},
+						"description": "**Get current user's loyalty account details.**\n\n**Authentication required.**\n\n**Response:**\n```json\n{\n  \"id\": \"loyalty-account-id\",\n  \"userId\": \"user-id\",\n  \"points\": 2500,\n  \"lifetimePoints\": 5000,\n  \"tier\": \"SILVER\",\n  \"tierName\": \"Silver\",\n  \"tierMultiplier\": 1.5,\n  \"nextTier\": \"GOLD\",\n  \"pointsToNextTier\": 2500,\n  \"createdAt\": \"2026-01-01T00:00:00.000Z\"\n}\n```\n\n**Fields:**\n- `points`: Current available points (can be redeemed)\n- `lifetimePoints`: Total points earned (used for tier calculation)\n- `tier`: Current loyalty tier (BRONZE, SILVER, GOLD, PLATINUM)\n- `tierMultiplier`: Points earning multiplier for current tier\n- `nextTier`: Next tier to achieve\n- `pointsToNextTier`: Points needed to reach next tier\n\n**Note:** Account is auto-created on first access."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Loyalty Transactions",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/loyalty/transactions",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "loyalty", "transactions"]
+						},
+						"description": "**Get loyalty points transaction history.**\n\n**Authentication required.**\n\n**Response:**\nArray of transactions:\n```json\n[\n  {\n    \"id\": \"tx-id\",\n    \"type\": \"EARN\",\n    \"points\": 500,\n    \"description\": \"Points earned from booking EBT-20260212-ABC123\",\n    \"bookingId\": \"booking-id\",\n    \"createdAt\": \"2026-02-12T10:00:00.000Z\"\n  },\n  {\n    \"id\": \"tx-id-2\",\n    \"type\": \"REDEEM\",\n    \"points\": -1000,\n    \"description\": \"Redeemed for 10% discount voucher\",\n    \"createdAt\": \"2026-02-10T10:00:00.000Z\"\n  }\n]\n```\n\n**Transaction Types:**\n- `EARN` - Points earned from bookings\n- `REDEEM` - Points spent on vouchers/rewards\n- `BONUS` - Bonus points (admin-adjusted)\n- `EXPIRE` - Points expired\n- `ADJUSTMENT` - Manual adjustment by admin"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Available Rewards",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/loyalty/available-rewards",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "loyalty", "available-rewards"]
+						},
+						"description": "**Get rewards available for redemption with current points.**\n\n**Authentication required.**\n\n**Response:**\n```json\n[\n  {\n    \"id\": \"rule-id\",\n    \"name\": \"10% Discount Voucher\",\n    \"description\": \"Get 10% off your next booking\",\n    \"pointsCost\": 1000,\n    \"discountType\": \"PERCENTAGE\",\n    \"discountValue\": 10,\n    \"maxDiscountAmount\": 100,\n    \"applicableProductTypes\": [\"FLIGHT_INTERNATIONAL\", \"HOTEL\"],\n    \"isActive\": true,\n    \"canAfford\": true\n  },\n  {\n    \"id\": \"rule-id-2\",\n    \"name\": \"$50 Off Voucher\",\n    \"pointsCost\": 2500,\n    \"discountType\": \"FIXED\",\n    \"discountValue\": 50,\n    \"applicableProductTypes\": null,\n    \"isActive\": true,\n    \"canAfford\": false\n  }\n]\n```\n\n**Discount Types:**\n- `PERCENTAGE` - Percentage off booking total (e.g., 10%)\n- `FIXED` - Fixed amount off (e.g., $50)\n\n**Note:** `canAfford` indicates if user has enough points."
+					},
+					"response": []
+				},
+				{
+					"name": "Redeem Points for Voucher",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200 || pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    if (response.voucher && response.voucher.code) {",
+									"        pm.environment.set('voucherCode', response.voucher.code);",
+									"        console.log('Voucher code saved:', response.voucher.code);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"rewardRuleId\": \"reward-rule-id-from-available-rewards\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/loyalty/redeem",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "loyalty", "redeem"]
+						},
+						"description": "**Redeem loyalty points for a voucher/discount.**\n\n**Authentication required.**\n\n**Request Body:**\n- `rewardRuleId` (string, required): ID of the reward rule to redeem. Get from `GET /api/v1/users/me/loyalty/available-rewards`.\n\n**Response:**\n```json\n{\n  \"voucher\": {\n    \"id\": \"voucher-id\",\n    \"code\": \"EBT-V-ABC123\",\n    \"discountType\": \"PERCENTAGE\",\n    \"discountValue\": 10,\n    \"maxDiscountAmount\": 100,\n    \"expiresAt\": \"2026-03-12T00:00:00.000Z\",\n    \"status\": \"ACTIVE\"\n  },\n  \"pointsDeducted\": 1000,\n  \"remainingPoints\": 1500\n}\n```\n\n**Flow:**\n1. Check available rewards: `GET /me/loyalty/available-rewards`\n2. Select a reward you can afford\n3. Redeem: `POST /me/loyalty/redeem` with `rewardRuleId`\n4. Receive voucher code\n5. Use voucher code during payment: `POST /payments/stripe/create-intent` with `voucherCode`\n\n**Error Responses:**\n- `400` - Insufficient points\n- `404` - Reward rule not found\n- `400` - Reward rule is inactive"
+					},
+					"response": []
+				},
+				{
+					"name": "Validate Voucher",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"voucherCode\": \"{{voucherCode}}\",\n  \"productType\": \"FLIGHT_INTERNATIONAL\",\n  \"bookingAmount\": 500.00,\n  \"currency\": \"USD\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/vouchers/validate",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "vouchers", "validate"]
+						},
+						"description": "**Validate a voucher code and preview discount.**\n\n**Authentication required.**\n\n**Request Body:**\n- `voucherCode` (string, required): Voucher code to validate\n- `productType` (string, required): Product type (FLIGHT_INTERNATIONAL, FLIGHT_DOMESTIC, HOTEL, CAR_RENTAL)\n- `bookingAmount` (number, required): Booking amount before discount\n- `currency` (string, required): Currency code (e.g., USD, GBP)\n\n**Response (valid voucher):**\n```json\n{\n  \"valid\": true,\n  \"originalAmount\": 500.00,\n  \"discountAmount\": 50.00,\n  \"finalAmount\": 450.00,\n  \"currency\": \"USD\",\n  \"voucherCode\": \"EBT-V-ABC123\",\n  \"voucherId\": \"voucher-id\",\n  \"discountType\": \"PERCENTAGE\",\n  \"discountValue\": 10\n}\n```\n\n**Response (invalid voucher):**\n```json\n{\n  \"valid\": false,\n  \"message\": \"Voucher has expired\"\n}\n```\n\n**Use this before creating payment intent to preview the discount.**\n\n**Error Scenarios:**\n- Voucher expired\n- Voucher already used\n- Voucher not applicable to product type\n- Voucher belongs to different user\n- Invalid voucher code"
+					},
+					"response": []
+				},
+				{
+					"name": "Get My Vouchers",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/vouchers",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "vouchers"]
+						},
+						"description": "**Get all vouchers belonging to the current user.**\n\n**Authentication required.**\n\n**Response:**\n```json\n[\n  {\n    \"id\": \"voucher-id\",\n    \"code\": \"EBT-V-ABC123\",\n    \"discountType\": \"PERCENTAGE\",\n    \"discountValue\": 10,\n    \"maxDiscountAmount\": 100,\n    \"status\": \"ACTIVE\",\n    \"expiresAt\": \"2026-03-12T00:00:00.000Z\",\n    \"usedAt\": null,\n    \"bookingId\": null\n  },\n  {\n    \"id\": \"voucher-id-2\",\n    \"code\": \"EBT-V-DEF456\",\n    \"discountType\": \"FIXED\",\n    \"discountValue\": 50,\n    \"status\": \"USED\",\n    \"usedAt\": \"2026-02-10T10:00:00.000Z\",\n    \"bookingId\": \"booking-id\"\n  }\n]\n```\n\n**Voucher Statuses:**\n- `ACTIVE` - Available for use\n- `USED` - Already redeemed on a booking\n- `EXPIRED` - Expired (past expiresAt date)"
+					},
+					"response": []
+				}
+			],
+			"description": "**Loyalty points, rewards, and voucher endpoints.**\n\n**All endpoints require authentication.**\n\n**How Loyalty Works:**\n1. **Earn Points**: Automatically earn points when bookings are completed (via webhook)\n2. **Check Balance**: View current points, tier, and transaction history\n3. **Browse Rewards**: See available rewards you can redeem\n4. **Redeem Points**: Exchange points for voucher codes\n5. **Use Vouchers**: Apply voucher code during payment for discounts\n\n**Loyalty Tiers:**\n- BRONZE (0-999 points): 1x multiplier\n- SILVER (1000-4999 points): 1.5x multiplier\n- GOLD (5000-9999 points): 2x multiplier\n- PLATINUM (10000+ points): 3x multiplier\n\n**Points Earning:**\n- International flights: 10 points per $1\n- Domestic flights: 5 points per $1\n- Hotels: 8 points per $1\n- Car rentals: 3 points per $1\n- Tier multiplier applied on top\n\n**Voucher Types:**\n- PERCENTAGE discount (e.g., 10% off, max $100)\n- FIXED discount (e.g., $50 off)"
+		},
+		{
+			"name": "Saved Payment Methods",
+			"item": [
+				{
+					"name": "Setup Payment Method (Get Setup Intent)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200 || pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    if (response.clientSecret) {",
+									"        pm.environment.set('setupIntentClientSecret', response.clientSecret);",
+									"        console.log('Setup intent client secret saved');",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/payment-methods/setup",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "payment-methods", "setup"]
+						},
+						"description": "**Create a Stripe SetupIntent to save a new payment method.**\n\n**Authentication required.**\n\n**What This Does:**\n- Creates a Stripe SetupIntent\n- Returns `clientSecret` for Stripe.js\n- Frontend uses `stripe.confirmCardSetup(clientSecret)` to save card\n\n**Response:**\n```json\n{\n  \"clientSecret\": \"seti_xxx_secret_xxx\",\n  \"setupIntentId\": \"seti_xxx\"\n}\n```\n\n**Frontend Flow:**\n1. Call this endpoint to get `clientSecret`\n2. Use Stripe.js: `stripe.confirmCardSetup(clientSecret, { payment_method: { card: cardElement } })`\n3. After setup completes, call `POST /me/payment-methods/confirm` with the SetupIntent ID\n4. Card is saved securely via Stripe tokenization\n\n**Security:**\n- Card details NEVER touch your server\n- Stripe handles PCI compliance\n- Only Stripe tokens stored in database"
+					},
+					"response": []
+				},
+				{
+					"name": "Confirm Payment Method Setup",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"setupIntentId\": \"seti_xxx\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/payment-methods/confirm",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "payment-methods", "confirm"]
+						},
+						"description": "**Confirm and save a payment method after Stripe SetupIntent completes.**\n\n**Authentication required.**\n\n**Request Body:**\n- `setupIntentId` (string, required): The SetupIntent ID from the setup step\n\n**Response:**\n```json\n{\n  \"id\": \"saved-pm-id\",\n  \"brand\": \"visa\",\n  \"last4\": \"4242\",\n  \"expiryMonth\": 12,\n  \"expiryYear\": 2028,\n  \"isDefault\": false,\n  \"stripePaymentMethodId\": \"pm_xxx\"\n}\n```\n\n**Note:** Call this after `stripe.confirmCardSetup()` succeeds on the frontend."
+					},
+					"response": []
+				},
+				{
+					"name": "List Saved Payment Methods",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/payment-methods",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "payment-methods"]
+						},
+						"description": "**List all saved payment methods for the current user.**\n\n**Authentication required.**\n\n**Response:**\n```json\n[\n  {\n    \"id\": \"saved-pm-id\",\n    \"brand\": \"visa\",\n    \"last4\": \"4242\",\n    \"expiryMonth\": 12,\n    \"expiryYear\": 2028,\n    \"isDefault\": true,\n    \"stripePaymentMethodId\": \"pm_xxx\",\n    \"createdAt\": \"2026-02-01T00:00:00.000Z\"\n  }\n]\n```\n\n**Note:** Only tokenized card info shown (brand, last4, expiry). Full card details never stored."
+					},
+					"response": []
+				},
+				{
+					"name": "Set Default Payment Method",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "PATCH",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/payment-methods/:id/default",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "payment-methods", ":id", "default"],
+							"variable": [
+								{ "key": "id", "value": "saved-pm-id", "description": "Saved payment method ID" }
+							]
+						},
+						"description": "**Set a saved payment method as the default.**\n\n**Authentication required.**\n\n**URL Parameters:**\n- `id` (string, required): Saved payment method ID\n\n**Response:**\nUpdated payment method with `isDefault: true`."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Payment Method",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/payment-methods/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "payment-methods", ":id"],
+							"variable": [
+								{ "key": "id", "value": "saved-pm-id", "description": "Saved payment method ID to delete" }
+							]
+						},
+						"description": "**Delete a saved payment method.**\n\n**Authentication required.**\n\n**URL Parameters:**\n- `id` (string, required): Saved payment method ID to delete\n\n**What This Does:**\n- Removes payment method from database\n- Detaches from Stripe customer\n- Cannot be undone\n\n**Error Responses:**\n- `404` - Payment method not found\n- `403` - Payment method belongs to different user"
+					},
+					"response": []
+				}
+			],
+			"description": "**Saved payment methods (PCI-compliant via Stripe tokenization).**\n\n**All endpoints require authentication.**\n\n**How It Works:**\n1. `POST /setup` - Get Stripe SetupIntent client secret\n2. Frontend: `stripe.confirmCardSetup(clientSecret)` - Card details go to Stripe only\n3. `POST /confirm` - Save the tokenized card reference in database\n4. `GET /` - List saved cards (only shows brand, last4, expiry)\n5. Use saved card for future payments\n\n**Security:**\n- Card details NEVER touch your server (PCI-compliant)\n- Only Stripe tokens stored\n- Encrypted at rest\n- Cards detached from Stripe on deletion"
+		},
+		{
+			"name": "Saved Items (Wishlist)",
+			"item": [
+				{
+					"name": "Save Item to Wishlist",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"itemType\": \"HOTEL\",\n  \"itemId\": \"MCLONGHM\",\n  \"itemDetails\": {\n    \"name\": \"JW Marriott Grosvenor House London\",\n    \"city\": \"London\",\n    \"rating\": 4.5,\n    \"pricePerNight\": 350\n  },\n  \"notes\": \"Perfect for anniversary trip\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/saved-items",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "saved-items"]
+						},
+						"description": "**Save an item (hotel, flight, car rental) to wishlist.**\n\n**Authentication required.**\n\n**Request Body:**\n- `itemType` (string, required): HOTEL, FLIGHT, or CAR_RENTAL\n- `itemId` (string, required): Provider item ID (e.g., hotel ID, offer ID)\n- `itemDetails` (object, optional): Item details snapshot for display\n- `notes` (string, optional): Personal notes\n\n**Response:**\nSaved item object with ID."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Saved Items",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/saved-items?itemType=HOTEL",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "saved-items"],
+							"query": [
+								{ "key": "itemType", "value": "HOTEL", "description": "Filter by type (HOTEL, FLIGHT, CAR_RENTAL)", "disabled": true }
+							]
+						},
+						"description": "**Get all saved items (wishlist).**\n\n**Authentication required.**\n\n**Query Parameters:**\n- `itemType` (string, optional): Filter by item type (HOTEL, FLIGHT, CAR_RENTAL)\n\n**Response:**\nArray of saved items with details."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Saved Item Counts",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/saved-items/counts",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "saved-items", "counts"]
+						},
+						"description": "**Get counts of saved items by type.**\n\n**Authentication required.**\n\n**Response:**\n```json\n{\n  \"total\": 15,\n  \"HOTEL\": 8,\n  \"FLIGHT\": 5,\n  \"CAR_RENTAL\": 2\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Toggle Saved Item",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"itemType\": \"HOTEL\",\n  \"itemId\": \"MCLONGHM\",\n  \"itemDetails\": {\n    \"name\": \"JW Marriott Grosvenor House London\"\n  }\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/saved-items/toggle",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "saved-items", "toggle"]
+						},
+						"description": "**Toggle an item in wishlist (save if not saved, unsave if saved).**\n\n**Authentication required.**\n\n**Request Body:**\n- `itemType` (string, required): HOTEL, FLIGHT, or CAR_RENTAL\n- `itemId` (string, required): Provider item ID\n- `itemDetails` (object, optional): Item details snapshot\n\n**Response:**\n```json\n{\n  \"saved\": true,\n  \"item\": { ... }\n}\n```\nor\n```json\n{\n  \"saved\": false\n}\n```\n\n**Use for heart/bookmark toggle buttons on search results.**"
+					},
+					"response": []
+				},
+				{
+					"name": "Check If Item Saved",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"itemType\": \"HOTEL\",\n  \"itemId\": \"MCLONGHM\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/saved-items/check",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "saved-items", "check"]
+						},
+						"description": "**Check if a specific item is saved in wishlist.**\n\n**Authentication required.**\n\n**Request Body:**\n- `itemType` (string, required): HOTEL, FLIGHT, or CAR_RENTAL\n- `itemId` (string, required): Provider item ID\n\n**Response:**\n```json\n{\n  \"saved\": true,\n  \"savedItemId\": \"saved-item-id\"\n}\n```\n\n**Use to set initial state of heart/bookmark buttons.**"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Saved Item Notes",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "PATCH",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"notes\": \"Updated notes - great for summer holiday!\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/saved-items/:id/notes",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "saved-items", ":id", "notes"],
+							"variable": [
+								{ "key": "id", "value": "saved-item-id", "description": "Saved item ID" }
+							]
+						},
+						"description": "**Update notes on a saved item.**\n\n**Authentication required.**\n\n**URL Parameters:**\n- `id` (string, required): Saved item ID\n\n**Request Body:**\n- `notes` (string, required): Updated notes"
+					},
+					"response": []
+				},
+				{
+					"name": "Remove Saved Item",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/saved-items/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "saved-items", ":id"],
+							"variable": [
+								{ "key": "id", "value": "saved-item-id", "description": "Saved item ID to remove" }
+							]
+						},
+						"description": "**Remove an item from wishlist.**\n\n**Authentication required.**\n\n**URL Parameters:**\n- `id` (string, required): Saved item ID to remove"
+					},
+					"response": []
+				}
+			],
+			"description": "**Wishlist/saved items endpoints.**\n\n**All endpoints require authentication.**\n\n**Features:**\n- Save hotels, flights, car rentals for later\n- Toggle save/unsave with single endpoint\n- Check if item is saved (for UI state)\n- Add personal notes to saved items\n- Filter by item type\n- Get counts per type"
+		},
+		{
+			"name": "Saved Travelers",
+			"item": [
+				{
+					"name": "Create Saved Traveler",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"dateOfBirth\": \"1995-03-15\",\n  \"gender\": \"Female\",\n  \"passportNumber\": \"AB1234567\",\n  \"passportExpiry\": \"2030-01-01\",\n  \"nationality\": \"GB\",\n  \"frequentFlyerNumber\": \"BA12345678\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/travelers",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "travelers"]
+						},
+						"description": "**Save a traveler profile for quick checkout.**\n\n**Authentication required.**\n\n**Request Body:**\n- `firstName` (string, required): First name as on passport\n- `lastName` (string, required): Last name as on passport\n- `dateOfBirth` (string, optional): Date of birth (YYYY-MM-DD)\n- `gender` (string, optional): Male, Female, Other\n- `passportNumber` (string, optional): Passport number\n- `passportExpiry` (string, optional): Passport expiry date (YYYY-MM-DD)\n- `nationality` (string, optional): Country code (e.g., GB, US, NG)\n- `frequentFlyerNumber` (string, optional): Airline frequent flyer number\n\n**Response:**\nCreated traveler object with ID.\n\n**Use Case:**\nSave family members, friends, or frequent co-travelers for quick booking."
+					},
+					"response": []
+				},
+				{
+					"name": "List Saved Travelers",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/travelers",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "travelers"]
+						},
+						"description": "**List all saved traveler profiles.**\n\n**Authentication required.**\n\n**Response:**\nArray of saved travelers with details."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Saved Traveler by ID",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/travelers/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "travelers", ":id"],
+							"variable": [
+								{ "key": "id", "value": "traveler-id", "description": "Saved traveler ID" }
+							]
+						},
+						"description": "**Get a specific saved traveler by ID.**\n\n**Authentication required.**\n\n**URL Parameters:**\n- `id` (string, required): Saved traveler ID"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Saved Traveler",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Smith\",\n  \"passportNumber\": \"CD9876543\",\n  \"passportExpiry\": \"2031-06-15\",\n  \"nationality\": \"US\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/travelers/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "travelers", ":id"],
+							"variable": [
+								{ "key": "id", "value": "traveler-id", "description": "Saved traveler ID to update" }
+							]
+						},
+						"description": "**Update a saved traveler's details.**\n\n**Authentication required.**\n\n**URL Parameters:**\n- `id` (string, required): Saved traveler ID to update\n\n**Request Body (all fields optional):**\n- `firstName`, `lastName`, `dateOfBirth`, `gender`, `passportNumber`, `passportExpiry`, `nationality`, `frequentFlyerNumber`"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Saved Traveler",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/travelers/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "travelers", ":id"],
+							"variable": [
+								{ "key": "id", "value": "traveler-id", "description": "Saved traveler ID to delete" }
+							]
+						},
+						"description": "**Delete a saved traveler.**\n\n**Authentication required.**\n\n**URL Parameters:**\n- `id` (string, required): Saved traveler ID to delete"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Travelers by IDs (Batch)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"travelerIds\": [\"traveler-id-1\", \"traveler-id-2\"]\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/travelers/batch",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "travelers", "batch"]
+						},
+						"description": "**Get multiple saved travelers by their IDs (for checkout).**\n\n**Authentication required.**\n\n**Request Body:**\n- `travelerIds` (array, required): Array of saved traveler IDs\n\n**Use Case:**\nWhen user selects multiple travelers at checkout, fetch all their details in one call.\n\n**Response:**\nArray of traveler objects matching the provided IDs."
+					},
+					"response": []
+				}
+			],
+			"description": "**Saved travelers management endpoints.**\n\n**All endpoints require authentication.**\n\n**Features:**\n- Save traveler profiles (family, friends, co-travelers)\n- Store passport details, nationality, frequent flyer numbers\n- Quickly attach saved travelers at checkout\n- Batch fetch for multi-passenger bookings\n\n**Use Cases:**\n- Save family members for quick booking\n- Store passport info for international flights\n- Pre-fill passenger details at checkout\n- Manage frequent traveler profiles"
+		},
+		{
+			"name": "User Dashboard",
+			"item": [
+				{
+					"name": "Get User Dashboard",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/dashboard",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "users", "me", "dashboard"]
+						},
+						"description": "**Get comprehensive user dashboard data in a single call.**\n\n**Authentication required.**\n\n**Response:**\n```json\n{\n  \"profile\": {\n    \"id\": \"user-id\",\n    \"name\": \"John Doe\",\n    \"email\": \"john@example.com\",\n    \"image\": \"https://...\"\n  },\n  \"loyalty\": {\n    \"points\": 2500,\n    \"tier\": \"SILVER\",\n    \"lifetimePoints\": 5000\n  },\n  \"stats\": {\n    \"totalBookings\": 12,\n    \"confirmedBookings\": 10,\n    \"pendingBookings\": 2,\n    \"totalSpent\": 15000.00,\n    \"savedItems\": 8,\n    \"savedTravelers\": 3,\n    \"savedPaymentMethods\": 2,\n    \"activeVouchers\": 1\n  },\n  \"recentBookings\": [...],\n  \"recentTransactions\": [...]\n}\n```\n\n**Use this for the user profile/dashboard page to get all data in one call instead of multiple API calls.**"
+					},
+					"response": []
+				}
+			],
+			"description": "**User dashboard endpoint - single call for all profile data.**\n\n**Authentication required.**\n\n**Returns combined data:**\n- Profile information\n- Loyalty account summary\n- Booking statistics\n- Recent bookings\n- Recent loyalty transactions"
 		},
 		{
 			"name": "Health Check",
@@ -1581,7 +2196,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"bookingId\": \"{{bookingId}}\"\n}",
+							"raw": "{\n  \"bookingId\": \"{{bookingId}}\",\n  \"voucherCode\": \"EBT-V-ABC123\"\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -1601,7 +2216,7 @@
 								"create-intent"
 							]
 						},
-						"description": "Create a Stripe payment intent for a booking (authenticated user).\n\n**Authentication required.**\n\n**Prerequisites:**\n- Must have a booking ID (from Create Booking endpoint)\n- Booking must be in PENDING or PAYMENT_PENDING status\n- User must own the booking (or be ADMIN/SUPER_ADMIN)\n\n**Request:**\n```json\n{\n  \"bookingId\": \"clx1234567890\"\n}\n```\n\n**Response:**\n```json\n{\n  \"clientSecret\": \"pi_xxx_secret_xxx\",\n  \"paymentIntentId\": \"pi_xxx\"\n}\n```\n\n**Next Steps:**\n1. Use `clientSecret` with Stripe.js on frontend\n2. Stripe handles payment processing\n3. Webhook automatically updates booking status:\n   - `payment_intent.succeeded` → Booking: `CONFIRMED`\n   - `payment_intent.payment_failed` → Booking: `FAILED`\n   - `charge.refunded` → Booking: `REFUNDED`\n\n**Note:** Webhook endpoint is `/api/v1/payments/stripe/webhook` (configured in Stripe Dashboard)"
+						"description": "Create a Stripe payment intent for a booking (authenticated user).\n\n**Authentication required.**\n\n**Prerequisites:**\n- Must have a booking ID (from Create Booking endpoint)\n- Booking must be in PENDING or PAYMENT_PENDING status\n- User must own the booking (or be ADMIN/SUPER_ADMIN)\n\n**Request:**\n```json\n{\n  \"bookingId\": \"clx1234567890\",\n  \"voucherCode\": \"EBT-V-ABC123\"  // Optional - apply voucher discount\n}\n```\n\n**Parameters:**\n- `bookingId` (string, required): Booking ID from Create Booking endpoint\n- `voucherCode` (string, optional): Voucher code to apply discount. Get from redeeming loyalty points via `POST /api/v1/users/me/loyalty/redeem`. Validate first via `POST /api/v1/users/me/vouchers/validate`.\n\n**Response (without voucher):**\n```json\n{\n  \"clientSecret\": \"pi_xxx_secret_xxx\",\n  \"paymentIntentId\": \"pi_xxx\"\n}\n```\n\n**Response (with voucher):**\n```json\n{\n  \"clientSecret\": \"pi_xxx_secret_xxx\",\n  \"paymentIntentId\": \"pi_xxx\",\n  \"voucherApplied\": {\n    \"voucherCode\": \"EBT-V-ABC123\",\n    \"discountAmount\": 50,\n    \"originalAmount\": 500,\n    \"finalAmount\": 450\n  }\n}\n```\n\n**Voucher Flow:**\n1. User earns loyalty points from bookings\n2. User redeems points: `POST /api/v1/users/me/loyalty/redeem` -> Gets voucher code\n3. User validates voucher: `POST /api/v1/users/me/vouchers/validate`\n4. User creates payment intent with `voucherCode` -> Discount applied to Stripe amount\n5. After payment, voucher is automatically marked as USED\n\n**Next Steps:**\n1. Use `clientSecret` with Stripe.js on frontend\n2. Stripe handles payment processing\n3. Webhook automatically updates booking status:\n   - `payment_intent.succeeded` -> Booking: `CONFIRMED`, voucher marked `USED`, loyalty points awarded\n   - `payment_intent.payment_failed` -> Booking: `FAILED`\n   - `charge.refunded` -> Booking: `REFUNDED`\n\n**Note:** Webhook endpoint is `/api/v1/payments/stripe/webhook` (configured in Stripe Dashboard)"
 					},
 					"response": []
 				},
@@ -2867,6 +3482,316 @@
 						}
 					],
 					"description": "**Audit logging endpoints (Super Admin only)**\n\n**⚠️ RESTRICTIONS:**\n- **Super Admin Only:** Only SUPER_ADMIN can view audit logs\n\n**What This Does:**\n- Tracks all sensitive admin actions\n- Includes who, what, when, and what changed\n- Includes IP address and user agent for security\n- Helps with compliance and security monitoring\n\n**Tracked Actions:**\n- Admin user management (create, update, delete)\n- Permission assignments\n- Booking cancellations\n- Password changes\n- Account deletions\n\n**Use Cases:**\n- Security monitoring\n- Compliance auditing\n- Troubleshooting\n- User activity tracking"
+				},
+				{
+					"name": "Rewards Management",
+					"item": [
+						{
+							"name": "Get Rewards Dashboard",
+							"request": {
+								"method": "GET",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/dashboard",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "dashboard"]
+								},
+								"description": "**Get rewards system dashboard overview (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Response includes:**\n- Total active loyalty accounts\n- Total points issued / redeemed\n- Active reward rules count\n- Active vouchers count\n- Tier distribution\n- Recent loyalty activity"
+							},
+							"response": []
+						},
+						{
+							"name": "Create Reward Rule",
+							"request": {
+								"method": "POST",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+									{ "key": "Content-Type", "value": "application/json" }
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"10% Flight Discount\",\n  \"description\": \"Get 10% off your next flight booking\",\n  \"pointsCost\": 1000,\n  \"discountType\": \"PERCENTAGE\",\n  \"discountValue\": 10,\n  \"maxDiscountAmount\": 100,\n  \"applicableProductTypes\": [\"FLIGHT_INTERNATIONAL\", \"FLIGHT_DOMESTIC\"],\n  \"validityDays\": 30,\n  \"maxUsesPerUser\": 1,\n  \"isActive\": true\n}",
+									"options": { "raw": { "language": "json" } }
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/rules",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "rules"]
+								},
+								"description": "**Create a new reward rule (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Request Body:**\n- `name` (string, required): Rule name\n- `description` (string, optional): Description\n- `pointsCost` (number, required): Points needed to redeem\n- `discountType` (string, required): PERCENTAGE or FIXED\n- `discountValue` (number, required): Discount value (10 = 10% or $10)\n- `maxDiscountAmount` (number, optional): Max discount for percentage type\n- `applicableProductTypes` (array, optional): Product types this applies to. null = all\n- `validityDays` (number, optional): Days voucher is valid after redemption (default: 30)\n- `maxUsesPerUser` (number, optional): Max times a user can redeem this\n- `isActive` (boolean, optional): Whether rule is active (default: true)"
+							},
+							"response": []
+						},
+						{
+							"name": "List Reward Rules",
+							"request": {
+								"method": "GET",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/rules",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "rules"]
+								},
+								"description": "**List all reward rules (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Response:**\nArray of reward rules with details."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Reward Rule by ID",
+							"request": {
+								"method": "GET",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/rules/:id",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "rules", ":id"],
+									"variable": [
+										{ "key": "id", "value": "reward-rule-id", "description": "Reward rule ID" }
+									]
+								},
+								"description": "**Get a specific reward rule by ID (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)"
+							},
+							"response": []
+						},
+						{
+							"name": "Update Reward Rule",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+									{ "key": "Content-Type", "value": "application/json" }
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"15% Flight Discount\",\n  \"pointsCost\": 1500,\n  \"discountValue\": 15,\n  \"isActive\": true\n}",
+									"options": { "raw": { "language": "json" } }
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/rules/:id",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "rules", ":id"],
+									"variable": [
+										{ "key": "id", "value": "reward-rule-id", "description": "Reward rule ID to update" }
+									]
+								},
+								"description": "**Update a reward rule (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**All fields optional - only provided fields are updated.**"
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Reward Rule",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/rules/:id",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "rules", ":id"],
+									"variable": [
+										{ "key": "id", "value": "reward-rule-id", "description": "Reward rule ID to delete" }
+									]
+								},
+								"description": "**Delete a reward rule (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)"
+							},
+							"response": []
+						},
+						{
+							"name": "Seed Default Tiers",
+							"request": {
+								"method": "POST",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/tiers/seed-defaults",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "tiers", "seed-defaults"]
+								},
+								"description": "**Seed default loyalty tier configurations (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Creates the following tiers:**\n- BRONZE: 0 min points, 1x multiplier\n- SILVER: 1000 min points, 1.5x multiplier\n- GOLD: 5000 min points, 2x multiplier\n- PLATINUM: 10000 min points, 3x multiplier\n\n**Note:** Run this once after initial setup. Safe to run multiple times (uses upsert)."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Loyalty Tiers",
+							"request": {
+								"method": "GET",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/tiers",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "tiers"]
+								},
+								"description": "**Get all loyalty tier configurations (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Response:**\nArray of tier configs with name, min points, multiplier, benefits."
+							},
+							"response": []
+						},
+						{
+							"name": "Update Loyalty Tier",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+									{ "key": "Content-Type", "value": "application/json" }
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"tier\": \"GOLD\",\n  \"name\": \"Gold Elite\",\n  \"minPoints\": 5000,\n  \"multiplier\": 2.5,\n  \"benefits\": [\"Priority support\", \"Free cancellation\", \"Lounge access\"]\n}",
+									"options": { "raw": { "language": "json" } }
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/tiers",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "tiers"]
+								},
+								"description": "**Update a loyalty tier configuration (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Request Body:**\n- `tier` (string, required): Tier to update (BRONZE, SILVER, GOLD, PLATINUM)\n- `name` (string, optional): Display name\n- `minPoints` (number, optional): Minimum lifetime points for this tier\n- `multiplier` (number, optional): Points earning multiplier\n- `benefits` (array, optional): List of tier benefits"
+							},
+							"response": []
+						},
+						{
+							"name": "Seed Default Earning Rules",
+							"request": {
+								"method": "POST",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/earning-rules/seed-defaults",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "earning-rules", "seed-defaults"]
+								},
+								"description": "**Seed default points earning rules (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Creates the following earning rules:**\n- FLIGHT_INTERNATIONAL: 10 points per $1 spent\n- FLIGHT_DOMESTIC: 5 points per $1 spent\n- HOTEL: 8 points per $1 spent\n- CAR_RENTAL: 3 points per $1 spent\n\n**Note:** Run this once after initial setup. Safe to run multiple times (uses upsert)."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Points Earning Rules",
+							"request": {
+								"method": "GET",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/earning-rules",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "earning-rules"]
+								},
+								"description": "**Get all points earning rules (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Response:**\nArray of earning rules with product type, points per unit, and currency."
+							},
+							"response": []
+						},
+						{
+							"name": "Update Points Earning Rule",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+									{ "key": "Content-Type", "value": "application/json" }
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"productType\": \"HOTEL\",\n  \"pointsPerUnit\": 12,\n  \"unitAmount\": 1,\n  \"currency\": \"USD\"\n}",
+									"options": { "raw": { "language": "json" } }
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/earning-rules",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "earning-rules"]
+								},
+								"description": "**Update a points earning rule (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Request Body:**\n- `productType` (string, required): Product type to update\n- `pointsPerUnit` (number, required): Points earned per unit of currency spent\n- `unitAmount` (number, optional): Currency unit (default: 1 = per $1)\n- `currency` (string, optional): Base currency for calculation"
+							},
+							"response": []
+						},
+						{
+							"name": "List All Vouchers",
+							"request": {
+								"method": "GET",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/vouchers",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "vouchers"]
+								},
+								"description": "**List all vouchers across all users (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Response:**\nArray of all vouchers with status, user info, and usage details."
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Voucher",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/vouchers/:id",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "vouchers", ":id"],
+									"variable": [
+										{ "key": "id", "value": "voucher-id", "description": "Voucher ID to delete" }
+									]
+								},
+								"description": "**Delete a voucher (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)"
+							},
+							"response": []
+						},
+						{
+							"name": "Adjust User Points",
+							"request": {
+								"method": "POST",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+									{ "key": "Content-Type", "value": "application/json" }
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"points\": 500,\n  \"reason\": \"Customer service compensation\",\n  \"type\": \"BONUS\"\n}",
+									"options": { "raw": { "language": "json" } }
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/users/:userId/adjust-points",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "users", ":userId", "adjust-points"],
+									"variable": [
+										{ "key": "userId", "value": "{{userId}}", "description": "User ID to adjust points for" }
+									]
+								},
+								"description": "**Manually adjust a user's loyalty points (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Request Body:**\n- `points` (number, required): Points to add (positive) or deduct (negative)\n- `reason` (string, required): Reason for adjustment\n- `type` (string, optional): BONUS, ADJUSTMENT, or EXPIRE (default: ADJUSTMENT)\n\n**Use Cases:**\n- Customer service compensation\n- Promotional bonus points\n- Manual correction\n- Expiring unused points"
+							},
+							"response": []
+						},
+						{
+							"name": "Get User's Loyalty Account (Admin View)",
+							"request": {
+								"method": "GET",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/users/:userId/loyalty",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "users", ":userId", "loyalty"],
+									"variable": [
+										{ "key": "userId", "value": "{{userId}}", "description": "User ID to view loyalty for" }
+									]
+								},
+								"description": "**Get a specific user's loyalty account (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**URL Parameters:**\n- `userId` (string, required): User ID to view\n\n**Response includes:**\n- Loyalty account details\n- Current points and tier\n- Transaction history\n- Vouchers"
+							},
+							"response": []
+						}
+					],
+					"description": "**Admin rewards and loyalty management endpoints.**\n\n**All endpoints require Admin role.**\n\n**Features:**\n- Configure reward rules (what users can redeem)\n- Configure loyalty tiers (BRONZE, SILVER, GOLD, PLATINUM)\n- Configure points earning rules (points per $1 by product type)\n- Manage vouchers across all users\n- Adjust user points manually\n- View user loyalty accounts\n\n**Setup (run once):**\n1. Seed default tiers: `POST /admin/rewards/tiers/seed-defaults`\n2. Seed default earning rules: `POST /admin/rewards/earning-rules/seed-defaults`\n3. Create reward rules: `POST /admin/rewards/rules`\n\n**Ongoing Management:**\n- Adjust tier thresholds and multipliers\n- Create/modify reward redemption options\n- Adjust earning rates\n- Award bonus points to users\n- Monitor voucher usage"
 				},
 				{
 					"name": "Dashboard",

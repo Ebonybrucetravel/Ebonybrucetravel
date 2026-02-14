@@ -82,6 +82,12 @@ export interface BookingConfirmationEmailData {
   };
   confirmationDate: Date;
   bookingId?: string;
+  /** For hotels: cancellation deadline (UTC) for dispute evidence and customer clarity */
+  cancellationDeadline?: Date | string | null;
+  /** For hotels: policy text shown at booking (snapshot) */
+  cancellationPolicySummary?: string | null;
+  /** No-show policy wording per BOOKING_OPERATIONS_AND_RISK */
+  noShowWording?: string | null;
 }
 
 export interface PaymentReceiptEmailData {
@@ -756,6 +762,22 @@ export class ResendService {
       `
         : '';
 
+    const defaultNoShowWording =
+      'In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.';
+    const noShowText = data.noShowWording || (data.productType === 'HOTEL' ? defaultNoShowWording : null);
+    const hasHotelPolicy =
+      data.productType === 'HOTEL' && (data.cancellationDeadline || data.cancellationPolicySummary || noShowText);
+    const hotelPolicySection = hasHotelPolicy
+      ? `
+        <div style="background-color: #fff3cd; border-left: 4px solid #856404; padding: 15px; margin: 20px 0;">
+          <h3 style="margin-top: 0; color: #856404;">Cancellation & No-Show Policy</h3>
+          ${data.cancellationDeadline ? `<p style="margin: 5px 0;"><strong>Cancellation deadline (UTC):</strong> ${typeof data.cancellationDeadline === 'string' ? data.cancellationDeadline : new Date(data.cancellationDeadline).toISOString().replace('T', ' ').slice(0, 19)} UTC</p>` : ''}
+          ${data.cancellationPolicySummary ? `<p style="margin: 5px 0;"><strong>Policy:</strong> ${data.cancellationPolicySummary}</p>` : ''}
+          ${noShowText ? `<p style="margin: 10px 0 0 0;"><strong>No-show:</strong> ${noShowText}</p>` : ''}
+        </div>
+      `
+      : '';
+
     return `
       <!DOCTYPE html>
       <html>
@@ -785,6 +807,7 @@ export class ResendService {
             </div>
             
             ${bookingDetailsSection}
+            ${hotelPolicySection}
             
             <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
               <h3 style="margin-top: 0;">Pricing Summary</h3>

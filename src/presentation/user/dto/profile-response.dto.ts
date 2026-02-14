@@ -1,5 +1,19 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
+
+export class LoyaltySummaryDto {
+  @ApiProperty({ example: 45000 })
+  balance: number;
+
+  @ApiProperty({ example: 52000 })
+  totalEarned: number;
+
+  @ApiProperty({ example: 'GOLD', enum: ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM'] })
+  tier: string;
+
+  @ApiPropertyOptional({ example: 1.5 })
+  pointsMultiplier?: number;
+}
 
 export class ProfileResponseDto {
   @ApiProperty({ example: 'clx1234567890' })
@@ -32,4 +46,3 @@ export class ProfileResponseDto {
   @ApiProperty({ example: '2026-01-01T00:00:00.000Z' })
   updatedAt: Date;
 }
-

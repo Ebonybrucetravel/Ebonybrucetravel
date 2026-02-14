@@ -9,6 +9,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private readonly retryDelay = 2000; // 2 seconds
 
   constructor(private readonly configService: ConfigService) {
+    const rawUrl = configService.get<string>('DATABASE_URL');
+    const url = PrismaService.normalizeDatabaseUrl(rawUrl);
+
     super({
       log: [
         { emit: 'event', level: 'query' },
@@ -18,14 +21,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       ],
       errorFormat: 'pretty',
       datasources: {
-        db: {
-          url: configService.get<string>('DATABASE_URL'),
-        },
+        db: { url },
       },
     });
 
     // Log connection string (masked for security)
-    const dbUrl = configService.get<string>('DATABASE_URL');
+    const dbUrl = rawUrl;
     if (dbUrl) {
       const maskedUrl = this.maskDatabaseUrl(dbUrl);
       this.logger.log(`Database URL configured: ${maskedUrl}`);
@@ -94,6 +95,26 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       
       // Don't throw - allow app to start even if DB is temporarily unavailable
       // This is useful during development when DB might be paused
+    }
+  }
+
+  /**
+   * For Supabase (and similar): ensure connection_limit is set to avoid
+   * "Too many database connections" / "remaining connection slots reserved for SUPERUSER".
+   * Prefer pooler (port 6543) in production.
+   */
+  private static normalizeDatabaseUrl(url: string | undefined): string {
+    if (!url) return '';
+    try {
+      const isSupabase = url.includes('supabase.co');
+      const hasLimit = /[?&]connection_limit=/.test(url);
+      if (isSupabase && !hasLimit) {
+        const separator = url.includes('?') ? '&' : '?';
+        return `${url}${separator}connection_limit=5`;
+      }
+      return url;
+    } catch {
+      return url;
     }
   }
 

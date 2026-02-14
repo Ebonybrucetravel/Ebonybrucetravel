@@ -3,6 +3,7 @@ import { AmadeusService } from '@infrastructure/external-apis/amadeus/amadeus.se
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 import { CacheService } from '@infrastructure/cache/cache.service';
 import { CurrencyService } from '@infrastructure/currency/currency.service';
+import { HotelImageCacheService } from '@application/hotel-images/hotel-image-cache.service';
 import { SearchAmadeusHotelsDto } from '@presentation/booking/dto/search-amadeus-hotels.dto';
 import { ProductType } from '@prisma/client';
 
@@ -15,6 +16,7 @@ export class SearchAmadeusHotelsUseCase {
     private readonly markupRepository: MarkupRepository,
     private readonly cacheService: CacheService,
     private readonly currencyService: CurrencyService,
+    private readonly hotelImageCacheService: HotelImageCacheService,
   ) {}
 
   async execute(searchParams: SearchAmadeusHotelsDto) {
@@ -188,6 +190,25 @@ export class SearchAmadeusHotelsUseCase {
         );
       }
 
+      // Fetch markup once per request (same for all offers) to avoid exhausting DB connections
+      let markupPercentage = 0;
+      let serviceFeeAmount = 0;
+      try {
+        const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
+          ProductType.HOTEL,
+          targetCurrency,
+        );
+        if (markupConfig) {
+          markupPercentage = markupConfig.markupPercentage || 0;
+          serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Could not fetch markup config for HOTEL in ${targetCurrency}, using 0%:`,
+          error,
+        );
+      }
+
       // Process results with currency conversion and markup
       const processedResults = await Promise.all(
         response.data.map(async (hotelOffer: any) => {
@@ -211,25 +232,6 @@ export class SearchAmadeusHotelsUseCase {
                 originalCurrency,
                 targetCurrency,
               );
-
-              // Get markup configuration
-              let markupPercentage = 0;
-              let serviceFeeAmount = 0;
-              try {
-                const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
-                  ProductType.HOTEL,
-                  targetCurrency,
-                );
-                if (markupConfig) {
-                  markupPercentage = markupConfig.markupPercentage || 0;
-                  serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
-                }
-              } catch (error) {
-                this.logger.warn(
-                  `Could not fetch markup config for HOTEL in ${targetCurrency}, using 0%:`,
-                  error,
-                );
-              }
 
               // Calculate conversion fee and markup
               const conversionDetails = this.currencyService.calculateConversionFee(
@@ -297,8 +299,25 @@ export class SearchAmadeusHotelsUseCase {
       const totalPages = Math.ceil(totalHotels / limit);
       const hasMore = page < totalPages;
 
+      // Attach primary image URL from cache when available (no extra API calls)
+      const ids = processedResults
+        .map((r: any) => r.hotel?.hotelId)
+        .filter((id): id is string => Boolean(id));
+      let primaryUrls: Record<string, string> = {};
+      if (ids.length > 0) {
+        try {
+          primaryUrls = await this.hotelImageCacheService.getPrimaryImageUrls(ids);
+        } catch (e) {
+          this.logger.warn('Could not attach primary image URLs to search results', e);
+        }
+      }
+      const dataWithImages = processedResults.map((item: any) => ({
+        ...item,
+        primaryImageUrl: item.hotel?.hotelId ? primaryUrls[item.hotel.hotelId] ?? null : null,
+      }));
+
       const result = {
-        data: processedResults,
+        data: dataWithImages,
         meta: {
           ...(response.meta || {}),
           count: processedResults.length,

@@ -31,14 +31,16 @@ export class SearchCarRentalsDto {
   dropoffLocationCode?: string;
 
   @ApiProperty({
-    description: 'Pickup date and time (ISO 8601 format)',
+    description:
+      'Pickup date and time in ISO 8601 format (date + time required). E.g. 2026-06-04T10:00:00. Time is used for duration and Amadeus.',
     example: '2026-06-04T10:00:00',
   })
   @IsDateString()
   pickupDateTime: string;
 
   @ApiPropertyOptional({
-    description: 'Drop-off date and time (ISO 8601 format). If not provided, defaults to pickup + 1 day.',
+    description:
+      'Drop-off date and time in ISO 8601 format (date + time required when provided). E.g. 2026-06-07T10:00:00. If omitted, defaults to pickup + 24 hours.',
     example: '2026-06-07T10:00:00',
   })
   @IsOptional()
@@ -71,13 +73,22 @@ export class SearchCarRentalsDto {
   vehicleTypes?: string[];
 
   @ApiPropertyOptional({
-    description: 'Currency code (ISO 4217). Default: GBP',
+    description: 'Currency code (ISO 4217). Default: GBP. Accepts either "currency" or "targetCurrency".',
     enum: ['GBP', 'USD', 'EUR', 'NGN', 'JPY', 'CNY', 'GHS', 'KES', 'ZAR'],
     default: 'GBP',
   })
   @IsOptional()
   @IsString()
   currency?: string = 'GBP';
+
+  /** Alias for currency (same meaning). If both sent, targetCurrency takes precedence. */
+  @ApiPropertyOptional({
+    description: 'Same as currency. Use either currency or targetCurrency.',
+    enum: ['GBP', 'USD', 'EUR', 'NGN', 'JPY', 'CNY', 'GHS', 'KES', 'ZAR'],
+  })
+  @IsOptional()
+  @IsString()
+  targetCurrency?: string;
 
   @ApiPropertyOptional({
     description: 'Number of results per page',

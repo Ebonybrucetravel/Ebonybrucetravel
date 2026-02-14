@@ -4,6 +4,7 @@ import { BookingService } from '@domains/booking/services/booking.service';
 import { MarkupCalculationService } from '@domains/markup/services/markup-calculation.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 import { EncryptionService } from '@infrastructure/security/encryption.service';
+import { AgencyCardService } from '@infrastructure/security/agency-card.service';
 import { PrismaService } from '@infrastructure/database/prisma.service';
 import { CreateCarRentalBookingDto } from '@presentation/booking/dto/create-car-rental-booking.dto';
 import { BookingStatus } from '@prisma/client';
@@ -18,6 +19,7 @@ export class CreateCarRentalBookingUseCase {
     private readonly markupCalculationService: MarkupCalculationService,
     private readonly markupRepository: MarkupRepository,
     private readonly encryptionService: EncryptionService,
+    private readonly agencyCardService: AgencyCardService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -43,16 +45,29 @@ export class CreateCarRentalBookingUseCase {
         markupConfig,
       );
 
-      // Encrypt payment card details
-      const encryptedCardDetails = this.encryptionService.encrypt(
-        JSON.stringify({
+      let paymentCardInfo: any = null;
+      if (dto.payment) {
+        const encryptedCardDetails = this.encryptionService.encrypt(
+          JSON.stringify({
+            vendorCode: dto.payment.paymentCard.vendorCode,
+            cardNumber: dto.payment.paymentCard.cardNumber,
+            expiryDate: dto.payment.paymentCard.expiryDate,
+            holderName: dto.payment.paymentCard.holderName,
+            securityCode: dto.payment.paymentCard.securityCode,
+          }),
+        );
+        paymentCardInfo = {
+          encrypted: encryptedCardDetails,
           vendorCode: dto.payment.paymentCard.vendorCode,
-          cardNumber: dto.payment.paymentCard.cardNumber,
+          cardLast4: dto.payment.paymentCard.cardNumber.slice(-4),
           expiryDate: dto.payment.paymentCard.expiryDate,
           holderName: dto.payment.paymentCard.holderName,
-          securityCode: dto.payment.paymentCard.securityCode,
-        }),
-      );
+        };
+      } else if (!this.agencyCardService.isMerchantModel()) {
+        throw new BadRequestException(
+          'Payment card is required. Omit only when PAYMENT_MODEL=merchant.',
+        );
+      }
 
       // Create booking in database (status: PENDING, waiting for payment)
       const booking = await this.bookingService.createBooking({
@@ -68,13 +83,7 @@ export class CreateCarRentalBookingUseCase {
           amadeus_offer_id: dto.offerId,
           offer_price: dto.offerPrice,
           driver: dto.driver,
-          payment_card_info: {
-            encrypted: encryptedCardDetails,
-            vendorCode: dto.payment.paymentCard.vendorCode,
-            cardLast4: dto.payment.paymentCard.cardNumber.slice(-4),
-            expiryDate: dto.payment.paymentCard.expiryDate,
-            holderName: dto.payment.paymentCard.holderName,
-          },
+          ...(paymentCardInfo && { payment_card_info: paymentCardInfo }),
           special_requests: dto.specialRequests,
         },
         passengerInfo: {
@@ -129,20 +138,29 @@ export class CreateCarRentalBookingUseCase {
 
     const bookingData = booking.bookingData as any;
 
-    // Decrypt card details
+    // Card: guest card (stored at booking) or agency card (merchant model)
     let cardDetails: {
       vendorCode: string;
       cardNumber: string;
       expiryDate: string;
-      holderName: string;
-      securityCode: string;
+      holderName?: string;
+      securityCode?: string;
     };
-
-    try {
-      cardDetails = JSON.parse(this.encryptionService.decrypt(bookingData.payment_card_info.encrypted));
-    } catch (error) {
-      this.logger.error(`Failed to decrypt card details for booking ${bookingId}:`, error);
-      throw new BadRequestException('Failed to decrypt card details. Booking cannot be completed.');
+    if (bookingData.payment_card_info?.encrypted) {
+      try {
+        cardDetails = JSON.parse(this.encryptionService.decrypt(bookingData.payment_card_info.encrypted));
+      } catch (error) {
+        this.logger.error(`Failed to decrypt card details for booking ${bookingId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw new BadRequestException('Failed to decrypt card details. Booking cannot be completed.');
+      }
+    } else {
+      const agencyCard = this.agencyCardService.getAmadeusAgencyCard();
+      if (!agencyCard) {
+        throw new BadRequestException(
+          'Amadeus order not created: no payment method. Set AMADEUS_AGENCY_CARD_ENCRYPTED and PAYMENT_MODEL=merchant, or create booking with guest payment card.',
+        );
+      }
+      cardDetails = agencyCard;
     }
 
     // Create Amadeus transfer order
@@ -173,22 +191,21 @@ export class CreateCarRentalBookingUseCase {
       ],
     });
 
-    // Update booking with Amadeus order ID and clear encrypted card data
+    const updatedBookingData = { ...bookingData };
+    if (bookingData.payment_card_info) {
+      updatedBookingData.payment_card_info = {
+        ...bookingData.payment_card_info,
+        encrypted: null,
+        cardLast4: bookingData.payment_card_info.cardLast4,
+      };
+    }
     await this.prisma.booking.update({
       where: { id: bookingId },
       data: {
         providerBookingId: amadeusOrder.data.id,
         providerData: amadeusOrder.data,
         status: BookingStatus.CONFIRMED,
-        // Clear encrypted card data after successful booking (security best practice)
-        bookingData: {
-          ...bookingData,
-          payment_card_info: {
-            ...bookingData.payment_card_info,
-            encrypted: null, // Remove encrypted data after use
-            cardLast4: bookingData.payment_card_info.cardLast4, // Keep last 4 for display
-          },
-        },
+        bookingData: updatedBookingData,
       },
     });
 

@@ -14,7 +14,7 @@ import {
   HttpStatus,
   HttpException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
@@ -31,6 +31,7 @@ import { FetchHotelRatesUseCase } from '@application/booking/use-cases/fetch-hot
 import { CreateHotelQuoteUseCase } from '@application/booking/use-cases/create-hotel-quote.use-case';
 import { CreateHotelBookingUseCase } from '@application/booking/use-cases/create-hotel-booking.use-case';
 import { CreateAmadeusHotelBookingUseCase } from '@application/booking/use-cases/create-amadeus-hotel-booking.use-case';
+import { CreateGuestAmadeusHotelBookingUseCase } from '@application/booking/use-cases/create-guest-amadeus-hotel-booking.use-case';
 import { GetHotelBookingUseCase } from '@application/booking/use-cases/get-hotel-booking.use-case';
 import { ListHotelBookingsUseCase } from '@application/booking/use-cases/list-hotel-bookings.use-case';
 import { CancelHotelBookingUseCase } from '@application/booking/use-cases/cancel-hotel-booking.use-case';
@@ -42,6 +43,7 @@ import { SearchPlaceSuggestionsUseCase } from '@application/booking/use-cases/se
 import { ListAirlinesUseCase } from '@application/booking/use-cases/list-airlines.use-case';
 import { GetAmadeusHotelDetailsUseCase } from '@application/booking/use-cases/get-amadeus-hotel-details.use-case';
 import { BookingService } from '@domains/booking/services/booking.service';
+import { PrismaService } from '@infrastructure/database/prisma.service';
 import { HotelImageCacheService } from '@application/hotel-images/hotel-image-cache.service';
 import { UsageTrackingService } from '@infrastructure/usage-tracking/usage-tracking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -62,6 +64,7 @@ import { CreateCarRentalBookingDto } from './dto/create-car-rental-booking.dto';
 import { SearchCarRentalsUseCase } from '@application/booking/use-cases/search-car-rentals.use-case';
 import { CreateCarRentalBookingUseCase } from '@application/booking/use-cases/create-car-rental-booking.use-case';
 import { CancelCarRentalBookingUseCase } from '@application/booking/use-cases/cancel-car-rental-booking.use-case';
+import { RequestHotelCancellationUseCase } from '@application/booking/use-cases/request-hotel-cancellation.use-case';
 
 @ApiTags('Bookings')
 @Controller('bookings')
@@ -79,6 +82,7 @@ export class BookingController {
     private readonly createHotelQuoteUseCase: CreateHotelQuoteUseCase,
     private readonly createHotelBookingUseCase: CreateHotelBookingUseCase,
     private readonly createAmadeusHotelBookingUseCase: CreateAmadeusHotelBookingUseCase,
+    private readonly createGuestAmadeusHotelBookingUseCase: CreateGuestAmadeusHotelBookingUseCase,
     private readonly getHotelBookingUseCase: GetHotelBookingUseCase,
     private readonly listHotelBookingsUseCase: ListHotelBookingsUseCase,
     private readonly cancelHotelBookingUseCase: CancelHotelBookingUseCase,
@@ -95,6 +99,8 @@ export class BookingController {
     private readonly searchCarRentalsUseCase: SearchCarRentalsUseCase,
     private readonly createCarRentalBookingUseCase: CreateCarRentalBookingUseCase,
     private readonly cancelCarRentalBookingUseCase: CancelCarRentalBookingUseCase,
+    private readonly requestHotelCancellationUseCase: RequestHotelCancellationUseCase,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Public()
@@ -249,6 +255,68 @@ export class BookingController {
         message: 'Your bookings retrieved successfully',
       };
     }
+  }
+
+  @Public()
+  @Get('public/by-reference/:reference')
+  @ApiOperation({
+    summary: 'Get booking by reference (public)',
+    description:
+      'For success page or email links. No auth required. Success page should use ref in URL (e.g. ?ref=EBT-2...) and call this endpoint.',
+  })
+  @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Booking not found' })
+  async getByReferencePublic(@Param('reference') reference: string) {
+    const booking = await this.bookingService.getBookingByReference(reference);
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+    return {
+      success: true,
+      data: booking,
+      message: 'Booking retrieved successfully',
+    };
+  }
+
+  @Public()
+  @Get('public/by-id/:bookingId')
+  @ApiOperation({
+    summary: 'Get booking by ID (guest – reference + email required)',
+    description:
+      'For guest checkout success page when you have booking id. No auth. Provide reference and email to verify access. Returns 404 if booking not found or credentials do not match.',
+  })
+  @ApiQuery({ name: 'reference', required: true, description: 'Booking reference (e.g. EBT-20260214-507846)' })
+  @ApiQuery({ name: 'email', required: true, description: 'Lead guest email' })
+  @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Booking not found or invalid reference/email' })
+  async getByIdPublic(
+    @Param('bookingId') bookingId: string,
+    @Query('reference') reference: string,
+    @Query('email') email: string,
+  ) {
+    if (!reference?.trim() || !email?.trim()) {
+      throw new BadRequestException('Query parameters reference and email are required');
+    }
+    const bookingWithUser = await this.prisma.booking.findUnique({
+      where: { id: bookingId, deletedAt: null },
+      include: { user: { select: { email: true } } },
+    });
+    if (
+      !bookingWithUser ||
+      bookingWithUser.reference !== reference.trim() ||
+      (bookingWithUser.user?.email ?? '').toLowerCase() !== email.trim().toLowerCase()
+    ) {
+      throw new NotFoundException('Booking not found');
+    }
+    const booking = await this.bookingService.getBookingById(bookingId);
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+    return {
+      success: true,
+      data: booking,
+      message: 'Booking retrieved successfully',
+    };
   }
 
   @Get(':id')
@@ -646,6 +714,43 @@ export class BookingController {
     };
   }
 
+  @Public()
+  @Post('hotels/bookings/amadeus/guest')
+  @ApiOperation({
+    summary: 'Create an Amadeus hotel booking (guest, no authentication)',
+    description:
+      'Same as POST /hotels/bookings/amadeus but for guests. Creates a guest user by lead guest email if needed, then creates the booking. ' +
+      'Use the returned booking reference and lead guest email to pay via POST /payments/amadeus-hotel/charge-margin/guest or POST /payments/stripe/create-intent/guest.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Hotel booking created. Proceed to payment with bookingReference + email.',
+  })
+  @ApiResponse({ status: 400, description: 'Invalid booking data or offer price' })
+  async createGuestAmadeusHotelBooking(@Body() bookingDto: CreateAmadeusHotelBookingDto, @Request() req: any) {
+    try {
+      const dto = { ...bookingDto, clientIp: req.ip || req.headers?.['x-forwarded-for']?.split(',')[0]?.trim(), userAgent: req.headers?.['user-agent'] };
+      const result = await this.createGuestAmadeusHotelBookingUseCase.execute(dto);
+      return {
+        success: true,
+        data: result,
+        message: 'Booking created. Please proceed to payment.',
+      };
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        {
+          success: false,
+          message: error?.message || 'Failed to create booking',
+          error: 'Booking creation failed',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('hotels/bookings/amadeus')
   @ApiBearerAuth()
@@ -662,7 +767,9 @@ export class BookingController {
     @Request() req: any,
   ) {
     try {
-      const result = await this.createAmadeusHotelBookingUseCase.execute(bookingDto, req.user.id);
+      // Set server-side for dispute evidence (BOOKING_OPERATIONS_AND_RISK)
+      const dto = { ...bookingDto, clientIp: req.ip || req.headers?.['x-forwarded-for']?.split(',')[0]?.trim(), userAgent: req.headers?.['user-agent'] };
+      const result = await this.createAmadeusHotelBookingUseCase.execute(dto, req.user.id);
       return {
         success: true,
         data: result,
@@ -717,6 +824,21 @@ export class BookingController {
       data: result,
       message: 'Hotel booking retrieved successfully',
     };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('hotels/bookings/:bookingId/request-cancel')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Request cancellation of your Amadeus hotel booking',
+    description:
+      'Before cancellation deadline: cancels with Amadeus, refunds margin via Stripe, sends email. After deadline: submits request for admin review (3–5 business days).',
+  })
+  @ApiResponse({ status: 200, description: 'Cancellation processed or request submitted' })
+  async requestHotelCancellation(@Param('bookingId') bookingId: string, @Request() req: any) {
+    const result = await this.requestHotelCancellationUseCase.execute(bookingId, req.user.id);
+    return { success: true, data: result };
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

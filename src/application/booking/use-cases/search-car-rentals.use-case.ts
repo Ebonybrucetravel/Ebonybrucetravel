@@ -25,10 +25,12 @@ export class SearchCarRentalsUseCase {
       dropoffDateTime,
       passengers = 1,
       vehicleTypes,
-      currency: targetCurrency = 'GBP',
+      currency,
+      targetCurrency,
       limit = 20,
       page = 1,
     } = searchParams;
+    const effectiveCurrency = targetCurrency ?? currency ?? 'GBP';
 
     // Validate dates
     const today = new Date();
@@ -49,7 +51,7 @@ export class SearchCarRentalsUseCase {
     }
 
     // Check cache
-    const cacheKey = `car_rental:${pickupLocationCode}:${dropoffLocationCode || pickupLocationCode}:${pickupDateTime}:${dropoffDateTime || 'auto'}:${passengers}:${targetCurrency}`;
+    const cacheKey = `car_rental:${pickupLocationCode}:${dropoffLocationCode || pickupLocationCode}:${pickupDateTime}:${dropoffDateTime || 'auto'}:${passengers}:${effectiveCurrency}`;
     const cached = this.cacheService.get<any>(cacheKey);
 
     if (cached) {
@@ -174,7 +176,7 @@ export class SearchCarRentalsUseCase {
         vehicleTypes: vehicleTypes || undefined,
         transferType: 'PRIVATE', // Default to PRIVATE transfer (can be PRIVATE, SHARED, TAXI, HOURLY, etc.)
         duration: transferDuration, // ISO8601 duration format (e.g., PT24H for 24 hours)
-        currency: targetCurrency,
+        currency: effectiveCurrency,
       });
 
       this.logger.log(`Amadeus transfer search response: ${JSON.stringify(response)}`);
@@ -201,7 +203,7 @@ export class SearchCarRentalsUseCase {
               nextPage: null,
               prevPage: null,
             },
-            currency: targetCurrency,
+            currency: effectiveCurrency,
             conversion_note: `Prices include a ${this.currencyService.getConversionBuffer()}% conversion fee to protect against exchange rate fluctuations.`,
             cached: false,
             message: `INVALID PICKUP DATE error from Amadeus. Your pickup date is ${daysFromToday} days from today. The Amadeus test environment typically only supports dates within 1-7 days. Please try a date closer to today (e.g., tomorrow or within the next week).`,
@@ -229,7 +231,7 @@ export class SearchCarRentalsUseCase {
             nextPage: null,
             prevPage: null,
           },
-          currency: targetCurrency,
+          currency: effectiveCurrency,
           conversion_note: `Prices include a ${this.currencyService.getConversionBuffer()}% conversion fee to protect against exchange rate fluctuations.`,
           cached: false,
           message: 'No car rental offers found. The Amadeus test environment has limited data. Try major airports (JFK, CDG, LHR) with dates within 1-7 days from today.',
@@ -269,12 +271,12 @@ export class SearchCarRentalsUseCase {
           // This matches the pattern used in search-flights.use-case.ts and search-hotels.use-case.ts
           // Use Amadeus's pre-converted price as fallback if our conversion fails
           let convertedBasePrice = originalPrice;
-          if (originalCurrency !== targetCurrency && originalPrice > 0) {
+          if (originalCurrency !== effectiveCurrency && originalPrice > 0) {
             try {
               convertedBasePrice = await this.currencyService.convert(
                 originalPrice,
                 originalCurrency,
-                targetCurrency,
+                effectiveCurrency,
               );
               // Check if conversion actually succeeded (currencyService returns original amount on failure)
               // If result equals original and currencies differ, conversion likely failed
@@ -283,7 +285,7 @@ export class SearchCarRentalsUseCase {
               }
             } catch (error) {
               this.logger.warn(
-                `Failed to convert ${originalPrice} ${originalCurrency} to ${targetCurrency}, using Amadeus converted price as fallback:`,
+                `Failed to convert ${originalPrice} ${originalCurrency} to ${effectiveCurrency}, using Amadeus converted price as fallback:`,
                 error,
               );
               // Fallback: Use Amadeus's pre-converted price if available and in target currency
@@ -291,17 +293,17 @@ export class SearchCarRentalsUseCase {
               const amadeusConvertedCurrency = converted.currencyCode || '';
               if (
                 amadeusConvertedPrice > 0 &&
-                amadeusConvertedCurrency.toUpperCase() === targetCurrency.toUpperCase()
+                amadeusConvertedCurrency.toUpperCase() === effectiveCurrency.toUpperCase()
               ) {
                 convertedBasePrice = amadeusConvertedPrice;
                 this.logger.log(
-                  `Using Amadeus converted price: ${amadeusConvertedPrice} ${targetCurrency}`,
+                  `Using Amadeus converted price: ${amadeusConvertedPrice} ${effectiveCurrency}`,
                 );
               } else {
                 // Last resort: use original price (not ideal, but better than 0)
                 convertedBasePrice = originalPrice;
                 this.logger.error(
-                  `Could not convert ${originalPrice} ${originalCurrency} to ${targetCurrency} and no valid fallback available`,
+                  `Could not convert ${originalPrice} ${originalCurrency} to ${effectiveCurrency} and no valid fallback available`,
                 );
               }
             }
@@ -313,7 +315,7 @@ export class SearchCarRentalsUseCase {
           try {
             const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
               ProductType.CAR_RENTAL,
-              targetCurrency,
+              effectiveCurrency,
             );
             if (markupConfig) {
               markupPercentage = markupConfig.markupPercentage || 0;
@@ -321,7 +323,7 @@ export class SearchCarRentalsUseCase {
             }
           } catch (error) {
             this.logger.warn(
-              `Could not fetch markup config for CAR_RENTAL in ${targetCurrency}, using 0%:`,
+              `Could not fetch markup config for CAR_RENTAL in ${effectiveCurrency}, using 0%:`,
               error,
             );
           }
@@ -332,7 +334,7 @@ export class SearchCarRentalsUseCase {
           const conversionDetails = this.currencyService.calculateConversionFee(
             convertedBasePrice,
             originalCurrency,
-            targetCurrency,
+            effectiveCurrency,
           );
 
           // Step 4: Apply markup to price after conversion fee
@@ -346,26 +348,26 @@ export class SearchCarRentalsUseCase {
             ...offer,
             original_price: originalPrice.toString(),
             original_currency: originalCurrency,
-            base_price: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
-            currency: targetCurrency,
+            base_price: this.currencyService.formatAmount(convertedBasePrice, effectiveCurrency),
+            currency: effectiveCurrency,
             conversion_fee: this.currencyService.formatAmount(
               conversionDetails.conversionFee,
-              targetCurrency,
+              effectiveCurrency,
             ),
             conversion_fee_percentage:
-              originalCurrency !== targetCurrency ? this.currencyService.getConversionBuffer() : 0,
+              originalCurrency !== effectiveCurrency ? this.currencyService.getConversionBuffer() : 0,
             price_after_conversion: this.currencyService.formatAmount(
               conversionDetails.totalWithFee,
-              targetCurrency,
+              effectiveCurrency,
             ),
             markup_percentage: markupPercentage,
-            markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
-            service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
-            final_price: this.currencyService.formatAmount(finalPrice, targetCurrency),
+            markup_amount: this.currencyService.formatAmount(markupAmount, effectiveCurrency),
+            service_fee: this.currencyService.formatAmount(serviceFeeAmount, effectiveCurrency),
+            final_price: this.currencyService.formatAmount(finalPrice, effectiveCurrency),
             price: {
-              currency: targetCurrency,
-              base: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
-              total: this.currencyService.formatAmount(finalPrice, targetCurrency),
+              currency: effectiveCurrency,
+              base: this.currencyService.formatAmount(convertedBasePrice, effectiveCurrency),
+              total: this.currencyService.formatAmount(finalPrice, effectiveCurrency),
               original_total: originalPrice.toString(),
               original_currency: originalCurrency,
             },
@@ -393,7 +395,7 @@ export class SearchCarRentalsUseCase {
           nextPage: page < totalPages ? page + 1 : null,
           prevPage: page > 1 ? page - 1 : null,
         },
-        currency: targetCurrency,
+        currency: effectiveCurrency,
         conversion_note: `Prices include a ${this.currencyService.getConversionBuffer()}% conversion fee to protect against exchange rate fluctuations.`,
         cached: false,
         ...(totalResults === 0 && {

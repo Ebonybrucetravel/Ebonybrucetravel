@@ -39,11 +39,22 @@ model User {
   // Only used for ADMIN role; SUPER_ADMIN has all permissions by default
   permissions             Json? // { canManageBookings, canManageUsers, canManageMarkups, canViewReports, etc. }
 
+  // Stripe customer ID for saved payment methods
+  stripeCustomerId String? @unique
+
   // Relations
   bookings          Booking[] // User's bookings
   auditLogs         AuditLog[] // Admin actions performed by user
   cancelledBookings Booking[]      @relation("CancelledBy") // Bookings cancelled by this user
   createdMarkups    MarkupConfig[] @relation("CreatedMarkup") // Markup configs created by this admin
+
+  // Profile feature relations
+  loyaltyAccount     LoyaltyAccount?
+  loyaltyTransactions LoyaltyTransaction[]
+  savedPaymentMethods SavedPaymentMethod[]
+  savedItems         SavedItem[]
+  savedTravelers     SavedTraveler[]
+  vouchers           Voucher[]
 
   // Timestamps
   createdAt DateTime  @default(now())
@@ -79,8 +90,14 @@ model Booking {
   basePrice    Decimal @db.Decimal(12, 2) // Provider base price
   markupAmount Decimal @db.Decimal(12, 2) // Calculated markup
   serviceFee   Decimal @db.Decimal(12, 2) // Service fee
-  totalAmount  Decimal @db.Decimal(12, 2) // Total customer pays
+  totalAmount  Decimal @db.Decimal(12, 2) // Total customer pays (before voucher discount)
   currency     String  @default("GBP") // ISO 4217 code - Default to GBP to match API default
+  
+  // Voucher discount (if applied)
+  voucherId        String? // Voucher ID if voucher was used
+  voucherCode      String? // Voucher code for reference
+  voucherDiscount  Decimal? @db.Decimal(12, 2) // Discount amount applied
+  finalAmount      Decimal? @db.Decimal(12, 2) // Final amount after voucher (totalAmount - voucherDiscount)
 
   // Booking details (stored as JSON for flexibility)
   bookingData   Json // Product-specific data (flight details, hotel info, car details)
@@ -93,8 +110,9 @@ model Booking {
   paymentReference String? // Payment gateway transaction reference
 
   // Relations
-  user            User  @relation(fields: [userId], references: [id])
-  cancelledByUser User? @relation("CancelledBy", fields: [cancelledBy], references: [id])
+  user                 User                  @relation(fields: [userId], references: [id])
+  cancelledByUser      User?                 @relation("CancelledBy", fields: [cancelledBy], references: [id])
+  cancellationRequests CancellationRequest[]
 
   // Timestamps
   createdAt DateTime  @default(now())
@@ -106,6 +124,15 @@ model Booking {
   cancelledBy  String? // User ID who cancelled
   refundAmount Decimal?      @db.Decimal(12, 2)
   refundStatus RefundStatus?
+
+  // Dispute evidence & cancellation policy (BOOKING_OPERATIONS_AND_RISK)
+  cancellationDeadline       DateTime?   // UTC; for auto vs admin cancel logic
+  cancellationPolicySnapshot String?    @db.Text // Exact text shown at booking
+  clientIp                   String?    // Dispute evidence
+  userAgent                  String?    @db.Text // Dispute evidence
+  policyAcceptedAt           DateTime? // TOS/policy checkbox accepted (UTC)
+  stripeChargeId             String?   // Stripe charge ID (margin) for disputes
+  confirmationEmailSentAt    DateTime? // Evidence that confirmation was sent
 
   @@index([userId])
   @@index([reference])
@@ -212,6 +239,34 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// After-deadline cancellation requests (admin queue per BOOKING_OPERATIONS_AND_RISK)
+model CancellationRequest {
+  id            String                  @id @default(cuid())
+  bookingId     String
+  requestedAt   DateTime                @default(now())
+  requestedBy   String?                 // User ID who requested
+  status        CancellationRequestStatus @default(PENDING)
+  adminNotes    String?                 @db.Text
+  processedAt   DateTime?
+  processedBy   String?                 // Admin user ID
+  refundAmount  Decimal?                @db.Decimal(12, 2)
+  refundStatus  RefundStatus?
+  rejectionReason String?               @db.Text
+
+  booking       Booking                 @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([status])
+  @@index([requestedAt])
+  @@map("cancellation_requests")
+}
+
+enum CancellationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // Hotel images cache for Google Places API
 model HotelImage {
   id          String   @id @default(cuid())
@@ -249,4 +304,275 @@ model ApiUsageTracking {
   @@index([service, month, year])
   @@index([isLimitReached])
   @@map("api_usage_tracking")
+}
+
+// ===================================================================
+// PROFILE FEATURES
+// ===================================================================
+
+// Loyalty account - one per user, tracks current balance and tier
+model LoyaltyAccount {
+  id        String @id @default(cuid())
+  userId    String @unique
+  balance   Int    @default(0) // Current points balance
+  totalEarned Int  @default(0) // Lifetime points earned (never decreases)
+  tier      LoyaltyTier @default(BRONZE)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([tier])
+  @@map("loyalty_accounts")
+}
+
+enum LoyaltyTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+// Individual loyalty point transactions (earn/redeem audit trail)
+model LoyaltyTransaction {
+  id          String              @id @default(cuid())
+  userId      String
+  type        LoyaltyTransactionType
+  points      Int                 // Positive for earn, negative for redeem
+  balance     Int                 // Running balance after this transaction
+  description String              // Human-readable description
+  referenceType String?           // 'BOOKING', 'VOUCHER_REDEMPTION', 'ADMIN_ADJUSTMENT', 'EXPIRY'
+  referenceId   String?           // Booking ID, Voucher ID, etc.
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@index([referenceType, referenceId])
+  @@index([createdAt])
+  @@map("loyalty_transactions")
+}
+
+enum LoyaltyTransactionType {
+  EARN           // Points earned from booking
+  REDEEM         // Points redeemed for voucher
+  ADMIN_CREDIT   // Admin manually added points
+  ADMIN_DEBIT    // Admin manually deducted points
+  EXPIRY         // Points expired
+  BONUS          // Promotional bonus points
+}
+
+// Saved payment methods - Stripe tokenized (NEVER store raw card data)
+model SavedPaymentMethod {
+  id                  String  @id @default(cuid())
+  userId              String
+  stripePaymentMethodId String @unique // Stripe pm_xxx token
+  brand               String  // 'visa', 'mastercard', 'amex', etc.
+  last4               String  // Last 4 digits for display
+  expiryMonth         Int     // Card expiry month (1-12)
+  expiryYear          Int     // Card expiry year (YYYY)
+  cardholderName      String? // Name on card (optional, for display)
+  isDefault           Boolean @default(false) // Default payment method
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete (also detach from Stripe)
+
+  @@index([userId])
+  @@index([isDefault])
+  @@map("saved_payment_methods")
+}
+
+// Saved items / Wishlist - save hotels, flights, cars for later
+model SavedItem {
+  id          String        @id @default(cuid())
+  userId      String
+  productType ProductType   // HOTEL, FLIGHT_DOMESTIC, FLIGHT_INTERNATIONAL, CAR_RENTAL
+  title       String        // Display title (e.g., "Luxury Suite Colosseum")
+  subtitle    String?       // Secondary info (e.g., "Rome, Italy . 5 Star Hotel")
+  imageUrl    String?       // Thumbnail image URL
+  price       Decimal?      @db.Decimal(12, 2) // Snapshot price at time of save
+  currency    String?       // Price currency
+  rating      Decimal?      @db.Decimal(3, 1)  // Rating (e.g., 4.5)
+  
+  // Provider reference to re-fetch details
+  providerId  String?       // Hotel ID, offer ID, etc. from provider
+  provider    Provider?     // Which provider this is from
+  
+  // Full snapshot of the item data at time of save (for offline display)
+  itemData    Json?         // Full provider response snapshot
+  
+  // Location info for filtering
+  location    String?       // City, country or airport code
+  
+  notes       String?       // User's personal notes
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productType, providerId]) // Prevent duplicate saves
+  @@index([userId])
+  @@index([productType])
+  @@index([createdAt])
+  @@map("saved_items")
+}
+
+// Admin-configurable reward rules (points → vouchers)
+model RewardRule {
+  id                String   @id @default(cuid())
+  name              String   // "5% Off Domestic Flights", "10% Off Hotels"
+  description       String?  // Detailed description
+  pointsRequired    Int      // Points needed to redeem (e.g., 10000)
+  discountType      DiscountType // PERCENTAGE or FIXED_AMOUNT
+  discountValue     Decimal  @db.Decimal(12, 2) // 5.00 for 5%, or fixed amount
+  currency          String?  // Required for FIXED_AMOUNT type
+  maxDiscountAmount Decimal? @db.Decimal(12, 2) // Cap for percentage discounts
+  
+  // Applicability
+  applicableProducts Json?   // Array of ProductType values, null = all products
+  minBookingAmount   Decimal? @db.Decimal(12, 2) // Minimum booking amount to apply
+  
+  // Validity
+  isActive          Boolean  @default(true)
+  validityDays      Int      @default(90) // Voucher valid for N days after generation
+  maxUsagePerUser   Int?     // Max times a user can redeem this rule (null = unlimited)
+  maxTotalUsage     Int?     // Global max redemptions (null = unlimited)
+  currentUsageCount Int      @default(0) // Track global usage
+  
+  // Tier requirement (optional - limit to certain tiers)
+  requiredTier      LoyaltyTier? // null = available to all tiers
+  
+  vouchers Voucher[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([pointsRequired])
+  @@index([requiredTier])
+  @@map("reward_rules")
+}
+
+enum DiscountType {
+  PERCENTAGE    // e.g., 5% off
+  FIXED_AMOUNT  // e.g., £20 off
+}
+
+// Loyalty tier configuration (admin-adjustable thresholds)
+model LoyaltyTierConfig {
+  id               String      @id @default(cuid())
+  tier             LoyaltyTier @unique
+  minPoints        Int         // Minimum lifetime points to reach this tier
+  pointsMultiplier Decimal     @db.Decimal(3, 2) @default(1.00) // Earning multiplier (e.g., 1.5x for Gold)
+  description      String?     // "Earn 1.5x points on every booking"
+  benefits         Json?       // Array of benefit strings for display
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([minPoints])
+  @@map("loyalty_tier_configs")
+}
+
+// Points earning rules per product type (admin-configurable)
+model PointsEarningRule {
+  id                  String      @id @default(cuid())
+  productType         ProductType
+  pointsPerUnit       Int         // Base points per currency unit spent (e.g., 1 point per £1)
+  bonusPoints         Int         @default(0) // Flat bonus points per booking
+  isActive            Boolean     @default(true)
+  minBookingAmount    Decimal?    @db.Decimal(12, 2) // Minimum spend to earn points
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productType])
+  @@index([isActive])
+  @@map("points_earning_rules")
+}
+
+// Generated vouchers from reward redemptions
+model Voucher {
+  id             String        @id @default(cuid())
+  userId         String
+  rewardRuleId   String
+  code           String        @unique // Unique voucher code (e.g., "EBT-V-A1B2C3")
+  discountType   DiscountType
+  discountValue  Decimal       @db.Decimal(12, 2)
+  currency       String?       // For fixed amount discounts
+  maxDiscountAmount Decimal?   @db.Decimal(12, 2) // Cap for percentage discounts
+  
+  // Applicability
+  applicableProducts Json?     // Inherited from reward rule
+  minBookingAmount   Decimal?  @db.Decimal(12, 2)
+  
+  // Status
+  status         VoucherStatus @default(ACTIVE)
+  usedAt         DateTime?     // When it was applied to a booking
+  usedOnBookingId String?      // Which booking it was used on
+  
+  // Validity
+  expiresAt      DateTime      // When the voucher expires
+  
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rewardRule RewardRule @relation(fields: [rewardRuleId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([code])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("vouchers")
+}
+
+enum VoucherStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  CANCELLED
+}
+
+// Saved travelers for quick checkout
+model SavedTraveler {
+  id           String    @id @default(cuid())
+  userId       String
+  firstName    String
+  lastName     String
+  email        String?
+  phone        String?
+  dateOfBirth  DateTime?
+  gender       String?   // Male, Female, Other
+  relationship String?   // Self, Spouse, Child, Parent, Friend, Colleague, Other
+  
+  // Travel document info (encrypted at rest by DB)
+  passportNumber    String?
+  passportCountry   String? // ISO 3166-1 alpha-2 country code
+  passportExpiry    DateTime?
+  nationalId        String? // National ID number (optional)
+  
+  // Frequent flyer
+  frequentFlyerNumber String?
+  frequentFlyerAirline String?
+  
+  isDefault    Boolean   @default(false) // Primary traveler (the user themselves)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@index([userId])
+  @@index([isDefault])
+  @@map("saved_travelers")
 }

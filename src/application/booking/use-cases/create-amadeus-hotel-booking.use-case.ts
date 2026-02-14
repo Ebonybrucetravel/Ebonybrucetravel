@@ -1,9 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { redactCardData } from '@common/utils/pci-redaction.util';
 import { AmadeusService } from '@infrastructure/external-apis/amadeus/amadeus.service';
 import { BookingService } from '@domains/booking/services/booking.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 import { MarkupCalculationService } from '@domains/markup/services/markup-calculation.service';
 import { EncryptionService } from '@infrastructure/security/encryption.service';
+import { AgencyCardService } from '@infrastructure/security/agency-card.service';
 import { CreateAmadeusHotelBookingDto } from '@presentation/booking/dto/create-amadeus-hotel-booking.dto';
 import { BookingStatus, Provider } from '@prisma/client';
 import { PrismaService } from '@infrastructure/database/prisma.service';
@@ -18,6 +20,7 @@ export class CreateAmadeusHotelBookingUseCase {
     private readonly markupRepository: MarkupRepository,
     private readonly markupCalculationService: MarkupCalculationService,
     private readonly encryptionService: EncryptionService,
+    private readonly agencyCardService: AgencyCardService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -28,7 +31,19 @@ export class CreateAmadeusHotelBookingUseCase {
    */
   async execute(dto: CreateAmadeusHotelBookingDto, userId: string) {
     try {
-      const { offerPrice, currency } = dto;
+      const { offerPrice, currency, cancellationDeadline, cancellationPolicySnapshot, policyAccepted, clientIp, userAgent } = dto;
+
+      // BOOKING_OPERATIONS_AND_RISK: require explicit policy acceptance for dispute defense
+      if (!policyAccepted) {
+        throw new BadRequestException(
+          'You must agree to the cancellation and no-show policy before booking. Please check the box to confirm.',
+        );
+      }
+
+      const deadlineUtc = new Date(cancellationDeadline);
+      if (isNaN(deadlineUtc.getTime())) {
+        throw new BadRequestException('Invalid cancellation deadline. Use ISO 8601 format (e.g. 2026-02-14T23:59:00.000Z).');
+      }
 
       // Get active markup config for HOTEL
       const markupConfig = await this.markupRepository.findActiveMarkupByProductType('HOTEL', currency);
@@ -75,27 +90,30 @@ export class CreateAmadeusHotelBookingUseCase {
         })),
       };
 
-      // Encrypt and store payment card info securely
-      // This allows us to use the card details when creating Amadeus booking after payment
-      const cardDetails = {
-        vendorCode: dto.payment.paymentCard.paymentCardInfo.vendorCode,
-        cardNumber: dto.payment.paymentCard.paymentCardInfo.cardNumber,
-        expiryDate: dto.payment.paymentCard.paymentCardInfo.expiryDate,
-        holderName: dto.payment.paymentCard.paymentCardInfo.holderName,
-        securityCode: dto.payment.paymentCard.paymentCardInfo.securityCode,
-      };
-
-      // Encrypt card details for secure storage
-      const encryptedCardData = this.encryptionService.encryptCardDetails(cardDetails);
-
-      // Store both encrypted data and last 4 digits for display
-      const paymentCardInfo = {
-        encrypted: encryptedCardData,
-        cardLast4: dto.payment.paymentCard.paymentCardInfo.cardNumber.slice(-4),
-        vendorCode: dto.payment.paymentCard.paymentCardInfo.vendorCode,
-        expiryDate: dto.payment.paymentCard.paymentCardInfo.expiryDate,
-        holderName: dto.payment.paymentCard.paymentCardInfo.holderName,
-      };
+      // Merchant model: no guest card; customer pays via Stripe, we pay Amadeus with agency card later.
+      // Guest-card model: encrypt and store guest card for Amadeus (and optional margin charge).
+      let paymentCardInfo: any = null;
+      if (dto.payment) {
+        const cardDetails = {
+          vendorCode: dto.payment.paymentCard.paymentCardInfo.vendorCode,
+          cardNumber: dto.payment.paymentCard.paymentCardInfo.cardNumber,
+          expiryDate: dto.payment.paymentCard.paymentCardInfo.expiryDate,
+          holderName: dto.payment.paymentCard.paymentCardInfo.holderName,
+          securityCode: dto.payment.paymentCard.paymentCardInfo.securityCode,
+        };
+        const encryptedCardData = this.encryptionService.encryptCardDetails(cardDetails);
+        paymentCardInfo = {
+          encrypted: encryptedCardData,
+          cardLast4: dto.payment.paymentCard.paymentCardInfo.cardNumber.slice(-4),
+          vendorCode: dto.payment.paymentCard.paymentCardInfo.vendorCode,
+          expiryDate: dto.payment.paymentCard.paymentCardInfo.expiryDate,
+          holderName: dto.payment.paymentCard.paymentCardInfo.holderName,
+        };
+      } else if (!this.agencyCardService.isMerchantModel()) {
+        throw new BadRequestException(
+          'Payment card is required. Omit only when PAYMENT_MODEL=merchant (customer pays via Stripe; agency pays Amadeus).',
+        );
+      }
 
       // Create booking in our database (PENDING status - waiting for payment)
       const booking = await this.bookingService.createBooking({
@@ -111,8 +129,8 @@ export class CreateAmadeusHotelBookingUseCase {
           amadeus_offer_id: dto.hotelOfferId,
           room_associations: dto.roomAssociations,
           guests: dto.guests,
-          payment_method: dto.payment.method,
-          payment_card_info: paymentCardInfo,
+          payment_method: dto.payment?.method ?? 'CREDIT_CARD',
+          ...(paymentCardInfo && { payment_card_info: paymentCardInfo }),
           travel_agent_email: dto.travelAgentEmail,
           accommodation_special_requests: dto.accommodationSpecialRequests,
           offer_price: basePrice,
@@ -121,6 +139,12 @@ export class CreateAmadeusHotelBookingUseCase {
         passengerInfo,
         status: BookingStatus.PENDING,
         paymentStatus: 'PENDING',
+        // BOOKING_OPERATIONS_AND_RISK: store for cancellation logic and dispute evidence
+        cancellationDeadline: deadlineUtc,
+        cancellationPolicySnapshot: cancellationPolicySnapshot.trim(),
+        policyAcceptedAt: new Date(),
+        ...(clientIp && { clientIp }),
+        ...(userAgent && { userAgent }),
       });
 
       this.logger.log(`Created local booking ${booking.id} for Amadeus hotel offer ${dto.hotelOfferId}`);
@@ -172,39 +196,63 @@ export class CreateAmadeusHotelBookingUseCase {
       const bookingData = booking.bookingData as any;
       const passengerInfo = booking.passengerInfo as any;
 
-      if (!bookingData.amadeus_offer_id) {
-        throw new BadRequestException('Booking missing Amadeus offer ID');
+      const offerId = bookingData.amadeus_offer_id || bookingData.offerId;
+      if (!offerId) {
+        throw new BadRequestException('Booking missing Amadeus offer ID (amadeus_offer_id or offerId)');
       }
 
-      // Reconstruct guests from stored data
-      const guests = bookingData.guests || passengerInfo.guests || [];
-
-      // Reconstruct room associations
-      const roomAssociations = bookingData.room_associations || [];
-
-      // Decrypt card details
-      if (!bookingData.payment_card_info?.encrypted) {
-        throw new BadRequestException('Encrypted card details not found in booking data');
+      // Reconstruct guests: prefer bookingData.guests, else build from passengerInfo
+      let guests = bookingData.guests || passengerInfo?.guests || [];
+      if (guests.length === 0 && passengerInfo) {
+        const p = passengerInfo;
+        guests = [
+          {
+            title: (p as any).title || 'MR',
+            firstName: p.firstName,
+            lastName: p.lastName,
+            email: p.email,
+            phone: p.phone || '',
+          },
+        ];
       }
 
+      // Reconstruct room associations: prefer stored, else default one guest in one room
+      let roomAssociations = bookingData.room_associations || [];
+      if (roomAssociations.length === 0 && guests.length > 0) {
+        roomAssociations = [
+          { hotelOfferId: offerId, guestReferences: [{ guestReference: '1' }] },
+        ];
+      }
+
+      // Card for Amadeus: guest card (stored at booking) or agency card (merchant model)
       let cardDetails: {
         vendorCode: string;
         cardNumber: string;
         expiryDate: string;
         holderName?: string;
         securityCode?: string;
-      };
+      } | null = null;
 
-      try {
-        cardDetails = this.encryptionService.decryptCardDetails(bookingData.payment_card_info.encrypted);
-      } catch (error) {
-        this.logger.error(`Failed to decrypt card details for booking ${bookingId}:`, error);
-        throw new BadRequestException('Failed to decrypt card details. Booking cannot be completed.');
+      if (bookingData.payment_card_info?.encrypted) {
+        try {
+          cardDetails = this.encryptionService.decryptCardDetails(bookingData.payment_card_info.encrypted);
+        } catch (error) {
+          this.logger.error(`Failed to decrypt card details for booking ${bookingId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          throw new BadRequestException('Failed to decrypt card details. Booking cannot be completed.');
+        }
+      } else {
+        cardDetails = this.agencyCardService.getAmadeusAgencyCard();
+        if (!cardDetails) {
+          throw new BadRequestException(
+            'Amadeus order not created: no payment method. ' +
+              'Set AMADEUS_AGENCY_CARD_ENCRYPTED and PAYMENT_MODEL=merchant, or create booking with guest payment card.',
+          );
+        }
       }
 
       // Create Amadeus booking
       const amadeusBooking = await this.amadeusService.createHotelBooking({
-        hotelOfferId: bookingData.amadeus_offer_id,
+        hotelOfferId: offerId,
         guests: guests.map((g: any) => ({
           title: g.name?.title || g.title,
           firstName: g.name?.firstName || g.firstName,
@@ -232,22 +280,22 @@ export class CreateAmadeusHotelBookingUseCase {
         accommodationSpecialRequests: bookingData.accommodation_special_requests,
       });
 
-      // Update booking with Amadeus order ID
+      // Update booking with Amadeus order ID; clear guest card if present (security)
+      const updatedBookingData = { ...bookingData };
+      if (bookingData.payment_card_info) {
+        updatedBookingData.payment_card_info = {
+          ...bookingData.payment_card_info,
+          encrypted: null,
+          cardLast4: bookingData.payment_card_info.cardLast4,
+        };
+      }
       await this.prisma.booking.update({
         where: { id: bookingId },
         data: {
           providerBookingId: amadeusBooking.data.id,
           providerData: amadeusBooking.data,
           status: BookingStatus.CONFIRMED,
-          // Clear encrypted card data after successful booking (security best practice)
-          bookingData: {
-            ...bookingData,
-            payment_card_info: {
-              ...bookingData.payment_card_info,
-              encrypted: null, // Remove encrypted data after use
-              cardLast4: bookingData.payment_card_info.cardLast4, // Keep last 4 for display
-            },
-          },
+          bookingData: updatedBookingData,
         },
       });
 
@@ -257,8 +305,21 @@ export class CreateAmadeusHotelBookingUseCase {
         orderId: amadeusBooking.data.id,
         orderData: amadeusBooking.data,
       };
-    } catch (error) {
-      this.logger.error(`Failed to create Amadeus booking for booking ${bookingId}:`, error);
+    } catch (error: any) {
+      const errResponse = error?.getResponse?.();
+      const status = error?.getStatus?.() ?? error?.statusCode;
+      const amadeusMessage =
+        typeof errResponse === 'object' && errResponse?.message
+          ? errResponse.message
+          : typeof errResponse === 'string'
+            ? errResponse
+            : error?.message;
+      this.logger.error(
+        `Failed to create Amadeus booking for booking ${bookingId}: status=${status} message=${amadeusMessage}`,
+      );
+      if (errResponse && typeof errResponse === 'object' && errResponse.errors) {
+        this.logger.error(`Amadeus errors: ${JSON.stringify(redactCardData(errResponse.errors))}`);
+      }
       throw error;
     }
   }

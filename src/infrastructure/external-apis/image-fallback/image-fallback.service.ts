@@ -43,27 +43,26 @@ export class ImageFallbackService {
 
   /**
    * Get generic placeholder images
-   * Uses placeholder.com or similar free services
-   * These are professional-looking placeholder images that won't break the UI
+   * Uses placehold.co (reliable, free, no API key). Serves real images (SVG/PNG) so they always load.
    */
   getGenericPlaceholderImages(count: number = 3): FallbackImage[] {
     const images: FallbackImage[] = [];
     const types = ['exterior', 'interior', 'room', 'amenity', 'lobby'];
-    const colors = ['4A90E2', '50C878', 'FF6B6B', 'FFA500', '9B59B6']; // Different colors for variety
-    
+    const colors = ['4A90E2', '50C878', 'E74C3C', 'F39C12', '9B59B6'];
+
     for (let i = 0; i < count; i++) {
       const color = colors[i % colors.length];
       const type = types[i % types.length];
-      
-      // Use placeholder.com with hotel-themed text
+      const text = `Hotel ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+      const safeText = text.replace(/\s/g, '+'); // placehold.co expects + for spaces
       images.push({
-        url: `https://via.placeholder.com/800x600/${color}/FFFFFF?text=Hotel+${type.charAt(0).toUpperCase() + type.slice(1)}`,
+        url: `https://placehold.co/800x600/${color}/FFFFFF?text=${safeText}`,
         type: type,
         source: 'placeholder',
         attribution: 'Generic hotel image',
       });
     }
-    
+
     return images;
   }
 

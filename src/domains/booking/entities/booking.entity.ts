@@ -24,6 +24,14 @@ export class Booking {
   cancelledBy?: string;
   refundAmount?: number;
   refundStatus?: string;
+  // Dispute evidence & cancellation (BOOKING_OPERATIONS_AND_RISK)
+  cancellationDeadline?: Date;
+  cancellationPolicySnapshot?: string;
+  clientIp?: string;
+  userAgent?: string;
+  policyAcceptedAt?: Date;
+  stripeChargeId?: string;
+  confirmationEmailSentAt?: Date;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date;

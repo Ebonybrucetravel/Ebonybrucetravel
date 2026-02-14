@@ -9,11 +9,13 @@ import {
   Query,
   UseGuards,
   Request,
+  HttpCode,
+  HttpStatus,
   BadRequestException,
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
@@ -23,6 +25,13 @@ import * as bcrypt from 'bcrypt';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { UpdateAdminDto } from './dto/update-admin.dto';
 import { AssignPermissionsDto } from './dto/assign-permissions.dto';
+import { RewardsAdminService } from '@domains/loyalty/rewards-admin.service';
+import { LoyaltyService } from '@domains/loyalty/loyalty.service';
+import {
+  ProcessCancellationRequestUseCase,
+  ProcessCancellationRequestAction,
+  ProcessCancellationRequestDto,
+} from '@application/booking/use-cases/process-cancellation-request.use-case';
 
 @ApiTags('Admin')
 @ApiBearerAuth()
@@ -30,7 +39,12 @@ import { AssignPermissionsDto } from './dto/assign-permissions.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN')
 export class AdminController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rewardsAdminService: RewardsAdminService,
+    private readonly loyaltyService: LoyaltyService,
+    private readonly processCancellationRequestUseCase: ProcessCancellationRequestUseCase,
+  ) {}
 
   @Post('users')
   @ApiOperation({ summary: 'Create a new admin user (Super Admin only)' })
@@ -526,5 +540,279 @@ export class AdminController {
       },
       message: 'Audit logs retrieved successfully',
     };
+  }
+
+  // =====================================================
+  // REWARDS & LOYALTY MANAGEMENT (Admin)
+  // =====================================================
+
+  @Get('rewards/dashboard')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Get rewards system dashboard stats' })
+  @ApiResponse({ status: 200, description: 'Dashboard stats retrieved' })
+  async getRewardsDashboard() {
+    const stats = await this.rewardsAdminService.getRewardsDashboardStats();
+    return { success: true, data: stats, message: 'Rewards dashboard retrieved' };
+  }
+
+  // --- Reward Rules (Points → Voucher conversion) ---
+
+  @Post('rewards/rules')
+  @ApiOperation({
+    summary: 'Create a reward rule (points → voucher conversion)',
+    description: 'Define how many points users need to redeem for a discount voucher',
+  })
+  @ApiResponse({ status: 201, description: 'Reward rule created' })
+  async createRewardRule(@Body() body: any) {
+    const rule = await this.rewardsAdminService.createRewardRule(body);
+    return { success: true, data: rule, message: 'Reward rule created successfully' };
+  }
+
+  @Get('rewards/rules')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'List all reward rules' })
+  @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })
+  @ApiResponse({ status: 200, description: 'Reward rules retrieved' })
+  async listRewardRules(@Query('activeOnly') activeOnly?: boolean) {
+    const rules = await this.rewardsAdminService.listRewardRules({ activeOnly });
+    return { success: true, data: rules, message: 'Reward rules retrieved' };
+  }
+
+  @Get('rewards/rules/:id')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Get a specific reward rule' })
+  @ApiParam({ name: 'id', description: 'Reward rule ID' })
+  @ApiResponse({ status: 200, description: 'Reward rule retrieved' })
+  async getRewardRule(@Param('id') id: string) {
+    const rule = await this.rewardsAdminService.getRewardRule(id);
+    return { success: true, data: rule, message: 'Reward rule retrieved' };
+  }
+
+  @Put('rewards/rules/:id')
+  @ApiOperation({ summary: 'Update a reward rule' })
+  @ApiParam({ name: 'id', description: 'Reward rule ID' })
+  @ApiResponse({ status: 200, description: 'Reward rule updated' })
+  async updateRewardRule(@Param('id') id: string, @Body() body: any) {
+    const rule = await this.rewardsAdminService.updateRewardRule(id, body);
+    return { success: true, data: rule, message: 'Reward rule updated successfully' };
+  }
+
+  @Delete('rewards/rules/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Deactivate a reward rule' })
+  @ApiParam({ name: 'id', description: 'Reward rule ID' })
+  @ApiResponse({ status: 200, description: 'Reward rule deactivated' })
+  async deleteRewardRule(@Param('id') id: string) {
+    const result = await this.rewardsAdminService.deleteRewardRule(id);
+    return { success: true, ...result };
+  }
+
+  // --- Tier Configuration ---
+
+  @Get('rewards/tiers')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Get all loyalty tier configurations' })
+  @ApiResponse({ status: 200, description: 'Tier configs retrieved' })
+  async getTierConfigs() {
+    const tiers = await this.rewardsAdminService.getAllTierConfigs();
+    return { success: true, data: tiers, message: 'Tier configurations retrieved' };
+  }
+
+  @Put('rewards/tiers')
+  @ApiOperation({
+    summary: 'Upsert a loyalty tier configuration',
+    description: 'Create or update tier thresholds, multipliers, and benefits',
+  })
+  @ApiResponse({ status: 200, description: 'Tier config upserted' })
+  async upsertTierConfig(@Body() body: any) {
+    const config = await this.rewardsAdminService.upsertTierConfig(body);
+    return { success: true, data: config, message: 'Tier configuration updated' };
+  }
+
+  @Post('rewards/tiers/seed-defaults')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Seed default tier configurations (only if none exist)' })
+  @ApiResponse({ status: 200, description: 'Default tiers seeded' })
+  async seedDefaultTiers() {
+    await this.rewardsAdminService.seedDefaultTierConfigs();
+    const tiers = await this.rewardsAdminService.getAllTierConfigs();
+    return { success: true, data: tiers, message: 'Default tier configurations seeded' };
+  }
+
+  // --- Points Earning Rules ---
+
+  @Get('rewards/earning-rules')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Get all points earning rules per product type' })
+  @ApiResponse({ status: 200, description: 'Earning rules retrieved' })
+  async getEarningRules() {
+    const rules = await this.rewardsAdminService.getAllPointsEarningRules();
+    return { success: true, data: rules, message: 'Earning rules retrieved' };
+  }
+
+  @Put('rewards/earning-rules')
+  @ApiOperation({
+    summary: 'Upsert a points earning rule',
+    description: 'Configure how many points users earn per currency unit spent on each product type',
+  })
+  @ApiResponse({ status: 200, description: 'Earning rule upserted' })
+  async upsertEarningRule(@Body() body: any) {
+    const rule = await this.rewardsAdminService.upsertPointsEarningRule(body);
+    return { success: true, data: rule, message: 'Earning rule updated' };
+  }
+
+  @Post('rewards/earning-rules/seed-defaults')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Seed default earning rules (only if none exist)' })
+  @ApiResponse({ status: 200, description: 'Default earning rules seeded' })
+  async seedDefaultEarningRules() {
+    await this.rewardsAdminService.seedDefaultEarningRules();
+    const rules = await this.rewardsAdminService.getAllPointsEarningRules();
+    return { success: true, data: rules, message: 'Default earning rules seeded' };
+  }
+
+  // --- Voucher Management ---
+
+  @Get('rewards/vouchers')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'List all vouchers (admin view)' })
+  @ApiQuery({ name: 'userId', required: false })
+  @ApiQuery({ name: 'status', required: false, enum: ['ACTIVE', 'USED', 'EXPIRED', 'CANCELLED'] })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiResponse({ status: 200, description: 'Vouchers retrieved' })
+  async listVouchers(@Query() query: any) {
+    const result = await this.rewardsAdminService.listVouchers(query);
+    return { success: true, ...result, message: 'Vouchers retrieved' };
+  }
+
+  @Delete('rewards/vouchers/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancel a voucher' })
+  @ApiParam({ name: 'id', description: 'Voucher ID' })
+  @ApiResponse({ status: 200, description: 'Voucher cancelled' })
+  async cancelVoucher(@Param('id') id: string) {
+    const result = await this.rewardsAdminService.cancelVoucher(id);
+    return { success: true, ...result };
+  }
+
+  // --- User Loyalty Management ---
+
+  @Post('rewards/users/:userId/adjust-points')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Manually adjust user loyalty points (credit or debit)',
+    description: 'Positive points = credit, negative points = debit',
+  })
+  @ApiParam({ name: 'userId', description: 'User ID' })
+  @ApiResponse({ status: 200, description: 'Points adjusted' })
+  async adjustUserPoints(
+    @Param('userId') userId: string,
+    @Body() body: { points: number; reason: string },
+    @Request() req,
+  ) {
+    const result = await this.loyaltyService.adminAdjustPoints(
+      userId,
+      body.points,
+      body.reason,
+      req.user.id,
+    );
+    return {
+      success: true,
+      data: result,
+      message: `Points adjusted by ${body.points > 0 ? '+' : ''}${body.points}`,
+    };
+  }
+
+  @Get('rewards/users/:userId/loyalty')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'View a user\'s loyalty details' })
+  @ApiParam({ name: 'userId', description: 'User ID' })
+  @ApiResponse({ status: 200, description: 'User loyalty details retrieved' })
+  async getUserLoyalty(@Param('userId') userId: string) {
+    const summary = await this.loyaltyService.getLoyaltySummary(userId);
+    return { success: true, data: summary, message: 'User loyalty details retrieved' };
+  }
+
+  // --- Cancellation queue (after-deadline hotel cancellations, BOOKING_OPERATIONS_AND_RISK) ---
+
+  @Get('cancellation-requests')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'List pending cancellation requests (after-deadline hotel)',
+    description: 'Shows booking details, cancellation policy snapshot, deadline, and refundability for admin review.',
+  })
+  @ApiResponse({ status: 200, description: 'List of pending cancellation requests' })
+  async listCancellationRequests() {
+    const list = await this.processCancellationRequestUseCase.listPending();
+    return { success: true, data: list };
+  }
+
+  @Post('cancellation-requests/:id/process')
+  @HttpCode(HttpStatus.OK)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Process a cancellation request',
+    description: 'Reject, partial refund (goodwill), or full refund (exception). Cancels in Amadeus and refunds via Stripe when approving.',
+  })
+  @ApiParam({ name: 'id', description: 'Cancellation request ID' })
+  @ApiResponse({ status: 200, description: 'Request processed' })
+  async processCancellationRequest(
+    @Param('id') id: string,
+    @Body() body: { action: ProcessCancellationRequestAction; refundAmount?: number; adminNotes?: string; rejectionReason?: string },
+    @Request() req: any,
+  ) {
+    const dto: ProcessCancellationRequestDto = {
+      action: body.action,
+      refundAmount: body.refundAmount,
+      adminNotes: body.adminNotes,
+      rejectionReason: body.rejectionReason,
+    };
+    const result = await this.processCancellationRequestUseCase.execute(id, req.user.id, dto);
+    return { success: true, data: result };
+  }
+
+  @Get('bookings/:bookingId/dispute-evidence')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Get dispute/chargeback evidence pack for a booking',
+    description:
+      'Returns Stripe charge ID, policy snapshot, deadline, IP, user agent, TOS acceptance, confirmation email log, refund/cancel logs, and Amadeus confirmation for submitting to Stripe.',
+  })
+  @ApiParam({ name: 'bookingId', description: 'Booking ID' })
+  @ApiResponse({ status: 200, description: 'Evidence pack for dispute response' })
+  async getDisputeEvidence(@Param('bookingId') bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { user: { select: { email: true, name: true } } },
+    });
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+    const bookingData = (booking.bookingData as any) || {};
+    const b = booking as any;
+    const evidence = {
+      bookingId: booking.id,
+      reference: booking.reference,
+      stripeChargeId: b.stripeChargeId,
+      paymentIntentId: booking.paymentReference,
+      amount: Number(booking.totalAmount),
+      currency: booking.currency,
+      guestEmail: booking.user?.email,
+      guestName: booking.user?.name,
+      cancellationDeadline: b.cancellationDeadline,
+      cancellationPolicySnapshot: b.cancellationPolicySnapshot,
+      bookingTimestampUtc: booking.createdAt,
+      clientIp: b.clientIp,
+      userAgent: b.userAgent,
+      policyAcceptedAt: b.policyAcceptedAt,
+      confirmationEmailSentAt: b.confirmationEmailSentAt,
+      cancelledAt: booking.cancelledAt,
+      refundAmount: booking.refundAmount ? Number(booking.refundAmount) : null,
+      refundStatus: booking.refundStatus,
+      cancellationLog: bookingData.cancellation ?? null,
+      amadeusConfirmation: booking.providerData ?? null,
+    };
+    return { success: true, data: evidence };
   }
 }
