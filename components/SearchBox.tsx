@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { airports as airportData, airports, type Airport as AirportData } from '../lib/airportData';
+import { useSearchParams } from 'next/navigation';
 
 interface Segment {
   from: string;
@@ -76,6 +77,7 @@ const airportsWithCities: AirportData[] = [
 
 const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: activeTabProp, onTabChange }) => {
   const { t, currency } = useLanguage();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<'flights' | 'hotels' | 'cars'>(activeTabProp || 'flights');
 
   useEffect(() => {
@@ -139,101 +141,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const carDropOffRef = useRef<HTMLDivElement>(null);
   const today = new Date().toISOString().split('T')[0];
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const type = params.get('type');
-      
-      if (type === 'hotels') {
-        setActiveTab('hotels');
-        
-        const location = params.get('location');
-        const cityCode = params.get('cityCode');
-        const checkIn = params.get('checkIn');
-        const checkOut = params.get('checkOut');
-        const guests = params.get('guests');
-        const rooms_param = params.get('rooms');
-        
-        if (location) setHotelLocation(decodeURIComponent(location));
-        if (checkIn) setCheckInDate(checkIn);
-        if (checkOut) setCheckOutDate(checkOut);
-        if (guests) {
-          setTravellers(prev => ({ ...prev, adults: parseInt(guests) }));
-        }
-        if (rooms_param) setRooms(parseInt(rooms_param));
-        
-        // Trigger search automatically after a short delay to ensure state is updated
-        setTimeout(() => {
-          const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
-          handleSubmit(fakeEvent);
-        }, 500);
-      }
-      
-      else if (type === 'car-rentals') {
-        setActiveTab('cars');
-        
-        const location = params.get('location');
-        const pickupCode = params.get('pickupCode');
-        const dropoffCode = params.get('dropoffCode');
-        const pickupDate = params.get('pickupDate');
-        const dropoffDate = params.get('dropoffDate');
-        const pickupTime = params.get('pickupTime') || '10:00';
-        const dropoffTime = params.get('dropoffTime') || '16:00';
-        const passengers = params.get('passengers');
-        
-        if (location) {
-          // Try to parse location string like "London to Paris"
-          const parts = decodeURIComponent(location).split(' to ');
-          if (parts.length === 2) {
-            // Find matching locations
-            const fromMatch = airportsWithCities.find(a => 
-              a.city.toLowerCase().includes(parts[0].toLowerCase()) ||
-              a.code.toLowerCase() === parts[0].toUpperCase()
-            );
-            const toMatch = airportsWithCities.find(a => 
-              a.city.toLowerCase().includes(parts[1].toLowerCase()) ||
-              a.code.toLowerCase() === parts[1].toUpperCase()
-            );
-            
-            if (fromMatch) {
-              setCarPickUp(`${fromMatch.code} - ${fromMatch.name}, ${fromMatch.city}`);
-            }
-            if (toMatch) {
-              setCarDropOff(`${toMatch.code} - ${toMatch.name}, ${toMatch.city}`);
-            }
-          }
-        }
-        
-        // If we have direct codes, use those
-        if (pickupCode) {
-          const match = airportsWithCities.find(a => a.code === pickupCode);
-          if (match) {
-            setCarPickUp(`${match.code} - ${match.name}, ${match.city}`);
-          }
-        }
-        
-        if (dropoffCode) {
-          const match = airportsWithCities.find(a => a.code === dropoffCode);
-          if (match) {
-            setCarDropOff(`${match.code} - ${match.name}, ${match.city}`);
-          }
-        }
-        
-        if (pickupDate) setCarPickUpDate(pickupDate);
-        if (dropoffDate) setCarDropOffDate(dropoffDate);
-        if (pickupTime) setCarPickUpTime(pickupTime);
-        if (dropoffTime) setCarDropOffTime(dropoffTime);
-        if (passengers) setCarTravellers(parseInt(passengers));
-        
-        // Trigger search automatically
-        setTimeout(() => {
-          const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
-          handleSubmit(fakeEvent);
-        }, 500);
-      }
-    }
-  }, []); 
-
+ 
 
   const getCityCode = (location: string): string => {
     if (!location) return 'LOS';
@@ -950,6 +858,97 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       onSearch(data);
     }
   };
+   // Updated useEffect to use searchParams and handleSubmit dependency
+   useEffect(() => {
+    const type = searchParams.get('type');
+    
+    if (type === 'hotels') {
+      setActiveTab('hotels');
+      
+      const location = searchParams.get('location');
+      const cityCode = searchParams.get('cityCode');
+      const checkIn = searchParams.get('checkIn');
+      const checkOut = searchParams.get('checkOut');
+      const guests = searchParams.get('guests');
+      const rooms_param = searchParams.get('rooms');
+      
+      if (location) setHotelLocation(decodeURIComponent(location));
+      if (checkIn) setCheckInDate(checkIn);
+      if (checkOut) setCheckOutDate(checkOut);
+      if (guests) {
+        setTravellers(prev => ({ ...prev, adults: parseInt(guests) }));
+      }
+      if (rooms_param) setRooms(parseInt(rooms_param));
+      
+      const timer = setTimeout(() => {
+        const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+        handleSubmit(fakeEvent);
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+    
+    else if (type === 'car-rentals') {
+      setActiveTab('cars');
+      
+      const location = searchParams.get('location');
+      const pickupCode = searchParams.get('pickupCode');
+      const dropoffCode = searchParams.get('dropoffCode');
+      const pickupDate = searchParams.get('pickupDate');
+      const dropoffDate = searchParams.get('dropoffDate');
+      const pickupTime = searchParams.get('pickupTime') || '10:00';
+      const dropoffTime = searchParams.get('dropoffTime') || '16:00';
+      const passengers = searchParams.get('passengers');
+      
+      if (location) {
+        const parts = decodeURIComponent(location).split(' to ');
+        if (parts.length === 2) {
+          const fromMatch = airportsWithCities.find(a => 
+            a.city.toLowerCase().includes(parts[0].toLowerCase()) ||
+            a.code.toLowerCase() === parts[0].toUpperCase()
+          );
+          const toMatch = airportsWithCities.find(a => 
+            a.city.toLowerCase().includes(parts[1].toLowerCase()) ||
+            a.code.toLowerCase() === parts[1].toUpperCase()
+          );
+          
+          if (fromMatch) {
+            setCarPickUp(`${fromMatch.code} - ${fromMatch.name}, ${fromMatch.city}`);
+          }
+          if (toMatch) {
+            setCarDropOff(`${toMatch.code} - ${toMatch.name}, ${toMatch.city}`);
+          }
+        }
+      }
+      
+      if (pickupCode) {
+        const match = airportsWithCities.find(a => a.code === pickupCode);
+        if (match) {
+          setCarPickUp(`${match.code} - ${match.name}, ${match.city}`);
+        }
+      }
+      
+      if (dropoffCode) {
+        const match = airportsWithCities.find(a => a.code === dropoffCode);
+        if (match) {
+          setCarDropOff(`${match.code} - ${match.name}, ${match.city}`);
+        }
+      }
+      
+      if (pickupDate) setCarPickUpDate(pickupDate);
+      if (dropoffDate) setCarDropOffDate(dropoffDate);
+      if (pickupTime) setCarPickUpTime(pickupTime);
+      if (dropoffTime) setCarDropOffTime(dropoffTime);
+      if (passengers) setCarTravellers(parseInt(passengers));
+      
+      const timer = setTimeout(() => {
+        const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+        handleSubmit(fakeEvent);
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams, handleSubmit]);
   
   const triggerPicker = (e: React.MouseEvent<HTMLInputElement>) => {
     try { 

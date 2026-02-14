@@ -40,23 +40,25 @@ export interface SearchResult {
   title: string;
   subtitle: string;
   price: string;
-  totalPrice?: string;
   time?: string;
   duration?: string;
-  stops?: string;
   rating?: number;
   image?: string;
   amenities?: string[];
   features?: string[];
-  type?: 'flights' | 'hotels' | 'car-rentals';
-  isRefundable?: boolean;
-  realData?: any;
-  baggage?: string;
-  aircraft?: string;
-  layoverDetails?: string;
-  imageUrl?: string;
+  type: 'flights' | 'hotels' | 'car-rentals';
+  // Add these optional properties
+  airlineCode?: string;
+  owner?: {
+    id: string;
+    name: string;
+    iata_code: string;
+    logo_symbol_url?: string;
+  };
+  slices?: any[];
+  realData?: Record<string, any>;
+  [key: string]: any; // Allow additional properties
 }
-
 // ─── Hotel Offer Interface (ADD THIS) ──────────────
 export interface HotelOffer {
   type: string;

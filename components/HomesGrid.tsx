@@ -22,12 +22,26 @@ interface HotelDisplay {
   country?: string;
 }
 
-const HomesGrid: React.FC = () => {
+interface HomesGridProps {
+  hotels?: HotelDisplay[]; // Make it optional
+  loading?: boolean;
+  error?: string | null;
+  title?: string;
+  subtitle?: string;
+}
+
+const HomesGrid: React.FC<HomesGridProps> = ({ 
+  hotels: propHotels, 
+  loading = false, 
+  error = null,
+  title = "Beautiful Homes & Rooms",
+  subtitle = "Discover comfortable stays around the world"
+}) => {
   const { t } = useLanguage();
   const router = useRouter();
   const [hotels, setHotels] = useState<HotelDisplay[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [internalLoading, setInternalLoading] = useState(true);
+  const [internalError, setInternalError] = useState<string | null>(null);
 
   // Force currency to GBP/pounds
   const currencySymbol = "£";
@@ -44,21 +58,54 @@ const HomesGrid: React.FC = () => {
     { city: "Singapore", code: "SIN", country: "Singapore" }
   ];
 
+  // If hotels are provided as props, use them; otherwise fetch fallback
   useEffect(() => {
-    // Always use fallback data - no API calls
-    setLoading(true);
-    try {
-      // Set fallback hotels directly
-      const fallbackHotels = generateFallbackHotels();
-      setHotels(fallbackHotels);
-      setError(null);
-    } catch (err: any) {
-      console.error("Error generating fallback hotels:", err);
-      setError(err.message || "Failed to load hotels");
-    } finally {
-      setLoading(false);
+    if (propHotels && propHotels.length > 0) {
+      setHotels(propHotels);
+      setInternalLoading(false);
+    } else {
+      // Load fallback hotels when no props provided
+      setInternalLoading(true);
+      try {
+        const fallbackHotels = generateFallbackHotels();
+        setHotels(fallbackHotels);
+        setInternalError(null);
+      } catch (err: any) {
+        console.error("Error generating fallback hotels:", err);
+        setInternalError(err.message || "Failed to load hotels");
+      } finally {
+        setInternalLoading(false);
+      }
     }
-  }, []);
+  }, [propHotels]);
+
+  // Transform API response to HotelDisplay format
+  const transformApiResponse = (apiData: any): HotelDisplay[] => {
+    if (!apiData?.data?.data) return [];
+    
+    return apiData.data.data.map((item: any) => {
+      const hotel = item.hotel;
+      const offer = item.offers?.[0] || {};
+      const price = offer.price || {};
+      
+      return {
+        id: hotel.hotelId,
+        name: hotel.name,
+        location: `${hotel.cityCode} - ${hotel.name}`,
+        cityName: hotel.cityCode,
+        country: "United Kingdom", // You might want to derive this
+        code: hotel.cityCode,
+        price: parseFloat(price.base || price.total || "0"),
+        discountedPrice: parseFloat(price.total) || undefined,
+        rating: 4.5, // Default rating since API might not provide it
+        reviews: Math.floor(Math.random() * 1000) + 100, // Placeholder
+        image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
+        amenities: offer.room?.description?.text?.split(/\s+/)?.slice(0, 3) || ["WiFi", "TV", "Airport Shuttle"],
+        chainCode: hotel.chainCode,
+        description: offer.room?.description?.text || ""
+      };
+    });
+  };
 
   // Generate fallback hotels based on popular destinations
   const generateFallbackHotels = (): HotelDisplay[] => {
@@ -403,54 +450,71 @@ const HomesGrid: React.FC = () => {
     const checkOutDate = checkOut.toISOString().split('T')[0];
     
     // Get city name and code
-    const cityName = hotel.cityName || "London";
+    const cityName = hotel.cityName || hotel.location.split(',')[0] || "London";
     const cityCode = hotel.code || "LON";
     const country = hotel.country || "United Kingdom";
     
     // Format location
     const formattedLocation = `${cityName}, ${country}`;
     
-    // Get guest count
+    // Get guest count (default to 2)
     const guests = 2;
+    const rooms = 1;
     
-    console.log('🔍 Navigating to hotel search with:', {
+    console.log('🔍 Searching hotels in:', {
       location: formattedLocation,
       cityCode,
       checkInDate,
       checkOutDate,
       guests,
-      rooms: 1,
-      hotel: hotel.name
+      rooms
+    });
+    
+    // Construct URL with search parameters
+    const params = new URLSearchParams({
+      type: 'hotels',
+      location: formattedLocation,
+      cityCode: cityCode,
+      checkIn: checkInDate,
+      checkOut: checkOutDate,
+      guests: guests.toString(),
+      rooms: rooms.toString(),
+      currency: 'GBP'
     });
     
     // Navigate to search page with hotel parameters
-    router.push(
-      `/search?type=hotels&location=${encodeURIComponent(formattedLocation)}&cityCode=${cityCode}&checkIn=${checkInDate}&checkOut=${checkOutDate}&guests=${guests}&rooms=1&currency=GBP`
-    );
+    router.push(`/search?${params.toString()}`);
   };
 
   const handleSearchMore = () => {
-    // Regenerate fallback hotels with new random data
-    setLoading(true);
-    setTimeout(() => {
-      const newHotels = generateFallbackHotels();
-      setHotels(newHotels);
-      setLoading(false);
-    }, 500); // Small delay to show loading state
+    // Only regenerate if not showing search results
+    if (!propHotels) {
+      setInternalLoading(true);
+      setTimeout(() => {
+        const newHotels = generateFallbackHotels();
+        setHotels(newHotels);
+        setInternalLoading(false);
+      }, 500);
+    }
   };
 
   const formatPrice = (price: number) => `£${price.toFixed(2)}`;
 
-  if (loading) {
+  // Use props if provided, otherwise use internal state
+  const isLoading = propHotels ? loading : internalLoading;
+  const hasError = propHotels ? error : internalError;
+  const displayHotels = propHotels || hotels;
+
+  if (isLoading) {
     return (
       <section className="px-4 md:px-8 lg:px-16 py-12">
         <div className="flex justify-between items-end mb-10">
           <div>
             <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
-              {t?.("homes.title") || "Beautiful Homes & Rooms"}
+              {title}
             </h2>
             <p className="text-gray-500 mt-1 text-sm md:text-base">
-              Loading amazing stays...
+              {subtitle}
             </p>
           </div>
         </div>
@@ -477,14 +541,14 @@ const HomesGrid: React.FC = () => {
     );
   }
 
-  if (error) {
+  if (hasError) {
     return (
       <section className="px-4 md:px-8 lg:px-16 py-12">
         <div className="text-center">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
-            {t?.("homes.title") || "Beautiful Homes & Rooms"}
+            {title}
           </h2>
-          <p className="text-red-500 mb-4">{error}</p>
+          <p className="text-red-500 mb-4">{hasError}</p>
           <button
             onClick={handleSearchMore}
             className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
@@ -501,30 +565,31 @@ const HomesGrid: React.FC = () => {
       <div className="flex justify-between items-end mb-10">
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
-            {t?.("homes.title") || "Beautiful Homes & Rooms"}
+            {title}
           </h2>
           <p className="text-gray-500 mt-1 text-sm md:text-base">
-            {t?.("homes.subtitle") ||
-              "Discover comfortable stays around the world"}
+            {subtitle}
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <button
-            onClick={handleSearchMore}
-            disabled={loading}
-            className="px-4 py-2 text-sm font-semibold rounded-lg transition-colors duration-200 flex items-center gap-2"
-            style={{
-              backgroundColor: brandBlueLight,
-              color: brandBlue,
-            }}
-          >
-            {loading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-[#32A6D7] border-t-transparent rounded-full animate-spin"></div>
-                <span>Loading...</span>
-              </>
-            ) : "Refresh"}
-          </button>
+          {!propHotels && ( // Only show refresh button for fallback hotels
+            <button
+              onClick={handleSearchMore}
+              disabled={isLoading}
+              className="px-4 py-2 text-sm font-semibold rounded-lg transition-colors duration-200 flex items-center gap-2"
+              style={{
+                backgroundColor: brandBlueLight,
+                color: brandBlue,
+              }}
+            >
+              {isLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-[#32A6D7] border-t-transparent rounded-full animate-spin"></div>
+                  <span>Loading...</span>
+                </>
+              ) : "Refresh"}
+            </button>
+          )}
           <button
             onClick={() => router.push("/search?type=hotels&currency=GBP")}
             className="font-semibold transition-colors duration-200 flex items-center gap-2 group"
@@ -549,7 +614,7 @@ const HomesGrid: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-        {hotels.map((home) => (
+        {displayHotels.map((home) => (
           <div
             key={home.id}
             onClick={() => handleHotelClick(home)}

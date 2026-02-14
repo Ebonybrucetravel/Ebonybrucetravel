@@ -2,6 +2,19 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useLanguage } from "../context/LanguageContext";
 import type { SearchResult as BaseSearchResult } from "../lib/types";
+import { type Airline, createAirlinesMap } from "../lib/duffel-airlines";
+
+// Add this function to fetch flight offers
+async function fetchFlightOffers(offerRequestId: string) {
+  try {
+    const response = await fetch(`/api/v1/bookings/offers?offer_request_id=${offerRequestId}`);
+    if (!response.ok) throw new Error('Failed to fetch offers');
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching flight offers:', error);
+    return null;
+  }
+}
 
 interface ExtendedSearchResult extends BaseSearchResult {
   stops?: string;
@@ -24,12 +37,50 @@ interface ExtendedSearchResult extends BaseSearchResult {
   conversionNote?: string;
   duration?: string;
   isRefundable?: boolean;
-  // Add realData structure
+  airlineCode?: string;
+  // Add offer_request_id for flight searches
+  offer_request_id?: string;
+  // Duffel offer structure
+  offer_id?: string;
+  owner?: {
+    id: string;
+    name: string;
+    iata_code: string;
+    logo_symbol_url?: string;
+  };
+  slices?: Array<{
+    segments: Array<{
+      departing_at: string;
+      arriving_at: string;
+      origin: {
+        iata_code: string;
+        name: string;
+      };
+      destination: {
+        iata_code: string;
+        name: string;
+      };
+      operating_carrier?: {
+        name: string;
+        iata_code: string;
+        logo_symbol_url?: string;
+      };
+    }>;
+  }>;
+  total_amount?: string;
+  total_currency?: string;
+  // Add realData structure for backward compatibility
   realData?: {
     vehicle?: {
       imageURL?: string;
     };
     imageURL?: string;
+    airlineCode?: string;
+    airlineLogo?: string;
+    departureTime?: string;
+    arrivalTime?: string;
+    departureAirport?: string;
+    arrivalAirport?: string;
     [key: string]: any;
   };
 }
@@ -40,6 +91,7 @@ interface SearchResultsProps {
   onClear: () => void;
   onSelect?: (item: ExtendedSearchResult) => void; 
   isLoading?: boolean;
+  airlines?: Airline[];
 }
 
 const SearchResults: React.FC<SearchResultsProps> = ({
@@ -48,6 +100,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   onClear,
   onSelect,
   isLoading = false,
+  airlines = [],
 }) => {
   const { currency } = useLanguage();
   const searchType = (searchParams?.type || "flights").toLowerCase() as "flights" | "hotels" | "car-rentals";
@@ -72,33 +125,133 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const [seatCapacityFilter, setSeatCapacityFilter] = useState<number[]>([]);
   const [providerFilter, setProviderFilter] = useState<string[]>([]);
 
+  // Create airlines map from props
+  const airlinesMap = useMemo(() => createAirlinesMap(airlines), [airlines]);
+  
+  const [flightOffers, setFlightOffers] = useState<ExtendedSearchResult[]>([]);
+  const [isLoadingOffers, setIsLoadingOffers] = useState(false);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('Airlines received:', airlines);
+    console.log('Airlines Map created:', {
+      size: airlinesMap.size,
+      keys: Array.from(airlinesMap.keys())
+    });
+  }, [airlines, airlinesMap]);
+
+  useEffect(() => {
+    const loadFlightOffers = async () => {
+      // Check if this is a flight search response with offer_request_id
+      const flightData = initialResults.find(r => r.type === 'flights' && r.offer_request_id);
+      if (flightData?.offer_request_id && searchType === 'flights') {
+        setIsLoadingOffers(true);
+        const offers = await fetchFlightOffers(flightData.offer_request_id);
+        if (offers?.data?.offers) {
+          // Transform offers to match your ExtendedSearchResult format with proper logos
+          const transformedOffers = offers.data.offers.map((offer: any) => {
+            // Get airline information from owner or operating carrier
+            const ownerAirline = offer.owner;
+            const firstSegment = offer.slices?.[0]?.segments?.[0];
+            const operatingCarrier = firstSegment?.operating_carrier;
+            
+            // Use owner airline as primary, fallback to operating carrier
+            const airline = ownerAirline || operatingCarrier;
+            const airlineName = airline?.name || 'Unknown Airline';
+            const airlineCode = airline?.iata_code || '';
+            const airlineLogoUrl = airline?.logo_symbol_url || '';
+            
+            return {
+              id: offer.id,
+              type: 'flights',
+              title: `${offer.slices?.[0]?.segments?.[0]?.origin?.iata_code || ''} → ${offer.slices?.[0]?.segments?.slice(-1)[0]?.destination?.iata_code || ''}`,
+              subtitle: offer.slices?.[0]?.segments?.map((s: any) => s.operating_carrier?.name).filter(Boolean).join(', ') || 'Flight',
+              price: `${offer.total_currency} ${offer.total_amount}`,
+              provider: airlineName,
+              // Set image to the logo URL
+              image: airlineLogoUrl || `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2`,
+              rating: 4,
+              owner: {
+                id: airline?.id,
+                name: airlineName,
+                iata_code: airlineCode,
+                logo_symbol_url: airlineLogoUrl
+              },
+              airlineCode,
+              slices: offer.slices,
+              realData: {
+                airlineCode,
+                airlineLogo: airlineLogoUrl,
+                departureTime: offer.slices?.[0]?.segments?.[0]?.departing_at,
+                arrivalTime: offer.slices?.[0]?.segments?.slice(-1)[0]?.arriving_at,
+                departureAirport: offer.slices?.[0]?.segments?.[0]?.origin?.iata_code,
+                arrivalAirport: offer.slices?.[0]?.segments?.slice(-1)[0]?.destination?.iata_code,
+              }
+            };
+          });
+          
+          console.log('Transformed flight offers with logos:', transformedOffers.map((o: any) => ({
+            airline: o.provider,
+            code: o.airlineCode,
+            hasLogo: !!o.image && !o.image.includes('ui-avatars'),
+            logoUrl: o.image
+          })));
+          
+          setFlightOffers(transformedOffers);
+        }
+        setIsLoadingOffers(false);
+      }
+    };
+
+    loadFlightOffers();
+  }, [initialResults, searchType]);
+
+  // Combine initial results with flight offers
+  const allResults = useMemo(() => {
+    if (searchType === 'flights' && flightOffers.length > 0) {
+      return flightOffers;
+    }
+    return initialResults;
+  }, [initialResults, flightOffers, searchType]);
+
   // Extract dynamic options from results
   const uniqueCarTypes = useMemo(() => {
-    const types = initialResults
+    const types = allResults
       .filter(r => r.type === 'car-rentals')
       .map(r => r.vehicleCode || '')
       .filter(Boolean);
     return Array.from(new Set(types));
-  }, [initialResults]);
+  }, [allResults]);
 
   const uniqueSeatCapacities = useMemo(() => {
-    const seats = initialResults
+    const seats = allResults
       .filter(r => r.type === 'car-rentals')
       .map(r => r.seats || 0)
       .filter(s => s > 0);
     return Array.from(new Set(seats)).sort((a, b) => a - b);
-  }, [initialResults]);
+  }, [allResults]);
 
   const uniqueProviders = useMemo(() => {
-    const providers = initialResults
+    const providers = allResults
       .filter(r => r.type === 'car-rentals')
       .map(r => r.provider)
       .filter(Boolean);
     return Array.from(new Set(providers));
-  }, [initialResults]);
+  }, [allResults]);
+
+  // Get unique airlines for filtering
+  const uniqueAirlines = useMemo(() => {
+    if (searchType !== 'flights') return [];
+    return Array.from(new Set(
+      allResults
+        .filter(r => r.type === 'flights')
+        .map(r => r.owner?.name || r.provider || 'Unknown')
+        .filter(Boolean)
+    ));
+  }, [allResults, searchType]);
 
   const filteredResults = useMemo(() => {
-    let filtered = [...initialResults];
+    let filtered = [...allResults];
 
     // Basic Price Filter
     filtered = filtered.filter((item) => {
@@ -109,10 +262,17 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     // Flight Filtering
     if (searchType === "flights") {
       if (stopsFilter.length > 0) {
-        filtered = filtered.filter(item => stopsFilter.includes(item.stops || "Direct"));
+        filtered = filtered.filter(item => {
+          const segmentCount = item.slices?.[0]?.segments?.length || 1;
+          const stopText = segmentCount === 1 ? 'Direct' : segmentCount === 2 ? '1 Stop' : '2+ Stops';
+          return stopsFilter.includes(stopText);
+        });
       }
       if (airlinesFilter.length > 0) {
-        filtered = filtered.filter(item => airlinesFilter.includes(item.provider));
+        filtered = filtered.filter(item => {
+          const airlineName = item.owner?.name || item.provider || '';
+          return airlinesFilter.includes(airlineName);
+        });
       }
     } 
 
@@ -162,7 +322,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     }
 
     return filtered;
-  }, [initialResults, searchType, priceRange, sortBy, stopsFilter, airlinesFilter, starRatings, amenitiesFilter, carTypeFilter, transmissionFilter, seatCapacityFilter, providerFilter]);
+  }, [allResults, searchType, priceRange, sortBy, stopsFilter, airlinesFilter, starRatings, amenitiesFilter, carTypeFilter, transmissionFilter, seatCapacityFilter, providerFilter]);
 
   const toggleFilter = (set: React.Dispatch<React.SetStateAction<any[]>>, current: any[], value: any) => {
     set(current.includes(value) ? current.filter(i => i !== value) : [...current, value]);
@@ -263,63 +423,127 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
 
-  const renderFlightCard = (item: ExtendedSearchResult) => (
-    <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden animate-in fade-in slide-in-from-bottom-2">
-      <div className="flex flex-col md:flex-row p-8 gap-8">
-        <div className="flex-1">
-          <div className="flex items-center gap-4 mb-6">
-            <img 
-              src={item.image || `https://ui-avatars.com/api/?name=${item.provider}`} 
-              className="w-10 h-10 object-contain rounded" 
-              alt="" 
-            />
-            <div>
-              <h4 className="text-sm font-black text-gray-900">{item.provider}</h4>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{item.subtitle}</p>
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="text-center">
-              <p className="text-2xl font-black text-gray-900">{item.realData?.departureTime?.split('T')[1]?.substring(0,5) || "08:00"}</p>
-              <p className="text-[10px] font-black text-gray-400 uppercase">Depart</p>
-            </div>
-            <div className="flex-1 px-8">
-              <div className="w-full h-[1.5px] bg-gray-100 relative">
-                <div className="absolute left-1/2 -translate-x-1/2 -top-[6px] text-[#33a8da]">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-                  </svg>
+  const renderFlightCard = (item: ExtendedSearchResult) => {
+    // Get airline code from multiple possible sources
+    const airlineCode = item.airlineCode || 
+                        item.owner?.iata_code || 
+                        item.realData?.airlineCode || 
+                        '';
+    
+    // Get airline name
+    const airlineName = item.owner?.name || 
+                        item.provider || 
+                        item.realData?.airline || 
+                        'Unknown Airline';
+    
+    // Get logo URL - prioritize item.image (set during transformation), then owner logo, then realData
+    const logoUrl = item.image || 
+                    item.owner?.logo_symbol_url || 
+                    item.realData?.airlineLogo || 
+                    (airlineCode ? airlinesMap.get(airlineCode)?.logo_symbol_url : null);
+    
+    // Get departure and arrival info
+    const firstSegment = item.slices?.[0]?.segments?.[0];
+    const lastSegment = item.slices?.[0]?.segments?.slice(-1)[0];
+    
+    const departureTime = firstSegment?.departing_at || item.realData?.departureTime;
+    const arrivalTime = lastSegment?.arriving_at || item.realData?.arrivalTime;
+    const departureAirport = firstSegment?.origin?.iata_code || item.realData?.departureAirport || 'LHR';
+    const arrivalAirport = lastSegment?.destination?.iata_code || item.realData?.arrivalAirport || 'JFK';
+    
+    // Calculate stops
+    const segmentCount = item.slices?.[0]?.segments?.length || 1;
+    const stopText = segmentCount === 1 ? 'Direct' : segmentCount === 2 ? '1 Stop' : '2+ Stops';
+    
+    // Debug for this specific flight
+    console.log('Rendering flight:', {
+      id: item.id,
+      airlineCode,
+      airlineName,
+      hasLogo: !!logoUrl,
+      logoUrl,
+      image: item.image,
+      ownerLogo: item.owner?.logo_symbol_url
+    });
+    
+    return (
+      <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden animate-in fade-in slide-in-from-bottom-2">
+        <div className="flex flex-col md:flex-row p-8 gap-8">
+          <div className="flex-1">
+            <div className="flex items-center gap-4 mb-6">
+              {logoUrl ? (
+                <img 
+                  src={logoUrl} 
+                  className="w-10 h-10 object-contain rounded" 
+                  alt={airlineName}
+                  onError={(e) => {
+                    console.log('Logo failed to load:', logoUrl);
+                    // Fallback to UI Avatars
+                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2`;
+                  }}
+                />
+              ) : (
+                <div className="w-10 h-10 bg-[#33a8da] rounded flex items-center justify-center text-white font-bold text-sm">
+                  {airlineCode?.substring(0, 2) || airlineName?.substring(0, 2) || 'FL'}
                 </div>
+              )}
+              <div>
+                <h4 className="text-sm font-black text-gray-900">{airlineName}</h4>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                  {departureAirport} → {arrivalAirport}
+                </p>
+                {airlineCode && (
+                  <span className="text-[9px] font-bold text-[#33a8da] bg-blue-50 px-2 py-0.5 rounded-full mt-1 inline-block">
+                    {airlineCode}
+                  </span>
+                )}
               </div>
             </div>
-            <div className="text-center">
-              <p className="text-2xl font-black text-gray-900">{item.realData?.arrivalTime?.split('T')[1]?.substring(0,5) || "10:15"}</p>
-              <p className="text-[10px] font-black text-gray-400 uppercase">Arrive</p>
+            <div className="flex items-center justify-between">
+              <div className="text-center">
+                <p className="text-2xl font-black text-gray-900">
+                  {departureTime ? new Date(departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "08:00"}
+                </p>
+                <p className="text-[10px] font-black text-gray-400 uppercase">Depart</p>
+                <p className="text-[9px] font-bold text-gray-400 mt-1">{departureAirport}</p>
+              </div>
+              <div className="flex-1 px-8">
+                <div className="w-full h-[1.5px] bg-gray-100 relative">
+                  <div className="absolute left-1/2 -translate-x-1/2 -top-[6px] text-[#33a8da]">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                    </svg>
+                  </div>
+                </div>
+                <p className="text-[8px] font-bold text-gray-400 text-center mt-4">
+                  {stopText}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-black text-gray-900">
+                  {arrivalTime ? new Date(arrivalTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "10:15"}
+                </p>
+                <p className="text-[10px] font-black text-gray-400 uppercase">Arrive</p>
+                <p className="text-[9px] font-bold text-gray-400 mt-1">{arrivalAirport}</p>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="w-full md:w-[240px] flex flex-col items-center justify-center text-center border-l border-gray-50 pl-8">
-          <p className="text-2xl font-black text-gray-900 mb-4">{item.price}</p>
-          <button 
-            onClick={() => onSelect?.(item)} 
-            className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]"
-          >
-            Select Flight
-          </button>
+          <div className="w-full md:w-[240px] flex flex-col items-center justify-center text-center border-l border-gray-50 pl-8">
+            <p className="text-2xl font-black text-gray-900 mb-4">{item.price}</p>
+            <button 
+              onClick={() => onSelect?.(item)} 
+              className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]"
+            >
+              Select Flight
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderCarCard = (item: ExtendedSearchResult) => {
     // Parse duration if available
-    const formatDuration = (duration?: string): string => {
-      if (!duration) return '';
-      const hours = duration.match(/(\d+)H/);
-      const minutes = duration.match(/(\d+)M/);
-      return `${hours ? hours[1] + 'h ' : ''}${minutes ? minutes[1] + 'm' : ''}`;
-    };
-  
     const duration = formatDuration(item.duration);
     
     // Determine if it's a long-distance transfer (Amadeus) or quick transfer (Sixt)
@@ -368,15 +592,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   
     const carImageUrl = getCarImageUrl();
   
-    // Log for debugging (remove in production)
-    console.log(`Rendering car ${item.id}:`, {
-      title: item.title,
-      imageUrl: carImageUrl,
-      originalImage: item.image,
-      vehicleImageURL: item.realData?.vehicle?.imageURL,
-      providerLogo: item.providerLogo
-    });
-  
     return (
       <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
         <div className="flex flex-col md:flex-row">
@@ -387,7 +602,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               className="max-w-full max-h-full object-contain group-hover:scale-105 transition duration-300" 
               alt={item.title}
               onError={(e) => {
-                console.log(`Failed to load image for ${item.title}, using fallback`);
                 const target = e.target as HTMLImageElement;
                 // Try provider logo first if available and not already tried
                 if (item.providerLogo && target.src !== item.providerLogo) {
@@ -573,14 +787,20 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
 
-  if (isLoading) {
+  const isLoading_ = isLoading || isLoadingOffers;
+
+  if (isLoading_) {
     return (
       <div className="bg-[#f8fbfe] -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-10">
         <div className="max-w-7xl mx-auto flex justify-center items-center min-h-[400px]">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#33a8da] mb-6"></div>
-            <h3 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-2">Searching...</h3>
-            <p className="text-sm text-gray-500 font-medium">Finding the best options for you</p>
+            <h3 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-2">
+              {isLoadingOffers ? 'Loading flight offers...' : 'Searching...'}
+            </h3>
+            <p className="text-sm text-gray-500 font-medium">
+              {isLoadingOffers ? 'Fetching the best flight options for you' : 'Finding the best options for you'}
+            </p>
           </div>
         </div>
       </div>
@@ -634,7 +854,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 ))}
                 {renderFilterSection("Airlines", (
                   <>
-                    {Array.from(new Set(initialResults.filter(r => r.type === 'flights').map(r => r.provider))).map(airline => 
+                    {uniqueAirlines.map(airline => 
                       renderCheckbox(airline, airlinesFilter.includes(airline), () => toggleFilter(setAirlinesFilter, airlinesFilter, airline))
                     )}
                   </>
@@ -757,6 +977,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       </div>
     </div>
   );
-};
+}; 
 
 export default SearchResults;
