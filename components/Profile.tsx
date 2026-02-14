@@ -1,7 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
-import { loadStripe } from '@stripe/stripe-js';
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+// Remove Stripe imports
 import type { User } from '@/lib/types';
 import ManageBookingModal from './ManageBookingModal';
 import { useLanguage } from '../context/LanguageContext';
@@ -9,10 +8,36 @@ import CancelBooking from './CancelBooking';
 import { userApi, ApiError } from '../lib/api';
 import { config } from '../lib/config';
 
+const formatDateForDisplay = (dateStr?: string): string => {
+  if (!dateStr) return '';
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '';
+    
+    // Format as YYYY-MM-DD for input[type="date"]
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  } catch {
+    return '';
+  }
+};
+
+type ExtendedUser = User & {
+  dateOfBirth?: string;
+  dob?: string;
+  profilePicture?: string;
+  avatar?: string;
+  phone?: string;
+  gender?: string;
+  image?: string;
+};
+
 interface ProfileProps {
-  user: User;
+  user: ExtendedUser;  
   activeTab?: string;
-  onUpdateUser: (data: Partial<User>) => void;
+  onUpdateUser: (data: Partial<ExtendedUser>) => void;
   onBack: () => void;
   onSignOut: () => void;
   onBookItem: (item: any) => void;
@@ -46,14 +71,7 @@ interface OtherTraveler {
   gender: string;
 }
 
-interface PaymentCard {
-  id: string;
-  brand: string;
-  last4: string;
-  expiry: string;
-  icon: string;
-  isDefault?: boolean;
-}
+// Remove PaymentCard interface
 
 interface SavedItem {
   id: string;
@@ -64,9 +82,10 @@ interface SavedItem {
   type: string;
 }
 
-type ProfileTab = 'details' | 'travelers' | 'bookings' | 'saved' | 'rewards' | 'security' | 'preferences' | 'payment';
+// Remove 'payment' from ProfileTab
+type ProfileTab = 'details' | 'travelers' | 'bookings' | 'saved' | 'rewards' | 'security' | 'preferences';
 
-const stripePromise = loadStripe(config.stripePublishableKey);
+// Remove stripePromise
 
 const CURRENCY_OPTIONS = [
   { code: 'USD', symbol: '$', name: 'US Dollar' },
@@ -92,7 +111,7 @@ const Profile: React.FC<ProfileProps> = ({
 }) => {
   const { language: currentLang, setLanguage, currency: currentCurr, setCurrency } = useLanguage();
   const [activeTab, setActiveTab] = useState<ProfileTab>((initialActiveTab as ProfileTab) || 'details');
-  const [formData, setFormData] = useState<Partial<User>>({ ...user });
+  const [formData, setFormData] = useState<Partial<ExtendedUser>>({ ...user });
   const [isEditing, setIsEditing] = useState(false);
   const [bookingFilter, setBookingFilter] = useState<'All' | 'Flight' | 'Hotel' | 'Car'>('All');
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
@@ -126,12 +145,7 @@ const Profile: React.FC<ProfileProps> = ({
   const [showAddTravelerForm, setShowAddTravelerForm] = useState(false);
   const [newTraveler, setNewTraveler] = useState<Omit<OtherTraveler, 'id'>>({ name: '', relationship: 'Spouse', dob: '', gender: 'Male' });
 
-  const [savedCards, setSavedCards] = useState<PaymentCard[]>([]);
-  const [isLoadingCards, setIsLoadingCards] = useState(false);
-  const [hasLoadedCards, setHasLoadedCards] = useState(false);
-  const [showAddPaymentForm, setShowAddPaymentForm] = useState(false);
-  const [isSavingCard, setIsSavingCard] = useState(false);
-  const [newCardData, setNewCardData] = useState({ holderName: '' });
+  // Remove savedCards related state
 
   const [loyalty, setLoyalty] = useState<any | null>(null);
   const [availableRewards, setAvailableRewards] = useState<any[]>([]);
@@ -153,7 +167,10 @@ const Profile: React.FC<ProfileProps> = ({
   const [hasLoadedBookings, setHasLoadedBookings] = useState(false);
 
   useEffect(() => {
-    setFormData({ ...user });
+    setFormData({ 
+      ...user, 
+      dob: formatDateForDisplay(user.dateOfBirth || user.dob) 
+    });
   }, [user]);
 
   useEffect(() => {
@@ -270,45 +287,7 @@ const Profile: React.FC<ProfileProps> = ({
     }
   }, [activeTab, hasLoadedTravelers, isLoadingTravelers]);
 
-  useEffect(() => {
-    if (activeTab !== 'payment' || hasLoadedCards || isLoadingCards) return;
-    let cancelled = false;
-    setIsLoadingCards(true);
-    userApi
-      .listPaymentMethods()
-      .then((data: any) => {
-        if (cancelled) return;
-        const items = Array.isArray(data) ? data : (data?.data || []);
-        const mapped: PaymentCard[] = items.map((pm: any) => {
-          const brand = (pm.brand || '').toLowerCase();
-          const isVisa = brand === 'visa';
-          const icon = isVisa
-            ? 'https://upload.wikimedia.org/wikipedia/commons/d/d6/Visa_2021.svg'
-            : 'https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg';
-          const month = String(pm.expiryMonth || '').padStart(2, '0');
-          const year = pm.expiryYear ? String(pm.expiryYear).slice(-2) : '';
-          const expiry = month && year ? `${month}/${year}` : '';
-          return {
-            id: pm.id,
-            brand: pm.brand || 'Card',
-            last4: pm.last4 || '',
-            expiry,
-            icon,
-            isDefault: !!pm.isDefault,
-          };
-        });
-        setSavedCards(mapped);
-        setHasLoadedCards(true);
-      })
-      .catch((error: any) => {
-        if (!cancelled) setHasLoadedCards(true);
-        console.error('Failed to load payment methods:', error);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingCards(false);
-      });
-    return () => { cancelled = true; };
-  }, [activeTab, hasLoadedCards, isLoadingCards]);
+  // Remove payment-related useEffect
 
   useEffect(() => {
     if (activeTab === 'rewards' && !hasLoadedRewards && !isLoadingRewards) {
@@ -474,11 +453,18 @@ const Profile: React.FC<ProfileProps> = ({
       const payload: Record<string, any> = {};
       if (formData.name) payload.name = formData.name;
       if (formData.phone) payload.phone = formData.phone;
-      if (formData.dob) payload.dateOfBirth = formData.dob;
+      if (formData.dob) {
+        payload.dateOfBirth = formData.dob; // Sends YYYY-MM-DD
+      }
       if (formData.gender) payload.gender = formData.gender;
-
+  
+      console.log('📤 Sending payload to API:', payload);
+      
       const result = await userApi.updateProfile(payload as any);
+      console.log('📥 API response:', result);
+      
       if (result) {
+        // Make sure we're passing the complete updated user data back
         onUpdateUser(result);
         alert('Profile updated successfully!');
         setIsEditing(false);
@@ -627,18 +613,7 @@ const Profile: React.FC<ProfileProps> = ({
     }
   };
 
-  const handleRemoveCard = async (id: string) => {
-    const previous = savedCards;
-    setSavedCards(savedCards.filter(c => c.id !== id));
-    try {
-      await userApi.deletePaymentMethod(id);
-    } catch (error: any) {
-      console.error('Failed to delete payment method:', error);
-      setSavedCards(previous);
-      const msg = error instanceof ApiError ? error.message : (error?.message || 'Failed to remove payment method');
-      alert(msg);
-    }
-  };
+  // Remove handleRemoveCard function
 
   const handleManageBooking = (booking: Booking) => {
     setSelectedBooking(booking);
@@ -742,10 +717,10 @@ const Profile: React.FC<ProfileProps> = ({
     return b.type.toLowerCase() === bookingFilter.toLowerCase();
   });
 
+  // Remove 'payment' from menuItems
   const menuItems = [
     { id: 'details', label: 'Personal Details', icon: <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /> },
     { id: 'bookings', label: 'My Bookings', icon: <path d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745V20a2 2 0 002 2h14a2 2 0 002-2v-6.745zM16 8V5a3 3 0 00-6 0v3h6z" /> },
-    { id: 'payment', label: 'Payment Methods', icon: <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /> },
     { id: 'saved', label: 'Saved Items', icon: <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /> },
     { id: 'rewards', label: 'Rewards', icon: <path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /> },
     { id: 'travelers', label: 'Other Travelers', icon: <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2m16 0h2a4 4 0 0 0 4-4v-2a4 4 0 0 0-4-4h-2m-1-10a4 4 0 1 1-8 0 4 4 0 0 1 8 0z" /> },
@@ -1006,14 +981,14 @@ const Profile: React.FC<ProfileProps> = ({
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       <div>
-                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Date of Birth</label>
-                        <input 
-                          type="date" 
-                          disabled={!isEditing} 
-                          value={formData.dob || '1992-05-15'} 
-                          onChange={(e) => handleInputChange('dob', e.target.value)} 
-                          className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold transition-all outline-none ${isEditing ? 'text-gray-900 border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'text-gray-700 border-transparent cursor-not-allowed'}`} 
-                        />
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Date of Birth</label>
+  <input 
+    type="date" 
+    disabled={!isEditing} 
+    value={formData.dob ? formData.dob.split('T')[0] : ''} // Format ISO to YYYY-MM-DD
+    onChange={(e) => handleInputChange('dob', e.target.value)} 
+    className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold transition-all outline-none ${isEditing ? 'text-gray-900 border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'text-gray-700 border-transparent cursor-not-allowed'}`} 
+  />
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Gender</label>
@@ -1158,77 +1133,7 @@ const Profile: React.FC<ProfileProps> = ({
               </div>
             )}
 
-            {activeTab === 'payment' && (
-              <Elements stripe={stripePromise}>
-                <div className="animate-in fade-in duration-500 space-y-8">
-                  <div className="bg-white rounded-[24px] p-8 md:p-10 shadow-sm border border-gray-100/50">
-                    <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Payment Methods</h1>
-                    <p className="text-gray-400 font-bold text-sm mt-1">Stored cards for faster checkout.</p>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div 
-                      onClick={() => !isSavingCard && setShowAddPaymentForm(!showAddPaymentForm)} 
-                      className={`bg-white rounded-[32px] p-8 border-2 ${showAddPaymentForm ? 'border-[#33a8da]' : 'border-dashed border-gray-100'} flex flex-col items-center justify-center text-center group hover:border-[#33a8da]/50 transition cursor-pointer h-[200px]`}
-                    >
-                      <div className={`w-12 h-12 ${showAddPaymentForm ? 'bg-blue-50 text-[#33a8da]' : 'bg-gray-50 text-gray-300'} rounded-full flex items-center justify-center mb-4 transition`}>
-                        <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path d={showAddPaymentForm ? "M18 12H6" : "M12 4v16m8-8H4"} />
-                        </svg>
-                      </div>
-                      <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight">{showAddPaymentForm ? 'Cancel' : 'Add Card'}</h3>
-                    </div>
-                    
-                    {showAddPaymentForm && (
-                      <div className="bg-white rounded-[32px] p-8 border border-[#33a8da] shadow-sm animate-in slide-in-from-right duration-300">
-                        <AddPaymentMethodForm
-                          holderName={newCardData.holderName}
-                          setHolderName={(value: string) => setNewCardData({ holderName: value })}
-                          onSaved={(card: PaymentCard) => {
-                            setSavedCards(prev => [card, ...prev]);
-                            setShowAddPaymentForm(false);
-                          }}
-                          isSaving={isSavingCard}
-                          setIsSaving={setIsSavingCard}
-                        />
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="space-y-4">
-                    {isLoadingCards ? (
-                      <div className="bg-white rounded-[24px] p-8 text-center border border-gray-100">
-                        <div className="animate-spin w-6 h-6 border-2 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-3" />
-                        <p className="text-gray-500 font-bold text-sm">Loading saved payment methods…</p>
-                      </div>
-                    ) : savedCards.length > 0 ? (
-                      savedCards.map(card => (
-                        <div key={card.id} className="flex items-center justify-between p-6 bg-white rounded-2xl border border-gray-100 hover:border-[#33a8da]/50 transition-colors">
-                          <div className="flex items-center gap-6">
-                            <img src={card.icon} className="h-8 w-auto opacity-70" alt={card.brand} />
-                            <div>
-                              <p className="font-bold text-gray-900">•••• •••• {card.last4}</p>
-                              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{card.expiry}</p>
-                            </div>
-                          </div>
-                          <button 
-                            onClick={() => handleRemoveCard(card.id)} 
-                            className="text-[10px] font-bold text-red-400 hover:text-red-600 uppercase tracking-widest transition"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="bg-white rounded-[24px] p-12 text-center border-2 border-dashed border-gray-100">
-                        <h3 className="text-lg font-bold text-gray-900 mb-2">No saved cards yet</h3>
-                        <p className="text-gray-400 font-bold text-sm">Add a card to speed up future checkouts.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Elements>
-            )}
+            {/* Remove payment tab section completely */}
 
             {activeTab === 'saved' && (
               <div className="animate-in fade-in duration-500 space-y-8">
@@ -1619,127 +1524,5 @@ const Profile: React.FC<ProfileProps> = ({
 };
 
 
-interface AddPaymentMethodFormProps {
-  holderName: string;
-  setHolderName: (value: string) => void;
-  onSaved: (card: PaymentCard) => void;
-  isSaving: boolean;
-  setIsSaving: (value: boolean) => void;
-}
-
-const AddPaymentMethodForm: React.FC<AddPaymentMethodFormProps> = ({
-  holderName,
-  setHolderName,
-  onSaved,
-  isSaving,
-  setIsSaving,
-}) => {
-  const stripe = useStripe();
-  const elements = useElements();
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!stripe || !elements) return;
-    if (!holderName.trim()) {
-      alert('Please enter cardholder name');
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const setup = await userApi.createPaymentMethodSetup();
-      const clientSecret = (setup as any)?.data?.clientSecret ?? (setup as any)?.clientSecret;
-      const setupIntentIdFromSetup = (setup as any)?.data?.setupIntentId ?? (setup as any)?.setupIntentId;
-
-      if (!clientSecret || typeof clientSecret !== 'string') {
-        throw new Error('No client secret received from server. Please try again.');
-      }
-
-      const cardEl = elements.getElement(CardElement);
-      if (!cardEl) {
-        throw new Error('Card element not found');
-      }
-
-      const { error, setupIntent } = await stripe.confirmCardSetup(clientSecret, {
-        payment_method: {
-          card: cardEl,
-          billing_details: {
-            name: holderName,
-          },
-        },
-      });
-
-      if (error) {
-        throw new Error(error.message || 'Card setup failed');
-      }
-
-      const setupIntentId = setupIntentIdFromSetup || setupIntent?.id;
-      if (!setupIntentId) {
-        throw new Error('Could not complete card setup. Please try again.');
-      }
-      const confirmed = await userApi.confirmPaymentMethodSetup(setupIntentId);
-      const brand = (confirmed.brand || '').toLowerCase();
-      const isVisa = brand === 'visa';
-      const icon = isVisa
-        ? 'https://upload.wikimedia.org/wikipedia/commons/d/d6/Visa_2021.svg'
-        : 'https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg';
-      const month = String(confirmed.expiryMonth || '').padStart(2, '0');
-      const year = confirmed.expiryYear ? String(confirmed.expiryYear).slice(-2) : '';
-
-      const card: PaymentCard = {
-        id: confirmed.id,
-        brand: confirmed.brand || 'Card',
-        last4: confirmed.last4 || '',
-        expiry: month && year ? `${month}/${year}` : '',
-        icon,
-        isDefault: !!confirmed.isDefault,
-      };
-
-      onSaved(card);
-      setHolderName('');
-    } catch (err: any) {
-      console.error('Failed to save payment method:', err);
-      const msg = err instanceof ApiError ? err.message : (err?.message || 'Failed to save payment method');
-      alert(msg);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <input 
-        required 
-        type="text" 
-        value={holderName} 
-        onChange={(e) => setHolderName(e.target.value.toUpperCase())} 
-        className="w-full px-4 py-2.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
-        placeholder="CARDHOLDER NAME" 
-      />
-      <div className="p-3 border border-gray-200 rounded-xl bg-gray-50">
-        <CardElement
-          options={{
-            style: {
-              base: {
-                fontSize: '14px',
-                color: '#111827',
-                '::placeholder': { color: '#9ca3af' },
-              },
-              invalid: { color: '#dc2626' },
-            },
-            hidePostalCode: true,
-          }}
-        />
-      </div>
-      <button 
-        type="submit" 
-        disabled={isSaving || !stripe}
-        className="w-full bg-[#33a8da] text-white py-3 rounded-xl font-bold uppercase text-xs tracking-widest hover:bg-[#2c98c7] transition disabled:opacity-50"
-      >
-        {isSaving ? 'Saving...' : 'Save Card'}
-      </button>
-    </form>
-  );
-};
 
 export default Profile;
