@@ -1,16 +1,11 @@
-// lib/airportData.ts
-
 export interface Airport {
     code: string;
     name: string;
     city: string;
     country: string;
     type: 'airport' | 'city';
-  }
-  
-  // International airports AND city centers dataset
-  export const airports: Airport[] = [
-    // ====== CITY CENTERS (CRITICAL FOR CAR RENTALS) ======
+}
+export const airports: Airport[] = [
     { code: 'PAR', name: 'Paris City Center', city: 'Paris', country: 'France', type: 'city' },
     { code: 'LHR', name: 'London City Center', city: 'London', country: 'UK', type: 'city' },
     { code: 'NYC', name: 'New York City Center', city: 'New York', country: 'USA', type: 'city' },
@@ -27,14 +22,10 @@ export interface Airport {
     { code: 'SEA', name: 'Seattle City Center', city: 'Seattle', country: 'USA', type: 'city' },
     { code: 'MCO', name: 'Orlando City Center', city: 'Orlando', country: 'USA', type: 'city' },
     { code: 'ATL', name: 'Atlanta City Center', city: 'Atlanta', country: 'USA', type: 'city' },
-    
-    // Nigeria city centers
     { code: 'LOS', name: 'Lagos City Center', city: 'Lagos', country: 'Nigeria', type: 'city' },
     { code: 'ABV', name: 'Abuja City Center', city: 'Abuja', country: 'Nigeria', type: 'city' },
     { code: 'PHC', name: 'Port Harcourt City Center', city: 'Port Harcourt', country: 'Nigeria', type: 'city' },
     { code: 'KAN', name: 'Kano City Center', city: 'Kano', country: 'Nigeria', type: 'city' },
-    
-    // Other international city centers
     { code: 'DXB', name: 'Dubai City Center', city: 'Dubai', country: 'UAE', type: 'city' },
     { code: 'SIN', name: 'Singapore City Center', city: 'Singapore', country: 'Singapore', type: 'city' },
     { code: 'HKG', name: 'Hong Kong City Center', city: 'Hong Kong', country: 'China', type: 'city' },
@@ -43,9 +34,6 @@ export interface Airport {
     { code: 'ROM', name: 'Rome City Center', city: 'Rome', country: 'Italy', type: 'city' },
     { code: 'MAD', name: 'Madrid City Center', city: 'Madrid', country: 'Spain', type: 'city' },
     { code: 'BER', name: 'Berlin City Center', city: 'Berlin', country: 'Germany', type: 'city' },
-    
-    // ====== AIRPORTS ======
-    // Europe Airports
     { code: 'LHR', name: 'London Heathrow Airport', city: 'London', country: 'UK', type: 'airport' },
     { code: 'CDG', name: 'Charles de Gaulle Airport', city: 'Paris', country: 'France', type: 'airport' },
     { code: 'AMS', name: 'Amsterdam Schiphol Airport', city: 'Amsterdam', country: 'Netherlands', type: 'airport' },
@@ -55,8 +43,6 @@ export interface Airport {
     { code: 'LGW', name: 'London Gatwick Airport', city: 'London', country: 'UK', type: 'airport' },
     { code: 'ORY', name: 'Paris Orly Airport', city: 'Paris', country: 'France', type: 'airport' },
     { code: 'BCN', name: 'Barcelona–El Prat Airport', city: 'Barcelona', country: 'Spain', type: 'airport' },
-    
-    // North America Airports
     { code: 'JFK', name: 'John F. Kennedy International Airport', city: 'New York', country: 'USA', type: 'airport' },
     { code: 'LAX', name: 'Los Angeles International Airport', city: 'Los Angeles', country: 'USA', type: 'airport' },
     { code: 'ORD', name: "O'Hare International Airport", city: 'Chicago', country: 'USA', type: 'airport' },
@@ -66,14 +52,10 @@ export interface Airport {
     { code: 'MIA', name: 'Miami International Airport', city: 'Miami', country: 'USA', type: 'airport' },
     { code: 'ATL', name: 'Hartsfield–Jackson Atlanta International Airport', city: 'Atlanta', country: 'USA', type: 'airport' },
     { code: 'DFW', name: 'Dallas/Fort Worth International Airport', city: 'Dallas', country: 'USA', type: 'airport' },
-    
-    // Middle East Airports
     { code: 'DXB', name: 'Dubai International Airport', city: 'Dubai', country: 'UAE', type: 'airport' },
     { code: 'AUH', name: 'Abu Dhabi International Airport', city: 'Abu Dhabi', country: 'UAE', type: 'airport' },
     { code: 'DOH', name: 'Hamad International Airport', city: 'Doha', country: 'Qatar', type: 'airport' },
     { code: 'RUH', name: 'King Khalid International Airport', city: 'Riyadh', country: 'Saudi Arabia', type: 'airport' },
-    
-    // Africa Airports
     { code: 'LOS', name: 'Murtala Muhammed International Airport', city: 'Lagos', country: 'Nigeria', type: 'airport' },
     { code: 'ABV', name: 'Nnamdi Azikiwe International Airport', city: 'Abuja', country: 'Nigeria', type: 'airport' },
     { code: 'NBO', name: 'Jomo Kenyatta International Airport', city: 'Nairobi', country: 'Kenya', type: 'airport' },
@@ -82,8 +64,6 @@ export interface Airport {
     { code: 'ACC', name: 'Kotoka International Airport', city: 'Accra', country: 'Ghana', type: 'airport' },
     { code: 'PHC', name: 'Port Harcourt International Airport', city: 'Port Harcourt', country: 'Nigeria', type: 'airport' },
     { code: 'KAN', name: 'Mallam Aminu Kano International Airport', city: 'Kano', country: 'Nigeria', type: 'airport' },
-    
-    // Asia Airports
     { code: 'SIN', name: 'Singapore Changi Airport', city: 'Singapore', country: 'Singapore', type: 'airport' },
     { code: 'HKG', name: 'Hong Kong International Airport', city: 'Hong Kong', country: 'China', type: 'airport' },
     { code: 'NRT', name: 'Narita International Airport', city: 'Tokyo', country: 'Japan', type: 'airport' },
@@ -92,68 +72,50 @@ export interface Airport {
     { code: 'PEK', name: 'Beijing Capital International Airport', city: 'Beijing', country: 'China', type: 'airport' },
     { code: 'PVG', name: 'Shanghai Pudong International Airport', city: 'Shanghai', country: 'China', type: 'airport' },
     { code: 'DEL', name: 'Indira Gandhi International Airport', city: 'Delhi', country: 'India', type: 'airport' },
-    
-    // Australia Airports
     { code: 'SYD', name: 'Sydney Kingsford Smith Airport', city: 'Sydney', country: 'Australia', type: 'airport' },
     { code: 'MEL', name: 'Melbourne Airport', city: 'Melbourne', country: 'Australia', type: 'airport' },
     { code: 'BNE', name: 'Brisbane Airport', city: 'Brisbane', country: 'Australia', type: 'airport' },
-    
-    // South America Airports
     { code: 'GRU', name: 'São Paulo/Guarulhos International Airport', city: 'São Paulo', country: 'Brazil', type: 'airport' },
     { code: 'EZE', name: 'Ministro Pistarini International Airport', city: 'Buenos Aires', country: 'Argentina', type: 'airport' },
     { code: 'SCL', name: 'Arturo Merino Benítez International Airport', city: 'Santiago', country: 'Chile', type: 'airport' },
     { code: 'LIM', name: 'Jorge Chávez International Airport', city: 'Lima', country: 'Peru', type: 'airport' },
-  ];
-  
-  // Get airport suggestions based on search query
-  export const getAirportSuggestions = (query: string, limit: number = 10): Airport[] => {
+];
+export const getAirportSuggestions = (query: string, limit: number = 10): Airport[] => {
     if (!query || query.trim() === '') {
-      return airports.slice(0, limit);
+        return airports.slice(0, limit);
     }
-    
     const queryLower = query.toLowerCase().trim();
-    
     return airports
-      .filter(airport => {
+        .filter(airport => {
         const searchText = `${airport.code} ${airport.name} ${airport.city} ${airport.country}`.toLowerCase();
         return searchText.includes(queryLower);
-      })
-      .slice(0, limit);
-  };
-  
-  // Find airport by code
-  export const getAirportByCode = (code: string): Airport | undefined => {
+    })
+        .slice(0, limit);
+};
+export const getAirportByCode = (code: string): Airport | undefined => {
     return airports.find(airport => airport.code === code.toUpperCase());
-  };
-  
-  // Format airport for display
-  export const formatAirportDisplay = (airport: Airport): string => {
+};
+export const formatAirportDisplay = (airport: Airport): string => {
     const typeLabel = airport.type === 'city' ? 'City Center' : 'Airport';
     return `${airport.code} - ${airport.name} (${typeLabel}), ${airport.city}, ${airport.country}`;
-  };
-  
-  // Get suggestions for car rentals (prioritizes city centers)
-  export const getCarLocationSuggestions = (query: string, limit: number = 10): Airport[] => {
+};
+export const getCarLocationSuggestions = (query: string, limit: number = 10): Airport[] => {
     if (!query || query.trim() === '') {
-      // Return city centers first, then airports
-      const cityCenters = airports.filter(a => a.type === 'city').slice(0, 5);
-      const popularAirports = airports.filter(a => a.type === 'airport' && 
-        ['LHR', 'CDG', 'JFK', 'LOS', 'ABV'].includes(a.code)).slice(0, 5);
-      return [...cityCenters, ...popularAirports].slice(0, limit);
+        const cityCenters = airports.filter(a => a.type === 'city').slice(0, 5);
+        const popularAirports = airports.filter(a => a.type === 'airport' &&
+            ['LHR', 'CDG', 'JFK', 'LOS', 'ABV'].includes(a.code)).slice(0, 5);
+        return [...cityCenters, ...popularAirports].slice(0, limit);
     }
-    
     const queryLower = query.toLowerCase().trim();
-    
-    // Filter all locations
     const allResults = airports.filter(airport => {
-      const searchText = `${airport.code} ${airport.name} ${airport.city} ${airport.country}`.toLowerCase();
-      return searchText.includes(queryLower);
+        const searchText = `${airport.code} ${airport.name} ${airport.city} ${airport.country}`.toLowerCase();
+        return searchText.includes(queryLower);
     });
-    
-    // Sort: city centers first, then airports
     return allResults.sort((a, b) => {
-      if (a.type === 'city' && b.type !== 'city') return -1;
-      if (a.type !== 'city' && b.type === 'city') return 1;
-      return 0;
+        if (a.type === 'city' && b.type !== 'city')
+            return -1;
+        if (a.type !== 'city' && b.type === 'city')
+            return 1;
+        return 0;
     }).slice(0, limit);
-  };
+};

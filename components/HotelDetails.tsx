@@ -1,75 +1,61 @@
-
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '../context/LanguageContext';
-
 interface HotelDetailsProps {
-  item: any;
-  searchParams: any;
-  onBack: () => void;
-  onBook: () => void;
+    item: any;
+    searchParams: any;
+    onBack: () => void;
+    onBook: () => void;
 }
-
 const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack, onBook }) => {
-  const { currency } = useLanguage();
-  const [activeTab, setActiveTab] = useState('Overview');
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
-  
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-
-  // Use server image when available (from Amadeus/search), then fallback gallery
-  const fallbackImages = [
-    "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=1200",
-    "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=1200",
-    "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=1200",
-    "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=1200",
-    "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=1200",
-  ];
-  const images = (item?.image || item?.imageUrl)
-    ? [item.image || item.imageUrl, ...fallbackImages]
-    : fallbackImages;
-
-  const nextImage = useCallback(() => {
-    setCurrentImageIndex((prev) => (prev + 1) % images.length);
-  }, [images.length]);
-
-  const prevImage = useCallback(() => {
-    setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
-  }, [images.length]);
-
-  const roomOptions = [
-    { type: 'Classic room', guests: 2, price: 110.00, options: ['Free cancellation', 'No prepayment'] },
-    { type: 'Classic room', guests: 2, price: 125.00, options: ['Free cancellation', 'Breakfast included'] },
-    { type: 'Double room', guests: 2, price: 135.00, options: ['Free cancellation', 'WiFi included'] },
-    { type: 'Double room', guests: 2, price: 145.00, options: ['Breakfast included', 'No prepayment'] },
-    { type: 'Classic room', guests: 3, price: 165.00, options: ['Free cancellation', 'Extra bed'] },
-  ];
-
-  // Use server amenities when available (from search/API), else default
-  const defaultAmenities = [
-    { group: 'Common', items: ['Free Wi-Fi', 'Swimming Pool', 'Air Conditioning', 'Flat-screen TV', 'Ensuite Bathroom', 'Balcony'] },
-    { group: 'Kitchen', items: ['Refrigerator', 'Kitchenette', 'Electric kettle', 'Microwave', 'Dining area', 'Coffee machine'] },
-    { group: 'Wellness', items: ['Fitness center', 'Spa and wellness center', 'Massage', 'Hot tub/Jacuzzi'] },
-    { group: 'Services', items: ['Room service', '24-hour front desk', 'Concierge service', 'Laundry', 'Airport shuttle'] }
-  ];
-  const amenities = Array.isArray(item?.amenities) && item.amenities.length > 0
-    ? [{ group: 'Amenities', items: item.amenities }]
-    : defaultAmenities;
-
-  const policies = [
-    { label: 'Check-in', value: 'From 2:00 PM' },
-    { label: 'Check-out', value: 'Until 11:00 AM' },
-    { label: 'Cancellation / Prepayment', value: 'Cancellation and prepayment policies vary according to accommodation type. Please enter the dates of your stay and check the conditions of your required room.' },
-    { label: 'Children and extra beds', value: 'Children of all ages are welcome. Children 12 years and above are considered adults at this property.' },
-    { label: 'Pets', value: 'Pets are not allowed.' },
-    { label: 'Payment methods', value: 'Cash, Visa, Mastercard, American Express' }
-  ];
-
-  const renderOverview = () => (
-    <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+    const { currency } = useLanguage();
+    const [activeTab, setActiveTab] = useState('Overview');
+    const [currentImageIndex, setCurrentImageIndex] = useState(0);
+    const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, []);
+    const fallbackImages = [
+        "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=1200",
+        "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=1200",
+        "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=1200",
+        "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=1200",
+        "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=1200",
+    ];
+    const images = (item?.image || item?.imageUrl)
+        ? [item.image || item.imageUrl, ...fallbackImages]
+        : fallbackImages;
+    const nextImage = useCallback(() => {
+        setCurrentImageIndex((prev) => (prev + 1) % images.length);
+    }, [images.length]);
+    const prevImage = useCallback(() => {
+        setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
+    }, [images.length]);
+    const roomOptions = [
+        { type: 'Classic room', guests: 2, price: 110.00, options: ['Free cancellation', 'No prepayment'] },
+        { type: 'Classic room', guests: 2, price: 125.00, options: ['Free cancellation', 'Breakfast included'] },
+        { type: 'Double room', guests: 2, price: 135.00, options: ['Free cancellation', 'WiFi included'] },
+        { type: 'Double room', guests: 2, price: 145.00, options: ['Breakfast included', 'No prepayment'] },
+        { type: 'Classic room', guests: 3, price: 165.00, options: ['Free cancellation', 'Extra bed'] },
+    ];
+    const defaultAmenities = [
+        { group: 'Common', items: ['Free Wi-Fi', 'Swimming Pool', 'Air Conditioning', 'Flat-screen TV', 'Ensuite Bathroom', 'Balcony'] },
+        { group: 'Kitchen', items: ['Refrigerator', 'Kitchenette', 'Electric kettle', 'Microwave', 'Dining area', 'Coffee machine'] },
+        { group: 'Wellness', items: ['Fitness center', 'Spa and wellness center', 'Massage', 'Hot tub/Jacuzzi'] },
+        { group: 'Services', items: ['Room service', '24-hour front desk', 'Concierge service', 'Laundry', 'Airport shuttle'] }
+    ];
+    const amenities = Array.isArray(item?.amenities) && item.amenities.length > 0
+        ? [{ group: 'Amenities', items: item.amenities }]
+        : defaultAmenities;
+    const policies = [
+        { label: 'Check-in', value: 'From 2:00 PM' },
+        { label: 'Check-out', value: 'Until 11:00 AM' },
+        { label: 'Cancellation / Prepayment', value: 'Cancellation and prepayment policies vary according to accommodation type. Please enter the dates of your stay and check the conditions of your required room.' },
+        { label: 'Children and extra beds', value: 'Children of all ages are welcome. Children 12 years and above are considered adults at this property.' },
+        { label: 'Pets', value: 'Pets are not allowed.' },
+        { label: 'Payment methods', value: 'Cash, Visa, Mastercard, American Express' }
+    ];
+    const renderOverview = () => (<div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="flex flex-col lg:flex-row gap-8">
         <div className="flex-1">
           <h2 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-6">About this property</h2>
@@ -79,28 +65,23 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
           </div>
         </div>
         <div className="w-full lg:w-64 h-40 rounded-2xl overflow-hidden shadow-sm border border-gray-100 shrink-0">
-          <img src="https://images.unsplash.com/photo-1526772662000-3f88f10405ff?auto=format&fit=crop&q=80&w=600" className="w-full h-full object-cover" alt="Property Map" />
+          <img src="https://images.unsplash.com/photo-1526772662000-3f88f10405ff?auto=format&fit=crop&q=80&w=600" className="w-full h-full object-cover" alt="Property Map"/>
         </div>
       </div>
       
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-12 pt-12 border-t border-gray-50">
         {[
-          { label: 'Property Type', value: 'Boutique Hotel' },
-          { label: 'Year Built', value: '2018 (Renovated)' },
-          { label: 'Staff Languages', value: 'EN, IT, FR' },
-          { label: 'Room Count', value: '42 Luxury Suites' }
-        ].map(stat => (
-          <div key={stat.label}>
+            { label: 'Property Type', value: 'Boutique Hotel' },
+            { label: 'Year Built', value: '2018 (Renovated)' },
+            { label: 'Staff Languages', value: 'EN, IT, FR' },
+            { label: 'Room Count', value: '42 Luxury Suites' }
+        ].map(stat => (<div key={stat.label}>
             <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">{stat.label}</p>
             <p className="text-xs font-bold text-gray-900">{stat.value}</p>
-          </div>
-        ))}
+          </div>))}
       </div>
-    </div>
-  );
-
-  const renderRooms = () => (
-    <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+    </div>);
+    const renderRooms = () => (<div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="bg-white border border-gray-100 rounded-[20px] shadow-sm overflow-hidden">
         <table className="w-full text-left table-fixed">
           <thead className="bg-[#f8fbfe] border-b border-gray-100">
@@ -113,8 +94,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {roomOptions.map((room, i) => (
-              <tr key={i} className="hover:bg-gray-50/50 transition">
+            {roomOptions.map((room, i) => (<tr key={i} className="hover:bg-gray-50/50 transition">
                 <td className="px-4 py-6">
                    <p className="text-sm font-black text-[#33a8da] hover:underline cursor-pointer truncate">{room.type}</p>
                    <div className="flex gap-1.5 mt-2">
@@ -124,9 +104,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
                 </td>
                 <td className="px-4 py-6">
                   <div className="flex gap-0.5 text-gray-300">
-                     {[...Array(room.guests)].map((_, j) => (
-                       <svg key={j} className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" /></svg>
-                     ))}
+                     {[...Array(room.guests)].map((_, j) => (<svg key={j} className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"/></svg>))}
                   </div>
                 </td>
                 <td className="px-4 py-6">
@@ -135,41 +113,34 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
                 </td>
                 <td className="px-4 py-6">
                    <div className="space-y-1.5">
-                     {room.options.map((opt, k) => (
-                       <div key={k} className="flex items-center gap-1.5 text-[9px] font-bold text-green-600 uppercase tracking-tighter">
-                         <svg className="w-2.5 h-2.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={5}><path d="M5 13l4 4L19 7" /></svg>
+                     {room.options.map((opt, k) => (<div key={k} className="flex items-center gap-1.5 text-[9px] font-bold text-green-600 uppercase tracking-tighter">
+                         <svg className="w-2.5 h-2.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={5}><path d="M5 13l4 4L19 7"/></svg>
                          <span className="truncate">{opt}</span>
-                       </div>
-                     ))}
+                       </div>))}
                    </div>
                 </td>
                 <td className="px-4 py-6 text-right">
                   <button onClick={onBook} className="bg-[#33a8da] text-white px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-md hover:bg-[#2c98c7] transition active:scale-95 whitespace-nowrap">Reserve</button>
                 </td>
-              </tr>
-            ))}
+              </tr>))}
           </tbody>
         </table>
       </div>
-    </div>
-  );
-
-  const renderReviews = () => (
-    <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+    </div>);
+    const renderReviews = () => (<div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="flex flex-col md:flex-row gap-16 items-start">
          <div className="w-full md:w-64 space-y-8 shrink-0">
             <div className="flex items-center gap-5">
                <div className="text-5xl font-black text-[#33a8da] tracking-tighter">4.9</div>
                <div className="space-y-1">
                   <div className="flex text-yellow-400">
-                     {[...Array(5)].map((_, i) => <svg key={i} className="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>)}
+                     {[...Array(5)].map((_, i) => <svg key={i} className="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>)}
                   </div>
                   <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">1,240 Reviews</p>
                </div>
             </div>
             <div className="space-y-4">
-               {['Cleanliness', 'Location', 'Service'].map((metric) => (
-                 <div key={metric}>
+               {['Cleanliness', 'Location', 'Service'].map((metric) => (<div key={metric}>
                    <div className="flex justify-between text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
                      <span>{metric}</span>
                      <span className="text-gray-900">4.9</span>
@@ -177,17 +148,15 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
                    <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
                      <div className="h-full bg-[#33a8da] w-[98%]"></div>
                    </div>
-                 </div>
-               ))}
+                 </div>))}
             </div>
          </div>
          
          <div className="flex-1 space-y-10">
-            {[1, 2].map((rev) => (
-              <div key={rev} className="pb-8 border-b border-gray-50 last:border-0">
+            {[1, 2].map((rev) => (<div key={rev} className="pb-8 border-b border-gray-50 last:border-0">
                  <div className="flex items-center gap-4 mb-4">
                     <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-100">
-                       <img src={`https://ui-avatars.com/api/?name=Reviewer+${rev}&background=f4d9c6&color=9a7d6a`} className="w-full h-full" alt="" />
+                       <img src={`https://ui-avatars.com/api/?name=Reviewer+${rev}&background=f4d9c6&color=9a7d6a`} className="w-full h-full" alt=""/>
                     </div>
                     <div>
                        <h4 className="text-sm font-black text-gray-900">Hannah Jenkins</h4>
@@ -197,110 +166,81 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
                  <p className="text-sm text-gray-600 font-medium leading-relaxed italic">
                    "A truly formal and premium experience. The attention to detail and professional staff made our stay unforgettable."
                  </p>
-              </div>
-            ))}
+              </div>))}
          </div>
       </div>
-    </div>
-  );
-
-  const renderAmenities = () => (
-    <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+    </div>);
+    const renderAmenities = () => (<div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-10">
-        {amenities.map((group) => (
-          <div key={group.group}>
+        {amenities.map((group) => (<div key={group.group}>
             <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6 border-b border-gray-50 pb-2">{group.group}</h3>
             <div className="grid grid-cols-2 gap-y-4">
-              {group.items.map((amenity: string) => (
-                <div key={amenity} className="flex items-center gap-3">
+              {group.items.map((amenity: string) => (<div key={amenity} className="flex items-center gap-3">
                   <div className="w-1.5 h-1.5 bg-[#33a8da] rounded-full"></div>
                   <span className="text-sm font-bold text-gray-700">{amenity}</span>
-                </div>
-              ))}
+                </div>))}
             </div>
-          </div>
-        ))}
+          </div>))}
       </div>
-    </div>
-  );
-
-  const renderPolicies = () => (
-    <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+    </div>);
+    const renderPolicies = () => (<div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="bg-white border border-gray-100 rounded-[24px] overflow-hidden shadow-sm">
-        {policies.map((policy, i) => (
-          <div key={policy.label} className={`flex flex-col md:flex-row p-6 ${i !== policies.length - 1 ? 'border-b border-gray-50' : ''}`}>
+        {policies.map((policy, i) => (<div key={policy.label} className={`flex flex-col md:flex-row p-6 ${i !== policies.length - 1 ? 'border-b border-gray-50' : ''}`}>
             <div className="w-full md:w-56 shrink-0 mb-2 md:mb-0">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{policy.label}</span>
             </div>
             <div className="flex-1">
               <p className="text-sm font-bold text-gray-700 leading-relaxed">{policy.value}</p>
             </div>
-          </div>
-        ))}
+          </div>))}
       </div>
-    </div>
-  );
-
-  const renderActiveContent = () => {
-    switch (activeTab) {
-      case 'Overview': return renderOverview();
-      case 'Available Rooms': return renderRooms();
-      case 'Guest Reviews': return renderReviews();
-      case 'Amenities': return renderAmenities();
-      case 'Policies': return renderPolicies();
-      default: return renderOverview();
-    }
-  };
-
-  return (
-    <div className="bg-[#f8fbfe] min-h-screen">
-      {/* Immersive BLURRED Glass Lightbox Gallery */}
-      {isLightboxOpen && (
-        <div className="fixed inset-0 z-[100] bg-gray-900/60 backdrop-blur-[60px] flex flex-col animate-in fade-in duration-300">
+    </div>);
+    const renderActiveContent = () => {
+        switch (activeTab) {
+            case 'Overview': return renderOverview();
+            case 'Available Rooms': return renderRooms();
+            case 'Guest Reviews': return renderReviews();
+            case 'Amenities': return renderAmenities();
+            case 'Policies': return renderPolicies();
+            default: return renderOverview();
+        }
+    };
+    return (<div className="bg-[#f8fbfe] min-h-screen">
+      
+      {isLightboxOpen && (<div className="fixed inset-0 z-[100] bg-gray-900/60 backdrop-blur-[60px] flex flex-col animate-in fade-in duration-300">
           <div className="flex justify-between items-center p-6 text-white relative z-10">
             <div className="flex flex-col">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-[#33a8da]">Ebony Bruce Gallery</p>
               <h3 className="text-lg font-bold">{item.title}</h3>
             </div>
             <button onClick={() => setIsLightboxOpen(false)} className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center border border-white/10">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 18L18 6M6 6l12 12" /></svg>
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
           </div>
           
           <div className="flex-1 relative flex items-center justify-center px-4 md:px-20">
             <button onClick={prevImage} className="absolute left-6 md:left-10 w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md transition flex items-center justify-center border border-white/10 text-white active:scale-95 z-20">
-              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M15 19l-7-7 7-7" /></svg>
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M15 19l-7-7 7-7"/></svg>
             </button>
             
             <div className="w-full max-w-5xl h-full flex items-center justify-center p-4">
-              <img 
-                src={images[currentImageIndex]} 
-                className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl animate-in zoom-in-95 duration-500" 
-                alt={`${item.title} view ${currentImageIndex + 1}`} 
-              />
+              <img src={images[currentImageIndex]} className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl animate-in zoom-in-95 duration-500" alt={`${item.title} view ${currentImageIndex + 1}`}/>
             </div>
 
             <button onClick={nextImage} className="absolute right-6 md:right-10 w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md transition flex items-center justify-center border border-white/10 text-white active:scale-95 z-20">
-              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 5l7 7-7 7" /></svg>
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 5l7 7-7 7"/></svg>
             </button>
           </div>
 
           <div className="p-10 flex justify-center gap-3 overflow-x-auto hide-scrollbar relative z-10">
-            {images.map((img, i) => (
-              <button 
-                key={i} 
-                onClick={() => setCurrentImageIndex(i)}
-                className={`w-20 h-20 rounded-xl overflow-hidden border-2 transition-all shrink-0 ${currentImageIndex === i ? 'border-[#33a8da] scale-110 shadow-2xl' : 'border-transparent opacity-50 hover:opacity-100'}`}
-              >
-                <img src={img} className="w-full h-full object-cover" alt="" />
-              </button>
-            ))}
+            {images.map((img, i) => (<button key={i} onClick={() => setCurrentImageIndex(i)} className={`w-20 h-20 rounded-xl overflow-hidden border-2 transition-all shrink-0 ${currentImageIndex === i ? 'border-[#33a8da] scale-110 shadow-2xl' : 'border-transparent opacity-50 hover:opacity-100'}`}>
+                <img src={img} className="w-full h-full object-cover" alt=""/>
+              </button>))}
           </div>
-        </div>
-      )}
+        </div>)}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Breadcrumbs - Formal Style */}
+        
         <nav className="flex items-center gap-3 text-[10px] font-black text-gray-400 uppercase tracking-widest mb-10">
           <button onClick={onBack} className="hover:text-gray-900 transition">Home</button>
           <span className="text-gray-200">/</span>
@@ -309,7 +249,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
           <span className="text-[#33a8da]">Property Details</span>
         </nav>
 
-        {/* Title Section - Formal Design */}
+        
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-10">
           <div>
             <h1 className="text-3xl md:text-5xl font-black text-gray-900 tracking-tighter leading-none mb-3">
@@ -325,7 +265,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
           </div>
           <div className="flex items-center gap-4">
              <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-100 bg-white rounded-xl text-[10px] font-black text-gray-500 hover:bg-gray-50 transition uppercase tracking-widest shadow-sm">
-               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" /></svg>
+               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z"/></svg>
                Share
              </button>
              <button className="w-11 h-11 rounded-xl border border-gray-100 bg-white flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition shadow-sm">
@@ -335,58 +275,43 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
           </div>
         </div>
 
-        {/* Gallery Section - Functional Slider */}
+        
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-16">
            <div className="lg:col-span-8 bg-white rounded-[32px] p-0 border border-gray-100 shadow-xl overflow-hidden relative group h-[400px] lg:h-[600px]">
-             {/* Slider Navigation Arrows */}
+             
              <div className="absolute inset-0 flex items-center justify-between z-20 px-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 <button onClick={prevImage} className="w-12 h-12 rounded-full bg-white/80 backdrop-blur-md shadow-lg flex items-center justify-center text-[#33a8da] hover:bg-white transition active:scale-90">
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M15 19l-7-7 7-7" /></svg>
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M15 19l-7-7 7-7"/></svg>
                 </button>
                 <button onClick={nextImage} className="w-12 h-12 rounded-full bg-white/80 backdrop-blur-md shadow-lg flex items-center justify-center text-[#33a8da] hover:bg-white transition active:scale-90">
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M9 5l7 7-7 7" /></svg>
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M9 5l7 7-7 7"/></svg>
                 </button>
              </div>
 
-             <img 
-               src={images[currentImageIndex]} 
-               className="w-full h-full object-cover transition-all duration-700 animate-in fade-in" 
-               alt={item.title} 
-             />
+             <img src={images[currentImageIndex]} className="w-full h-full object-cover transition-all duration-700 animate-in fade-in" alt={item.title}/>
 
-             {/* View All Photos Button Overlay */}
-             <button 
-              onClick={() => setIsLightboxOpen(true)}
-              className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md border border-white/20 px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-2xl hover:bg-black/80 transition flex items-center gap-3 z-30"
-             >
-               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+             
+             <button onClick={() => setIsLightboxOpen(true)} className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md border border-white/20 px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-2xl hover:bg-black/80 transition flex items-center gap-3 z-30">
+               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                View all {images.length} photos
              </button>
            </div>
 
            <div className="lg:col-span-4 grid grid-cols-2 lg:grid-cols-1 gap-4">
-              {images.slice(1, 3).map((img, i) => (
-                <div key={i} onClick={() => setCurrentImageIndex(i + 1)} className="bg-gray-100 rounded-[24px] overflow-hidden border border-gray-100 cursor-pointer hover:opacity-90 transition relative">
-                   <img src={img} className="w-full h-full object-cover" alt="" />
-                </div>
-              ))}
+              {images.slice(1, 3).map((img, i) => (<div key={i} onClick={() => setCurrentImageIndex(i + 1)} className="bg-gray-100 rounded-[24px] overflow-hidden border border-gray-100 cursor-pointer hover:opacity-90 transition relative">
+                   <img src={img} className="w-full h-full object-cover" alt=""/>
+                </div>))}
            </div>
         </div>
 
-        {/* Content Tabs */}
+        
         <div className="flex flex-col lg:flex-row gap-16">
           <div className="flex-1">
              <div className="border-b border-gray-100 mb-12 flex gap-12 overflow-x-auto hide-scrollbar sticky top-20 bg-[#f8fbfe] z-20 pt-4">
-              {['Overview', 'Available Rooms', 'Amenities', 'Guest Reviews', 'Policies'].map((tab) => (
-                <button 
-                  key={tab} 
-                  onClick={() => setActiveTab(tab)}
-                  className={`pb-5 text-[10px] font-black uppercase tracking-widest transition relative shrink-0 ${activeTab === tab ? 'text-[#33a8da]' : 'text-gray-400 hover:text-gray-600'}`}
-                >
+              {['Overview', 'Available Rooms', 'Amenities', 'Guest Reviews', 'Policies'].map((tab) => (<button key={tab} onClick={() => setActiveTab(tab)} className={`pb-5 text-[10px] font-black uppercase tracking-widest transition relative shrink-0 ${activeTab === tab ? 'text-[#33a8da]' : 'text-gray-400 hover:text-gray-600'}`}>
                   {tab}
-                  {activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-[#33a8da] rounded-full animate-in fade-in duration-300" />}
-                </button>
-              ))}
+                  {activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-[#33a8da] rounded-full animate-in fade-in duration-300"/>}
+                </button>))}
             </div>
 
             <div className="min-h-[400px]">
@@ -412,18 +337,18 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Dates</p>
                     <p className="text-sm font-bold text-gray-900">
                       {searchParams?.checkInDate && searchParams?.checkOutDate
-                        ? `${new Date(searchParams.checkInDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} - ${new Date(searchParams.checkOutDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
-                        : (item?.realData?.checkInDate && item?.realData?.checkOutDate
-                          ? `${new Date(item.realData.checkInDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} - ${new Date(item.realData.checkOutDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
-                          : 'Oct 24, 2024 - Oct 27, 2024')}
+            ? `${new Date(searchParams.checkInDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} - ${new Date(searchParams.checkOutDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+            : (item?.realData?.checkInDate && item?.realData?.checkOutDate
+                ? `${new Date(item.realData.checkInDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} - ${new Date(item.realData.checkOutDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                : 'Oct 24, 2024 - Oct 27, 2024')}
                     </p>
                   </div>
                   <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Guests</p>
                     <p className="text-sm font-bold text-gray-900">
                       {searchParams?.adults != null && searchParams?.rooms != null
-                        ? `${searchParams.adults} Adults, ${searchParams.rooms} Room${searchParams.rooms !== 1 ? 's' : ''}`
-                        : (item?.realData?.guests != null ? `${item.realData.guests} Adults, ${item.realData.rooms ?? 1} Room(s)` : '2 Adults, 1 Room')}
+            ? `${searchParams.adults} Adults, ${searchParams.rooms} Room${searchParams.rooms !== 1 ? 's' : ''}`
+            : (item?.realData?.guests != null ? `${item.realData.guests} Adults, ${item.realData.rooms ?? 1} Room(s)` : '2 Adults, 1 Room')}
                     </p>
                   </div>
                </div>
@@ -437,8 +362,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
           </aside>
         </div>
       </div>
-    </div>
-  );
+    </div>);
 };
-
 export default HotelDetails;
