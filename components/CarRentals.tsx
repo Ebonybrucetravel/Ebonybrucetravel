@@ -47,10 +47,10 @@ const CarRentals: React.FC = () => {
       <div className="flex justify-between items-end mb-8 md:mb-10">
         <div>
           <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900">
-            All the best deals and rental options in one place
+            Premium Transfers & Chauffeur Services
           </h2>
           <p className="text-gray-500 mt-2 text-base md:text-lg">
-            Finding the perfect car rental is easier than ever!
+            Luxury point-to-point transfers with professional drivers
           </p>
         </div>
         <a href="#" className={`text-[${brandBlue}] font-semibold hover:text-[#2a8bb5] text-base md:text-lg flex items-center gap-2 group transition-colors`}>

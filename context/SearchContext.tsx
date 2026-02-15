@@ -1,8 +1,9 @@
 'use client';
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { config } from '@/lib/config';
-import { extractAirportCode, getAirlineImage } from '@/lib/utils';
+import { extractAirportCode } from '@/lib/utils';
 import type { SearchParams, SearchResult } from '@/lib/types';
+import type { Airline } from '@/lib/duffel-airlines';
 import api from '@/lib/api';
 const MOCK: Record<string, SearchResult[]> = {
     flights: [

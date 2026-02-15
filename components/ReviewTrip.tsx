@@ -150,7 +150,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, isL
           Back to selection
         </button>
 
-        <h1 className="text-5xl font-black text-[#001f3f] tracking-tighter uppercase mb-10">Checkout</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-8">Complete your booking</h1>
         
         <div className="flex flex-col lg:flex-row gap-8">
           <div className="flex-1 space-y-8">
@@ -204,8 +204,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, isL
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                   </svg>
                   <p className="text-xs text-gray-600">
-                    <button onClick={onSignInRequired} className="font-bold text-[#33a8da] hover:underline">Sign in</button>
-                    {' '}to auto-fill your details and track your booking.
+                    <button onClick={onSignInRequired} className="font-medium text-[#33a8da] hover:underline">Sign in</button>
+                    {' '}to auto-fill your details
                   </p>
                 </div>)}
             </section>
@@ -217,9 +217,40 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, isL
                   <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center text-3xl shadow-sm">
                     {isFlight ? '✈️' : isHotel ? '🏨' : '🚗'}
                   </div>
-                  <div>
-                    <h3 className="text-xl font-black text-gray-900">{item.title}</h3>
-                    <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">{item.subtitle} • {item.provider}</p>
+                )}
+                
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Service fee</span>
+                  {isAmadeusHotel ? (
+                    <span className="text-xs text-gray-500">Included</span>
+                  ) : serviceFeeAmount > 0 ? (
+                    <span className="font-medium text-gray-900">{formatPrice(serviceFeeAmount, offerCurrency)}</span>
+                  ) : (
+                    <span className="text-xs text-green-600">Free</span>
+                  )}
+                </div>
+
+                {/* Voucher Section */}
+                <div className="pt-3 border-t border-gray-100">
+                  <label className="block text-xs font-medium text-gray-500 mb-2">
+                    Voucher code
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={voucherCode}
+                      onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+                      placeholder="Enter code"
+                      className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]"
+                    />
+                    <button
+                      type="button"
+                      disabled={isValidatingVoucher || !voucherCode.trim()}
+                      onClick={handleApplyVoucher}
+                      className="px-4 py-2 bg-[#33a8da] text-white text-sm font-medium rounded-lg hover:bg-[#2c98c7] disabled:opacity-50"
+                    >
+                      Apply
+                    </button>
                   </div>
                </div>
             </section>

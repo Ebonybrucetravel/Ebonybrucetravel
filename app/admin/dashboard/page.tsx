@@ -43,6 +43,8 @@ export default function AdminDashboardPage() {
         <StatCard title="Revenue" value={`£${(stats?.totalRevenue ?? 0).toLocaleString()}`}/>
         <StatCard title="Active Users" value={stats?.activeUsers ?? 0}/>
       </div>
+    );
+  }
 
       {!stats && (<div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg text-yellow-800 text-sm">
           Could not load dashboard stats. The admin API may not be available.

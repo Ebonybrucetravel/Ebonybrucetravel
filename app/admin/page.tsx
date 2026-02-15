@@ -49,11 +49,62 @@ export default function AdminLoginPage() {
           <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
           <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#33a8da] focus:border-transparent"/>
         </div>
-        <button type="submit" disabled={loading} className="w-full py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] disabled:opacity-50">
-          {loading ? 'Signing in…' : 'Sign In'}
-        </button>
-        <button type="button" onClick={() => router.push('/')} className="w-full py-2 text-gray-500 hover:text-gray-700 text-sm">
-          ← Back to Home
+
+        <form onSubmit={handleLogin} className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-1">Admin Email</label>
+            <input 
+              type="email" 
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold focus:ring-4 focus:ring-blue-600/20 focus:border-blue-600 transition-all outline-none"
+              placeholder="admin@ebonybruce.com"
+              // REMOVED defaultValue
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-1">Security Key</label>
+            <input 
+              type="password" 
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold focus:ring-4 focus:ring-blue-600/20 focus:border-blue-600 transition-all outline-none"
+              placeholder="••••••••••••"
+              // REMOVED defaultValue
+            />
+          </div>
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl text-center">
+              <p className="text-red-400 text-xs font-bold">{error}</p>
+            </div>
+          )}
+
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full bg-blue-600 text-white font-black py-5 rounded-2xl hover:bg-blue-500 transition shadow-2xl shadow-blue-600/30 active:scale-[0.98] flex items-center justify-center gap-3"
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Authorizing...</span>
+              </>
+            ) : 'Authorize Access'}
+          </button>
+        </form>
+
+        <button 
+          onClick={() => router.push('/')}
+          className="w-full mt-6 py-4 text-white/30 hover:text-white/60 font-bold text-xs uppercase tracking-widest transition"
+        >
+          Return to Client Portal
         </button>
       </form>
     </div>);

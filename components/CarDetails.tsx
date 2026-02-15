@@ -1,5 +1,6 @@
+// components/CarDetails.tsx
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 interface CarDetailsProps {
     item: any;
@@ -163,6 +164,7 @@ const CarDetails: React.FC<CarDetailsProps> = ({ item, searchParams, onBack, onB
               <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 5l7 7-7 7"/></svg>
             </button>
           </div>
+        )}
 
           <div className="p-10 flex justify-center gap-3 overflow-x-auto hide-scrollbar relative z-10">
             {galleryImages.map((img, i) => (<button key={i} onClick={() => setCurrentImageIndex(i)} className={`w-20 h-20 rounded-xl overflow-hidden border-2 transition-all shrink-0 ${currentImageIndex === i ? 'border-[#33a8da] scale-110 shadow-2xl' : 'border-transparent opacity-50 hover:opacity-100'}`}>
@@ -301,7 +303,6 @@ const CarDetails: React.FC<CarDetailsProps> = ({ item, searchParams, onBack, onB
                </div>
             </div>
           </div>
-        </div>
 
         
         <div className="border-b border-gray-100 mb-12 flex gap-12 overflow-x-auto hide-scrollbar sticky top-20 bg-[#f8fbfe] z-20 pt-4">

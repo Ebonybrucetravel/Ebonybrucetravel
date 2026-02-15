@@ -74,7 +74,7 @@ const HomesGrid: React.FC = () => {
       <div className="flex justify-between items-end mb-10">
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
-            {t?.("homes.title") || "Beautiful Homes & Rooms"}
+            {title}
           </h2>
           <p className="text-gray-500 mt-1 text-sm md:text-base">
             {t?.("homes.subtitle") ||
@@ -140,7 +140,7 @@ const HomesGrid: React.FC = () => {
                   </span>
                 </div>
                 <span className="text-xs text-gray-400">
-                  ({home.reviews} reviews)
+                  ({home.reviews.toLocaleString()} reviews)
                 </span>
               </div>
 
@@ -154,7 +154,7 @@ const HomesGrid: React.FC = () => {
                     {formatPrice(home.discountedPrice || home.price)}
                   </span>
                   <span className="text-xs text-gray-500 ml-1">
-                    /{t?.("homes.night") || "night"}
+                    /night
                   </span>
                 </div>
 

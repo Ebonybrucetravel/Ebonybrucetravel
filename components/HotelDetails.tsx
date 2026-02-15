@@ -212,6 +212,9 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
             <div className="flex flex-col">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-[#33a8da]">Ebony Bruce Gallery</p>
               <h3 className="text-lg font-bold">{item.title}</h3>
+              {hotelImages[currentImageIndex]?.caption && (
+                <p className="text-sm text-gray-300 mt-1">{hotelImages[currentImageIndex].caption}</p>
+              )}
             </div>
             <button onClick={() => setIsLightboxOpen(false)} className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center border border-white/10">
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 18L18 6M6 6l12 12"/></svg>
@@ -262,6 +265,19 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({ item, searchParams, onBack,
               </div>
               <button className="text-[10px] font-black text-[#33a8da] uppercase tracking-widest hover:underline">Show on map</button>
             </div>
+            {imageError && (
+              <p className="text-xs text-amber-600 mt-2">
+                Using placeholder images. Actual hotel photos could not be loaded.
+              </p>
+            )}
+            {/* Usage Stats Badge - Only show if successfully fetched */}
+            {usageStats && !statsError && !loadingStats && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">
+                  API Usage: {usageStats.totalRequests || 0} requests | {usageStats.remainingCredits || 'N/A'} credits left
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-4">
              <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-100 bg-white rounded-xl text-[10px] font-black text-gray-500 hover:bg-gray-50 transition uppercase tracking-widest shadow-sm">

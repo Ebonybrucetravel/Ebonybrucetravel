@@ -128,8 +128,15 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
               </div>
             </div>
             <div className="flex items-end justify-between pt-6 border-t border-gray-50">
-              <div><p className="text-2xl font-black text-[#33a8da]">{item.price}</p></div>
-              <button onClick={() => onSelect?.(item)} className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]">Book Hotel</button>
+              <div>
+                <p className="text-2xl font-black text-[#33a8da]">{item.price}</p>
+              </div>
+              <button 
+                onClick={() => onSelect?.(item)} 
+                className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]"
+              >
+                Book Hotel
+              </button>
             </div>
           </div>
         </div>
@@ -148,10 +155,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
             <div className="text-center"><p className="text-2xl font-black text-gray-900">{item.realData?.arrivalTime?.split('T')[1]?.substring(0, 5) || "10:15"}</p><p className="text-[10px] font-black text-gray-400 uppercase">Arrive</p></div>
           </div>
         </div>
-        <div className="w-full md:w-[240px] flex flex-col items-center justify-center text-center border-l border-gray-50 pl-8">
-          <p className="text-2xl font-black text-gray-900 mb-4">{item.price}</p>
-          <button onClick={() => onSelect?.(item)} className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]">Select Flight</button>
-        </div>
       </div>
     </div>);
     const renderCarCard = (item: SearchResult) => (<div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
@@ -165,7 +168,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
               <h3 className="text-xl font-black text-gray-900 group-hover:text-[#33a8da] transition">{item.title}</h3>
               <p className="text-[11px] font-bold text-gray-400 uppercase mt-1">{item.provider} • {item.subtitle}</p>
             </div>
-            <span className="bg-blue-50 text-[#33a8da] text-[9px] font-black px-3 py-1 rounded-full uppercase">Live Deal</span>
           </div>
           <div className="flex flex-wrap gap-4 mb-8">
             {item.amenities?.map((a, i) => (<div key={i} className="flex items-center gap-2">
@@ -185,19 +187,29 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
         <div className="max-w-7xl mx-auto flex justify-center items-center min-h-[400px]">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#33a8da] mb-6"></div>
-            <h3 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-2">Searching...</h3>
-            <p className="text-sm text-gray-500 font-medium">Finding the best options for you</p>
+            <h3 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-2">
+              {isLoadingOffers ? 'Loading flight offers...' : 'Searching...'}
+            </h3>
+            <p className="text-sm text-gray-500 font-medium">
+              {isLoadingOffers ? 'Fetching the best flight options for you' : 'Finding the best options for you'}
+            </p>
           </div>
         </div>
       </div>);
     }
     return (<div className="bg-[#f8fbfe] -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-10">
       <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-10">
+        {/* Filters Sidebar */}
         <aside className="w-full lg:w-[300px] shrink-0 space-y-6">
           <div className="bg-white rounded-[24px] p-8 shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-8">
               <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest">Filters</h4>
-              <button onClick={clearAllFilters} className="text-[9px] font-black text-[#33a8da] uppercase tracking-widest hover:underline">Clear all</button>
+              <button 
+                onClick={clearAllFilters} 
+                className="text-[9px] font-black text-[#33a8da] uppercase tracking-widest hover:underline"
+              >
+                Clear all
+              </button>
             </div>
 
             
@@ -241,18 +253,26 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
           </div>
         </aside>
 
+        {/* Results Section */}
         <div className="flex-1 space-y-6">
           <div className="flex items-center justify-between mb-4 px-2">
-            <h3 className="font-black text-gray-900 uppercase text-xs tracking-widest">{filteredResults.length} options found</h3>
+            <h3 className="font-black text-gray-900 uppercase text-xs tracking-widest">
+              {filteredResults.length} {filteredResults.length === 1 ? 'option' : 'options'} found
+            </h3>
             <div className="flex items-center gap-3">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sort by:</span>
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="bg-transparent border-none text-[10px] font-black uppercase text-[#33a8da] focus:ring-0 cursor-pointer">
+              <select 
+                value={sortBy} 
+                onChange={(e) => setSortBy(e.target.value as any)} 
+                className="bg-transparent border-none text-[10px] font-black uppercase text-[#33a8da] focus:ring-0 cursor-pointer"
+              >
                 <option value="match">Best Match</option>
                 <option value="price">Lowest Price</option>
                 <option value="rating">Top Rated</option>
               </select>
             </div>
           </div>
+          
           <div className="space-y-4">
             {filteredResults.length > 0 ? filteredResults.slice(0, visibleCount).map(item => {
             if (item.type?.includes('car'))

@@ -200,8 +200,17 @@ const AuthModal: React.FC<AuthModalProps> = ({ initialMode = 'login', resetToken
             {mode === 'verify-email' && 'Check your inbox for the verification link'}
           </p>
 
-          {error && <div className="mb-4 p-3 bg-red-50 text-red-600 text-xs font-semibold rounded-lg">{error}</div>}
-          {successMessage && <div className="mb-4 p-3 bg-green-50 text-green-600 text-xs font-semibold rounded-lg">{successMessage}</div>}
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 text-red-600 text-xs font-semibold rounded-lg">
+              {error}
+            </div>
+          )}
+          
+          {successMessage && (
+            <div className="mb-4 p-3 bg-green-50 text-green-600 text-xs font-semibold rounded-lg">
+              {successMessage}
+            </div>
+          )}
 
           
           {(mode === 'login' || mode === 'register') && (<form onSubmit={handleSubmit} className="space-y-4">
@@ -231,7 +240,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ initialMode = 'login', resetToken
                 <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Email</label>
                 <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="name@example.com"/>
               </div>
-              <button type="submit" disabled={isLoading} className="w-full bg-[#33a8da] text-white font-bold py-3 rounded-lg hover:bg-[#2c98c7] transition text-sm disabled:opacity-50">
+              
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-[#33a8da] text-white font-bold py-3 rounded-lg hover:bg-[#2c98c7] transition text-sm disabled:opacity-50"
+              >
                 {isLoading ? 'Sending…' : 'Send Reset Link'}
               </button>
             </form>)}
@@ -242,7 +256,27 @@ const AuthModal: React.FC<AuthModalProps> = ({ initialMode = 'login', resetToken
                 <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">New Password</label>
                 <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} placeholder="••••••••"/>
               </div>
-              <button type="submit" disabled={isLoading} className="w-full bg-[#33a8da] text-white font-bold py-3 rounded-lg hover:bg-[#2c98c7] transition text-sm disabled:opacity-50">
+              
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">
+                  Confirm Password
+                </label>
+                {renderPasswordField(
+                  'confirm-password',
+                  confirmPassword,
+                  (e) => setConfirmPassword(e.target.value),
+                  '••••••••',
+                  showConfirmPassword,
+                  setShowConfirmPassword,
+                  isLoading
+                )}
+              </div>
+              
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-[#33a8da] text-white font-bold py-3 rounded-lg hover:bg-[#2c98c7] transition text-sm disabled:opacity-50"
+              >
                 {isLoading ? 'Resetting…' : 'Reset Password'}
               </button>
             </form>)}

@@ -1161,7 +1161,18 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                     <span className="block text-[9px] font-bold text-gray-400 uppercase">Guests</span>
                     <span className="text-xs font-bold">{travellers.adults} Adults, {rooms} Room</span>
                   </div>
-                  <button type="submit" disabled={loading} className="bg-black text-white px-8 py-3 rounded-xl font-bold uppercase text-xs">{loading ? '...' : 'Find Hotels'}</button>
+                  <button 
+  type="submit" 
+  disabled={loading} 
+  className="bg-black text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-gray-800 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex items-center justify-center min-w-[80px]"
+>
+  {loading ? (
+    <div className="flex items-center gap-2">
+      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+      <span>...</span>
+    </div>
+  ) : 'Search'}
+</button>
                 </div>
               </div>
             </div>)}
@@ -1212,7 +1223,19 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                     <span className="block text-[9px] font-bold text-gray-400 uppercase">Passengers</span>
                     <span className="text-xs font-bold">{carTravellers} People</span>
                   </div>
-                  <button type="submit" disabled={loading} className="bg-black text-white px-6 py-3 rounded-xl font-bold uppercase text-[10px]">{loading ? '...' : 'Search Transfers'}</button>
+                  <button 
+  type="submit" 
+  disabled={loading || !carPickUp || !carDropOff || !carPickUpDate || !carDropOffDate} 
+  className="w-full bg-black text-white px-4 py-3 lg:py-0 font-bold text-sm lg:text-base rounded-lg hover:bg-gray-800 transition-all active:scale-[0.98] shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 whitespace-nowrap"
+>
+  {loading ? (
+    <div className="flex items-center gap-2">
+      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+      <span className="hidden sm:inline">Searching</span>
+      <span className="sm:hidden">...</span>
+    </div>
+  ) : 'Search'}
+</button>
                 </div>
               </div>
             </div>)}
