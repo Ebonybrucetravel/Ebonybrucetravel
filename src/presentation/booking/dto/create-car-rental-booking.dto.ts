@@ -9,7 +9,7 @@ import {
   IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type, Transform } from 'class-transformer';
+import { Type, Transform, plainToInstance } from 'class-transformer';
 
 /**
  * Normalize driver from either flat shape or nested shape (name + contact).
@@ -211,7 +211,7 @@ export class CreateCarRentalBookingDto {
       'Driver information. Accepts flat { title?, firstName, lastName, phone, email } or nested { name: { firstName, lastName }, contact: { email, phone } }. Title defaults to MR if omitted.',
     type: CarRentalDriverDto,
   })
-  @Transform(({ value }) => normalizeDriver(value))
+  @Transform(({ value }) => plainToInstance(CarRentalDriverDto, normalizeDriver(value)))
   @ValidateNested()
   @Type(() => CarRentalDriverDto)
   driver: CarRentalDriverDto;
@@ -222,7 +222,9 @@ export class CreateCarRentalBookingDto {
     type: CarRentalPaymentDto,
   })
   @IsOptional()
-  @Transform(({ value }) => (value && value.paymentCard ? normalizePayment(value) : value))
+  @Transform(({ value }) =>
+    value && value.paymentCard ? plainToInstance(CarRentalPaymentDto, normalizePayment(value)) : value,
+  )
   @ValidateNested()
   @Type(() => CarRentalPaymentDto)
   payment?: CarRentalPaymentDto;
