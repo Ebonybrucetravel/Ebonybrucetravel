@@ -1108,6 +1108,39 @@ function extractAmenitiesFromDescription(description: string, chainCode?: string
   return Array.from(new Set(amenities)); // Remove duplicates
 }
 
+export async function publicRequest<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = `${API_BASE}${cleanEndpoint}`;
+  
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+    ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
+  };
+
+  if (options.headers) {
+    Object.entries(options.headers).forEach(([k, v]) => {
+      if (v !== undefined) headers[k] = v.toString();
+    });
+  }
+
+  const res = await fetch(url, { ...options, headers });
+  
+  const contentType = res.headers.get('content-type');
+  let data: any;
+  
+  if (contentType?.includes('application/json')) {
+    data = await res.json();
+  } else {
+    data = { message: await res.text() || res.statusText };
+  }
+
+  if (!res.ok) {
+    throw new ApiError(data?.message || 'Request failed', res.status, data?.code, data);
+  }
+
+  return data as T;
+}
+
 // Helper function to calculate hotel rating
 function calculateHotelRating(chainCode?: string, price?: number): number {
   let baseRating = 4.0;
@@ -4656,6 +4689,7 @@ const api = {
   carApi,
   notificationApi,
   supportApi,
+  publicRequest,
   
   // Hotel search functions
   searchHotelsAmadeus,

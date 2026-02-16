@@ -40,6 +40,48 @@ const Footer: React.FC<FooterProps> = ({
         { label: t?.("Services") || "Services", href: '/content/Services' },
         { label: t?.("Career") || "Career", href: '/content/Career' },
         { label: t?.("Sustainability") || "Sustainability", href: '/content/Sustainability' },
+       
+      ],
+    },
+    {
+      title: t?.("Support") || "Support",
+      links: [
+        { label: t?.("Help Center") || "Help Center", href: '/content/Help Center' },
+        { label: t?.("Terms of Service") || "Terms of Service", href: '/content/Terms of Service' },
+        { label: t?.("Privacy Policy") || "Privacy Policy", href: '/content/Privacy Policy' },
+        { label: t?.("Blog") || "Blog", href: '/blog' }, 
+      ],
+    },
+    {
+      title: t?.("Discover") || "Discover",
+      links: [
+        { label: t?.("Flights") || "Flights", href: '/flights' },
+        { label: t?.("Hotels") || "Hotels", href: '/hotels' },
+        { label: t?.("Car Rentals") || "Car Rentals", href: '/cars' },
+        { label: t?.("My Bookings") || "My Bookings", href: '/profile?tab=bookings' },
+      ],
+    },
+  ];
+
+  // Alternative: Add Blog as a separate section
+  // Uncomment this if you want Blog as its own category instead
+  /*
+  const categories = [
+    {
+      title: t?.("footer.company") || "Company",
+      links: [
+        { label: t?.("About Us") || "About Us", href: '/about' },
+        { label: t?.("Services") || "Services", href: '/content/Services' },
+        { label: t?.("Career") || "Career", href: '/content/Career' },
+        { label: t?.("Sustainability") || "Sustainability", href: '/content/Sustainability' },
+      ],
+    },
+    {
+      title: t?.("Resources") || "Resources", // New category for Blog
+      links: [
+        { label: t?.("Blog") || "Blog", href: '/blog' },
+        { label: t?.("Travel Guides") || "Travel Guides", href: '/blog/travel-guides' },
+        { label: t?.("News & Updates") || "News & Updates", href: '/blog/news' },
       ],
     },
     {
@@ -60,6 +102,7 @@ const Footer: React.FC<FooterProps> = ({
       ],
     },
   ];
+  */
 
   const socialLinks = [
     { name: "Facebook", icon: "M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" },
