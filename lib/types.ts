@@ -82,6 +82,8 @@ export interface Booking {
   basePrice: number;
   totalAmount: number;
   currency: string;
+  cancellationDeadline?: string;
+  cancellationPolicySnapshot?: string;
   bookingData: Record<string, any>;
   passengerInfo: {
       firstName: string;

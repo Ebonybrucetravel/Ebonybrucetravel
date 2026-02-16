@@ -1545,88 +1545,122 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             </div>
           )}
 
-          {activeTab === 'cars' && (
-            <div className="flex flex-col lg:flex-row items-stretch gap-1 bg-[#33a8da] rounded-xl p-1">
-              <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-1">
-                {/* Pick-up Location with Autocomplete */}
-                <div className="md:col-span-3 relative" ref={carPickUpRef}>
-                  <div className="bg-white p-3 md:p-4 rounded-t-lg md:rounded-l-lg">
-                    <span className="block text-[9px] font-bold text-gray-400 uppercase">Pick-up Location</span>
-                    <input 
-                      type="text" 
-                      value={carPickUp} 
-                      onChange={(e) => handleCarPickUpChange(e.target.value)} 
-                      onFocus={() => setShowCarPickUpDropdown(true)} 
-                      placeholder="City or Airport" 
-                      className="w-full font-bold focus:outline-none bg-transparent p-0" 
-                    />
-                  </div>
-                  {showCarPickUpDropdown && renderCarLocationDropdown(carPickUpSuggestions, 'pickUp')}
-                </div>
-                
-                {/* Drop-off Location with Autocomplete */}
-                <div className="md:col-span-3 relative" ref={carDropOffRef}>
-                  <div className="bg-white p-3 md:p-4 border-t md:border-t-0 md:border-l border-gray-100">
-                    <span className="block text-[9px] font-bold text-gray-400 uppercase">Drop-off Location</span>
-                    <input 
-                      type="text" 
-                      value={carDropOff} 
-                      onChange={(e) => handleCarDropOffChange(e.target.value)} 
-                      onFocus={() => setShowCarDropOffDropdown(true)} 
-                      placeholder="City or Airport" 
-                      className="w-full font-bold focus:outline-none bg-transparent p-0" 
-                    />
-                  </div>
-                  {showCarDropOffDropdown && renderCarLocationDropdown(carDropOffSuggestions, 'dropOff')}
-                </div>
-                
-                {/* Pick-up & Drop-off Dates */}
-                <div className="md:col-span-3 bg-white p-3 md:p-4 border-t md:border-t-0 md:border-l border-gray-100 grid grid-cols-2 gap-2">
-                  <div>
-                    <span className="block text-[9px] font-bold text-gray-400 uppercase">Pick-up Date</span>
-                    <input 
-                      type="date" 
-                      min={today} 
-                      value={carPickUpDate} 
-                      onChange={(e) => setCarPickUpDate(e.target.value)} 
-                      className="w-full font-bold outline-none text-xs bg-transparent p-0" 
-                    />
-                  </div>
-                  <div>
-                    <span className="block text-[9px] font-bold text-gray-400 uppercase">Drop-off Date</span>
-                    <input 
-                      type="date" 
-                      min={carPickUpDate || today} 
-                      value={carDropOffDate} 
-                      onChange={(e) => setCarDropOffDate(e.target.value)} 
-                      className="w-full font-bold outline-none text-xs bg-transparent p-0" 
-                    />
-                  </div>
-                </div>
-                
-                {/* Passengers & Search Button */}
-                <div className="md:col-span-3 bg-white p-3 md:p-4 rounded-b-lg md:rounded-r-lg border-t md:border-t-0 md:border-l border-gray-100 flex items-center justify-between">
-                  <div onClick={() => setShowCarTravellerDropdown(!showCarTravellerDropdown)} className="cursor-pointer">
-                    <span className="block text-[9px] font-bold text-gray-400 uppercase">Passengers</span>
-                    <span className="text-xs font-bold">{carTravellers} People</span>
-                  </div>
-                  <button 
-  type="submit" 
-  disabled={loading || !carPickUp || !carDropOff || !carPickUpDate || !carDropOffDate} 
-  className="w-full bg-black text-white px-4 py-3 lg:py-0 font-bold text-sm lg:text-base rounded-lg hover:bg-gray-800 transition-all active:scale-[0.98] shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 whitespace-nowrap"
->
-  {loading ? (
-    <div className="flex items-center gap-2">
-      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-      <span className="hidden sm:inline">Searching</span>
-      <span className="sm:hidden">...</span>
-    </div>
-  ) : 'Search'}
-</button>
-                </div>
+
+{activeTab === 'cars' && (
+  <div className="flex flex-col lg:flex-row items-stretch gap-1 bg-[#33a8da] rounded-xl p-1">
+    <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-1">
+      
+      {/* Pick-up Location with Autocomplete - Fixed padding */}
+      <div className="md:col-span-3 relative" ref={carPickUpRef}>
+        <div className="bg-white p-4 md:p-5 rounded-t-lg md:rounded-l-lg h-full flex flex-col justify-center">
+          <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">PICK-UP LOCATION</span>
+          <input 
+            type="text" 
+            value={carPickUp} 
+            onChange={(e) => handleCarPickUpChange(e.target.value)} 
+            onFocus={() => setShowCarPickUpDropdown(true)} 
+            placeholder="City or Airport" 
+            className="w-full font-bold text-gray-800 focus:outline-none bg-transparent p-0 text-sm md:text-base" 
+          />
+        </div>
+        {showCarPickUpDropdown && renderCarLocationDropdown(carPickUpSuggestions, 'pickUp')}
+      </div>
+      
+      {/* Drop-off Location with Autocomplete - Fixed padding */}
+      <div className="md:col-span-3 relative" ref={carDropOffRef}>
+        <div className="bg-white p-4 md:p-5 border-t md:border-t-0 md:border-l border-gray-100 h-full flex flex-col justify-center">
+          <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">DROP-OFF LOCATION</span>
+          <input 
+            type="text" 
+            value={carDropOff} 
+            onChange={(e) => handleCarDropOffChange(e.target.value)} 
+            onFocus={() => setShowCarDropOffDropdown(true)} 
+            placeholder="City or Airport" 
+            className="w-full font-bold text-gray-800 focus:outline-none bg-transparent p-0 text-sm md:text-base" 
+          />
+        </div>
+        {showCarDropOffDropdown && renderCarLocationDropdown(carDropOffSuggestions, 'dropOff')}
+      </div>
+      
+      {/* Pick-up Date & Time - Matching padding */}
+      <div className="md:col-span-2 bg-white p-4 md:p-5 border-t md:border-t-0 md:border-l border-gray-100 h-full">
+        <div className="h-full flex flex-col justify-center">
+          <div className="mb-3">
+            <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">PICK-UP DATE</span>
+            <input 
+              type="date" 
+              min={today} 
+              value={carPickUpDate} 
+              onChange={(e) => setCarPickUpDate(e.target.value)} 
+              className="w-full font-bold text-gray-800 outline-none text-xs md:text-sm bg-transparent p-0" 
+            />
+          </div>
+          <div>
+            <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">PICK-UP TIME</span>
+            <input 
+              type="time" 
+              value={carPickUpTime} 
+              onChange={(e) => setCarPickUpTime(e.target.value)} 
+              className="w-full font-bold text-gray-800 outline-none text-xs md:text-sm bg-transparent p-0" 
+            />
+          </div>
+        </div>
+      </div>
+      
+      {/* Drop-off Date & Time - Matching padding */}
+      <div className="md:col-span-2 bg-white p-4 md:p-5 border-t md:border-t-0 md:border-l border-gray-100 h-full">
+        <div className="h-full flex flex-col justify-center">
+          <div className="mb-3">
+            <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">DROP-OFF DATE</span>
+            <input 
+              type="date" 
+              min={carPickUpDate || today} 
+              value={carDropOffDate} 
+              onChange={(e) => setCarDropOffDate(e.target.value)} 
+              className="w-full font-bold text-gray-800 outline-none text-xs md:text-sm bg-transparent p-0" 
+            />
+          </div>
+          <div>
+            <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">DROP-OFF TIME</span>
+            <input 
+              type="time" 
+              value={carDropOffTime} 
+              onChange={(e) => setCarDropOffTime(e.target.value)} 
+              className="w-full font-bold text-gray-800 outline-none text-xs md:text-sm bg-transparent p-0" 
+            />
+          </div>
+        </div>
+      </div>
+      
+      {/* Passengers & Search Button - Matching padding */}
+      <div className="md:col-span-2 bg-white p-4 md:p-5 rounded-b-lg md:rounded-r-lg border-t md:border-t-0 md:border-l border-gray-100 h-full">
+        <div className="h-full flex flex-col justify-between">
+          <div onClick={() => setShowCarTravellerDropdown(!showCarTravellerDropdown)} className="cursor-pointer mb-4">
+            <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">PASSENGERS</span>
+            <span className="text-sm md:text-base font-bold text-gray-800">{carTravellers} People</span>
+          </div>
+          <button 
+            type="submit" 
+            disabled={loading || !carPickUp || !carDropOff || !carPickUpDate || !carDropOffDate} 
+            className="w-full bg-black text-white py-3 font-bold text-sm rounded-lg hover:bg-gray-800 transition-all active:scale-[0.98] shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span className="hidden sm:inline">Searching</span>
+                <span className="sm:hidden">...</span>
               </div>
-            </div>
-          )}
+            ) : 'Search Cars'}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+
+
+
         </form>
       </div>
       

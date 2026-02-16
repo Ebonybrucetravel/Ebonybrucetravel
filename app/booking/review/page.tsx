@@ -51,24 +51,34 @@ export default function BookingReviewPage() {
     const useAmadeusFlow = isAmadeusHotel(selectedItem);
     const handleProceedToPayment = async (passengerInfo: PassengerInfo, voucherCode?: string) => {
         const isGuest = !isLoggedIn;
+        
         if (useAmadeusFlow && isMerchantPaymentModel) {
             try {
+                // Step 1: Create the booking first (without payment)
+                console.log('📝 Creating Amadeus hotel booking...');
                 const newBooking = await createAmadeusHotelBooking(selectedItem, passengerInfo, undefined, isGuest);
+                
+                console.log('✅ Booking created:', newBooking);
+                
+                // Step 2: Store booking and show Amadeus payment modal
                 setBooking(newBooking);
                 setAppliedVoucherCode(voucherCode);
-                setShowPayment(true);
+                setShowPayment(true); // This will use the booking reference and email for payment
             }
             catch (err: any) {
+                console.error('❌ Booking creation failed:', err);
                 toast.error(err?.message ?? 'We couldn’t create your booking. Please check your details and try again.');
             }
             return;
         }
+        
         if (useAmadeusFlow) {
             setPendingPassengerInfo(passengerInfo);
             setAppliedVoucherCode(voucherCode);
             setShowAmadeusPayment(true);
             return;
         }
+        
         try {
             const newBooking = await createBooking(selectedItem, searchParams, passengerInfo, isGuest);
             setBooking(newBooking);

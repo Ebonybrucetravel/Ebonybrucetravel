@@ -228,6 +228,10 @@ export interface HotelBookingRequest {
   };
   travelAgentEmail?: string;
   accommodationSpecialRequests?: string;
+  // ✅ ADD THESE FIELDS
+  cancellationDeadline?: string;
+  cancellationPolicySnapshot?: string;
+  policyAccepted?: boolean;
 }
 
 export interface HotelBookingResponse {
@@ -4254,7 +4258,7 @@ export function validateFlightSearchParams(params: FlightSearchParams): {
   };
 }
 
-// Hotel booking helper function
+// Hotel booking helper function - FIXED with cancellation fields
 export async function createAmadeusHotelBooking(
   offerId: string,
   hotelData: any,
@@ -4269,7 +4273,8 @@ export async function createAmadeusHotelBooking(
     expiryDate?: string;
     holderName?: string;
     securityCode?: string;
-  }
+  },
+  isGuest: boolean = true
 ): Promise<HotelBookingResponse> {
   try {
     console.log('🏨 Creating Amadeus hotel booking...');
@@ -4281,15 +4286,34 @@ export async function createAmadeusHotelBooking(
     
     const realData = hotelData.realData;
     
-    // Prepare booking data
-    const bookingData: HotelBookingRequest = {
+    // Get cancellation deadline from realData or calculate a default
+    let cancellationDeadline = realData.cancellationDeadline;
+    if (!cancellationDeadline) {
+      // Default to 24 hours before check-in
+      const checkInDate = realData.checkInDate || new Date().toISOString().split('T')[0];
+      const deadline = new Date(checkInDate);
+      deadline.setDate(deadline.getDate() - 1);
+      deadline.setHours(23, 59, 0, 0);
+      cancellationDeadline = deadline.toISOString();
+    }
+    
+    // Get cancellation policy
+    const cancellationPolicySnapshot = realData.cancellationPolicy || 
+      "Free cancellation until 24 hours before check-in. After that, full stay amount may be charged.";
+    
+    // Prepare booking data with ALL required fields
+    const bookingData: HotelBookingRequest & {
+      cancellationDeadline: string;
+      cancellationPolicySnapshot: string;
+      policyAccepted: boolean;
+    } = {
       hotelOfferId: offerId,
       offerPrice: realData.finalPrice ?? realData.price,
       currency: (realData.currency || 'GBP').toUpperCase(),
       guests: [
         {
           name: {
-            title: 'MR', // Default title
+            title: 'MR',
             firstName: guestInfo.firstName,
             lastName: guestInfo.lastName,
           },
@@ -4319,7 +4343,6 @@ export async function createAmadeusHotelBooking(
             holderName: paymentInfo.holderName || '',
             securityCode: paymentInfo.securityCode || '',
           } : {
-            // Demo/test card info (use Stripe test cards in production)
             vendorCode: 'VI',
             cardNumber: '4242424242424242',
             expiryDate: '2026-12',
@@ -4328,8 +4351,10 @@ export async function createAmadeusHotelBooking(
           },
         },
       },
-      travelAgentEmail: 'support@travelopia.com',
-      accommodationSpecialRequests: 'Please provide early check-in if available',
+      // ✅ ADD THESE REQUIRED FIELDS
+      cancellationDeadline: cancellationDeadline,
+      cancellationPolicySnapshot: cancellationPolicySnapshot,
+      policyAccepted: true
     };
     
     // Validate booking data
@@ -4342,8 +4367,26 @@ export async function createAmadeusHotelBooking(
       );
     }
     
-    // Create booking
-    const response = await bookingApi.createHotelBookingAmadeus(bookingData);
+    // Use different endpoints for guest vs authenticated users
+    let response: HotelBookingResponse;
+    
+    if (isGuest) {
+      // Use publicRequest for guest bookings (no auth required)
+      console.log('📝 Creating guest Amadeus hotel booking...');
+      console.log('📦 Guest booking payload:', JSON.stringify(bookingData, null, 2));
+      
+      response = await publicRequest<HotelBookingResponse>(
+        '/api/v1/bookings/hotels/bookings/amadeus/guest',
+        {
+          method: 'POST',
+          body: JSON.stringify(bookingData),
+        }
+      );
+    } else {
+      // Use authenticated endpoint for logged-in users
+      console.log('📝 Creating authenticated Amadeus hotel booking...');
+      response = await bookingApi.createHotelBookingAmadeus(bookingData);
+    }
     
     if (!response.success) {
       throw new ApiError(

@@ -4,12 +4,21 @@ import { useLanguage } from "../context/LanguageContext";
 import type { SearchResult as BaseSearchResult } from "../lib/types";
 import { type Airline, createAirlinesMap } from "../lib/duffel-airlines";
 
-// Add this function to fetch flight offers
+// Update the fetchFlightOffers function
 async function fetchFlightOffers(offerRequestId: string) {
   try {
-    const response = await fetch(`/api/v1/bookings/offers?offer_request_id=${offerRequestId}`);
-    if (!response.ok) throw new Error('Failed to fetch offers');
-    return await response.json();
+    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ebony-bruce-production.up.railway.app';
+    const response = await fetch(`${API_BASE}/api/v1/bookings/offers?offer_request_id=${offerRequestId}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Failed to fetch offers:', response.status, errorText);
+      throw new Error('Failed to fetch offers');
+    }
+    
+    const data = await response.json();
+    console.log('✅ Flight offers received:', data);
+    return data;
   } catch (error) {
     console.error('Error fetching flight offers:', error);
     return null;
@@ -531,11 +540,14 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           <div className="w-full md:w-[240px] flex flex-col items-center justify-center text-center border-l border-gray-50 pl-8">
             <p className="text-2xl font-black text-gray-900 mb-4">{item.price}</p>
             <button 
-              onClick={() => onSelect?.(item)} 
-              className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]"
-            >
-              Select Flight
-            </button>
+  onClick={() => {
+    console.log('Selected flight data:', item); // Add this to debug
+    onSelect?.(item);
+  }} 
+  className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]"
+>
+  Select Flight
+</button>
           </div>
         </div>
       </div>
@@ -761,11 +773,14 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 </p>
               </div>
               <button 
-                onClick={() => onSelect?.(item)} 
-                className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px] shadow-lg hover:shadow-xl"
-              >
-                {isLongDistance ? 'Book Transfer' : 'Rent Now'}
-              </button>
+  onClick={() => {
+    console.log('Selected car data:', item);
+    onSelect?.(item);
+  }} 
+  className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px] shadow-lg hover:shadow-xl"
+>
+  {isLongDistance ? 'Book Transfer' : 'Rent Now'}
+</button>
             </div>
             
             {/* Cancellation Policy */}

@@ -72,6 +72,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [voucherApplied, setVoucherApplied] = useState<any | null>(null);
   const [isValidatingVoucher, setIsValidatingVoucher] = useState(false);
   const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [agreedToPolicy, setAgreedToPolicy] = useState(false);
 
   // Sync user data
   useEffect(() => {
@@ -146,6 +147,11 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const handleCompleteBooking = async () => {
     if (!firstName || !lastName || !email || !phone) {
       alert('All passenger fields are required.');
+      return;
+    }
+
+    if (isHotel && !agreedToPolicy) {
+      alert('Please agree to the cancellation policy to continue.');
       return;
     }
 
@@ -256,6 +262,36 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                   <p className="text-xs text-gray-400 mt-1">{item.provider}</p>
                 </div>
               </div>
+              
+              {/* Cancellation Policy - Only show for hotels */}
+              {isHotel && (
+                <div className="mt-6 pt-6 border-t border-gray-100">
+                  <h3 className="text-md font-semibold text-gray-900 mb-3">Cancellation Policy</h3>
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-600">
+                      <span className="font-medium text-green-600">Free cancellation</span> until {
+                        item?.realData?.cancellationDeadline || "16 Feb 2026, 23:59 UTC"
+                      }.
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {item?.realData?.cancellationPolicy || "In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed."}
+                    </p>
+                    <div className="flex items-start gap-2 mt-4 p-3 bg-gray-50 rounded-lg">
+                      <input 
+                        type="checkbox" 
+                        id="cancellationPolicy" 
+                        checked={agreedToPolicy}
+                        onChange={(e) => setAgreedToPolicy(e.target.checked)}
+                        className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
+                        required 
+                      />
+                      <label htmlFor="cancellationPolicy" className="text-sm text-gray-700">
+                        By booking, I agree to the cancellation and no-show policy.
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -330,7 +366,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
               
               <button 
                 onClick={handleCompleteBooking} 
-                disabled={isBooking || isCreating} 
+                disabled={isBooking || isCreating || (isHotel && !agreedToPolicy)} 
                 className="w-full bg-[#33a8da] text-white font-medium py-3 rounded-xl hover:bg-[#2c98c7] transition disabled:opacity-50"
               >
                 {isCreating ? 'Creating...' : isBooking ? 'Please wait...' : 'Continue to payment'}

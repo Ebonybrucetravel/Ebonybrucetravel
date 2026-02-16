@@ -3,7 +3,7 @@ import { useState, useCallback } from 'react';
 import { config } from '@/lib/config';
 import type { SearchResult, SearchParams, Booking, PassengerInfo } from '@/lib/types';
 import { getProductMeta } from '@/lib/utils';
-import { getStoredAuthToken, getVendorCodeFromCardNumber, publicRequest } from '@/lib/api';
+import api, { getStoredAuthToken, getVendorCodeFromCardNumber, publicRequest } from '@/lib/api';
 export function useBooking() {
     const [isCreating, setIsCreating] = useState(false);
     const [booking, setBooking] = useState<Booking | null>(null);
@@ -147,131 +147,79 @@ export function useBooking() {
     } | undefined, isGuest: boolean): Promise<Booking> => {
         setIsCreating(true);
         setError(null);
+        
         try {
             const offerId = item.realData?.offerId ?? item.id;
-            const offerPrice = typeof item.realData?.finalPrice === 'number'
-                ? item.realData.finalPrice
-                : (typeof item.realData?.price === 'number' ? item.realData.price : 0);
-            const currency = (item.realData?.currency ?? 'GBP').toUpperCase();
-            const checkInStr = item.realData?.checkInDate ?? '';
-            const cancellationPolicySnapshot = typeof item.realData?.cancellationPolicy === 'string'
-                ? item.realData.cancellationPolicy
-                : 'Standard cancellation policy applies';
-            let cancellationDeadline = item.realData?.cancellationDeadline;
-            if (!cancellationDeadline && checkInStr) {
-                try {
-                    const checkIn = new Date(checkInStr);
-                    const deadline = new Date(checkIn);
-                    deadline.setUTCDate(deadline.getUTCDate() - 1);
-                    deadline.setUTCHours(23, 59, 0, 0);
-                    cancellationDeadline = deadline.toISOString();
-                }
-                catch {
-                    cancellationDeadline = new Date(Date.now() + 86400000).toISOString();
-                }
+            if (!offerId) throw new Error('Missing offer ID');
+            
+            // Format payment info if card is provided
+            const paymentInfo = card ? {
+                cardNumber: card.cardNumber.replace(/\s+/g, ''),
+                expiryDate: `${card.expiryYear}-${card.expiryMonth.padStart(2, '0')}`,
+                holderName: card.holderName || `${passenger.firstName} ${passenger.lastName}`,
+                securityCode: card.cvc
+            } : undefined;
+    
+            // ✅ FIX: Pass isGuest as the 5th parameter
+            const response = await api.createAmadeusHotelBooking(
+                offerId,
+                item, // hotelData
+                {
+                    firstName: passenger.firstName,
+                    lastName: passenger.lastName,
+                    email: passenger.email,
+                    phone: passenger.phone
+                },
+                paymentInfo,
+                isGuest // ✅ Add this parameter - tells API to use guest endpoint
+            );
+    
+            if (!response.success) {
+                throw new Error(response.message || 'Booking failed');
             }
-            else if (!cancellationDeadline) {
-                cancellationDeadline = new Date(Date.now() + 86400000).toISOString();
+    
+            // Extract booking from response
+            const raw = response.data?.booking ?? response.booking ?? response.data ?? response;
+            
+            if (!raw?.id) {
+                throw new Error('Invalid response from server - missing booking ID');
             }
-            else if (typeof cancellationDeadline === 'string' && !/Z$|[\+\-]\d{2}:?\d{2}$/.test(cancellationDeadline)) {
-                try {
-                    cancellationDeadline = new Date(cancellationDeadline + 'Z').toISOString();
-                }
-                catch {
-                    cancellationDeadline = new Date(cancellationDeadline).toISOString();
-                }
-            }
-            const body: Record<string, unknown> = {
-                hotelOfferId: offerId,
-                offerPrice,
-                currency,
-                guests: [
-                    {
-                        name: { title: 'MR', firstName: passenger.firstName, lastName: passenger.lastName },
-                        contact: { phone: passenger.phone, email: passenger.email },
-                    },
-                ],
-                roomAssociations: [{ hotelOfferId: offerId, guestReferences: [{ guestReference: '1' }] }],
-                cancellationDeadline: typeof cancellationDeadline === 'string' ? cancellationDeadline : (cancellationDeadline as any)?.toISOString?.() ?? new Date().toISOString(),
-                cancellationPolicySnapshot,
-                policyAccepted: true,
-            };
-            if (card) {
-                const cardNumber = card.cardNumber.replace(/\s+/g, '').replace(/-/g, '');
-                const expiryDate = `${card.expiryYear}-${card.expiryMonth.padStart(2, '0')}`;
-                body.payment = {
-                    method: 'CREDIT_CARD',
-                    paymentCard: {
-                        paymentCardInfo: {
-                            vendorCode: getVendorCodeFromCardNumber(cardNumber),
-                            cardNumber,
-                            expiryDate,
-                            ...(card.holderName && { holderName: card.holderName }),
-                            ...(card.cvc && { securityCode: card.cvc }),
-                        },
-                    },
-                };
-            }
-            const token = getStoredAuthToken();
-            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-            if (!isGuest && token)
-                headers['Authorization'] = `Bearer ${token}`;
-            const endpoint = isGuest
-                ? '/api/v1/bookings/hotels/bookings/amadeus/guest'
-                : '/api/v1/bookings/hotels/bookings/amadeus';
-            const res = await fetch(`${BASE}${endpoint}`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(body),
-            });
-            const data = await res.json();
-            if (!res.ok) {
-                const msg = data.message ?? data.data?.message ?? 'Could not secure your reservation';
-                const err = new Error(msg) as Error & {
-                    status?: number;
-                };
-                err.status = res.status;
-                throw err;
-            }
-            const raw = data.data?.booking ?? data.booking ?? data.data;
-            if (!raw?.id)
-                throw new Error('Invalid response from server');
+    
+            // Map to Booking type
             const booking: Booking = {
                 id: raw.id,
-                reference: raw.reference ?? '',
-                status: raw.status ?? 'PENDING',
-                paymentStatus: raw.paymentStatus ?? 'PENDING',
-                productType: raw.productType ?? 'HOTEL',
-                provider: raw.provider ?? 'AMADEUS',
-                basePrice: raw.basePrice ?? 0,
-                totalAmount: raw.totalAmount ?? offerPrice,
-                currency: raw.currency ?? currency,
-                bookingData: raw.bookingData ?? {},
+                reference: raw.reference,
+                status: raw.status || 'PENDING',
+                paymentStatus: raw.paymentStatus || 'PENDING',
+                productType: 'HOTEL',
+                provider: 'AMADEUS',
+                basePrice: parseFloat(raw.basePrice) || 0,
+                totalAmount: parseFloat(raw.totalAmount) || 0,
+                currency: raw.currency || (item.realData?.currency ?? 'GBP').toUpperCase(),
+                bookingData: raw,
                 passengerInfo: {
                     firstName: passenger.firstName,
                     lastName: passenger.lastName,
                     email: passenger.email,
                     phone: passenger.phone,
                 },
-                createdAt: raw.createdAt ?? new Date().toISOString(),
+                createdAt: raw.createdAt || new Date().toISOString(),
             };
-            if (typeof raw.finalAmount === 'number')
-                booking.finalAmount = raw.finalAmount;
-            if (typeof raw.markupAmount === 'number')
-                booking.markupAmount = raw.markupAmount;
-            if (typeof raw.serviceFee === 'number')
-                booking.serviceFee = raw.serviceFee;
+    
+            console.log('✅ Booking created successfully:', booking);
+            
             setBooking(booking);
             return booking;
-        }
-        catch (err: any) {
+            
+        } catch (err: any) {
+            console.error('❌ Booking creation failed:', err);
             setError(err.message);
             throw err;
-        }
-        finally {
+        } finally {
             setIsCreating(false);
         }
     }, [BASE]);
+
     const chargeMarginAmadeusHotel = useCallback(async (booking: Booking, isGuest: boolean): Promise<Booking> => {
         setError(null);
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
