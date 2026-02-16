@@ -164,12 +164,13 @@ export class CreateCarRentalBookingUseCase {
     }
 
     // Create Amadeus transfer order
+    const driverTitle = bookingData.driver?.title || 'MR';
     const amadeusOrder = await this.amadeusService.createTransferBooking({
       offerId: bookingData.amadeus_offer_id,
       passengers: [
         {
           name: {
-            title: bookingData.driver.title,
+            title: driverTitle,
             firstName: bookingData.driver.firstName,
             lastName: bookingData.driver.lastName,
           },

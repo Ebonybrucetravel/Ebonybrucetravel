@@ -9,20 +9,60 @@ import {
   IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
+
+/**
+ * Normalize driver from either flat shape or nested shape (name + contact).
+ * Returns only whitelisted flat fields so forbidNonWhitelisted does not reject name/contact.
+ */
+function normalizeDriver(value: any): any {
+  if (!value || typeof value !== 'object') return value;
+  const firstName = value.firstName ?? value.name?.firstName;
+  const lastName = value.lastName ?? value.name?.lastName;
+  const email = value.email ?? value.contact?.email;
+  const phone = value.phone ?? value.contact?.phone;
+  const title = value.title && value.title !== '' ? value.title : 'MR';
+  return {
+    title,
+    firstName,
+    lastName,
+    phone,
+    email,
+    ...(value.dateOfBirth != null && { dateOfBirth: value.dateOfBirth }),
+    ...(value.licenseNumber != null && { licenseNumber: value.licenseNumber }),
+    ...(value.licenseCountry != null && { licenseCountry: value.licenseCountry }),
+  };
+}
+
+/**
+ * Normalize payment so paymentCardInfo (frontend) is mapped to paymentCard fields.
+ * Frontend may send payment.paymentCard.paymentCardInfo: { vendorCode, cardNumber, ... }.
+ * Returns payment with only method + paymentCard (flat card fields, no paymentCardInfo).
+ */
+function normalizePayment(value: any): any {
+  if (!value?.paymentCard || typeof value.paymentCard !== 'object') return value;
+  const card = value.paymentCard;
+  const info = card.paymentCardInfo;
+  if (info && typeof info === 'object') {
+    const { paymentCardInfo: _, ...rest } = card;
+    return { method: value.method, paymentCard: { ...rest, ...info } };
+  }
+  return value;
+}
 
 export class CarRentalDriverDto {
-  @ApiProperty({
-    description: 'Driver title',
+  @ApiPropertyOptional({
+    description: 'Driver title (defaults to MR if omitted or when using nested name/contact)',
     enum: ['MR', 'MRS', 'MS', 'MISS', 'DR', 'PROF'],
     example: 'MR',
   })
+  @IsOptional()
   @IsString()
   @IsEnum(['MR', 'MRS', 'MS', 'MISS', 'DR', 'PROF'])
-  title: string;
+  title?: string;
 
   @ApiProperty({
-    description: 'Driver first name',
+    description: 'Driver first name (or driver.name.firstName)',
     example: 'John',
   })
   @IsString()
@@ -30,7 +70,7 @@ export class CarRentalDriverDto {
   firstName: string;
 
   @ApiProperty({
-    description: 'Driver last name',
+    description: 'Driver last name (or driver.name.lastName)',
     example: 'Doe',
   })
   @IsString()
@@ -38,7 +78,7 @@ export class CarRentalDriverDto {
   lastName: string;
 
   @ApiProperty({
-    description: 'Driver phone number (E.164 format)',
+    description: 'Driver phone number E.164 (or driver.contact.phone)',
     example: '+33679278416',
   })
   @IsString()
@@ -46,7 +86,7 @@ export class CarRentalDriverDto {
   phone: string;
 
   @ApiProperty({
-    description: 'Driver email address',
+    description: 'Driver email (or driver.contact.email)',
     example: 'john.doe@example.com',
   })
   @IsEmail()
@@ -167,19 +207,22 @@ export class CreateCarRentalBookingDto {
   currency: string;
 
   @ApiProperty({
-    description: 'Driver information',
+    description:
+      'Driver information. Accepts flat { title?, firstName, lastName, phone, email } or nested { name: { firstName, lastName }, contact: { email, phone } }. Title defaults to MR if omitted.',
     type: CarRentalDriverDto,
   })
+  @Transform(({ value }) => normalizeDriver(value))
   @ValidateNested()
   @Type(() => CarRentalDriverDto)
   driver: CarRentalDriverDto;
 
   @ApiPropertyOptional({
     description:
-      'Payment card (guest card). Omit when using merchant payment model: customer pays via Stripe, agency pays Amadeus.',
+      'Payment card (guest card). Accepts paymentCard with card fields directly, or paymentCard.paymentCardInfo: { vendorCode, cardNumber, expiryDate, holderName, securityCode }. Omit when using merchant model.',
     type: CarRentalPaymentDto,
   })
   @IsOptional()
+  @Transform(({ value }) => (value && value.paymentCard ? normalizePayment(value) : value))
   @ValidateNested()
   @Type(() => CarRentalPaymentDto)
   payment?: CarRentalPaymentDto;

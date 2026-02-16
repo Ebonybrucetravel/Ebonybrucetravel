@@ -63,6 +63,7 @@ import { SearchCarRentalsDto } from './dto/search-car-rentals.dto';
 import { CreateCarRentalBookingDto } from './dto/create-car-rental-booking.dto';
 import { SearchCarRentalsUseCase } from '@application/booking/use-cases/search-car-rentals.use-case';
 import { CreateCarRentalBookingUseCase } from '@application/booking/use-cases/create-car-rental-booking.use-case';
+import { CreateGuestCarRentalBookingUseCase } from '@application/booking/use-cases/create-guest-car-rental-booking.use-case';
 import { CancelCarRentalBookingUseCase } from '@application/booking/use-cases/cancel-car-rental-booking.use-case';
 import { RequestHotelCancellationUseCase } from '@application/booking/use-cases/request-hotel-cancellation.use-case';
 
@@ -98,6 +99,7 @@ export class BookingController {
     private readonly usageTrackingService: UsageTrackingService,
     private readonly searchCarRentalsUseCase: SearchCarRentalsUseCase,
     private readonly createCarRentalBookingUseCase: CreateCarRentalBookingUseCase,
+    private readonly createGuestCarRentalBookingUseCase: CreateGuestCarRentalBookingUseCase,
     private readonly cancelCarRentalBookingUseCase: CancelCarRentalBookingUseCase,
     private readonly requestHotelCancellationUseCase: RequestHotelCancellationUseCase,
     private readonly prisma: PrismaService,
@@ -1078,6 +1080,23 @@ export class BookingController {
   @ApiResponse({ status: 201, description: 'Car rental booking created successfully. Proceed to payment.' })
   async createCarRentalBooking(@Body() dto: CreateCarRentalBookingDto, @Request() req) {
     const result = await this.createCarRentalBookingUseCase.execute(dto, req.user.id);
+    return {
+      success: true,
+      data: result,
+      message: 'Booking created. Please proceed to payment.',
+    };
+  }
+
+  @Public()
+  @Post('car-rentals/bookings/guest')
+  @ApiOperation({
+    summary: 'Create a car rental booking (guest, no auth)',
+    description:
+      'Same body as authenticated. Include payment card to use one-step payment (POST /payments/amadeus-car-rental/charge-margin/guest with reference + email). No Stripe modal.',
+  })
+  @ApiResponse({ status: 201, description: 'Car rental booking created. Proceed to payment.' })
+  async createGuestCarRentalBooking(@Body() dto: CreateCarRentalBookingDto) {
+    const result = await this.createGuestCarRentalBookingUseCase.execute(dto);
     return {
       success: true,
       data: result,

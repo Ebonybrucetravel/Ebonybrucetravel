@@ -17,6 +17,7 @@ import { CreatePaymentIntentUseCase } from '@application/payment/use-cases/creat
 import { CreateGuestPaymentIntentUseCase } from '@application/payment/use-cases/create-guest-payment-intent.use-case';
 import { HandleStripeWebhookUseCase } from '@application/payment/use-cases/handle-stripe-webhook.use-case';
 import { ChargeAmadeusHotelMarginUseCase } from '@application/payment/use-cases/charge-amadeus-hotel-margin.use-case';
+import { ChargeAmadeusCarRentalMarginUseCase } from '@application/payment/use-cases/charge-amadeus-car-rental-margin.use-case';
 import { StripeService } from '@domains/payment/services/stripe.service';
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { CreateGuestPaymentIntentDto } from './dto/create-guest-payment-intent.dto';
@@ -29,6 +30,7 @@ export class PaymentController {
     private readonly createGuestPaymentIntentUseCase: CreateGuestPaymentIntentUseCase,
     private readonly handleStripeWebhookUseCase: HandleStripeWebhookUseCase,
     private readonly chargeAmadeusHotelMarginUseCase: ChargeAmadeusHotelMarginUseCase,
+    private readonly chargeAmadeusCarRentalMarginUseCase: ChargeAmadeusCarRentalMarginUseCase,
     private readonly stripeService: StripeService,
   ) {}
 
@@ -77,6 +79,42 @@ export class PaymentController {
   })
   async chargeAmadeusHotelMarginGuest(@Body() body: { bookingReference: string; email: string }) {
     return this.chargeAmadeusHotelMarginUseCase.executeByReferenceAndEmail(
+      body.bookingReference,
+      body.email,
+    );
+  }
+
+  @Post('amadeus-car-rental/charge-margin')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'One-step Amadeus car rental payment (server-side, authenticated)',
+    description:
+      'After creating a car rental booking with card (POST /bookings/car-rentals/bookings), ' +
+      'call this to create the Amadeus transfer order and charge the margin via Stripe with the same card. No Stripe modal.',
+  })
+  @ApiBody({ schema: { type: 'object', required: ['bookingId'], properties: { bookingId: { type: 'string' } } } })
+  async chargeAmadeusCarRentalMargin(@Request() req, @Body() body: { bookingId: string }) {
+    return this.chargeAmadeusCarRentalMarginUseCase.execute(body.bookingId, req.user.id);
+  }
+
+  @Post('amadeus-car-rental/charge-margin/guest')
+  @Public()
+  @ApiOperation({
+    summary: 'One-step Amadeus car rental payment (guest, no authentication)',
+    description:
+      'For guest car rental bookings. Call with booking reference and email (must match driver email). ' +
+      'Creates the Amadeus transfer order and charges the margin via Stripe with the stored card. One card entry.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['bookingReference', 'email'],
+      properties: { bookingReference: { type: 'string' }, email: { type: 'string', format: 'email' } },
+    },
+  })
+  async chargeAmadeusCarRentalMarginGuest(@Body() body: { bookingReference: string; email: string }) {
+    return this.chargeAmadeusCarRentalMarginUseCase.executeByReferenceAndEmail(
       body.bookingReference,
       body.email,
     );

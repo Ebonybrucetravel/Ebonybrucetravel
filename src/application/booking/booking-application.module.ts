@@ -24,6 +24,7 @@ import { SearchAmadeusHotelsUseCase } from './use-cases/search-amadeus-hotels.us
 import { GetAmadeusHotelDetailsUseCase } from './use-cases/get-amadeus-hotel-details.use-case';
 import { SearchCarRentalsUseCase } from './use-cases/search-car-rentals.use-case';
 import { CreateCarRentalBookingUseCase } from './use-cases/create-car-rental-booking.use-case';
+import { CreateGuestCarRentalBookingUseCase } from './use-cases/create-guest-car-rental-booking.use-case';
 import { CancelCarRentalBookingUseCase } from './use-cases/cancel-car-rental-booking.use-case';
 import { RequestHotelCancellationUseCase } from './use-cases/request-hotel-cancellation.use-case';
 import { ProcessCancellationRequestUseCase } from './use-cases/process-cancellation-request.use-case';
@@ -79,6 +80,7 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     GetAmadeusHotelDetailsUseCase,
     SearchCarRentalsUseCase,
     CreateCarRentalBookingUseCase,
+    CreateGuestCarRentalBookingUseCase,
     CancelCarRentalBookingUseCase,
     RequestHotelCancellationUseCase,
     ProcessCancellationRequestUseCase,
@@ -109,6 +111,7 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     GetAmadeusHotelDetailsUseCase,
     SearchCarRentalsUseCase,
     CreateCarRentalBookingUseCase,
+    CreateGuestCarRentalBookingUseCase,
     CancelCarRentalBookingUseCase,
     RequestHotelCancellationUseCase,
     ProcessCancellationRequestUseCase,

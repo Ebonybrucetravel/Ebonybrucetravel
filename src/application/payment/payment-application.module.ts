@@ -4,6 +4,7 @@ import { CreatePaymentIntentUseCase } from './use-cases/create-payment-intent.us
 import { CreateGuestPaymentIntentUseCase } from './use-cases/create-guest-payment-intent.use-case';
 import { HandleStripeWebhookUseCase } from './use-cases/handle-stripe-webhook.use-case';
 import { ChargeAmadeusHotelMarginUseCase } from './use-cases/charge-amadeus-hotel-margin.use-case';
+import { ChargeAmadeusCarRentalMarginUseCase } from './use-cases/charge-amadeus-car-rental-margin.use-case';
 import { PaymentModule } from '@domains/payment/payment.module';
 import { DatabaseModule } from '@infrastructure/database/database.module';
 import { BookingApplicationModule } from '@application/booking/booking-application.module';
@@ -26,6 +27,7 @@ import { SecurityModule } from '@infrastructure/security/security.module';
     CreateGuestPaymentIntentUseCase,
     HandleStripeWebhookUseCase,
     ChargeAmadeusHotelMarginUseCase,
+    ChargeAmadeusCarRentalMarginUseCase,
   ],
   exports: [
     ProcessPaymentUseCase,
@@ -33,6 +35,7 @@ import { SecurityModule } from '@infrastructure/security/security.module';
     CreateGuestPaymentIntentUseCase,
     HandleStripeWebhookUseCase,
     ChargeAmadeusHotelMarginUseCase,
+    ChargeAmadeusCarRentalMarginUseCase,
   ],
 })
 export class PaymentApplicationModule {}
