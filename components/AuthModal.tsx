@@ -45,6 +45,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ initialMode = 'login', resetToken
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [resetPasswordToken, setResetPasswordToken] = useState(resetToken || '');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     useEffect(() => {
         setMode(initialMode);
         setError(null);
@@ -135,6 +137,10 @@ const AuthModal: React.FC<AuthModalProps> = ({ initialMode = 'login', resetToken
         e.preventDefault();
         if (!password.trim() || password.length < 6) {
             setError('Password must be at least 6 characters');
+            return;
+        }
+        if (password !== confirmPassword) {
+            setError('Passwords do not match');
             return;
         }
         setIsLoading(true);
@@ -261,15 +267,24 @@ const AuthModal: React.FC<AuthModalProps> = ({ initialMode = 'login', resetToken
                 <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">
                   Confirm Password
                 </label>
-                {renderPasswordField(
-                  'confirm-password',
-                  confirmPassword,
-                  (e) => setConfirmPassword(e.target.value),
-                  '••••••••',
-                  showConfirmPassword,
-                  setShowConfirmPassword,
-                  isLoading
-                )}
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    disabled={isLoading}
+                    className={inputCls}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-bold"
+                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showConfirmPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
               
               <button

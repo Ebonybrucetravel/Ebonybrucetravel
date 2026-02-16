@@ -217,7 +217,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({ item, searchParams, onBack, isL
                   <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center text-3xl shadow-sm">
                     {isFlight ? '✈️' : isHotel ? '🏨' : '🚗'}
                   </div>
-                )}
+                </div>
                 
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Service fee</span>

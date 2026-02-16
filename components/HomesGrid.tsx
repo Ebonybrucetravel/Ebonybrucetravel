@@ -74,7 +74,7 @@ const HomesGrid: React.FC = () => {
       <div className="flex justify-between items-end mb-10">
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
-            {title}
+            {t?.("homes.title") ?? "Comfortable stays worldwide"}
           </h2>
           <p className="text-gray-500 mt-1 text-sm md:text-base">
             {t?.("homes.subtitle") ||

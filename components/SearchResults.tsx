@@ -188,10 +188,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results: initialResults, 
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#33a8da] mb-6"></div>
             <h3 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-2">
-              {isLoadingOffers ? 'Loading flight offers...' : 'Searching...'}
+              {isLoading ? 'Loading flight offers...' : 'Searching...'}
             </h3>
             <p className="text-sm text-gray-500 font-medium">
-              {isLoadingOffers ? 'Fetching the best flight options for you' : 'Finding the best options for you'}
+              {isLoading ? 'Fetching the best flight options for you' : 'Finding the best options for you'}
             </p>
           </div>
         </div>

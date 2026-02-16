@@ -1,6 +1,6 @@
 // components/CarDetails.tsx
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 interface CarDetailsProps {
     item: any;
@@ -164,6 +164,7 @@ const CarDetails: React.FC<CarDetailsProps> = ({ item, searchParams, onBack, onB
               <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 5l7 7-7 7"/></svg>
             </button>
           </div>
+        </div>
         )}
 
           <div className="p-10 flex justify-center gap-3 overflow-x-auto hide-scrollbar relative z-10">
@@ -171,7 +172,6 @@ const CarDetails: React.FC<CarDetailsProps> = ({ item, searchParams, onBack, onB
                 <img src={img} className="w-full h-full object-cover" alt=""/>
               </button>))}
           </div>
-        </div>)}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         
@@ -355,6 +355,7 @@ const CarDetails: React.FC<CarDetailsProps> = ({ item, searchParams, onBack, onB
              </div>)}
         </div>
       </div>
+    </div>
     </div>);
 };
 export default CarDetails;

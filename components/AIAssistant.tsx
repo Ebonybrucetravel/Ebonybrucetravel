@@ -18,8 +18,11 @@ const FALLBACK_RESPONSES = [
     "For beach destinations, consider booking all-inclusive resorts that include meals and activities. Popular options include Maldives, Bali, and the Caribbean.",
     "Traveling on a budget? Look for red-eye flights, consider alternative airports, and book accommodations slightly outside city centers for better value."
 ];
+type AIStatus = 'checking' | 'working' | 'fallback';
+
 const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
     const { t } = useLanguage();
+    const [aiStatus] = useState<AIStatus>('fallback');
     const [messages, setMessages] = useState<{
         role: 'user' | 'assistant';
         content: string;
@@ -36,6 +39,12 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const brandBlue = '#32A6D7';
     const brandBlueDark = '#2a8bb5';
+    const whatsappGreen = '#25D366';
+    const openWhatsApp = () => {
+        const phone = '2348000000000';
+        const text = encodeURIComponent("Hi, I'd like help with my booking.");
+        window.open(`https://wa.me/${phone}?text=${text}`, '_blank', 'noopener,noreferrer');
+    };
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;

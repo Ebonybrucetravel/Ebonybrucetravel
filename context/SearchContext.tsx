@@ -5,6 +5,19 @@ import { extractAirportCode } from '@/lib/utils';
 import type { SearchParams, SearchResult } from '@/lib/types';
 import type { Airline } from '@/lib/duffel-airlines';
 import api from '@/lib/api';
+const AIRLINE_LOGO_URLS: Record<string, string> = {
+    'Air Peace': 'https://logos-world.net/wp-content/uploads/2023/03/Air-Peace-Logo.png',
+    'Ibom Air': 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/Ibom_Air_logo.png/1200px-Ibom_Air_logo.png',
+    'Arik Air': 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Arik_Air_logo.svg/1200px-Arik_Air_logo.svg.png',
+};
+const DEFAULT_AIRLINE_IMAGE = 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400';
+
+function getAirlineImage(airlineName: string): string {
+    if (!airlineName || typeof airlineName !== 'string') return DEFAULT_AIRLINE_IMAGE;
+    const key = Object.keys(AIRLINE_LOGO_URLS).find((k) => airlineName.toLowerCase().includes(k.toLowerCase()));
+    return key ? AIRLINE_LOGO_URLS[key] : DEFAULT_AIRLINE_IMAGE;
+}
+
 const MOCK: Record<string, SearchResult[]> = {
     flights: [
         { id: 'f-1', provider: 'Air Peace', title: 'Air Peace P47121', subtitle: 'Lagos (LOS) → Abuja (ABV)', price: '£85', time: '08:00 AM', duration: '1h 15m', type: 'flights', image: 'https://logos-world.net/wp-content/uploads/2023/03/Air-Peace-Logo.png' },
