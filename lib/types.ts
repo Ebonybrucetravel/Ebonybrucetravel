@@ -3,6 +3,7 @@ export interface SearchSegment {
   to: string;
   date: string;
 }
+
 export interface SearchParams {
   type: 'flights' | 'hotels' | 'cars' | 'car-rentals';
   tripType?: 'round-trip' | 'one-way' | 'multi-city';
@@ -35,6 +36,7 @@ export interface SearchParams {
   dropOffDate?: string;
   maxConnections?: number;
 }
+
 export interface SearchResult {
   id: string;
   provider: string;
@@ -64,6 +66,7 @@ export interface SearchResult {
     logo_symbol_url?: string;
   };
 }
+
 export interface User {
   id?: string;
   name: string;
@@ -86,6 +89,7 @@ export interface User {
   token?: string;
   isVerified?: boolean;
 }
+
 export interface Booking {
   id: string;
   reference: string;
@@ -113,9 +117,116 @@ export interface Booking {
   markupAmount?: number;
   serviceFee?: number;
 }
+
 export interface PassengerInfo {
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
+}
+
+export interface ContentSection {
+  title: string;
+  body: string;
+  icon?: string;
+  image?: string;
+  highlight?: boolean;
+}
+
+export interface PageContent {
+  title: string;
+  subtitle: string;
+  image: string;
+  sections: ContentSection[];
+}
+
+
+export interface ContactFormData {
+  name: string;
+  email: string;
+  phone: string;
+  service: 'travel' | 'logistics' | 'education' | 'hotel' | 'other' | '';
+  message: string;
+}
+
+export interface BusinessHours {
+  day: string;
+  open: string;
+  close: string;
+  isClosed?: boolean;
+}
+
+export interface ContactInfo {
+  phone: string;
+  email: string;
+  address: {
+    street: string;
+    suite: string;
+    city: string;
+    state: string;
+    zip: string;
+  };
+  emergency: string;
+  hours: {
+    weekday: BusinessHours;
+    saturday: BusinessHours;
+    sunday: BusinessHours;
+  };
+}
+
+export interface FAQ {
+  question: string;
+  answer: string;
+  category?: 'general' | 'travel' | 'logistics' | 'education';
+}
+
+export interface SocialMediaLink {
+  platform: 'facebook' | 'twitter' | 'instagram' | 'linkedin';
+  url: string;
+}
+
+// NEW: Service Page Types
+export interface ServiceSector {
+  id: number;
+  title: string;
+  description: string;
+  icon: string;
+  image: string;
+  features?: string[];
+}
+
+export interface CoreValue {
+  icon: string;
+  title: string;
+  description: string;
+}
+
+export interface WhyChooseUsItem {
+  icon: string;
+  title: string;
+  body: string;
+  image: string;
+}
+
+export interface StatItem {
+  number: string;
+  label: string;
+}
+
+
+export interface TeamMember {
+  name: string;
+  position: string;
+  image: string;
+  bio?: string;
+  social?: {
+    linkedin?: string;
+    twitter?: string;
+  };
+}
+
+export interface TimelineEvent {
+  year: string;
+  title: string;
+  description: string;
 }

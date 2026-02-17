@@ -37,9 +37,9 @@ const Footer: React.FC<FooterProps> = ({
       title: t?.("footer.company") || "Company",
       links: [
         { label: t?.("About Us") || "About Us", href: '/about' },
-        { label: t?.("Services") || "Services", href: '/content/Services' },
+        { label: t?.("Services") || "Services", href: '/services' },
         { label: t?.("Career") || "Career", href: '/content/Career' },
-        { label: t?.("Sustainability") || "Sustainability", href: '/content/Sustainability' },
+        { label: t?.("Contact") || "Contact", href: '/contact' },
        
       ],
     },
@@ -63,46 +63,7 @@ const Footer: React.FC<FooterProps> = ({
     },
   ];
 
-  // Alternative: Add Blog as a separate section
-  // Uncomment this if you want Blog as its own category instead
-  /*
-  const categories = [
-    {
-      title: t?.("footer.company") || "Company",
-      links: [
-        { label: t?.("About Us") || "About Us", href: '/about' },
-        { label: t?.("Services") || "Services", href: '/content/Services' },
-        { label: t?.("Career") || "Career", href: '/content/Career' },
-        { label: t?.("Sustainability") || "Sustainability", href: '/content/Sustainability' },
-      ],
-    },
-    {
-      title: t?.("Resources") || "Resources", // New category for Blog
-      links: [
-        { label: t?.("Blog") || "Blog", href: '/blog' },
-        { label: t?.("Travel Guides") || "Travel Guides", href: '/blog/travel-guides' },
-        { label: t?.("News & Updates") || "News & Updates", href: '/blog/news' },
-      ],
-    },
-    {
-      title: t?.("Support") || "Support",
-      links: [
-        { label: t?.("Help Center") || "Help Center", href: '/content/Help Center' },
-        { label: t?.("Terms of Service") || "Terms of Service", href: '/content/Terms of Service' },
-        { label: t?.("Privacy Policy") || "Privacy Policy", href: '/content/Privacy Policy' },
-      ],
-    },
-    {
-      title: t?.("Discover") || "Discover",
-      links: [
-        { label: t?.("Flights") || "Flights", href: '/flights' },
-        { label: t?.("Hotels") || "Hotels", href: '/hotels' },
-        { label: t?.("Car Rentals") || "Car Rentals", href: '/cars' },
-        { label: t?.("My Bookings") || "My Bookings", href: '/profile?tab=bookings' },
-      ],
-    },
-  ];
-  */
+  
 
   const socialLinks = [
     { name: "Facebook", icon: "M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" },
@@ -144,18 +105,7 @@ const Footer: React.FC<FooterProps> = ({
               ))}
             </div>
 
-            <div className="mt-6">
-              <button
-                onClick={handleAdminClick}
-                className="text-xs font-semibold uppercase tracking-widest text-gray-400 hover:text-blue-600 transition-colors duration-200 flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Staff Portal
-              </button>
-            </div>
+            
           </div>
 
           <div className="md:col-span-8 grid grid-cols-2 lg:grid-cols-3 gap-8">
@@ -184,8 +134,8 @@ const Footer: React.FC<FooterProps> = ({
 
         <div className="pt-8 border-t border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="text-center md:text-left order-2 md:order-1">
-            <p className="text-gray-400 text-sm mb-1">© 2026 Ebony Bruce Travels Inc. {t?.("footer.rights") || "All rights reserved."}</p>
-            <p className="text-xs text-gray-400">{t?.("footer.disclaimer") || "Prices shown are for reference only and may vary."}</p>
+            <p className="text-gray-400 text-sm mb-1">© 2026 Ebony Bruce Travels Inc. {t?.("All rights reserved") || "All rights reserved."}</p>
+            <p className="text-xs text-gray-400">{t?.("Prices shown are for reference only and may vary") || "Prices shown are for reference only and may vary."}</p>
           </div>
 
           <div className="flex flex-wrap justify-center md:justify-end items-center gap-6 order-1 md:order-2">
