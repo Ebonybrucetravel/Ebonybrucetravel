@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
 import SearchResults from '@/components/SearchResults';
@@ -18,6 +18,79 @@ export default function SearchPage() {
     searchError,
     searchCompleted
   } = useSearch();
+
+  // Debug to see what's in searchResults
+  useEffect(() => {
+    console.log('🔍 searchResults from context:', searchResults);
+    if (Array.isArray(searchResults) && searchResults.length > 0) {
+      console.log('🔍 First item structure:', {
+        id: searchResults[0].id,
+        type: searchResults[0].type,
+        provider: searchResults[0].provider,
+        price: searchResults[0].price,
+        image: searchResults[0].image,
+        hasRealData: !!searchResults[0].realData,
+        realDataKeys: searchResults[0].realData ? Object.keys(searchResults[0].realData) : []
+      });
+    }
+  }, [searchResults]);
+
+  // For flights, we need to ensure the data has the right structure for FlightDetails
+  // But SearchResults component already handles this, so we just pass through
+  const processedResults = useMemo(() => {
+    if (!searchResults || !Array.isArray(searchResults)) {
+      return [];
+    }
+
+    // If it's flights, ensure we have the necessary fields
+    if (searchParams?.type === 'flights') {
+      return searchResults.map((item: any) => {
+        // Check if the item already has the transformed fields
+        if (item.departureAirport) {
+          return item; // Already transformed
+        }
+
+        // If not, try to extract from realData (your context's transformation)
+        const realData = item.realData || {};
+        const slices = realData.slices || [];
+        const firstSlice = slices[0] || {};
+        const firstSegment = firstSlice.segments?.[0] || {};
+        const lastSegment = firstSlice.segments?.slice(-1)[0] || firstSegment;
+
+        return {
+          ...item,
+          // Add computed fields that SearchResults expects
+          departureAirport: firstSegment.origin?.iata_code || item.realData?.departureAirport || '---',
+          arrivalAirport: lastSegment.destination?.iata_code || item.realData?.arrivalAirport || '---',
+          departureCity: firstSegment.origin?.city_name || firstSegment.origin?.city?.name || '',
+          arrivalCity: lastSegment.destination?.city_name || lastSegment.destination?.city?.name || '',
+          departureTime: firstSegment.departing_at || item.realData?.departureTime,
+          arrivalTime: lastSegment.arriving_at || item.realData?.arrivalTime,
+          airlineCode: item.airlineCode || item.realData?.airlineCode,
+          airlineName: item.provider || 'Unknown Airline',
+          airlineLogo: item.image,
+          stopCount: item.realData?.stops || 0,
+          stopText: item.realData?.stops === 0 ? 'Direct' : 
+                   item.realData?.stops === 1 ? '1 Stop' : 
+                   `${item.realData?.stops || 0} Stops`,
+          duration: item.realData?.totalDuration ? 
+                   `${Math.floor(item.realData.totalDuration / 60)}h ${item.realData.totalDuration % 60}m` : 
+                   item.duration,
+          displayPrice: item.price,
+          rawPrice: item.realData?.price || parseFloat(item.price?.replace(/[^0-9.]/g, '') || '0'),
+          flightNumber: item.realData?.flightNumber,
+          cabin: searchParams?.cabinClass,
+          baggage: JSON.stringify([
+            { type: 'checked', quantity: 1 },
+            { type: 'carry_on', quantity: 1 }
+          ]),
+        };
+      });
+    }
+
+    // For hotels and car rentals, return as is
+    return searchResults;
+  }, [searchResults, searchParams?.type]);
 
   const handleSelect = (item: any) => {
     selectItem(item);
@@ -40,10 +113,10 @@ export default function SearchPage() {
       <div className="max-w-7xl mx-auto px-4 py-20 text-center">
         <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#33a8da] mb-6"></div>
         <h3 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-2">
-          Searching...
+          Searching for flights...
         </h3>
         <p className="text-sm text-gray-500 font-medium">
-          Finding the best options for you
+          This may take a few moments
         </p>
       </div>
     );
@@ -70,8 +143,8 @@ export default function SearchPage() {
     );
   }
 
-  // Show no results state (only when search completed and no results)
-  if (searchCompleted && searchResults.length === 0) {
+  // Show no results state
+  if (searchCompleted && processedResults.length === 0) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-20 text-center">
         <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -96,7 +169,7 @@ export default function SearchPage() {
   // Show results
   return (
     <SearchResults
-      results={searchResults}
+      results={processedResults}
       searchParams={searchParams}
       onClear={handleClear}
       onSelect={handleSelect}

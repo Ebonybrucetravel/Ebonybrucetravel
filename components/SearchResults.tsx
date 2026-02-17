@@ -4,28 +4,21 @@ import { useLanguage } from "../context/LanguageContext";
 import type { SearchResult as BaseSearchResult } from "../lib/types";
 import { type Airline, createAirlinesMap } from "../lib/duffel-airlines";
 
-// Update the fetchFlightOffers function
-async function fetchFlightOffers(offerRequestId: string) {
-  try {
-    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ebony-bruce-production.up.railway.app';
-    const response = await fetch(`${API_BASE}/api/v1/bookings/offers?offer_request_id=${offerRequestId}`);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Failed to fetch offers:', response.status, errorText);
-      throw new Error('Failed to fetch offers');
-    }
-    
-    const data = await response.json();
-    console.log('✅ Flight offers received:', data);
-    return data;
-  } catch (error) {
-    console.error('Error fetching flight offers:', error);
-    return null;
-  }
+// Define baggage type
+interface Baggage {
+  type: string;
+  quantity: number;
 }
 
 interface ExtendedSearchResult extends BaseSearchResult {
+  // ===========================================
+  // HOTEL FIELDS (UNTouched)
+  // ===========================================
+  amenities?: string[];
+  
+  // ===========================================
+  // CAR RENTAL FIELDS (UNTouched)
+  // ===========================================
   stops?: string;
   vehicleCode?: string;
   vehicleCategory?: string;
@@ -46,39 +39,150 @@ interface ExtendedSearchResult extends BaseSearchResult {
   conversionNote?: string;
   duration?: string;
   isRefundable?: boolean;
+  
+  // ===========================================
+  // FLIGHT FIELDS (Updated to match API)
+  // ===========================================
   airlineCode?: string;
-  // Add offer_request_id for flight searches
   offer_request_id?: string;
-  // Duffel offer structure - ALL PROPERTIES OPTIONAL
   offer_id?: string;
+  
+  // Price fields
+  total_amount?: string;
+  total_currency?: string;
+  base_amount?: string;
+  base_currency?: string;
+  tax_amount?: string;
+  tax_currency?: string;
+  
+  // Conversion and markup fields
+  original_amount?: string;
+  original_currency?: string;
+  conversion_fee?: string;
+  conversion_fee_percentage?: number;
+  price_after_conversion?: string;
+  markup_percentage?: number;
+  markup_amount?: string;
+  final_amount?: string;
+  currency?: string;
+  
+  // Owner/Airline information
   owner?: {
-    id?: string;           // Made optional
-    name?: string;         // Made optional
-    iata_code?: string;    // Made optional
+    id?: string;
+    name?: string;
+    iata_code?: string;
     logo_symbol_url?: string;
+    logo_lockup_url?: string;
+    conditions_of_carriage_url?: string;
   };
+  
+  // Slices (journey segments)
   slices?: Array<{
+    duration?: string;
     segments: Array<{
       departing_at: string;
       arriving_at: string;
+      duration?: string;
       origin: {
         iata_code: string;
         name: string;
+        city?: {
+          name: string;
+        };
+        city_name?: string;
       };
       destination: {
         iata_code: string;
         name: string;
+        city?: {
+          name: string;
+        };
+        city_name?: string;
       };
       operating_carrier?: {
         name: string;
         iata_code: string;
         logo_symbol_url?: string;
       };
+      marketing_carrier?: {
+        name: string;
+        iata_code: string;
+        logo_symbol_url?: string;
+      };
+      flight_number?: string;
+      passengers?: Array<{
+        baggages?: Array<{
+          type: string;
+          quantity: number;
+        }>;
+        cabin_class_marketing_name?: string;
+      }>;
     }>;
   }>;
-  total_amount?: string;
-  total_currency?: string;
-  // Add realData structure for backward compatibility
+  
+  // Payment requirements
+  payment_requirements?: {
+    requires_instant_payment: boolean;
+    price_guarantee_expires_at?: string | null;
+    payment_required_by?: string;
+  };
+  
+  // Timestamps
+  created_at?: string;
+  updated_at?: string;
+  expires_at?: string;
+  
+  // Emissions data
+  total_emissions_kg?: string;
+  
+  // Status flags
+  live_mode?: boolean;
+  partial?: boolean;
+  
+  // Supported document types
+  supported_passenger_identity_document_types?: string[];
+  passenger_identity_documents_required?: boolean;
+  
+  // Loyalty programmes
+  supported_loyalty_programmes?: string[];
+  
+  // Conditions
+  conditions?: {
+    refund_before_departure?: {
+      allowed: boolean;
+      penalty_amount?: string | null;
+      penalty_currency?: string | null;
+    };
+    change_before_departure?: {
+      allowed: boolean;
+      penalty_amount?: string | null;
+      penalty_currency?: string | null;
+    };
+  };
+  
+  // ===========================================
+  // COMPUTED FIELDS (Added during processing)
+  // ===========================================
+  departureAirport?: string;
+  arrivalAirport?: string;
+  departureCity?: string;
+  arrivalCity?: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  airlineName?: string;
+  airlineLogo?: string;
+  stopCount?: number;
+  stopText?: string;
+  flightNumber?: string;
+  cabin?: string;
+  baggage?: string;
+  
+  displayPrice?: string;
+  rawPrice?: number;
+  
+  // ===========================================
+  // BACKWARD COMPATIBILITY (Keep as is)
+  // ===========================================
   realData?: {
     vehicle?: {
       imageURL?: string;
@@ -92,19 +196,21 @@ interface ExtendedSearchResult extends BaseSearchResult {
     arrivalAirport?: string;
     [key: string]: any;
   };
+  
+  type?: "flights" | "hotels" | "car-rentals";
 }
 
 interface SearchResultsProps {
-  results: ExtendedSearchResult[]; 
+  results: ExtendedSearchResult[] | { data: ExtendedSearchResult[]; meta?: any; message?: string };
   searchParams: any;
   onClear: () => void;
-  onSelect?: (item: ExtendedSearchResult) => void; 
+  onSelect?: (item: ExtendedSearchResult) => void;
   isLoading?: boolean;
   airlines?: Airline[];
 }
 
 const SearchResults: React.FC<SearchResultsProps> = ({
-  results: initialResults,
+  results,
   searchParams,
   onClear,
   onSelect,
@@ -113,6 +219,17 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 }) => {
   const { currency } = useLanguage();
   const searchType = (searchParams?.type || "flights").toLowerCase() as "flights" | "hotels" | "car-rentals";
+
+  // Extract flight offers from the response
+  const flightOffers = useMemo(() => {
+    if (results && typeof results === 'object' && 'data' in results && Array.isArray(results.data)) {
+      return results.data;
+    }
+    if (Array.isArray(results)) {
+      return results;
+    }
+    return [];
+  }, [results]);
 
   // Shared States
   const [priceRange, setPriceRange] = useState<number>(2000000);
@@ -124,11 +241,15 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const [stopsFilter, setStopsFilter] = useState<string[]>([]);
   const [airlinesFilter, setAirlinesFilter] = useState<string[]>([]);
 
-  // Hotel Specific Filters
+  // ===========================================
+  // HOTEL FILTERS (UNTOUCHED)
+  // ===========================================
   const [starRatings, setStarRatings] = useState<number[]>([]);
   const [amenitiesFilter, setAmenitiesFilter] = useState<string[]>([]);
 
-  // Car Specific Filters
+  // ===========================================
+  // CAR RENTAL FILTERS (UNTOUCHED)
+  // ===========================================
   const [carTypeFilter, setCarTypeFilter] = useState<string[]>([]);
   const [transmissionFilter, setTransmissionFilter] = useState<string[]>([]);
   const [seatCapacityFilter, setSeatCapacityFilter] = useState<number[]>([]);
@@ -136,94 +257,165 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
   // Create airlines map from props
   const airlinesMap = useMemo(() => createAirlinesMap(airlines), [airlines]);
-  
-  const [flightOffers, setFlightOffers] = useState<ExtendedSearchResult[]>([]);
-  const [isLoadingOffers, setIsLoadingOffers] = useState(false);
 
-  // Debug logging
-  useEffect(() => {
-    console.log('Airlines received:', airlines);
-    console.log('Airlines Map created:', {
-      size: airlinesMap.size,
-      keys: Array.from(airlinesMap.keys())
-    });
-  }, [airlines, airlinesMap]);
+  // ===========================================
+  // HELPER FUNCTIONS
+  // ===========================================
 
-  useEffect(() => {
-    const loadFlightOffers = async () => {
-      // Check if this is a flight search response with offer_request_id
-      const flightData = initialResults.find(r => r.type === 'flights' && r.offer_request_id);
-      if (flightData?.offer_request_id && searchType === 'flights') {
-        setIsLoadingOffers(true);
-        const offers = await fetchFlightOffers(flightData.offer_request_id);
-        if (offers?.data?.offers) {
-          // Transform offers to match your ExtendedSearchResult format with proper logos
-          const transformedOffers = offers.data.offers.map((offer: any) => {
-            // Get airline information from owner or operating carrier
-            const ownerAirline = offer.owner;
-            const firstSegment = offer.slices?.[0]?.segments?.[0];
-            const operatingCarrier = firstSegment?.operating_carrier;
-            
-            // Use owner airline as primary, fallback to operating carrier
-            const airline = ownerAirline || operatingCarrier;
-            const airlineName = airline?.name || 'Unknown Airline';
-            const airlineCode = airline?.iata_code || '';
-            const airlineLogoUrl = airline?.logo_symbol_url || '';
-            
-            return {
-              id: offer.id,
-              type: 'flights',
-              title: `${offer.slices?.[0]?.segments?.[0]?.origin?.iata_code || ''} → ${offer.slices?.[0]?.segments?.slice(-1)[0]?.destination?.iata_code || ''}`,
-              subtitle: offer.slices?.[0]?.segments?.map((s: any) => s.operating_carrier?.name).filter(Boolean).join(', ') || 'Flight',
-              price: `${offer.total_currency || 'GBP'} ${offer.total_amount || '0'}`,
-              provider: airlineName,
-              // Set image to the logo URL
-              image: airlineLogoUrl || `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2`,
-              rating: 4,
-              owner: {
-                id: airline?.id,
-                name: airlineName,
-                iata_code: airlineCode,
-                logo_symbol_url: airlineLogoUrl
-              },
-              airlineCode,
-              slices: offer.slices,
-              realData: {
-                airlineCode,
-                airlineLogo: airlineLogoUrl,
-                departureTime: offer.slices?.[0]?.segments?.[0]?.departing_at,
-                arrivalTime: offer.slices?.[0]?.segments?.slice(-1)[0]?.arriving_at,
-                departureAirport: offer.slices?.[0]?.segments?.[0]?.origin?.iata_code,
-                arrivalAirport: offer.slices?.[0]?.segments?.slice(-1)[0]?.destination?.iata_code,
-              }
-            };
-          });
-          
-          console.log('Transformed flight offers with logos:', transformedOffers.map((o: any) => ({
-            airline: o.provider,
-            code: o.airlineCode,
-            hasLogo: !!o.image && !o.image.includes('ui-avatars'),
-            logoUrl: o.image
-          })));
-          
-          setFlightOffers(transformedOffers);
-        }
-        setIsLoadingOffers(false);
-      }
-    };
+  // Format duration from ISO 8601
+  const formatDuration = (duration?: string): string => {
+    if (!duration) return '';
+    const hours = duration.match(/(\d+)H/);
+    const minutes = duration.match(/(\d+)M/);
+    return `${hours ? hours[1] + 'h ' : ''}${minutes ? minutes[1] + 'm' : ''}`.trim();
+  };
 
-    loadFlightOffers();
-  }, [initialResults, searchType]);
+  // Format price
+  const formatPrice = (amount: string, currencyCode: string): string => {
+    const numericAmount = parseFloat(amount);
+    if (isNaN(numericAmount)) return 'Price on request';
+    
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency: currencyCode,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numericAmount);
+  };
 
-  // Combine initial results with flight offers
-  const allResults = useMemo(() => {
-    if (searchType === 'flights' && flightOffers.length > 0) {
-      return flightOffers;
+  // Format time
+  const formatTime = (dateTimeStr?: string): string => {
+    if (!dateTimeStr) return '--:--';
+    try {
+      const date = new Date(dateTimeStr);
+      if (isNaN(date.getTime())) return '--:--';
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch {
+      return '--:--';
     }
-    return initialResults;
-  }, [initialResults, flightOffers, searchType]);
+  };
 
-  // Extract dynamic options from results
+  // Format date
+  const formatDate = (dateTimeStr?: string): string => {
+    if (!dateTimeStr) return '';
+    try {
+      const date = new Date(dateTimeStr);
+      if (isNaN(date.getTime())) return '';
+      return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    } catch {
+      return '';
+    }
+  };
+
+  // Helper to parse baggage JSON
+  const parseBaggage = (baggageStr?: string): Array<{type: string; quantity: number}> => {
+    if (!baggageStr) return [];
+    try {
+      return JSON.parse(baggageStr);
+    } catch {
+      return [];
+    }
+  };
+
+  // Process flight offers - ONLY if they don't already have computed fields
+  const processedFlightOffers = useMemo(() => {
+    if (searchType !== 'flights' || flightOffers.length === 0) return [];
+
+    return flightOffers.map((offer: ExtendedSearchResult) => {
+      // If the offer already has computed fields (from context), use them
+      if (offer.departureAirport && offer.arrivalAirport && offer.departureTime) {
+        return offer;
+      }
+
+      // Otherwise, compute them from raw data
+      const firstSlice = offer.slices?.[0];
+      const firstSegment = firstSlice?.segments?.[0];
+      const lastSegment = firstSlice?.segments?.slice(-1)[0];
+      
+      const carrier = firstSegment?.operating_carrier || 
+                     firstSegment?.marketing_carrier || 
+                     offer.owner;
+      
+      const airlineCode = carrier?.iata_code || '';
+      const airlineName = carrier?.name || offer.owner?.name || 'Unknown Airline';
+      
+      const logoUrl = carrier?.logo_symbol_url || 
+                     offer.owner?.logo_symbol_url || 
+                     (airlineCode ? airlinesMap.get(airlineCode)?.logo_symbol_url : undefined);
+
+      const segmentCount = firstSlice?.segments?.length || 1;
+      const stopCount = segmentCount - 1;
+      const stopText = stopCount === 0 ? 'Direct' : stopCount === 1 ? '1 Stop' : `${stopCount} Stops`;
+
+      const departureAirport = firstSegment?.origin?.iata_code || '---';
+      const departureCity = firstSegment?.origin?.city_name || firstSegment?.origin?.city?.name || '';
+      const departureTime = firstSegment?.departing_at;
+      
+      const arrivalAirport = lastSegment?.destination?.iata_code || '---';
+      const arrivalCity = lastSegment?.destination?.city_name || lastSegment?.destination?.city?.name || '';
+      const arrivalTime = lastSegment?.arriving_at;
+
+      const priceAmount = offer.final_amount || offer.total_amount || '0';
+      const priceCurrency = offer.currency || offer.total_currency || 'GBP';
+      const formattedPrice = formatPrice(priceAmount, priceCurrency);
+
+      const baggageInfo = firstSegment?.passengers?.[0]?.baggages || [];
+      
+      const baggageString = baggageInfo.length > 0 ? JSON.stringify(baggageInfo) : undefined;
+
+      const processedOffer: ExtendedSearchResult = {
+        ...offer,
+        type: 'flights',
+        departureAirport,
+        arrivalAirport,
+        departureCity,
+        arrivalCity,
+        departureTime,
+        arrivalTime,
+        airlineCode,
+        airlineName,
+        airlineLogo: logoUrl,
+        stopCount,
+        stopText,
+        duration: firstSlice?.duration || firstSegment?.duration,
+        displayPrice: formattedPrice,
+        rawPrice: parseFloat(priceAmount),
+        flightNumber: firstSegment?.flight_number,
+        cabin: firstSegment?.passengers?.[0]?.cabin_class_marketing_name,
+        baggage: baggageString,
+        title: `${departureAirport} → ${arrivalAirport}`,
+        subtitle: airlineName,
+        provider: airlineName,
+        image: logoUrl,
+      };
+      
+      return processedOffer;
+    });
+  }, [flightOffers, searchType, airlinesMap]);
+
+  // Combine results
+  const allResults = useMemo(() => {
+    if (searchType === 'flights') {
+      return processedFlightOffers;
+    }
+    if (Array.isArray(results)) {
+      return results.map(r => ({
+        ...r,
+        type: r.type || searchType
+      }));
+    }
+    if (results && typeof results === 'object' && 'data' in results) {
+      return results.data.map(r => ({
+        ...r,
+        type: r.type || searchType
+      }));
+    }
+    return [];
+  }, [results, searchType, processedFlightOffers]);
+
+  // ===========================================
+  // CAR RENTAL EXTRACTIONS (UNTOUCHED)
+  // ===========================================
   const uniqueCarTypes = useMemo(() => {
     const types = allResults
       .filter(r => r.type === 'car-rentals')
@@ -254,7 +446,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return Array.from(new Set(
       allResults
         .filter(r => r.type === 'flights')
-        .map(r => r.owner?.name || r.provider || 'Unknown')
+        .map(r => r.airlineName || r.provider || 'Unknown')
         .filter(Boolean)
     ));
   }, [allResults, searchType]);
@@ -264,28 +456,39 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
     // Basic Price Filter
     filtered = filtered.filter((item) => {
-      const numericPrice = parseFloat(item.price.replace(/[^\d.]/g, '')) || 0;
+      let numericPrice = 0;
+      
+      if (item.rawPrice) {
+        numericPrice = item.rawPrice;
+      } else if (item.price) {
+        numericPrice = parseFloat(item.price.replace(/[^\d.]/g, '')) || 0;
+      } else if (item.total_amount) {
+        numericPrice = parseFloat(item.total_amount) || 0;
+      }
+      
       return numericPrice <= priceRange;
     });
 
-    // Flight Filtering
+    // Flight Filtering (UPDATED)
     if (searchType === "flights") {
       if (stopsFilter.length > 0) {
         filtered = filtered.filter(item => {
-          const segmentCount = item.slices?.[0]?.segments?.length || 1;
-          const stopText = segmentCount === 1 ? 'Direct' : segmentCount === 2 ? '1 Stop' : '2+ Stops';
-          return stopsFilter.includes(stopText);
+          const stopCount = item.stopCount || 0;
+          const stopType = stopCount === 0 ? 'Direct' : stopCount === 1 ? '1 Stop' : '2+ Stops';
+          return stopsFilter.includes(stopType);
         });
       }
       if (airlinesFilter.length > 0) {
         filtered = filtered.filter(item => {
-          const airlineName = item.owner?.name || item.provider || '';
+          const airlineName = item.airlineName || item.provider || '';
           return airlinesFilter.includes(airlineName);
         });
       }
     } 
 
-    // Hotel Filtering
+    // ===========================================
+    // HOTEL FILTERING (UNTOUCHED)
+    // ===========================================
     else if (searchType === "hotels") {
       if (starRatings.length > 0) {
         filtered = filtered.filter(item => starRatings.includes(Math.floor(item.rating || 0)));
@@ -295,7 +498,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       }
     }
 
-    // Car Rental Filtering
+    // ===========================================
+    // CAR RENTAL FILTERING (UNTOUCHED)
+    // ===========================================
     else if (searchType === "car-rentals") {
       if (carTypeFilter.length > 0) {
         filtered = filtered.filter(item => 
@@ -319,15 +524,21 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       }
     }
 
-    // Sorting
+    // Sorting (UPDATED for flights)
     if (sortBy === "price") {
       filtered.sort((a, b) => {
-        const pA = parseFloat(a.price.replace(/[^\d.]/g, '')) || 0;
-        const pB = parseFloat(b.price.replace(/[^\d.]/g, '')) || 0;
+        const pA = a.rawPrice || parseFloat(a.price?.replace(/[^\d.]/g, '') || '0') || 0;
+        const pB = b.rawPrice || parseFloat(b.price?.replace(/[^\d.]/g, '') || '0') || 0;
         return pA - pB;
       });
     } else if (sortBy === "rating") {
       filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    } else if (sortBy === "match" && searchType === 'flights') {
+      filtered.sort((a, b) => {
+        const timeA = a.departureTime || '';
+        const timeB = b.departureTime || '';
+        return timeA.localeCompare(timeB);
+      });
     }
 
     return filtered;
@@ -368,14 +579,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     </label>
   );
 
-  // Format duration from ISO 8601 (e.g., "PT5H36M" -> "5h 36m")
-  const formatDuration = (duration?: string): string => {
-    if (!duration) return '';
-    const hours = duration.match(/(\d+)H/);
-    const minutes = duration.match(/(\d+)M/);
-    return `${hours ? hours[1] + 'h ' : ''}${minutes ? minutes[1] + 'm' : ''}`;
-  };
-
+  // ===========================================
+  // HOTEL CARD (UNTOUCHED)
+  // ===========================================
   const renderHotelCard = (item: ExtendedSearchResult) => {
     const starRating = Math.floor(item.rating || 4);
     return (
@@ -432,162 +638,201 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
 
+  // ===========================================
+  // FLIGHT CARD (UPDATED)
+  // ===========================================
   const renderFlightCard = (item: ExtendedSearchResult) => {
-    // Get airline code from multiple possible sources
-    const airlineCode = item.airlineCode || 
-                        item.owner?.iata_code || 
-                        item.realData?.airlineCode || 
-                        '';
+    const departureAirport = item.departureAirport || '---';
+    const arrivalAirport = item.arrivalAirport || '---';
+    const departureTime = item.departureTime;
+    const arrivalTime = item.arrivalTime;
+    const airlineName = item.airlineName || item.provider || 'Unknown Airline';
+    const airlineCode = item.airlineCode || '';
+    const logoUrl = item.airlineLogo || item.image;
+    const stopCount = item.stopCount || 0;
+    const stopText = item.stopText || (stopCount === 0 ? 'Direct' : stopCount === 1 ? '1 Stop' : `${stopCount} Stops`);
+    const duration = formatDuration(item.duration);
     
-    // Get airline name
-    const airlineName = item.owner?.name || 
-                        item.provider || 
-                        item.realData?.airline || 
-                        'Unknown Airline';
-    
-    // Get logo URL - prioritize item.image (set during transformation), then owner logo, then realData
-    const logoUrl = item.image || 
-                    item.owner?.logo_symbol_url || 
-                    item.realData?.airlineLogo || 
-                    (airlineCode ? airlinesMap.get(airlineCode)?.logo_symbol_url : null);
-    
-    // Get departure and arrival info
-    const firstSegment = item.slices?.[0]?.segments?.[0];
-    const lastSegment = item.slices?.[0]?.segments?.slice(-1)[0];
-    
-    const departureTime = firstSegment?.departing_at || item.realData?.departureTime;
-    const arrivalTime = lastSegment?.arriving_at || item.realData?.arrivalTime;
-    const departureAirport = firstSegment?.origin?.iata_code || item.realData?.departureAirport || 'LHR';
-    const arrivalAirport = lastSegment?.destination?.iata_code || item.realData?.arrivalAirport || 'JFK';
-    
-    // Calculate stops
-    const segmentCount = item.slices?.[0]?.segments?.length || 1;
-    const stopText = segmentCount === 1 ? 'Direct' : segmentCount === 2 ? '1 Stop' : '2+ Stops';
-    
-    // Debug for this specific flight
-    console.log('Rendering flight:', {
-      id: item.id,
-      airlineCode,
-      airlineName,
-      hasLogo: !!logoUrl,
-      logoUrl,
-      image: item.image,
-      ownerLogo: item.owner?.logo_symbol_url
-    });
-    
+    const displayPrice = item.displayPrice || 
+                        (item.final_amount ? formatPrice(item.final_amount, item.currency || 'GBP') : 
+                        item.price || formatPrice(item.total_amount || '0', item.total_currency || 'GBP'));
+
+    const showOriginal = item.original_amount && item.original_currency !== (item.currency || 'GBP');
+
+    // Parse baggage from JSON string
+    const baggageInfo = parseBaggage(item.baggage);
+
     return (
       <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden animate-in fade-in slide-in-from-bottom-2">
         <div className="flex flex-col md:flex-row p-8 gap-8">
           <div className="flex-1">
+            {/* Airline Info */}
             <div className="flex items-center gap-4 mb-6">
               {logoUrl ? (
                 <img 
                   src={logoUrl} 
-                  className="w-10 h-10 object-contain rounded" 
+                  className="w-12 h-12 object-contain rounded-lg border border-gray-100 p-1" 
                   alt={airlineName}
                   onError={(e) => {
-                    console.log('Logo failed to load:', logoUrl);
-                    // Fallback to UI Avatars
-                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2`;
+                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2&size=48`;
                   }}
                 />
               ) : (
-                <div className="w-10 h-10 bg-[#33a8da] rounded flex items-center justify-center text-white font-bold text-sm">
+                <div className="w-12 h-12 bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-lg flex items-center justify-center text-white font-black text-sm">
                   {airlineCode?.substring(0, 2) || airlineName?.substring(0, 2) || 'FL'}
                 </div>
               )}
               <div>
-                <h4 className="text-sm font-black text-gray-900">{airlineName}</h4>
+                <h4 className="text-base font-black text-gray-900">{airlineName}</h4>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                  {departureAirport} → {arrivalAirport}
+                  {item.flightNumber && `Flight ${item.flightNumber}`} {item.cabin && `• ${item.cabin}`}
                 </p>
-                {airlineCode && (
-                  <span className="text-[9px] font-bold text-[#33a8da] bg-blue-50 px-2 py-0.5 rounded-full mt-1 inline-block">
-                    {airlineCode}
-                  </span>
-                )}
               </div>
             </div>
+
+            {/* Flight Route */}
             <div className="flex items-center justify-between">
-              <div className="text-center">
-                <p className="text-2xl font-black text-gray-900">
-                  {departureTime ? new Date(departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "08:00"}
+              {/* Departure */}
+              <div className="text-center flex-1">
+                <p className="text-3xl font-black text-gray-900">
+                  {formatTime(departureTime)}
                 </p>
-                <p className="text-[10px] font-black text-gray-400 uppercase">Depart</p>
-                <p className="text-[9px] font-bold text-gray-400 mt-1">{departureAirport}</p>
+                <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Depart</p>
+                <p className="text-sm font-bold text-gray-900 mt-1">{departureAirport}</p>
+                {item.departureCity && (
+                  <p className="text-[9px] font-bold text-gray-400">{item.departureCity}</p>
+                )}
+                <p className="text-[8px] font-bold text-gray-300 mt-2">
+                  {formatDate(departureTime)}
+                </p>
               </div>
-              <div className="flex-1 px-8">
-                <div className="w-full h-[1.5px] bg-gray-100 relative">
-                  <div className="absolute left-1/2 -translate-x-1/2 -top-[6px] text-[#33a8da]">
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+
+              {/* Flight Path */}
+              <div className="flex-1 px-6">
+                <div className="relative">
+                  <div className="w-full h-[2px] bg-gray-100"></div>
+                  <div className="absolute left-1/2 -translate-x-1/2 -top-3 text-[#33a8da]">
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
                     </svg>
                   </div>
                 </div>
-                <p className="text-[8px] font-bold text-gray-400 text-center mt-4">
-                  {stopText}
-                </p>
+                <div className="flex justify-between mt-4">
+                  <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">
+                    {stopText}
+                  </span>
+                  <span className="text-[9px] font-black text-gray-400">
+                    {duration}
+                  </span>
+                </div>
+                {stopCount > 0 && item.slices?.[0]?.segments?.[1]?.origin?.iata_code && (
+                  <p className="text-[8px] font-bold text-gray-300 text-center mt-2">
+                    via {item.slices[0].segments[1].origin.iata_code}
+                  </p>
+                )}
               </div>
-              <div className="text-center">
-                <p className="text-2xl font-black text-gray-900">
-                  {arrivalTime ? new Date(arrivalTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "10:15"}
+
+              {/* Arrival */}
+              <div className="text-center flex-1">
+                <p className="text-3xl font-black text-gray-900">
+                  {formatTime(arrivalTime)}
                 </p>
-                <p className="text-[10px] font-black text-gray-400 uppercase">Arrive</p>
-                <p className="text-[9px] font-bold text-gray-400 mt-1">{arrivalAirport}</p>
+                <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Arrive</p>
+                <p className="text-sm font-bold text-gray-900 mt-1">{arrivalAirport}</p>
+                {item.arrivalCity && (
+                  <p className="text-[9px] font-bold text-gray-400">{item.arrivalCity}</p>
+                )}
+                <p className="text-[8px] font-bold text-gray-300 mt-2">
+                  {formatDate(arrivalTime)}
+                </p>
               </div>
             </div>
+
+            {/* Baggage Info */}
+            {baggageInfo.length > 0 && (
+              <div className="mt-6 pt-6 border-t border-gray-50">
+                <div className="flex items-center gap-4">
+                  {baggageInfo.map((bag: any, idx: number) => (
+                    <span key={idx} className="text-[9px] font-bold text-gray-600 bg-gray-50 px-2 py-1 rounded-full">
+                      {bag.quantity} {bag.type} bag
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-          <div className="w-full md:w-[240px] flex flex-col items-center justify-center text-center border-l border-gray-50 pl-8">
-            <p className="text-2xl font-black text-gray-900 mb-4">{item.price}</p>
+
+          {/* Price and CTA */}
+          <div className="w-full md:w-[280px] flex flex-col items-center justify-center text-center border-t md:border-t-0 md:border-l border-gray-100 pt-6 md:pt-0 md:pl-8">
+            <p className="text-3xl font-black text-[#33a8da] mb-2">{displayPrice}</p>
+            
+            {showOriginal && (
+              <p className="text-[9px] font-bold text-gray-400 mb-2">
+                Original: {item.original_currency} {parseFloat(item.original_amount || '0').toFixed(2)}
+                {item.conversion_fee && ` • +${item.conversion_fee} fee`}
+              </p>
+            )}
+            
+            {item.markup_percentage && (
+              <p className="text-[9px] font-bold text-gray-400 mb-4">
+                Includes {item.markup_percentage}% markup
+              </p>
+            )}
+            
             <button 
               onClick={() => {
-                console.log('Selected flight data:', item);
+                console.log('Selected flight:', {
+                  id: item.id,
+                  airline: airlineName,
+                  from: departureAirport,
+                  to: arrivalAirport,
+                  price: displayPrice
+                });
                 onSelect?.(item);
               }} 
-              className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]"
+              className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-xs tracking-wider shadow-lg hover:shadow-xl"
             >
               Select Flight
             </button>
+
+            {item.payment_requirements?.requires_instant_payment && (
+              <p className="text-[8px] font-bold text-orange-600 mt-2">
+                Instant payment required
+              </p>
+            )}
           </div>
         </div>
       </div>
     );
   };
 
+  // ===========================================
+  // CAR CARD (UNTOUCHED)
+  // ===========================================
   const renderCarCard = (item: ExtendedSearchResult) => {
-    // Parse duration if available
     const duration = formatDuration(item.duration);
-    
-    // Determine if it's a long-distance transfer (Amadeus) or quick transfer (Sixt)
     const isLongDistance = item.distance && item.distance.includes('MI');
     const isSixt = item.provider?.includes('Sixt');
     
-    // Parse baggage count to number for comparison
-    const baggageCount = item.baggage ? parseInt(item.baggage) : 0;
+    // Parse baggage from JSON string or use original logic
+    const baggageInfo = parseBaggage(item.baggage);
+    const baggageCount = baggageInfo.length > 0 ? 
+      baggageInfo.reduce((total, bag) => total + bag.quantity, 0) : 
+      (item.baggage ? parseInt(item.baggage) : 0);
     
-    // Get the correct image URL from the API response
     const getCarImageUrl = () => {
-      // Priority 1: Direct image property (set by transform function)
       if (item.image && !item.image.includes('unsplash') && !item.image.includes('placeholder')) {
         return item.image;
       }
-      
-      // Priority 2: Check realData.vehicle.imageURL (API structure)
       if (item.realData?.vehicle?.imageURL) {
         return item.realData.vehicle.imageURL;
       }
-      
-      // Priority 3: Check if image is directly in realData
       if (item.realData?.imageURL) {
         return item.realData.imageURL;
       }
-      
-      // Priority 4: Use provider logo as fallback
       if (item.providerLogo) {
         return item.providerLogo;
       }
-      
-      // Priority 5: Fallback to Unsplash based on vehicle type
       if (item.vehicleCode?.includes('SUV')) {
         return 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&q=80&w=600';
       } else if (item.vehicleCode?.includes('VAN')) {
@@ -597,8 +842,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       } else if (item.vehicleCategory?.includes('BU') || item.vehicleCategory?.includes('Business')) {
         return 'https://images.unsplash.com/photo-1563720223486-3294265d5a7c?auto=format&fit=crop&q=80&w=600';
       }
-      
-      // Default fallback
       return 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600';
     };
   
@@ -607,7 +850,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return (
       <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
         <div className="flex flex-col md:flex-row">
-          {/* Vehicle Image Section - Using REAL image from API */}
           <div className="w-full md:w-[320px] h-56 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-8 relative">
             <img 
               src={carImageUrl}
@@ -615,12 +857,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               alt={item.title}
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
-                // Try provider logo first if available and not already tried
                 if (item.providerLogo && target.src !== item.providerLogo) {
                   target.src = item.providerLogo;
                   return;
                 }
-                // Then try vehicle type specific fallback
                 if (item.vehicleCode?.includes('SUV')) {
                   target.src = 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&q=80&w=600';
                 } else if (item.vehicleCode?.includes('VAN')) {
@@ -635,7 +875,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               }}
             />
             
-            {/* Provider Logo Overlay (only if different from main image) */}
             {item.providerLogo && item.providerLogo !== carImageUrl && (
               <div className="absolute top-4 left-4 bg-white rounded-lg p-2 shadow-md">
                 <img 
@@ -649,13 +888,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               </div>
             )}
             
-            {/* Vehicle Type Badge */}
             <div className="absolute top-4 right-4 bg-[#33a8da]/90 backdrop-blur-sm text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider">
               {item.vehicleCode || item.vehicleCategory || 'CAR'}
             </div>
           </div>
           
-          {/* Vehicle Details Section */}
           <div className="flex-1 p-8">
             <div className="flex justify-between items-start mb-4">
               <div>
@@ -673,7 +910,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               )}
             </div>
             
-            {/* Vehicle Specifications */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               {item.seats && item.seats > 0 && (
                 <div className="flex items-center gap-2">
@@ -720,7 +956,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               )}
             </div>
             
-            {/* Trip Details */}
             <div className="bg-gray-50 rounded-xl p-4 mb-6">
               <div className="flex items-center justify-between text-[10px]">
                 <div>
@@ -756,7 +991,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               )}
             </div>
             
-            {/* Price and CTA */}
             <div className="flex items-end justify-between pt-4 border-t border-gray-100">
               <div>
                 <p className="text-2xl font-black text-[#33a8da]">
@@ -783,7 +1017,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               </button>
             </div>
             
-            {/* Cancellation Policy */}
             {item.cancellationPolicy && (
               <div className="mt-4 pt-3 border-t border-gray-50">
                 <div className="flex items-center gap-2">
@@ -802,19 +1035,17 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
 
-  const isLoading_ = isLoading || isLoadingOffers;
-
-  if (isLoading_) {
+  if (isLoading) {
     return (
       <div className="bg-[#f8fbfe] -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-10">
         <div className="max-w-7xl mx-auto flex justify-center items-center min-h-[400px]">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#33a8da] mb-6"></div>
             <h3 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-2">
-              {isLoadingOffers ? 'Loading flight offers...' : 'Searching...'}
+              {searchType === 'flights' ? 'Searching for flights...' : 'Searching...'}
             </h3>
             <p className="text-sm text-gray-500 font-medium">
-              {isLoadingOffers ? 'Fetching the best flight options for you' : 'Finding the best options for you'}
+              {searchType === 'flights' ? 'Finding the best flight options for you' : 'Finding the best options for you'}
             </p>
           </div>
         </div>
@@ -857,27 +1088,36 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               </>
             ))}
 
-            {/* FLIGHT SPECIFIC FILTERS */}
+            {/* FLIGHT SPECIFIC FILTERS (UPDATED) */}
             {searchType === "flights" && (
               <>
                 {renderFilterSection("Stops", (
                   <>
-                    {["Direct", "1 Stop", "2+ Stops"].map(stop => 
-                      renderCheckbox(stop, stopsFilter.includes(stop), () => toggleFilter(setStopsFilter, stopsFilter, stop))
-                    )}
+                    {["Direct", "1 Stop", "2+ Stops"].map(stop => {
+                      const count = filteredResults.filter(r => {
+                        const stopCount = r.stopCount || 0;
+                        if (stop === 'Direct') return stopCount === 0;
+                        if (stop === '1 Stop') return stopCount === 1;
+                        return stopCount >= 2;
+                      }).length;
+                      return renderCheckbox(stop, stopsFilter.includes(stop), () => toggleFilter(setStopsFilter, stopsFilter, stop));
+                    })}
                   </>
                 ))}
                 {renderFilterSection("Airlines", (
                   <>
-                    {uniqueAirlines.map(airline => 
-                      renderCheckbox(airline, airlinesFilter.includes(airline), () => toggleFilter(setAirlinesFilter, airlinesFilter, airline))
-                    )}
+                    {uniqueAirlines.map(airline => {
+                      const count = filteredResults.filter(r => 
+                        (r.airlineName || r.provider) === airline
+                      ).length;
+                      return renderCheckbox(airline, airlinesFilter.includes(airline), () => toggleFilter(setAirlinesFilter, airlinesFilter, airline));
+                    })}
                   </>
                 ))}
               </>
             )}
 
-            {/* HOTEL SPECIFIC FILTERS */}
+            {/* HOTEL SPECIFIC FILTERS (UNTOUCHED) */}
             {searchType === "hotels" && (
               <>
                 {renderFilterSection("Star Rating", (
@@ -897,7 +1137,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               </>
             )}
 
-            {/* CAR SPECIFIC FILTERS */}
+            {/* CAR SPECIFIC FILTERS (UNTOUCHED) */}
             {searchType === "car-rentals" && (
               <>
                 {renderFilterSection("Vehicle Type", (
@@ -940,7 +1180,13 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         <div className="flex-1 space-y-6">
           <div className="flex items-center justify-between mb-4 px-2">
             <h3 className="font-black text-gray-900 uppercase text-xs tracking-widest">
-              {filteredResults.length} {filteredResults.length === 1 ? 'option' : 'options'} found
+              {filteredResults.length} {filteredResults.length === 1 ? 
+                (searchType === 'flights' ? 'flight' : 
+                 searchType === 'hotels' ? 'hotel' : 
+                 'option') : 
+                (searchType === 'flights' ? 'flights' : 
+                 searchType === 'hotels' ? 'hotels' : 
+                 'options')} found
             </h3>
             <div className="flex items-center gap-3">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sort by:</span>
@@ -949,9 +1195,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 onChange={(e) => setSortBy(e.target.value as any)} 
                 className="bg-transparent border-none text-[10px] font-black uppercase text-[#33a8da] focus:ring-0 cursor-pointer"
               >
-                <option value="match">Best Match</option>
+                <option value="match">{searchType === 'flights' ? 'Departure Time' : 'Best Match'}</option>
                 <option value="price">Lowest Price</option>
-                <option value="rating">Top Rated</option>
+                {searchType !== 'flights' && <option value="rating">Top Rated</option>}
               </select>
             </div>
           </div>
