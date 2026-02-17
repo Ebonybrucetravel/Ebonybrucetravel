@@ -65,12 +65,19 @@ export interface User {
   profilePicture?: string;
   avatar?: string;
   dob?: string;
-  dateOfBirth?: string | null;
-  gender?: string | null;
-  phone?: string | null;
-  provider?: 'email' | 'google' | 'facebook';
-  role?: 'user' | 'admin';
+  dateOfBirth?: string;  
+  gender?: string;       
+  phone?: string;        
+  address?: string;
+  city?: string;
+  country?: string;
+  postalCode?: string;
+  provider?: "email" | "google" | "facebook";
+  role?: "user" | "admin";
+  createdAt?: string;
+  updatedAt?: string;
   token?: string;
+  isVerified?: boolean;
 }
 export interface Booking {
   id: string;
