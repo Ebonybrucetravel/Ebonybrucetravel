@@ -156,42 +156,6 @@ export const pageContentMap: Record<string, PageContent> = {
       }
     ]
   },
-  'DHL Logistics': {
-    title: 'Global Logistics Excellence',
-    subtitle: 'Official DHL Franchise Partner providing world-class shipping solutions.',
-    image: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&q=80&w=1200',
-    sections: [
-      { title: 'Franchise Reliability', body: 'As an authorized DHL partner, we provide the full suite of international shipping services with the reliability of a global leader and the personal touch of a local agent.', icon: '🏢' },
-      { title: 'Real-Time Intelligence', body: 'Our integrated platform allows you to track shipments across 220+ countries with millisecond precision, ensuring your cargo is always visible.', icon: '📡' },
-      { title: 'Customs Mastery', body: 'We handle all complex documentation and customs clearance processes, minimizing delays and ensuring compliance with international trade laws.', icon: '⚖️' },
-      { title: 'Express Shipping', body: 'Time-critical deliveries handled with priority, featuring dedicated courier services and guaranteed delivery windows.', icon: '⚡' },
-      { title: 'Freight Services', body: 'Comprehensive air and ocean freight solutions for businesses of all sizes, with flexible pricing and scheduling options.', icon: '🚢' }
-    ]
-  },
-  'Admission Processing': {
-    title: 'Your Global Education Journey',
-    subtitle: 'Unprecedented speed and precision in international university placements.',
-    image: 'https://images.unsplash.com/photo-1523050338192-067307066a70?auto=format&fit=crop&q=80&w=1200',
-    sections: [
-      { title: 'Elite University Network', body: 'We maintain direct relationships with top-tier universities across the UK, USA, Canada, and Europe, giving our applicants a strategic advantage.', icon: '🏛️' },
-      { title: 'Speedy Processing', body: 'Our specialized team utilizes optimized workflows to secure admission offers in record time, often cutting standard waiting periods by half.', icon: '⚡' },
-      { title: 'Scholarship Guidance', body: 'We don\'t just find you a seat; we help you find funding. Our consultants identify and assist with high-value scholarship applications.', icon: '💎' },
-      { title: 'Visa Support', body: 'Expert guidance through the complex student visa application process, with document preparation and interview coaching.', icon: '🛂' },
-      { title: 'Pre-Departure Services', body: 'Comprehensive support including accommodation arrangements, travel booking, and cultural orientation sessions.', icon: '✈️' }
-    ]
-  },
-  'Curated Tours': {
-    title: 'Bespoke Travel Chronicles',
-    subtitle: 'Authentic cultural immersion and leisure experiences designed specifically for you.',
-    image: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&q=80&w=1200',
-    sections: [
-      { title: 'Expert Local Guides', body: 'Avoid the tourist traps. Our tours are led by local historians, chefs, and artisans who show you the heartbeat of every destination.', icon: '🎭' },
-      { title: 'Luxury Logistics', body: 'From private jet transfers to boutique villas, every element of your tour is handled with extreme attention to comfort and privacy.', icon: '🥂' },
-      { title: 'Unique Itineraries', body: 'No two tours are the same. We build your experience from the ground up based on your personal interests, dietary needs, and pace.', icon: '🎨' },
-      { title: 'Group Experiences', body: 'Curated journeys for families, friends, and corporate groups featuring exclusive access and VIP treatment throughout.', icon: '👪' },
-      { title: 'Adventure Travel', body: 'Off-the-beaten-path expeditions for the intrepid traveler, combining luxury comfort with authentic experiences.', icon: '🏔️' }
-    ]
-  },
   'Career': {
     title: 'Join the Elite Team',
     subtitle: 'Build the future of travel with Ebony Bruce.',

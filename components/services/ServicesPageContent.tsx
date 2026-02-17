@@ -17,7 +17,7 @@ export default function ServicesPageContent({ content }: ServicesPageContentProp
 
   return (
     <main className="min-h-screen bg-white">
-      {/* Banner Section - Exact match to the About Us style */}
+      {/* Banner Section */}
       <section className="relative bg-gradient-to-br from-[#001f3f] to-[#002b4f] text-white py-24">
         <div className="absolute inset-0 opacity-10">
           <img 
@@ -66,13 +66,22 @@ export default function ServicesPageContent({ content }: ServicesPageContentProp
               </div>
             </div>
             <div className="p-8">
-              <h3 className="text-2xl font-bold text-[#001f3f] mb-4">1. Travel Services (Non-Flight)</h3>
+              <h3 className="text-2xl font-bold text-[#001f3f] mb-4">Travel Services (Non-Flight)</h3>
               <p className="text-gray-600 leading-relaxed mb-4">
                 We specialize in organizing and managing tours, excursions, and event ticketing. We do not book or manage flight reservations or offer immigration services.
               </p>
-              <p className="text-gray-600 leading-relaxed">
+              <p className="text-gray-600 leading-relaxed mb-6">
                 Our focus is providing tailored travel experiences and ticketing solutions for both local and international clients.
               </p>
+              <Link 
+                href="/services/travel-services"
+                className="inline-flex items-center text-[#33a8da] font-semibold group-hover:gap-2 transition-all"
+              >
+                Learn More About Our Travel Services
+                <svg className="w-5 h-5 ml-1 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
             </div>
           </div>
 
@@ -91,13 +100,22 @@ export default function ServicesPageContent({ content }: ServicesPageContentProp
               </div>
             </div>
             <div className="p-8">
-              <h3 className="text-2xl font-bold text-[#001f3f] mb-4">2. Logistics – DHL Franchised Services</h3>
+              <h3 className="text-2xl font-bold text-[#001f3f] mb-4">DHL Franchised Logistics</h3>
               <p className="text-gray-600 leading-relaxed mb-4">
                 As an authorized DHL franchise partner, we offer courier and international parcel services. This includes handling document and package shipments, offering tracking support, and providing clients with a secure and efficient logistics solution.
               </p>
-              <p className="text-gray-600 leading-relaxed">
+              <p className="text-gray-600 leading-relaxed mb-6">
                 Including Hotel Reservations: We provide reliable hotel booking support for travelers, both domestic and international.
               </p>
+              <Link 
+                href="/services/dhl-logistics"
+                className="inline-flex items-center text-[#33a8da] font-semibold group-hover:gap-2 transition-all"
+              >
+                Learn More About DHL Services
+                <svg className="w-5 h-5 ml-1 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
             </div>
           </div>
 
@@ -116,17 +134,27 @@ export default function ServicesPageContent({ content }: ServicesPageContentProp
               </div>
             </div>
             <div className="p-8">
-              <h3 className="text-2xl font-bold text-[#001f3f] mb-4">3. Educational Consulting</h3>
+              <h3 className="text-2xl font-bold text-[#001f3f] mb-4">Speedy Admission Processing</h3>
               <p className="text-gray-600 leading-relaxed mb-4">
                 We offer advisory services for students seeking admission to international educational institutions. This includes academic counseling and course matching.
               </p>
-              <p className="text-gray-600 leading-relaxed">
+              <p className="text-gray-600 leading-relaxed mb-6">
                 We do not provide immigration or visa representation services.
               </p>
+              <Link 
+                href="/services/admission-processing"
+                className="inline-flex items-center text-[#33a8da] font-semibold group-hover:gap-2 transition-all"
+              >
+                Learn More About Admissions
+                <svg className="w-5 h-5 ml-1 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
             </div>
           </div>
         </div>
       </section>
+
 
       {/* Mission Statement Section */}
       <section className="py-16 bg-[#F8FAFC]">

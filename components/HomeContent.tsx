@@ -52,7 +52,15 @@ export default function HomeContent({ activeTab }: HomeContentProps) {
         />
         <HomesGrid />
         <CarRentals />
-        <SpecializedServices onServiceClick={(s) => router.push(`/content/${s}`)} />
+        <SpecializedServices onServiceClick={(s) => {
+  // Map the service names to your actual paths
+  const pathMap: Record<string, string> = {
+    'Travel Services': '/services/travel-services',
+    'DHL Logistics': '/services/dhl-logistics',
+    'Admission Processing': '/services/admission-processing'
+  };
+  router.push(pathMap[s] || '/services');
+}} />
       </div>
     </>
   );
