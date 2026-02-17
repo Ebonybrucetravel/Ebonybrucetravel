@@ -56,6 +56,13 @@ export interface SearchResult {
   aircraft?: string;
   layoverDetails?: string;
   imageUrl?: string;
+  airlineCode?: string;
+  owner?: {
+    id?: string;
+    name?: string;
+    iata_code?: string;
+    logo_symbol_url?: string;
+  };
 }
 export interface User {
   id?: string;

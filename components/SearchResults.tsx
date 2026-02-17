@@ -49,12 +49,12 @@ interface ExtendedSearchResult extends BaseSearchResult {
   airlineCode?: string;
   // Add offer_request_id for flight searches
   offer_request_id?: string;
-  // Duffel offer structure
+  // Duffel offer structure - ALL PROPERTIES OPTIONAL
   offer_id?: string;
   owner?: {
-    id: string;
-    name: string;
-    iata_code: string;
+    id?: string;           // Made optional
+    name?: string;         // Made optional
+    iata_code?: string;    // Made optional
     logo_symbol_url?: string;
   };
   slices?: Array<{
@@ -175,7 +175,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               type: 'flights',
               title: `${offer.slices?.[0]?.segments?.[0]?.origin?.iata_code || ''} → ${offer.slices?.[0]?.segments?.slice(-1)[0]?.destination?.iata_code || ''}`,
               subtitle: offer.slices?.[0]?.segments?.map((s: any) => s.operating_carrier?.name).filter(Boolean).join(', ') || 'Flight',
-              price: `${offer.total_currency} ${offer.total_amount}`,
+              price: `${offer.total_currency || 'GBP'} ${offer.total_amount || '0'}`,
               provider: airlineName,
               // Set image to the logo URL
               image: airlineLogoUrl || `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2`,
@@ -540,14 +540,14 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           <div className="w-full md:w-[240px] flex flex-col items-center justify-center text-center border-l border-gray-50 pl-8">
             <p className="text-2xl font-black text-gray-900 mb-4">{item.price}</p>
             <button 
-  onClick={() => {
-    console.log('Selected flight data:', item); // Add this to debug
-    onSelect?.(item);
-  }} 
-  className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]"
->
-  Select Flight
-</button>
+              onClick={() => {
+                console.log('Selected flight data:', item);
+                onSelect?.(item);
+              }} 
+              className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]"
+            >
+              Select Flight
+            </button>
           </div>
         </div>
       </div>
@@ -773,14 +773,14 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 </p>
               </div>
               <button 
-  onClick={() => {
-    console.log('Selected car data:', item);
-    onSelect?.(item);
-  }} 
-  className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px] shadow-lg hover:shadow-xl"
->
-  {isLongDistance ? 'Book Transfer' : 'Rent Now'}
-</button>
+                onClick={() => {
+                  console.log('Selected car data:', item);
+                  onSelect?.(item);
+                }} 
+                className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px] shadow-lg hover:shadow-xl"
+              >
+                {isLongDistance ? 'Book Transfer' : 'Rent Now'}
+              </button>
             </div>
             
             {/* Cancellation Policy */}

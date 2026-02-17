@@ -643,7 +643,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
                         className="text-[10px] font-bold text-[#33a8da] hover:underline"
                         disabled={isLoading}
                       >
-                        Forgot?
+                        Forgot Password?
                       </button>
                     )}
                   </div>
