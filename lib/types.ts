@@ -1,3 +1,5 @@
+// lib/types.ts
+
 export interface SearchSegment {
   from: string;
   to: string;
@@ -17,6 +19,7 @@ export interface SearchParams {
   adults?: number;
   guests?: number;
   rooms?: number;
+  roomQuantity?: number; // ✅ ADD THIS - used by Amadeus hotel search API
   cabinClass?: string;
   stopsFilter?: string;
   maxPrice?: number;
@@ -35,6 +38,8 @@ export interface SearchParams {
   pickUpDate?: string;
   dropOffDate?: string;
   maxConnections?: number;
+  // Allow any additional properties for flexibility
+  [key: string]: any;
 }
 
 export interface SearchResult {
@@ -93,29 +98,63 @@ export interface User {
 export interface Booking {
   id: string;
   reference: string;
-  status: string;
+  userId?: string;
+  status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'CANCELLED';
   paymentStatus: string;
-  productType: string;
+  productType: 'FLIGHT_INTERNATIONAL' | 'FLIGHT_DOMESTIC' | 'HOTEL' | 'CAR_RENTAL';
   provider: string;
+  providerBookingId?: string | null;
   basePrice: number;
+  markupAmount?: number;
+  serviceFee?: number;
   totalAmount: number;
   currency: string;
-  cancellationDeadline?: string;
-  cancellationPolicySnapshot?: string;
-  bookingData: Record<string, any>;
-  passengerInfo: {
-      firstName: string;
-      lastName: string;
-      email: string;
-      phone: string;
+  cancellationDeadline?: string | null;
+  cancellationPolicySnapshot?: string | null;
+  bookingData: {
+    // Flight fields
+    origin?: string;
+    airline?: string;
+    destination?: string;
+    flightNumber?: string;
+    departureDate?: string;
+    cabinClass?: string;
+    passengers?: number | { adults: number; infants: number; children: number };
+    
+    // Hotel fields
+    guests?: number;
+    rooms?: number;
+    checkInDate?: string;
+    checkOutDate?: string;
+    location?: string;
+    hotelName?: string;
+    hotelId?: string;
+    
+    // Car rental fields
+    vehicleType?: string;
+    pickupDateTime?: string;
+    dropoffDateTime?: string;
+    pickupLocationCode?: string;
+    dropoffLocationCode?: string;
+    
+    // Common fields
+    offerId?: string;
+    [key: string]: any;
   };
-  createdAt: string;
+  passengerInfo: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    title?: string;
+  };
   voucherId?: string;
   voucherCode?: string;
   voucherDiscount?: number;
   finalAmount?: number;
-  markupAmount?: number;
-  serviceFee?: number;
+  createdAt: string;
+  updatedAt?: string;
+  deletedAt?: string | null;
 }
 
 export interface PassengerInfo {
@@ -139,7 +178,6 @@ export interface PageContent {
   image: string;
   sections: ContentSection[];
 }
-
 
 export interface ContactFormData {
   name: string;
@@ -185,7 +223,7 @@ export interface SocialMediaLink {
   url: string;
 }
 
-// NEW: Service Page Types
+// Service Page Types
 export interface ServiceSector {
   id: number;
   title: string;
@@ -212,7 +250,6 @@ export interface StatItem {
   number: string;
   label: string;
 }
-
 
 export interface TeamMember {
   name: string;

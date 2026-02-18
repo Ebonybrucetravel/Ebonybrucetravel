@@ -1,0 +1,377 @@
+'use client';
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+
+export default function CancelHotelPage({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter();
+  const [booking, setBooking] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [isCancelled, setIsCancelled] = useState(false);
+  const [bookingId, setBookingId] = useState<string | null>(null);
+
+  // Unwrap params Promise
+  useEffect(() => {
+    const unwrapParams = async () => {
+      try {
+        const resolvedParams = await params;
+        setBookingId(resolvedParams.id);
+      } catch (error) {
+        console.error('Error unwrapping params:', error);
+        setIsLoading(false);
+      }
+    };
+    unwrapParams();
+  }, [params]);
+
+  // Load booking data using unwrapped ID
+  useEffect(() => {
+    if (!bookingId) return;
+
+    const loadBooking = () => {
+      try {
+        // Try to get from individual booking
+        const saved = localStorage.getItem(`booking_${bookingId}`);
+        if (saved) {
+          setBooking(JSON.parse(saved));
+          setIsLoading(false);
+          return;
+        }
+        
+        // Try from userBookings
+        const userBookings = localStorage.getItem('userBookings');
+        if (userBookings) {
+          const bookings = JSON.parse(userBookings);
+          const found = bookings.find((b: any) => b.id === bookingId);
+          if (found) {
+            setBooking(found);
+            setIsLoading(false);
+            return;
+          }
+        }
+        
+        // Try from recentBookings
+        const recentBookings = localStorage.getItem('recentBookings');
+        if (recentBookings) {
+          const bookings = JSON.parse(recentBookings);
+          const found = bookings.find((b: any) => b.id === bookingId);
+          if (found) {
+            setBooking(found);
+            setIsLoading(false);
+            return;
+          }
+        }
+        
+        // Not found
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error loading booking:', error);
+        setIsLoading(false);
+      }
+    };
+
+    loadBooking();
+  }, [bookingId]);
+
+  const handleBack = () => {
+    router.push('/profile');
+  };
+
+  const handleConfirmCancellation = () => {
+    if (!booking || !bookingId) return;
+    
+    setIsCancelling(true);
+    setTimeout(() => {
+      // Update booking status
+      const updatedBooking = { ...booking, status: 'CANCELLED' };
+      
+      // Save updated booking
+      localStorage.setItem(`booking_${bookingId}`, JSON.stringify(updatedBooking));
+      
+      // Update in userBookings
+      const userBookings = localStorage.getItem('userBookings');
+      if (userBookings) {
+        try {
+          const bookings = JSON.parse(userBookings);
+          const updated = bookings.map((b: any) => 
+            b.id === bookingId ? updatedBooking : b
+          );
+          localStorage.setItem('userBookings', JSON.stringify(updated));
+        } catch (e) {
+          console.warn('Failed to update userBookings', e);
+        }
+      }
+      
+      // Update in recentBookings
+      const recentBookings = localStorage.getItem('recentBookings');
+      if (recentBookings) {
+        try {
+          const bookings = JSON.parse(recentBookings);
+          const updated = bookings.map((b: any) => 
+            b.id === bookingId ? updatedBooking : b
+          );
+          localStorage.setItem('recentBookings', JSON.stringify(updated));
+        } catch (e) {
+          console.warn('Failed to update recentBookings', e);
+        }
+      }
+      
+      setIsCancelling(false);
+      setIsCancelled(true);
+    }, 2000);
+  };
+
+  // Format date
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return 'Date TBD';
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Format price
+  const formatPrice = (amount: number, currency: string) => {
+    if (!amount) return 'N/A';
+    const symbols: Record<string, string> = {
+      'GBP': '£', 'USD': '$', 'EUR': '€', 'NGN': '₦'
+    };
+    const symbol = symbols[currency] || '£';
+    return `${symbol}${amount.toFixed(2)}`;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#33a8da] mb-4"></div>
+          <p className="text-gray-600">Loading hotel booking details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!booking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center bg-white p-12 rounded-[32px] shadow-sm max-w-md">
+          <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center text-red-500 mx-auto mb-4">
+            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-black text-gray-900 mb-2">Booking Not Found</h2>
+          <p className="text-gray-500 mb-6">The hotel booking you're trying to cancel doesn't exist.</p>
+          <button onClick={handleBack} className="bg-[#33a8da] text-white font-black px-6 py-3 rounded-xl">
+            Back to Profile
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Extract hotel data (handle both nested and flat structures)
+  const hotelData = {
+    id: booking.id,
+    bookingReference: booking.reference || booking.id?.slice(-8) || 'HOT-8824',
+    name: booking.title || booking.name || booking.bookingData?.hotelName || 'Hotel',
+    location: booking.location || booking.subtitle || booking.bookingData?.location || 'City Center',
+    checkIn: booking.checkIn || booking.bookingData?.checkInDate,
+    checkOut: booking.checkOut || booking.bookingData?.checkOutDate,
+    rooms: booking.rooms || booking.bookingData?.rooms || 1,
+    guests: booking.guests || booking.bookingData?.guests || 2,
+    price: booking.displayPrice || booking.price || formatPrice(booking.totalAmount, booking.currency),
+    currency: booking.currency || 'GBP',
+    cancellationDeadline: booking.cancellationDeadline || booking.bookingData?.cancellationDeadline || '24 hours before check-in',
+    image: booking.image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945',
+  };
+
+  // Parse price to number for calculations
+  const parsePrice = (priceStr: string): number => {
+    const num = parseFloat(priceStr.replace(/[^0-9.]/g, ''));
+    return isNaN(num) ? 0 : num;
+  };
+
+  const currencySymbol = hotelData.currency === 'GBP' ? '£' : 
+                        hotelData.currency === 'USD' ? '$' : 
+                        hotelData.currency === 'EUR' ? '€' : '£';
+  
+  const originalPrice = parsePrice(hotelData.price);
+  // Hotels often have free cancellation
+  const cancellationFee = 0;
+  const totalRefund = originalPrice - cancellationFee;
+
+  if (isCancelled) {
+    return (
+      <div className="bg-[#f8fafc] min-h-screen flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full text-center space-y-6 bg-white p-12 rounded-[32px] shadow-sm border border-gray-100">
+          <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center text-green-500 mx-auto">
+            <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-black text-gray-900">Hotel Booking Cancelled</h1>
+          <p className="text-gray-500 font-medium">
+            Your booking at {hotelData.name} has been cancelled. 
+            Refund of {currencySymbol}{totalRefund.toFixed(2)} will be processed within 5-7 business days.
+          </p>
+          <button onClick={handleBack} className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl shadow-lg">
+            Back to Profile
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-[#f8fafc] min-h-screen py-12">
+      <div className="max-w-4xl mx-auto px-4 space-y-8">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <button onClick={handleBack} className="flex items-center gap-2 text-[11px] font-black text-gray-400 uppercase tracking-widest hover:text-[#33a8da] transition">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Profile
+          </button>
+        </div>
+
+        {/* Main Card */}
+        <div className="bg-white rounded-[32px] shadow-xl border border-gray-100 overflow-hidden">
+          {/* Header Section */}
+          <div className="p-8 md:p-10 border-b border-gray-50">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center text-orange-600">
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M19 9H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V11a2 2 0 00-2-2zm-6 4h-2v-2h2v2zm6 0h-4v-2h4v2zM5 13h4v2H5v-2z"/>
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-2xl font-black text-gray-900 tracking-tight">Cancel Hotel Booking</h1>
+                <p className="text-sm text-gray-500">Booking #{hotelData.bookingReference}</p>
+              </div>
+            </div>
+
+            {/* Warning Banner */}
+            <div className="bg-amber-50 rounded-xl p-4 flex items-start gap-3 border border-amber-100">
+              <div className="text-amber-600 mt-0.5">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.516-2.625L8.485 2.495zM10 5a1 1 0 011 1v3a1 1 0 11-2 0V6a1 1 0 011-1zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <p className="text-sm font-bold text-gray-900 leading-tight">
+                Free cancellation up to {hotelData.cancellationDeadline}. No cancellation fee will apply.
+              </p>
+            </div>
+          </div>
+
+          {/* Hotel Details */}
+          <div className="p-8 md:p-10 space-y-8">
+            {/* Hotel Image and Info */}
+            <div className="flex flex-col md:flex-row gap-8">
+              <div className="w-full md:w-64 h-48 bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl overflow-hidden">
+                <img 
+                  src={hotelData.image} 
+                  alt={hotelData.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-2xl font-black text-gray-900 mb-2">{hotelData.name}</h2>
+                <p className="text-sm text-gray-600 mb-2">{hotelData.location}</p>
+              </div>
+            </div>
+
+            {/* Stay Details */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 rounded-2xl p-6">
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Check-in</p>
+                <p className="text-base font-black text-gray-900">{formatDate(hotelData.checkIn)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Check-out</p>
+                <p className="text-base font-black text-gray-900">{formatDate(hotelData.checkOut)}</p>
+              </div>
+            </div>
+
+            {/* Room Details */}
+            <div className="border-t border-gray-100 pt-6">
+              <h3 className="text-lg font-black text-gray-900 mb-4">Room Details</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Rooms</p>
+                  <p className="text-sm font-black text-gray-900">{hotelData.rooms}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Guests</p>
+                  <p className="text-sm font-black text-gray-900">{hotelData.guests}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Refund Summary */}
+          <div className="bg-gray-50 p-8 md:p-10 border-t border-gray-100">
+            <h3 className="text-xl font-black text-gray-900 mb-6">Refund Summary</h3>
+            
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Room Cost</span>
+                <span className="text-lg font-black text-gray-900">{currencySymbol}{originalPrice.toFixed(2)}</span>
+              </div>
+              
+              <div className="flex justify-between items-center text-green-600">
+                <span className="text-sm font-bold">Cancellation Fee</span>
+                <span className="text-lg font-black">{currencySymbol}{cancellationFee.toFixed(2)}</span>
+              </div>
+              
+              <div className="pt-4 border-t border-gray-200 flex justify-between items-center">
+                <span className="text-xl font-black text-gray-900">Total Refund</span>
+                <span className="text-2xl font-black text-[#33a8da]">
+                  {currencySymbol}{totalRefund.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-400 mt-4">
+              Refund will be processed to your original payment method within 5-7 business days.
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="p-8 md:p-10 border-t border-gray-100 flex flex-col md:flex-row items-center justify-end gap-4">
+            <button 
+              onClick={handleBack}
+              className="px-8 py-4 border-2 border-gray-200 text-gray-700 font-black rounded-xl hover:bg-gray-50 transition"
+            >
+              Keep Booking
+            </button>
+            <button 
+              onClick={handleConfirmCancellation}
+              disabled={isCancelling}
+              className="px-8 py-4 bg-red-500 text-white font-black rounded-xl hover:bg-red-600 transition shadow-lg disabled:opacity-50 flex items-center gap-2"
+            >
+              {isCancelling ? (
+                <>
+                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Processing...
+                </>
+              ) : (
+                'Confirm Cancellation'
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

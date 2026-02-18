@@ -1,12 +1,13 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 // Remove Stripe imports
-import type { User } from '@/lib/types';
+import type { User, Booking } from '@/lib/types'; // Updated import
 import ManageBookingModal from './ManageBookingModal';
 import { useLanguage } from '../context/LanguageContext';
 import CancelBooking from './CancelBooking'; 
 import { userApi, ApiError } from '../lib/api';
 import { config } from '../lib/config';
+
 
 const formatDateForDisplay = (dateStr?: string): string => {
   if (!dateStr) return '';
@@ -48,20 +49,7 @@ interface ProfileProps {
   initialActiveTab?: string;
 }
 
-interface Booking {
-  id: string;
-  type: 'flight' | 'hotel' | 'car';
-  title: string;
-  provider: string;
-  subtitle: string;
-  date: string;
-  duration?: string;
-  status: 'Confirmed' | 'Completed' | 'Cancel' | 'Active';
-  price: string;
-  currency: string;
-  iconBg: string;
-  imageUrl?: string;
-}
+// REMOVED local Booking interface - now using imported one
 
 interface OtherTraveler {
   id: string;
@@ -182,23 +170,34 @@ const Profile: React.FC<ProfileProps> = ({
           const items = Array.isArray(data) ? data : (data?.data || data?.bookings || []);
           const mapped: Booking[] = items.map((b: any) => {
             const pt = (b.productType || '').toLowerCase();
-            const type: 'flight' | 'hotel' | 'car' = pt.includes('hotel') ? 'hotel' : pt.includes('car') ? 'car' : 'flight';
-            const statusMap: Record<string, 'Confirmed' | 'Completed' | 'Cancel' | 'Active'> = {
-              CONFIRMED: 'Confirmed', COMPLETED: 'Completed', CANCELLED: 'Cancel', CANCELED: 'Cancel',
-              PENDING: 'Active', PAYMENT_PENDING: 'Active', PROCESSING: 'Active',
-            };
+            
+            // Map status to match the imported Booking type
+            let status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'CANCELLED' = 'PENDING';
+            const upperStatus = b.status?.toUpperCase?.() || '';
+            if (upperStatus === 'CONFIRMED') status = 'CONFIRMED';
+            else if (upperStatus === 'COMPLETED') status = 'CONFIRMED';
+            else if (upperStatus === 'CANCELLED' || upperStatus === 'CANCELED' || upperStatus === 'CANCEL') status = 'CANCELLED';
+            else if (upperStatus === 'FAILED') status = 'FAILED';
+            else status = 'PENDING';
+            
             return {
               id: b.id,
-              type,
-              title: b.bookingData?.title || b.reference || `Booking ${b.reference}`,
+              reference: b.reference || b.id,
+              status: status,
+              paymentStatus: b.paymentStatus || 'PENDING',
+              productType: b.productType || 'FLIGHT_INTERNATIONAL',
               provider: b.provider || '',
-              subtitle: b.bookingData?.subtitle || '',
-              date: b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
-              duration: b.bookingData?.duration || '',
-              status: statusMap[b.status?.toUpperCase()] || 'Active',
-              price: (b.totalAmount || b.finalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+              basePrice: b.basePrice || 0,
+              totalAmount: b.totalAmount || b.finalAmount || 0,
               currency: b.currency || 'USD',
-              iconBg: type === 'flight' ? 'bg-blue-50' : type === 'hotel' ? 'bg-yellow-50' : 'bg-purple-50',
+              bookingData: b.bookingData || {},
+              passengerInfo: b.passengerInfo || {
+                firstName: '',
+                lastName: '',
+                email: '',
+                phone: ''
+              },
+              createdAt: b.createdAt || new Date().toISOString(),
             };
           });
           setBookings(mapped);
@@ -626,7 +625,7 @@ const Profile: React.FC<ProfileProps> = ({
       
       setBookings(prev => prev.map(b => 
         b.id === selectedBooking.id 
-          ? { ...b, status: 'Cancel' as const } 
+          ? { ...b, status: 'CANCELLED' } 
           : b
       ));
       
@@ -640,24 +639,27 @@ const Profile: React.FC<ProfileProps> = ({
       const cancelData = {
         item: {
           id: selectedBooking.id,
-          title: selectedBooking.title,
+          title: selectedBooking.bookingData?.origin && selectedBooking.bookingData?.destination 
+            ? `${selectedBooking.bookingData.origin} → ${selectedBooking.bookingData.destination}`
+            : selectedBooking.reference,
           provider: selectedBooking.provider,
-          subtitle: selectedBooking.subtitle,
-          date: selectedBooking.date,
-          price: selectedBooking.price,
-          type: selectedBooking.type,
+          subtitle: selectedBooking.bookingData?.flightNumber || '',
+          date: selectedBooking.createdAt,
+          price: selectedBooking.totalAmount?.toFixed(2) || '0.00',
+          type: selectedBooking.productType?.includes('FLIGHT') ? 'flight' : 
+                selectedBooking.productType?.includes('HOTEL') ? 'hotel' : 'car',
           status: selectedBooking.status,
           currency: selectedBooking.currency
         },
         searchParams: {
           segments: [
             {
-              from: 'Lagos (LOS)',
-              to: 'Abuja (ABV)'
+              from: selectedBooking.bookingData?.origin ? `${selectedBooking.bookingData.origin} (${selectedBooking.bookingData.origin})` : 'Lagos (LOS)',
+              to: selectedBooking.bookingData?.destination ? `${selectedBooking.bookingData.destination} (${selectedBooking.bookingData.destination})` : 'Abuja (ABV)'
             }
           ],
           travellers: '1 Traveller',
-          bookingReference: `#${selectedBooking.id}`
+          bookingReference: `#${selectedBooking.id.slice(-8)}`
         }
       };
       
@@ -714,19 +716,93 @@ const Profile: React.FC<ProfileProps> = ({
 
   const filteredBookings = bookings.filter(b => {
     if (bookingFilter === 'All') return true;
-    return b.type.toLowerCase() === bookingFilter.toLowerCase();
+    const type = b.productType?.includes('HOTEL') ? 'Hotel' : 
+                 b.productType?.includes('CAR') ? 'Car' : 'Flight';
+    return type === bookingFilter;
   });
 
-  // Remove 'payment' from menuItems
-  const menuItems = [
-    { id: 'details', label: 'Personal Details', icon: <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /> },
-    { id: 'bookings', label: 'My Bookings', icon: <path d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745V20a2 2 0 002 2h14a2 2 0 002-2v-6.745zM16 8V5a3 3 0 00-6 0v3h6z" /> },
-    { id: 'saved', label: 'Saved Items', icon: <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /> },
-    { id: 'rewards', label: 'Rewards', icon: <path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /> },
-    { id: 'travelers', label: 'Other Travelers', icon: <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2m16 0h2a4 4 0 0 0 4-4v-2a4 4 0 0 0-4-4h-2m-1-10a4 4 0 1 1-8 0 4 4 0 0 1 8 0z" /> },
-    { id: 'security', label: 'Security', icon: <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /> },
-    { id: 'preferences', label: 'Preferences', icon: <path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /> },
-  ];
+  const renderBookingCard = (booking: Booking) => {
+    // Determine display status for UI
+    let displayStatus = 'Active';
+    let statusColor = 'bg-green-100 text-green-600';
+    
+    if (booking.status === 'CONFIRMED') {
+      displayStatus = 'Confirmed';
+      statusColor = 'bg-green-100 text-green-600';
+    } else if (booking.status === 'CANCELLED') {
+      displayStatus = 'Cancelled';
+      statusColor = 'bg-red-50 text-red-500';
+    } else if (booking.status === 'FAILED') {
+      displayStatus = 'Failed';
+      statusColor = 'bg-red-50 text-red-500';
+    } else {
+      displayStatus = 'Active';
+      statusColor = 'bg-green-100 text-green-600';
+    }
+    
+    // Determine booking type for icon
+    const bookingType = booking.productType?.includes('HOTEL') ? 'hotel' : 
+                        booking.productType?.includes('CAR') ? 'car' : 'flight';
+    
+    // Format price for display
+    const formattedPrice = booking.totalAmount?.toFixed(2) || '0.00';
+    
+    return (
+      <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow">
+        <div className={`w-16 h-16 rounded-full flex items-center justify-center shrink-0 ${
+          bookingType === 'flight' ? 'bg-blue-50' : 
+          bookingType === 'hotel' ? 'bg-yellow-50' : 'bg-purple-50'
+        }`}>
+          {bookingType === 'flight' && <svg className="w-8 h-8 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>}
+          {bookingType === 'hotel' && <svg className="w-8 h-8 text-orange-500" fill="currentColor" viewBox="0 0 24 24"><path d="M19 9H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V11a2 2 0 00-2-2zm-6 4h-2v-2h2v2zm6 0h-4v-2h4v2zM5 13h4v2H5v-2z"/></svg>}
+          {bookingType === 'car' && <svg className="w-8 h-8 text-purple-600" fill="currentColor" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" /></svg>}
+        </div>
+        <div className="flex-1 text-center md:text-left min-w-0">
+          <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
+            <h4 className="text-lg font-black text-gray-900 truncate tracking-tight">
+              {booking.bookingData?.origin && booking.bookingData?.destination 
+                ? `${booking.bookingData.origin} → ${booking.bookingData.destination}`
+                : booking.reference}
+            </h4>
+            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${statusColor}`}>
+              {displayStatus}
+            </span>
+          </div>
+          <p className="text-[11px] font-bold text-gray-400 mb-3">
+            {booking.provider} 
+            {booking.bookingData?.flightNumber && ` • ${booking.bookingData.flightNumber}`}
+          </p>
+          <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] font-black text-gray-400 uppercase tracking-tight">
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              {new Date(booking.createdAt).toLocaleDateString()}
+            </div>
+          </div>
+        </div>
+        <div className="text-center md:text-right shrink-0">
+          <p className="text-xs font-black text-[#33a8da] mb-4">
+            {booking.currency} <span className="text-lg">{formattedPrice}</span>
+          </p>
+          <div className="flex items-center justify-center md:justify-end gap-5">
+            <button 
+              onClick={() => handleManageBooking(booking)} 
+              className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition"
+            >
+              Details
+            </button>
+            <button 
+              onClick={() => handleManageBooking(booking)} 
+              className="px-8 py-3 bg-[#33a8da] text-white rounded-xl text-[11px] font-black uppercase hover:bg-[#2c98c7] transition shadow-lg active:scale-95"
+            >
+              Manage
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderSavedCard = (item: SavedItem) => {
     const formattedItem = { ...item, title: item.name, subtitle: item.location };
@@ -753,42 +829,16 @@ const Profile: React.FC<ProfileProps> = ({
     );
   };
 
-  const renderBookingCard = (booking: Booking) => {
-    const statusColors = { 
-      Confirmed: 'bg-green-100 text-green-600', 
-      Completed: 'bg-gray-100 text-gray-500', 
-      Cancel: 'bg-red-50 text-red-500', 
-      Active: 'bg-green-100 text-green-600' 
-    };
-    
-    return (
-      <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow">
-        <div className={`w-16 h-16 rounded-full flex items-center justify-center shrink-0 ${booking.iconBg}`}>
-          {booking.type === 'flight' && <svg className="w-8 h-8 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>}
-          {booking.type === 'hotel' && <div className="w-10 h-10 bg-[#fef3c7] rounded-full" />}
-          {booking.type === 'car' && <svg className="w-8 h-8 text-purple-600" fill="currentColor" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" /></svg>}
-        </div>
-        <div className="flex-1 text-center md:text-left min-w-0">
-          <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
-            <h4 className="text-lg font-black text-gray-900 truncate tracking-tight">{booking.title}</h4>
-            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${statusColors[booking.status]}`}>{booking.status}</span>
-          </div>
-          <p className="text-[11px] font-bold text-gray-400 mb-3">{booking.provider} <span className="opacity-60">{booking.subtitle}</span></p>
-          <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] font-black text-gray-400 uppercase tracking-tight">
-            <div className="flex items-center gap-1.5"><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>{booking.date}</div>
-            {booking.duration && <div className="flex items-center gap-1.5"><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>{booking.duration}</div>}
-          </div>
-        </div>
-        <div className="text-center md:text-right shrink-0">
-          <p className="text-xs font-black text-[#33a8da] mb-4">{booking.currency} <span className="text-lg">{booking.price}</span></p>
-          <div className="flex items-center justify-center md:justify-end gap-5">
-            <button onClick={() => handleManageBooking(booking)} className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition">{booking.status === 'Cancel' ? 'Receipt' : 'Details'}</button>
-            <button onClick={() => handleManageBooking(booking)} className="px-8 py-3 bg-[#33a8da] text-white rounded-xl text-[11px] font-black uppercase hover:bg-[#2c98c7] transition shadow-lg active:scale-95">{booking.status === 'Completed' ? 'Book Again' : 'Manage'}</button>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  // Remove 'payment' from menuItems
+  const menuItems = [
+    { id: 'details', label: 'Personal Details', icon: <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /> },
+    { id: 'bookings', label: 'My Bookings', icon: <path d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745V20a2 2 0 002 2h14a2 2 0 002-2v-6.745zM16 8V5a3 3 0 00-6 0v3h6z" /> },
+    { id: 'saved', label: 'Saved Items', icon: <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /> },
+    { id: 'rewards', label: 'Rewards', icon: <path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /> },
+    { id: 'travelers', label: 'Other Travelers', icon: <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2m16 0h2a4 4 0 0 0 4-4v-2a4 4 0 0 0-4-4h-2m-1-10a4 4 0 1 1-8 0 4 4 0 0 1 8 0z" /> },
+    { id: 'security', label: 'Security', icon: <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /> },
+    { id: 'preferences', label: 'Preferences', icon: <path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /> },
+  ];
 
   if (showCancelPage && cancellationData) {
     return (
@@ -1522,7 +1572,5 @@ const Profile: React.FC<ProfileProps> = ({
     </div>
   );
 };
-
-
 
 export default Profile;

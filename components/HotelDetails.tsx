@@ -55,6 +55,116 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const [loadingStats, setLoadingStats] = useState(false);
   const [statsError, setStatsError] = useState(false);
 
+  // Format date function
+  const formatDisplayDate = (dateStr?: string) => {
+    if (!dateStr) return null;
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Extract real dates from searchParams or item
+  const getCheckInDate = () => {
+    // Try from searchParams first
+    if (searchParams?.checkInDate) {
+      return formatDisplayDate(searchParams.checkInDate);
+    }
+    // Try from item.realData
+    if (item?.realData?.checkInDate) {
+      return formatDisplayDate(item.realData.checkInDate);
+    }
+    // Try from item.bookingData
+    if ((item as any)?.bookingData?.checkInDate) {
+      return formatDisplayDate((item as any).bookingData.checkInDate);
+    }
+    return null;
+  };
+
+  const getCheckOutDate = () => {
+    // Try from searchParams first
+    if (searchParams?.checkOutDate) {
+      return formatDisplayDate(searchParams.checkOutDate);
+    }
+    // Try from item.realData
+    if (item?.realData?.checkOutDate) {
+      return formatDisplayDate(item.realData.checkOutDate);
+    }
+    // Try from item.bookingData
+    if ((item as any)?.bookingData?.checkOutDate) {
+      return formatDisplayDate((item as any).bookingData.checkOutDate);
+    }
+    return null;
+  };
+
+  // Get guests count
+  const getGuestsCount = () => {
+    // Try from searchParams
+    if (searchParams?.guests) {
+      return `${searchParams.guests} Adults`;
+    }
+    if (searchParams?.adults) {
+      return `${searchParams.adults} Adults`;
+    }
+    // Try from item.realData
+    if (item?.realData?.guests) {
+      return `${item.realData.guests} Adults`;
+    }
+    // Try from item
+    if ((item as any)?.guests) {
+      return `${(item as any).guests} Adults`;
+    }
+    return '2 Adults';
+  };
+
+  // Get rooms count
+  const getRoomsCount = () => {
+    // Try from searchParams
+    if (searchParams?.rooms) {
+      return `${searchParams.rooms} Room${searchParams.rooms > 1 ? 's' : ''}`;
+    }
+    if (searchParams?.roomQuantity) {
+      return `${searchParams.roomQuantity} Room${searchParams.roomQuantity > 1 ? 's' : ''}`;
+    }
+    // Try from item.realData
+    if (item?.realData?.rooms) {
+      return `${item.realData.rooms} Room${item.realData.rooms > 1 ? 's' : ''}`;
+    }
+    // Try from item
+    if ((item as any)?.rooms) {
+      return `${(item as any).rooms} Room${(item as any).rooms > 1 ? 's' : ''}`;
+    }
+    return '1 Room';
+  };
+
+  // Get nights count
+  const getNightsCount = () => {
+    const checkIn = getCheckInDate();
+    const checkOut = getCheckOutDate();
+    
+    if (checkIn && checkOut) {
+      try {
+        const start = new Date(checkIn);
+        const end = new Date(checkOut);
+        const nights = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        if (nights > 0) return nights;
+      } catch (e) {
+        console.warn('Error calculating nights:', e);
+      }
+    }
+    return null;
+  };
+
+  const checkInDate = getCheckInDate();
+  const checkOutDate = getCheckOutDate();
+  const nights = getNightsCount();
+
   // Early return if no item is selected
   if (!item) {
     return (
@@ -208,15 +318,15 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
           if (onFetchImages) {
             const fetchedImages = await onFetchImages(item.id, item.title);
             
-           // FIX: Check if fetchedImages has a data property that is an array
-if (fetchedImages && typeof fetchedImages === 'object' && 'data' in fetchedImages && Array.isArray(fetchedImages.data)) {
-  images = fetchedImages.data.map((img: any) => ({
-    id: img.id || `${item.id}-${Date.now()}-${Math.random()}`,
-    url: typeof img === 'string' ? img : img.url,
-    caption: img.caption || `${item.title} - Hotel Image`,
-    type: img.type || 'default'
-  }));
-} 
+            // FIX: Check if fetchedImages has a data property that is an array
+            if (fetchedImages && typeof fetchedImages === 'object' && 'data' in fetchedImages && Array.isArray(fetchedImages.data)) {
+              images = fetchedImages.data.map((img: any) => ({
+                id: img.id || `${item.id}-${Date.now()}-${Math.random()}`,
+                url: typeof img === 'string' ? img : img.url,
+                caption: img.caption || `${item.title} - Hotel Image`,
+                type: img.type || 'default'
+              }));
+            } 
             // Also keep the array check as fallback
             else if (Array.isArray(fetchedImages) && fetchedImages.length > 0) {
               images = fetchedImages.map((img: any) => ({
@@ -826,11 +936,15 @@ if (fetchedImages && typeof fetchedImages === 'object' && 'data' in fetchedImage
                <div className="space-y-4 mb-10">
                   <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Dates</p>
-                    <p className="text-sm font-bold text-gray-900">Oct 24, 2024 - Oct 27, 2024</p>
+                    <p className="text-sm font-bold text-gray-900">
+                      {checkInDate && checkOutDate 
+                        ? `${checkInDate} - ${checkOutDate} ${nights ? `(${nights} night${nights > 1 ? 's' : ''})` : ''}`
+                        : 'Select dates to view pricing'}
+                    </p>
                   </div>
                   <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Guests</p>
-                    <p className="text-sm font-bold text-gray-900">2 Adults, 1 Room</p>
+                    <p className="text-sm font-bold text-gray-900">{getGuestsCount()}, {getRoomsCount()}</p>
                   </div>
                </div>
 

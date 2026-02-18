@@ -23,9 +23,125 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
       departureTime: item.departureTime,
       arrivalTime: item.arrivalTime,
       airlineName: item.airlineName,
-      stopCount: item.stopCount
+      stopCount: item.stopCount,
+      flightNumber: item.flightNumber,
+      cabin: item.cabin,
+      displayPrice: item.displayPrice
     });
   }, [item]);
+
+  // Handle booking with complete data preservation
+  const handleBookClick = () => {
+    console.log('📚 Creating booking from flight:', {
+      departureAirport: item.departureAirport,
+      arrivalAirport: item.arrivalAirport,
+      departureTime: item.departureTime,
+      airlineName: item.airlineName
+    });
+
+    // Create a COMPLETE booking object with ALL flight details
+    const completeBooking = {
+      // Spread all item properties first
+      ...item,
+      
+      // Ensure ID is set
+      id: item.id || `flight-${Date.now()}`,
+      
+      // Set booking-specific fields
+      type: 'flight',
+      status: 'Confirmed',
+      date: item.departureTime || new Date().toISOString(),
+      
+      // Explicitly include ALL flight fields to ensure they're captured
+      departureAirport: item.departureAirport,
+      arrivalAirport: item.arrivalAirport,
+      departureCity: item.departureCity,
+      arrivalCity: item.arrivalCity,
+      departureTime: item.departureTime,
+      arrivalTime: item.arrivalTime,
+      airlineName: item.airlineName,
+      airlineCode: item.airlineCode,
+      airlineLogo: item.airlineLogo,
+      flightNumber: item.flightNumber,
+      stopCount: item.stopCount,
+      stopText: item.stopText,
+      cabin: item.cabin,
+      baggage: item.baggage,
+      displayPrice: item.displayPrice || item.price,
+      price: item.price,
+      currency: item.currency || 'GBP',
+      duration: item.duration,
+      
+      // For backward compatibility
+      title: item.title || `${item.departureAirport} → ${item.arrivalAirport}`,
+      provider: item.airlineName || item.provider,
+      subtitle: item.subtitle || `${item.airlineName} ${item.flightNumber}`,
+      
+      // Icon background
+      iconBg: 'text-[#33a8da]',
+      
+      // Include slices for segment details if available
+      slices: item.slices,
+    };
+
+    console.log('💾 Saving complete booking:', {
+      id: completeBooking.id,
+      departureAirport: completeBooking.departureAirport,
+      arrivalAirport: completeBooking.arrivalAirport,
+      departureTime: completeBooking.departureTime,
+      airlineName: completeBooking.airlineName,
+      flightNumber: completeBooking.flightNumber,
+      price: completeBooking.displayPrice
+    });
+
+    // Save to storage
+    try {
+      // Save as current booking (for immediate use in payment)
+      sessionStorage.setItem('currentBooking', JSON.stringify(completeBooking));
+      
+      // Add to recent bookings list
+      const recentBookings = sessionStorage.getItem('recentBookings');
+      const bookings = recentBookings ? JSON.parse(recentBookings) : [];
+      
+      // Check if booking already exists
+      const existingIndex = bookings.findIndex((b: any) => b.id === completeBooking.id);
+      if (existingIndex >= 0) {
+        bookings[existingIndex] = completeBooking;
+      } else {
+        bookings.push(completeBooking);
+      }
+      
+      // Keep only last 10 bookings
+      const recentBookingsTrimmed = bookings.slice(-10);
+      sessionStorage.setItem('recentBookings', JSON.stringify(recentBookingsTrimmed));
+      console.log('✅ Saved to sessionStorage, recentBookings count:', recentBookingsTrimmed.length);
+      
+      // Also save to localStorage for persistence
+      const savedBookings = localStorage.getItem('userBookings');
+      const allBookings = savedBookings ? JSON.parse(savedBookings) : [];
+      
+      const localExistingIndex = allBookings.findIndex((b: any) => b.id === completeBooking.id);
+      if (localExistingIndex >= 0) {
+        allBookings[localExistingIndex] = completeBooking;
+      } else {
+        allBookings.push(completeBooking);
+      }
+      
+      localStorage.setItem('userBookings', JSON.stringify(allBookings));
+      console.log('✅ Saved to localStorage');
+      
+      // Store individual booking by ID for easy retrieval
+      localStorage.setItem(`booking_${completeBooking.id}`, JSON.stringify(completeBooking));
+      
+    } catch (e) {
+      console.error('❌ Error saving booking:', e);
+    }
+
+    // Call the original onBook prop to navigate to payment
+    if (onBook) {
+      onBook();
+    }
+  };
 
   // Use transformed fields if available (from context/SearchResults)
   if (item.departureAirport && item.arrivalAirport && item.departureTime) {
@@ -233,7 +349,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                   </p>
                 </div>
                 <button 
-                  onClick={onBook} 
+                  onClick={handleBookClick} 
                   className="w-full md:w-auto px-12 py-5 bg-[#33a8da] text-white font-black rounded-2xl shadow-xl hover:bg-[#2c98c7] transition active:scale-95 uppercase tracking-widest text-xs"
                 >
                   Proceed to Checkout
