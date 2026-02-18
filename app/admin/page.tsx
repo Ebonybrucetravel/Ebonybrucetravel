@@ -1,53 +1,67 @@
 'use client';
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { config } from '@/lib/config';
+
 export default function AdminLoginPage() {
-    const router = useRouter();
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
-    const handleLogin = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
-        try {
-            const res = await fetch(`${config.apiBaseUrl}/api/v1/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
-            });
-            const data = await res.json();
-            if (!res.ok)
-                throw new Error(data.message ?? 'Login failed');
-            const user = data.user ?? data.data?.user ?? data;
-            if (user.role !== 'admin')
-                throw new Error('Insufficient permissions');
-            localStorage.setItem('adminToken', data.token ?? data.data?.token);
-            router.push('/admin/dashboard');
-        }
-        catch (err: any) {
-            setError(err.message);
-        }
-        finally {
-            setLoading(false);
-        }
-    };
-    return (<div className="min-h-[60vh] flex items-center justify-center px-4">
-      <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Admin Login</h1>
-          <p className="text-gray-500 mt-1 text-sm">Enter your admin credentials</p>
-        </div>
-        {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#33a8da] focus:border-transparent"/>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-          <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#33a8da] focus:border-transparent"/>
+  const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    // Mock Admin Auth - Simulate API delay
+    setTimeout(() => {
+      // Hardcoded admin credentials for testing
+      if (email === 'admin@ebonybruce.com' && password === 'admin123') {
+        // Mock successful login
+        const mockUser = {
+          id: 'admin-001',
+          name: 'Admin User',
+          email: 'admin@ebonybruce.com',
+          role: 'admin'
+        };
+        
+        const mockToken = 'mock-jwt-token-for-testing-123456';
+        
+        // Store in localStorage
+        localStorage.setItem('adminToken', mockToken);
+        localStorage.setItem('adminUser', JSON.stringify(mockUser));
+        
+        // Redirect to dashboard
+        router.push('/admin/dashboard');
+      } else {
+        setError('Invalid admin credentials. Use admin@ebonybruce.com / admin123');
+      }
+      setLoading(false);
+    }, 1000); // Simulate network delay
+  };
+
+  return (
+    <div className="min-h-screen bg-[#000814] flex flex-col items-center justify-center p-6 relative overflow-hidden">
+      {/* Abstract Background Decoration */}
+      <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-[120px]"></div>
+      <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-blue-900/10 rounded-full blur-[120px]"></div>
+
+      <div className="w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 p-10 rounded-[40px] shadow-2xl animate-in zoom-in-95 duration-500">
+        <div className="text-center mb-10">
+          <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-blue-600/20">
+            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-black text-white tracking-tight uppercase">Staff Portal</h1>
+          <p className="text-blue-300/60 text-[10px] font-black uppercase tracking-[0.2em] mt-2">Ebony Bruce Admin Access</p>
+          <div className="mt-4 bg-blue-900/30 border border-blue-500/30 p-3 rounded-xl">
+            <p className="text-blue-300 text-xs font-mono">
+              Test credentials:<br />
+              admin@ebonybruce.com / admin123
+            </p>
+          </div>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
@@ -58,9 +72,8 @@ export default function AdminLoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold focus:ring-4 focus:ring-blue-600/20 focus:border-blue-600 transition-all outline-none"
+              className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold focus:ring-4 focus:ring-blue-600/20 focus:border-blue-600 transition-all outline-none placeholder:text-white/20"
               placeholder="admin@ebonybruce.com"
-              // REMOVED defaultValue
             />
           </div>
 
@@ -71,9 +84,8 @@ export default function AdminLoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold focus:ring-4 focus:ring-blue-600/20 focus:border-blue-600 transition-all outline-none"
+              className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold focus:ring-4 focus:ring-blue-600/20 focus:border-blue-600 transition-all outline-none placeholder:text-white/20"
               placeholder="••••••••••••"
-              // REMOVED defaultValue
             />
           </div>
 
@@ -86,7 +98,7 @@ export default function AdminLoginPage() {
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full bg-blue-600 text-white font-black py-5 rounded-2xl hover:bg-blue-500 transition shadow-2xl shadow-blue-600/30 active:scale-[0.98] flex items-center justify-center gap-3"
+            className="w-full bg-blue-600 text-white font-black py-5 rounded-2xl hover:bg-blue-500 transition shadow-2xl shadow-blue-600/30 active:scale-[0.98] flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
               <>
@@ -106,6 +118,11 @@ export default function AdminLoginPage() {
         >
           Return to Client Portal
         </button>
-      </form>
-    </div>);
+      </div>
+
+      <div className="mt-12 text-center text-[10px] text-white/20 font-medium uppercase tracking-[0.3em]">
+        Secured by Ebony Bruce Identity Management v4.0 (TEST MODE)
+      </div>
+    </div>
+  );
 }

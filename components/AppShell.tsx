@@ -15,6 +15,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [isAiOpen, setIsAiOpen] = useState(false);
 
+  // Check if current route is admin dashboard
+  const isAdminRoute = pathname?.startsWith('/admin') || pathname?.includes('/admin/');
+
   // ── Auth modal state (popup overlay, synced with route) ───
   const authRoutes = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email'];
   const isAuthRoute = authRoutes.includes(pathname);
@@ -64,26 +67,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Navbar
-        isLoggedIn={isLoggedIn}
-        user={user ?? { name: '', email: '' }}
-        activeTab={activeTab}
-        onSignIn={() => openAuth('login')}
-        onRegister={() => openAuth('register')}
-        onLogoClick={() => router.push('/')}
-        onTabClick={(tab) => router.push(`/${tab}`)}
-        onProfileClick={() => router.push('/profile')}
-        onSignOut={() => { logout(); router.push('/'); }}
-        onProfileTabSelect={(tab: string) => router.push(`/profile?tab=${tab}`)}
-      />
+      {/* Only show Navbar on non-admin routes */}
+      {!isAdminRoute && (
+        <Navbar
+          isLoggedIn={isLoggedIn}
+          user={user ?? { name: '', email: '' }}
+          activeTab={activeTab}
+          onSignIn={() => openAuth('login')}
+          onRegister={() => openAuth('register')}
+          onLogoClick={() => router.push('/')}
+          onTabClick={(tab) => router.push(`/${tab}`)}
+          onProfileClick={() => router.push('/profile')}
+          onSignOut={() => { logout(); router.push('/'); }}
+          onProfileTabSelect={(tab: string) => router.push(`/profile?tab=${tab}`)}
+        />
+      )}
 
-      <main className="flex-1">{children}</main>
+      <main className={`flex-1 ${isAdminRoute ? 'pt-0' : ''}`}>{children}</main>
 
-      <Newsletter />
-      <Footer
-        onLogoClick={() => router.push('/')}
-        onAdminClick={() => router.push('/admin')}
-      />
+      {/* Only show Newsletter and Footer on non-admin routes */}
+      {!isAdminRoute && (
+        <>
+          <Newsletter />
+          <Footer
+            onLogoClick={() => router.push('/')}
+            onAdminClick={() => router.push('/admin')}
+          />
+        </>
+      )}
 
       {/* Auth popup overlay — shown when on an auth route */}
       {isAuthRoute && (
@@ -97,7 +108,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      {isLoggedIn && (
+      {isLoggedIn && !isAdminRoute && (
         <button
           onClick={() => setIsAiOpen(!isAiOpen)}
           className="fixed bottom-8 right-8 w-16 h-16 bg-[#33a8da] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition z-50"
