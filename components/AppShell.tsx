@@ -15,6 +15,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [isAiOpen, setIsAiOpen] = useState(false);
 
+  // Admin routes: no main site nav/footer, full-screen admin UI
+  const isAdminRoute = pathname?.startsWith('/admin');
+
   // ── Auth modal state (popup overlay, synced with route) ───
   const authRoutes = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email'];
   const isAuthRoute = authRoutes.includes(pathname);
@@ -32,7 +35,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [pathname, isAuthRoute]);
 
   const openAuth = (mode: 'login' | 'register') => {
-    // Remember current page before navigating to auth route
     sessionStorage.setItem('authReturnTo', pathname);
     router.push(`/${mode}`);
   };
@@ -44,26 +46,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   const handleAuthSuccess = (userData: { name: string; email: string; token?: string; expiresIn?: number }) => {
-    // Update user in auth context if needed
-    if (updateUser) {
-      updateUser(userData);
-    }
-    
+    if (updateUser) updateUser(userData);
     const returnTo = sessionStorage.getItem('authReturnTo') || '/';
     sessionStorage.removeItem('authReturnTo');
-    // Full navigation to refresh auth state
     window.location.href = returnTo;
   };
 
-  // Derive active tab from the current pathname
   const activeTab: 'flights' | 'hotels' | 'cars' = pathname.startsWith('/hotels')
     ? 'hotels'
     : pathname.startsWith('/cars')
       ? 'cars'
       : 'flights';
 
-  // Admin routes: no main site nav/footer, full-screen admin UI
-  const isAdminRoute = pathname.startsWith('/admin');
+  // Admin routes: render only children (no Navbar, Newsletter, Footer)
   if (isAdminRoute) {
     return <>{children}</>;
   }
@@ -91,15 +86,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         onAdminClick={() => router.push('/admin')}
       />
 
-      {/* Auth popup overlay — shown when on an auth route */}
       {isAuthRoute && (
         <AuthModal
           isOpen={isAuthRoute}
           initialMode={authMode}
           onLoginSuccess={handleAuthSuccess}
           onClose={closeAuth}
-          // Optional: Add resetToken if needed from URL params
-          // resetToken={resetTokenFromUrl}
         />
       )}
 
