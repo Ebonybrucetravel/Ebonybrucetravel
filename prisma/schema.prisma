@@ -1,13 +1,16 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Prisma 7: URL is in prisma.config.ts; client generated to custom output for driver adapter.
 
 generator client {
-  provider = "prisma-client-js"
+  provider            = "prisma-client"
+  output              = "../generated/prisma"
+  moduleFormat        = "cjs"
+  importFileExtension = ""
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // User model for authentication and customer/admin management
@@ -56,12 +59,18 @@ model User {
   savedTravelers     SavedTraveler[]
   vouchers           Voucher[]
 
+  // Admin: suspend access (user cannot log in; still appears in directory)
+  suspendedAt DateTime?
+  // Admin: internal notes about this customer (not visible to user)
+  internalNotes String? @db.Text
+
   // Timestamps
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime? // Soft delete
 
   @@index([email])
+  @@index([suspendedAt])
   @@index([role])
   @@unique([provider, providerId]) // Ensure unique OAuth provider + ID combination
   @@map("users")

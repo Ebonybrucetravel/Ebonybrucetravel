@@ -3,18 +3,21 @@ import {
   Post,
   Get,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
   Query,
   UseGuards,
   Request,
+  Res,
   HttpCode,
   HttpStatus,
   BadRequestException,
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
@@ -32,6 +35,14 @@ import {
   ProcessCancellationRequestAction,
   ProcessCancellationRequestDto,
 } from '@application/booking/use-cases/process-cancellation-request.use-case';
+import { AuthService } from '@presentation/auth/auth.service';
+
+function escapeCsv(s: any): string {
+  if (s == null) return '';
+  const t = String(s);
+  if (t.includes(',') || t.includes('"') || t.includes('\n')) return `"${t.replace(/"/g, '""')}"`;
+  return t;
+}
 
 @ApiTags('Admin')
 @ApiBearerAuth()
@@ -44,6 +55,7 @@ export class AdminController {
     private readonly rewardsAdminService: RewardsAdminService,
     private readonly loyaltyService: LoyaltyService,
     private readonly processCancellationRequestUseCase: ProcessCancellationRequestUseCase,
+    private readonly authService: AuthService,
   ) {}
 
   @Post('users')
@@ -404,6 +416,235 @@ export class AdminController {
         permissions: assignDto.permissions,
       },
     };
+  }
+
+  // =====================================================
+  // CUSTOMER DIRECTORY (User Management – customers only)
+  // =====================================================
+
+  @Get('customers')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'List all customers (user directory)' })
+  @ApiQuery({ name: 'status', required: false, enum: ['all', 'active', 'suspended'], description: 'Filter by status' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'search', required: false, description: 'Search by name or email' })
+  async listCustomers(@Query() query: any) {
+    const { status = 'all', page = 1, limit = 20, search } = query;
+    const where: any = {
+      role: UserRole.CUSTOMER,
+      deletedAt: null,
+    };
+    if (status === 'active') where.suspendedAt = null;
+    if (status === 'suspended') where.suspendedAt = { not: null };
+    if (search && String(search).trim()) {
+      const term = `%${String(search).trim()}%`;
+      where.OR = [
+        { email: { contains: term, mode: 'insensitive' } },
+        { name: { contains: term, mode: 'insensitive' } },
+      ];
+    }
+    const skip = (Number(page) - 1) * Number(limit);
+    const take = Math.min(Number(limit), 100);
+    const [users, totalUsers] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          createdAt: true,
+          suspendedAt: true,
+          _count: { select: { bookings: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+    const userIds = users.map((u) => u.id);
+    const pointsMap = new Map<string, number>();
+    for (const uid of userIds) {
+      const summary = await this.loyaltyService.getLoyaltySummary(uid);
+      pointsMap.set(uid, (summary?.account?.balance ?? 0) as number);
+    }
+    const list = users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      registeredDate: u.createdAt,
+      bookingsCount: (u as any)._count?.bookings ?? 0,
+      points: pointsMap.get(u.id) ?? 0,
+      status: (u as any).suspendedAt ? 'SUSPENDED' : 'ACTIVE',
+    }));
+    return {
+      success: true,
+      data: list,
+      meta: { total: totalUsers, page: Number(page), limit: take, totalPages: Math.ceil(totalUsers / take) },
+      message: 'Customers retrieved successfully',
+    };
+  }
+
+  @Get('customers/:id')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Get customer by ID (profile + interaction history + notes)' })
+  async getCustomer(@Param('id') id: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id, role: UserRole.CUSTOMER, deletedAt: null },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        image: true,
+        createdAt: true,
+        suspendedAt: true,
+        internalNotes: true,
+      },
+    });
+    if (!user) throw new NotFoundException('Customer not found');
+    const summary = await this.loyaltyService.getLoyaltySummary(id);
+    const bookings = await this.prisma.booking.findMany({
+      where: { userId: id, deletedAt: null },
+      select: {
+        id: true,
+        reference: true,
+        productType: true,
+        status: true,
+        totalAmount: true,
+        currency: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    return {
+      success: true,
+      data: {
+        ...user,
+        status: (user as any).suspendedAt ? 'SUSPENDED' : 'ACTIVE',
+        bookingsCount: bookings.length,
+        loyaltyPoints: (summary?.account?.balance ?? 0) as number,
+        internalNotes: (user as any).internalNotes ?? null,
+        interactionHistory: bookings.map((b) => ({
+          type: `${b.productType} Booking ${b.status === 'CONFIRMED' ? 'Confirmed' : b.status}`,
+          reference: b.reference,
+          date: b.createdAt,
+          detailsLink: `/api/v1/bookings/${b.id}`,
+        })),
+      },
+      message: 'Customer retrieved successfully',
+    };
+  }
+
+  @Patch('customers/:id/notes')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Update internal notes for a customer' })
+  async updateCustomerNotes(@Param('id') id: string, @Body() body: { notes: string | null }) {
+    const user = await this.prisma.user.findFirst({
+      where: { id, role: UserRole.CUSTOMER, deletedAt: null },
+    });
+    if (!user) throw new NotFoundException('Customer not found');
+    await this.prisma.user.update({
+      where: { id },
+      data: { internalNotes: body.notes ?? null },
+    });
+    return { success: true, message: 'Internal notes updated successfully' };
+  }
+
+  @Post('customers/:id/suspend')
+  @HttpCode(HttpStatus.OK)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Suspend customer access (cannot log in)' })
+  async suspendCustomer(@Param('id') id: string, @Body() body: { reason?: string }, @Request() req: any) {
+    const user = await this.prisma.user.findFirst({
+      where: { id, role: UserRole.CUSTOMER, deletedAt: null },
+    });
+    if (!user) throw new NotFoundException('Customer not found');
+    await this.prisma.user.update({
+      where: { id },
+      data: { suspendedAt: new Date() },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: 'SUSPEND_CUSTOMER',
+        entityType: 'User',
+        entityId: id,
+        changes: { reason: body.reason, email: user.email },
+      },
+    });
+    return { success: true, message: 'Customer access suspended successfully' };
+  }
+
+  @Post('customers/:id/activate')
+  @HttpCode(HttpStatus.OK)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Reactivate suspended customer' })
+  async activateCustomer(@Param('id') id: string, @Request() req: any) {
+    const user = await this.prisma.user.findFirst({
+      where: { id, role: UserRole.CUSTOMER, deletedAt: null },
+    });
+    if (!user) throw new NotFoundException('Customer not found');
+    await this.prisma.user.update({
+      where: { id },
+      data: { suspendedAt: null },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: 'ACTIVATE_CUSTOMER',
+        entityType: 'User',
+        entityId: id,
+        changes: { email: user.email },
+      },
+    });
+    return { success: true, message: 'Customer activated successfully' };
+  }
+
+  @Post('customers/:id/reset-password-link')
+  @HttpCode(HttpStatus.OK)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Send password reset link to customer email' })
+  async sendCustomerResetPasswordLink(@Param('id') id: string) {
+    await this.authService.sendPasswordResetLinkForUser(id);
+    return { success: true, message: 'Password reset link sent to customer email' };
+  }
+
+  @Get('bookings/export')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Export bookings as CSV' })
+  @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'startDate', required: false })
+  @ApiQuery({ name: 'endDate', required: false })
+  async exportBookingsCsv(
+    @Query() query: any,
+    @Res() res: Response,
+  ) {
+    const { status, startDate, endDate } = query;
+    const where: any = { deletedAt: null };
+    if (status) where.status = status;
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+    const bookings = await this.prisma.booking.findMany({
+      where,
+      include: { user: { select: { id: true, email: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    const header = 'Booking ID,Reference,Customer Name,Customer Email,Type,Price,Currency,Status,Payment Status,Booking Date\n';
+    const rows = bookings.map(
+      (b) =>
+        `${b.id},${b.reference},${escapeCsv((b as any).user?.name)},${escapeCsv((b as any).user?.email)},${b.productType},${b.totalAmount},${b.currency},${b.status},${b.paymentStatus ?? ''},${b.createdAt.toISOString()}\n`,
+    );
+    const csv = header + rows.join('');
+    const filename = `bookings_export_${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
   }
 
   @Get('bookings')

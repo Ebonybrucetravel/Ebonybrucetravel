@@ -1,7 +1,7 @@
-// Ensure crypto is available globally for @nestjs/schedule
-import * as crypto from 'crypto';
+// Ensure Web Crypto (randomUUID) is available globally for @nestjs/schedule
+import { webcrypto } from 'crypto';
 if (typeof globalThis.crypto === 'undefined') {
-  globalThis.crypto = crypto as any;
+  (globalThis as any).crypto = webcrypto;
 }
 
 import { NestFactory } from '@nestjs/core';

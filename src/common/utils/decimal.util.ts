@@ -1,10 +1,10 @@
-import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 
 /**
  * Convert Prisma Decimal to number
  * Handles both Decimal objects and number types
  */
-export function toNumber(value: Decimal | number | string | null | undefined): number {
+export function toNumber(value: Prisma.Decimal | number | string | null | undefined): number {
   if (value === null || value === undefined) {
     return 0;
   }
@@ -17,9 +17,9 @@ export function toNumber(value: Decimal | number | string | null | undefined): n
     return parseFloat(value) || 0;
   }
 
-  // Prisma Decimal type
-  if (value instanceof Decimal) {
-    return value.toNumber();
+  // Prisma Decimal type (object with toNumber method)
+  if (typeof value === 'object' && value !== null && typeof (value as Prisma.Decimal).toNumber === 'function') {
+    return (value as Prisma.Decimal).toNumber();
   }
 
   // Fallback: try to convert

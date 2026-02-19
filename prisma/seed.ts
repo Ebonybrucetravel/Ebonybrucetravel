@@ -1,13 +1,22 @@
+import 'dotenv/config';
 import { PrismaClient, UserRole, ProductType } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 
-const prisma = new PrismaClient();
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  console.error('DATABASE_URL is required to run the seed.');
+  process.exit(1);
+}
+
+const adapter = new PrismaPg({ connectionString });
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log('🌱 Starting database seed...\n');
 
-  // 1. Create Super Admin User
-  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'admin@ebonybruce.com';
+  // 1. Create Super Admin User (default: dedicated admin email so it doesn't clash with customer accounts)
+  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'justtargetseyi@gmail.com';
   const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'Admin@123!';
   const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
 
@@ -37,11 +46,25 @@ async function main() {
     });
     console.log(`✅ Created Super Admin: ${superAdmin.email}`);
     console.log(`   ID: ${superAdmin.id}`);
-    console.log(`   Password: ${superAdminPassword} (Please change this!)`);
+    console.log('   Password: set via env (change after first login)');
+  }
+
+  // 1b. Ensure former admin emails used as customers are CUSTOMER role (no clash with dedicated admin)
+  const customerEmails = ['obadeyi01@gmail.com', 'obadeyi04@gmail.com'];
+  for (const email of customerEmails) {
+    if (email === superAdminEmail) continue;
+    const u = await prisma.user.findUnique({ where: { email } });
+    if (u && u.role !== UserRole.CUSTOMER) {
+      await prisma.user.update({
+        where: { email },
+        data: { role: UserRole.CUSTOMER },
+      });
+      console.log(`✅ Set ${email} to CUSTOMER (was ${u.role})`);
+    }
   }
 
   // 2. Create Admin User (Optional)
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@ebonybruce.com';
+  const adminEmail = process.env.ADMIN_EMAIL || 'justtargetseyi@gmail.com';
   if (adminEmail !== superAdminEmail) {
     const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123!';
     const adminHashedPassword = await bcrypt.hash(adminPassword, 10);
@@ -61,7 +84,7 @@ async function main() {
       });
       console.log(`✅ Created Admin: ${admin.email}`);
       console.log(`   ID: ${admin.id}`);
-      console.log(`   Password: ${adminPassword} (Please change this!)`);
+      console.log('   Password: set via env (change after first login)');
     } else {
       console.log(`⚠️  Admin already exists: ${adminEmail}`);
     }
@@ -274,8 +297,8 @@ async function main() {
   console.log('\n✅ Database seed completed successfully!\n');
   console.log('📝 Important:');
   console.log(`   - Super Admin login: ${superAdminEmail}`);
-  console.log(`   - Super Admin password: ${superAdminPassword}`);
-  console.log('   - Please change default passwords after first login!\n');
+  console.log('   - Super Admin password: (set via SUPER_ADMIN_PASSWORD env – never logged)');
+  console.log('   - Change default passwords after first login if you used defaults.\n');
 }
 
 main()

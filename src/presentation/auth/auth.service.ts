@@ -120,6 +120,12 @@ export class AuthService {
         throw new UnauthorizedException('Account has been deleted');
       }
 
+      // Check if user is suspended (admin action)
+      if ((user as any).suspendedAt) {
+        this.logger.warn(`Login attempt for suspended account: ${loginDto.email}`);
+        throw new UnauthorizedException('Account has been suspended');
+      }
+
       // OAuth users don't have passwords
       if (!user.password) {
         this.logger.warn(`Login attempt for OAuth-only account: ${loginDto.email}`);
@@ -140,6 +146,32 @@ export class AuthService {
 
       // Return user (without password) and token
       const { password, deletedAt, ...userWithoutPassword } = user;
+
+      // So admin frontend does not show "insufficient permissions": SUPER_ADMIN/ADMIN get effective permissions
+      const role = user.role as string;
+      if (role === 'SUPER_ADMIN' || role === 'ADMIN') {
+        const stored = user.permissions as Record<string, boolean> | null | undefined;
+        (userWithoutPassword as any).permissions =
+          role === 'SUPER_ADMIN'
+            ? {
+                canManageBookings: true,
+                canManageUsers: true,
+                canManageMarkups: true,
+                canViewReports: true,
+                canCancelBookings: true,
+                canViewAllBookings: true,
+              }
+            : stored && typeof stored === 'object' && Object.keys(stored).length > 0
+              ? stored
+              : {
+                  canManageBookings: true,
+                  canManageUsers: true,
+                  canManageMarkups: true,
+                  canViewReports: true,
+                  canCancelBookings: true,
+                  canViewAllBookings: true,
+                };
+      }
 
       this.logger.log(`User logged in successfully: ${user.email}`);
 
@@ -346,7 +378,7 @@ export class AuthService {
       });
 
       // Don't reveal if user exists (security best practice)
-      if (!user || user.deletedAt || user.provider) {
+      if (!user || user.deletedAt || (user as any).suspendedAt || user.provider) {
         // OAuth users or non-existent users - silently return
         return;
       }
@@ -420,6 +452,39 @@ export class AuthService {
       }
       throw new BadRequestException('Failed to reset password');
     }
+  }
+
+  /**
+   * Admin: send password reset link to a user by ID (for customer support).
+   */
+  async sendPasswordResetLinkForUser(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user || user.deletedAt || (user as any).suspendedAt) {
+      throw new NotFoundException('User not found or cannot receive reset link');
+    }
+    if (user.provider) {
+      throw new BadRequestException('OAuth users cannot receive password reset link');
+    }
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpires = new Date();
+    resetExpires.setHours(resetExpires.getHours() + 1);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        resetPasswordToken: resetToken,
+        resetPasswordExpires: resetExpires,
+      },
+    });
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+    await this.resendService.sendPasswordResetEmail({
+      to: user.email,
+      customerName: user.name || 'Valued Customer',
+      resetUrl,
+      expiresIn: '1 hour',
+    });
   }
 
   /**

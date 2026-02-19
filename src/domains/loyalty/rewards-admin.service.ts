@@ -309,6 +309,7 @@ export class RewardsAdminService {
       data: vouchers.map((v) => ({
         id: v.id,
         code: v.code,
+        userId: v.userId,
         user: v.user,
         rewardRule: v.rewardRule.name,
         discountType: v.discountType,

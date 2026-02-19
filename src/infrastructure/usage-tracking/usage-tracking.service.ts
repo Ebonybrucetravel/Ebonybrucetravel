@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/database/prisma.service';
-import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 
 export interface UsageLimit {
   service: 'google_places' | 'cloudinary';
@@ -128,7 +128,7 @@ export class UsageTrackingService {
       await this.prisma.apiUsageTracking.update({
         where: { id: existing.id },
         data: {
-          currentValue: new Decimal(newValue),
+          currentValue: new Prisma.Decimal(newValue),
           isLimitReached,
           updatedAt: new Date(),
         },
@@ -138,8 +138,8 @@ export class UsageTrackingService {
         data: {
           service,
           metric,
-          currentValue: new Decimal(newValue),
-          limitValue: new Decimal(limit),
+          currentValue: new Prisma.Decimal(newValue),
+          limitValue: new Prisma.Decimal(limit),
           month,
           year,
           isLimitReached,
@@ -181,8 +181,8 @@ export class UsageTrackingService {
       await this.prisma.apiUsageTracking.update({
         where: { id: record.id },
         data: {
-          currentValue: new Decimal(0),
-          limitValue: new Decimal(limit),
+          currentValue: new Prisma.Decimal(0),
+          limitValue: new Prisma.Decimal(limit),
           isLimitReached: false,
           lastResetAt: new Date(),
         },
