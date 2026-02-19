@@ -22,10 +22,14 @@ export default function AdminLoginPage() {
             if (!res.ok)
                 throw new Error(data.message ?? 'Login failed');
             const user = data.user ?? data.data?.user ?? data;
-            if (user.role !== 'admin')
+            const role = (user.role ?? '').toUpperCase();
+            if (role !== 'ADMIN' && role !== 'SUPER_ADMIN')
                 throw new Error('Insufficient permissions');
-            localStorage.setItem('adminToken', data.token ?? data.data?.token);
-            router.push('/admin/dashboard');
+            const token = data.token ?? data.data?.token;
+            if (!token) throw new Error('No token received');
+            localStorage.setItem('adminToken', token);
+            localStorage.setItem('adminUser', JSON.stringify(user));
+            router.push('/admin/dashboard/analytics');
         }
         catch (err: any) {
             setError(err.message);
@@ -34,78 +38,61 @@ export default function AdminLoginPage() {
             setLoading(false);
         }
     };
-    return (<div className="min-h-[60vh] flex items-center justify-center px-4">
-      <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Admin Login</h1>
-          <p className="text-gray-500 mt-1 text-sm">Enter your admin credentials</p>
-        </div>
-        {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#33a8da] focus:border-transparent"/>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-          <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#33a8da] focus:border-transparent"/>
-        </div>
-
-        <form onSubmit={handleLogin} className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-1">Admin Email</label>
-            <input 
-              type="email" 
+    return (
+      <div className="min-h-screen bg-[#f8fbfe] flex items-center justify-center px-4">
+        <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md space-y-6">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-900">Admin Login</h1>
+            <p className="text-gray-500 mt-1 text-sm">Enter your admin credentials</p>
+          </div>
+          {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold focus:ring-4 focus:ring-blue-600/20 focus:border-blue-600 transition-all outline-none"
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#33a8da] focus:border-transparent"
               placeholder="admin@ebonybruce.com"
-              // REMOVED defaultValue
             />
           </div>
-
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-1">Security Key</label>
-            <input 
-              type="password" 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input
+              type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold focus:ring-4 focus:ring-blue-600/20 focus:border-blue-600 transition-all outline-none"
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#33a8da] focus:border-transparent"
               placeholder="••••••••••••"
-              // REMOVED defaultValue
             />
           </div>
-
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl text-center">
-              <p className="text-red-400 text-xs font-bold">{error}</p>
-            </div>
-          )}
-
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white font-black py-5 rounded-2xl hover:bg-blue-500 transition shadow-2xl shadow-blue-600/30 active:scale-[0.98] flex items-center justify-center gap-3"
+            className="w-full bg-[#33a8da] text-white font-bold py-3 rounded-lg hover:bg-[#2c98c7] transition shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {loading ? (
               <>
-                <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                <span>Authorizing...</span>
+                <span>Authorizing…</span>
               </>
-            ) : 'Authorize Access'}
+            ) : (
+              'Sign in'
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/')}
+            className="w-full py-3 text-gray-500 hover:text-gray-700 font-medium text-sm transition"
+          >
+            Return to site
           </button>
         </form>
-
-        <button 
-          onClick={() => router.push('/')}
-          className="w-full mt-6 py-4 text-white/30 hover:text-white/60 font-bold text-xs uppercase tracking-widest transition"
-        >
-          Return to Client Portal
-        </button>
-      </form>
-    </div>);
+      </div>
+    );
 }

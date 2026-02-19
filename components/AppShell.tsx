@@ -62,6 +62,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       ? 'cars'
       : 'flights';
 
+  // Admin routes: no main site nav/footer, full-screen admin UI
+  const isAdminRoute = pathname.startsWith('/admin');
+  if (isAdminRoute) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Navbar
