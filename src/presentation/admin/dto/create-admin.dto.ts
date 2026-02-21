@@ -20,11 +20,11 @@ export class CreateAdminDto {
   password: string;
 
   @ApiProperty({
-    enum: ['ADMIN', 'SUPER_ADMIN'],
+    enum: ['CUSTOMER', 'ADMIN', 'SUPER_ADMIN'],
     example: 'ADMIN',
-    description: 'Role must be ADMIN or SUPER_ADMIN',
+    description: 'Create a customer (CUSTOMER) or admin user (ADMIN, SUPER_ADMIN).',
   })
-  @IsEnum(['ADMIN', 'SUPER_ADMIN'])
+  @IsEnum(['CUSTOMER', 'ADMIN', 'SUPER_ADMIN'])
   @IsNotEmpty()
   role: UserRole;
 

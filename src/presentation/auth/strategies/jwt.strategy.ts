@@ -24,7 +24,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    // Fetch user from database to ensure they still exist and aren't deleted
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       select: {
@@ -33,6 +32,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: true,
         name: true,
         deletedAt: true,
+        permissions: true,
       },
     });
 
@@ -40,6 +40,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       return null;
     }
 
-    return { id: user.id, email: user.email, role: user.role };
+    const result: any = { id: user.id, email: user.email, role: user.role };
+    if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') {
+      result.permissions = (user.permissions as Record<string, boolean>) || null;
+    }
+    return result;
   }
 }

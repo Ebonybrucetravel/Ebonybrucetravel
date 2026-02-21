@@ -21,6 +21,8 @@ import { ChargeAmadeusCarRentalMarginUseCase } from '@application/payment/use-ca
 import { StripeService } from '@domains/payment/services/stripe.service';
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { CreateGuestPaymentIntentDto } from './dto/create-guest-payment-intent.dto';
+import { PrismaService } from '@infrastructure/database/prisma.service';
+import { NotFoundException } from '@nestjs/common';
 
 @ApiTags('Payments')
 @Controller('payments')
@@ -32,34 +34,59 @@ export class PaymentController {
     private readonly chargeAmadeusHotelMarginUseCase: ChargeAmadeusHotelMarginUseCase,
     private readonly chargeAmadeusCarRentalMarginUseCase: ChargeAmadeusCarRentalMarginUseCase,
     private readonly stripeService: StripeService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Post('stripe/create-intent')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Create Stripe payment intent for a booking (authenticated user)',
-    description: 'Optionally include voucherCode to apply discount. Voucher must be validated first.',
+    summary: 'Create Stripe payment intent for a booking (user or admin on behalf)',
+    description:
+      'User: own booking. Admin: any booking ID to pay on behalf. Voucher is applied for the booking owner.',
   })
   @ApiBody({ type: CreatePaymentIntentDto })
-  async createPaymentIntent(@Request() req, @Body() dto: CreatePaymentIntentDto) {
-    // Authenticated users create payment intents by booking ID
-    return this.createPaymentIntentUseCase.execute(dto.bookingId, dto.voucherCode, req.user.id);
+  async createPaymentIntent(@Request() req: any, @Body() dto: CreatePaymentIntentDto) {
+    const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+    let userId = req.user.id;
+    if (isAdmin) {
+      const booking = await this.prisma.booking.findUnique({
+        where: { id: dto.bookingId },
+        select: { userId: true },
+      });
+      if (!booking) throw new NotFoundException('Booking not found');
+      userId = booking.userId;
+    }
+    return this.createPaymentIntentUseCase.execute(dto.bookingId, dto.voucherCode, userId);
   }
 
   @Post('amadeus-hotel/charge-margin')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'One-step Amadeus hotel payment (server-side, authenticated)',
+    summary: 'One-step Amadeus hotel payment (server-side, authenticated or admin on behalf)',
     description:
-      'After creating an Amadeus hotel booking with card (POST /bookings/hotels/bookings/amadeus), ' +
-      'call this to create the Amadeus order and charge the margin (markup + service fee) via Stripe with the same card. ' +
-      'No second card entry or Stripe Elements on the frontend.',
+      'After creating an Amadeus hotel booking with card, call this to charge the margin. Admin can pass any booking ID to pay on behalf.',
   })
-  @ApiBody({ schema: { type: 'object', required: ['bookingId'], properties: { bookingId: { type: 'string' } } } })
-  async chargeAmadeusHotelMargin(@Request() req, @Body() body: { bookingId: string }) {
-    return this.chargeAmadeusHotelMarginUseCase.execute(body.bookingId, req.user.id);
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['bookingId'],
+      properties: { bookingId: { type: 'string' } },
+    },
+  })
+  async chargeAmadeusHotelMargin(@Request() req: any, @Body() body: { bookingId: string }) {
+    const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+    let userId = req.user.id;
+    if (isAdmin) {
+      const booking = await this.prisma.booking.findUnique({
+        where: { id: body.bookingId },
+        select: { userId: true },
+      });
+      if (!booking) throw new NotFoundException('Booking not found');
+      userId = booking.userId;
+    }
+    return this.chargeAmadeusHotelMarginUseCase.execute(body.bookingId, userId);
   }
 
   @Post('amadeus-hotel/charge-margin/guest')
@@ -74,7 +101,10 @@ export class PaymentController {
     schema: {
       type: 'object',
       required: ['bookingReference', 'email'],
-      properties: { bookingReference: { type: 'string' }, email: { type: 'string', format: 'email' } },
+      properties: {
+        bookingReference: { type: 'string' },
+        email: { type: 'string', format: 'email' },
+      },
     },
   })
   async chargeAmadeusHotelMarginGuest(@Body() body: { bookingReference: string; email: string }) {
@@ -88,14 +118,30 @@ export class PaymentController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'One-step Amadeus car rental payment (server-side, authenticated)',
+    summary: 'One-step Amadeus car rental payment (server-side, authenticated or admin on behalf)',
     description:
       'After creating a car rental booking with card (POST /bookings/car-rentals/bookings), ' +
-      'call this to create the Amadeus transfer order and charge the margin via Stripe with the same card. No Stripe modal.',
+      'call this to create the Amadeus transfer order and charge the margin via Stripe. Admin can pass any booking ID to pay on behalf.',
   })
-  @ApiBody({ schema: { type: 'object', required: ['bookingId'], properties: { bookingId: { type: 'string' } } } })
-  async chargeAmadeusCarRentalMargin(@Request() req, @Body() body: { bookingId: string }) {
-    return this.chargeAmadeusCarRentalMarginUseCase.execute(body.bookingId, req.user.id);
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['bookingId'],
+      properties: { bookingId: { type: 'string' } },
+    },
+  })
+  async chargeAmadeusCarRentalMargin(@Request() req: any, @Body() body: { bookingId: string }) {
+    const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+    let userId = req.user.id;
+    if (isAdmin) {
+      const booking = await this.prisma.booking.findUnique({
+        where: { id: body.bookingId },
+        select: { userId: true },
+      });
+      if (!booking) throw new NotFoundException('Booking not found');
+      userId = booking.userId;
+    }
+    return this.chargeAmadeusCarRentalMarginUseCase.execute(body.bookingId, userId);
   }
 
   @Post('amadeus-car-rental/charge-margin/guest')
@@ -110,10 +156,15 @@ export class PaymentController {
     schema: {
       type: 'object',
       required: ['bookingReference', 'email'],
-      properties: { bookingReference: { type: 'string' }, email: { type: 'string', format: 'email' } },
+      properties: {
+        bookingReference: { type: 'string' },
+        email: { type: 'string', format: 'email' },
+      },
     },
   })
-  async chargeAmadeusCarRentalMarginGuest(@Body() body: { bookingReference: string; email: string }) {
+  async chargeAmadeusCarRentalMarginGuest(
+    @Body() body: { bookingReference: string; email: string },
+  ) {
     return this.chargeAmadeusCarRentalMarginUseCase.executeByReferenceAndEmail(
       body.bookingReference,
       body.email,
@@ -159,7 +210,7 @@ export class PaymentController {
       // However, the webhook handler will STILL verify payment intent status with Stripe
       // If the payment intent is "incomplete" or hasn't been charged, the booking will NOT be marked as successful
       // This prevents false positives - you must actually complete the payment in Stripe for the booking to succeed
-      
+
       // Create a mock Stripe event from the body for testing
       // Ensure the event structure matches Stripe's format
       const event = {

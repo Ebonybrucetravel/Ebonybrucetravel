@@ -17,8 +17,17 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
+import { RequirePermission } from '@common/decorators/require-permission.decorator';
+import { PermissionsGuard } from '@common/guards/permissions.guard';
 import { Response } from 'express';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiQuery,
+  ApiParam,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
@@ -35,7 +44,9 @@ import {
   ProcessCancellationRequestAction,
   ProcessCancellationRequestDto,
 } from '@application/booking/use-cases/process-cancellation-request.use-case';
+import { CreateBookingUseCase } from '@application/booking/use-cases/create-booking.use-case';
 import { AuthService } from '@presentation/auth/auth.service';
+import { CreateBookingOnBehalfDto } from './dto/create-booking-on-behalf.dto';
 
 function escapeCsv(s: any): string {
   if (s == null) return '';
@@ -55,38 +66,44 @@ export class AdminController {
     private readonly rewardsAdminService: RewardsAdminService,
     private readonly loyaltyService: LoyaltyService,
     private readonly processCancellationRequestUseCase: ProcessCancellationRequestUseCase,
+    private readonly createBookingUseCase: CreateBookingUseCase,
     private readonly authService: AuthService,
   ) {}
 
   @Post('users')
-  @ApiOperation({ summary: 'Create a new admin user (Super Admin only)' })
-  @ApiResponse({ status: 201, description: 'Admin user created successfully' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Super Admin only' })
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Create a new user (customer or admin)',
+    description:
+      'Super Admin can create ADMIN or SUPER_ADMIN. Admin or Super Admin can create CUSTOMER.',
+  })
+  @ApiResponse({ status: 201, description: 'User created successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
   async createAdmin(@Body() createAdminDto: CreateAdminDto, @Request() req) {
-    // Check if user already exists
     const existingUser = await this.prisma.user.findUnique({
       where: { email: createAdminDto.email },
     });
-
     if (existingUser) {
       throw new BadRequestException('User with this email already exists');
     }
 
-    // Validate role
-    if (createAdminDto.role !== UserRole.ADMIN && createAdminDto.role !== UserRole.SUPER_ADMIN) {
-      throw new BadRequestException('Role must be ADMIN or SUPER_ADMIN');
+    const isCustomer = createAdminDto.role === UserRole.CUSTOMER;
+    const isSuperAdmin = createAdminDto.role === UserRole.SUPER_ADMIN;
+
+    if (req.user.role === UserRole.ADMIN && !isCustomer) {
+      throw new ForbiddenException(
+        'Only Super Admin can create admin users. You can create customers (role CUSTOMER).',
+      );
+    }
+    if (!isCustomer) {
+      if (isSuperAdmin && req.user.role !== UserRole.SUPER_ADMIN) {
+        throw new BadRequestException('Only Super Admin can create Super Admin users');
+      }
     }
 
-    // Only SUPER_ADMIN can create SUPER_ADMIN
-    if (createAdminDto.role === UserRole.SUPER_ADMIN && req.user.role !== UserRole.SUPER_ADMIN) {
-      throw new BadRequestException('Only Super Admin can create Super Admin users');
-    }
-
-    // Hash password
     const hashedPassword = await bcrypt.hash(createAdminDto.password, 10);
 
-    // Create admin user
-    const admin = await this.prisma.user.create({
+    const user = await this.prisma.user.create({
       data: {
         email: createAdminDto.email,
         name: createAdminDto.name,
@@ -106,16 +123,15 @@ export class AdminController {
       },
     });
 
-    // Log admin creation in audit log
     await this.prisma.auditLog.create({
       data: {
         userId: req.user.id,
-        action: 'CREATE_ADMIN_USER',
+        action: isCustomer ? 'CREATE_CUSTOMER' : 'CREATE_ADMIN_USER',
         entityType: 'User',
-        entityId: admin.id,
+        entityId: user.id,
         changes: {
-          email: admin.email,
-          role: admin.role,
+          email: user.email,
+          role: user.role,
           createdBy: req.user.email,
         },
       },
@@ -123,51 +139,65 @@ export class AdminController {
 
     return {
       success: true,
-      message: 'Admin user created successfully',
-      data: admin,
+      message: isCustomer ? 'Customer created successfully' : 'Admin user created successfully',
+      data: user,
     };
   }
 
   @Get('users')
   @ApiOperation({
     summary: 'List all admin users (Super Admin only)',
-    description: 'Returns a list of all admin users (ADMIN and SUPER_ADMIN roles).',
+    description: 'Returns a paginated list of admin users (ADMIN and SUPER_ADMIN roles).',
   })
   @ApiResponse({ status: 200, description: 'Admin users retrieved successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Super Admin only' })
-  @ApiQuery({ name: 'role', required: false, enum: ['ADMIN', 'SUPER_ADMIN'], description: 'Filter by role' })
-  async listAdmins(@Query('role') role?: string) {
+  @ApiQuery({
+    name: 'role',
+    required: false,
+    enum: ['ADMIN', 'SUPER_ADMIN'],
+    description: 'Filter by role',
+  })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Per page (default: 20, max: 100)' })
+  async listAdmins(
+    @Query('role') role?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
     const where: any = {
-      role: {
-        in: [UserRole.ADMIN, UserRole.SUPER_ADMIN],
-      },
+      role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
       deletedAt: null,
     };
+    if (role && (role === 'ADMIN' || role === 'SUPER_ADMIN')) where.role = role;
 
-    if (role && (role === 'ADMIN' || role === 'SUPER_ADMIN')) {
-      where.role = role;
-    }
+    const p = Math.max(1, parseInt(String(page), 10) || 1);
+    const l = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 20));
+    const skip = (p - 1) * l;
 
-    const admins = await this.prisma.user.findMany({
-      where,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        phone: true,
-        image: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    const [admins, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          phone: true,
+          image: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: l,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
 
     return {
       success: true,
       data: admins,
+      meta: { total, page: p, limit: l, totalPages: Math.ceil(total / l) },
       message: 'Admin users retrieved successfully',
     };
   }
@@ -410,7 +440,8 @@ export class AdminController {
 
     return {
       success: true,
-      message: 'Permissions assigned successfully. Note: Full permission system implementation pending schema update.',
+      message:
+        'Permissions assigned successfully. Note: Full permission system implementation pending schema update.',
       data: {
         userId: id,
         permissions: assignDto.permissions,
@@ -425,7 +456,12 @@ export class AdminController {
   @Get('customers')
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'List all customers (user directory)' })
-  @ApiQuery({ name: 'status', required: false, enum: ['all', 'active', 'suspended'], description: 'Filter by status' })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['all', 'active', 'suspended'],
+    description: 'Filter by status',
+  })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'search', required: false, description: 'Search by name or email' })
@@ -481,7 +517,12 @@ export class AdminController {
     return {
       success: true,
       data: list,
-      meta: { total: totalUsers, page: Number(page), limit: take, totalPages: Math.ceil(totalUsers / take) },
+      meta: {
+        total: totalUsers,
+        page: Number(page),
+        limit: take,
+        totalPages: Math.ceil(totalUsers / take),
+      },
       message: 'Customers retrieved successfully',
     };
   }
@@ -557,7 +598,11 @@ export class AdminController {
   @HttpCode(HttpStatus.OK)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Suspend customer access (cannot log in)' })
-  async suspendCustomer(@Param('id') id: string, @Body() body: { reason?: string }, @Request() req: any) {
+  async suspendCustomer(
+    @Param('id') id: string,
+    @Body() body: { reason?: string },
+    @Request() req: any,
+  ) {
     const user = await this.prisma.user.findFirst({
       where: { id, role: UserRole.CUSTOMER, deletedAt: null },
     });
@@ -618,10 +663,7 @@ export class AdminController {
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'startDate', required: false })
   @ApiQuery({ name: 'endDate', required: false })
-  async exportBookingsCsv(
-    @Query() query: any,
-    @Res() res: Response,
-  ) {
+  async exportBookingsCsv(@Query() query: any, @Res() res: Response) {
     const { status, startDate, endDate } = query;
     const where: any = { deletedAt: null };
     if (status) where.status = status;
@@ -635,7 +677,8 @@ export class AdminController {
       include: { user: { select: { id: true, email: true, name: true } } },
       orderBy: { createdAt: 'desc' },
     });
-    const header = 'Booking ID,Reference,Customer Name,Customer Email,Type,Price,Currency,Status,Payment Status,Booking Date\n';
+    const header =
+      'Booking ID,Reference,Customer Name,Customer Email,Type,Price,Currency,Status,Payment Status,Booking Date\n';
     const rows = bookings.map(
       (b) =>
         `${b.id},${b.reference},${escapeCsv((b as any).user?.name)},${escapeCsv((b as any).user?.email)},${b.productType},${b.totalAmount},${b.currency},${b.status},${b.paymentStatus ?? ''},${b.createdAt.toISOString()}\n`,
@@ -645,6 +688,31 @@ export class AdminController {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
+  }
+
+  @Post('bookings')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Create a booking on behalf of a customer',
+    description:
+      'Same flow as user: create booking for the given userId, then use POST /payments/stripe/create-intent (or Amadeus charge-margin) to pay on behalf. Admin pays with their own card; booking is attributed to the customer.',
+  })
+  @ApiResponse({ status: 201, description: 'Booking created' })
+  async createBookingOnBehalf(@Body() dto: CreateBookingOnBehalfDto) {
+    const { userId, ...createDto } = dto;
+    const customer = await this.prisma.user.findFirst({
+      where: { id: userId, role: UserRole.CUSTOMER, deletedAt: null },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer user not found or not a customer');
+    }
+    const booking = await this.createBookingUseCase.execute(createDto, userId);
+    return {
+      success: true,
+      data: booking,
+      message:
+        'Booking created. Use POST /payments/stripe/create-intent with this booking ID to pay on behalf.',
+    };
   }
 
   @Get('bookings')
@@ -660,9 +728,17 @@ export class AdminController {
   @ApiQuery({ name: 'productType', required: false, description: 'Filter by product type' })
   @ApiQuery({ name: 'provider', required: false, description: 'Filter by provider' })
   @ApiQuery({ name: 'userId', required: false, description: 'Filter by user ID' })
-  @ApiQuery({ name: 'startDate', required: false, description: 'Filter by start date (ISO string)' })
+  @ApiQuery({
+    name: 'startDate',
+    required: false,
+    description: 'Filter by start date (ISO string)',
+  })
   @ApiQuery({ name: 'endDate', required: false, description: 'Filter by end date (ISO string)' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Limit results (default: 50, max: 100)' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Limit results (default: 50, max: 100)',
+  })
   @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
   async listAllBookings(@Query() query: any) {
     const {
@@ -734,9 +810,17 @@ export class AdminController {
   })
   @ApiResponse({ status: 200, description: 'Audit logs retrieved successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Super Admin only' })
-  @ApiQuery({ name: 'userId', required: false, description: 'Filter by user ID who performed action' })
+  @ApiQuery({
+    name: 'userId',
+    required: false,
+    description: 'Filter by user ID who performed action',
+  })
   @ApiQuery({ name: 'action', required: false, description: 'Filter by action type' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Limit results (default: 50, max: 100)' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Limit results (default: 50, max: 100)',
+  })
   @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
   async getAuditLogs(@Query() query: any) {
     const { userId, action, limit = 50, page = 1 } = query;
@@ -894,7 +978,8 @@ export class AdminController {
   @Put('rewards/earning-rules')
   @ApiOperation({
     summary: 'Upsert a points earning rule',
-    description: 'Configure how many points users earn per currency unit spent on each product type',
+    description:
+      'Configure how many points users earn per currency unit spent on each product type',
   })
   @ApiResponse({ status: 200, description: 'Earning rule upserted' })
   async upsertEarningRule(@Body() body: any) {
@@ -925,6 +1010,46 @@ export class AdminController {
   async listVouchers(@Query() query: any) {
     const result = await this.rewardsAdminService.listVouchers(query);
     return { success: true, ...result, message: 'Vouchers retrieved' };
+  }
+
+  @Post('rewards/vouchers/manual')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Create a coupon (admin-issued voucher)',
+    description:
+      'Issue a promotional voucher to a customer without points redemption. Reuses the Voucher model.',
+  })
+  @ApiResponse({ status: 201, description: 'Coupon created' })
+  async createManualVoucher(
+    @Body()
+    body: {
+      userId: string;
+      code: string;
+      discountType: 'PERCENTAGE' | 'FIXED_AMOUNT';
+      discountValue: number;
+      currency?: string;
+      maxDiscountAmount?: number;
+      minBookingAmount?: number;
+      applicableProducts?: string[] | null;
+      expiresAt: string;
+    },
+  ) {
+    const expiresAt = new Date(body.expiresAt);
+    if (Number.isNaN(expiresAt.getTime()) || expiresAt <= new Date()) {
+      throw new BadRequestException('expiresAt must be a valid future date');
+    }
+    const voucher = await this.rewardsAdminService.createManualVoucher({
+      userId: body.userId,
+      code: body.code,
+      discountType: body.discountType,
+      discountValue: body.discountValue,
+      currency: body.currency,
+      maxDiscountAmount: body.maxDiscountAmount,
+      minBookingAmount: body.minBookingAmount,
+      applicableProducts: body.applicableProducts,
+      expiresAt,
+    });
+    return { success: true, data: voucher, message: 'Coupon created successfully' };
   }
 
   @Delete('rewards/vouchers/:id')
@@ -967,7 +1092,7 @@ export class AdminController {
 
   @Get('rewards/users/:userId/loyalty')
   @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiOperation({ summary: 'View a user\'s loyalty details' })
+  @ApiOperation({ summary: "View a user's loyalty details" })
   @ApiParam({ name: 'userId', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'User loyalty details retrieved' })
   async getUserLoyalty(@Param('userId') userId: string) {
@@ -981,7 +1106,8 @@ export class AdminController {
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({
     summary: 'List pending cancellation requests (after-deadline hotel)',
-    description: 'Shows booking details, cancellation policy snapshot, deadline, and refundability for admin review.',
+    description:
+      'Shows booking details, cancellation policy snapshot, deadline, and refundability for admin review.',
   })
   @ApiResponse({ status: 200, description: 'List of pending cancellation requests' })
   async listCancellationRequests() {
@@ -994,13 +1120,20 @@ export class AdminController {
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({
     summary: 'Process a cancellation request',
-    description: 'Reject, partial refund (goodwill), or full refund (exception). Cancels in Amadeus and refunds via Stripe when approving.',
+    description:
+      'Reject, partial refund (goodwill), or full refund (exception). Cancels in Amadeus and refunds via Stripe when approving.',
   })
   @ApiParam({ name: 'id', description: 'Cancellation request ID' })
   @ApiResponse({ status: 200, description: 'Request processed' })
   async processCancellationRequest(
     @Param('id') id: string,
-    @Body() body: { action: ProcessCancellationRequestAction; refundAmount?: number; adminNotes?: string; rejectionReason?: string },
+    @Body()
+    body: {
+      action: ProcessCancellationRequestAction;
+      refundAmount?: number;
+      adminNotes?: string;
+      rejectionReason?: string;
+    },
     @Request() req: any,
   ) {
     const dto: ProcessCancellationRequestDto = {
@@ -1011,6 +1144,141 @@ export class AdminController {
     };
     const result = await this.processCancellationRequestUseCase.execute(id, req.user.id, dto);
     return { success: true, data: result };
+  }
+
+  @Get('activity')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission('canViewReports')
+  @ApiOperation({
+    summary: 'Recent activity feed',
+    description:
+      'Unified feed of new bookings, user registrations, and coupon/voucher usage. Requires canViewReports permission (SUPER_ADMIN bypasses).',
+  })
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    description: 'Filter: booking | user_registration | coupon_used',
+  })
+  @ApiQuery({ name: 'startDate', required: false })
+  @ApiQuery({ name: 'endDate', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiResponse({ status: 200, description: 'Activity feed' })
+  async getRecentActivity(
+    @Query('type') type?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const p = Math.max(1, parseInt(String(page), 10) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(String(limit), 10) || 20));
+    const dateFilter: any = {};
+    if (startDate) dateFilter.gte = new Date(startDate);
+    if (endDate) dateFilter.lte = new Date(endDate);
+    const hasDateFilter = Object.keys(dateFilter).length > 0;
+
+    const types: string[] = type
+      ? [type.trim().toLowerCase()]
+      : ['booking', 'user_registration', 'coupon_used'];
+    const validTypes = ['booking', 'user_registration', 'coupon_used'];
+    const filteredTypes = types.filter((t) => validTypes.includes(t));
+    const includeBooking = filteredTypes.length === 0 || filteredTypes.includes('booking');
+    const includeUser = filteredTypes.length === 0 || filteredTypes.includes('user_registration');
+    const includeCoupon = filteredTypes.length === 0 || filteredTypes.includes('coupon_used');
+
+    const items: Array<{
+      type: string;
+      date: Date;
+      description: string;
+      entityId?: string;
+      entityType?: string;
+      meta?: Record<string, any>;
+    }> = [];
+
+    if (includeBooking) {
+      const where: any = { deletedAt: null };
+      if (hasDateFilter) where.createdAt = dateFilter;
+      const bookings = await this.prisma.booking.findMany({
+        where,
+        include: { user: { select: { name: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      });
+      for (const b of bookings) {
+        const u = b.user as any;
+        items.push({
+          type: 'booking',
+          date: b.createdAt,
+          description: u?.name
+            ? `${u.name} booked a ${b.productType.replace(/_/g, ' ').toLowerCase()}`
+            : `Booking ${b.reference}`,
+          entityId: b.id,
+          entityType: 'Booking',
+          meta: { reference: b.reference, productType: b.productType, userEmail: u?.email },
+        });
+      }
+    }
+
+    if (includeUser) {
+      const where: any = { role: 'CUSTOMER', deletedAt: null };
+      if (hasDateFilter) where.createdAt = dateFilter;
+      const users = await this.prisma.user.findMany({
+        where,
+        select: { id: true, name: true, email: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      });
+      for (const u of users) {
+        items.push({
+          type: 'user_registration',
+          date: u.createdAt,
+          description:
+            u.name || u.email ? `${u.name || u.email} registered` : 'New user registered',
+          entityId: u.id,
+          entityType: 'User',
+          meta: { email: u.email },
+        });
+      }
+    }
+
+    if (includeCoupon) {
+      const where: any = { status: 'USED' };
+      if (hasDateFilter) where.usedAt = dateFilter;
+      const vouchers = await this.prisma.voucher.findMany({
+        where,
+        include: {
+          user: { select: { name: true } },
+          rewardRule: { select: { name: true } },
+        },
+        orderBy: { usedAt: 'desc' },
+        take: 50,
+      });
+      for (const v of vouchers) {
+        const ref = v.usedOnBookingId ? ` #${v.usedOnBookingId.slice(-8)}` : '';
+        items.push({
+          type: 'coupon_used',
+          date: v.usedAt!,
+          description: `${(v as any).rewardRule?.name || v.code} applied to booking${ref}`,
+          entityId: v.id,
+          entityType: 'Voucher',
+          meta: { code: v.code, usedOnBookingId: v.usedOnBookingId },
+        });
+      }
+    }
+
+    items.sort((a, b) => b.date.getTime() - a.date.getTime());
+    const total = items.length;
+    const start = (p - 1) * limitNum;
+    const data = items.slice(start, start + limitNum);
+
+    return {
+      success: true,
+      data,
+      meta: { total, page: p, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
+      message: 'Recent activity retrieved',
+    };
   }
 
   @Get('bookings/:bookingId/dispute-evidence')
@@ -1055,5 +1323,72 @@ export class AdminController {
       amadeusConfirmation: booking.providerData ?? null,
     };
     return { success: true, data: evidence };
+  }
+
+  @Patch('bookings/:id/refund')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Mark refund status for a booking',
+    description:
+      'After processing a refund manually (e.g. via Stripe dashboard or bank), update the booking so the platform and user show the refund as done.',
+  })
+  @ApiParam({ name: 'id', description: 'Booking ID' })
+  @ApiResponse({ status: 200, description: 'Refund status updated' })
+  async updateBookingRefundStatus(
+    @Param('id') id: string,
+    @Body() body: { refundAmount?: number; refundStatus?: string },
+    @Request() req: any,
+  ) {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id, deletedAt: null },
+      include: { user: { select: { email: true, name: true } } },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+    const allowedStatuses = ['CANCELLED', 'REFUNDED'];
+    if (!allowedStatuses.includes(booking.status)) {
+      throw new BadRequestException(
+        `Refund status can only be updated for cancelled or refunded bookings. Current status: ${booking.status}`,
+      );
+    }
+    const updateData: any = {};
+    if (body.refundAmount != null) updateData.refundAmount = body.refundAmount;
+    if (body.refundStatus != null) {
+      const valid = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'];
+      if (!valid.includes(body.refundStatus)) {
+        throw new BadRequestException(`refundStatus must be one of: ${valid.join(', ')}`);
+      }
+      updateData.refundStatus = body.refundStatus;
+    }
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException('Provide at least one of refundAmount or refundStatus');
+    }
+    const updated = await this.prisma.booking.update({
+      where: { id },
+      data: updateData,
+      include: { user: { select: { id: true, email: true, name: true } } },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: 'UPDATE_BOOKING_REFUND',
+        entityType: 'Booking',
+        entityId: id,
+        changes: {
+          reference: booking.reference,
+          refundAmount: body.refundAmount,
+          refundStatus: body.refundStatus,
+        },
+      },
+    });
+    return {
+      success: true,
+      data: {
+        id: updated.id,
+        reference: updated.reference,
+        refundAmount: updated.refundAmount ? Number(updated.refundAmount) : null,
+        refundStatus: updated.refundStatus,
+      },
+      message: 'Refund status updated successfully',
+    };
   }
 }

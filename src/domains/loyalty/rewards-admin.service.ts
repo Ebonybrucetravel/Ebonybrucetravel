@@ -347,6 +347,94 @@ export class RewardsAdminService {
     return { success: true, message: 'Voucher cancelled' };
   }
 
+  /** Get or create the system rule used for admin-issued (manual) coupons */
+  private async getOrCreateAdminPromoRule(): Promise<{ id: string }> {
+    const name = 'Admin-issued promo';
+    let rule = await this.prisma.rewardRule.findFirst({
+      where: { name, isActive: true },
+      select: { id: true },
+    });
+    if (!rule) {
+      rule = await this.prisma.rewardRule.create({
+        data: {
+          name,
+          description: 'Manual promotional vouchers created by admin',
+          pointsRequired: 999999,
+          discountType: 'FIXED_AMOUNT',
+          discountValue: 0,
+          currency: 'GBP',
+          isActive: true,
+          validityDays: 365,
+        },
+        select: { id: true },
+      });
+      this.logger.log(`Created system reward rule for admin promos: ${rule.id}`);
+    }
+    return rule;
+  }
+
+  /** Create a voucher manually (admin-issued coupon) without points redemption */
+  async createManualVoucher(dto: {
+    userId: string;
+    code: string;
+    discountType: DiscountType;
+    discountValue: number;
+    currency?: string;
+    maxDiscountAmount?: number;
+    minBookingAmount?: number;
+    applicableProducts?: string[] | null;
+    expiresAt: Date;
+  }) {
+    const codeUpper = dto.code.trim().toUpperCase();
+    const existing = await this.prisma.voucher.findUnique({
+      where: { code: codeUpper },
+    });
+    if (existing) {
+      throw new BadRequestException(`A voucher with code "${codeUpper}" already exists`);
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: dto.userId },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const rule = await this.getOrCreateAdminPromoRule();
+    const voucher = await this.prisma.voucher.create({
+      data: {
+        userId: dto.userId,
+        rewardRuleId: rule.id,
+        code: codeUpper,
+        discountType: dto.discountType,
+        discountValue: dto.discountValue,
+        currency: dto.currency ?? 'GBP',
+        maxDiscountAmount: dto.maxDiscountAmount,
+        minBookingAmount: dto.minBookingAmount,
+        applicableProducts: dto.applicableProducts ?? null,
+        expiresAt: dto.expiresAt,
+        status: 'ACTIVE',
+      },
+      include: {
+        user: { select: { id: true, email: true, name: true } },
+        rewardRule: { select: { name: true } },
+      },
+    });
+    return {
+      id: voucher.id,
+      code: voucher.code,
+      userId: voucher.userId,
+      user: voucher.user,
+      rewardRule: voucher.rewardRule.name,
+      discountType: voucher.discountType,
+      discountValue: Number(voucher.discountValue),
+      currency: voucher.currency,
+      maxDiscountAmount: voucher.maxDiscountAmount ? Number(voucher.maxDiscountAmount) : null,
+      minBookingAmount: voucher.minBookingAmount ? Number(voucher.minBookingAmount) : null,
+      status: voucher.status,
+      expiresAt: voucher.expiresAt,
+      createdAt: voucher.createdAt,
+    };
+  }
+
   // =====================================================
   // REWARDS DASHBOARD STATS (Admin)
   // =====================================================

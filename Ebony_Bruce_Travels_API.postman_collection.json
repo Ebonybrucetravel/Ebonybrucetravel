@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "ebony-bruce-travels-api-v2",
 		"name": "Ebony Bruce Travels API",
-		"description": "Complete API collection for Ebony Bruce Travels Booking System\n\n**Base URL:** `{{baseUrl}}/api/v1`\n\n**Authentication:** Most endpoints require JWT Bearer token. Get token from `/auth/login` or `/auth/register`.\n\n**Environment Variables:**\n- `baseUrl`: http://localhost:3001 (or your Railway URL)\n- `token`: JWT token (auto-set after login)\n- `userId`: User ID (auto-set after login)\n- `offerRequestId`: Duffel offer request ID (auto-set after flight search)\n- `offerId`: Selected flight offer ID (auto-set after listing offers)\n- `nextCursor`: Pagination cursor for next page (auto-set)\n- `bookingId`: Booking ID (auto-set after creating booking)\n- `voucherCode`: Voucher code (auto-set after redeeming loyalty points)\n- `setupIntentClientSecret`: Stripe SetupIntent secret (auto-set after payment method setup)\n\n**Features (v3.0 - Complete):**\n- Authentication (register, login, OAuth, password reset, email verification)\n- User Profile (CRUD, avatar, password change, soft delete)\n- Loyalty Points System (earn, redeem, tiers, transactions)\n- Rewards & Vouchers (admin-configurable rules, percentage/fixed discounts)\n- Saved Payment Methods (PCI-compliant via Stripe tokenization)\n- Saved Items / Wishlist (hotels, flights, car rentals)\n- Saved Travelers (passport, nationality, frequent flyer)\n- User Dashboard (aggregated profile data)\n- Flight Search (Duffel - two-step with pagination)\n- Hotel Search & Booking (Amadeus recommended + Duffel)\n- Car Rental Search & Booking (Amadeus Transfers)\n- Payments (Stripe with voucher support)\n- Admin Management (users, bookings, rewards, audit logs, dashboard)\n- Health Check endpoints\n- Rate Limiting, CORS, Correlation IDs\n\n---\n\n## API Sections\n\n### 1. Authentication\nRegister, Login, OAuth (Facebook/Google), Password Reset, Email Verification, Logout\n\n### 2. User Profile\nGet/Update Profile, Upload Avatar, Change Password, Delete Account\n\n### 3. Loyalty & Rewards\nGet Loyalty Account, Transaction History, Available Rewards, Redeem Points, Validate/Get Vouchers\n\n### 4. Saved Payment Methods\nSetup (Stripe SetupIntent), Confirm, List, Set Default, Delete\n\n### 5. Saved Items (Wishlist)\nSave/Unsave Items, Toggle, Check Status, Get Counts, Update Notes\n\n### 6. Saved Travelers\nCreate/List/Get/Update/Delete Travelers, Batch Fetch\n\n### 7. User Dashboard\nAggregated profile data (loyalty, bookings, stats) in single call\n\n### 8. Health Check\nService health, Database health\n\n### 9. Flight Search & Offers\nTwo-step search (offer_request_id -> paginated offers)\n\n### 10. Bookings\nCreate (auth/guest), List, Get, Cancel\n\n### 11. Payments\nCreate Payment Intent (with optional voucher), Guest Payment Intent, Stripe Webhook\n\n### 12. Hotels\nAmadeus (recommended), Duffel, Common Operations, Images\n\n### 13. Car Rentals\nSearch, Create Booking, Cancel\n\n### 14. Flight Utilities\nPlace Suggestions, Airlines List\n\n### 15. Admin\nUser Management, Booking Management, Rewards Management, Audit Logs, Dashboard\n\n---\n\n## Quick Start Guide\n\n### Step 1: Authentication\n1. Register or Login to get JWT token\n2. Token auto-saved to `{{token}}`\n\n### Step 2: Initial Setup (Admin - Run Once)\n1. Seed loyalty tiers: `POST /admin/rewards/tiers/seed-defaults`\n2. Seed earning rules: `POST /admin/rewards/earning-rules/seed-defaults`\n3. Create reward rules: `POST /admin/rewards/rules`\n\n### Step 3: Search & Book\n1. Search flights/hotels/cars\n2. Create booking with offer details\n3. Optionally validate and apply voucher\n4. Create payment intent (with optional `voucherCode`)\n5. Complete payment via Stripe.js\n6. Webhook confirms booking + awards loyalty points\n\n### Step 4: Profile Features\n1. Check loyalty points: `GET /users/me/loyalty`\n2. Save items to wishlist: `POST /users/me/saved-items`\n3. Add travelers: `POST /users/me/travelers`\n4. Save payment methods: `POST /users/me/payment-methods/setup`\n5. View dashboard: `GET /users/me/dashboard`\n\n---\n\n## Loyalty & Voucher Flow\n\n1. **Earn Points**: Automatically on completed bookings (via webhook)\n2. **Check Balance**: `GET /users/me/loyalty`\n3. **Browse Rewards**: `GET /users/me/loyalty/available-rewards`\n4. **Redeem Points**: `POST /users/me/loyalty/redeem` -> Get voucher code\n5. **Validate Voucher**: `POST /users/me/vouchers/validate`\n6. **Apply at Payment**: `POST /payments/stripe/create-intent` with `voucherCode`\n7. **Auto-Complete**: Webhook marks voucher USED, awards points on new booking\n\n**Tiers:** BRONZE (1x) -> SILVER (1.5x) -> GOLD (2x) -> PLATINUM (3x)\n\n---\n\n## Payment Flow\n\n1. **Create Booking** -> Get `bookingId`\n2. **Optional: Validate Voucher** -> Preview discount\n3. **Create Payment Intent** -> Get `clientSecret` (with optional `voucherCode`)\n4. Use `clientSecret` with Stripe.js on frontend\n5. Webhook updates booking + awards loyalty points + marks voucher used\n\n---\n\n## Security\n\n- Rate limiting on auth endpoints\n- JWT authentication\n- PCI-compliant payment method storage (Stripe tokenization)\n- AES-256-GCM encryption for hotel card details\n- Audit logging for admin actions\n- CORS configuration\n- Request correlation IDs\n- Email verification\n- Delayed login notifications",
+		"description": "Complete API collection for Ebony Bruce Travels Booking System\n\n**Base URL:** `{{baseUrl}}/api/v1`\n\n**Authentication:** Most endpoints require JWT Bearer token. Get token from `/auth/login` or `/auth/register`.\n\n**Environment Variables:**\n- `baseUrl`: http://localhost:3001 (or your Railway URL)\n- `token`: JWT token (auto-set after login)\n- `userId`: User ID (auto-set after login)\n- `offerRequestId`: Duffel offer request ID (auto-set after flight search)\n- `offerId`: Selected flight offer ID (auto-set after listing offers)\n- `nextCursor`: Pagination cursor for next page (auto-set)\n- `bookingId`: Booking ID (auto-set after creating booking)\n- `voucherCode`: Voucher code (auto-set after redeeming loyalty points)\n- `setupIntentClientSecret`: Stripe SetupIntent secret (auto-set after payment method setup)\n\n**Features (v3.0 - Complete):**\n- Authentication (register, login, OAuth, password reset, email verification)\n- User Profile (CRUD, avatar, password change, soft delete)\n- Loyalty Points System (earn, redeem, tiers, transactions)\n- Rewards & Vouchers (admin-configurable rules, percentage/fixed discounts)\n- Saved Payment Methods (PCI-compliant via Stripe tokenization)\n- Saved Items / Wishlist (hotels, flights, car rentals)\n- Saved Travelers (passport, nationality, frequent flyer)\n- User Dashboard (aggregated profile data)\n- Flight Search (Duffel - two-step with pagination)\n- Hotel Search & Booking (Amadeus recommended + Duffel)\n- Car Rental Search & Booking (Amadeus Transfers)\n- Payments (Stripe with voucher support)\n- Admin Management (users, bookings, rewards, audit logs, dashboard)\n- Health Check endpoints\n- Rate Limiting, CORS, Correlation IDs\n\n---\n\n## API Sections\n\n### 1. Authentication\nRegister, Login, OAuth (Facebook/Google), Password Reset, Email Verification, Logout\n\n### 2. User Profile\nGet/Update Profile, Upload Avatar, Change Password, Delete Account\n\n### 3. Loyalty & Rewards\nGet Loyalty Account, Transaction History, Available Rewards, Redeem Points, Validate/Get Vouchers\n\n### 4. Saved Payment Methods\nSetup (Stripe SetupIntent), Confirm, List, Set Default, Delete\n\n### 5. Saved Items (Wishlist)\nSave/Unsave Items, Toggle, Check Status, Get Counts, Update Notes\n\n### 6. Saved Travelers\nCreate/List/Get/Update/Delete Travelers, Batch Fetch\n\n### 7. User Dashboard\nAggregated profile data (loyalty, bookings, stats) in single call\n\n### 8. Health Check\nService health, Database health\n\n### 9. Flight Search & Offers\nTwo-step search (offer_request_id -> paginated offers)\n\n### 10. Bookings\nCreate (auth/guest), List, Get, Cancel\n\n### 11. Payments\nCreate Payment Intent (with optional voucher), Guest Payment Intent, Stripe Webhook\n\n### 12. Hotels\nAmadeus (recommended), Duffel, Common Operations, Images\n\n### 13. Car Rentals\nSearch, Create Booking, Cancel\n\n### 14. Flight Utilities\nPlace Suggestions, Airlines List\n\n### 15. Platform Settings (Markups)\nList, Create, Update, Deactivate markup configs (productType, markup %, service fee). Admin only.\n\n### 16. Admin\nUser Management (create admin/customer, list with pagination, permissions), Customer Management (list, get, notes, suspend, activate, reset-password), Booking Management (list, export CSV, create on behalf, mark refund, dispute evidence), Rewards (dashboard, rules, tiers, earning rules, vouchers, create coupon, adjust points), Cancellation Requests, Recent Activity, Audit Logs, Dashboard Stats (with productType, compareWithPrevious, activeUsers)\n\n---\n\n## Quick Start Guide\n\n### Step 1: Authentication\n1. Register or Login to get JWT token\n2. Token auto-saved to `{{token}}`\n\n### Step 2: Initial Setup (Admin - Run Once)\n1. Seed loyalty tiers: `POST /admin/rewards/tiers/seed-defaults`\n2. Seed earning rules: `POST /admin/rewards/earning-rules/seed-defaults`\n3. Create reward rules: `POST /admin/rewards/rules`\n\n### Step 3: Search & Book\n1. Search flights/hotels/cars\n2. Create booking with offer details\n3. Optionally validate and apply voucher\n4. Create payment intent (with optional `voucherCode`)\n5. Complete payment via Stripe.js\n6. Webhook confirms booking + awards loyalty points\n\n### Step 4: Profile Features\n1. Check loyalty points: `GET /users/me/loyalty`\n2. Save items to wishlist: `POST /users/me/saved-items`\n3. Add travelers: `POST /users/me/travelers`\n4. Save payment methods: `POST /users/me/payment-methods/setup`\n5. View dashboard: `GET /users/me/dashboard`\n\n---\n\n## Loyalty & Voucher Flow\n\n1. **Earn Points**: Automatically on completed bookings (via webhook)\n2. **Check Balance**: `GET /users/me/loyalty`\n3. **Browse Rewards**: `GET /users/me/loyalty/available-rewards`\n4. **Redeem Points**: `POST /users/me/loyalty/redeem` -> Get voucher code\n5. **Validate Voucher**: `POST /users/me/vouchers/validate`\n6. **Apply at Payment**: `POST /payments/stripe/create-intent` with `voucherCode`\n7. **Auto-Complete**: Webhook marks voucher USED, awards points on new booking\n\n**Tiers:** BRONZE (1x) -> SILVER (1.5x) -> GOLD (2x) -> PLATINUM (3x)\n\n---\n\n## Payment Flow\n\n1. **Create Booking** -> Get `bookingId`\n2. **Optional: Validate Voucher** -> Preview discount\n3. **Create Payment Intent** -> Get `clientSecret` (with optional `voucherCode`)\n4. Use `clientSecret` with Stripe.js on frontend\n5. Webhook updates booking + awards loyalty points + marks voucher used\n\n---\n\n## Security\n\n- Rate limiting on auth endpoints\n- JWT authentication\n- PCI-compliant payment method storage (Stripe tokenization)\n- AES-256-GCM encryption for hotel card details\n- Audit logging for admin actions\n- CORS configuration\n- Request correlation IDs\n- Email verification\n- Delayed login notifications",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -1445,6 +1445,97 @@
 			"description": "Health check endpoints for monitoring service and database status.\n\n**No authentication required.**\n\n**Endpoints:**\n- **Health Check** - General service health\n- **Database Health** - Database connection status\n\n**Use Cases:**\n- Load balancer health checks\n- Monitoring dashboards\n- Alerting systems\n- Service status verification"
 		},
 		{
+			"name": "Platform Settings (Markups)",
+			"description": "**Admin-only.** Configure markup and service fee per product type and currency. Used for flights, hotels, and car rentals. All mutations are audit-logged.",
+			"item": [
+				{
+					"name": "List Markups",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+						"method": "GET",
+						"header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/markups?productType=FLIGHT_DOMESTIC&currency=GBP",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "markups"],
+							"query": [
+								{ "key": "productType", "value": "FLIGHT_DOMESTIC", "description": "Filter by product type", "disabled": true },
+								{ "key": "currency", "value": "GBP", "description": "Filter by currency", "disabled": true }
+							]
+						},
+						"description": "List markup configs. Query: `productType` (optional), `currency` (optional).\n\n**Expected response:** `{ \"success\": true, \"data\": [...], \"message\": \"...\" }`"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Markup",
+					"event": [{
+						"listen": "test",
+						"script": {
+							"exec": [
+								"if (pm.response.code === 201) {",
+								"    const j = pm.response.json();",
+								"    if (j.data && j.data.id) pm.environment.set('markupId', j.data.id);",
+								"}"
+							],
+							"type": "text/javascript"
+						}
+					}],
+					"request": {
+						"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"productType\": \"FLIGHT_DOMESTIC\",\n  \"markupPercentage\": 5,\n  \"serviceFeeAmount\": 10,\n  \"currency\": \"GBP\",\n  \"description\": \"Domestic flights\"\n}"
+						},
+						"url": { "raw": "{{baseUrl}}/api/v1/markups", "host": ["{{baseUrl}}"], "path": ["api", "v1", "markups"] }
+					},
+					"response": []
+				},
+				{
+					"name": "Update Markup",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+						"method": "PATCH",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"markupPercentage\": 6,\n  \"serviceFeeAmount\": 12,\n  \"description\": \"Updated\",\n  \"isActive\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/markups/{{markupId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "markups", "{{markupId}}"]
+						},
+						"description": "Body: `markupPercentage?`, `serviceFeeAmount?`, `description?`, `isActive?`. Audit: UPDATE_MARKUP_CONFIG."
+					},
+					"response": []
+				},
+				{
+					"name": "Deactivate Markup",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+						"method": "DELETE",
+						"header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/markups/{{markupId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "markups", "{{markupId}}"]
+						},
+						"description": "Sets effectiveTo and isActive: false. Audit: DEACTIVATE_MARKUP_CONFIG."
+					},
+					"response": []
+				}
+			]
+		},
+		{
 			"name": "Flight Search",
 			"item": [
 				{
@@ -2258,6 +2349,58 @@
 					"response": []
 				},
 				{
+					"name": "Amadeus Hotel - Charge Margin",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": { "mode": "raw", "raw": "{\n  \"bookingId\": \"{{bookingId}}\"\n}\n" },
+						"url": { "raw": "{{baseUrl}}/api/v1/payments/amadeus-hotel/charge-margin", "host": ["{{baseUrl}}"], "path": ["api", "v1", "payments", "amadeus-hotel", "charge-margin"] }
+					},
+					"response": [],
+					"description": "After creating an Amadeus hotel booking (with card), call this to charge the margin via Stripe. Auth: user or admin. Admin: pass any booking ID to pay on behalf; backend uses booking.userId."
+				},
+				{
+					"name": "Amadeus Hotel - Charge Margin (Guest)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": { "mode": "raw", "raw": "{\n  \"bookingReference\": \"EBT-20260201-XXXXXX\",\n  \"email\": \"guest@example.com\"\n}\n" },
+						"url": { "raw": "{{baseUrl}}/api/v1/payments/amadeus-hotel/charge-margin/guest", "host": ["{{baseUrl}}"], "path": ["api", "v1", "payments", "amadeus-hotel", "charge-margin", "guest"] }
+					},
+					"response": [],
+					"description": "Guest Amadeus hotel: charge margin by booking reference + email (must match lead guest). No auth."
+				},
+				{
+					"name": "Amadeus Car Rental - Charge Margin",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": { "mode": "raw", "raw": "{\n  \"bookingId\": \"{{bookingId}}\"\n}\n" },
+						"url": { "raw": "{{baseUrl}}/api/v1/payments/amadeus-car-rental/charge-margin", "host": ["{{baseUrl}}"], "path": ["api", "v1", "payments", "amadeus-car-rental", "charge-margin"] }
+					},
+					"response": [],
+					"description": "After creating an Amadeus car rental booking, charge the margin. Admin can pay on behalf (bookingId of any booking; backend uses booking.userId)."
+				},
+				{
+					"name": "Amadeus Car Rental - Charge Margin (Guest)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": { "mode": "raw", "raw": "{\n  \"bookingReference\": \"EBT-20260201-XXXXXX\",\n  \"email\": \"guest@example.com\"\n}\n" },
+						"url": { "raw": "{{baseUrl}}/api/v1/payments/amadeus-car-rental/charge-margin/guest", "host": ["{{baseUrl}}"], "path": ["api", "v1", "payments", "amadeus-car-rental", "charge-margin", "guest"] }
+					},
+					"response": [],
+					"description": "Guest car rental: charge margin by booking reference + email. No auth."
+				},
+				{
 					"name": "Stripe Webhook (Test)",
 					"event": [
 						{
@@ -2318,7 +2461,7 @@
 					"response": []
 				}
 			],
-			"description": "Payment processing endpoints using Stripe.\n\n**Payment Flow:**\n1. Create booking → Get `bookingId`\n2. Create payment intent → Get `clientSecret`\n3. Use `clientSecret` with Stripe.js on frontend\n4. Stripe processes payment\n5. Webhook updates booking status automatically\n\n**Webhook Setup:**\n- Configure in Stripe Dashboard\n- Endpoint URL: `https://your-domain.com/api/v1/payments/stripe/webhook`\n- Required events: `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`\n- Webhook secret required for security (signature verification)\n\n**Security:**\n- All payment endpoints verify webhook signatures\n- Only legitimate Stripe events are processed\n- Invalid signatures are rejected"
+			"description": "Payment processing endpoints using Stripe.\n\n**Payment Flow:**\n1. Create booking → Get `bookingId`\n2. Create payment intent (or Amadeus charge-margin for hotel/car) → Get `clientSecret` or confirm charge\n3. Use `clientSecret` with Stripe.js on frontend (flights)\n4. Webhook updates booking status automatically\n\n**Admin pay on behalf:** For create-intent and Amadeus charge-margin, when caller is ADMIN/SUPER_ADMIN the backend uses the booking's userId so the payment is attributed to the customer.\n\n**Amadeus Hotel/Car:** Use charge-margin (authenticated or guest) after creating the Amadeus booking; margin is charged via Stripe.\n\n**Webhook Setup:**\n- Configure in Stripe Dashboard\n- Endpoint URL: `https://your-domain.com/api/v1/payments/stripe/webhook`\n- Required events: `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`\n- Webhook secret required for security (signature verification)\n\n**Security:**\n- All payment endpoints verify webhook signatures\n- Only legitimate Stripe events are processed\n- Invalid signatures are rejected"
 		},
 		{
 			"name": "Hotels",
@@ -3164,7 +3307,7 @@
 									"host": ["{{baseUrl}}"],
 									"path": ["api", "v1", "admin", "users"]
 								},
-								"description": "**Create a new admin user (Super Admin only)**\n\n**⚠️ RESTRICTIONS:**\n- **Super Admin Only:** Only SUPER_ADMIN users can create admin users\n- **Role Validation:** Can only create ADMIN or SUPER_ADMIN roles\n- **Super Admin Creation:** Only SUPER_ADMIN can create other SUPER_ADMIN users\n\n**Authentication required:** JWT Bearer token (Super Admin role)\n\n**Request Body:**\n```json\n{\n  \"email\": \"admin@example.com\",\n  \"name\": \"Admin User\",\n  \"password\": \"SecurePassword123!\",\n  \"role\": \"ADMIN\",\n  \"phone\": \"+1234567890\"\n}\n```\n\n**Required Parameters:**\n- `email` (string, required): Admin email address (must be unique)\n- `name` (string, required): Admin full name\n- `password` (string, required): Password (min 6 characters)\n- `role` (string, required): Role - must be `ADMIN` or `SUPER_ADMIN`\n- `phone` (string, optional): Phone number\n\n**Response:**\n- Returns created admin user object (without password)\n- Action logged in audit log\n\n**Error Responses:**\n- `403 Forbidden` - Not a Super Admin user\n- `400 Bad Request` - Email already exists\n- `400 Bad Request` - Invalid role (must be ADMIN or SUPER_ADMIN)\n- `400 Bad Request` - Only Super Admin can create Super Admin users\n\n**Note:**\n- Password is hashed before storage\n- Admin creation is logged in audit log\n- Regular ADMIN users cannot create other admins (only SUPER_ADMIN can)"
+								"description": "**Create a new admin user (Super Admin only)**\n\n**⚠️ RESTRICTIONS:**\n- **Super Admin Only:** Only SUPER_ADMIN users can create admin users\n- **Role Validation:** Can only create ADMIN or SUPER_ADMIN roles\n- **Super Admin Creation:** Only SUPER_ADMIN can create other SUPER_ADMIN users\n\n**Authentication required:** JWT Bearer token (Super Admin role)\n\n**Request Body:**\n```json\n{\n  \"email\": \"admin@example.com\",\n  \"name\": \"Admin User\",\n  \"password\": \"SecurePassword123!\",\n  \"role\": \"ADMIN\",\n  \"phone\": \"+1234567890\"\n}\n```\n\n**Required Parameters:**\n- `email` (string, required): Email (must be unique)\n- `name` (string, required): Full name\n- `password` (string, required): Password (min 6 characters)\n- `role` (string, required): `CUSTOMER` | `ADMIN` | `SUPER_ADMIN`\n  - SUPER_ADMIN can create any role; ADMIN can create only CUSTOMER (onboard customer).\n- `phone` (string, optional): Phone number\n\n**Response:**\n- Returns created admin user object (without password)\n- Action logged in audit log\n\n**Error Responses:**\n- `403 Forbidden` - Not a Super Admin user\n- `400 Bad Request` - Email already exists\n- `400 Bad Request` - Invalid role (must be ADMIN or SUPER_ADMIN)\n- `400 Bad Request` - Only Super Admin can create Super Admin users\n\n**Note:**\n- Password is hashed before storage\n- Admin creation is logged in audit log\n- Regular ADMIN users cannot create other admins (only SUPER_ADMIN can)"
 							},
 							"response": []
 						},
@@ -3180,19 +3323,16 @@
 									}
 								],
 								"url": {
-									"raw": "{{baseUrl}}/api/v1/admin/users?role=ADMIN",
+									"raw": "{{baseUrl}}/api/v1/admin/users?role=ADMIN&page=1&limit=20",
 									"host": ["{{baseUrl}}"],
 									"path": ["api", "v1", "admin", "users"],
 									"query": [
-										{
-											"key": "role",
-											"value": "ADMIN",
-											"description": "Filter by role (ADMIN or SUPER_ADMIN)",
-											"disabled": true
-										}
+										{ "key": "role", "value": "ADMIN", "description": "Filter by role (ADMIN or SUPER_ADMIN)", "disabled": true },
+										{ "key": "page", "value": "1", "description": "Page number (default: 1)" },
+										{ "key": "limit", "value": "20", "description": "Per page (default: 20, max: 100)" }
 									]
 								},
-								"description": "**List all admin users (Super Admin only)**\n\n**Authentication required:** JWT Bearer token (Super Admin role)\n\n**Query Parameters:**\n- `role` (string, optional): Filter by role - `ADMIN` or `SUPER_ADMIN`\n\n**Response:**\n- Returns list of all admin users (ADMIN and SUPER_ADMIN roles)\n- Excludes deleted users\n- Ordered by creation date (newest first)\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": [\n    {\n      \"id\": \"user-id\",\n      \"email\": \"admin@example.com\",\n      \"name\": \"Admin User\",\n      \"role\": \"ADMIN\",\n      \"phone\": \"+1234567890\",\n      \"image\": null,\n      \"createdAt\": \"2026-02-05T10:00:00.000Z\",\n      \"updatedAt\": \"2026-02-05T10:00:00.000Z\"\n    }\n  ],\n  \"message\": \"Admin users retrieved successfully\"\n}\n```\n\n**Error Responses:**\n- `403 Forbidden` - Not a Super Admin user"
+								"description": "**List all admin users (Super Admin only)**\n\n**Authentication required:** JWT Bearer token (Super Admin role)\n\n**Query Parameters:**\n- `role` (string, optional): Filter by role - `ADMIN` or `SUPER_ADMIN`\n- `page` (number, optional): Page number (default: 1)\n- `limit` (number, optional): Per page (default: 20, max: 100)\n\n**Response:**\n- Returns paginated list: data (array), meta: { total, page, limit, totalPages }\n- Excludes deleted users\n- Ordered by creation date (newest first)\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": [\n    {\n      \"id\": \"user-id\",\n      \"email\": \"admin@example.com\",\n      \"name\": \"Admin User\",\n      \"role\": \"ADMIN\",\n      \"phone\": \"+1234567890\",\n      \"image\": null,\n      \"createdAt\": \"2026-02-05T10:00:00.000Z\",\n      \"updatedAt\": \"2026-02-05T10:00:00.000Z\"\n    }\n  ],\n  \"message\": \"Admin users retrieved successfully\"\n}\n```\n\n**Error Responses:**\n- `403 Forbidden` - Not a Super Admin user"
 							},
 							"response": []
 						},
@@ -3337,82 +3477,282 @@
 					"name": "Booking Management",
 					"item": [
 						{
+							"name": "Create Booking (On Behalf of Customer)",
+							"event": [{
+								"listen": "test",
+								"script": {
+									"exec": [
+										"if (pm.response.code === 201) {",
+										"    const j = pm.response.json();",
+										"    if (j.data && j.data.id) { pm.environment.set('bookingId', j.data.id); console.log('bookingId saved:', j.data.id); }",
+										"}"
+									],
+									"type": "text/javascript"
+								}
+							}],
+							"request": {
+								"method": "POST",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+									{ "key": "Content-Type", "value": "application/json" }
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"userId\": \"{{customerId}}\",\n  \"productType\": \"FLIGHT_DOMESTIC\",\n  \"provider\": \"DUFFEL\",\n  \"basePrice\": 150.50,\n  \"currency\": \"GBP\",\n  \"bookingData\": { \"offerId\": \"{{offerId}}\" },\n  \"passengerInfo\": {\n    \"firstName\": \"Jane\",\n    \"lastName\": \"Doe\",\n    \"email\": \"jane@example.com\"\n  }\n}"
+								},
+								"url": { "raw": "{{baseUrl}}/api/v1/admin/bookings", "host": ["{{baseUrl}}"], "path": ["api", "v1", "admin", "bookings"] }
+							},
+							"response": [],
+							"description": "Create a booking for a customer (admin pays on behalf). Body: same as user CreateBookingDto **plus userId** (customer ID). After creation, use POST /payments/stripe/create-intent (flights) or charge-margin (Amadeus hotel/car) with this bookingId; backend uses booking.userId so payment is attributed to the customer. No pay-later flow."
+						},
+						{
 							"name": "List All Bookings (Admin Only)",
 							"request": {
 								"method": "GET",
-								"header": [
-									{
-										"key": "Authorization",
-										"value": "Bearer {{token}}",
-										"type": "text"
-									}
-								],
+								"header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
 								"url": {
-									"raw": "{{baseUrl}}/api/v1/admin/bookings?status=CONFIRMED&productType=HOTEL&limit=20",
+									"raw": "{{baseUrl}}/api/v1/admin/bookings?page=1&limit=20",
 									"host": ["{{baseUrl}}"],
 									"path": ["api", "v1", "admin", "bookings"],
 									"query": [
-										{
-											"key": "status",
-											"value": "CONFIRMED",
-											"description": "Filter by booking status",
-											"disabled": true
-										},
-										{
-											"key": "productType",
-											"value": "HOTEL",
-											"description": "Filter by product type (FLIGHT, HOTEL, CAR_RENTAL)",
-											"disabled": true
-										},
-										{
-											"key": "provider",
-											"value": "",
-											"description": "Filter by provider (DUFFEL, AMADEUS)",
-											"disabled": true
-										},
-										{
-											"key": "paymentStatus",
-											"value": "",
-											"description": "Filter by payment status (PENDING, COMPLETED, FAILED, REFUNDED)",
-											"disabled": true
-										},
-										{
-											"key": "userId",
-											"value": "",
-											"description": "Filter by user ID",
-											"disabled": true
-										},
-										{
-											"key": "startDate",
-											"value": "",
-											"description": "Filter bookings from this date (ISO string)",
-											"disabled": true
-										},
-										{
-											"key": "endDate",
-											"value": "",
-											"description": "Filter bookings until this date (ISO string)",
-											"disabled": true
-										},
-										{
-											"key": "limit",
-											"value": "20",
-											"description": "Items per page (default: 20, max: 200)"
-										},
-										{
-											"key": "cursor",
-											"value": "",
-											"description": "Pagination cursor",
-											"disabled": true
-										}
+										{ "key": "status", "value": "", "description": "PENDING, CONFIRMED, CANCELLED, FAILED", "disabled": true },
+										{ "key": "productType", "value": "", "description": "FLIGHT_DOMESTIC, HOTEL, CAR_RENTAL, etc.", "disabled": true },
+										{ "key": "provider", "value": "", "description": "DUFFEL, AMADEUS", "disabled": true },
+										{ "key": "userId", "value": "", "description": "Filter by user ID", "disabled": true },
+										{ "key": "startDate", "value": "", "description": "ISO date", "disabled": true },
+										{ "key": "endDate", "value": "", "description": "ISO date", "disabled": true },
+										{ "key": "page", "value": "1", "description": "Page number (default: 1)" },
+										{ "key": "limit", "value": "20", "description": "Per page (default: 50, max: 100)" }
 									]
 								},
-								"description": "**List all bookings across all users (Admin only)**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Query Parameters (all optional):**\n- `status` (string): Filter by booking status (PENDING, CONFIRMED, CANCELLED, FAILED)\n- `productType` (string): Filter by product type (FLIGHT, HOTEL, CAR_RENTAL)\n- `provider` (string): Filter by provider (DUFFEL, AMADEUS)\n- `paymentStatus` (string): Filter by payment status (PENDING, COMPLETED, FAILED, REFUNDED)\n- `userId` (string): Filter by user ID\n- `startDate` (string): Filter bookings from this date (ISO string)\n- `endDate` (string): Filter bookings until this date (ISO string)\n- `limit` (number): Items per page (default: 20, max: 200)\n- `cursor` (string): Pagination cursor\n\n**Response:**\n- Returns paginated list of all bookings\n- Includes user information\n- Supports multiple filters\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"bookings\": [\n      {\n        \"id\": \"booking-id\",\n        \"reference\": \"EBT-20260205-123456\",\n        \"userId\": \"user-id\",\n        \"user\": {\n          \"id\": \"user-id\",\n          \"email\": \"user@example.com\",\n          \"name\": \"User Name\"\n        },\n        \"productType\": \"HOTEL\",\n        \"status\": \"CONFIRMED\",\n        \"provider\": \"AMADEUS\",\n        \"totalAmount\": \"2002.40\",\n        \"currency\": \"GBP\",\n        \"paymentStatus\": \"COMPLETED\",\n        \"createdAt\": \"2026-02-05T10:00:00.000Z\"\n      }\n    ],\n    \"meta\": {\n      \"count\": 20,\n      \"hasMore\": true,\n      \"nextCursor\": \"cursor-string\"\n    }\n  },\n  \"message\": \"Bookings retrieved successfully\"\n}\n```\n\n**Error Responses:**\n- `403 Forbidden` - Not an admin user\n\n**Note:**\n- Only admins can view all bookings\n- Regular users can only view their own bookings via `/api/v1/bookings`"
+								"description": "List all bookings. Response: `data` = array of bookings, `meta` = { total, page, limit, totalPages }. Pagination uses page/limit, not cursor."
+							},
+							"response": []
+						},
+						{
+							"name": "Export Bookings CSV",
+							"request": {
+								"method": "GET",
+								"header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/bookings/export?status=&startDate=&endDate=",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "bookings", "export"],
+									"query": [
+										{ "key": "status", "value": "", "disabled": true },
+										{ "key": "startDate", "value": "", "disabled": true },
+										{ "key": "endDate", "value": "", "disabled": true }
+									]
+								},
+								"description": "Download bookings as CSV. Query: status?, startDate?, endDate?. Response: text/csv attachment."
+							},
+							"response": []
+						},
+						{
+							"name": "Mark Refund Status",
+							"request": {
+								"method": "PATCH",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+									{ "key": "Content-Type", "value": "application/json" }
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"refundAmount\": 100.00,\n  \"refundStatus\": \"COMPLETED\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/bookings/{{bookingId}}/refund",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "bookings", "{{bookingId}}", "refund"]
+								},
+								"description": "After processing refund manually (Stripe/bank), update booking. Body: refundAmount?, refundStatus? (PENDING | PROCESSING | COMPLETED | FAILED). Only for CANCELLED/REFUNDED bookings."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Dispute Evidence",
+							"request": {
+								"method": "GET",
+								"header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/bookings/{{bookingId}}/dispute-evidence",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "bookings", "{{bookingId}}", "dispute-evidence"]
+								},
+								"description": "Get evidence pack for Stripe dispute/chargeback: charge ID, policy snapshot, IP, user agent, confirmation email log, Amadeus confirmation, etc."
 							},
 							"response": []
 						}
 					],
-					"description": "**Admin booking management endpoints**\n\n**⚠️ RESTRICTIONS:**\n- **Admin Only:** All endpoints require ADMIN or SUPER_ADMIN role\n\n**Endpoints:**\n- **List All Bookings** - View all bookings across all users with filters\n\n**Filtering:**\n- Filter by status, product type, provider, payment status\n- Filter by user ID, date range\n- Pagination support\n\n**Note:**\n- Regular users can only view their own bookings\n- Admins can view all bookings with comprehensive filtering"
+					"description": "Admin booking: create on behalf, list (page/limit), export CSV, mark refund, get dispute evidence."
+				},
+				{
+					"name": "Customer Management",
+					"item": [
+						{
+							"name": "List Customers",
+							"request": {
+								"method": "GET",
+								"header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/customers?status=all&page=1&limit=20&search=",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "customers"],
+									"query": [
+										{ "key": "status", "value": "all", "description": "all | active | suspended" },
+										{ "key": "page", "value": "1" },
+										{ "key": "limit", "value": "20" },
+										{ "key": "search", "value": "", "description": "Search by name or email", "disabled": true }
+									]
+								},
+								"description": "List customers. Response: data (id, email, name, registeredDate, bookingsCount, points, status), meta (total, page, limit, totalPages)."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Customer by ID",
+							"request": {
+								"method": "GET",
+								"header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/customers/{{customerId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "customers", "{{customerId}}"]
+								},
+								"description": "Profile, loyalty summary, bookings count, internal notes, interaction history (last 50 bookings)."
+							},
+							"response": []
+						},
+						{
+							"name": "Update Customer Notes",
+							"request": {
+								"method": "PATCH",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+									{ "key": "Content-Type", "value": "application/json" }
+								],
+								"body": { "mode": "raw", "raw": "{\n  \"notes\": \"VIP customer, prefer window seat\"\n}" },
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/customers/{{customerId}}/notes",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "customers", "{{customerId}}", "notes"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Suspend Customer",
+							"request": {
+								"method": "POST",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+									{ "key": "Content-Type", "value": "application/json" }
+								],
+								"body": { "mode": "raw", "raw": "{\n  \"reason\": \"Policy violation\"\n}" },
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/customers/{{customerId}}/suspend",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "customers", "{{customerId}}", "suspend"]
+								},
+								"description": "Customer cannot log in. Audit: SUSPEND_CUSTOMER."
+							},
+							"response": []
+						},
+						{
+							"name": "Activate Customer",
+							"request": {
+								"method": "POST",
+								"header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/customers/{{customerId}}/activate",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "customers", "{{customerId}}", "activate"]
+								},
+								"description": "Reactivate suspended customer. Audit: ACTIVATE_CUSTOMER."
+							},
+							"response": []
+						},
+						{
+							"name": "Send Reset Password Link (Customer)",
+							"request": {
+								"method": "POST",
+								"header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/customers/{{customerId}}/reset-password-link",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "customers", "{{customerId}}", "reset-password-link"]
+								},
+								"description": "Sends password reset email to customer."
+							},
+							"response": []
+						}
+					],
+					"description": "List/get customers, internal notes, suspend, activate, send reset-password link."
+				},
+				{
+					"name": "Recent Activity",
+					"item": [
+						{
+							"name": "Get Recent Activity",
+							"request": {
+								"method": "GET",
+								"header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/activity?type=&startDate=&endDate=&page=1&limit=20",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "activity"],
+									"query": [
+										{ "key": "type", "value": "", "description": "booking | user_registration | coupon_used", "disabled": true },
+										{ "key": "startDate", "value": "", "disabled": true },
+										{ "key": "endDate", "value": "", "disabled": true },
+										{ "key": "page", "value": "1" },
+										{ "key": "limit", "value": "20" }
+									]
+								},
+								"description": "Unified feed: new bookings, user registrations, coupon usage. Requires canViewReports (ADMIN); SUPER_ADMIN bypasses. Response: data (array of { type, date, description, entityId, entityType, meta }), meta (total, page, limit, totalPages)."
+							},
+							"response": []
+						}
+					],
+					"description": "Recent activity feed for analytics/reports. Permission: canViewReports."
+				},
+				{
+					"name": "Cancellation Requests",
+					"item": [
+						{
+							"name": "List Pending Cancellation Requests",
+							"request": {
+								"method": "GET",
+								"header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+								"url": { "raw": "{{baseUrl}}/api/v1/admin/cancellation-requests", "host": ["{{baseUrl}}"], "path": ["api", "v1", "admin", "cancellation-requests"] }
+							},
+							"response": [],
+							"description": "List pending after-deadline hotel cancellation requests. Shows booking, policy snapshot, deadline, refundability."
+						},
+						{
+							"name": "Process Cancellation Request",
+							"request": {
+								"method": "POST",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+									{ "key": "Content-Type", "value": "application/json" }
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"action\": \"APPROVE_FULL_REFUND\",\n  \"refundAmount\": 200,\n  \"adminNotes\": \"Goodwill gesture\",\n  \"rejectionReason\": null\n}\n"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/cancellation-requests/{{cancellationRequestId}}/process",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "cancellation-requests", ":id", "process"],
+									"variable": [{ "key": "id", "value": "{{cancellationRequestId}}" }]
+								},
+								"description": "Body: action (APPROVE_FULL_REFUND | APPROVE_PARTIAL_REFUND | REJECT), refundAmount?, adminNotes?, rejectionReason?. Cancels in Amadeus and refunds via Stripe when approving."
+							},
+							"response": []
+						}
+					],
+					"description": "After-deadline hotel cancellation queue: list pending, process (approve/partial/reject)."
 				},
 				{
 					"name": "Audit Logs",
@@ -3429,51 +3769,14 @@
 									}
 								],
 								"url": {
-									"raw": "{{baseUrl}}/api/v1/admin/audit-logs?limit=50",
+									"raw": "{{baseUrl}}/api/v1/admin/audit-logs?page=1&limit=50",
 									"host": ["{{baseUrl}}"],
 									"path": ["api", "v1", "admin", "audit-logs"],
 									"query": [
-										{
-											"key": "action",
-											"value": "",
-											"description": "Filter by action type",
-											"disabled": true
-										},
-										{
-											"key": "userId",
-											"value": "",
-											"description": "Filter by user ID who performed the action",
-											"disabled": true
-										},
-										{
-											"key": "entityType",
-											"value": "",
-											"description": "Filter by entity type (User, Booking, etc.)",
-											"disabled": true
-										},
-										{
-											"key": "startDate",
-											"value": "",
-											"description": "Filter logs from this date (ISO string)",
-											"disabled": true
-										},
-										{
-											"key": "endDate",
-											"value": "",
-											"description": "Filter logs until this date (ISO string)",
-											"disabled": true
-										},
-										{
-											"key": "limit",
-											"value": "50",
-											"description": "Items per page (default: 50, max: 200)"
-										},
-										{
-											"key": "cursor",
-											"value": "",
-											"description": "Pagination cursor",
-											"disabled": true
-										}
+										{ "key": "userId", "value": "", "description": "Filter by user who performed action", "disabled": true },
+										{ "key": "action", "value": "", "description": "Filter by action type", "disabled": true },
+										{ "key": "page", "value": "1", "description": "Page number (default: 1)" },
+										{ "key": "limit", "value": "50", "description": "Per page (default: 50, max: 100)" }
 									]
 								},
 								"description": "**Get audit logs (Super Admin only)**\n\n**Authentication required:** JWT Bearer token (Super Admin role)\n\n**What This Does:**\n- Returns audit log of all sensitive admin actions\n- Tracks who performed what action, when, and what changed\n- Includes IP address and user agent for security\n\n**Query Parameters (all optional):**\n- `action` (string): Filter by action type (e.g., \"CREATE_ADMIN_USER\", \"UPDATE_ADMIN_USER\", \"DELETE_ADMIN_USER\", \"CANCEL_BOOKING\")\n- `userId` (string): Filter by user ID who performed the action\n- `entityType` (string): Filter by entity type (User, Booking, etc.)\n- `startDate` (string): Filter logs from this date (ISO string)\n- `endDate` (string): Filter logs until this date (ISO string)\n- `limit` (number): Items per page (default: 50, max: 200)\n- `cursor` (string): Pagination cursor\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"logs\": [\n      {\n        \"id\": \"log-id\",\n        \"userId\": \"admin-user-id\",\n        \"user\": {\n          \"id\": \"admin-user-id\",\n          \"email\": \"admin@example.com\",\n          \"name\": \"Admin User\"\n        },\n        \"action\": \"CREATE_ADMIN_USER\",\n        \"entityType\": \"User\",\n        \"entityId\": \"created-user-id\",\n        \"changes\": {\n          \"email\": \"newadmin@example.com\",\n          \"role\": \"ADMIN\",\n          \"createdBy\": \"admin@example.com\"\n        },\n        \"ipAddress\": \"192.168.1.1\",\n        \"userAgent\": \"Mozilla/5.0...\",\n        \"createdAt\": \"2026-02-05T10:00:00.000Z\"\n      }\n    ],\n    \"meta\": {\n      \"count\": 50,\n      \"hasMore\": true,\n      \"nextCursor\": \"cursor-string\"\n    }\n  },\n  \"message\": \"Audit logs retrieved successfully\"\n}\n```\n\n**Tracked Actions:**\n- `CREATE_ADMIN_USER` - Admin user creation\n- `UPDATE_ADMIN_USER` - Admin user updates\n- `DELETE_ADMIN_USER` - Admin user deletion\n- `ASSIGN_PERMISSIONS` - Permission assignments\n- `CANCEL_BOOKING` - Booking cancellations\n- `CHANGE_PASSWORD` - Password changes\n- `DELETE_ACCOUNT` - Account deletions\n\n**Error Responses:**\n- `403 Forbidden` - Not a Super Admin user\n\n**Note:**\n- Only SUPER_ADMIN can view audit logs\n- Logs include IP address and user agent for security\n- All sensitive admin actions are automatically logged"
@@ -3723,7 +4026,28 @@
 									"host": ["{{baseUrl}}"],
 									"path": ["api", "v1", "admin", "rewards", "vouchers"]
 								},
-								"description": "**List all vouchers across all users (Admin only).**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**Response:**\nArray of all vouchers with status, user info, and usage details."
+								"description": "**List all vouchers across all users (Admin only).** Query: userId?, status? (ACTIVE, USED, EXPIRED, CANCELLED), page?, limit?. Response: data, meta, message."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Coupon (Manual Voucher)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+									{ "key": "Content-Type", "value": "application/json" }
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"userId\": \"{{customerId}}\",\n  \"code\": \"PROMO20\",\n  \"discountType\": \"PERCENTAGE\",\n  \"discountValue\": 20,\n  \"currency\": \"GBP\",\n  \"maxDiscountAmount\": 50,\n  \"minBookingAmount\": 100,\n  \"applicableProducts\": [\"FLIGHT_DOMESTIC\", \"FLIGHT_INTERNATIONAL\"],\n  \"expiresAt\": \"2026-12-31T23:59:59.000Z\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/rewards/vouchers/manual",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "rewards", "vouchers", "manual"]
+								},
+								"description": "Issue a promotional voucher without points redemption. Body: userId, code (unique, stored uppercase), discountType (PERCENTAGE | FIXED_AMOUNT), discountValue, currency?, maxDiscountAmount?, minBookingAmount?, applicableProducts? (array or null = all), expiresAt (ISO, future)."
 							},
 							"response": []
 						},
@@ -3808,25 +4132,17 @@
 									}
 								],
 								"url": {
-									"raw": "{{baseUrl}}/api/v1/dashboard/stats?startDate=2026-01-01T00:00:00Z&endDate=2026-02-05T23:59:59Z",
+									"raw": "{{baseUrl}}/api/v1/dashboard/stats?startDate=&endDate=&productType=&compareWithPrevious=true",
 									"host": ["{{baseUrl}}"],
 									"path": ["api", "v1", "dashboard", "stats"],
 									"query": [
-										{
-											"key": "startDate",
-											"value": "2026-01-01T00:00:00Z",
-											"description": "Start date for statistics (ISO string). Defaults to 30 days ago.",
-											"disabled": true
-										},
-										{
-											"key": "endDate",
-											"value": "2026-02-05T23:59:59Z",
-											"description": "End date for statistics (ISO string). Defaults to today.",
-											"disabled": true
-										}
+										{ "key": "startDate", "value": "", "description": "Start date (ISO). Default: 30 days ago.", "disabled": true },
+										{ "key": "endDate", "value": "", "description": "End date (ISO). Default: today.", "disabled": true },
+										{ "key": "productType", "value": "", "description": "Filter all aggregates (e.g. FLIGHT_DOMESTIC, HOTEL, CAR_RENTAL)", "disabled": true },
+										{ "key": "compareWithPrevious", "value": "true", "description": "If true, adds previousPeriod and percentChange", "disabled": true }
 									]
 								},
-								"description": "**Get dashboard statistics (Admin only)**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**What This Does:**\n- Returns comprehensive dashboard statistics\n- Includes total bookings, revenue, breakdowns by status, product type, provider, payment status\n- Includes recent bookings\n- Supports date range filtering\n\n**Query Parameters (optional):**\n- `startDate` (string): Start date for statistics (ISO string). Defaults to 30 days ago.\n- `endDate` (string): End date for statistics (ISO string). Defaults to today.\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"period\": {\n      \"start\": \"2026-01-01T00:00:00.000Z\",\n      \"end\": \"2026-02-05T23:59:59.999Z\"\n    },\n    \"totalBookings\": 150,\n    \"totalRevenue\": 250000.50,\n    \"bookingsByStatus\": {\n      \"CONFIRMED\": 120,\n      \"PENDING\": 20,\n      \"CANCELLED\": 10\n    },\n    \"bookingsByProductType\": {\n      \"FLIGHT\": {\n        \"count\": 80,\n        \"revenue\": 150000.00\n      },\n      \"HOTEL\": {\n        \"count\": 60,\n        \"revenue\": 90000.50\n      },\n      \"CAR_RENTAL\": {\n        \"count\": 10,\n        \"revenue\": 10000.00\n      }\n    },\n    \"bookingsByProvider\": {\n      \"DUFFEL\": 100,\n      \"AMADEUS\": 50\n    },\n    \"paymentStatusBreakdown\": {\n      \"COMPLETED\": 120,\n      \"PENDING\": 20,\n      \"FAILED\": 10\n    },\n    \"recentBookings\": [\n      {\n        \"id\": \"booking-id\",\n        \"reference\": \"EBT-20260205-123456\",\n        \"productType\": \"HOTEL\",\n        \"status\": \"CONFIRMED\",\n        \"totalAmount\": 2002.40,\n        \"currency\": \"GBP\",\n        \"user\": {\n          \"id\": \"user-id\",\n          \"email\": \"user@example.com\",\n          \"name\": \"User Name\"\n        },\n        \"createdAt\": \"2026-02-05T10:00:00.000Z\"\n      }\n    ]\n  },\n  \"message\": \"Dashboard statistics retrieved successfully\"\n}\n```\n\n**Response Fields:**\n- `period`: Date range for statistics\n- `totalBookings`: Total number of bookings in period\n- `totalRevenue`: Total revenue from completed bookings\n- `bookingsByStatus`: Breakdown by booking status\n- `bookingsByProductType`: Breakdown by product type with count and revenue\n- `bookingsByProvider`: Breakdown by provider (DUFFEL, AMADEUS)\n- `paymentStatusBreakdown`: Breakdown by payment status\n- `recentBookings`: Last 10 bookings (all time, not filtered by date range)\n\n**Error Responses:**\n- `403 Forbidden` - Not an admin user\n\n**Note:**\n- Only admins can access dashboard statistics\n- Revenue is calculated from bookings with `paymentStatus: COMPLETED`\n- Recent bookings show last 10 bookings regardless of date range filter"
+								"description": "**Get dashboard statistics (Admin only)**\n\n**Authentication required:** JWT Bearer token (Admin role)\n\n**What This Does:**\n- Returns comprehensive dashboard statistics\n- Includes total bookings, revenue, breakdowns by status, product type, provider, payment status\n- Includes recent bookings\n- Supports date range filtering\n\n**Query Parameters (optional):**\n- `startDate` (string): Start date for statistics (ISO string). Defaults to 30 days ago.\n- `endDate` (string): End date for statistics (ISO string). Defaults to today.\n\n**Response Structure:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"period\": {\n      \"start\": \"2026-01-01T00:00:00.000Z\",\n      \"end\": \"2026-02-05T23:59:59.999Z\"\n    },\n    \"totalBookings\": 150,\n    \"totalRevenue\": 250000.50,\n    \"bookingsByStatus\": {\n      \"CONFIRMED\": 120,\n      \"PENDING\": 20,\n      \"CANCELLED\": 10\n    },\n    \"bookingsByProductType\": {\n      \"FLIGHT\": {\n        \"count\": 80,\n        \"revenue\": 150000.00\n      },\n      \"HOTEL\": {\n        \"count\": 60,\n        \"revenue\": 90000.50\n      },\n      \"CAR_RENTAL\": {\n        \"count\": 10,\n        \"revenue\": 10000.00\n      }\n    },\n    \"bookingsByProvider\": {\n      \"DUFFEL\": 100,\n      \"AMADEUS\": 50\n    },\n    \"paymentStatusBreakdown\": {\n      \"COMPLETED\": 120,\n      \"PENDING\": 20,\n      \"FAILED\": 10\n    },\n    \"recentBookings\": [\n      {\n        \"id\": \"booking-id\",\n        \"reference\": \"EBT-20260205-123456\",\n        \"productType\": \"HOTEL\",\n        \"status\": \"CONFIRMED\",\n        \"totalAmount\": 2002.40,\n        \"currency\": \"GBP\",\n        \"user\": {\n          \"id\": \"user-id\",\n          \"email\": \"user@example.com\",\n          \"name\": \"User Name\"\n        },\n        \"createdAt\": \"2026-02-05T10:00:00.000Z\"\n      }\n    ]\n  },\n  \"message\": \"Dashboard statistics retrieved successfully\"\n}\n```\n\n**Response Fields:**\n- `period`: { start, end }\n- `totalBookings`, `totalRevenue`, `activeUsers` (customers with booking or registered in period)\n- `bookingsByStatus`, `bookingsByProductType`, `bookingsByProvider`, `paymentStatusBreakdown`\n- `recentBookings`: Last 10 in period (respects startDate/endDate and productType)\n- If compareWithPrevious=true: `previousPeriod` (totalBookings, totalRevenue), `percentChange` (totalBookings, totalRevenue)\n\n**Error Responses:**\n- `403 Forbidden` - Not an admin user\n\n**Note:**\n- Only admins can access dashboard statistics\n- Revenue is calculated from bookings with `paymentStatus: COMPLETED`\n- Recent bookings show last 10 bookings regardless of date range filter"
 							},
 							"response": []
 						}
@@ -3862,11 +4178,18 @@
 		}
 	],
 	"variable": [
-		{
-			"key": "baseUrl",
-			"value": "http://localhost:3001",
-			"type": "string"
-		}
+		{ "key": "baseUrl", "value": "http://localhost:3001", "type": "string" },
+		{ "key": "token", "value": "", "type": "string" },
+		{ "key": "userId", "value": "", "type": "string" },
+		{ "key": "bookingId", "value": "", "type": "string" },
+		{ "key": "offerId", "value": "", "type": "string" },
+		{ "key": "offerRequestId", "value": "", "type": "string" },
+		{ "key": "voucherCode", "value": "", "type": "string" },
+		{ "key": "adminUserId", "value": "", "type": "string" },
+		{ "key": "customerId", "value": "", "type": "string" },
+		{ "key": "markupId", "value": "", "type": "string" },
+		{ "key": "amadeusOfferId", "value": "", "type": "string" },
+		{ "key": "amadeusHotelId", "value": "", "type": "string" }
 	]
 }
 
