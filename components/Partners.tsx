@@ -7,12 +7,10 @@ const Partners: React.FC = () => {
   const { t } = useLanguage();
   
   const partners = [
-    { name: 'Air Peace', logo: '/logos/air-peace.png' },
-    { name: 'Emirates', logo: '/logos/emirates.png' },
-    { name: 'Marriott', logo: '/logos/marriott.png' },
-    { name: 'Hertz', logo: '/logos/hertz.png' },
-    { name: 'Ibom Air', logo: '/logos/ibom-air.png' },
-    { name: 'Hilton', logo: '/logos/hilton.png' },
+    { name: 'DHL', logo: '/logos/DHL-Logo-500x281.png' },
+    { name: 'IATA', logo: '/logos/IATA_logo.svg.png' },
+    { name: 'Apply Board', logo: '/logos/interior-third-applyboard-logo.jpg' },
+    { name: 'Nanta', logo: '/logos/nanta.png' },
   ];
 
   return (

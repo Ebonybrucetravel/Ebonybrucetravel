@@ -23,13 +23,23 @@ export default function AdminLoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? 'Login failed');
+      
       const user = data.user ?? data.data?.user ?? data;
       const role = (user.role ?? '').toUpperCase();
-      if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') throw new Error('Insufficient permissions');
+      if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
+        throw new Error('Insufficient permissions');
+      }
+      
       const token = data.token ?? data.data?.token;
       if (!token) throw new Error('No token received');
+      
+      // Set token in localStorage and cookie
       localStorage.setItem('adminToken', token);
       localStorage.setItem('adminUser', JSON.stringify(user));
+      
+      // Set cookie for middleware
+      document.cookie = `adminToken=${token}; path=/; max-age=86400; SameSite=Strict`;
+      
       router.push('/admin/dashboard/analytics');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');

@@ -19,33 +19,71 @@ interface AdminContextValue {
   role: AdminRole | null;
   isSuperAdmin: boolean;
   isLoading: boolean;
+  isInitialized: boolean;
   refresh: () => void;
+  updateUser: (userData: Partial<AdminUser>) => void;
+  logout: () => void;
+  hasPermission: (permission: string) => boolean;
 }
 
 const AdminContext = createContext<AdminContextValue | null>(null);
 
 export function AdminProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AdminUser | null>(null);
+  const [user, setUserState] = useState<AdminUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
 
+  // Load user from localStorage
   const refresh = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    
     try {
       const raw = localStorage.getItem('adminUser');
       if (!raw) {
-        setUser(null);
+        setUserState(null);
         return;
       }
       const parsed = JSON.parse(raw) as AdminUser;
       const role = (parsed.role ?? '').toUpperCase() as AdminRole;
       if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
-        setUser(null);
+        setUserState(null);
         return;
       }
-      setUser({ ...parsed, role });
-    } catch {
-      setUser(null);
+      setUserState({ ...parsed, role });
+    } catch (error) {
+      console.error('Failed to parse admin user:', error);
+      setUserState(null);
+    } finally {
+      setIsInitialized(true);
     }
   }, []);
+
+  // Update user
+  const updateUser = useCallback((userData: Partial<AdminUser>) => {
+    setUserState(prev => {
+      if (!prev) return null;
+      const updated = { ...prev, ...userData };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('adminUser', JSON.stringify(updated));
+      }
+      return updated;
+    });
+  }, []);
+
+  // Logout
+  const logout = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('adminUser');
+    }
+    setUserState(null);
+  }, []);
+
+  // Check permission
+  const hasPermission = useCallback((permission: string) => {
+    if (!user) return false;
+    if (user.role === 'SUPER_ADMIN') return true;
+    return user.permissions?.[permission] ?? false;
+  }, [user]);
 
   useEffect(() => {
     refresh();
@@ -55,6 +93,11 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const role = user?.role ?? null;
   const isSuperAdmin = role === 'SUPER_ADMIN';
 
+  // Don't render children until initialized
+  if (!isInitialized && isLoading) {
+    return null; // or a loading spinner
+  }
+
   return (
     <AdminContext.Provider
       value={{
@@ -62,7 +105,11 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         role,
         isSuperAdmin,
         isLoading,
+        isInitialized,
         refresh,
+        updateUser,
+        logout,
+        hasPermission,
       }}
     >
       {children}

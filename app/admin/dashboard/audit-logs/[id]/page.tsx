@@ -2,9 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { listAuditLogs } from '@/lib/adminApi';
-
 
 interface AuditLog {
   id: string;
@@ -24,65 +22,6 @@ interface AuditLog {
   };
 }
 
-// Update mock data to match the new interface
-const MOCK_AUDIT_LOGS: AuditLog[] = [
-  {
-    id: 'cmlv2femj005410iwg8u4u6ew',
-    userId: 'cmls8otnr0000qjo3fhyrukzz',
-    action: 'CREATE_ADMIN_USER',
-    entityType: 'User',
-    entityId: 'cmlv2fedm005210iwin7hmrmv',
-    changes: {
-      role: 'ADMIN',
-      email: 'obade@gmail.com',
-      createdBy: 'justtargetseyi@gmail.com'
-    },
-    ipAddress: null,
-    userAgent: null,
-    createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-    user: {
-      id: 'cmls8otnr0000qjo3fhyrukzz',
-      email: 'justtargetseyi@gmail.com',
-      name: 'Super Administrator',
-      role: 'SUPER_ADMIN'
-    }
-  },
-  {
-    id: 'cmll2qwq2000ka3blie4jhe2j',
-    userId: 'cmljqbzxi0007a3blqh26hm5n',
-    action: 'CHANGE_PASSWORD',
-    entityType: 'User',
-    entityId: 'cmljqbzxi0007a3blqh26hm5n',
-    changes: null,
-    ipAddress: '129.205.121.115',
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-    createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    user: {
-      id: 'cmljqbzxi0007a3blqh26hm5n',
-      email: 'obafemi.james@gmail.com',
-      name: 'Obafemi James',
-      role: 'CUSTOMER'
-    }
-  },
-  {
-    id: 'cmlv3femj005510iwg8u4u6ex',
-    userId: 'cmls8otnr0000qjo3fhyrukzz',
-    action: 'LOGIN',
-    entityType: 'Session',
-    entityId: 'sess_123456',
-    changes: null,
-    ipAddress: '192.168.1.100',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    createdAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    user: {
-      id: 'cmls8otnr0000qjo3fhyrukzz',
-      email: 'justtargetseyi@gmail.com',
-      name: 'Super Administrator',
-      role: 'SUPER_ADMIN'
-    }
-  }
-];
-
 export default function AdminSecurity() {
   const router = useRouter();
   const [faStep, setFaStep] = useState<'info' | 'otp' | 'success'>('info');
@@ -101,13 +40,9 @@ export default function AdminSecurity() {
 
         if (response.success && response.data) {
           setRecentLogs(response.data.slice(0, 5));
-        } else {
-          // Use mock data for preview if API fails
-          setRecentLogs(MOCK_AUDIT_LOGS);
         }
       } catch (error) {
         console.error('Error fetching recent logs:', error);
-        setRecentLogs(MOCK_AUDIT_LOGS);
       } finally {
         setIsLoading(false);
       }
@@ -151,11 +86,6 @@ export default function AdminSecurity() {
       case 'DELETE': return 'text-red-600 bg-red-50';
       default: return 'text-gray-600 bg-gray-50';
     }
-  };
-
-  const handleViewAllClick = () => {
-    console.log('View all clicked, navigating to: /admin/dashboard/audit-logs');
-    router.push('/admin/dashboard/audit-logs');
   };
 
   return (
@@ -207,7 +137,7 @@ export default function AdminSecurity() {
             </div>
           </div>
           <button
-            onClick={handleViewAllClick}
+            onClick={() => router.push('/admin/dashboard/audit-logs')}
             className="px-6 py-3 bg-[#33a8da] text-white rounded-xl font-medium text-sm hover:bg-[#2c98c7] transition flex items-center gap-2"
           >
             View All Logs
@@ -222,10 +152,10 @@ export default function AdminSecurity() {
         ) : (
           <div className="space-y-4">
             {recentLogs.map((log) => (
-              <Link
+              <div
                 key={log.id}
-                href={`/admin/dashboard/audit-logs/${log.id}`}
-                className="block group relative bg-gradient-to-r from-gray-50 to-white rounded-2xl p-5 border border-gray-100 hover:shadow-md transition-all hover:bg-gray-50 active:bg-gray-100 no-underline"
+                className="group relative bg-gradient-to-r from-gray-50 to-white rounded-2xl p-5 border border-gray-100 hover:shadow-md transition-all cursor-pointer"
+                onClick={() => router.push(`/admin/dashboard/audit-logs/${log.id}`)}
               >
                 <div className="flex items-start gap-4">
                   <div className={`w-10 h-10 rounded-xl ${getActionColor(log.action)} flex items-center justify-center text-lg`}>
@@ -258,14 +188,9 @@ export default function AdminSecurity() {
                         {log.user?.role || 'Unknown'}
                       </span>
                     </div>
-                    {log.ipAddress && (
-                      <div className="text-xs text-gray-400 mt-1">
-                        IP: {log.ipAddress}
-                      </div>
-                    )}
                   </div>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         )}
