@@ -32,7 +32,7 @@ import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
 import { PrismaService } from '@infrastructure/database/prisma.service';
-import { UserRole } from '@prisma/client';
+import { UserRole, ContactSubmissionStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { UpdateAdminDto } from './dto/update-admin.dto';
@@ -47,6 +47,8 @@ import {
 import { CreateBookingUseCase } from '@application/booking/use-cases/create-booking.use-case';
 import { AuthService } from '@presentation/auth/auth.service';
 import { CreateBookingOnBehalfDto } from './dto/create-booking-on-behalf.dto';
+import { UserService } from '@presentation/user/user.service';
+import { UpdateProfileDto } from '@presentation/user/dto/update-profile.dto';
 
 function escapeCsv(s: any): string {
   if (s == null) return '';
@@ -59,7 +61,7 @@ function escapeCsv(s: any): string {
 @ApiBearerAuth()
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('SUPER_ADMIN')
+@Roles('ADMIN', 'SUPER_ADMIN')
 export class AdminController {
   constructor(
     private readonly prisma: PrismaService,
@@ -68,7 +70,24 @@ export class AdminController {
     private readonly processCancellationRequestUseCase: ProcessCancellationRequestUseCase,
     private readonly createBookingUseCase: CreateBookingUseCase,
     private readonly authService: AuthService,
+    private readonly userService: UserService,
   ) {}
+
+  @Get('me')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Get current admin profile' })
+  @ApiResponse({ status: 200, description: 'Admin profile retrieved' })
+  async getAdminProfile(@Request() req: any) {
+    return this.userService.getProfile(req.user.id);
+  }
+
+  @Patch('me')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Update current admin profile' })
+  @ApiResponse({ status: 200, description: 'Admin profile updated' })
+  async updateAdminProfile(@Request() req: any, @Body() updateDto: UpdateProfileDto) {
+    return this.userService.updateProfile(req.user.id, updateDto);
+  }
 
   @Post('users')
   @Roles('ADMIN', 'SUPER_ADMIN')
@@ -1101,6 +1120,53 @@ export class AdminController {
   }
 
   // --- Cancellation queue (after-deadline hotel cancellations, BOOKING_OPERATIONS_AND_RISK) ---
+
+  @Get('contact-submissions')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'List Contact Us form submissions' })
+  @ApiQuery({ name: 'status', required: false, description: 'NEW, READ, REPLIED' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiResponse({ status: 200, description: 'Contact submissions list' })
+  async listContactSubmissions(@Query() query: any) {
+    const { status, page = 1, limit = 20 } = query;
+    const where: any = {};
+    if (status) where.status = status;
+    const skip = (Number(page) - 1) * Number(limit);
+    const take = Math.min(Number(limit) || 20, 100);
+    const [list, total] = await Promise.all([
+      this.prisma.contactSubmission.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.contactSubmission.count({ where }),
+    ]);
+    return {
+      success: true,
+      data: list,
+      meta: { total, page: Number(page), limit: take, totalPages: Math.ceil(total / take) },
+      message: 'Contact submissions retrieved',
+    };
+  }
+
+  @Patch('contact-submissions/:id/status')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update contact submission status (e.g. mark READ or REPLIED)' })
+  @ApiParam({ name: 'id', description: 'Contact submission ID' })
+  @ApiResponse({ status: 200, description: 'Status updated' })
+  async updateContactSubmissionStatus(
+    @Param('id') id: string,
+    @Body() body: { status: ContactSubmissionStatus },
+  ) {
+    const updated = await this.prisma.contactSubmission.update({
+      where: { id },
+      data: { status: body.status },
+    });
+    return { success: true, data: updated, message: 'Status updated' };
+  }
 
   @Get('cancellation-requests')
   @Roles('ADMIN', 'SUPER_ADMIN')

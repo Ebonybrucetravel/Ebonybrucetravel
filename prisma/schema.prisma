@@ -585,3 +585,28 @@ model SavedTraveler {
   @@index([isDefault])
   @@map("saved_travelers")
 }
+
+// Contact Us form submissions (public form)
+model ContactSubmission {
+  id                   String   @id @default(cuid())
+  name                 String   // Full Name
+  email                String
+  phone                String?  // Phone Number (optional)
+  serviceInterestedIn  String   // Required: Travel Services, Logistics - DHL, etc.
+  message              String   @db.Text
+  subject              String?  // Optional extra subject line (if needed)
+  status               ContactSubmissionStatus @default(NEW) // Admin: NEW, READ, REPLIED
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([serviceInterestedIn])
+  @@map("contact_submissions")
+}
+
+enum ContactSubmissionStatus {
+  NEW
+  READ
+  REPLIED
+}

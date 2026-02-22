@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
 import { PrismaService } from '@infrastructure/database/prisma.service';
+import { ProductType, Prisma } from '@prisma/client';
 
 @ApiTags('Dashboard')
 @ApiBearerAuth()
@@ -53,10 +54,12 @@ export class DashboardController {
       1,
       Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)),
     );
-    const productFilter =
-      productType && productType.trim() ? { productType: productType.trim() } : {};
+    const productFilter: Prisma.BookingWhereInput =
+      productType && productType.trim()
+        ? { productType: productType.trim() as ProductType }
+        : {};
     const dateRange = { gte: start, lte: end };
-    const baseWhere = {
+    const baseWhere: Prisma.BookingWhereInput = {
       deletedAt: null,
       createdAt: dateRange,
       ...productFilter,
@@ -94,7 +97,7 @@ export class DashboardController {
     if (compareWithPrevious === 'true' || compareWithPrevious === '1') {
       const prevEnd = new Date(start.getTime() - 1);
       const prevStart = new Date(prevEnd.getTime() - periodDays * 24 * 60 * 60 * 1000);
-      const prevWhere = {
+      const prevWhere: Prisma.BookingWhereInput = {
         deletedAt: null,
         createdAt: { gte: prevStart, lte: prevEnd },
         ...productFilter,
@@ -147,8 +150,13 @@ export class DashboardController {
     });
 
     // Recent bookings (last 10 **in period**)
+    const recentBookingsWhere: Prisma.BookingWhereInput = {
+      deletedAt: null,
+      createdAt: dateRange,
+      ...productFilter,
+    };
     const recentBookings = await this.prisma.booking.findMany({
-      where: { deletedAt: null, createdAt: dateRange, ...productFilter },
+      where: recentBookingsWhere,
       include: {
         user: { select: { id: true, email: true, name: true } },
       },
@@ -210,7 +218,7 @@ export class DashboardController {
           status: b.status,
           totalAmount: Number(b.totalAmount),
           currency: b.currency,
-          user: b.user,
+          user: b.user ?? null,
           createdAt: b.createdAt,
         })),
       },

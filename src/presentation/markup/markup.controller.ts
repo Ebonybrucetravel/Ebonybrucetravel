@@ -18,7 +18,7 @@ import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
 import { PrismaService } from '@infrastructure/database/prisma.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
-import { ProductType } from '@prisma/client';
+import { Prisma, ProductType } from '@prisma/client';
 
 @ApiTags('Markups')
 @ApiBearerAuth()
@@ -134,7 +134,9 @@ export class MarkupController {
         action: 'UPDATE_MARKUP_CONFIG',
         entityType: 'MarkupConfig',
         entityId: id,
-        changes: { before: existing, after: updated },
+        changes: JSON.parse(
+          JSON.stringify({ before: existing, after: updated }),
+        ) as Prisma.InputJsonValue,
       },
     });
     return {

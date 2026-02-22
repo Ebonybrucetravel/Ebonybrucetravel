@@ -36,6 +36,7 @@ import { AuthModule } from './presentation/auth/auth.module';
 import { AdminModule } from './presentation/admin/admin.module';
 import { UserModule } from './presentation/user/user.module';
 import { HealthModule } from './presentation/health/health.module';
+import { ContactModule } from './presentation/contact/contact.module';
 import { BookingController } from './presentation/booking/booking.controller';
 import { PaymentController } from './presentation/payment/payment.controller';
 import { MarkupController } from './presentation/markup/markup.controller';
@@ -85,6 +86,7 @@ import { DashboardController } from './presentation/dashboard/dashboard.controll
     AdminModule,
     UserModule,
     HealthModule,
+    ContactModule,
   ],
   controllers: [BookingController, PaymentController, MarkupController, DashboardController],
   providers: [
