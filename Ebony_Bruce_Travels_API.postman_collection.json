@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "ebony-bruce-travels-api-v2",
 		"name": "Ebony Bruce Travels API",
-		"description": "Complete API collection for Ebony Bruce Travels Booking System\n\n**Base URL:** `{{baseUrl}}/api/v1`\n\n**Authentication:** Most endpoints require JWT Bearer token. Get token from `/auth/login` or `/auth/register`.\n\n**Environment Variables:**\n- `baseUrl`: http://localhost:3001 (or your Railway URL)\n- `token`: JWT token (auto-set after login)\n- `userId`: User ID (auto-set after login)\n- `offerRequestId`: Duffel offer request ID (auto-set after flight search)\n- `offerId`: Selected flight offer ID (auto-set after listing offers)\n- `nextCursor`: Pagination cursor for next page (auto-set)\n- `bookingId`: Booking ID (auto-set after creating booking)\n- `voucherCode`: Voucher code (auto-set after redeeming loyalty points)\n- `setupIntentClientSecret`: Stripe SetupIntent secret (auto-set after payment method setup)\n\n**Features (v3.0 - Complete):**\n- Authentication (register, login, OAuth, password reset, email verification)\n- User Profile (CRUD, avatar, password change, soft delete)\n- Loyalty Points System (earn, redeem, tiers, transactions)\n- Rewards & Vouchers (admin-configurable rules, percentage/fixed discounts)\n- Saved Payment Methods (PCI-compliant via Stripe tokenization)\n- Saved Items / Wishlist (hotels, flights, car rentals)\n- Saved Travelers (passport, nationality, frequent flyer)\n- User Dashboard (aggregated profile data)\n- Flight Search (Duffel - two-step with pagination)\n- Hotel Search & Booking (Amadeus recommended + Duffel)\n- Car Rental Search & Booking (Amadeus Transfers)\n- Payments (Stripe with voucher support)\n- Admin Management (users, bookings, rewards, audit logs, dashboard)\n- Health Check endpoints\n- Rate Limiting, CORS, Correlation IDs\n\n---\n\n## API Sections\n\n### 1. Authentication\nRegister, Login, OAuth (Facebook/Google), Password Reset, Email Verification, Logout\n\n### 2. User Profile\nGet/Update Profile, Upload Avatar, Change Password, Delete Account\n\n### 3. Loyalty & Rewards\nGet Loyalty Account, Transaction History, Available Rewards, Redeem Points, Validate/Get Vouchers\n\n### 4. Saved Payment Methods\nSetup (Stripe SetupIntent), Confirm, List, Set Default, Delete\n\n### 5. Saved Items (Wishlist)\nSave/Unsave Items, Toggle, Check Status, Get Counts, Update Notes\n\n### 6. Saved Travelers\nCreate/List/Get/Update/Delete Travelers, Batch Fetch\n\n### 7. User Dashboard\nAggregated profile data (loyalty, bookings, stats) in single call\n\n### 8. Health Check\nService health, Database health\n\n### 9. Flight Search & Offers\nTwo-step search (offer_request_id -> paginated offers)\n\n### 10. Bookings\nCreate (auth/guest), List, Get, Cancel\n\n### 11. Payments\nCreate Payment Intent (with optional voucher), Guest Payment Intent, Stripe Webhook\n\n### 12. Hotels\nAmadeus (recommended), Duffel, Common Operations, Images\n\n### 13. Car Rentals\nSearch, Create Booking, Cancel\n\n### 14. Flight Utilities\nPlace Suggestions, Airlines List\n\n### 15. Platform Settings (Markups)\nList, Create, Update, Deactivate markup configs (productType, markup %, service fee). Admin only.\n\n### 16. Admin\nUser Management (create admin/customer, list with pagination, permissions), Customer Management (list, get, notes, suspend, activate, reset-password), Booking Management (list, export CSV, create on behalf, mark refund, dispute evidence), Rewards (dashboard, rules, tiers, earning rules, vouchers, create coupon, adjust points), Cancellation Requests, Recent Activity, Audit Logs, Dashboard Stats (with productType, compareWithPrevious, activeUsers)\n\n---\n\n## Quick Start Guide\n\n### Step 1: Authentication\n1. Register or Login to get JWT token\n2. Token auto-saved to `{{token}}`\n\n### Step 2: Initial Setup (Admin - Run Once)\n1. Seed loyalty tiers: `POST /admin/rewards/tiers/seed-defaults`\n2. Seed earning rules: `POST /admin/rewards/earning-rules/seed-defaults`\n3. Create reward rules: `POST /admin/rewards/rules`\n\n### Step 3: Search & Book\n1. Search flights/hotels/cars\n2. Create booking with offer details\n3. Optionally validate and apply voucher\n4. Create payment intent (with optional `voucherCode`)\n5. Complete payment via Stripe.js\n6. Webhook confirms booking + awards loyalty points\n\n### Step 4: Profile Features\n1. Check loyalty points: `GET /users/me/loyalty`\n2. Save items to wishlist: `POST /users/me/saved-items`\n3. Add travelers: `POST /users/me/travelers`\n4. Save payment methods: `POST /users/me/payment-methods/setup`\n5. View dashboard: `GET /users/me/dashboard`\n\n---\n\n## Loyalty & Voucher Flow\n\n1. **Earn Points**: Automatically on completed bookings (via webhook)\n2. **Check Balance**: `GET /users/me/loyalty`\n3. **Browse Rewards**: `GET /users/me/loyalty/available-rewards`\n4. **Redeem Points**: `POST /users/me/loyalty/redeem` -> Get voucher code\n5. **Validate Voucher**: `POST /users/me/vouchers/validate`\n6. **Apply at Payment**: `POST /payments/stripe/create-intent` with `voucherCode`\n7. **Auto-Complete**: Webhook marks voucher USED, awards points on new booking\n\n**Tiers:** BRONZE (1x) -> SILVER (1.5x) -> GOLD (2x) -> PLATINUM (3x)\n\n---\n\n## Payment Flow\n\n1. **Create Booking** -> Get `bookingId`\n2. **Optional: Validate Voucher** -> Preview discount\n3. **Create Payment Intent** -> Get `clientSecret` (with optional `voucherCode`)\n4. Use `clientSecret` with Stripe.js on frontend\n5. Webhook updates booking + awards loyalty points + marks voucher used\n\n---\n\n## Security\n\n- Rate limiting on auth endpoints\n- JWT authentication\n- PCI-compliant payment method storage (Stripe tokenization)\n- AES-256-GCM encryption for hotel card details\n- Audit logging for admin actions\n- CORS configuration\n- Request correlation IDs\n- Email verification\n- Delayed login notifications",
+		"description": "Complete API collection for Ebony Bruce Travels Booking System\n\n**Base URL:** `{{baseUrl}}/api/v1`\n\n**Authentication:** Most endpoints require JWT Bearer token. Get token from `/auth/login` or `/auth/register`.\n\n**Environment Variables:**\n- `baseUrl`: http://localhost:3001 (or your Railway URL)\n- `token`: JWT token (auto-set after login)\n- `userId`: User ID (auto-set after login)\n- `offerRequestId`: Duffel offer request ID (auto-set after flight search)\n- `offerId`: Selected flight offer ID (auto-set after listing offers)\n- `nextCursor`: Pagination cursor for next page (auto-set)\n- `bookingId`: Booking ID (auto-set after creating booking)\n- `voucherCode`: Voucher code (auto-set after redeeming loyalty points)\n- `setupIntentClientSecret`: Stripe SetupIntent secret (auto-set after payment method setup)\n- `contactSubmissionId`: Contact submission ID (auto-set after Submit Contact Us)\n\n**Features (v3.0 - Complete):**\n- Authentication (register, login, OAuth, password reset, email verification)\n- User Profile (CRUD, avatar, password change, soft delete)\n- Loyalty Points System (earn, redeem, tiers, transactions)\n- Rewards & Vouchers (admin-configurable rules, percentage/fixed discounts)\n- Saved Payment Methods (PCI-compliant via Stripe tokenization)\n- Saved Items / Wishlist (hotels, flights, car rentals)\n- Saved Travelers (passport, nationality, frequent flyer)\n- User Dashboard (aggregated profile data)\n- Flight Search (Duffel - two-step with pagination)\n- Hotel Search & Booking (Amadeus recommended + Duffel)\n- Car Rental Search & Booking (Amadeus Transfers)\n- Payments (Stripe with voucher support)\n- Admin Management (users, bookings, rewards, audit logs, dashboard)\n- Contact Us (public form; confirmation + super-admin notifications)\n- Health Check endpoints\n- Rate Limiting, CORS, Correlation IDs\n\n---\n\n## API Sections\n\n### 1. Authentication\nRegister, Login, OAuth (Facebook/Google), Password Reset, Email Verification, Logout\n\n### 2. User Profile\nGet/Update Profile, Upload Avatar, Change Password, Delete Account\n\n### 3. Loyalty & Rewards\nGet Loyalty Account, Transaction History, Available Rewards, Redeem Points, Validate/Get Vouchers\n\n### 4. Saved Payment Methods\nSetup (Stripe SetupIntent), Confirm, List, Set Default, Delete\n\n### 5. Saved Items (Wishlist)\nSave/Unsave Items, Toggle, Check Status, Get Counts, Update Notes\n\n### 6. Saved Travelers\nCreate/List/Get/Update/Delete Travelers, Batch Fetch\n\n### 7. User Dashboard\nAggregated profile data (loyalty, bookings, stats) in single call\n\n### 8. Health Check\nService health, Database health\n\n### 9. Contact Us\nPublic form: POST /contact (name, email, serviceInterestedIn, message; optional phone). Confirmation to submitter; super admins (from DB) notified.\n\n### 10. Flight Search & Offers\nTwo-step search (offer_request_id -> paginated offers)\n\n### 11. Bookings\nCreate (auth/guest), List, Get, Cancel\n\n### 12. Payments\nCreate Payment Intent (with optional voucher), Guest Payment Intent, Stripe Webhook\n\n### 13. Hotels\nAmadeus (recommended), Duffel, Common Operations, Images\n\n### 14. Car Rentals\nSearch, Create Booking, Cancel\n\n### 15. Flight Utilities\nPlace Suggestions, Airlines List\n\n### 16. Platform Settings (Markups)\nList, Create, Update, Deactivate markup configs (productType, markup %, service fee). Admin only.\n\n### 17. Admin\nUser Management (create admin/customer, list with pagination, permissions), Customer Management (list, get, notes, suspend, activate, reset-password), Booking Management (list, export CSV, create on behalf, mark refund, dispute evidence), Rewards (dashboard, rules, tiers, earning rules, vouchers, create coupon, adjust points), Contact Submissions (list, update status), Cancellation Requests, Recent Activity, Audit Logs, Dashboard Stats (with productType, compareWithPrevious, activeUsers)\n\n---\n\n## Quick Start Guide\n\n### Step 1: Authentication\n1. Register or Login to get JWT token\n2. Token auto-saved to `{{token}}`\n\n### Step 2: Initial Setup (Admin - Run Once)\n1. Seed loyalty tiers: `POST /admin/rewards/tiers/seed-defaults`\n2. Seed earning rules: `POST /admin/rewards/earning-rules/seed-defaults`\n3. Create reward rules: `POST /admin/rewards/rules`\n\n### Step 3: Search & Book\n1. Search flights/hotels/cars\n2. Create booking with offer details\n3. Optionally validate and apply voucher\n4. Create payment intent (with optional `voucherCode`)\n5. Complete payment via Stripe.js\n6. Webhook confirms booking + awards loyalty points\n\n### Step 4: Profile Features\n1. Check loyalty points: `GET /users/me/loyalty`\n2. Save items to wishlist: `POST /users/me/saved-items`\n3. Add travelers: `POST /users/me/travelers`\n4. Save payment methods: `POST /users/me/payment-methods/setup`\n5. View dashboard: `GET /users/me/dashboard`\n\n---\n\n## Loyalty & Voucher Flow\n\n1. **Earn Points**: Automatically on completed bookings (via webhook)\n2. **Check Balance**: `GET /users/me/loyalty`\n3. **Browse Rewards**: `GET /users/me/loyalty/available-rewards`\n4. **Redeem Points**: `POST /users/me/loyalty/redeem` -> Get voucher code\n5. **Validate Voucher**: `POST /users/me/vouchers/validate`\n6. **Apply at Payment**: `POST /payments/stripe/create-intent` with `voucherCode`\n7. **Auto-Complete**: Webhook marks voucher USED, awards points on new booking\n\n**Tiers:** BRONZE (1x) -> SILVER (1.5x) -> GOLD (2x) -> PLATINUM (3x)\n\n---\n\n## Payment Flow\n\n1. **Create Booking** -> Get `bookingId`\n2. **Optional: Validate Voucher** -> Preview discount\n3. **Create Payment Intent** -> Get `clientSecret` (with optional `voucherCode`)\n4. Use `clientSecret` with Stripe.js on frontend\n5. Webhook updates booking + awards loyalty points + marks voucher used\n\n---\n\n## Security\n\n- Rate limiting on auth endpoints\n- JWT authentication\n- PCI-compliant payment method storage (Stripe tokenization)\n- AES-256-GCM encryption for hotel card details\n- Audit logging for admin actions\n- CORS configuration\n- Request correlation IDs\n- Email verification\n- Delayed login notifications",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -1443,6 +1443,41 @@
 				}
 			],
 			"description": "Health check endpoints for monitoring service and database status.\n\n**No authentication required.**\n\n**Endpoints:**\n- **Health Check** - General service health\n- **Database Health** - Database connection status\n\n**Use Cases:**\n- Load balancer health checks\n- Monitoring dashboards\n- Alerting systems\n- Service status verification"
+		},
+		{
+			"name": "Contact Us",
+			"description": "**Public.** Contact Us form. No authentication. On submit: entry is saved, confirmation email is sent to the submitter, and all **super admins (from the database)** receive a notification email. No .env emails are used.",
+			"item": [
+				{
+					"name": "Submit Contact Us Form",
+					"event": [{
+						"listen": "test",
+						"script": {
+							"exec": [
+								"pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
+								"if (pm.response.code === 201) {",
+								"    const j = pm.response.json();",
+								"    pm.expect(j).to.have.property('success', true);",
+								"    pm.expect(j).to.have.property('data');",
+								"    if (j.data && j.data.id) pm.environment.set('contactSubmissionId', j.data.id);",
+								"}"
+							],
+							"type": "text/javascript"
+						}
+					}],
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"phone\": \"+44 1582 340807\",\n  \"serviceInterestedIn\": \"Travel Services\",\n  \"message\": \"Tell us how we can help you...\"\n}"
+						},
+						"url": { "raw": "{{baseUrl}}/api/v1/contact", "host": ["{{baseUrl}}"], "path": ["api", "v1", "contact"] }
+					},
+					"response": [],
+					"description": "Submit the Contact Us form. **No auth.**\n\n**Body (required):**\n- `name` (string) – Full name\n- `email` (string) – Valid email\n- `serviceInterestedIn` (string) – One of: `Travel Services`, `Logistics - DHL`, `Educational Consulting`, `Hotel Reservations`, `Other`\n- `message` (string) – Message content\n\n**Body (optional):**\n- `phone` (string)\n- `subject` (string)\n\n**Response (201):** `{ \"success\": true, \"message\": \"Thank you for your message...\", \"data\": { \"id\": \"...\" } }`\n\n**Emails:**\n- Confirmation email is sent to the submitter's email.\n- All users with role SUPER_ADMIN in the database receive a notification email (no .env addresses used)."
+				}
+			]
 		},
 		{
 			"name": "Platform Settings (Markups)",
@@ -3753,6 +3788,53 @@
 						}
 					],
 					"description": "After-deadline hotel cancellation queue: list pending, process (approve/partial/reject)."
+				},
+				{
+					"name": "Contact Submissions",
+					"description": "Contact Us form submissions. List and update status (NEW, READ, REPLIED). Admin/Super Admin.",
+					"item": [
+						{
+							"name": "List Contact Submissions",
+							"request": {
+								"method": "GET",
+								"header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/contact-submissions?page=1&limit=20",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "contact-submissions"],
+									"query": [
+										{ "key": "status", "value": "", "description": "Filter: NEW, READ, REPLIED", "disabled": true },
+										{ "key": "page", "value": "1" },
+										{ "key": "limit", "value": "20" }
+									]
+								},
+								"description": "**List Contact Us submissions (paginated).** Auth: Bearer token (Admin/Super Admin). Query: status (NEW | READ | REPLIED), page, limit. Returns submissions with id, name, email, phone, serviceInterestedIn, message, status, createdAt."
+							},
+							"response": []
+						},
+						{
+							"name": "Update Contact Submission Status",
+							"request": {
+								"method": "PATCH",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+									{ "key": "Content-Type", "value": "application/json" }
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"status\": \"READ\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/admin/contact-submissions/{{contactSubmissionId}}/status",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "v1", "admin", "contact-submissions", ":id", "status"],
+									"variable": [{ "key": "id", "value": "{{contactSubmissionId}}" }]
+								},
+								"description": "**Update submission status.** Auth: Bearer. Body: { \"status\": \"NEW\" | \"READ\" | \"REPLIED\" }. Use contactSubmissionId from List or from Submit Contact Us (test script sets contactSubmissionId)."
+							},
+							"response": []
+						}
+					]
 				},
 				{
 					"name": "Audit Logs",
