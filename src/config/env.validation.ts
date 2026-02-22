@@ -117,6 +117,10 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   GOOGLE_PLACES_API_KEY?: string; // Google Places API key for hotel images
+
+  @IsString()
+  @IsOptional()
+  SUPER_ADMIN_EMAIL?: string; // Super admin email (seed, contact form notifications)
 }
 
 export function validate(config: Record<string, unknown>) {
