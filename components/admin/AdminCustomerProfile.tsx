@@ -44,7 +44,8 @@ export default function AdminCustomerProfile({ customerId, onBack }: AdminCustom
   const handleSaveNotes = async () => {
     setSaving(true);
     try {
-      await updateCustomerNotes(customerId, notes || null);
+      // Fix: Convert null to empty string
+      await updateCustomerNotes(customerId, notes || '');
       setCustomer((c: any) => (c ? { ...c, internalNotes: notes } : c));
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to save notes');
@@ -58,7 +59,8 @@ export default function AdminCustomerProfile({ customerId, onBack }: AdminCustom
     if (reason === null) return;
     setActionLoading('suspend');
     try {
-      await suspendCustomer(customerId, reason || undefined);
+      // Fix: Provide a default reason if undefined
+      await suspendCustomer(customerId, reason || 'No reason provided');
       setCustomer((c: any) => (c ? { ...c, status: 'SUSPENDED' } : c));
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to suspend');

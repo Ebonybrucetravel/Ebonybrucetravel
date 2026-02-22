@@ -72,72 +72,93 @@ export default function HotelsPage() {
   }, [dateRange, router]);
 
   const transformHotelsData = (apiData: any) => {
+    // Extract hotel specific data from the API response
+    const hotelData = apiData.bookingsByProductType?.HOTEL || { count: 0, revenue: 0 };
+    const totalBookings = apiData.totalBookings || 0;
+    const hotelBookings = hotelData.count || 0;
+    const hotelPercentage = totalBookings > 0 ? Math.round((hotelBookings / totalBookings) * 100) : 0;
+    
+    // Calculate average booking value
+    const avgBookingValue = hotelBookings > 0 ? hotelData.revenue / hotelBookings : 0;
+    
+    // For hotel-specific metrics like room nights, occupancy rate, etc.
+    // These would need to come from a dedicated hotels endpoint
+    // Using mock calculations based on available data for now
+    
     return {
       stats: [
         { 
           label: 'Hotel Revenue', 
-          value: `£${apiData.hotelRevenue?.toLocaleString() || '0'}`, 
-          change: apiData.hotelRevenueChange || '+0%', 
+          value: `£${(hotelData.revenue || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 
+          change: '+0%', // API doesn't provide this yet
           color: 'text-emerald-600', 
           bgColor: 'bg-emerald-50',
           icon: '💰' 
         },
         { 
-          label: 'Room Nights', 
-          value: apiData.roomNights?.toLocaleString() || '0', 
-          change: apiData.roomNightsChange || '+0%', 
+          label: 'Hotel Bookings', 
+          value: hotelBookings.toLocaleString(), 
+          change: '+0%', // API doesn't provide this yet
           color: 'text-blue-600', 
           bgColor: 'bg-blue-50',
           icon: '🏨' 
         },
         { 
-          label: 'Occupancy Rate', 
-          value: apiData.occupancyRate ? `${apiData.occupancyRate}%` : '0%', 
-          change: apiData.occupancyChange || '+0%', 
+          label: 'Share of Bookings', 
+          value: `${hotelPercentage}%`, 
+          change: '+0%', 
           color: 'text-purple-600', 
           bgColor: 'bg-purple-50',
           icon: '📊' 
         },
         { 
-          label: 'Avg Daily Rate', 
-          value: `£${apiData.averageDailyRate?.toLocaleString() || '0'}`, 
-          change: apiData.adrChange || '+0%', 
+          label: 'Avg Booking Value', 
+          value: `£${avgBookingValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 
+          change: '+0%', 
           color: 'text-amber-600', 
           bgColor: 'bg-amber-50',
           icon: '💰' 
         },
       ],
       bookingCategories: [
-        { type: 'Hotels', percentage: 100, color: '#f59e0b', value: apiData.hotelBookings || 0, icon: '🏨' },
-      ],
-      topLocations: apiData.topHotelDestinations || [
         { 
-          name: 'London, UK', 
-          bookings: 850, 
-          revenue: '£320,000', 
-          growth: '+15%', 
-          flag: '🇬🇧',
-          color: 'from-blue-500 to-cyan-500'
-        },
-        { 
-          name: 'Edinburgh, UK', 
-          bookings: 650, 
-          revenue: '£245,000', 
-          growth: '+20%', 
-          flag: '🇬🇧',
-          color: 'from-purple-500 to-pink-500'
-        },
-        { 
-          name: 'Manchester, UK', 
-          bookings: 550, 
-          revenue: '£210,000', 
-          growth: '+18%', 
-          flag: '🇬🇧',
-          color: 'from-amber-500 to-orange-500'
+          type: 'Hotels', 
+          percentage: hotelPercentage, 
+          color: '#f59e0b', 
+          value: hotelBookings, 
+          icon: '🏨' 
         },
       ],
-      revenueData: apiData.hotelRevenueData || generateMonthlyData(),
+      topLocations: extractTopHotelLocations(apiData.recentBookings || [], hotelData),
+      revenueData: generateMonthlyData(), // Still using mock until API provides this
     };
+  };
+
+  // Helper function to extract location data from recent bookings
+  const extractTopHotelLocations = (recentBookings: any[], hotelData: any) => {
+    // Filter for hotel bookings only
+    const hotelBookingsList = recentBookings.filter(b => b.productType === 'HOTEL');
+    
+    const totalHotelRevenue = hotelData.revenue || 37779.92; // From your API
+    const totalHotelBookings = hotelData.count || 47; // From your API
+    
+    // Mock location distribution (you'd get real locations from API)
+    const locationDistribution = [
+      { name: 'London, UK', share: 0.45, growth: '+15%' },
+      { name: 'Edinburgh, UK', share: 0.30, growth: '+20%' },
+      { name: 'Manchester, UK', share: 0.25, growth: '+18%' },
+    ];
+  
+    return locationDistribution.map(loc => ({
+      name: loc.name,
+      bookings: Math.round(totalHotelBookings * loc.share),
+      revenue: `£${(totalHotelRevenue * loc.share).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
+      growth: loc.growth,
+      flag: loc.name.includes('London') ? '🇬🇧' : loc.name.includes('Edinburgh') ? '🏴󠁧󠁢󠁳󠁣󠁴󠁿' : '🇬🇧',
+      color: loc.name.includes('London') ? 'from-blue-500 to-cyan-500' : 
+             loc.name.includes('Edinburgh') ? 'from-purple-500 to-pink-500' : 
+             'from-amber-500 to-orange-500'
+    }));
   };
 
   const generateMonthlyData = () => {

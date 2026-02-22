@@ -1,4 +1,4 @@
-
+// components/admin/CreateUserForm.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -6,295 +6,285 @@ import React, { useState } from 'react';
 interface CreateUserFormProps {
   onBack: () => void;
   onCreateUser: (userData: any) => void;
+  isSubmitting?: boolean;
+  error?: string | null;
 }
 
-export default function CreateUserForm({ onBack, onCreateUser }: CreateUserFormProps) {
+export default function CreateUserForm({ 
+  onBack, 
+  onCreateUser, 
+  isSubmitting = false,
+  error 
+}: CreateUserFormProps) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    role: 'user',
+    password: '',
+    role: 'ADMIN', // API value (kept as ADMIN/SUPER_ADMIN)
     phone: '',
-    country: '',
   });
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showPassword, setShowPassword] = useState(false);
 
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {};
-    
-    if (!formData.name.trim()) {
-      newErrors.name = 'Name is required';
-    }
-    
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Email is invalid';
-    }
-    
-    return newErrors;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const newErrors = validateForm();
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
-    setIsSubmitting(true);
-    
-    try {
-      // Create user object with additional fields
-      const newUser = {
-        ...formData,
-        id: `u${Date.now()}`,
-        registered: new Date().toLocaleDateString('en-US', { 
-          month: 'short', 
-          day: '2-digit', 
-          year: 'numeric' 
-        }),
-        booking: 0,
-        points: '0',
-        status: 'Active',
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name)}&background=33a8da&color=fff`
-      };
-      
-      // Pass to parent handler
-      await onCreateUser(newUser);
-      
-      // Reset form
-      setFormData({
-        name: '',
-        email: '',
-        role: 'user',
-        phone: '',
-        country: '',
-      });
-      
-    } catch (error) {
-      console.error('Failed to create user:', error);
-      setErrors({ submit: 'Failed to create user. Please try again.' });
-    } finally {
-      setIsSubmitting(false);
-    }
+    onCreateUser(formData);
   };
 
-  const handleRefresh = () => {
-    if (window.confirm('Reset all form fields?')) {
-      setFormData({
-        name: '',
-        email: '',
-        role: 'user',
-        phone: '',
-        country: '',
-      });
-      setErrors({});
+  // Display names for UI
+  const roles = [
+    { 
+      value: 'ADMIN', 
+      label: 'Admin', 
+      description: 'Can manage bookings, customers, and view analytics',
+      icon: '👤',
+      color: 'blue'
+    },
+    { 
+      value: 'SUPER_ADMIN', 
+      label: 'Super Admin', 
+      description: 'Full system access including user management and permissions',
+      icon: '👑',
+      color: 'purple'
+    },
+  ];
+
+  const getRoleStyle = (roleValue: string) => {
+    const isSelected = formData.role === roleValue;
+    const role = roles.find(r => r.value === roleValue);
+    
+    if (isSelected) {
+      return role?.color === 'purple' 
+        ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
+        : 'border-[#33a8da] bg-[#33a8da]/5 ring-2 ring-[#33a8da]/20';
     }
+    return 'border-gray-200 hover:border-gray-300';
   };
 
   return (
     <div className="p-4 md:p-8 bg-gray-50 min-h-screen">
-      <div className="max-w-2xl mx-auto">
-        {/* Back button with improved styling */}
-        <button 
-          onClick={onBack} 
-          className="flex items-center gap-2 text-gray-500 hover:text-gray-700 mb-6 transition group"
-        >
-          <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center group-hover:bg-[#33a8da] group-hover:text-white transition-all">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path d="M15 19l-7-7 7-7" />
-            </svg>
-          </div>
-          <span className="text-sm font-medium">Back to Users</span>
-        </button>
+      {/* Back button */}
+      <button 
+        onClick={onBack}
+        className="flex items-center gap-2 text-gray-500 hover:text-gray-700 mb-6 transition group"
+        disabled={isSubmitting}
+      >
+        <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center group-hover:bg-[#33a8da] group-hover:text-white transition-all">
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M15 19l-7-7 7-7" />
+          </svg>
+        </div>
+        <span className="text-sm font-medium">Back to Admin Users</span>
+      </button>
 
-        {/* Header with reset button */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-              Create New User
-            </h1>
-            <p className="text-gray-500 mt-2">Add a new user to the platform</p>
-          </div>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:border-[#33a8da] transition-all flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Reset Form
-          </button>
+      <div className="max-w-2xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+            Create New Admin
+          </h1>
+          <p className="text-gray-500 mt-2">Add a new administrator to the platform. Choose between Admin and Super Admin roles.</p>
         </div>
 
-        {/* Error message */}
-        {errors.submit && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-            {errors.submit}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl">
+            <div className="flex items-center gap-3 text-red-600">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-sm">{error}</p>
+            </div>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-8 shadow-xl border border-gray-100 space-y-6">
-          {/* Name field */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Full Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) => {
-                setFormData({...formData, name: e.target.value});
-                if (errors.name) setErrors({...errors, name: ''});
-              }}
-              placeholder="John Doe"
-              className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 transition-all ${
-                errors.name ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-[#33a8da]'
-              }`}
-            />
-            {errors.name && (
-              <p className="mt-1 text-xs text-red-500">{errors.name}</p>
-            )}
+        <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 md:p-8 shadow-xl border border-gray-100">
+          <div className="space-y-6">
+            {/* Name Field */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Full Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] disabled:opacity-50"
+                placeholder="Enter admin's full name"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {/* Email Field */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Email Address <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="email"
+                required
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] disabled:opacity-50"
+                placeholder="admin@example.com"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {/* Password Field */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Password <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] disabled:opacity-50 pr-12"
+                  placeholder="Enter password"
+                  disabled={isSubmitting}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">Minimum 8 characters</p>
+            </div>
+
+            {/* Admin Role Selection - Now clearly labeled */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Admin Role <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Admin Option */}
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, role: 'ADMIN' })}
+                  className={`relative p-5 rounded-xl border-2 transition-all text-left ${getRoleStyle('ADMIN')}`}
+                  disabled={isSubmitting}
+                >
+                  {formData.role === 'ADMIN' && (
+                    <div className="absolute top-3 right-3 w-5 h-5 bg-[#33a8da] rounded-full flex items-center justify-center">
+                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-xl">
+                      👤
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Admin</h3>
+                      <p className="text-xs text-gray-500">Standard Access</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-600">Can manage bookings, customers, and view analytics</p>
+                </button>
+
+                {/* Super Admin Option */}
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, role: 'SUPER_ADMIN' })}
+                  className={`relative p-5 rounded-xl border-2 transition-all text-left ${getRoleStyle('SUPER_ADMIN')}`}
+                  disabled={isSubmitting}
+                >
+                  {formData.role === 'SUPER_ADMIN' && (
+                    <div className="absolute top-3 right-3 w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center">
+                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center text-xl">
+                      👑
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Super Admin</h3>
+                      <p className="text-xs text-gray-500">Full Access</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-600">Full system access including user management and permissions</p>
+                </button>
+              </div>
+            </div>
+
+            {/* Phone Field (Optional) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Phone Number <span className="text-gray-400 text-xs">(optional)</span>
+              </label>
+              <input
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] disabled:opacity-50"
+                placeholder="+44 123 456 7890"
+                disabled={isSubmitting}
+              />
+            </div>
           </div>
 
-          {/* Email field */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email Address <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="email"
-              required
-              value={formData.email}
-              onChange={(e) => {
-                setFormData({...formData, email: e.target.value});
-                if (errors.email) setErrors({...errors, email: ''});
-              }}
-              placeholder="john@example.com"
-              className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 transition-all ${
-                errors.email ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-[#33a8da]'
-              }`}
-            />
-            {errors.email && (
-              <p className="mt-1 text-xs text-red-500">{errors.email}</p>
-            )}
-          </div>
-
-          {/* Phone field (optional) */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Phone Number <span className="text-gray-400 text-xs">(optional)</span>
-            </label>
-            <input
-              type="tel"
-              value={formData.phone}
-              onChange={(e) => setFormData({...formData, phone: e.target.value})}
-              placeholder="+1 (555) 123-4567"
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] transition-all"
-            />
-          </div>
-
-          {/* Country field (optional) */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Country <span className="text-gray-400 text-xs">(optional)</span>
-            </label>
-            <select
-              value={formData.country}
-              onChange={(e) => setFormData({...formData, country: e.target.value})}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] transition-all"
+          {/* Form Actions */}
+          <div className="flex gap-3 mt-8 pt-6 border-t border-gray-100">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="flex-1 py-3 bg-gradient-to-r from-[#33a8da] to-[#2c8fc0] text-white rounded-xl font-medium text-sm hover:shadow-lg hover:shadow-[#33a8da]/25 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              <option value="">Select country</option>
-              <option value="US">United States</option>
-              <option value="UK">United Kingdom</option>
-              <option value="NG">Nigeria</option>
-              <option value="AE">UAE</option>
-              <option value="Other">Other</option>
-            </select>
+              {isSubmitting ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Creating Admin...
+                </>
+              ) : (
+                'Create Admin'
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onBack}
+              disabled={isSubmitting}
+              className="flex-1 py-3 border-2 border-gray-200 text-gray-600 rounded-xl font-medium text-sm hover:border-gray-300 hover:bg-gray-50 transition-all disabled:opacity-50"
+            >
+              Cancel
+            </button>
           </div>
-
-          {/* Role field */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Role <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <select
-                value={formData.role}
-                onChange={(e) => setFormData({...formData, role: e.target.value})}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] transition-all appearance-none cursor-pointer"
-              >
-                <option value="user">Regular User</option>
-                <option value="admin">Administrator</option>
-              </select>
-              <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none">
-                <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-            </div>
-            <p className="mt-1 text-xs text-gray-400">
-              {formData.role === 'admin' ? 'Admins have full access to the dashboard' : 'Regular users can only book and manage their own profile'}
-            </p>
-          </div>
-
-          {/* Preview Card */}
-          <div className="bg-gradient-to-br from-gray-50 to-white p-4 rounded-xl border border-gray-100">
-            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Preview</h4>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#33a8da] to-[#2c8fc0] flex items-center justify-center text-white font-bold">
-                {formData.name ? formData.name.charAt(0).toUpperCase() : '?'}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">{formData.name || 'New User'}</p>
-                <p className="text-xs text-gray-500">{formData.email || 'email@example.com'}</p>
-              </div>
-              <span className={`ml-auto px-2 py-1 rounded-full text-xs font-medium ${
-                formData.role === 'admin' 
-                  ? 'bg-purple-50 text-purple-600' 
-                  : 'bg-blue-50 text-blue-600'
-              }`}>
-                {formData.role === 'admin' ? 'Admin' : 'User'}
-              </span>
-            </div>
-          </div>
-
-          {/* Submit button */}
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className={`w-full py-4 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 ${
-              isSubmitting
-                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                : 'bg-gradient-to-r from-[#33a8da] to-[#2c8fc0] text-white hover:shadow-lg hover:shadow-[#33a8da]/25'
-            }`}
-          >
-            {isSubmitting ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Creating User...
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                </svg>
-                Create User
-              </>
-            )}
-          </button>
         </form>
 
-        {/* Help text */}
-        <p className="mt-4 text-xs text-center text-gray-400">
-          New users will receive a welcome email with login instructions
-        </p>
+        {/* Admin Role Summary */}
+        <div className="mt-6 p-4 bg-blue-50 rounded-xl">
+          <h4 className="text-sm font-semibold text-blue-900 mb-2">Admin Role Summary</h4>
+          <div className="grid grid-cols-2 gap-4 text-xs">
+            <div>
+              <span className="font-medium text-blue-800">Admin:</span>
+              <p className="text-blue-600 mt-1">Standard administrator with access to manage bookings, customers, and view analytics</p>
+            </div>
+            <div>
+              <span className="font-medium text-blue-800">Super Admin:</span>
+              <p className="text-blue-600 mt-1">Full system access including user management, permissions, and all administrative functions</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

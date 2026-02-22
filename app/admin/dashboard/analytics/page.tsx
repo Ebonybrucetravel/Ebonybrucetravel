@@ -42,53 +42,59 @@ export default function AnalyticsPage() {
     };
   };
 
-  // Generate mock data with pounds
+  // Generate mock data with pounds (fallback only)
   const getMockAnalyticsData = () => {
     return {
-      totalRevenue: 984500,
+      totalRevenue: 42587.54, // Using your real revenue as baseline
       revenueChange: '+10.2%',
-      totalBookings: 32450,
+      totalBookings: 99, // Using your real booking count
       bookingsChange: '+7.8%',
       activeUsers: 10850,
       usersChange: '+6.9%',
       conversionRate: 3.4,
       conversionChange: '+1.8%',
-      flightBookings: 14600,
-      hotelBookings: 11200,
-      carBookings: 6650,
+      bookingsByProductType: {
+        FLIGHT_INTERNATIONAL: { count: 30, revenue: 63482.96 },
+        HOTEL: { count: 47, revenue: 37779.92 },
+        CAR_RENTAL: { count: 22, revenue: 12219.40 }
+      },
       bookingCategories: [
-        { type: 'Flight', percentage: 45, color: '#33a8da', value: 14600, icon: '✈️' },
-        { type: 'Hotels', percentage: 35, color: '#f59e0b', value: 11200, icon: '🏨' },
-        { type: 'Car Rentals', percentage: 20, color: '#10b981', value: 6650, icon: '🚗' },
+        { type: 'Flight', percentage: 30, color: '#33a8da', value: 30, icon: '✈️' },
+        { type: 'Hotels', percentage: 48, color: '#f59e0b', value: 47, icon: '🏨' },
+        { type: 'Car Rentals', percentage: 22, color: '#10b981', value: 22, icon: '🚗' },
       ],
-      topLocations: [
-        { 
-          name: 'London, UK', 
-          bookings: 1450, 
-          revenue: 425000, 
-          growth: '+14%', 
-          flag: '🇬🇧',
-          color: 'from-blue-500 to-cyan-500'
-        },
-        { 
-          name: 'Manchester, UK', 
-          bookings: 980, 
-          revenue: 298000, 
-          growth: '+11%', 
-          flag: '🇬🇧',
-          color: 'from-purple-500 to-pink-500'
-        },
-        { 
-          name: 'Edinburgh, UK', 
-          bookings: 720, 
-          revenue: 215000, 
-          growth: '+22%', 
-          flag: '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
-          color: 'from-amber-500 to-orange-500'
-        },
-      ],
+      topLocations: generateMockLocations(),
       revenueData: generateMonthlyData(),
     };
+  };
+
+  const generateMockLocations = () => {
+    return [
+      { 
+        name: 'London, UK', 
+        bookings: 45, 
+        revenue: 45000, 
+        growth: '+14%', 
+        flag: '🇬🇧',
+        color: 'from-blue-500 to-cyan-500'
+      },
+      { 
+        name: 'Manchester, UK', 
+        bookings: 30, 
+        revenue: 32000, 
+        growth: '+11%', 
+        flag: '🇬🇧',
+        color: 'from-purple-500 to-pink-500'
+      },
+      { 
+        name: 'Edinburgh, UK', 
+        bookings: 24, 
+        revenue: 24500, 
+        growth: '+22%', 
+        flag: '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+        color: 'from-amber-500 to-orange-500'
+      },
+    ];
   };
 
   const generateMonthlyData = () => {
@@ -122,11 +128,12 @@ export default function AnalyticsPage() {
           if (response.success && response.data) {
             apiData = response.data;
             setUsingMockData(false);
+            console.log('✅ Using real API data:', apiData);
           } else {
             throw new Error(response.message || 'Failed to fetch analytics');
           }
         } catch (apiErr) {
-          console.log('API failed, using mock data:', apiErr);
+          console.log('⚠️ API failed, using mock data:', apiErr);
           apiData = getMockAnalyticsData();
           setUsingMockData(true);
         }
@@ -136,7 +143,7 @@ export default function AnalyticsPage() {
         setData(transformedData);
         
       } catch (err) {
-        console.error('Error:', err);
+        console.error('❌ Error:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch analytics data');
         // Fallback to mock data on error
         const mockData = getMockAnalyticsData();
@@ -150,79 +157,132 @@ export default function AnalyticsPage() {
     fetchData();
   }, [dateRange, router]);
 
-  // Transform API data to match the format expected by AnalyticsView (with £ currency)
+  // Transform API data to match the format expected by AnalyticsView
   const transformApiData = (apiData: any) => {
+    // Extract product type data
+    const flightData = apiData.bookingsByProductType?.FLIGHT_INTERNATIONAL || { count: 0, revenue: 0 };
+    const hotelData = apiData.bookingsByProductType?.HOTEL || { count: 0, revenue: 0 };
+    const carData = apiData.bookingsByProductType?.CAR_RENTAL || { count: 0, revenue: 0 };
+    
+    const totalBookings = apiData.totalBookings || 0;
+    const totalRevenue = apiData.totalRevenue || 0;
+    
+    // Calculate percentages
+    const flightPercentage = totalBookings > 0 ? Math.round((flightData.count / totalBookings) * 100) : 0;
+    const hotelPercentage = totalBookings > 0 ? Math.round((hotelData.count / totalBookings) * 100) : 0;
+    const carPercentage = totalBookings > 0 ? Math.round((carData.count / totalBookings) * 100) : 0;
+    
+    // Get payment status breakdown
+    const completedPayments = apiData.paymentStatusBreakdown?.COMPLETED || 0;
+    const pendingPayments = apiData.paymentStatusBreakdown?.PENDING || 0;
+    
     return {
       stats: [
         { 
           label: 'Total Revenue', 
-          value: formatPrice(apiData.totalRevenue || 0), 
-          change: apiData.revenueChange || '+0%', 
+          value: formatPrice(totalRevenue), 
+          change: '+0%', // API doesn't provide change yet
           color: 'text-emerald-600', 
           bgColor: 'bg-emerald-50',
           icon: '💰' 
         },
         { 
           label: 'Total Bookings', 
-          value: (apiData.totalBookings || 0).toLocaleString(), 
-          change: apiData.bookingsChange || '+0%', 
+          value: totalBookings.toLocaleString(), 
+          change: '+0%', // API doesn't provide change yet
           color: 'text-blue-600', 
           bgColor: 'bg-blue-50',
           icon: '📊' 
         },
         { 
-          label: 'Active Users', 
-          value: (apiData.activeUsers || 0).toLocaleString(), 
-          change: apiData.usersChange || '+0%', 
+          label: 'Completed Payments', 
+          value: completedPayments.toLocaleString(), 
+          change: '+0%', 
           color: 'text-purple-600', 
           bgColor: 'bg-purple-50',
-          icon: '👥' 
+          icon: '✅' 
         },
         { 
-          label: 'Conversion Rate', 
-          value: apiData.conversionRate ? `${apiData.conversionRate}%` : '0%', 
-          change: apiData.conversionChange || '+0%', 
+          label: 'Pending Payments', 
+          value: pendingPayments.toLocaleString(), 
+          change: '+0%', 
           color: 'text-amber-600', 
           bgColor: 'bg-amber-50',
-          icon: '🎯' 
+          icon: '⏳' 
         },
       ],
-      bookingCategories: apiData.bookingCategories || [
-        { type: 'Flight', percentage: 45, color: '#33a8da', value: apiData.flightBookings || 0, icon: '✈️' },
-        { type: 'Hotels', percentage: 35, color: '#f59e0b', value: apiData.hotelBookings || 0, icon: '🏨' },
-        { type: 'Car Rentals', percentage: 20, color: '#10b981', value: apiData.carBookings || 0, icon: '🚗' },
-      ],
-      topLocations: apiData.topLocations?.map((loc: any) => ({
-        ...loc,
-        revenue: formatPrice(typeof loc.revenue === 'number' ? loc.revenue : parseFloat(loc.revenue.replace(/[^0-9.-]+/g, '')) || 0),
-      })) || [
+      bookingCategories: [
         { 
-          name: 'London, UK', 
-          bookings: 1200, 
-          revenue: formatPrice(450000), 
-          growth: '+15%', 
-          flag: '🇬🇧',
-          color: 'from-blue-500 to-cyan-500'
+          type: 'Flights', 
+          percentage: flightPercentage, 
+          color: '#33a8da', 
+          value: flightData.count, 
+          revenue: flightData.revenue,
+          icon: '✈️' 
         },
         { 
-          name: 'Manchester, UK', 
-          bookings: 850, 
-          revenue: formatPrice(320000), 
-          growth: '+12%', 
-          flag: '🇬🇧',
-          color: 'from-purple-500 to-pink-500'
+          type: 'Hotels', 
+          percentage: hotelPercentage, 
+          color: '#f59e0b', 
+          value: hotelData.count, 
+          revenue: hotelData.revenue,
+          icon: '🏨' 
         },
         { 
-          name: 'Edinburgh, UK', 
-          bookings: 650, 
-          revenue: formatPrice(245000), 
-          growth: '+25%', 
-          flag: '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
-          color: 'from-amber-500 to-orange-500'
+          type: 'Car Rentals', 
+          percentage: carPercentage, 
+          color: '#10b981', 
+          value: carData.count, 
+          revenue: carData.revenue,
+          icon: '🚗' 
         },
       ],
-      revenueData: apiData.revenueData || generateMonthlyData(),
+      topLocations: extractTopLocations(apiData.recentBookings || []),
+      revenueData: generateMonthlyData(), // Still using mock until API provides this
+      recentBookings: (apiData.recentBookings || []).slice(0, 5).map((booking: any) => ({
+        id: booking.id,
+        reference: booking.reference,
+        customer: booking.user?.name || 'Unknown',
+        productType: booking.productType,
+        amount: formatPrice(booking.totalAmount || 0),
+        status: booking.status,
+        date: new Date(booking.createdAt).toLocaleDateString(),
+      })),
     };
+  };
+
+  // Extract location data from recent bookings
+  const extractTopLocations = (recentBookings: any[]) => {
+    // This is a placeholder - you'd need actual location data from API
+    // Using enhanced mock data based on real booking distribution
+    const totalBookings = recentBookings.length || 99;
+    
+    return [
+      { 
+        name: 'London, UK', 
+        bookings: Math.round(totalBookings * 0.45), 
+        revenue: formatPrice(42500), 
+        growth: '+14%', 
+        flag: '🇬🇧',
+        color: 'from-blue-500 to-cyan-500'
+      },
+      { 
+        name: 'Manchester, UK', 
+        bookings: Math.round(totalBookings * 0.30), 
+        revenue: formatPrice(32000), 
+        growth: '+11%', 
+        flag: '🇬🇧',
+        color: 'from-purple-500 to-pink-500'
+      },
+      { 
+        name: 'Edinburgh, UK', 
+        bookings: Math.round(totalBookings * 0.25), 
+        revenue: formatPrice(24500), 
+        growth: '+22%', 
+        flag: '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+        color: 'from-amber-500 to-orange-500'
+      },
+    ];
   };
 
   if (isLoading) return <LoadingSpinner />;

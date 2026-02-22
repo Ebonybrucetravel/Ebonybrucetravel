@@ -126,75 +126,7 @@ export default function AdminSecurity() {
         </div>
       </div>
 
-      {/* Recent Activity Log Preview */}
-      <div className="bg-white rounded-[32px] p-10 shadow-sm border border-gray-100">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center text-2xl">📋</div>
-            <div>
-              <h3 className="text-lg font-black text-gray-900 mb-1">Recent Activity</h3>
-              <p className="text-sm text-gray-400 font-medium">Your latest account actions</p>
-            </div>
-          </div>
-          <button
-            onClick={() => router.push('/admin/dashboard/audit-logs')}
-            className="px-6 py-3 bg-[#33a8da] text-white rounded-xl font-medium text-sm hover:bg-[#2c98c7] transition flex items-center gap-2"
-          >
-            View All Logs
-            <span>→</span>
-          </button>
-        </div>
-
-        {isLoading ? (
-          <div className="flex justify-center py-8">
-            <div className="w-8 h-8 border-4 border-[#33a8da] border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {recentLogs.map((log) => (
-              <div
-                key={log.id}
-                className="group relative bg-gradient-to-r from-gray-50 to-white rounded-2xl p-5 border border-gray-100 hover:shadow-md transition-all cursor-pointer"
-                onClick={() => router.push(`/admin/dashboard/audit-logs/${log.id}`)}
-              >
-                <div className="flex items-start gap-4">
-                  <div className={`w-10 h-10 rounded-xl ${getActionColor(log.action)} flex items-center justify-center text-lg`}>
-                    {getActionIcon(log.action)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <h4 className="font-black text-gray-900 uppercase text-sm tracking-wider">
-                        {log.action.replace(/_/g, ' ')}
-                      </h4>
-                      <span className="text-xs text-gray-400 font-medium">
-                        {formatTimeAgo(log.createdAt)}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600">
-                      {log.entityType} {log.entityId && `• ${log.entityId.substring(0, 8)}...`}
-                    </p>
-                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-                      <span>{log.user?.name || 'Unknown'}</span>
-                      <span>•</span>
-                      <span>{log.user?.email}</span>
-                      <span>•</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                        log.user?.role === 'SUPER_ADMIN' 
-                          ? 'bg-purple-50 text-purple-600'
-                          : log.user?.role === 'ADMIN'
-                          ? 'bg-blue-50 text-blue-600'
-                          : 'bg-gray-50 text-gray-600'
-                      }`}>
-                        {log.user?.role || 'Unknown'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+    
 
       {/* 2FA Modal */}
       {faStep === 'otp' && (

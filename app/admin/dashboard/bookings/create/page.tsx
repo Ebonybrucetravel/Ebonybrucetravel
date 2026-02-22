@@ -2,18 +2,20 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useLanguage } from '@/context/LanguageContext';
+import { createBooking } from '@/lib/adminApi';
 
 export default function CreateBookingPage() {
   const router = useRouter();
-  const { currency } = useLanguage();
   
   const [serviceType, setServiceType] = useState<'Flight' | 'Car Rental' | 'Hotel'>('Flight');
   const [customerType, setCustomerType] = useState<'Existing User' | 'New Guest'>('Existing User');
   const [paymentMethod, setPaymentMethod] = useState<'CREDIT CARD' | 'BANK TRANSFER'>('CREDIT CARD');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     customerSearch: '',
+    customerId: '', // For selected existing user
     customerName: '',
     customerEmail: '',
     fromLocation: '',
@@ -21,19 +23,95 @@ export default function CreateBookingPage() {
     departureDate: '',
     returnDate: '',
     provider: '',
-    baseFare: '75000',
+    baseFare: '', // Empty string, admin must enter
+    offerId: '', // For flight offers
   });
+
+  // Map UI service type to API product type
+  const getProductType = () => {
+    switch(serviceType) {
+      case 'Flight':
+        return 'FLIGHT_INTERNATIONAL';
+      case 'Hotel':
+        return 'HOTEL';
+      case 'Car Rental':
+        return 'CAR_RENTAL';
+      default:
+        return 'FLIGHT_INTERNATIONAL';
+    }
+  };
+
+  // Map provider names to API expected values
+  const getProvider = () => {
+    const providerMap: Record<string, string> = {
+      'Air Peace': 'AIR_PEACE',
+      'Qatar Airways': 'QATAR',
+      'Emirates': 'EMIRATES',
+      'Marriott': 'MARRIOTT',
+      'Hilton': 'HILTON',
+      'Hertz': 'HERTZ',
+    };
+    return providerMap[formData.provider] || formData.provider.toUpperCase().replace(/ /g, '_');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement API call
-    alert('Booking created successfully!');
-    router.push('/admin/dashboard/bookings');
+    setIsSubmitting(true);
+    setSubmitError(null);
+    
+    try {
+      // Build the request body according to the API format
+      const bookingData: any = {
+        productType: getProductType(),
+        provider: getProvider(),
+        basePrice: parseFloat(formData.baseFare),
+        currency: 'GBP', // Fixed to Pounds
+        bookingData: {
+          offerId: formData.offerId || `manual_${Date.now()}`,
+          from: formData.fromLocation,
+          to: formData.toLocation,
+          departureDate: formData.departureDate,
+          returnDate: formData.returnDate,
+        },
+      };
+
+      // Add user info based on customer type
+      if (customerType === 'Existing User' && formData.customerId) {
+        bookingData.userId = formData.customerId;
+      } else if (customerType === 'New Guest') {
+        // Split full name into first/last name
+        const nameParts = formData.customerName.split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+        
+        bookingData.passengerInfo = {
+          firstName,
+          lastName,
+          email: formData.customerEmail,
+        };
+      }
+
+      console.log('Submitting booking:', bookingData);
+
+      const response = await createBooking(bookingData);
+      
+      if (response.success) {
+        router.push('/admin/dashboard/bookings?success=Booking created successfully');
+      } else {
+        throw new Error(response.message || 'Failed to create booking');
+      }
+    } catch (error) {
+      console.error('Error creating booking:', error);
+      setSubmitError(error instanceof Error ? error.message : 'Failed to create booking');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleRefresh = () => {
     setFormData({
       customerSearch: '',
+      customerId: '',
       customerName: '',
       customerEmail: '',
       fromLocation: '',
@@ -41,11 +119,22 @@ export default function CreateBookingPage() {
       departureDate: '',
       returnDate: '',
       provider: '',
-      baseFare: '75000',
+      baseFare: '',
+      offerId: '',
     });
     setServiceType('Flight');
     setCustomerType('Existing User');
     setPaymentMethod('CREDIT CARD');
+    setSubmitError(null);
+  };
+
+  const isFormValid = () => {
+    if (!formData.provider) return false;
+    if (!formData.fromLocation || !formData.toLocation || !formData.departureDate) return false;
+    if (!formData.baseFare || isNaN(parseFloat(formData.baseFare))) return false;
+    if (customerType === 'Existing User' && !formData.customerId) return false;
+    if (customerType === 'New Guest' && (!formData.customerName || !formData.customerEmail)) return false;
+    return true;
   };
 
   return (
@@ -72,6 +161,7 @@ export default function CreateBookingPage() {
           </div>
           <button 
             onClick={handleRefresh}
+            type="button"
             className="px-6 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:border-[#33a8da] transition-all flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -80,6 +170,17 @@ export default function CreateBookingPage() {
             Reset Form
           </button>
         </div>
+
+        {submitError && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl">
+            <div className="flex items-center gap-3 text-red-600">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-sm">{submitError}</p>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
@@ -157,6 +258,16 @@ export default function CreateBookingPage() {
                     placeholder="Search by name or email..."
                     className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]"
                   />
+                  {/* For demo, you can manually enter customer ID */}
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      value={formData.customerId}
+                      onChange={(e) => setFormData(prev => ({ ...prev, customerId: e.target.value }))}
+                      placeholder="Enter customer ID manually"
+                      className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]"
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -203,7 +314,7 @@ export default function CreateBookingPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-2">Departure</label>
+                  <label className="block text-xs text-gray-500 mb-2">Departure Date</label>
                   <input
                     type="date"
                     value={formData.departureDate}
@@ -212,7 +323,7 @@ export default function CreateBookingPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-2">Return</label>
+                  <label className="block text-xs text-gray-500 mb-2">Return Date (optional)</label>
                   <input
                     type="date"
                     value={formData.returnDate}
@@ -236,6 +347,28 @@ export default function CreateBookingPage() {
                     <option value="Hertz">Hertz</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-2">Base Fare (£)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.baseFare}
+                    onChange={(e) => setFormData(prev => ({ ...prev, baseFare: e.target.value }))}
+                    placeholder="Enter amount in £"
+                    className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-2">Offer ID (optional)</label>
+                  <input
+                    type="text"
+                    value={formData.offerId}
+                    onChange={(e) => setFormData(prev => ({ ...prev, offerId: e.target.value }))}
+                    placeholder="Provider offer ID"
+                    className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -257,21 +390,8 @@ export default function CreateBookingPage() {
                   <span className="text-sm text-gray-500">Base Fare</span>
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-gray-900">
-                      {currency.symbol === '$' ? '$' : 'NGN '}
-                      {parseInt(formData.baseFare).toLocaleString()}
+                      £ {formData.baseFare ? parseFloat(formData.baseFare).toFixed(2) : '0.00'}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newFare = prompt('Enter base fare:', formData.baseFare);
-                        if (newFare && !isNaN(Number(newFare))) {
-                          setFormData(prev => ({ ...prev, baseFare: newFare }));
-                        }
-                      }}
-                      className="text-xs text-[#33a8da] hover:underline"
-                    >
-                      Edit
-                    </button>
                   </div>
                 </div>
 
@@ -279,8 +399,7 @@ export default function CreateBookingPage() {
                   <div className="flex justify-between items-center">
                     <span className="text-base font-semibold text-gray-900">Total</span>
                     <span className="text-2xl font-bold text-[#33a8da]">
-                      {currency.symbol === '$' ? '$' : 'NGN '}
-                      {parseInt(formData.baseFare).toLocaleString()}
+                      £ {formData.baseFare ? parseFloat(formData.baseFare).toFixed(2) : '0.00'}
                     </span>
                   </div>
                 </div>
@@ -315,14 +434,24 @@ export default function CreateBookingPage() {
 
                 <button
                   type="submit"
-                  disabled={!formData.provider || (customerType === 'New Guest' && !formData.customerEmail)}
+                  disabled={!isFormValid() || isSubmitting}
                   className={`w-full py-4 rounded-xl font-medium transition-all mt-4 ${
-                    !formData.provider || (customerType === 'New Guest' && !formData.customerEmail)
+                    !isFormValid() || isSubmitting
                       ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                       : 'bg-gradient-to-r from-[#33a8da] to-[#2c8fc0] text-white hover:shadow-lg hover:shadow-[#33a8da]/25'
                   }`}
                 >
-                  Confirm Booking
+                  {isSubmitting ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Creating...
+                    </div>
+                  ) : (
+                    'Confirm Booking'
+                  )}
                 </button>
               </div>
             </div>

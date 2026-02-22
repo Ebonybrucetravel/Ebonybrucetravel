@@ -52,8 +52,13 @@ export default function AdminDashboardLayout({
       items: [
         { href: '/admin/dashboard/analytics', label: 'Analytics', icon: '📊', gradient: 'from-purple-500 to-pink-500' },
         { href: '/admin/dashboard/bookings', label: 'Bookings', icon: '📅', gradient: 'from-blue-500 to-cyan-500' },
-        { href: '/admin/dashboard/users', label: 'Users', icon: '👥', gradient: 'from-green-500 to-emerald-500' },
-        { href: '/admin/dashboard/coupons', label: 'Coupons', icon: '🏷️', gradient: 'from-amber-500 to-orange-500' },
+        // Customers (platform users)
+        { href: '/admin/dashboard/users', label: 'Customers', icon: '👥', gradient: 'from-green-500 to-emerald-500' },
+        // Admin Users (system administrators)
+        { href: '/admin/dashboard/admin-users', label: 'Admin Users', icon: '👑', gradient: 'from-purple-500 to-pink-500' },
+        { href: '/admin/dashboard/rewards', label: 'Rewards', icon: '⭐', gradient: 'from-amber-500 to-orange-500' },
+        { href: '/admin/dashboard/coupons', label: 'Coupons', icon: '🏷️', gradient: 'from-purple-500 to-pink-500' },
+        { href: '/admin/dashboard/cancellations', label: 'Cancellations', icon: '❌', gradient: 'from-red-500 to-pink-500' },
       ]
     },
     {
@@ -61,6 +66,7 @@ export default function AdminDashboardLayout({
       items: [
         { href: '/admin/dashboard/profile', label: 'Profile', icon: '👤', gradient: 'from-blue-500 to-cyan-500' },
         { href: '/admin/dashboard/security', label: 'Security', icon: '🛡️', gradient: 'from-purple-500 to-pink-500' },
+        { href: '/admin/dashboard/audit-logs', label: 'Audit Logs', icon: '📋', gradient: 'from-gray-500 to-gray-600' },
       ]
     }
   ];
@@ -173,7 +179,7 @@ export default function AdminDashboardLayout({
           </nav>
         </aside>
 
-        {/* Mobile Navigation - same as before but remove the overlay div closing tag issue */}
+        {/* Mobile Navigation */}
         {isMobileMenuOpen && (
           <>
             <div 

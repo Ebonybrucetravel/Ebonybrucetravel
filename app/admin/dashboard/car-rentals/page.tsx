@@ -72,72 +72,92 @@ export default function CarRentalsPage() {
   }, [dateRange, router]);
 
   const transformCarData = (apiData: any) => {
+    // Extract car rental specific data from the API response
+    const carRentalData = apiData.bookingsByProductType?.CAR_RENTAL || { count: 0, revenue: 0 };
+    const totalBookings = apiData.totalBookings || 0;
+    const carBookings = carRentalData.count || 0;
+    const carPercentage = totalBookings > 0 ? Math.round((carBookings / totalBookings) * 100) : 0;
+  
+    // Calculate derived metrics
+    const avgRentalValue = carBookings > 0 ? carRentalData.revenue / carBookings : 0;
+    
     return {
       stats: [
         { 
           label: 'Car Rental Revenue', 
-          value: `£${apiData.carRevenue?.toLocaleString() || '0'}`, 
-          change: apiData.carRevenueChange || '+0%', 
+          value: `£${(carRentalData.revenue || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 
+          change: '+0%', // API doesn't provide this yet
           color: 'text-emerald-600', 
           bgColor: 'bg-emerald-50',
           icon: '💰' 
         },
         { 
-          label: 'Rental Days', 
-          value: apiData.rentalDays?.toLocaleString() || '0', 
-          change: apiData.rentalDaysChange || '+0%', 
+          label: 'Car Rentals', 
+          value: carBookings.toLocaleString(), 
+          change: '+0%', // API doesn't provide this yet
           color: 'text-blue-600', 
           bgColor: 'bg-blue-50',
           icon: '🚗' 
         },
         { 
-          label: 'Fleet Utilization', 
-          value: apiData.fleetUtilization ? `${apiData.fleetUtilization}%` : '0%', 
-          change: apiData.utilizationChange || '+0%', 
+          label: 'Share of Bookings', 
+          value: `${carPercentage}%`, 
+          change: '+0%', 
           color: 'text-purple-600', 
           bgColor: 'bg-purple-50',
           icon: '📊' 
         },
         { 
-          label: 'Avg Rental Duration', 
-          value: apiData.averageRentalDuration ? `${apiData.averageRentalDuration} days` : '0 days', 
-          change: apiData.durationChange || '+0%', 
+          label: 'Avg Booking Value', 
+          value: `£${avgRentalValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 
+          change: '+0%', 
           color: 'text-amber-600', 
           bgColor: 'bg-amber-50',
-          icon: '⏱️' 
+          icon: '💰' 
         },
       ],
       bookingCategories: [
-        { type: 'Car Rentals', percentage: 100, color: '#10b981', value: apiData.carBookings || 0, icon: '🚗' },
-      ],
-      topLocations: apiData.topCarLocations || [
         { 
-          name: 'London, UK', 
-          bookings: 650, 
-          revenue: '£245,000', 
-          growth: '+15%', 
-          flag: '🇬🇧',
-          color: 'from-blue-500 to-cyan-500'
-        },
-        { 
-          name: 'Manchester, UK', 
-          bookings: 450, 
-          revenue: '£180,000', 
-          growth: '+12%', 
-          flag: '🇬🇧',
-          color: 'from-purple-500 to-pink-500'
-        },
-        { 
-          name: 'Birmingham, UK', 
-          bookings: 350, 
-          revenue: '£145,000', 
-          growth: '+10%', 
-          flag: '🇬🇧',
-          color: 'from-amber-500 to-orange-500'
+          type: 'Car Rentals', 
+          percentage: carPercentage, 
+          color: '#10b981', 
+          value: carBookings, 
+          icon: '🚗' 
         },
       ],
-      revenueData: apiData.carRevenueData || generateMonthlyData(),
+      // Pass carRentalData to the location extractor
+      topLocations: extractTopLocations(apiData.recentBookings || [], carRentalData),
+      revenueData: generateMonthlyData(), // Still using mock until API provides this
     };
+  };
+  
+  // Helper function to extract location data from recent bookings
+  const extractTopLocations = (recentBookings: any[], carRentalData: any) => {
+    // Filter for car rentals only
+    const carBookings = recentBookings.filter(b => b.productType === 'CAR_RENTAL');
+    
+    // In a real implementation, you'd extract locations from booking data
+    // For now, using enhanced mock data based on actual car rental count
+    const totalCarRevenue = carRentalData.revenue || 12219.4;
+    const totalCarBookings = carRentalData.count || 22;
+    
+    // Distribute bookings across locations (mock distribution)
+    const locationDistribution = [
+      { name: 'London, UK', share: 0.45, growth: '+12%' },
+      { name: 'Manchester, UK', share: 0.30, growth: '+8%' },
+      { name: 'Birmingham, UK', share: 0.25, growth: '+15%' },
+    ];
+  
+    return locationDistribution.map(loc => ({
+      name: loc.name,
+      bookings: Math.round(totalCarBookings * loc.share),
+      revenue: `£${(totalCarRevenue * loc.share).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
+      growth: loc.growth,
+      flag: loc.name.includes('London') ? '🇬🇧' : loc.name.includes('Manchester') ? '🇬🇧' : '🇬🇧',
+      color: loc.name.includes('London') ? 'from-blue-500 to-cyan-500' : 
+             loc.name.includes('Manchester') ? 'from-purple-500 to-pink-500' : 
+             'from-amber-500 to-orange-500'
+    }));
   };
 
   const generateMonthlyData = () => {

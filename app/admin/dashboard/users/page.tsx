@@ -24,7 +24,8 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [limit] = useState(10);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [limit] = useState(20);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -34,115 +35,77 @@ export default function UsersPage() {
       try {
         // Check if user is authenticated
         const token = localStorage.getItem('adminToken');
+        console.log('🔑 Token exists:', !!token);
+        
         if (!token) {
           router.push('/admin');
           return;
         }
-
+  
         const params: any = {
           page,
           limit,
         };
-
+  
         // Map status filter to API params
         if (statusFilter !== 'All users') {
           params.status = statusFilter === 'Active Only' ? 'active' : 'suspended';
         }
-
+  
         if (searchTerm) {
           params.search = searchTerm;
         }
-
+  
+        console.log('📡 Fetching users with params:', params);
+  
         const response = await listCustomers(params);
+        
+        console.log('✅ API Response:', response);
         
         if (response.success && response.data) {
           // Transform API data to match your User interface
           const transformedUsers = response.data.map((item: any) => ({
             id: item.id,
             name: item.name || 'Unknown',
-            email: item.email || 'no-email@example.com',
+            email: item.email || 'N/A',
             registered: item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-US', { 
               month: 'short', 
               day: '2-digit', 
               year: 'numeric' 
             }) : 'N/A',
-            booking: item.bookingCount || 0,
-            points: item.points?.toLocaleString() || '0',
-            status: item.status === 'active' ? 'Active' : 'Suspended',
+            booking: item.totalBookings || item.bookingCount || 0,
+            points: (item.loyaltyPoints || item.points || 0).toLocaleString(),
+            status: item.status === 'suspended' ? 'Suspended' : 'Active',
           }));
           
           setUsers(transformedUsers);
           setTotalPages(response.meta?.totalPages || 1);
+          setTotalUsers(response.meta?.total || response.data.length);
         } else {
-          // Fallback to mock data if API fails
-          setUsers(getMockUsers());
+          setError(response.message || 'No data received from server');
         }
       } catch (err) {
-        console.error('Error fetching users:', err);
+        console.error('❌ Error fetching users:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch users');
-        // Fallback to mock data
-        setUsers(getMockUsers());
       } finally {
         setIsLoading(false);
       }
     };
+  
+    // Only debounce search, not page changes
+    if (searchTerm) {
+      const debounceTimer = setTimeout(() => {
+        fetchUsers();
+      }, 300);
+      return () => clearTimeout(debounceTimer);
+    } else {
+      fetchUsers();
+    }
+  }, [page, statusFilter, searchTerm, limit, router]); 
 
-    fetchUsers();
-  }, [page, statusFilter, searchTerm, router]);
-
-  // Mock data function for development/fallback
-  const getMockUsers = (): User[] => {
-    return [
-      { 
-        id: 'u1', 
-        name: 'John Dane', 
-        email: 'johndane@example.com', 
-        registered: 'Jan 12, 2024', 
-        booking: 12, 
-        points: '15,200', 
-        status: 'Active' 
-      },
-      { 
-        id: 'u2', 
-        name: 'Michael Smith', 
-        email: 'michael@smith.io', 
-        registered: 'Feb 05, 2024', 
-        booking: 3, 
-        points: '2,400', 
-        status: 'Active' 
-      },
-      { 
-        id: 'u3', 
-        name: 'Sarah Jenkins', 
-        email: 'sarah.j@outlook.com', 
-        registered: 'Mar 10, 2024', 
-        booking: 15, 
-        points: '22,100', 
-        status: 'Suspended' 
-      },
-      { 
-        id: 'u4', 
-        name: 'Robert Brown', 
-        email: 'robert.b@email.com', 
-        registered: 'Apr 22, 2024', 
-        booking: 7, 
-        points: '8,450', 
-        status: 'Active' 
-      },
-      { 
-        id: 'u5', 
-        name: 'Emily Wilson', 
-        email: 'emily.w@mail.com', 
-        registered: 'May 15, 2024', 
-        booking: 24, 
-        points: '32,800', 
-        status: 'Active' 
-      },
-    ];
-  };
-
-  // Apply client-side filtering (in addition to server-side filtering)
+  // Apply client-side filtering only if needed (as backup)
   const filteredUsers = useMemo(() => {
+    // Since we're doing server-side filtering, this is just a safety net
     return users.filter(u => {
       const matchesSearch = searchTerm === '' || 
         u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -173,7 +136,7 @@ export default function UsersPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `users-${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `customers-${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -183,6 +146,16 @@ export default function UsersPage() {
     router.push(`/admin/dashboard/users/${userId}`);
   };
 
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+    setPage(1); // Reset to first page on new search
+  };
+
+  const handleStatusFilterChange = (filter: string) => {
+    setStatusFilter(filter);
+    setPage(1); // Reset to first page on filter change
+  };
+
   if (isLoading) return <LoadingSpinner />;
 
   return (
@@ -190,28 +163,20 @@ export default function UsersPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-            Users
+            Customers
           </h1>
-          <p className="text-gray-500 mt-2">Manage platform users and permissions</p>
+          <p className="text-gray-500 mt-2">Manage platform customers and view their information</p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={downloadCSV}
-            className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:border-[#33a8da] transition-all flex items-center gap-2"
+            disabled={!filteredUsers.length}
+            className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:border-[#33a8da] transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            Export
-          </button>
-          <button 
-            onClick={() => router.push('/admin/dashboard/users/add')} 
-            className="px-6 py-2.5 bg-gradient-to-r from-[#33a8da] to-[#2c8fc0] text-white rounded-xl font-medium text-sm hover:shadow-lg hover:shadow-[#33a8da]/25 transition-all flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path d="M12 4v16m8-8H4" />
-            </svg>
-            Add User
+            Export CSV
           </button>
         </div>
       </div>
@@ -235,13 +200,13 @@ export default function UsersPage() {
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
               <svg className="w-5 h-5 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
                 type="text"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by name or email..."
+                onChange={handleSearchChange}
+                placeholder="Search customers by name or email..."
                 className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]"
               />
             </div>
@@ -249,20 +214,20 @@ export default function UsersPage() {
               {['All users', 'Active Only', 'Suspended'].map(filter => (
                 <button
                   key={filter}
-                  onClick={() => setStatusFilter(filter)}
+                  onClick={() => handleStatusFilterChange(filter)}
                   className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
                     statusFilter === filter
                       ? 'bg-white text-[#33a8da] shadow-sm'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  {filter}
+                  {filter === 'All users' ? 'All Customers' : filter}
                 </button>
               ))}
             </div>
           </div>
           <div className="mt-2 text-xs text-gray-400">
-            Showing {filteredUsers.length} users
+            Showing {filteredUsers.length} of {totalUsers} customers
           </div>
         </div>
 
@@ -271,7 +236,7 @@ export default function UsersPage() {
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50">
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Customer</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Registered</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Bookings</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Points</th>
@@ -280,12 +245,12 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredUsers.length > 0 ? filteredUsers.map((user, i) => (
-                <tr key={user.id || i} className="hover:bg-gray-50 transition">
+              {filteredUsers.length > 0 ? filteredUsers.map((user) => (
+                <tr key={user.id} className="hover:bg-gray-50 transition">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#33a8da] to-[#2c8fc0] flex items-center justify-center text-white font-bold">
-                        {user.name?.charAt(0) || '?'}
+                        {user.name?.charAt(0).toUpperCase() || '?'}
                       </div>
                       <div>
                         <p className="text-sm font-medium text-gray-900">{user.name}</p>
@@ -314,9 +279,9 @@ export default function UsersPage() {
                   <td className="px-6 py-4">
                     <button
                       onClick={() => handleViewUser(user.id)}
-                      className="text-[#33a8da] hover:text-[#2c8fc0] text-sm font-medium"
+                      className="text-[#33a8da] hover:text-[#2c8fc0] text-sm font-medium transition-colors"
                     >
-                      View
+                      View Details
                     </button>
                   </td>
                 </tr>
@@ -327,7 +292,7 @@ export default function UsersPage() {
                       <svg className="w-12 h-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                       </svg>
-                      <p>No users found</p>
+                      <p>No customers found</p>
                       {searchTerm && (
                         <button 
                           onClick={() => setSearchTerm('')}
@@ -347,21 +312,46 @@ export default function UsersPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="mt-6 flex justify-center gap-2">
+        <div className="mt-6 flex justify-center items-center gap-4">
           <button
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium disabled:opacity-50 hover:border-[#33a8da] transition"
+            className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:border-[#33a8da] transition-colors"
           >
             Previous
           </button>
-          <span className="px-4 py-2 text-sm text-gray-600">
-            Page {page} of {totalPages}
-          </span>
+          <div className="flex items-center gap-2">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNum = page;
+              if (totalPages <= 5) {
+                pageNum = i + 1;
+              } else if (page <= 3) {
+                pageNum = i + 1;
+              } else if (page >= totalPages - 2) {
+                pageNum = totalPages - 4 + i;
+              } else {
+                pageNum = page - 2 + i;
+              }
+              
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setPage(pageNum)}
+                  className={`w-10 h-10 rounded-xl text-sm font-medium transition-colors ${
+                    page === pageNum
+                      ? 'bg-[#33a8da] text-white'
+                      : 'bg-white border border-gray-200 text-gray-600 hover:border-[#33a8da]'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+          </div>
           <button
             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
-            className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium disabled:opacity-50 hover:border-[#33a8da] transition"
+            className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:border-[#33a8da] transition-colors"
           >
             Next
           </button>
