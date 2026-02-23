@@ -4,7 +4,9 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install dependencies (including devDependencies for build)
+# scripts/ required for postinstall (Prisma 7 shim)
 COPY package.json package-lock.json ./
+COPY scripts ./scripts/
 RUN npm ci
 
 # Copy source (excludes node_modules, dist, generated via .dockerignore)
@@ -21,7 +23,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Install production dependencies only
+# scripts/ required for postinstall (Prisma 7 shim)
 COPY package.json package-lock.json ./
+COPY scripts ./scripts/
 RUN npm ci --omit=dev
 
 # Copy generated Prisma client and schema from builder
