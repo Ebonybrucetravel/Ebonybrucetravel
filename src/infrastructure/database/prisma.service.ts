@@ -15,8 +15,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   constructor(private readonly configService: ConfigService) {
     const rawUrl = configService.get<string>('DATABASE_URL');
-    const connectionString = PrismaService.normalizeDatabaseUrl(rawUrl);
-
     // Allow disabling TLS cert verification (e.g. Supabase pooler from Railway). Read from process.env
     // so it works even when not in the validated env schema (validated config strips unknown keys).
     const sslRejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED ?? configService.get<string>('DATABASE_SSL_REJECT_UNAUTHORIZED');
@@ -24,6 +22,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     if (disableSslVerify) {
       console.warn('[PrismaService] SSL certificate verification disabled (DATABASE_SSL_REJECT_UNAUTHORIZED). Connection still encrypted.');
     }
+    const connectionString = PrismaService.normalizeDatabaseUrl(rawUrl, disableSslVerify);
 
     const adapter = new PrismaPg({
       connectionString: connectionString || undefined,
@@ -90,16 +89,31 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     }
   }
 
-  private static normalizeDatabaseUrl(url: string | undefined): string {
+  /**
+   * Normalizes DATABASE_URL (Supabase connection_limit, etc.).
+   * When stripSslMode is true, removes sslmode/ssl* query params so the adapter's
+   * ssl: { rejectUnauthorized: false } is used (node-pg ignores config ssl if URL has ssl params).
+   */
+  private static normalizeDatabaseUrl(url: string | undefined, stripSslMode = false): string {
     if (!url) return '';
     try {
-      const isSupabase = url.includes('supabase.co');
-      const hasLimit = /[?&]connection_limit=/.test(url);
-      if (isSupabase && !hasLimit) {
-        const separator = url.includes('?') ? '&' : '?';
-        return `${url}${separator}connection_limit=5`;
+      const parsed = new URL(url);
+      if (stripSslMode) {
+        const toDelete: string[] = [];
+        parsed.searchParams.forEach((_, key) => {
+          const k = key.toLowerCase();
+          if (k === 'sslmode' || k === 'sslcert' || k === 'sslkey' || k === 'sslrootcert' || k === 'ssl') toDelete.push(key);
+        });
+        toDelete.forEach((k) => parsed.searchParams.delete(k));
       }
-      return url;
+      let result = parsed.toString();
+      const isSupabase = result.includes('supabase.co');
+      const hasLimit = /[?&]connection_limit=/.test(result);
+      if (isSupabase && !hasLimit) {
+        const separator = result.includes('?') ? '&' : '?';
+        result = `${result}${separator}connection_limit=5`;
+      }
+      return result;
     } catch {
       return url;
     }
