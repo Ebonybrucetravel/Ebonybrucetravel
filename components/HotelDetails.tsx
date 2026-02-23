@@ -1,6 +1,9 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
+import { useRouter } from 'next/navigation';
+import { toast } from 'react-hot-toast';
 import { SearchResult, SearchParams } from '../lib/types';
 
 interface HotelDetailsProps {
@@ -37,6 +40,9 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   onFetchSuggestions  
 }) => {
   const { currency } = useLanguage();
+  const { isLoggedIn } = useAuth();
+  const router = useRouter();
+  
   const [activeTab, setActiveTab] = useState('Overview');
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
@@ -234,11 +240,8 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
       setStatsError(false);
       const baseUrl = 'https://ebony-bruce-production.up.railway.app';
       
-      // Note: This endpoint likely requires authentication
-      // You need to add your API key/token here
       const response = await fetch(`${baseUrl}/api/v1/bookings/hotels/images/usage-stats`, {
         headers: {
-          'Authorization': 'Bearer YOUR_API_TOKEN_HERE', // Add your token
           'Content-Type': 'application/json',
         }
       });
@@ -318,7 +321,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
           if (onFetchImages) {
             const fetchedImages = await onFetchImages(item.id, item.title);
             
-            // FIX: Check if fetchedImages has a data property that is an array
+            // Check if fetchedImages has a data property that is an array
             if (fetchedImages && typeof fetchedImages === 'object' && 'data' in fetchedImages && Array.isArray(fetchedImages.data)) {
               images = fetchedImages.data.map((img: any) => ({
                 id: img.id || `${item.id}-${Date.now()}-${Math.random()}`,
@@ -838,9 +841,9 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" /></svg>
                Share
              </button>
-             <button className="w-11 h-11 rounded-xl border border-gray-100 bg-white flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition shadow-sm">
-               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
-             </button>
+             
+             {/* Share button only - removed heart button */}
+             
              <div className="bg-[#33a8da] text-white font-black px-4 py-2.5 rounded-xl text-lg tracking-tighter shadow-lg shadow-blue-500/20">4.9</div>
           </div>
         </div>
