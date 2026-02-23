@@ -121,6 +121,10 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   SUPER_ADMIN_EMAIL?: string; // Super admin email (seed, contact form notifications)
+
+  @IsString()
+  @IsOptional()
+  DATABASE_SSL_REJECT_UNAUTHORIZED?: string; // Set to 'false' to allow self-signed certs (e.g. Supabase from Railway)
 }
 
 export function validate(config: Record<string, unknown>) {

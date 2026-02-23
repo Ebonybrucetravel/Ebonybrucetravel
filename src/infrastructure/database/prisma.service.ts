@@ -17,9 +17,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     const rawUrl = configService.get<string>('DATABASE_URL');
     const connectionString = PrismaService.normalizeDatabaseUrl(rawUrl);
 
-    // Allow disabling TLS cert verification (e.g. Supabase pooler from Railway). Use configService only (no 'this') before super().
-    const sslRejectUnauthorized = configService.get<string>('DATABASE_SSL_REJECT_UNAUTHORIZED');
-    const disableSslVerify = /^(false|0|no|off)$/i.test(sslRejectUnauthorized ?? '');
+    // Allow disabling TLS cert verification (e.g. Supabase pooler from Railway). Read from process.env
+    // so it works even when not in the validated env schema (validated config strips unknown keys).
+    const sslRejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED ?? configService.get<string>('DATABASE_SSL_REJECT_UNAUTHORIZED');
+    const disableSslVerify = /^(false|0|no|off)$/i.test(String(sslRejectUnauthorized ?? '').trim());
     if (disableSslVerify) {
       console.warn('[PrismaService] SSL certificate verification disabled (DATABASE_SSL_REJECT_UNAUTHORIZED). Connection still encrypted.');
     }
