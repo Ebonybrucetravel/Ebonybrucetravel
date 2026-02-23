@@ -274,41 +274,7 @@ const Profile: React.FC<ProfileProps> = ({
       setIsLoadingSavedItems(true);
       userApi.getSavedItems()
         .then((data: any) => {
-          const items = Array.isArray(data) ? data : (data?.data || []);
-          const mapped: SavedItem[] = items.map((s: any) => {
-            const details = s.itemDetails || {};
-            const title = details.name || details.title || s.itemId || 'Saved item';
-            const location =
-              [details.city, details.country]
-                .filter(Boolean)
-                .join(', ') ||
-              details.location ||
-              'Saved for later';
-            const priceValue = details.pricePerNight ?? details.price ?? details.amount;
-            const price =
-              typeof priceValue === 'number'
-                ? `$${priceValue.toFixed(2)}`
-                : (priceValue || '');
-            const image =
-              details.image ||
-              details.imageUrl ||
-              'https://images.unsplash.com/photo-1526779259212-939e64788e3c?auto=format&fit=crop&q=80&w=800';
-            const type =
-              s.itemType === 'HOTEL'
-                ? 'Hotels'
-                : s.itemType === 'CAR_RENTAL'
-                ? 'Car Rentals'
-                : 'Flights';
-
-            return {
-              id: s.id,
-              name: title,
-              location,
-              price,
-              image,
-              type,
-            };
-          });
+          const mapped = mapSavedItems(data);
           setSavedItems(mapped);
           setHasLoadedSavedItems(true);
         })
@@ -319,7 +285,6 @@ const Profile: React.FC<ProfileProps> = ({
         .finally(() => setIsLoadingSavedItems(false));
     }
   }, [activeTab, hasLoadedSavedItems, isLoadingSavedItems]);
-
   useEffect(() => {
     if (activeTab === 'travelers' && !hasLoadedTravelers && !isLoadingTravelers) {
       setIsLoadingTravelers(true);
@@ -363,23 +328,17 @@ const Profile: React.FC<ProfileProps> = ({
     setIsLoadingRewards(true);
     
     try {
-     
       const [loyaltyData, transactionsData, rewardsResponse] = await Promise.all([
-        userApi.getLoyaltyAccount(),
+        userApi.getLoyaltyAccount().catch(() => null), // Don't fail if this errors
         userApi.getLoyaltyTransactions(),
-        userApi.getAvailableRewards()
+        userApi.getAvailableRewards().catch(() => []) // Don't fail if this errors
       ]);
       
-      
-      if (loyaltyData) {
-        setLoyalty(loyaltyData);
-        console.log('Loyalty data loaded:', loyaltyData); // Debug log
-      } else {
-        console.warn('No loyalty data received');
-      }
-      
-  
+      // Calculate total points from transactions
+      let calculatedPoints = 0;
+      let lifetimePoints = 0;
       let transactions: LoyaltyTransaction[] = [];
+      
       if (transactionsData) {
         if (Array.isArray(transactionsData)) {
           transactions = transactionsData;
@@ -387,10 +346,44 @@ const Profile: React.FC<ProfileProps> = ({
           const response = transactionsData as Record<string, any>;
           transactions = response.data || response.transactions || response.items || [];
         }
+        
+        // Calculate points from EARNED transactions
+        calculatedPoints = transactions
+          .filter(tx => tx.type === 'EARNED')
+          .reduce((sum, tx) => sum + tx.points, 0);
+        
+        // Subtract REDEEMED points
+        const redeemedPoints = transactions
+          .filter(tx => tx.type === 'REDEEMED')
+          .reduce((sum, tx) => sum + Math.abs(tx.points), 0);
+        
+        calculatedPoints = calculatedPoints - redeemedPoints;
+        
+        // Calculate lifetime points (all EARNED transactions)
+        lifetimePoints = transactions
+          .filter(tx => tx.type === 'EARNED')
+          .reduce((sum, tx) => sum + tx.points, 0);
+        
+        setLoyaltyTransactions(transactions);
       }
-      setLoyaltyTransactions(Array.isArray(transactions) ? transactions : []);
       
-
+      // Use loyaltyData if it has points, otherwise use calculated points
+      const finalLoyaltyData: LoyaltyAccount = {
+        id: loyaltyData?.id || `loyalty-${user.id || 'temp'}`,
+        points: loyaltyData?.points > 0 ? loyaltyData.points : calculatedPoints,
+        lifetimePoints: loyaltyData?.lifetimePoints > 0 ? loyaltyData.lifetimePoints : lifetimePoints,
+        tier: loyaltyData?.tier || 'BRONZE',
+        tierName: loyaltyData?.tierName || 'Bronze',
+        joinDate: loyaltyData?.joinDate || new Date().toISOString(),
+        lastActivity: loyaltyData?.lastActivity || new Date().toISOString(),
+        pointsToNextTier: loyaltyData?.pointsToNextTier || 1000,
+        nextTier: loyaltyData?.nextTier || 'SILVER'
+      };
+      
+      setLoyalty(finalLoyaltyData);
+      console.log('Loyalty data loaded:', finalLoyaltyData);
+  
+      // Process available rewards
       let items: AvailableReward[] = [];
       if (rewardsResponse) {
         if (Array.isArray(rewardsResponse)) {
@@ -400,37 +393,74 @@ const Profile: React.FC<ProfileProps> = ({
           items = response.data || response.rewards || response.items || [];
         }
         
-
-        if (loyaltyData?.points) {
-          items = items.map(reward => ({
-            ...reward,
-            canAfford: (loyaltyData.points || 0) >= reward.pointsCost
-          }));
-        }
+        // Use calculated points for canAfford flag
+        items = items.map(reward => ({
+          ...reward,
+          canAfford: (finalLoyaltyData.points || 0) >= reward.pointsCost
+        }));
       }
       setAvailableRewards(Array.isArray(items) ? items : []);
       
-
       setHasLoadedLoyalty(true);
       setHasLoadedTransactions(true);
       setHasLoadedRewards(true);
       
     } catch (error: any) {
       console.error('Failed to load loyalty data:', error);
-     
+      
+      // Try to at least load transactions
+      try {
+        const transactionsData = await userApi.getLoyaltyTransactions();
+        if (transactionsData) {
+          let transactions: LoyaltyTransaction[] = [];
+          if (Array.isArray(transactionsData)) {
+            transactions = transactionsData;
+          } else {
+            const response = transactionsData as Record<string, any>;
+            transactions = response.data || response.transactions || response.items || [];
+          }
+          
+          // Calculate points from transactions
+          const earnedPoints = transactions
+            .filter(tx => tx.type === 'EARNED')
+            .reduce((sum, tx) => sum + tx.points, 0);
+          
+          const redeemedPoints = transactions
+            .filter(tx => tx.type === 'REDEEMED')
+            .reduce((sum, tx) => sum + Math.abs(tx.points), 0);
+          
+          const calculatedPoints = earnedPoints - redeemedPoints;
+          
+          const fallbackLoyalty: LoyaltyAccount = {
+            id: `loyalty-${user.id || 'temp'}`,
+            points: calculatedPoints,
+            lifetimePoints: earnedPoints,
+            tier: 'BRONZE',
+            tierName: 'Bronze',
+            joinDate: new Date().toISOString(),
+            lastActivity: new Date().toISOString(),
+            pointsToNextTier: 1000,
+            nextTier: 'SILVER'
+          };
+          
+          setLoyalty(fallbackLoyalty);
+          setLoyaltyTransactions(transactions);
+          setHasLoadedTransactions(true);
+        }
+      } catch (txError) {
+        console.error('Failed to load even transactions:', txError);
+      }
+      
       setHasLoadedLoyalty(false);
-      setHasLoadedTransactions(false);
       setHasLoadedRewards(false);
       
-    
-      alert('Failed to load loyalty data. Please try again.');
+      
     } finally {
       setIsLoadingLoyalty(false);
       setIsLoadingTransactions(false);
       setIsLoadingRewards(false);
     }
   };
-
   const loadVouchers = async () => {
     setIsLoadingVouchers(true);
     try {
@@ -701,6 +731,130 @@ const Profile: React.FC<ProfileProps> = ({
       alert(error instanceof ApiError ? error.message : 'Failed to remove saved item');
     }
   };
+
+const handleSaveItem = async (itemData: {
+  itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+  itemId: string;
+  itemDetails?: any;
+  notes?: string;
+}) => {
+  try {
+    const result = await userApi.saveItem(itemData);
+    
+    // Refresh saved items list
+    const updatedItems = await userApi.getSavedItems();
+    const mapped = mapSavedItems(updatedItems);
+    setSavedItems(mapped);
+    
+    alert('Item saved successfully!');
+    return result;
+  } catch (error: any) {
+    console.error('Failed to save item:', error);
+    alert(error instanceof ApiError ? error.message : 'Failed to save item');
+    throw error;
+  }
+};
+
+const handleToggleSaved = async (itemData: {
+  itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+  itemId: string;
+  itemDetails?: any;
+}) => {
+  try {
+    const result = await userApi.toggleSavedItem(itemData);
+    
+    // Refresh saved items list
+    const updatedItems = await userApi.getSavedItems();
+    const mapped = mapSavedItems(updatedItems);
+    setSavedItems(mapped);
+    
+    return result;
+  } catch (error: any) {
+    console.error('Failed to toggle saved item:', error);
+    throw error;
+  }
+};
+
+const handleCheckSaved = async (itemData: {
+  itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+  itemId: string;
+}): Promise<boolean> => {
+  try {
+    const result = await userApi.checkSavedItem(itemData);
+    return result?.isSaved || false;
+  } catch (error: any) {
+    console.error('Failed to check saved item:', error);
+    return false;
+  }
+};
+
+const handleUpdateNotes = async (id: string, notes: string) => {
+  try {
+    const result = await userApi.updateSavedItemNotes(id, notes);
+    
+    // Update local state
+    setSavedItems(prev => prev.map(item => 
+      item.id === id ? { ...item, notes } : item
+    ));
+    
+    alert('Notes updated successfully!');
+    return result;
+  } catch (error: any) {
+    console.error('Failed to update notes:', error);
+    alert(error instanceof ApiError ? error.message : 'Failed to update notes');
+    throw error;
+  }
+};
+
+const handleGetSavedCounts = async () => {
+  try {
+    const counts = await userApi.getSavedItemCounts();
+    return counts;
+  } catch (error: any) {
+    console.error('Failed to get saved counts:', error);
+    return { HOTEL: 0, FLIGHT: 0, CAR_RENTAL: 0 };
+  }
+};
+
+// Helper function to map API response to SavedItem format
+const mapSavedItems = (data: any): SavedItem[] => {
+  const items = Array.isArray(data) ? data : (data?.data || []);
+  return items.map((s: any) => {
+    const details = s.itemDetails || {};
+    const title = details.name || details.title || s.itemId || 'Saved item';
+    const location =
+      [details.city, details.country]
+        .filter(Boolean)
+        .join(', ') ||
+      details.location ||
+      'Saved for later';
+    const priceValue = details.pricePerNight ?? details.price ?? details.amount;
+    const price =
+      typeof priceValue === 'number'
+        ? `$${priceValue.toFixed(2)}`
+        : (priceValue || '');
+    const image =
+      details.image ||
+      details.imageUrl ||
+      'https://images.unsplash.com/photo-1526779259212-939e64788e3c?auto=format&fit=crop&q=80&w=800';
+    const type =
+      s.itemType === 'HOTEL'
+        ? 'Hotels'
+        : s.itemType === 'CAR_RENTAL'
+        ? 'Car Rentals'
+        : 'Flights';
+
+    return {
+      id: s.id,
+      name: title,
+      location,
+      price,
+      image,
+      type,
+      notes: s.notes,
+    };
+  });
+};
 
   const handleUpdatePassword = async () => {
     if (!passwords.current) {
@@ -988,8 +1142,11 @@ const Profile: React.FC<ProfileProps> = ({
     );
   };
 
-  const renderSavedCard = (item: SavedItem) => {
+  const renderSavedCard = (item: SavedItem & { notes?: string }) => {
     const formattedItem = { ...item, title: item.name, subtitle: item.location };
+    const [isEditingNotes, setIsEditingNotes] = useState(false);
+    const [notes, setNotes] = useState(item.notes || '');
+    
     return (
       <div key={item.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow relative">
         <div className="w-full md:w-32 h-32 rounded-2xl overflow-hidden shrink-0 relative">
@@ -1001,13 +1158,66 @@ const Profile: React.FC<ProfileProps> = ({
         <div className="flex-1 text-center md:text-left">
           <h4 className="text-lg font-black text-gray-900 tracking-tight">{item.name}</h4>
           <p className="text-[11px] font-bold text-gray-400">{item.location}</p>
+          
+          {/* Notes section */}
+          {item.notes && !isEditingNotes && (
+            <div className="mt-2 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
+              <p className="italic">"{item.notes}"</p>
+            </div>
+          )}
+          
+          {isEditingNotes && (
+            <div className="mt-2">
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full p-2 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#33a8da]"
+                rows={2}
+                placeholder="Add notes..."
+              />
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => {
+                    handleUpdateNotes(item.id, notes);
+                    setIsEditingNotes(false);
+                  }}
+                  className="text-xs bg-[#33a8da] text-white px-3 py-1 rounded-lg"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => {
+                    setNotes(item.notes || '');
+                    setIsEditingNotes(false);
+                  }}
+                  className="text-xs bg-gray-200 text-gray-700 px-3 py-1 rounded-lg"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          
           <div className="flex items-center justify-center md:justify-start gap-1 mt-2 text-yellow-400">
             {[...Array(5)].map((_, i) => <svg key={i} className="w-3 h-3 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>)}
           </div>
         </div>
         <div className="text-center md:text-right">
           <p className="text-xl font-black text-[#33a8da]">{item.price}</p>
-          <button onClick={() => onBookItem(formattedItem)} className="text-[10px] font-black text-[#33a8da] uppercase tracking-widest hover:underline mt-2">View Details</button>
+          <div className="flex gap-2 mt-2">
+            <button 
+              onClick={() => setIsEditingNotes(!isEditingNotes)} 
+              className="text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-[#33a8da] transition"
+            >
+              {item.notes ? 'Edit Notes' : 'Add Notes'}
+            </button>
+            <button 
+              onClick={() => onBookItem(formattedItem)} 
+              className="text-[10px] font-black text-[#33a8da] uppercase tracking-widest hover:underline"
+            >
+              View Details
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1668,44 +1878,86 @@ const Profile: React.FC<ProfileProps> = ({
               </div>
             )}
 
-            {activeTab === 'saved' && (
-              <div className="animate-in fade-in duration-500 space-y-8">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Saved Items</h1>
-                    <p className="text-gray-400 font-bold text-sm mt-1">Your personal travel wishlist.</p>
-                  </div>
-                  <button onClick={handleShareList} disabled={isSharing} className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 rounded-xl text-[#33a8da] font-bold text-xs uppercase tracking-widest hover:bg-gray-50 active:scale-95 disabled:opacity-50">
-                    {isSharing ? (
-                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
-                      </svg>
-                    )}
-                    {isSharing ? 'Sharing...' : 'Share List'}
-                  </button>
-                </div>
-                <div className="space-y-4">
-                  {isLoadingSavedItems ? (
-                    <div className="bg-white rounded-[32px] p-16 text-center border border-gray-100">
-                      <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
-                      <p className="text-gray-500 font-bold">Loading your saved items…</p>
-                    </div>
-                  ) : savedItems.length > 0 ? (
-                    savedItems.map(renderSavedCard)
-                  ) : (
-                    <div className="bg-white rounded-[32px] p-16 text-center border-4 border-dashed border-gray-100">
-                      <h3 className="text-xl font-bold text-gray-900 mb-2">No saved items</h3>
-                      <p className="text-gray-400 font-bold">Items you "love" will appear here.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+{activeTab === 'saved' && (
+  <div className="animate-in fade-in duration-500 space-y-8">
+    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div>
+        <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Saved Items</h1>
+        <p className="text-gray-400 font-bold text-sm mt-1">Your personal travel wishlist.</p>
+      </div>
+      <div className="flex items-center gap-3">
+        {/* Filter buttons */}
+        <div className="flex bg-gray-100 rounded-xl p-1">
+          {['All', 'Hotels', 'Flights', 'Car Rentals'].map((filter) => (
+            <button
+              key={filter}
+              onClick={() => {
+                // Add filter logic here if needed
+                console.log(`Filter by ${filter}`);
+              }}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition ${
+                filter === 'All' 
+                  ? 'bg-white text-[#33a8da] shadow-sm' 
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {filter}
+            </button>
+          ))}
+        </div>
+        <button onClick={handleShareList} disabled={isSharing} className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 rounded-xl text-[#33a8da] font-bold text-xs uppercase tracking-widest hover:bg-gray-50 active:scale-95 disabled:opacity-50">
+          {isSharing ? (
+            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+            </svg>
+          )}
+          {isSharing ? 'Sharing...' : 'Share List'}
+        </button>
+      </div>
+    </div>
+    
+    {/* Saved items count badge */}
+    {savedItems.length > 0 && (
+      <div className="bg-blue-50 rounded-2xl px-4 py-2 inline-block">
+        <p className="text-xs font-bold text-[#33a8da]">
+          {savedItems.length} saved {savedItems.length === 1 ? 'item' : 'items'}
+        </p>
+      </div>
+    )}
+    
+    <div className="space-y-4">
+      {isLoadingSavedItems ? (
+        <div className="bg-white rounded-[32px] p-16 text-center border border-gray-100">
+          <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-gray-500 font-bold">Loading your saved items…</p>
+        </div>
+      ) : savedItems.length > 0 ? (
+        savedItems.map(renderSavedCard)
+      ) : (
+        <div className="bg-white rounded-[32px] p-16 text-center border-4 border-dashed border-gray-100">
+          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">No saved items yet</h3>
+          <p className="text-gray-400 font-bold mb-6">Start exploring and save your favorite hotels, flights, and car rentals!</p>
+          <button 
+            onClick={() => window.location.href = '/search'} 
+            className="px-8 py-3 bg-[#33a8da] text-white rounded-xl font-bold text-sm uppercase tracking-widest hover:bg-[#2c98c7] transition shadow-lg"
+          >
+            Explore Now
+          </button>
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
             {activeTab === 'rewards' && (
               <div className="animate-in fade-in duration-500 space-y-8">
