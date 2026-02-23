@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, Logger, InternalServerErrorException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException, ConflictException, Logger, InternalServerErrorException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
@@ -189,6 +189,89 @@ export class AuthService {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Login internal error details: ${errorMessage}`);
       throw new InternalServerErrorException('Login failed. Please try again.');
+    }
+  }
+
+  /**
+   * Admin-only login. Same credential validation as login(), but only ADMIN and SUPER_ADMIN
+   * can obtain a token from this path. Use for protected admin auth route.
+   */
+  async adminLogin(loginDto: LoginDto) {
+    try {
+      this.logger.debug(`Admin login attempt for: ${loginDto.email}`);
+      const user = await this.prisma.user.findUnique({
+        where: { email: loginDto.email },
+      });
+
+      if (!user) {
+        this.logger.warn(`Admin login attempt with non-existent email: ${loginDto.email}`);
+        throw new UnauthorizedException('Invalid credentials');
+      }
+
+      if (user.deletedAt) {
+        this.logger.warn(`Admin login attempt for deleted account: ${loginDto.email}`);
+        throw new UnauthorizedException('Account has been deleted');
+      }
+
+      if (!user.password) {
+        this.logger.warn(`Admin login attempt for OAuth-only account: ${loginDto.email}`);
+        throw new UnauthorizedException('Invalid credentials');
+      }
+
+      const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+      if (!isPasswordValid) {
+        this.logger.warn(`Invalid admin login password for: ${loginDto.email}`);
+        throw new UnauthorizedException('Invalid credentials');
+      }
+
+      if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+        this.logger.warn(`Admin login rejected for non-admin role: ${loginDto.email}`);
+        throw new ForbiddenException('Only administrators can sign in here.');
+      }
+
+      const payload = { sub: user.id, email: user.email, role: user.role };
+      const token = this.jwtService.sign(payload);
+      const { password, deletedAt, ...userWithoutPassword } = user;
+
+      const role = user.role as string;
+      if (role === 'SUPER_ADMIN' || role === 'ADMIN') {
+        const stored = user.permissions as Record<string, boolean> | null | undefined;
+        (userWithoutPassword as any).permissions =
+          role === 'SUPER_ADMIN'
+            ? {
+                canManageBookings: true,
+                canManageUsers: true,
+                canManageMarkups: true,
+                canViewReports: true,
+                canCancelBookings: true,
+                canViewAllBookings: true,
+              }
+            : stored && typeof stored === 'object' && Object.keys(stored).length > 0
+              ? stored
+              : {
+                  canManageBookings: true,
+                  canManageUsers: true,
+                  canManageMarkups: true,
+                  canViewReports: true,
+                  canCancelBookings: true,
+                  canViewAllBookings: true,
+                };
+      }
+
+      this.logger.log(`Admin signed in successfully: ${user.email}`);
+      return {
+        user: userWithoutPassword,
+        token,
+      };
+    } catch (error) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
+      this.logger.error(`Admin login failed for ${loginDto.email}:`, error);
+      throw new InternalServerErrorException('Admin sign-in failed. Please try again.');
     }
   }
 

@@ -17,6 +17,8 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
+import { Public } from '@common/decorators/public.decorator';
+import { Throttle } from '@common/decorators/throttle.decorator';
 import { RequirePermission } from '@common/decorators/require-permission.decorator';
 import { PermissionsGuard } from '@common/guards/permissions.guard';
 import { Response } from 'express';
@@ -49,6 +51,7 @@ import { AuthService } from '@presentation/auth/auth.service';
 import { CreateBookingOnBehalfDto } from './dto/create-booking-on-behalf.dto';
 import { UserService } from '@presentation/user/user.service';
 import { UpdateProfileDto } from '@presentation/user/dto/update-profile.dto';
+import { LoginDto } from '@presentation/auth/dto/login.dto';
 
 function escapeCsv(s: any): string {
   if (s == null) return '';
@@ -87,6 +90,35 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Admin profile updated' })
   async updateAdminProfile(@Request() req: any, @Body() updateDto: UpdateProfileDto) {
     return this.userService.updateProfile(req.user.id, updateDto);
+  }
+
+  @Public()
+  @Throttle(5, 60000)
+  @Post('auth/login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Admin login',
+    description:
+      'Sign in as an administrator. Only ADMIN or SUPER_ADMIN can use this route. Returns 403 for customers.',
+  })
+  @ApiResponse({ status: 200, description: 'Admin login successful' })
+  @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  @ApiResponse({ status: 403, description: 'Only administrators can sign in here' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  async adminLogin(@Body() loginDto: LoginDto) {
+    return this.authService.adminLogin(loginDto);
+  }
+
+  @Post('auth/logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Admin logout' })
+  @ApiResponse({ status: 200, description: 'Logout successful' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async adminLogout(@Request() req: any) {
+    return {
+      success: true,
+      message: 'Logout successful. Please remove the token from client storage.',
+    };
   }
 
   @Post('users')

@@ -364,6 +364,79 @@ export class ResendService {
     }
   }
 
+  private getContactConfirmationEmailTemplate(data: ContactConfirmationEmailData): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>We received your message</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
+            <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
+          </div>
+          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">We received your message</h2>
+            <p>Dear ${data.customerName || 'Valued Customer'},</p>
+            <p>Thank you for getting in touch. We have received your enquiry regarding <strong>${data.serviceInterestedIn}</strong>.</p>
+            <p>Our team will review your message and get back to you as soon as possible, usually within 1–2 business days.</p>
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+              <p>If you have any urgent questions, please call us or reply to this email.</p>
+              <p style="margin-top: 20px;">Best regards,<br><strong>The Ebony Bruce Travels Team</strong></p>
+            </div>
+          </div>
+          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+            <p>This is an automated confirmation. Please do not reply to this message if you only wanted to confirm receipt.</p>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
+  private getContactSubmissionNotificationTemplate(data: ContactSubmissionNotificationData): string {
+    const phoneLine = data.submitterPhone
+      ? `<p style="margin: 5px 0;"><strong>Phone:</strong> ${data.submitterPhone}</p>`
+      : '';
+    const submittedAtStr = data.submittedAt.toLocaleString('en-GB', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>New Contact Us submission</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #fff3cd; padding: 15px; text-align: center; margin-bottom: 20px;">
+            <h1 style="color: #856404; margin: 0;">New Contact Us submission</h1>
+          </div>
+          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
+            <p>A new message was submitted via the Contact Us form.</p>
+            <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <h3 style="margin-top: 0;">From</h3>
+              <p style="margin: 5px 0;"><strong>Name:</strong> ${data.submitterName}</p>
+              <p style="margin: 5px 0;"><strong>Email:</strong> ${data.submitterEmail}</p>
+              ${phoneLine}
+              <p style="margin: 5px 0;"><strong>Service:</strong> ${data.serviceInterestedIn}</p>
+              <p style="margin: 5px 0;"><strong>Submitted:</strong> ${submittedAtStr}</p>
+              <p style="margin: 5px 0;"><strong>Submission ID:</strong> ${data.submissionId}</p>
+            </div>
+            <div style="background-color: #e8f4f8; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">Message</h3>
+              <p style="white-space: pre-wrap; margin: 0;">${(data.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+            </div>
+            <p style="font-size: 12px; color: #666;">View and manage submissions in the admin panel under Contact submissions.</p>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
   /**
    * Cancellation email template
    */
@@ -908,193 +981,6 @@ export class ResendService {
           <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
             <p>This is an automated email. Please do not reply to this message.</p>
             <p>Confirmation Date: ${data.confirmationDate.toLocaleString()}</p>
-          </div>
-        </body>
-      </html>
-    `;
-  }
-
-  /**
-   * Send contact form confirmation to the person who submitted (auto-reply)
-   */
-  async sendContactConfirmationEmail(data: ContactConfirmationEmailData): Promise<void> {
-    try {
-      const subject = 'We received your message - Ebony Bruce Travels';
-      const html = this.getContactConfirmationEmailTemplate(data);
-      await this.resend.emails.send({
-        from: this.fromEmail,
-        to: data.to,
-        subject,
-        html,
-      });
-      this.logger.log(`Contact confirmation email sent to ${data.to}`);
-    } catch (error) {
-      this.logger.error(`Failed to send contact confirmation to ${data.to}:`, error);
-    }
-  }
-
-  /**
-   * Notify admin(s) that a new Contact Us form was submitted
-   */
-  async sendContactSubmissionNotification(data: ContactSubmissionNotificationData): Promise<void> {
-    if (!data.to || data.to.length === 0) return;
-    try {
-      const subject = `[Contact Us] New submission: ${data.serviceInterestedIn} - ${data.submitterName}`;
-      const html = this.getContactSubmissionNotificationTemplate(data);
-      for (const to of data.to) {
-        await this.resend.emails.send({
-          from: this.fromEmail,
-          to: to.trim(),
-          subject,
-          html,
-        });
-      }
-      this.logger.log(`Contact submission notification sent to ${data.to.length} admin(s)`);
-    } catch (error) {
-      this.logger.error('Failed to send contact submission notification to admin:', error);
-    }
-  }
-
-  private getContactConfirmationEmailTemplate(data: ContactConfirmationEmailData): string {
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>We received your message</title>
-        </head>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
-            <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
-          </div>
-          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
-            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">We received your message</h2>
-            <p>Dear ${data.customerName || 'Valued Customer'},</p>
-            <p>Thank you for getting in touch. We have received your enquiry regarding <strong>${data.serviceInterestedIn}</strong>.</p>
-            <p>Our team will review your message and get back to you as soon as possible, usually within 1–2 business days.</p>
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-              <p>If you have any urgent questions, please call us or reply to this email.</p>
-              <p style="margin-top: 20px;">Best regards,<br><strong>The Ebony Bruce Travels Team</strong></p>
-            </div>
-          </div>
-          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
-            <p>This is an automated confirmation. Please do not reply to this message if you only wanted to confirm receipt.</p>
-          </div>
-        </body>
-      </html>
-    `;
-  }
-
-  private getContactSubmissionNotificationTemplate(data: ContactSubmissionNotificationData): string {
-    const phoneLine = data.submitterPhone
-      ? `<p style="margin: 5px 0;"><strong>Phone:</strong> ${data.submitterPhone}</p>`
-      : '';
-    const submittedAtStr = data.submittedAt.toLocaleString('en-GB', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>New Contact Us submission</title>
-        </head>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background-color: #fff3cd; padding: 15px; text-align: center; margin-bottom: 20px;">
-            <h1 style="color: #856404; margin: 0;">New Contact Us submission</h1>
-          </div>
-          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
-            <p>A new message was submitted via the Contact Us form.</p>
-            <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
-              <h3 style="margin-top: 0;">From</h3>
-              <p style="margin: 5px 0;"><strong>Name:</strong> ${data.submitterName}</p>
-              <p style="margin: 5px 0;"><strong>Email:</strong> ${data.submitterEmail}</p>
-              ${phoneLine}
-              <p style="margin: 5px 0;"><strong>Service:</strong> ${data.serviceInterestedIn}</p>
-              <p style="margin: 5px 0;"><strong>Submitted:</strong> ${submittedAtStr}</p>
-              <p style="margin: 5px 0;"><strong>Submission ID:</strong> ${data.submissionId}</p>
-            </div>
-            <div style="background-color: #e8f4f8; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0;">
-              <h3 style="margin-top: 0;">Message</h3>
-              <p style="white-space: pre-wrap; margin: 0;">${(data.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
-            </div>
-            <p style="font-size: 12px; color: #666;">View and manage submissions in the admin panel under Contact submissions.</p>
-          </div>
-        </body>
-      </html>
-    `;
-  }
-
-  private getContactConfirmationEmailTemplate(data: ContactConfirmationEmailData): string {
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>We received your message</title>
-        </head>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
-            <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
-          </div>
-          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
-            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">We received your message</h2>
-            <p>Dear ${data.customerName || 'Valued Customer'},</p>
-            <p>Thank you for getting in touch. We have received your enquiry regarding <strong>${data.serviceInterestedIn}</strong>.</p>
-            <p>Our team will review your message and get back to you as soon as possible, usually within 1–2 business days.</p>
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-              <p>If you have any urgent questions, please call us or reply to this email.</p>
-              <p style="margin-top: 20px;">Best regards,<br><strong>The Ebony Bruce Travels Team</strong></p>
-            </div>
-          </div>
-          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
-            <p>This is an automated confirmation. Please do not reply to this message if you only wanted to confirm receipt.</p>
-          </div>
-        </body>
-      </html>
-    `;
-  }
-
-  private getContactSubmissionNotificationTemplate(data: ContactSubmissionNotificationData): string {
-    const phoneLine = data.submitterPhone
-      ? `<p style="margin: 5px 0;"><strong>Phone:</strong> ${data.submitterPhone}</p>`
-      : '';
-    const submittedAtStr = data.submittedAt.toLocaleString('en-GB', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>New Contact Us submission</title>
-        </head>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background-color: #fff3cd; padding: 15px; text-align: center; margin-bottom: 20px;">
-            <h1 style="color: #856404; margin: 0;">New Contact Us submission</h1>
-          </div>
-          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
-            <p>A new message was submitted via the Contact Us form.</p>
-            <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
-              <h3 style="margin-top: 0;">From</h3>
-              <p style="margin: 5px 0;"><strong>Name:</strong> ${data.submitterName}</p>
-              <p style="margin: 5px 0;"><strong>Email:</strong> ${data.submitterEmail}</p>
-              ${phoneLine}
-              <p style="margin: 5px 0;"><strong>Service:</strong> ${data.serviceInterestedIn}</p>
-              <p style="margin: 5px 0;"><strong>Submitted:</strong> ${submittedAtStr}</p>
-              <p style="margin: 5px 0;"><strong>Submission ID:</strong> ${data.submissionId}</p>
-            </div>
-            <div style="background-color: #e8f4f8; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0;">
-              <h3 style="margin-top: 0;">Message</h3>
-              <p style="white-space: pre-wrap; margin: 0;">${(data.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
-            </div>
-            <p style="font-size: 12px; color: #666;">View and manage submissions in the admin panel under Contact submissions.</p>
           </div>
         </body>
       </html>

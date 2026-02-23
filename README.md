@@ -140,6 +140,11 @@ Built on the latest web technologies (Next.js 14, TypeScript, Tailwind CSS), the
   - `ADMIN` - Full access to dashboard, bookings, markups
   - `SUPER_ADMIN` - System configuration access
 
+- **Admin API auth (protected routes):** For all admin sign-in and sign-out, use the dedicated admin auth endpoints so only administrators can obtain a token:
+  - `POST /api/v1/admin/auth/login` — email + password; only ADMIN/SUPER_ADMIN succeed (customers get 403). Rate-limited.
+  - `POST /api/v1/admin/auth/logout` — requires valid admin JWT.
+  - Customer auth remains at `POST /api/v1/auth/login` and `POST /api/v1/auth/logout`. See the API/Postman collection for full details.
+
 ### API Structure & Standards
 
 - **API Versioning:** `/api/v1/` prefix for future-proofing
