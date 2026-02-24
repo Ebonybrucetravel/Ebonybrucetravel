@@ -25,42 +25,80 @@ interface UserProfileProps {
 export default function UserProfile({ userId, onBack, onSuspend, onResetPassword }: UserProfileProps) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'activity'>('overview');
 
   useEffect(() => {
-    // Fetch user data from API
     const fetchUser = async () => {
       setLoading(true);
+      setError(null);
+      
       try {
-        // Replace with your actual API call
-        // const response = await fetch(`/api/admin/users/${userId}`);
-        // const data = await response.json();
+        // Get the admin token from localStorage
+        const token = localStorage.getItem('adminToken');
         
-        // Mock data for demonstration
-        setTimeout(() => {
-          setUser({
-            id: userId,
-            name: 'John Dane',
-            email: 'john.dane@example.com',
-            registered: 'Jan 12, 2024',
-            booking: 12,
-            points: '15,200',
-            status: 'Active',
-            phone: '+1 (555) 123-4567',
-            country: 'United States',
-            lastActive: '2024-01-15T10:30:00Z'
-          });
+        if (!token) {
+          setError('No admin token found. Please log in again.');
           setLoading(false);
-        }, 500);
-      } catch (error) {
-        console.error('Failed to fetch user:', error);
+          return;
+        }
+
+        console.log('🔍 Fetching user:', userId);
+        
+        // Make the actual API call to your backend
+        const response = await fetch(`https://ebony-bruce-production.up.railway.app/api/v1/admin/customers/${userId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        console.log('📡 Response status:', response.status);
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('Unauthorized - Please log in again');
+          } else if (response.status === 404) {
+            throw new Error('User not found');
+          } else {
+            throw new Error(`API error: ${response.status}`);
+          }
+        }
+
+        const data = await response.json();
+        console.log('📦 API Response:', data);
+
+        // Map the API response to your User interface
+        // Adjust this mapping based on your actual API response structure
+        const userData = data.data || data; // Handle different response wrappers
+        
+        setUser({
+          id: userData.id || userData._id || userId,
+          name: userData.name || userData.fullName || 'Unknown',
+          email: userData.email || '',
+          registered: userData.createdAt || userData.registered || new Date().toISOString().split('T')[0],
+          booking: userData.totalBookings || userData.bookingCount || userData.bookings?.length || 0,
+          points: userData.loyaltyPoints?.toString() || userData.points?.toString() || '0',
+          status: userData.status || 'Active',
+          phone: userData.phone || userData.phoneNumber,
+          country: userData.country || userData.address?.country,
+          lastActive: userData.lastLogin || userData.lastActive
+        });
+
+      } catch (err) {
+        console.error('❌ Failed to fetch user:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load user');
+      } finally {
         setLoading(false);
       }
     };
 
-    fetchUser();
+    if (userId) {
+      fetchUser();
+    }
   }, [userId]);
 
+  // Loading state
   if (loading) {
     return (
       <div className="p-4 md:p-8 bg-gray-50 min-h-screen">
@@ -76,6 +114,26 @@ export default function UserProfile({ userId, onBack, onSuspend, onResetPassword
     );
   }
 
+  // Error state
+  if (error) {
+    return (
+      <div className="p-4 md:p-8 bg-gray-50 min-h-screen">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white rounded-2xl p-12 text-center">
+            <p className="text-red-600 mb-4">❌ {error}</p>
+            <button 
+              onClick={onBack} 
+              className="text-[#33a8da] hover:underline"
+            >
+              Go back
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // No user state
   if (!user) {
     return (
       <div className="p-4 md:p-8 bg-gray-50 min-h-screen">
@@ -91,8 +149,10 @@ export default function UserProfile({ userId, onBack, onSuspend, onResetPassword
     );
   }
 
+  // Your existing JSX remains exactly the same from here...
   return (
     <div className="p-4 md:p-8 bg-gray-50 min-h-screen">
+      {/* ... rest of your JSX stays exactly the same ... */}
       <div className="max-w-7xl mx-auto">
         {/* Back button */}
         <button 

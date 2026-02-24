@@ -14,23 +14,142 @@ interface AdminCustomerProfileProps {
   onBack: () => void;
 }
 
+// Define the customer type based on your API response
+interface Customer {
+  id: string;
+  email: string;
+  name?: string;
+  phone?: string;
+  status: string;
+  bookingsCount?: number;
+  points?: number;
+  loyaltyPoints?: number;
+  internalNotes?: string;
+  notes?: string;
+  interactionHistory?: Array<{
+    type: string;
+    reference: string;
+    date: string;
+  }>;
+  registeredDate?: string;
+  createdAt?: string;
+  lastActive?: string;
+  [key: string]: any; // Allow other properties
+}
+
+// Define the API response type
+interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  meta?: any;
+}
+
+// Type guard to check if an object is a Customer
+function isCustomer(obj: any): obj is Customer {
+  return obj && typeof obj === 'object' && 'id' in obj && 'email' in obj && 'status' in obj;
+}
+
 export default function AdminCustomerProfile({ customerId, onBack }: AdminCustomerProfileProps) {
-  const [customer, setCustomer] = useState<any>(null);
+  const [customer, setCustomer] = useState<Customer | null>(null);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string>('');
 
   const load = async () => {
     setLoading(true);
     setError(null);
+    setDebugInfo('');
+    
     try {
-      const res = await getCustomer(customerId);
-      const data = res.data ?? res;
-      setCustomer(data);
-      setNotes(data.internalNotes ?? '');
+      console.log('🔍 Fetching customer with ID:', customerId);
+      
+      const response = await getCustomer(customerId);
+      
+      // Log the complete response
+      console.log('📦 Full API Response:', response);
+      console.log('📦 Response type:', typeof response);
+      console.log('📦 Response keys:', Object.keys(response || {}));
+      
+      // Store debug info
+      setDebugInfo(JSON.stringify(response, null, 2));
+      
+      // Check if response exists
+      if (!response) {
+        throw new Error('No response received from API');
+      }
+      
+      let customerData: Customer | null = null;
+      
+      // Case 1: Response is directly a Customer
+      if (isCustomer(response)) {
+        console.log('✅ Case 1: Response is directly a Customer');
+        customerData = response;
+      }
+      // Case 2: Response has data property that is a Customer
+      else if (response.data && isCustomer(response.data)) {
+        console.log('✅ Case 2: Found Customer in response.data');
+        customerData = response.data;
+      }
+      // Case 3: Response has data property that might contain Customer
+      else if (response.data && typeof response.data === 'object') {
+        console.log('🔍 Checking response.data structure:', response.data);
+        
+        if (isCustomer(response.data)) {
+          customerData = response.data;
+        } else {
+          // Check if data has a nested customer property
+          const possiblePaths = ['customer', 'user', 'result', 'item'];
+          for (const path of possiblePaths) {
+            // Use type assertion to access dynamic property
+            const nestedValue = (response.data as any)[path];
+            if (nestedValue && isCustomer(nestedValue)) {
+              console.log(`✅ Found Customer at response.data.${path}`);
+              customerData = nestedValue;
+              break;
+            }
+          }
+        }
+      }
+      // Case 4: Search through all properties of response
+      else if (typeof response === 'object') {
+        console.log('🔍 Searching through response object properties');
+        
+        // Convert response to a record with string keys for iteration
+        const responseObj = response as Record<string, any>;
+        
+        // Check each property to see if it's a Customer
+        for (const key in responseObj) {
+          if (Object.prototype.hasOwnProperty.call(responseObj, key)) {
+            const value = responseObj[key];
+            if (value && typeof value === 'object' && isCustomer(value)) {
+              console.log(`✅ Found Customer at response.${key}`);
+              customerData = value;
+              break;
+            }
+          }
+        }
+      }
+      
+      if (!customerData) {
+        console.error('❌ Could not find Customer data in response:', response);
+        throw new Error('Could not find valid customer data in response');
+      }
+      
+      console.log('✅ Customer data extracted:', customerData);
+      console.log('✅ Customer fields:', Object.keys(customerData));
+      console.log('✅ Customer name:', customerData.name);
+      console.log('✅ Customer email:', customerData.email);
+      console.log('✅ Customer status:', customerData.status);
+      
+      setCustomer(customerData);
+      setNotes(customerData.internalNotes || customerData.notes || '');
+      
     } catch (e) {
+      console.error('❌ Error in load function:', e);
       setError(e instanceof Error ? e.message : 'Failed to load customer');
     } finally {
       setLoading(false);
@@ -38,15 +157,17 @@ export default function AdminCustomerProfile({ customerId, onBack }: AdminCustom
   };
 
   useEffect(() => {
-    load();
+    if (customerId) {
+      load();
+    }
   }, [customerId]);
 
   const handleSaveNotes = async () => {
     setSaving(true);
     try {
-      // Fix: Convert null to empty string
+      console.log('📝 Saving notes:', notes);
       await updateCustomerNotes(customerId, notes || '');
-      setCustomer((c: any) => (c ? { ...c, internalNotes: notes } : c));
+      setCustomer((c) => c ? { ...c, internalNotes: notes, notes: notes } : null);
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to save notes');
     } finally {
@@ -59,9 +180,8 @@ export default function AdminCustomerProfile({ customerId, onBack }: AdminCustom
     if (reason === null) return;
     setActionLoading('suspend');
     try {
-      // Fix: Provide a default reason if undefined
       await suspendCustomer(customerId, reason || 'No reason provided');
-      setCustomer((c: any) => (c ? { ...c, status: 'SUSPENDED' } : c));
+      setCustomer((c) => c ? { ...c, status: 'SUSPENDED' } : null);
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to suspend');
     } finally {
@@ -73,7 +193,7 @@ export default function AdminCustomerProfile({ customerId, onBack }: AdminCustom
     setActionLoading('activate');
     try {
       await activateCustomer(customerId);
-      setCustomer((c: any) => (c ? { ...c, status: 'ACTIVE' } : c));
+      setCustomer((c) => c ? { ...c, status: 'ACTIVE' } : null);
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to activate');
     } finally {
@@ -120,8 +240,20 @@ export default function AdminCustomerProfile({ customerId, onBack }: AdminCustom
           Back
         </button>
         <div className="bg-red-50 rounded-2xl p-8 text-center">
-          <p className="text-red-700 font-bold">{error || 'Customer not found'}</p>
-          <button onClick={load} className="mt-4 text-[#33a8da] font-bold hover:underline">
+          <p className="text-red-700 font-bold mb-4">{error || 'Customer not found'}</p>
+          
+          {/* Debug info */}
+          {debugInfo && (
+            <div className="mb-4 p-4 bg-gray-100 rounded-xl text-left overflow-auto max-h-96">
+              <p className="text-xs font-bold mb-2">Debug Info (API Response):</p>
+              <pre className="text-xs font-mono whitespace-pre-wrap">{debugInfo}</pre>
+            </div>
+          )}
+          
+          <button 
+            onClick={load} 
+            className="mt-4 px-6 py-2 bg-[#33a8da] text-white rounded-xl font-bold hover:bg-[#2c98c7]"
+          >
             Retry
           </button>
         </div>
@@ -134,6 +266,18 @@ export default function AdminCustomerProfile({ customerId, onBack }: AdminCustom
 
   return (
     <div className="animate-in fade-in duration-500 p-6 lg:p-10">
+      {/* Debug info - remove in production */}
+      <div className="mb-4 p-4 bg-blue-50 rounded-xl">
+        <details>
+          <summary className="text-xs font-bold text-blue-600 cursor-pointer">
+            Debug: Customer Data Structure
+          </summary>
+          <pre className="mt-2 text-xs font-mono whitespace-pre-wrap overflow-auto max-h-96">
+            {JSON.stringify(customer, null, 2)}
+          </pre>
+        </details>
+      </div>
+
       <button
         type="button"
         onClick={onBack}

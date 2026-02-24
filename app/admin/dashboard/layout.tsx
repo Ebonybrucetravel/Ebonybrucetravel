@@ -54,6 +54,8 @@ export default function AdminDashboardLayout({
         { href: '/admin/dashboard/bookings', label: 'Bookings', icon: '📅', gradient: 'from-blue-500 to-cyan-500' },
         // Customers (platform users)
         { href: '/admin/dashboard/users', label: 'Customers', icon: '👥', gradient: 'from-green-500 to-emerald-500' },
+        // Markups (pricing rules)
+        { href: '/admin/dashboard/markups', label: 'Markups', icon: '💰', gradient: 'from-yellow-500 to-amber-500' },
         // Admin Users (system administrators)
         { href: '/admin/dashboard/admin-users', label: 'Admin Users', icon: '👑', gradient: 'from-purple-500 to-pink-500' },
         { href: '/admin/dashboard/rewards', label: 'Rewards', icon: '⭐', gradient: 'from-amber-500 to-orange-500' },

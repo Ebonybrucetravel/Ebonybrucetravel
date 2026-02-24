@@ -84,8 +84,7 @@ async function adminFetch<T>(
   }
 }
 
-// Rest of your functions remain exactly the same...
-// ─── Dashboard (lives under /dashboard, not /admin) ─────────────────────────
+
 export async function getDashboardStats(params?: {
   startDate?: string;
   endDate?: string;
@@ -483,5 +482,45 @@ export async function processCancellationRequest(
   return adminFetch<any>(`/api/v1/admin/cancellation-requests/${id}/process`, {
     method: 'POST',
     body,
+  });
+}
+
+
+// ─── Markups ─────────────────────────────────────────────────────────────
+export async function listMarkups() {
+  return adminFetch<any>('/api/v1/markups');
+}
+
+export async function createMarkup(body: {
+  productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL';
+  markupPercentage: number;
+  serviceFeeAmount: number;
+  currency: string;
+  description: string;
+}) {
+  return adminFetch<any>('/api/v1/markups', {
+    method: 'POST',
+    body,
+  });
+}
+
+export async function updateMarkup(
+  id: string,
+  body: {
+    markupPercentage?: number;
+    serviceFeeAmount?: number;
+    description?: string;
+    isActive?: boolean;
+  }
+) {
+  return adminFetch<any>(`/api/v1/markups/${id}`, {
+    method: 'PATCH',
+    body,
+  });
+}
+
+export async function deleteMarkup(id: string) {
+  return adminFetch<void>(`/api/v1/markups/${id}`, {
+    method: 'DELETE',
   });
 }
