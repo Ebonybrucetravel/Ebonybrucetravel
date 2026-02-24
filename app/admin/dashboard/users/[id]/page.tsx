@@ -4,6 +4,37 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { LoadingSpinner } from '@/components/admin/LoadingSpinner';
 
+// API Response Types
+interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
+}
+
+interface UserData {
+  id: string;
+  email: string;
+  name: string;
+  phone: string;
+  image: string;
+  createdAt: string;
+  suspendedAt: string | null;
+  internalNotes: string | null;
+  status: 'ACTIVE' | 'SUSPENDED';
+  bookingsCount: number;
+  loyaltyPoints: number;
+  interactionHistory: any[];
+  role?: string;
+  lastLogin?: string;
+  bookings?: Array<{
+    id: string;
+    type: string;
+    date: string;
+    amount: string;
+    status: string;
+  }>;
+}
+
 interface User {
   id: string;
   name: string;
@@ -40,7 +71,7 @@ export default function UserProfilePage() {
   const API_BASE_URL = 'https://ebony-bruce-production.up.railway.app/api/v1';
 
   // Get auth token
-  const getToken = () => {
+  const getToken = (): string => {
     if (typeof window === 'undefined') return '';
     return localStorage.getItem('adminToken') || '';
   };
@@ -52,7 +83,7 @@ export default function UserProfilePage() {
     }
   }, [userId]);
 
-  const fetchUserDetails = async () => {
+  const fetchUserDetails = async (): Promise<void> => {
     try {
       setIsLoading(true);
       setError(null);
@@ -81,24 +112,24 @@ export default function UserProfilePage() {
         throw new Error(`API error: ${response.status}`);
       }
 
-      const data = await response.json();
-      console.log('📦 API Response:', data);
+      const responseData: ApiResponse<UserData> = await response.json();
+      console.log('📦 API Response:', responseData);
 
-      // Handle response structure (adjust based on your API)
-      const userData = data.data || data;
+      // Handle response structure
+      const userData = responseData.data;
       
       setUser({
-        id: userData.id || userData._id || userId,
-        name: userData.name || userData.fullName || 'Unknown',
-        email: userData.email || '',
-        phone: userData.phone || userData.phoneNumber || 'Not provided',
-        registered: userData.createdAt || userData.registered || new Date().toISOString().split('T')[0],
-        booking: userData.totalBookings || userData.bookingCount || 0,
-        points: userData.loyaltyPoints?.toString() || userData.points?.toString() || '0',
-        status: userData.status === 'suspended' ? 'Suspended' : 'Active',
+        id: userData.id,
+        name: userData.name,
+        email: userData.email,
+        phone: userData.phone || 'Not provided',
+        registered: userData.createdAt,
+        booking: userData.bookingsCount || 0,
+        points: userData.loyaltyPoints?.toString() || '0',
+        status: userData.status === 'SUSPENDED' ? 'Suspended' : 'Active',
         role: userData.role || 'user',
-        lastLogin: userData.lastLogin || userData.lastActive || '',
-        notes: userData.notes || userData.adminNotes || '',
+        lastLogin: userData.lastLogin || '',
+        notes: userData.internalNotes || '',
         bookings: userData.bookings || []
       });
 
@@ -110,16 +141,19 @@ export default function UserProfilePage() {
     }
   };
 
-  const handleSuspendUser = async () => {
+  const handleSuspendUser = async (): Promise<void> => {
     if (!confirm('Are you sure you want to suspend this user?')) return;
-
+  
     const reason = prompt('Please provide a reason for suspension:');
     if (!reason) return;
-
+  
     try {
       setIsActionLoading(true);
       
       const token = getToken();
+      
+      console.log('🔄 Suspending user:', userId);
+      
       const response = await fetch(`${API_BASE_URL}/admin/customers/${userId}/suspend`, {
         method: 'POST',
         headers: {
@@ -128,49 +162,101 @@ export default function UserProfilePage() {
         },
         body: JSON.stringify({ reason })
       });
-
+  
+      const responseData: ApiResponse<UserData> = await response.json();
+      console.log('📦 Suspend response:', responseData);
+  
       if (!response.ok) {
-        throw new Error('Failed to suspend user');
+        throw new Error(responseData.message || 'Failed to suspend user');
       }
-
-      alert('User suspended successfully');
-      await fetchUserDetails(); // Refresh user data
+  
+      // Show success message
+      alert(responseData.message || 'User suspended successfully');
+      
+      // Refresh user data - the API returns the updated user in data.data
+      if (responseData.data) {
+        const userData = responseData.data;
+        setUser({
+          id: userData.id || userId,
+          name: userData.name || user?.name || '',
+          email: userData.email || user?.email || '',
+          phone: userData.phone || user?.phone || '',
+          registered: userData.createdAt || user?.registered || '',
+          booking: userData.bookingsCount || user?.booking || 0,
+          points: userData.loyaltyPoints?.toString() || user?.points || '0',
+          status: userData.status === 'SUSPENDED' ? 'Suspended' : 'Active',
+          role: userData.role || user?.role || 'user',
+          lastLogin: userData.lastLogin || user?.lastLogin || '',
+          notes: userData.internalNotes || user?.notes || '',
+          bookings: userData.bookings || user?.bookings || []
+        });
+      } else {
+        // Fallback to fetching again
+        await fetchUserDetails();
+      }
       
     } catch (err) {
+      console.error('❌ Suspension error:', err);
       alert(err instanceof Error ? err.message : 'Failed to suspend user');
     } finally {
       setIsActionLoading(false);
     }
   };
 
-  const handleActivateUser = async () => {
+  const handleActivateUser = async (): Promise<void> => {
     try {
       setIsActionLoading(true);
       
       const token = getToken();
-      const response = await fetch(`${API_BASE_URL}/admin/customers/${userId}/activate`, {
+      
+      // Since there's no specific activate endpoint, use the suspend endpoint with status update
+      const response = await fetch(`${API_BASE_URL}/admin/customers/${userId}/suspend`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({ status: 'ACTIVE' })
       });
-
+      
+      const responseData: ApiResponse<UserData> = await response.json();
+  
       if (!response.ok) {
-        throw new Error('Failed to activate user');
+        throw new Error(responseData.message || 'Failed to activate user');
       }
-
-      alert('User activated successfully');
-      await fetchUserDetails(); // Refresh user data
+  
+      alert(responseData.message || 'User activated successfully');
+      
+      // Update user state directly from response
+      if (responseData.data) {
+        const userData = responseData.data;
+        setUser({
+          id: userData.id || userId,
+          name: userData.name || user?.name || '',
+          email: userData.email || user?.email || '',
+          phone: userData.phone || user?.phone || '',
+          registered: userData.createdAt || user?.registered || '',
+          booking: userData.bookingsCount || user?.booking || 0,
+          points: userData.loyaltyPoints?.toString() || user?.points || '0',
+          status: 'Active', // Force to Active since we're activating
+          role: userData.role || user?.role || 'user',
+          lastLogin: userData.lastLogin || user?.lastLogin || '',
+          notes: userData.internalNotes || user?.notes || '',
+          bookings: userData.bookings || user?.bookings || []
+        });
+      } else {
+        await fetchUserDetails();
+      }
       
     } catch (err) {
+      console.error('❌ Activation error:', err);
       alert(err instanceof Error ? err.message : 'Failed to activate user');
     } finally {
       setIsActionLoading(false);
     }
   };
 
-  const handleResetPassword = async () => {
+  const handleResetPassword = async (): Promise<void> => {
     if (!confirm('Send password reset email to this user?')) return;
 
     try {
@@ -185,11 +271,13 @@ export default function UserProfilePage() {
         }
       });
 
+      const responseData: ApiResponse<null> = await response.json();
+
       if (!response.ok) {
-        throw new Error('Failed to send reset email');
+        throw new Error(responseData.message || 'Failed to send reset email');
       }
 
-      alert('Password reset email sent successfully');
+      alert(responseData.message || 'Password reset email sent successfully');
       
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to send reset email');
@@ -198,7 +286,7 @@ export default function UserProfilePage() {
     }
   };
 
-  const handleSaveNote = async () => {
+  const handleSaveNote = async (): Promise<void> => {
     if (!noteText.trim()) return;
 
     try {
@@ -214,13 +302,24 @@ export default function UserProfilePage() {
         body: JSON.stringify({ notes: noteText })
       });
 
+      const responseData: ApiResponse<UserData> = await response.json();
+
       if (!response.ok) {
-        throw new Error('Failed to save note');
+        throw new Error(responseData.message || 'Failed to save note');
       }
 
-      alert('Note saved successfully');
+      alert(responseData.message || 'Note saved successfully');
       setNoteText('');
-      await fetchUserDetails(); // Refresh user data
+      
+      // Update user with new note
+      if (responseData.data) {
+        setUser(prev => prev ? {
+          ...prev,
+          notes: responseData.data.internalNotes || noteText
+        } : null);
+      } else {
+        await fetchUserDetails();
+      }
       
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to save note');
@@ -230,7 +329,7 @@ export default function UserProfilePage() {
   };
 
   // Format currency in pounds
-  const formatPounds = (amount: number | string) => {
+  const formatPounds = (amount: number | string): string => {
     const numAmount = typeof amount === 'string' ? parseFloat(amount.replace(/[^0-9.-]+/g, '')) : amount;
     return new Intl.NumberFormat('en-GB', {
       style: 'currency',
@@ -440,7 +539,7 @@ export default function UserProfilePage() {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Bookings</h3>
               {user.bookings && user.bookings.length > 0 ? (
                 <div className="space-y-4">
-                  {user.bookings.map((booking: any, i: number) => (
+                  {user.bookings.map((booking, i) => (
                     <div key={i} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition cursor-pointer">
                       <div className="flex items-center gap-4">
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#33a8da] to-[#2c8fc0] flex items-center justify-center text-white text-lg">

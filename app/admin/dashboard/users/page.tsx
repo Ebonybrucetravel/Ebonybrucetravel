@@ -75,7 +75,7 @@ export default function UsersPage() {
             }) : 'N/A',
             booking: item.totalBookings || item.bookingCount || 0,
             points: (item.loyaltyPoints || item.points || 0).toLocaleString(),
-            status: item.status === 'suspended' ? 'Suspended' : 'Active',
+            status: item.status === 'SUSPENDED' ? 'Suspended' : 'Active',
           }));
           
           setUsers(transformedUsers);
