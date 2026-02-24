@@ -3263,31 +3263,35 @@ export const userApi = {
     });
   },
 
-  // Saved items / wishlist (v3.0)
-  // Save an item to wishlist
-  saveItem: (data: {
-    itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
-    itemId: string;
-    itemDetails?: Record<string, any>;
-    notes?: string;
-  }) => {
-    return request<any>('/api/v1/users/me/saved-items', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
 
-  // Get saved items, optionally filtered by type
-  getSavedItems: (itemType?: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL') => {
-    const params = new URLSearchParams();
-    if (itemType) params.set('itemType', itemType);
-    const query = params.toString();
-    const path = query ? `/api/v1/users/me/saved-items?${query}` : '/api/v1/users/me/saved-items';
 
-    return request<any[]>(path, {
-      method: 'GET',
-    });
-  },
+saveItem: (data: {
+  productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
+  title: string;
+  description?: string;
+  price?: number;
+  currency?: string;
+  image?: string;
+  metadata?: Record<string, any>;
+  notes?: string;
+}) => {
+  return request<any>('/api/v1/users/me/saved-items', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+},
+
+ // Get saved items, optionally filtered by type
+getSavedItems: (productType?: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE') => {
+  const params = new URLSearchParams();
+  if (productType) params.set('productType', productType);
+  const query = params.toString();
+  const path = query ? `/api/v1/users/me/saved-items?${query}` : '/api/v1/users/me/saved-items';
+
+  return request<any[]>(path, {
+    method: 'GET',
+  });
+},
 
   // Get counts of saved items by type
   getSavedItemCounts: () => {
@@ -3298,7 +3302,7 @@ export const userApi = {
 
   // Toggle saved / unsaved for an item
   toggleSavedItem: (data: {
-    itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+    productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
     itemId: string;
     itemDetails?: Record<string, any>;
   }) => {
@@ -3310,7 +3314,7 @@ export const userApi = {
 
   // Check if an item is saved
   checkSavedItem: (data: {
-    itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+    productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
     itemId: string;
   }) => {
     return request<any>('/api/v1/users/me/saved-items/check', {

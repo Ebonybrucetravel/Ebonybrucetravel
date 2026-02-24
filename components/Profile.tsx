@@ -67,6 +67,7 @@ interface SavedItem {
   price: string;
   image: string;
   type: string;
+  notes?: string;
 }
 
 // Enhanced loyalty interfaces
@@ -212,6 +213,17 @@ const Profile: React.FC<ProfileProps> = ({
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
   const [hasLoadedBookings, setHasLoadedBookings] = useState(false);
 
+  // Add this state for editing notes
+  const [editingNotes, setEditingNotes] = useState<Record<string, { isEditing: boolean; notes: string }>>({});
+
+  const getProductType = (itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL'): 
+    'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE' => {
+    if (itemType === 'HOTEL') return 'HOTEL';
+    if (itemType === 'CAR_RENTAL') return 'CAR_RENTAL';
+    // For flights, default to international
+    return 'FLIGHT_INTERNATIONAL';
+  };
+
   useEffect(() => {
     setFormData({ 
       ...user, 
@@ -285,6 +297,7 @@ const Profile: React.FC<ProfileProps> = ({
         .finally(() => setIsLoadingSavedItems(false));
     }
   }, [activeTab, hasLoadedSavedItems, isLoadingSavedItems]);
+  
   useEffect(() => {
     if (activeTab === 'travelers' && !hasLoadedTravelers && !isLoadingTravelers) {
       setIsLoadingTravelers(true);
@@ -461,6 +474,7 @@ const Profile: React.FC<ProfileProps> = ({
       setIsLoadingRewards(false);
     }
   };
+  
   const loadVouchers = async () => {
     setIsLoadingVouchers(true);
     try {
@@ -731,7 +745,7 @@ const Profile: React.FC<ProfileProps> = ({
       alert(error instanceof ApiError ? error.message : 'Failed to remove saved item');
     }
   };
-
+// Update handleSaveItem with proper typing
 const handleSaveItem = async (itemData: {
   itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
   itemId: string;
@@ -739,7 +753,28 @@ const handleSaveItem = async (itemData: {
   notes?: string;
 }) => {
   try {
-    const result = await userApi.saveItem(itemData);
+    // Convert to the format expected by the API with proper typing
+    const apiData: {
+      productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
+      title: string;
+      description?: string;
+      price?: number;
+      currency?: string;
+      image?: string;
+      metadata?: Record<string, any>;
+      notes?: string;
+    } = {
+      productType: getProductType(itemData.itemType),
+      title: itemData.itemDetails?.name || itemData.itemId || 'Saved item',
+      description: itemData.itemDetails?.description,
+      price: itemData.itemDetails?.pricePerNight || itemData.itemDetails?.price,
+      currency: 'GBP',
+      image: itemData.itemDetails?.image,
+      metadata: itemData.itemDetails,
+      notes: itemData.notes
+    };
+    
+    const result = await userApi.saveItem(apiData);
     
     // Refresh saved items list
     const updatedItems = await userApi.getSavedItems();
@@ -755,19 +790,31 @@ const handleSaveItem = async (itemData: {
   }
 };
 
+// Update handleToggleSaved with proper typing
 const handleToggleSaved = async (itemData: {
   itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
   itemId: string;
   itemDetails?: any;
 }) => {
   try {
-    const result = await userApi.toggleSavedItem(itemData);
+    // Convert to the format expected by the API with proper typing
+    const apiData: {
+      productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
+      itemId: string;
+      itemDetails?: Record<string, any>;
+    } = {
+      productType: getProductType(itemData.itemType),
+      itemId: itemData.itemId,
+      itemDetails: itemData.itemDetails
+    };
+    
+    const result = await userApi.toggleSavedItem(apiData);
     
     // Refresh saved items list
     const updatedItems = await userApi.getSavedItems();
     const mapped = mapSavedItems(updatedItems);
     setSavedItems(mapped);
-    
+      
     return result;
   } catch (error: any) {
     console.error('Failed to toggle saved item:', error);
@@ -775,86 +822,82 @@ const handleToggleSaved = async (itemData: {
   }
 };
 
+// Update handleCheckSaved with proper typing
 const handleCheckSaved = async (itemData: {
   itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
   itemId: string;
 }): Promise<boolean> => {
   try {
-    const result = await userApi.checkSavedItem(itemData);
+    // Convert to the format expected by the API with proper typing
+    const apiData: {
+      productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
+      itemId: string;
+    } = {
+      productType: getProductType(itemData.itemType),
+      itemId: itemData.itemId
+    };
+    
+    const result = await userApi.checkSavedItem(apiData);
     return result?.isSaved || false;
   } catch (error: any) {
     console.error('Failed to check saved item:', error);
     return false;
   }
 };
-
-const handleUpdateNotes = async (id: string, notes: string) => {
-  try {
-    const result = await userApi.updateSavedItemNotes(id, notes);
-    
-    // Update local state
-    setSavedItems(prev => prev.map(item => 
-      item.id === id ? { ...item, notes } : item
-    ));
-    
-    alert('Notes updated successfully!');
-    return result;
-  } catch (error: any) {
-    console.error('Failed to update notes:', error);
-    alert(error instanceof ApiError ? error.message : 'Failed to update notes');
-    throw error;
-  }
-};
-
-const handleGetSavedCounts = async () => {
-  try {
-    const counts = await userApi.getSavedItemCounts();
-    return counts;
-  } catch (error: any) {
-    console.error('Failed to get saved counts:', error);
-    return { HOTEL: 0, FLIGHT: 0, CAR_RENTAL: 0 };
-  }
-};
-
-// Helper function to map API response to SavedItem format
-const mapSavedItems = (data: any): SavedItem[] => {
-  const items = Array.isArray(data) ? data : (data?.data || []);
-  return items.map((s: any) => {
-    const details = s.itemDetails || {};
-    const title = details.name || details.title || s.itemId || 'Saved item';
-    const location =
-      [details.city, details.country]
-        .filter(Boolean)
-        .join(', ') ||
-      details.location ||
-      'Saved for later';
-    const priceValue = details.pricePerNight ?? details.price ?? details.amount;
-    const price =
-      typeof priceValue === 'number'
-        ? `$${priceValue.toFixed(2)}`
+  
+  // ADD THIS MISSING FUNCTION - handleUpdateNotes
+  const handleUpdateNotes = async (id: string, notes: string) => {
+    try {
+      const result = await userApi.updateSavedItemNotes(id, notes);
+      
+      // Update local state
+      setSavedItems(prev => prev.map(item => 
+        item.id === id ? { ...item, notes } : item
+      ));
+      
+      alert('Notes updated successfully!');
+      return result;
+    } catch (error: any) {
+      console.error('Failed to update notes:', error);
+      alert(error instanceof ApiError ? error.message : 'Failed to update notes');
+      throw error;
+    }
+  };
+  
+  // Update mapSavedItems to handle the new response format
+  const mapSavedItems = (data: any): SavedItem[] => {
+    const items = Array.isArray(data) ? data : (data?.data || []);
+    return items.map((s: any) => {
+      // Handle both possible response formats
+      const metadata = s.metadata || s.itemDetails || {};
+      const title = s.title || metadata.name || metadata.title || s.itemId || 'Saved item';
+      const location = metadata.location || 
+        [metadata.city, metadata.country].filter(Boolean).join(', ') || 
+        'Saved for later';
+      
+      const priceValue = metadata.pricePerNight ?? metadata.price ?? s.price ?? 0;
+      const price = typeof priceValue === 'number' 
+        ? `$${priceValue.toFixed(2)}` 
         : (priceValue || '');
-    const image =
-      details.image ||
-      details.imageUrl ||
-      'https://images.unsplash.com/photo-1526779259212-939e64788e3c?auto=format&fit=crop&q=80&w=800';
-    const type =
-      s.itemType === 'HOTEL'
-        ? 'Hotels'
-        : s.itemType === 'CAR_RENTAL'
-        ? 'Car Rentals'
-        : 'Flights';
-
-    return {
-      id: s.id,
-      name: title,
-      location,
-      price,
-      image,
-      type,
-      notes: s.notes,
-    };
-  });
-};
+      
+      const image = metadata.image || s.image || metadata.imageUrl || 
+        'https://images.unsplash.com/photo-1526779259212-939e64788e3c?auto=format&fit=crop&q=80&w=800';
+      
+      const type = s.productType?.includes('HOTEL') ? 'Hotels' : 
+                   s.productType?.includes('CAR') ? 'Car Rentals' : 
+                   'Flights';
+  
+      return {
+        id: s.id,
+        name: title,
+        location,
+        price,
+        image,
+        type,
+        notes: s.notes,
+      };
+    });
+  };
 
   const handleUpdatePassword = async () => {
     if (!passwords.current) {
@@ -1142,11 +1185,44 @@ const mapSavedItems = (data: any): SavedItem[] => {
     );
   };
 
+  // Update the renderSavedCard function
   const renderSavedCard = (item: SavedItem & { notes?: string }) => {
     const formattedItem = { ...item, title: item.name, subtitle: item.location };
-    const [isEditingNotes, setIsEditingNotes] = useState(false);
-    const [notes, setNotes] = useState(item.notes || '');
+    const itemState = editingNotes[item.id] || { isEditing: false, notes: item.notes || '' };
     
+    const handleStartEdit = () => {
+      setEditingNotes(prev => ({
+        ...prev,
+        [item.id]: { isEditing: true, notes: item.notes || '' }
+      }));
+    };
+
+    const handleCancelEdit = () => {
+      setEditingNotes(prev => ({
+        ...prev,
+        [item.id]: { isEditing: false, notes: item.notes || '' }
+      }));
+    };
+
+    const handleSaveNotes = async () => {
+      try {
+        await handleUpdateNotes(item.id, itemState.notes);
+        setEditingNotes(prev => ({
+          ...prev,
+          [item.id]: { isEditing: false, notes: itemState.notes }
+        }));
+      } catch (error) {
+        console.error('Failed to save notes:', error);
+      }
+    };
+
+    const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setEditingNotes(prev => ({
+        ...prev,
+        [item.id]: { ...prev[item.id], notes: e.target.value }
+      }));
+    };
+
     return (
       <div key={item.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow relative">
         <div className="w-full md:w-32 h-32 rounded-2xl overflow-hidden shrink-0 relative">
@@ -1160,36 +1236,30 @@ const mapSavedItems = (data: any): SavedItem[] => {
           <p className="text-[11px] font-bold text-gray-400">{item.location}</p>
           
           {/* Notes section */}
-          {item.notes && !isEditingNotes && (
+          {item.notes && !itemState.isEditing && (
             <div className="mt-2 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
               <p className="italic">"{item.notes}"</p>
             </div>
           )}
           
-          {isEditingNotes && (
+          {itemState.isEditing && (
             <div className="mt-2">
               <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+                value={itemState.notes}
+                onChange={handleNotesChange}
                 className="w-full p-2 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#33a8da]"
                 rows={2}
                 placeholder="Add notes..."
               />
               <div className="flex gap-2 mt-2">
                 <button
-                  onClick={() => {
-                    handleUpdateNotes(item.id, notes);
-                    setIsEditingNotes(false);
-                  }}
+                  onClick={handleSaveNotes}
                   className="text-xs bg-[#33a8da] text-white px-3 py-1 rounded-lg"
                 >
                   Save
                 </button>
                 <button
-                  onClick={() => {
-                    setNotes(item.notes || '');
-                    setIsEditingNotes(false);
-                  }}
+                  onClick={handleCancelEdit}
                   className="text-xs bg-gray-200 text-gray-700 px-3 py-1 rounded-lg"
                 >
                   Cancel
@@ -1206,7 +1276,7 @@ const mapSavedItems = (data: any): SavedItem[] => {
           <p className="text-xl font-black text-[#33a8da]">{item.price}</p>
           <div className="flex gap-2 mt-2">
             <button 
-              onClick={() => setIsEditingNotes(!isEditingNotes)} 
+              onClick={handleStartEdit}
               className="text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-[#33a8da] transition"
             >
               {item.notes ? 'Edit Notes' : 'Add Notes'}

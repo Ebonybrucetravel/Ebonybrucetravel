@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { SearchResult, SearchParams } from '../lib/types';
+import { userApi } from '../lib/api';
 
 interface HotelDetailsProps {
   item: SearchResult | null;
@@ -50,6 +51,14 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const [loadingImages, setLoadingImages] = useState(false);
   const [imageError, setImageError] = useState(false);
   
+  // Wishlist/Saved Items States
+  const [isSaved, setIsSaved] = useState(false);
+  const [savedItemId, setSavedItemId] = useState<string | null>(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveNotes, setSaveNotes] = useState('');
+  const [isCheckingSave, setIsCheckingSave] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  
   // States for suggestions
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -61,6 +70,128 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const [loadingStats, setLoadingStats] = useState(false);
   const [statsError, setStatsError] = useState(false);
 
+  // Check if item is saved when component loads
+  useEffect(() => {
+    if (isLoggedIn && item?.id) {
+      checkIfSaved();
+    }
+  }, [isLoggedIn, item?.id]);
+
+
+// Check if current hotel is in wishlist
+const checkIfSaved = async () => {
+  if (!item?.id) return;
+  
+  try {
+    setIsCheckingSave(true);
+    
+    // Get all saved items and filter client-side
+    const response = await userApi.getSavedItems();
+    
+    // Handle the response properly - check if response has data property
+    const savedItems = response && typeof response === 'object' && 'data' in response 
+      ? (response as any).data 
+      : response;
+    
+    if (Array.isArray(savedItems)) {
+      // Look for items with productType 'HOTEL' and matching title
+      const savedHotel = savedItems.find(
+        (savedItem: any) => 
+          savedItem.productType === 'HOTEL' && 
+          savedItem.title === item.title
+      );
+      
+      if (savedHotel) {
+        setIsSaved(true);
+        setSavedItemId(savedHotel.id);
+      }
+    }
+  } catch (error) {
+    console.error('Error checking saved status:', error);
+  } finally {
+    setIsCheckingSave(false);
+  }
+};
+
+// Toggle save/unsave hotel
+const handleSaveToggle = async () => {
+  if (!isLoggedIn) {
+    router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
+    return;
+  }
+
+  if (isSaved && savedItemId) {
+    // Remove from wishlist
+    try {
+      setIsSaving(true);
+      await userApi.removeSavedItem(savedItemId);
+      setIsSaved(false);
+      setSavedItemId(null);
+      toast.success('Removed from wishlist');
+    } catch (error) {
+      console.error('Error removing from wishlist:', error);
+      toast.error('Failed to remove from wishlist');
+    } finally {
+      setIsSaving(false);
+    }
+  } else {
+    // Show modal to add with notes
+    setShowSaveModal(true);
+  }
+};
+
+// Save hotel to wishlist with notes - SIMPLIFIED for API
+const handleSaveWithNotes = async () => {
+  if (!item) return;
+  
+  try {
+    setIsSaving(true);
+    
+    const priceMatch = item.price?.match(/[\d,.]+/);
+    const pricePerNight = priceMatch ? parseFloat(priceMatch[0].replace(/,/g, '')) : 0;
+    
+    // Format the request according to API expectations - only required fields
+    const saveData: {
+      productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
+      title: string;
+      price?: number;
+      currency?: string;
+      notes?: string;
+    } = {
+      productType: 'HOTEL',
+      title: item.title,
+      price: pricePerNight,
+      currency: 'GBP',
+      notes: saveNotes
+    };
+    
+    console.log('Saving item with data:', saveData);
+    
+    const response = await userApi.saveItem(saveData);
+    
+    if (response && typeof response === 'object') {
+      const responseData = 'data' in response ? (response as any).data : response;
+      
+      if (responseData && responseData.id) {
+        setIsSaved(true);
+        setSavedItemId(responseData.id);
+        setShowSaveModal(false);
+        setSaveNotes('');
+        toast.success('Added to wishlist!');
+      } else {
+        toast.success('Added to wishlist!');
+        setIsSaved(true);
+        setShowSaveModal(false);
+        setSaveNotes('');
+      }
+    }
+  } catch (error: any) {
+    console.error('Error saving to wishlist:', error);
+    toast.error(error?.message || 'Failed to add to wishlist');
+  } finally {
+    setIsSaving(false);
+  }
+};
   // Format date function
   const formatDisplayDate = (dateStr?: string) => {
     if (!dateStr) return null;
@@ -837,16 +968,73 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             )}
           </div>
           <div className="flex items-center gap-4">
-             <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-100 bg-white rounded-xl text-[10px] font-black text-gray-500 hover:bg-gray-50 transition uppercase tracking-widest shadow-sm">
-               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" /></svg>
-               Share
-             </button>
+            {/* Share Button */}
+            <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-100 bg-white rounded-xl text-[10px] font-black text-gray-500 hover:bg-gray-50 transition uppercase tracking-widest shadow-sm">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" /></svg>
+              Share
+            </button>
+            
+            {/* Wishlist/Save Button */}
+            <button
+              onClick={handleSaveToggle}
+              disabled={isCheckingSave || isSaving}
+              className={`flex items-center gap-2 px-4 py-2.5 border border-gray-100 bg-white rounded-xl text-[10px] font-black transition-all shadow-sm ${
+                isSaved 
+                  ? 'text-red-500 hover:text-red-600' 
+                  : 'text-gray-500 hover:text-[#33a8da]'
+              }`}
+            >
+              {isCheckingSave || isSaving ? (
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill={isSaved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                </svg>
+              )}
+              {isSaved ? 'Saved' : 'Save'}
+            </button>
              
-             {/* Share button only - removed heart button */}
-             
-             <div className="bg-[#33a8da] text-white font-black px-4 py-2.5 rounded-xl text-lg tracking-tighter shadow-lg shadow-blue-500/20">4.9</div>
+            <div className="bg-[#33a8da] text-white font-black px-4 py-2.5 rounded-xl text-lg tracking-tighter shadow-lg shadow-blue-500/20">4.9</div>
           </div>
         </div>
+
+        {/* Save Notes Modal */}
+        {showSaveModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Add to Wishlist</h3>
+              <p className="text-sm text-gray-500 mb-4">Add a note (optional)</p>
+              <textarea
+                value={saveNotes}
+                onChange={(e) => setSaveNotes(e.target.value)}
+                placeholder="e.g., Perfect for anniversary trip"
+                className="w-full h-32 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] mb-4"
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowSaveModal(false)}
+                  className="flex-1 py-3 border-2 border-gray-200 text-gray-600 rounded-xl font-medium text-sm hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveWithNotes}
+                  disabled={isSaving}
+                  className={`flex-1 py-3 rounded-xl font-medium text-sm transition-all ${
+                    isSaving
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-[#33a8da] to-[#2c8fc0] text-white hover:shadow-lg'
+                  }`}
+                >
+                  {isSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Gallery Section - Functional Slider */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-16">
