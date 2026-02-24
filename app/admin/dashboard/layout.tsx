@@ -5,6 +5,14 @@ import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 
+interface AdminUser {
+  displayName?: string;
+  name?: string;
+  email?: string;
+  role?: string;
+  profileImage?: string;
+}
+
 export default function AdminDashboardLayout({
   children,
 }: {
@@ -13,10 +21,47 @@ export default function AdminDashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [profileData, setProfileData] = useState({
-    displayName: 'Miracle Chiamaka',
-    profileImage: 'https://ui-avatars.com/api/?name=Miracle+Chiamaka&background=33a8da&color=fff'
+  const [profileData, setProfileData] = useState<AdminUser>({
+    displayName: 'Loading...',
+    profileImage: 'https://ui-avatars.com/api/?name=Loading&background=33a8da&color=fff'
   });
+
+  // Load user data from localStorage
+  useEffect(() => {
+    const loadUserData = () => {
+      try {
+        const userStr = localStorage.getItem('adminUser');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          console.log('Loaded user data:', user); // Debug log
+          
+          // Extract name from various possible fields
+          const displayName = user.displayName || user.name || user.email?.split('@')[0] || 'Admin';
+          
+          // Create avatar with user's initials
+          const initials = displayName
+            .split(' ')
+            .map((n: string) => n[0])
+            .join('')
+            .toUpperCase()
+            .substring(0, 2);
+          
+          const profileImage = `https://ui-avatars.com/api/?name=${encodeURIComponent(initials || displayName)}&background=33a8da&color=fff`;
+          
+          setProfileData({
+            displayName,
+            email: user.email,
+            role: user.role || 'ADMIN',
+            profileImage
+          });
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+      }
+    };
+
+    loadUserData();
+  }, []);
 
   // Check if user is authenticated
   useEffect(() => {
@@ -33,7 +78,7 @@ export default function AdminDashboardLayout({
     router.push('/admin');
   };
 
-  // Don't show sidebar on login page (though this layout shouldn't be used there)
+  // Don't show sidebar on login page
   if (pathname === '/admin') {
     return <>{children}</>;
   }
@@ -52,11 +97,8 @@ export default function AdminDashboardLayout({
       items: [
         { href: '/admin/dashboard/analytics', label: 'Analytics', icon: '📊', gradient: 'from-purple-500 to-pink-500' },
         { href: '/admin/dashboard/bookings', label: 'Bookings', icon: '📅', gradient: 'from-blue-500 to-cyan-500' },
-        // Customers (platform users)
         { href: '/admin/dashboard/users', label: 'Customers', icon: '👥', gradient: 'from-green-500 to-emerald-500' },
-        // Markups (pricing rules)
         { href: '/admin/dashboard/markups', label: 'Markups', icon: '💰', gradient: 'from-yellow-500 to-amber-500' },
-        // Admin Users (system administrators)
         { href: '/admin/dashboard/admin-users', label: 'Admin Users', icon: '👑', gradient: 'from-purple-500 to-pink-500' },
         { href: '/admin/dashboard/rewards', label: 'Rewards', icon: '⭐', gradient: 'from-amber-500 to-orange-500' },
         { href: '/admin/dashboard/coupons', label: 'Coupons', icon: '🏷️', gradient: 'from-purple-500 to-pink-500' },
@@ -92,12 +134,12 @@ export default function AdminDashboardLayout({
               </svg>
             </button>
             
-            <Link href="/admin/dashboard/analytics" className="relative w-12 h-12 md:w-14 md:h-14">
+            <Link href="/admin/dashboard/analytics" className="relative w-24 h-24 md:w-32 md:h-32 -my-4">
               <Image
                 src="/images/logo1.png"
                 alt="Ebony Bruce Travels Logo"
                 fill
-                className="object-contain p-1"
+                className="object-contain"
                 priority
               />
             </Link>
@@ -112,11 +154,18 @@ export default function AdminDashboardLayout({
               <div className="relative flex items-center gap-3 p-2 rounded-2xl hover:bg-gray-50 transition">
                 <div className="hidden md:block text-right">
                   <p className="text-sm font-semibold text-gray-900">{profileData.displayName}</p>
-                  <p className="text-xs text-gray-500">Super Admin</p>
+                  <p className="text-xs text-gray-500 capitalize">{profileData.role?.toLowerCase().replace('_', ' ') || 'Admin'}</p>
+                  {profileData.email && (
+                    <p className="text-xs text-gray-400 truncate max-w-[150px]">{profileData.email}</p>
+                  )}
                 </div>
                 <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-[#33a8da] to-[#2c8fc0] p-0.5 shadow-lg">
                   <div className="w-full h-full rounded-xl bg-white overflow-hidden">
-                    <img src={profileData.profileImage} className="w-full h-full object-cover" alt="Profile" />
+                    <img 
+                      src={profileData.profileImage} 
+                      className="w-full h-full object-cover" 
+                      alt={profileData.displayName}
+                    />
                   </div>
                 </div>
               </div>
@@ -125,6 +174,7 @@ export default function AdminDashboardLayout({
         </div>
       </header>
 
+      {/* Rest of your layout remains exactly the same... */}
       <div className="flex flex-1">
         {/* Desktop Navigation */}
         <aside className="hidden md:block w-72 bg-white/80 backdrop-blur-xl border-r border-gray-200/50 h-[calc(100vh-73px)] sticky top-[73px] overflow-y-auto">
@@ -191,14 +241,14 @@ export default function AdminDashboardLayout({
             <aside className="fixed top-0 left-0 h-full w-80 bg-white/95 backdrop-blur-xl z-50 overflow-y-auto md:hidden">
               <div className="p-6 border-b border-gray-100">
                 <div className="flex items-center justify-between">
-                  <div className="relative w-16 h-16">
+                  <div className="relative w-24 h-24">
                     <div className="absolute inset-0 bg-gradient-to-r from-[#33a8da] to-[#2c8fc0] rounded-2xl blur-lg opacity-50" />
                     <div className="relative w-full h-full bg-gradient-to-br from-[#33a8da] to-[#2c8fc0] rounded-2xl p-2 shadow-lg">
                       <Image
                         src="/images/logo1.png"
                         alt="Ebony Bruce Travels Logo"
                         fill
-                        className="object-contain p-1"
+                        className="object-contain"
                         priority
                       />
                     </div>
@@ -211,6 +261,21 @@ export default function AdminDashboardLayout({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
+                </div>
+                <div className="mt-4 flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#33a8da] to-[#2c8fc0] p-0.5 shadow-lg">
+                    <div className="w-full h-full rounded-xl bg-white overflow-hidden">
+                      <img 
+                        src={profileData.profileImage} 
+                        className="w-full h-full object-cover" 
+                        alt={profileData.displayName}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{profileData.displayName}</p>
+                    <p className="text-xs text-gray-500 capitalize">{profileData.role?.toLowerCase().replace('_', ' ') || 'Admin'}</p>
+                  </div>
                 </div>
               </div>
 
@@ -229,14 +294,13 @@ export default function AdminDashboardLayout({
                             key={item.href}
                             href={item.href}
                             onClick={() => setIsMobileMenuOpen(false)}
-                            className={`relative block w-full group overflow-hidden rounded-xl transition-all duration-300 ${
-                              isActive ? 'shadow-lg' : 'hover:shadow-md'
+                            className={`relative block w-full rounded-xl transition-all duration-300 ${
+                              isActive ? 'shadow-lg' : ''
                             }`}
                           >
                             {isActive && (
-                              <div className={`absolute inset-0 bg-gradient-to-r ${item.gradient} opacity-100`} />
+                              <div className={`absolute inset-0 bg-gradient-to-r ${item.gradient} opacity-100 rounded-xl`} />
                             )}
-                            <div className={`absolute inset-0 bg-gradient-to-r ${item.gradient} opacity-0 group-hover:opacity-10 transition-opacity`} />
                             <div className={`relative flex items-center gap-3 px-4 py-3 ${
                               isActive ? 'text-white' : 'text-gray-600'
                             }`}>
@@ -246,34 +310,34 @@ export default function AdminDashboardLayout({
                           </Link>
                         );
                       })}
-                    </div>
-                  </div>
-                ))}
-
-                <div className="pt-6 mt-6 border-t border-gray-100">
-                  <button 
-                    onClick={handleLogout}
-                    className="relative w-full group overflow-hidden rounded-xl transition-all duration-300 hover:shadow-lg"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <div className="relative flex items-center gap-3 px-4 py-3 text-gray-600 group-hover:text-white transition-colors">
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                      </svg>
-                      <span className="font-medium text-sm">Sign Out</span>
-                    </div>
-                  </button>
                 </div>
-              </nav>
-            </aside>
-          </>
-        )}
+              </div>
+            ))}
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-y-auto">
-          {children}
-        </main>
-      </div>
-    </div>
-  );
+            <div className="pt-6 mt-6 border-t border-gray-100">
+              <button 
+                onClick={handleLogout}
+                className="relative w-full rounded-xl transition-all duration-300"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-pink-500 opacity-100 rounded-xl" />
+                <div className="relative flex items-center gap-3 px-4 py-3 text-white">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  <span className="font-medium text-sm">Sign Out</span>
+                </div>
+              </button>
+            </div>
+          </nav>
+        </aside>
+      </>
+    )}
+
+    {/* Main Content */}
+    <main className="flex-1 overflow-y-auto">
+      {children}
+    </main>
+  </div>
+</div>
+);
 }

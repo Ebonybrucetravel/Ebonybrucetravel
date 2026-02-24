@@ -1,15 +1,68 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+
+interface AdminUser {
+  displayName?: string;
+  name?: string;
+  email?: string;
+  role?: string;
+  id?: string;
+  profileImage?: string;
+}
 
 export default function ProfilePage() {
   const [profileData, setProfileData] = useState({
-    displayName: 'Miracle Chiamaka',
-    adminEmail: 'miracle.c@ebonybruce.com',
+    displayName: 'Loading...',
+    adminEmail: 'Loading...',
     primaryTerminal: 'Lagos Main Hub (LOS)',
-    authorizationLevel: 'Executive Access (Tier 1)',
-    profileImage: 'https://ui-avatars.com/api/?name=Miracle+Chiamaka&background=33a8da&color=fff'
+    authorizationLevel: 'Loading...',
+    profileImage: 'https://ui-avatars.com/api/?name=Loading&background=33a8da&color=fff'
   });
+
+  // Load real user data from localStorage
+  useEffect(() => {
+    const loadUserData = () => {
+      try {
+        const userStr = localStorage.getItem('adminUser');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          console.log('Loaded user data:', user);
+          
+          // Extract name from various possible fields
+          const displayName = user.displayName || user.name || user.email?.split('@')[0] || 'Admin';
+          
+          // Determine authorization level based on role
+          const role = user.role || 'ADMIN';
+          const authLevel = role === 'SUPER_ADMIN' 
+            ? 'Executive Access (Tier 1)' 
+            : 'Standard Access (Tier 2)';
+          
+          // Create avatar with user's initials
+          const initials = displayName
+            .split(' ')
+            .map((n: string) => n[0])
+            .join('')
+            .toUpperCase()
+            .substring(0, 2);
+          
+          const profileImage = `https://ui-avatars.com/api/?name=${encodeURIComponent(initials || displayName)}&background=33a8da&color=fff`;
+          
+          setProfileData({
+            displayName,
+            adminEmail: user.email || 'No email',
+            primaryTerminal: 'Lagos Main Hub (LOS)', // This could also come from user data if available
+            authorizationLevel: authLevel,
+            profileImage
+          });
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+      }
+    };
+
+    loadUserData();
+  }, []);
 
   const handleEdit = (field: keyof typeof profileData) => {
     const currentValue = profileData[field];
@@ -24,6 +77,20 @@ export default function ProfilePage() {
     const newValue = prompt(`Enter new ${fieldLabels[field]}:`, currentValue);
     if (newValue && newValue.trim() !== '') {
       setProfileData(prev => ({ ...prev, [field]: newValue.trim() }));
+      
+      // Also update localStorage if display name changes
+      if (field === 'displayName') {
+        try {
+          const userStr = localStorage.getItem('adminUser');
+          if (userStr) {
+            const user = JSON.parse(userStr);
+            user.displayName = newValue.trim();
+            localStorage.setItem('adminUser', JSON.stringify(user));
+          }
+        } catch (error) {
+          console.error('Error updating user data:', error);
+        }
+      }
     }
   };
 
@@ -36,8 +103,49 @@ export default function ProfilePage() {
   };
 
   const handleSave = () => {
-    // TODO: Implement API call
-    alert('Profile saved successfully!');
+    // Update localStorage with any changes
+    try {
+      const userStr = localStorage.getItem('adminUser');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        user.displayName = profileData.displayName;
+        user.email = profileData.adminEmail;
+        localStorage.setItem('adminUser', JSON.stringify(user));
+      }
+      alert('Profile saved successfully!');
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      alert('Failed to save profile');
+    }
+  };
+
+  // Get user ID from localStorage
+  const getUserId = () => {
+    try {
+      const userStr = localStorage.getItem('adminUser');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        return user.id || user._id || 'ADM-001';
+      }
+    } catch (error) {
+      console.error('Error getting user ID:', error);
+    }
+    return 'ADM-001';
+  };
+
+  // Get user role for display
+  const getUserRole = () => {
+    try {
+      const userStr = localStorage.getItem('adminUser');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        const role = user.role || 'ADMIN';
+        return role === 'SUPER_ADMIN' ? 'Super Admin' : 'Admin';
+      }
+    } catch (error) {
+      console.error('Error getting user role:', error);
+    }
+    return 'Admin';
   };
 
   return (
@@ -55,7 +163,11 @@ export default function ProfilePage() {
             <div className="relative group">
               <div className="w-32 h-32 rounded-3xl bg-gradient-to-br from-[#33a8da] to-[#2c8fc0] p-1 shadow-xl">
                 <div className="w-full h-full rounded-2xl bg-white overflow-hidden">
-                  <img src={profileData.profileImage} className="w-full h-full object-cover" alt="Profile" />
+                  <img 
+                    src={profileData.profileImage} 
+                    className="w-full h-full object-cover" 
+                    alt={profileData.displayName}
+                  />
                 </div>
               </div>
               <label className="absolute -bottom-2 -right-2 w-10 h-10 bg-gradient-to-r from-[#33a8da] to-[#2c8fc0] text-white rounded-xl shadow-lg flex items-center justify-center hover:scale-110 transition-transform cursor-pointer">
@@ -75,9 +187,9 @@ export default function ProfilePage() {
               <h2 className="text-3xl font-bold text-gray-900 mb-2">{profileData.displayName}</h2>
               <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
                 <span className="px-4 py-1.5 bg-gradient-to-r from-[#33a8da] to-[#2c8fc0] text-white text-sm font-medium rounded-full">
-                  Super Admin
+                  {getUserRole()}
                 </span>
-                <span className="text-sm text-gray-400">ID: #ADM-4421-XB</span>
+                <span className="text-sm text-gray-400">ID: #{getUserId()}</span>
               </div>
             </div>
           </div>
