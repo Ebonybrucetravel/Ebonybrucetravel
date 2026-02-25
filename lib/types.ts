@@ -162,6 +162,17 @@ export interface PassengerInfo {
   lastName: string;
   email: string;
   phone: string;
+  title?: 'mr' | 'ms' | 'mrs' | 'miss' | 'dr';  
+  gender?: 'm' | 'f';  
+  dateOfBirth?: string; 
+  born_on?: string;  
+  passengers?: Array<{
+    firstName: string;
+    lastName: string;
+    dateOfBirth: string;
+    title: 'mr' | 'ms' | 'mrs' | 'miss' | 'dr';
+    gender: 'm' | 'f';
+  }>;
 }
 
 export interface ContentSection {

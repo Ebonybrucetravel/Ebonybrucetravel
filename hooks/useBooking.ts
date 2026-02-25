@@ -4,11 +4,13 @@ import { config } from '@/lib/config';
 import type { SearchResult, SearchParams, Booking, PassengerInfo } from '@/lib/types';
 import { getProductMeta } from '@/lib/utils';
 import api, { getStoredAuthToken, getVendorCodeFromCardNumber, publicRequest } from '@/lib/api';
+
 export function useBooking() {
     const [isCreating, setIsCreating] = useState(false);
     const [booking, setBooking] = useState<Booking | null>(null);
     const [error, setError] = useState<string | null>(null);
     const BASE = config.apiBaseUrl;
+
     const createBooking = useCallback(async (item: SearchResult, searchParams: SearchParams | null, passenger: PassengerInfo, isGuest: boolean): Promise<Booking> => {
         setIsCreating(true);
         setError(null);
@@ -21,6 +23,7 @@ export function useBooking() {
                     const priceMatch = item.price?.match(/[\d,.]+/);
                     return priceMatch ? parseFloat(priceMatch[0].replace(/,/g, '')) : 100;
                 })();
+
             const body: Record<string, any> = {
                 productType,
                 provider,
@@ -33,11 +36,21 @@ export function useBooking() {
                     phone: passenger.phone,
                 },
             };
-            if (productType === 'FLIGHT_INTERNATIONAL') {
+
+            // Add flight-specific fields if this is a flight booking
+            if (productType === 'FLIGHT_INTERNATIONAL' || productType === 'FLIGHT_DOMESTIC') {
+                // Include title, gender, and dateOfBirth for flight bookings
+                body.passengerInfo = {
+                    ...body.passengerInfo,
+                    title: passenger.title,
+                    gender: passenger.gender,
+                    dateOfBirth: passenger.dateOfBirth, // This will be mapped to born_on in backend
+                };
+
                 body.bookingData = {
                     offerId: item.realData?.offerId ?? item.id,
-                    origin: searchParams?.segments?.[0]?.from ? extractCode(searchParams.segments[0].from) : 'LOS',
-                    destination: searchParams?.segments?.[0]?.to ? extractCode(searchParams.segments[0].to) : 'ABV',
+                    origin: searchParams?.segments?.[0]?.from ? extractCode(searchParams.segments[0].from) : 'LHR',
+                    destination: searchParams?.segments?.[0]?.to ? extractCode(searchParams.segments[0].to) : 'CDG',
                     departureDate: searchParams?.segments?.[0]?.date ?? today(),
                     ...(item.realData?.airline && { airline: item.realData.airline }),
                     ...(item.realData?.flightNumber && { flightNumber: item.realData.flightNumber }),
@@ -62,13 +75,17 @@ export function useBooking() {
                 const dropoffDt = searchParams?.dropoffDateTime ?? item.realData?.dropoffDateTime ?? new Date(Date.now() + 86400000).toISOString().slice(0, 19);
                 body.bookingData = {
                     offerId: item.realData?.offerId ?? item.id,
-                    pickupLocationCode: searchParams?.pickupLocationCode ?? item.realData?.pickupLocation ?? 'LOS',
+                    pickupLocationCode: searchParams?.pickupLocationCode ?? item.realData?.pickupLocation ?? 'LHR',
                     pickupDateTime: pickupDt,
-                    dropoffLocationCode: searchParams?.dropoffLocationCode ?? searchParams?.pickupLocationCode ?? item.realData?.dropoffLocation ?? 'LOS',
+                    dropoffLocationCode: searchParams?.dropoffLocationCode ?? searchParams?.pickupLocationCode ?? item.realData?.dropoffLocation ?? 'LHR',
                     dropoffDateTime: dropoffDt,
                     vehicleType: item.realData?.vehicleType ?? item.title,
                 };
             }
+
+            // Log the request body for debugging
+            console.log('Sending booking request:', JSON.stringify(body, null, 2));
+
             const endpoint = isGuest ? '/api/v1/bookings/guest' : '/api/v1/bookings';
             const headers: Record<string, string> = { 'Content-Type': 'application/json' };
             if (!isGuest) {
@@ -76,21 +93,33 @@ export function useBooking() {
                 if (token)
                     headers['Authorization'] = `Bearer ${token}`;
             }
+
             const res = await fetch(`${BASE}${endpoint}`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(body),
             });
+
             const data = await res.json();
+            
             if (!res.ok) {
                 const msg = data.message ?? 'Booking creation failed';
+                console.error('Booking creation failed:', data);
+                
                 if (typeof msg === 'string' && msg.includes('No active markup configuration found')) {
                     const friendly = 'Booking isn’t available for this currency right now. Try another currency or contact support.';
                     setError(friendly);
                     throw new Error(friendly);
                 }
+                
+                // Check if the error is about missing flight fields
+                if (typeof msg === 'string' && msg.includes('dateOfBirth')) {
+                    throw new Error('Date of birth is required for flight bookings. Please fill in all required fields.');
+                }
+                
                 throw new Error(msg);
             }
+
             const created: Booking = data.data ?? data;
             setBooking(created);
             return created;

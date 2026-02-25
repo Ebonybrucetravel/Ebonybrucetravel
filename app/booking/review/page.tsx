@@ -61,6 +61,41 @@ export default function BookingReviewPage() {
 
     const handleProceedToPayment = async (passengerInfo: PassengerInfo, voucherCode?: string) => {
         const isGuest = !isLoggedIn;
+
+       
+    const isFlight = selectedItem?.type?.toLowerCase().includes('flight') || 
+    selectedItem?.type?.toLowerCase().includes('duffel');
+
+if (isFlight) {
+if (!passengerInfo.dateOfBirth) {
+toast.error('Date of birth is required for flight bookings');
+return;
+}
+if (!passengerInfo.title) {
+toast.error('Title is required for flight bookings');
+return;
+}
+if (!passengerInfo.gender) {
+toast.error('Gender is required for flight bookings');
+return;
+}
+
+
+const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+if (!dateRegex.test(passengerInfo.dateOfBirth)) {
+toast.error('Date of birth must be in YYYY-MM-DD format');
+return;
+}
+
+
+const dob = new Date(passengerInfo.dateOfBirth);
+const today = new Date();
+const age = today.getFullYear() - dob.getFullYear();
+if (age < 2) {
+toast.error('Passenger must be at least 2 years old');
+return;
+}
+}
         
         if (useAmadeusFlow && isMerchantPaymentModel) {
             try {

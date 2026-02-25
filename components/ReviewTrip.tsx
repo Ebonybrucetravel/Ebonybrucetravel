@@ -75,6 +75,9 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [lastName, setLastName] = useState(defaultLastName);
   const [email, setEmail] = useState(user?.email || createdBooking?.passengerInfo?.email || '');
   const [phone, setPhone] = useState(user?.phone || createdBooking?.passengerInfo?.phone || '');
+  const [title, setTitle] = useState<'mr' | 'ms' | 'mrs' | 'miss' | 'dr' | ''>('');
+  const [gender, setGender] = useState<'m' | 'f' | ''>('');
+  const [dateOfBirth, setDateOfBirth] = useState('');  
   const [voucherCode, setVoucherCode] = useState('');
   const [voucherApplied, setVoucherApplied] = useState<any | null>(null);
   const [isValidatingVoucher, setIsValidatingVoucher] = useState(false);
@@ -89,6 +92,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       if (!lastName) setLastName(parts.slice(1).join(' ') || '');
       if (!email) setEmail(user.email || '');
       if (!phone) setPhone(user.phone || '');
+      if (user.dateOfBirth) setDateOfBirth(user.dateOfBirth);
+      if (user.gender) setGender(user.gender as 'm' | 'f');
     }
   }, [user]);
 
@@ -178,6 +183,37 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       return;
     }
 
+    if (isFlight) {
+      if (!title) {
+        alert('Title is required for flight bookings.');
+        return;
+      }
+      if (!gender) {
+        alert('Gender is required for flight bookings.');
+        return;
+      }
+      if (!dateOfBirth) {
+        alert('Date of birth is required for flight bookings.');
+        return;
+      }
+      
+  
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(dateOfBirth)) {
+        alert('Date of birth must be in YYYY-MM-DD format.');
+        return;
+      }
+      
+    
+      const dob = new Date(dateOfBirth);
+      const today = new Date();
+      const age = today.getFullYear() - dob.getFullYear();
+      if (age < 2) {
+        alert('Passenger must be at least 2 years old for flight bookings.');
+        return;
+      }
+    }
+  
     if (isHotel && !agreedToPolicy) {
       alert('Please agree to the cancellation policy to continue.');
       return;
@@ -185,8 +221,22 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
     setIsBooking(true);
     try {
+
+      const passengerInfo: PassengerInfo = {
+        firstName,
+        lastName,
+        email,
+        phone,
+        ...(isFlight && {
+          title: title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr',
+          gender: gender as 'm' | 'f',
+          dateOfBirth // 👈 CHANGED BACK FROM born_on TO dateOfBirth
+        })
+      };
+
+
       await onProceedToPayment(
-        { firstName, lastName, email, phone },
+        passengerInfo,
         voucherApplied?.valid ? voucherCode.trim() : undefined
       );
     } catch (error: any) {
@@ -228,72 +278,124 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         
         <div className="flex flex-col lg:flex-row gap-8">
           <div className="flex-1 space-y-6">
-            {/* Identity & Contact Section */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">Your details</h2>
-                {isLoggedIn && user && (
-                  <span className="text-xs text-green-600 bg-green-50 px-3 py-1 rounded-full">
-                    Logged in
-                  </span>
-                )}
-              </div>
+          {/* Identity & Contact Section */}
+<div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+  <div className="flex items-center justify-between mb-4">
+    <h2 className="text-lg font-semibold text-gray-900">Your details</h2>
+    {isLoggedIn && user && (
+      <span className="text-xs text-green-600 bg-green-50 px-3 py-1 rounded-full">
+        Logged in
+      </span>
+    )}
+  </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">First name</label>
-                  <input 
-                    value={firstName} 
-                    onChange={e => setFirstName(e.target.value)} 
-                    className={inputCls} 
-                    placeholder="John" 
-                    readOnly={!!createdBooking} // Make read-only if booking already created
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Last name</label>
-                  <input 
-                    value={lastName} 
-                    onChange={e => setLastName(e.target.value)} 
-                    className={inputCls} 
-                    placeholder="Doe" 
-                    readOnly={!!createdBooking}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
-                  <input 
-                    value={email} 
-                    onChange={e => setEmail(e.target.value)} 
-                    className={inputCls} 
-                    placeholder="john@example.com" 
-                    readOnly={!!createdBooking}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Phone</label>
-                  <input 
-                    value={phone} 
-                    onChange={e => setPhone(e.target.value)} 
-                    className={inputCls} 
-                    placeholder="+234 123 456 789" 
-                    readOnly={!!createdBooking}
-                  />
-                </div>
-              </div>
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      <label className="block text-xs font-medium text-gray-500 mb-1">First name</label>
+      <input 
+        value={firstName} 
+        onChange={e => setFirstName(e.target.value)} 
+        className={inputCls} 
+        placeholder="John" 
+        readOnly={!!createdBooking}
+      />
+    </div>
+    <div>
+      <label className="block text-xs font-medium text-gray-500 mb-1">Last name</label>
+      <input 
+        value={lastName} 
+        onChange={e => setLastName(e.target.value)} 
+        className={inputCls} 
+        placeholder="Doe" 
+        readOnly={!!createdBooking}
+      />
+    </div>
+    <div>
+      <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+      <input 
+        value={email} 
+        onChange={e => setEmail(e.target.value)} 
+        className={inputCls} 
+        placeholder="john@example.com" 
+        readOnly={!!createdBooking}
+      />
+    </div>
+    <div>
+      <label className="block text-xs font-medium text-gray-500 mb-1">Phone</label>
+      <input 
+        value={phone} 
+        onChange={e => setPhone(e.target.value)} 
+        className={inputCls} 
+        placeholder="+234 123 456 789" 
+        readOnly={!!createdBooking}
+      />
+    </div>
+  </div>
 
-              {!isLoggedIn && onSignInRequired && !createdBooking && (
-                <div className="mt-4 p-3 bg-blue-50 rounded-lg flex items-center gap-2">
-                  <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-xs text-gray-600">
-                    <button onClick={onSignInRequired} className="font-medium text-[#33a8da] hover:underline">Sign in</button>
-                    {' '}to auto-fill your details
-                  </p>
-                </div>
-              )}
-            </div>
+  {/* Flight-specific fields - only show for flights */}
+  {isFlight && !createdBooking && (
+    <div className="mt-4 pt-4 border-t border-gray-100">
+      <h3 className="text-sm font-semibold text-gray-900 mb-3">Passenger Information (Required for flights)</h3>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Title *</label>
+          <select
+            value={title}
+            onChange={(e) => setTitle(e.target.value as any)}
+            className={inputCls}
+            required
+          >
+            <option value="">Select title</option>
+            <option value="mr">Mr</option>
+            <option value="ms">Ms</option>
+            <option value="mrs">Mrs</option>
+            <option value="miss">Miss</option>
+            <option value="dr">Dr</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Gender *</label>
+          <select
+            value={gender}
+            onChange={(e) => setGender(e.target.value as any)}
+            className={inputCls}
+            required
+          >
+            <option value="">Select gender</option>
+            <option value="m">Male</option>
+            <option value="f">Female</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Date of Birth *</label>
+          <input
+            type="date"
+            value={dateOfBirth}
+            onChange={(e) => setDateOfBirth(e.target.value)}
+            max={new Date().toISOString().split('T')[0]}
+            className={inputCls}
+            required
+          />
+          <p className="text-xs text-gray-400 mt-1">Format: YYYY-MM-DD</p>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {!isLoggedIn && onSignInRequired && !createdBooking && (
+    <div className="mt-4 p-3 bg-blue-50 rounded-lg flex items-center gap-2">
+      <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <p className="text-xs text-gray-600">
+        <button onClick={onSignInRequired} className="font-medium text-[#33a8da] hover:underline">Sign in</button>
+        {' '}to auto-fill your details
+      </p>
+    </div>
+  )}
+</div>
 
             {/* Trip Summary Section */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
