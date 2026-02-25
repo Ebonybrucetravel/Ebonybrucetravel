@@ -29,14 +29,31 @@ async function bootstrap() {
     });
 
     // Enable CORS
-    const allowedOrigins = process.env.ALLOWED_ORIGINS
+    const configuredOrigins = process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
-      : process.env.NODE_ENV === 'production'
-        ? [] // In production, ALLOWED_ORIGINS must be explicitly set
-        : ['http://localhost:3000'];
+      : [];
 
     app.enableCors({
-      origin: allowedOrigins,
+      origin: function (origin, callback) {
+        // Allow requests with no origin (e.g., mobile apps, Postman, curl)
+        if (!origin) return callback(null, true);
+
+        // Always allow Vercel domains (including previews) and localhost
+        if (
+          /^https:\/\/.*\.vercel\.app$/.test(origin) ||
+          origin.startsWith('http://localhost:')
+        ) {
+          return callback(null, true);
+        }
+
+        // Allow wildcard or explicitly configured domains (e.g., custom domains)
+        if (process.env.ALLOWED_ORIGINS === '*' || configuredOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+
+        // Reject others
+        callback(null, false);
+      },
       credentials: true,
     });
 
