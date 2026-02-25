@@ -47,11 +47,26 @@ import {
   ProcessCancellationRequestDto,
 } from '@application/booking/use-cases/process-cancellation-request.use-case';
 import { CreateBookingUseCase } from '@application/booking/use-cases/create-booking.use-case';
-import { AuthService } from '@presentation/auth/auth.service';
+import { AuthService } from '@application/auth/auth.service';
 import { CreateBookingOnBehalfDto } from './dto/create-booking-on-behalf.dto';
 import { UserService } from '@presentation/user/user.service';
 import { UpdateProfileDto } from '@presentation/user/dto/update-profile.dto';
 import { LoginDto } from '@presentation/auth/dto/login.dto';
+import { SearchFlightsUseCase } from '@application/booking/use-cases/search-flights.use-case';
+import { ListOffersUseCase } from '@application/booking/use-cases/list-offers.use-case';
+import { SearchHotelsUseCase } from '@application/booking/use-cases/search-hotels.use-case';
+import { SearchAmadeusHotelsUseCase } from '@application/booking/use-cases/search-amadeus-hotels.use-case';
+import { GetAmadeusHotelDetailsUseCase } from '@application/booking/use-cases/get-amadeus-hotel-details.use-case';
+import { FetchHotelRatesUseCase } from '@application/booking/use-cases/fetch-hotel-rates.use-case';
+import { SearchCarRentalsUseCase } from '@application/booking/use-cases/search-car-rentals.use-case';
+import { CreateAmadeusHotelBookingUseCase } from '@application/booking/use-cases/create-amadeus-hotel-booking.use-case';
+import { SearchFlightsDto } from '@presentation/booking/dto/search-flights.dto';
+import { ListOffersQueryDto } from '@presentation/booking/dto/pagination.dto';
+import { SearchHotelsDto } from '@presentation/booking/dto/search-hotels.dto';
+import { SearchAmadeusHotelsDto } from '@presentation/booking/dto/search-amadeus-hotels.dto';
+import { GetAmadeusHotelDetailsDto } from '@presentation/booking/dto/get-amadeus-hotel-details.dto';
+import { SearchCarRentalsDto } from '@presentation/booking/dto/search-car-rentals.dto';
+import { CreateAmadeusHotelBookingDto } from '@presentation/booking/dto/create-amadeus-hotel-booking.dto';
 
 function escapeCsv(s: any): string {
   if (s == null) return '';
@@ -74,7 +89,15 @@ export class AdminController {
     private readonly createBookingUseCase: CreateBookingUseCase,
     private readonly authService: AuthService,
     private readonly userService: UserService,
-  ) {}
+    private readonly searchFlightsUseCase: SearchFlightsUseCase,
+    private readonly listOffersUseCase: ListOffersUseCase,
+    private readonly searchHotelsUseCase: SearchHotelsUseCase,
+    private readonly searchAmadeusHotelsUseCase: SearchAmadeusHotelsUseCase,
+    private readonly getAmadeusHotelDetailsUseCase: GetAmadeusHotelDetailsUseCase,
+    private readonly fetchHotelRatesUseCase: FetchHotelRatesUseCase,
+    private readonly searchCarRentalsUseCase: SearchCarRentalsUseCase,
+    private readonly createAmadeusHotelBookingUseCase: CreateAmadeusHotelBookingUseCase,
+  ) { }
 
   @Get('me')
   @Roles('ADMIN', 'SUPER_ADMIN')
@@ -766,6 +789,134 @@ export class AdminController {
     };
   }
 
+  // ── Admin Search Proxy Endpoints ──────────────────────────────────────────
+
+  @Post('bookings/search/flights')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Search for flights (Admin)',
+    description:
+      'Proxy to the Duffel flight search. Returns an offer_request_id; ' +
+      'use GET /admin/bookings/offers to paginate results.',
+  })
+  @ApiResponse({ status: 200, description: 'Flight search completed' })
+  async adminSearchFlights(@Body() dto: SearchFlightsDto) {
+    const results = await this.searchFlightsUseCase.execute(dto, {
+      returnOffers: false,
+    });
+    return {
+      success: true,
+      data: results,
+      message: 'Flight search completed. Use GET /admin/bookings/offers to paginate offers.',
+    };
+  }
+
+  @Get('bookings/offers')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'List flight offers with pagination (Admin)',
+    description: 'Paginate flight offers for a given offer_request_id.',
+  })
+  @ApiResponse({ status: 200, description: 'Paginated flight offers' })
+  async adminListOffers(@Query() query: ListOffersQueryDto) {
+    const { offer_request_id, ...pagination } = query;
+    if (!offer_request_id) {
+      throw new BadRequestException('offer_request_id is required');
+    }
+    const results = await this.listOffersUseCase.execute(offer_request_id, pagination);
+    return {
+      success: true,
+      data: results.data,
+      meta: results.meta,
+      message: 'Offers retrieved successfully',
+    };
+  }
+
+  @Post('bookings/search/hotels')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Search for hotels via Duffel Stays (Admin)',
+    description: 'Proxy to Duffel Stays hotel search.',
+  })
+  @ApiResponse({ status: 200, description: 'Hotel search results' })
+  async adminSearchHotels(@Body() dto: SearchHotelsDto) {
+    const results = await this.searchHotelsUseCase.execute(dto);
+    return { success: true, data: results, message: 'Hotels retrieved successfully' };
+  }
+
+  @Post('bookings/search/amadeus-hotels')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Search for hotels via Amadeus (Admin)',
+    description: 'Proxy to Amadeus hotel search. Supports search by cityCode or hotelIds.',
+  })
+  @ApiResponse({ status: 200, description: 'Amadeus hotel search results' })
+  async adminSearchAmadeusHotels(@Body() dto: SearchAmadeusHotelsDto) {
+    const results = await this.searchAmadeusHotelsUseCase.execute(dto);
+    return { success: true, data: results, message: 'Hotels retrieved successfully' };
+  }
+
+  @Get('bookings/amadeus-hotels/:hotelId/details')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Get Amadeus hotel details (Admin)',
+    description: 'Returns comprehensive hotel info including ratings, offers, and images.',
+  })
+  @ApiParam({ name: 'hotelId', description: 'Amadeus hotel ID (e.g. MCLONGHM)' })
+  @ApiResponse({ status: 200, description: 'Hotel details retrieved' })
+  async adminGetAmadeusHotelDetails(
+    @Param('hotelId') hotelId: string,
+    @Query() query: GetAmadeusHotelDetailsDto,
+  ) {
+    const result = await this.getAmadeusHotelDetailsUseCase.execute({ hotelId, ...query });
+    return { success: true, data: result, message: 'Hotel details retrieved successfully' };
+  }
+
+  @Get('bookings/hotels/rates/:searchResultId')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Fetch hotel rates (Admin)',
+    description: 'Fetch detailed rates for a Duffel hotel search result.',
+  })
+  @ApiParam({ name: 'searchResultId', description: 'Duffel hotel search result ID' })
+  @ApiQuery({ name: 'currency', required: false, description: 'Currency code (default: GBP)' })
+  @ApiResponse({ status: 200, description: 'Hotel rates retrieved' })
+  async adminFetchHotelRates(
+    @Param('searchResultId') searchResultId: string,
+    @Query('currency') currency: string = 'GBP',
+  ) {
+    const results = await this.fetchHotelRatesUseCase.execute(searchResultId, currency);
+    return { success: true, data: results, message: 'Hotel rates retrieved successfully' };
+  }
+
+  @Post('bookings/search/car-rentals')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Search for car rentals / transfers (Admin)',
+    description: 'Proxy to Amadeus transfer search. Returns available vehicles with pricing.',
+  })
+  @ApiResponse({ status: 200, description: 'Car rental search results' })
+  async adminSearchCarRentals(@Body() dto: SearchCarRentalsDto) {
+    const results = await this.searchCarRentalsUseCase.execute(dto);
+    return { success: true, data: results, message: 'Car rentals retrieved successfully' };
+  }
+
+  @Post('bookings/amadeus-hotels/book')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Book an Amadeus hotel on behalf of a customer (Admin)',
+    description:
+      'Creates an Amadeus hotel booking. Requires guest info, room associations, and payment details.',
+  })
+  @ApiResponse({ status: 201, description: 'Hotel booking created' })
+  async adminCreateAmadeusHotelBooking(
+    @Body() dto: CreateAmadeusHotelBookingDto,
+    @Request() req: any,
+  ) {
+    const result = await this.createAmadeusHotelBookingUseCase.execute(dto, req.user?.id);
+    return { success: true, data: result, message: 'Hotel booking created successfully' };
+  }
+
   @Get('bookings')
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({
@@ -851,6 +1002,41 @@ export class AdminController {
         totalPages: Math.ceil(total / take),
       },
       message: 'Bookings retrieved successfully',
+    };
+  }
+
+  @Get('bookings/:bookingId')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Get a single booking by ID (Admin)',
+    description:
+      'Returns one booking by ID for admin management (view details, dispute evidence link, etc.).',
+  })
+  @ApiParam({ name: 'bookingId', description: 'Booking ID' })
+  @ApiResponse({ status: 200, description: 'Booking found' })
+  @ApiResponse({ status: 404, description: 'Booking not found' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin only' })
+  async getBookingById(@Param('bookingId') bookingId: string) {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id: bookingId, deletedAt: null },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true,
+          },
+        },
+      },
+    });
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+    return {
+      success: true,
+      data: booking,
+      message: 'Booking retrieved successfully',
     };
   }
 

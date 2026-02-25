@@ -160,45 +160,51 @@ export class HandleStripeWebhookUseCase {
           // Don't throw - loyalty failure shouldn't break the webhook
         });
 
-      // Send booking confirmation and payment receipt emails
-      // Process asynchronously to avoid blocking webhook response; log send time for dispute evidence
-      this.sendBookingEmails(booking, paymentIntent)
-        .then(() =>
-          this.prisma.booking.update({
-            where: { id: bookingId },
-            data: { confirmationEmailSentAt: new Date() },
-          }),
-        )
-        .catch((error) => {
-          this.logger.error(`Failed to send booking emails for ${bookingId}:`, error);
-        });
-
-      // If this is a Duffel flight booking, create the Duffel order
-      if (
+      const isDuffelFlight =
         booking.provider === Provider.DUFFEL &&
-        (booking.productType === 'FLIGHT_INTERNATIONAL' || booking.productType === 'FLIGHT_DOMESTIC')
-      ) {
+        (booking.productType === 'FLIGHT_INTERNATIONAL' || booking.productType === 'FLIGHT_DOMESTIC');
+
+      // Send booking confirmation and payment receipt emails
+      // For Duffel flights: send only AFTER the Duffel order is created successfully (see below)
+      if (!isDuffelFlight) {
+        this.sendBookingEmails(booking, paymentIntent)
+          .then(() =>
+            this.prisma.booking.update({
+              where: { id: bookingId },
+              data: { confirmationEmailSentAt: new Date() },
+            }),
+          )
+          .catch((error) => {
+            this.logger.error(`Failed to send booking emails for ${bookingId}:`, error);
+          });
+      }
+
+      // If this is a Duffel flight booking, create the Duffel order first; send confirmation email only on success
+      if (isDuffelFlight) {
         try {
           this.logger.log(`Creating Duffel order for booking ${bookingId}...`);
           const { orderId } = await this.createDuffelOrderUseCase.execute(bookingId);
           this.logger.log(`Successfully created Duffel order ${orderId} for booking ${bookingId}`);
+
+          // Only send "booking confirmed" email when the flight order was actually created
+          const updatedBooking = await this.prisma.booking.findUnique({
+            where: { id: bookingId },
+            include: { user: { select: { id: true, email: true, name: true } } },
+          });
+          if (updatedBooking) {
+            await this.sendBookingEmails(updatedBooking, paymentIntent);
+            await this.prisma.booking.update({
+              where: { id: bookingId },
+              data: { confirmationEmailSentAt: new Date() },
+            });
+          }
         } catch (error) {
           // Log error but don't fail the webhook - payment is already confirmed
           this.logger.error(
-            `Failed to create Duffel order for booking ${bookingId}. Payment confirmed but order creation failed:`,
+            `Failed to create Duffel order for booking ${bookingId}. Payment confirmed but order creation failed. No confirmation email sent.`,
             error,
           );
-          // Update booking to indicate order creation failed
-          await this.prisma.booking.update({
-            where: { id: bookingId },
-            data: {
-              providerData: {
-                ...(booking.providerData as any),
-                orderCreationError: error instanceof Error ? error.message : 'Unknown error',
-                orderCreationFailedAt: new Date().toISOString(),
-              },
-            },
-          });
+          // Booking status and providerData are already updated to FAILED by CreateDuffelOrderUseCase
         }
       }
 

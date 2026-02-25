@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, VerifyCallback } from 'passport-google-oauth20';
 import { ConfigService } from '@nestjs/config';
-import { AuthService } from '../auth.service';
+import { AuthService } from '@application/auth/auth.service';
 
 /**
  * Google OAuth Strategy
@@ -61,6 +61,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
           : name?.displayName || profile.displayName,
         image: photos?.[0]?.value,
         accessToken,
+        emailVerified: true, // Google always verifies email addresses
       };
 
       // Find or create user

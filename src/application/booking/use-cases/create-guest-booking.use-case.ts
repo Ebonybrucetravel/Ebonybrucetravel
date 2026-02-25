@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { BookingService } from '@domains/booking/services/booking.service';
 import { MarkupCalculationService } from '@domains/markup/services/markup-calculation.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
@@ -6,6 +6,7 @@ import { PrismaService } from '@infrastructure/database/prisma.service';
 import { CreateGuestBookingDto } from '@presentation/booking/dto/create-guest-booking.dto';
 import { Booking } from '@domains/booking/entities/booking.entity';
 import { BookingStatus } from '@prisma/client';
+import { Provider } from '@prisma/client';
 
 @Injectable()
 export class CreateGuestBookingUseCase {
@@ -17,6 +18,18 @@ export class CreateGuestBookingUseCase {
   ) {}
 
   async execute(dto: CreateGuestBookingDto): Promise<Booking> {
+    const isDuffelFlight =
+      dto.provider === Provider.DUFFEL &&
+      (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
+    if (isDuffelFlight && dto.passengerInfo) {
+      const hasDob = (dto.passengerInfo as any).dateOfBirth?.trim?.();
+      if (!hasDob) {
+        throw new BadRequestException(
+          'Date of birth (dateOfBirth, YYYY-MM-DD) is required for flight bookings.',
+        );
+      }
+    }
+
     // Check if guest user exists, if not create one
     let guestUser = await this.prisma.user.findUnique({
       where: { email: dto.passengerInfo.email },

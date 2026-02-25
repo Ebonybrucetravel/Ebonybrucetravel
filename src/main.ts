@@ -31,7 +31,9 @@ async function bootstrap() {
     // Enable CORS
     const allowedOrigins = process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
-      : ['http://localhost:3000', 'https://ebonybrucetravel-a4uy.vercel.app'];
+      : process.env.NODE_ENV === 'production'
+        ? [] // In production, ALLOWED_ORIGINS must be explicitly set
+        : ['http://localhost:3000'];
 
     app.enableCors({
       origin: allowedOrigins,

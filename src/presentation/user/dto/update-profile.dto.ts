@@ -15,6 +15,14 @@ export class UpdateProfileDto {
   @IsOptional()
   name?: string;
 
+  @ApiPropertyOptional({
+    example: 'Mr',
+    description: 'Title used for bookings (e.g. Mr, Mrs, Ms, Miss, Dr)',
+  })
+  @IsString()
+  @IsOptional()
+  title?: string;
+
   @ApiPropertyOptional({ example: '+2348012345678' })
   @IsString()
   @IsOptional()

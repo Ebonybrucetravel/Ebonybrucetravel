@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { BookingService } from '@domains/booking/services/booking.service';
 import { MarkupCalculationService } from '@domains/markup/services/markup-calculation.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 import { CreateBookingDto } from '@presentation/booking/dto/create-booking.dto';
 import { Booking } from '@domains/booking/entities/booking.entity';
 import { BookingStatus } from '@prisma/client';
+import { Provider } from '@prisma/client';
 
 @Injectable()
 export class CreateBookingUseCase {
@@ -15,6 +16,21 @@ export class CreateBookingUseCase {
   ) {}
 
   async execute(dto: CreateBookingDto, userId: string): Promise<Booking> {
+    const isDuffelFlight =
+      dto.provider === Provider.DUFFEL &&
+      (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
+    if (isDuffelFlight && dto.passengerInfo) {
+      const passengers = Array.isArray(dto.passengerInfo) ? dto.passengerInfo : [dto.passengerInfo];
+      for (let i = 0; i < passengers.length; i++) {
+        const p = passengers[i] as any;
+        if (!p?.dateOfBirth?.trim?.()) {
+          throw new BadRequestException(
+            `Passenger ${i + 1}: date of birth (dateOfBirth, YYYY-MM-DD) is required for flight bookings.`,
+          );
+        }
+      }
+    }
+
     // Get active markup config for product type and currency
     const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
       dto.productType,

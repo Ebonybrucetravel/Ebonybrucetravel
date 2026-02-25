@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { PrismaService } from '@infrastructure/database/prisma.service';
 
 export interface CreateSavedTravelerDto {
+  title?: string;
   firstName: string;
   lastName: string;
   email?: string;
@@ -56,6 +57,7 @@ export class SavedTravelersService {
     const traveler = await this.prisma.savedTraveler.create({
       data: {
         userId,
+        title: dto.title?.trim(),
         firstName: dto.firstName.trim(),
         lastName: dto.lastName.trim(),
         email: dto.email?.trim(),
@@ -137,6 +139,7 @@ export class SavedTravelersService {
     const updated = await this.prisma.savedTraveler.update({
       where: { id: travelerId },
       data: {
+        title: dto.title?.trim(),
         firstName: dto.firstName?.trim(),
         lastName: dto.lastName?.trim(),
         email: dto.email?.trim(),
@@ -222,6 +225,7 @@ export class SavedTravelersService {
   private formatTraveler(traveler: any) {
     return {
       id: traveler.id,
+      title: traveler.title,
       firstName: traveler.firstName,
       lastName: traveler.lastName,
       fullName: `${traveler.firstName} ${traveler.lastName}`,
@@ -253,6 +257,7 @@ export class SavedTravelersService {
   private formatTravelerForBooking(traveler: any) {
     return {
       id: traveler.id,
+      title: traveler.title,
       firstName: traveler.firstName,
       lastName: traveler.lastName,
       email: traveler.email,

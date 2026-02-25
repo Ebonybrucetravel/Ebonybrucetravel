@@ -1,11 +1,11 @@
-import { Controller, Post, Body, Get, UseGuards, Request, Req, Res, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Post, Body, Get, UseGuards, Request, Req, Res, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import * as requestIp from 'request-ip';
 import { Public } from '@common/decorators/public.decorator';
 import { Throttle } from '@common/decorators/throttle.decorator';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
-import { AuthService } from './auth.service';
+import { AuthService } from '@application/auth/auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -16,7 +16,7 @@ import { Response } from 'express';
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Public()
   @Throttle(3, 60000) // 3 requests per minute for registration
@@ -86,11 +86,11 @@ export class AuthController {
       }
 
       const user = req.user;
-      const token = await this.authService.generateOAuthToken(user);
+      const { accessToken, refreshToken } = await this.authService.generateOAuthToken(user);
 
-      // Redirect to frontend with token
+      // Redirect to frontend with tokens
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-      res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
+      res.redirect(`${frontendUrl}/auth/callback?token=${accessToken}&refreshToken=${refreshToken}&user=${encodeURIComponent(JSON.stringify(user))}`);
     } catch (error) {
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       res.redirect(`${frontendUrl}/auth/callback?error=authentication_failed`);
@@ -121,11 +121,11 @@ export class AuthController {
       }
 
       const user = req.user;
-      const token = await this.authService.generateOAuthToken(user);
+      const { accessToken, refreshToken } = await this.authService.generateOAuthToken(user);
 
-      // Redirect to frontend with token
+      // Redirect to frontend with tokens
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-      res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
+      res.redirect(`${frontendUrl}/auth/callback?token=${accessToken}&refreshToken=${refreshToken}&user=${encodeURIComponent(JSON.stringify(user))}`);
     } catch (error) {
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       res.redirect(`${frontendUrl}/auth/callback?error=authentication_failed`);
@@ -176,6 +176,23 @@ export class AuthController {
       message: 'Email verified successfully.',
     };
   }
+  @Public()
+  @Throttle(10, 60000)
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Refresh access token',
+    description: 'Exchange a valid refresh token for a new access token and rotated refresh token.',
+  })
+  @ApiBody({ schema: { properties: { refreshToken: { type: 'string' } }, required: ['refreshToken'] } })
+  @ApiResponse({ status: 200, description: 'Tokens refreshed successfully' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
+  async refresh(@Body('refreshToken') refreshToken: string) {
+    if (!refreshToken) {
+      throw new BadRequestException('refreshToken is required');
+    }
+    return this.authService.refreshAccessToken(refreshToken);
+  }
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
@@ -184,17 +201,21 @@ export class AuthController {
   @ApiOperation({
     summary: 'Logout user',
     description:
-      'Logs out the current user. Since we use stateless JWT tokens, the client should remove the token from storage. ' +
-      'This endpoint confirms logout and can be used for audit logging.',
+      'Revokes the provided refresh token. If no refresh token is provided, revokes all refresh tokens for the user. ' +
+      'The client should also remove the access token from storage.',
   })
+  @ApiBody({ schema: { properties: { refreshToken: { type: 'string' } } }, required: false })
   @ApiResponse({ status: 200, description: 'Logout successful' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async logout(@Request() req: any) {
-    // Since we use stateless JWT, logout is handled client-side by removing the token
-    // This endpoint confirms logout and can be used for audit logging
+  async logout(@Request() req: any, @Body('refreshToken') refreshToken?: string) {
+    if (refreshToken) {
+      await this.authService.revokeRefreshToken(refreshToken);
+    } else {
+      await this.authService.revokeAllUserTokens(req.user.id);
+    }
     return {
       success: true,
-      message: 'Logout successful. Please remove the token from client storage.',
+      message: 'Logout successful.',
     };
   }
 }

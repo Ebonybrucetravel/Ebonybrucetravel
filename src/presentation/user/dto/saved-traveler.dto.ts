@@ -12,6 +12,15 @@ import {
 } from 'class-validator';
 
 export class CreateSavedTravelerDto {
+  @ApiPropertyOptional({
+    example: 'Mr',
+    description: 'Title used for bookings (e.g. Mr, Mrs, Ms, Miss, Dr)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  title?: string;
+
   @ApiProperty({ example: 'Seyi' })
   @IsString()
   @IsNotEmpty()

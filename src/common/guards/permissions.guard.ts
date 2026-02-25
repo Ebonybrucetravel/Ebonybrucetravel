@@ -4,7 +4,7 @@ import { REQUIRE_PERMISSION_KEY } from '../decorators/require-permission.decorat
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+  constructor(private reflector: Reflector) { }
 
   canActivate(context: ExecutionContext): boolean {
     const requiredPermission = this.reflector.getAllAndOverride<string>(REQUIRE_PERMISSION_KEY, [
@@ -27,7 +27,8 @@ export class PermissionsGuard implements CanActivate {
 
     const permissions = user.permissions as Record<string, boolean> | null | undefined;
     if (permissions == null) {
-      return true;
+      // Fail-closed: deny access when no permissions are explicitly set
+      return false;
     }
     return permissions[requiredPermission] === true;
   }

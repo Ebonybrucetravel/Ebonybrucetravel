@@ -19,6 +19,7 @@ model User {
   email       String    @unique
   password    String? // Hashed password (bcrypt) - optional for OAuth users
   name        String?
+  title       String? // MR, MRS, MS, MISS, DR, etc. (used for flight bookings)
   role        UserRole  @default(CUSTOMER)
   phone       String?
   image       String? // Profile image URL
@@ -58,6 +59,7 @@ model User {
   savedItems         SavedItem[]
   savedTravelers     SavedTraveler[]
   vouchers           Voucher[]
+  refreshTokens      RefreshToken[]
 
   // Admin: suspend access (user cannot log in; still appears in directory)
   suspendedAt DateTime?
@@ -74,6 +76,20 @@ model User {
   @@index([role])
   @@unique([provider, providerId]) // Ensure unique OAuth provider + ID combination
   @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  token     String    @unique // Hashed refresh token
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime? // Null if active, set when revoked
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }
 
 enum UserRole {
@@ -555,6 +571,7 @@ enum VoucherStatus {
 model SavedTraveler {
   id           String    @id @default(cuid())
   userId       String
+  title        String?   // MR, MRS, MS, MISS, DR, etc. (used for flight bookings)
   firstName    String
   lastName     String
   email        String?

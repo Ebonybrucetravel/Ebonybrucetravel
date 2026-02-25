@@ -5,6 +5,7 @@ import {
   IsString,
   IsNumber,
   IsEmail,
+  IsOptional,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -31,6 +32,21 @@ class GuestPassengerInfoDto {
   @IsString()
   @IsNotEmpty()
   phone: string;
+
+  @ApiProperty({ required: false, description: 'Required for flights. One of: mr, mrs, ms, miss, dr' })
+  @IsString()
+  @IsOptional()
+  title?: string;
+
+  @ApiProperty({ required: false, description: 'Required for flights. One of: m, f' })
+  @IsString()
+  @IsOptional()
+  gender?: string;
+
+  @ApiProperty({ required: false, description: 'Required for flights. Date of birth YYYY-MM-DD' })
+  @IsString()
+  @IsOptional()
+  dateOfBirth?: string;
 }
 
 export class CreateGuestBookingDto {

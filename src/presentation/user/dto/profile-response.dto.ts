@@ -25,6 +25,13 @@ export class ProfileResponseDto {
   @ApiProperty({ example: 'John Doe', nullable: true })
   name: string | null;
 
+  @ApiPropertyOptional({
+    example: 'Mr',
+    nullable: true,
+    description: 'Title used for bookings (e.g. Mr, Mrs, Ms, Miss, Dr)',
+  })
+  title: string | null;
+
   @ApiProperty({ example: '+2348012345678', nullable: true })
   phone: string | null;
 

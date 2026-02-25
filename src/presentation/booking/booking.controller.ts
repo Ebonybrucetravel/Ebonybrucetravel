@@ -66,6 +66,7 @@ import { CreateCarRentalBookingUseCase } from '@application/booking/use-cases/cr
 import { CreateGuestCarRentalBookingUseCase } from '@application/booking/use-cases/create-guest-car-rental-booking.use-case';
 import { CancelCarRentalBookingUseCase } from '@application/booking/use-cases/cancel-car-rental-booking.use-case';
 import { RequestHotelCancellationUseCase } from '@application/booking/use-cases/request-hotel-cancellation.use-case';
+import { Throttle } from '@common/decorators/throttle.decorator';
 
 @ApiTags('Bookings')
 @Controller('bookings')
@@ -103,10 +104,11 @@ export class BookingController {
     private readonly cancelCarRentalBookingUseCase: CancelCarRentalBookingUseCase,
     private readonly requestHotelCancellationUseCase: RequestHotelCancellationUseCase,
     private readonly prisma: PrismaService,
-  ) {}
+  ) { }
 
   @Public()
   @Post('search/flights')
+  @Throttle(20, 60000)
   @ApiOperation({
     summary: 'Search for flights (no authentication required)',
     description:
@@ -144,7 +146,7 @@ export class BookingController {
 
       // Convert other errors to proper HTTP exceptions
       const errorMessage = error?.message || 'An unexpected error occurred while searching for flights';
-      
+
       // Check for common error patterns
       if (errorMessage.includes('currency') || errorMessage.includes('Currency')) {
         throw new BadRequestException({
@@ -242,7 +244,7 @@ export class BookingController {
 
     if (isAdmin) {
       // Admin sees all bookings
-      const bookings = await this.bookingService.getUserBookings(''); // Empty to get all
+      const bookings = await this.bookingService.getAllBookings();
       return {
         success: true,
         data: bookings,
@@ -264,13 +266,32 @@ export class BookingController {
   @ApiOperation({
     summary: 'Get booking by reference (public)',
     description:
-      'For success page or email links. No auth required. Success page should use ref in URL (e.g. ?ref=EBT-2...) and call this endpoint.',
+      'For success page or email links. No auth required. Requires both reference and email for verification. ' +
+      'Success page should use ref and email in URL (e.g. ?ref=EBT-2...&email=user@example.com) and call this endpoint.',
   })
+  @ApiQuery({ name: 'email', required: true, description: 'Lead guest or booking owner email' })
   @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Booking not found' })
-  async getByReferencePublic(@Param('reference') reference: string) {
+  async getByReferencePublic(
+    @Param('reference') reference: string,
+    @Query('email') email: string,
+  ) {
+    if (!email?.trim()) {
+      throw new BadRequestException('Query parameter email is required');
+    }
     const booking = await this.bookingService.getBookingByReference(reference);
     if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+    // Verify the email matches the booking owner
+    const bookingWithUser = await this.prisma.booking.findUnique({
+      where: { id: booking.id, deletedAt: null },
+      include: { user: { select: { email: true } } },
+    });
+    if (
+      !bookingWithUser ||
+      (bookingWithUser.user?.email ?? '').toLowerCase() !== email.trim().toLowerCase()
+    ) {
       throw new NotFoundException('Booking not found');
     }
     return {
@@ -498,7 +519,8 @@ export class BookingController {
 
   @Public()
   @Post('search/hotels')
-  @ApiOperation({ 
+  @Throttle(20, 60000)
+  @ApiOperation({
     summary: 'Search for hotels/accommodation using Duffel Stays (no authentication required)',
     description: 'Searches for hotels using Duffel Stays API. Requires Duffel Stays account access.',
   })
@@ -522,7 +544,7 @@ export class BookingController {
 
       // Convert other errors to proper HTTP exceptions
       const errorMessage = error?.message || 'An unexpected error occurred while searching for hotels';
-      
+
       throw new HttpException(
         {
           success: false,
@@ -567,12 +589,13 @@ export class BookingController {
 
   @Public()
   @Post('search/hotels/amadeus')
-  @ApiOperation({ 
+  @Throttle(20, 60000)
+  @ApiOperation({
     summary: 'Search for hotels using Amadeus API (no authentication required)',
     description: 'Searches for hotels using Amadeus Self-Service API. Supports search by city code or specific hotel IDs. Returns hotel offers with pricing, policies, and availability.',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Hotel search results from Amadeus',
     schema: {
       type: 'object',
@@ -613,8 +636,8 @@ export class BookingController {
       },
     },
   })
-  @ApiResponse({ 
-    status: 400, 
+  @ApiResponse({
+    status: 400,
     description: 'Invalid search parameters. Common errors: missing cityCode/hotelIds, invalid dates, invalid currency code.',
     schema: {
       type: 'object',
@@ -659,7 +682,7 @@ export class BookingController {
 
       // Convert other errors to proper HTTP exceptions
       const errorMessage = error?.message || 'An unexpected error occurred while searching for hotels';
-      
+
       throw new HttpException(
         {
           success: false,
@@ -1051,6 +1074,7 @@ export class BookingController {
 
   @Public()
   @Post('search/car-rentals')
+  @Throttle(20, 60000)
   @ApiOperation({
     summary: 'Search for car rentals',
     description:

@@ -13,7 +13,7 @@ export class CreateDuffelOrderUseCase {
     private readonly duffelService: DuffelService,
     @Inject(BOOKING_REPOSITORY)
     private readonly bookingRepository: BookingRepository,
-  ) {}
+  ) { }
 
   async execute(bookingId: string): Promise<{ orderId: string; orderData: any }> {
     // Get booking from database
@@ -69,14 +69,24 @@ export class CreateDuffelOrderUseCase {
         );
       }
 
+      // Check if the offer requires identity documents (e.g. passport for international flights)
+      const identityDocsRequired = offer.passenger_identity_documents_required === true;
+      if (identityDocsRequired) {
+        this.logger.log('Offer requires passenger identity documents (e.g. passport)');
+      }
+
       // Map our passenger info to Duffel passenger IDs from the offer
       const passengers = Array.isArray(passengerInfo) ? passengerInfo : [passengerInfo];
-      
+
       if (passengers.length !== offer.passengers.length) {
         throw new BadRequestException(
           `Passenger count mismatch: Booking has ${passengers.length} passengers, but offer has ${offer.passengers.length}.`,
         );
       }
+
+      // Duffel requires title, gender, born_on for each passenger (no blanks allowed)
+      const allowedTitles = ['mr', 'mrs', 'ms', 'miss', 'dr'];
+      const allowedGenders = ['m', 'f'];
 
       const duffelPassengers = passengers.map((passenger: any, index: number) => {
         // Get passenger ID from the offer (required by Duffel)
@@ -87,27 +97,96 @@ export class CreateDuffelOrderUseCase {
           );
         }
 
-        // Parse date of birth if provided
+        // Parse date of birth (required by Duffel - cannot be blank)
         let bornOn: string | undefined;
         if (passenger.dateOfBirth) {
           const dob = new Date(passenger.dateOfBirth);
-          bornOn = dob.toISOString().split('T')[0]; // YYYY-MM-DD
-        } else if (passenger.bornOn) {
-          bornOn = passenger.bornOn;
+          if (Number.isNaN(dob.getTime())) {
+            throw new BadRequestException(
+              `Passenger ${index + 1}: invalid dateOfBirth "${passenger.dateOfBirth}". Use YYYY-MM-DD.`,
+            );
+          }
+          bornOn = dob.toISOString().split('T')[0];
+        } else if (passenger.bornOn && String(passenger.bornOn).trim()) {
+          bornOn = String(passenger.bornOn).trim().slice(0, 10);
         } else if (offerPassenger.born_on) {
           bornOn = offerPassenger.born_on;
         }
+        if (!bornOn || bornOn.length < 10) {
+          throw new BadRequestException(
+            `Passenger ${index + 1}: date of birth is required for flight bookings. ` +
+            'Provide passengerInfo[].dateOfBirth (YYYY-MM-DD) when creating the booking.',
+          );
+        }
+
+        // Title: required by Duffel; default to 'mr' if missing
+        let title = (passenger.title || offerPassenger.title || 'mr').toString().trim().toLowerCase();
+        if (!allowedTitles.includes(title)) {
+          title = 'mr';
+        }
+
+        // Gender: required by Duffel; default to 'm' if missing
+        let gender = (passenger.gender || offerPassenger.gender || 'm').toString().trim().toLowerCase();
+        if (!allowedGenders.includes(gender)) {
+          gender = 'm';
+        }
+
+        const givenName =
+          passenger.firstName || passenger.given_name || passenger.givenName || offerPassenger.given_name || '';
+        const familyName =
+          passenger.lastName || passenger.family_name || passenger.familyName || offerPassenger.family_name || '';
+        if (!givenName.trim() || !familyName.trim()) {
+          throw new BadRequestException(
+            `Passenger ${index + 1}: first name and last name are required.`,
+          );
+        }
+
+        const email = (passenger.email || offerPassenger.email || '').trim();
+        if (!email) {
+          throw new BadRequestException(
+            `Passenger ${index + 1}: email is required for flight bookings.`,
+          );
+        }
+
+        // Map identity documents from camelCase DTO to Duffel snake_case format
+        let identityDocs = passenger.identityDocuments || passenger.identity_documents || offerPassenger.identity_documents;
+        if (identityDocs && Array.isArray(identityDocs)) {
+          identityDocs = identityDocs.map((doc: any) => ({
+            type: doc.type,
+            unique_identifier: doc.uniqueIdentifier || doc.unique_identifier,
+            issuing_country_code: doc.issuingCountryCode || doc.issuing_country_code,
+            expires_on: doc.expiresOn || doc.expires_on,
+          }));
+        }
+
+        // Enforce identity documents when offer requires them
+        if (identityDocsRequired && (!identityDocs || identityDocs.length === 0)) {
+          throw new BadRequestException(
+            `Passenger ${index + 1}: this flight requires identity documents (e.g. passport). ` +
+            'Provide passengerInfo.identityDocuments with type, uniqueIdentifier, issuingCountryCode, and expiresOn.',
+          );
+        }
+
+        // Map loyalty programme accounts from camelCase DTO to Duffel snake_case format
+        let loyaltyAccounts = passenger.loyaltyProgrammeAccounts || passenger.loyalty_programme_accounts;
+        if (loyaltyAccounts && Array.isArray(loyaltyAccounts)) {
+          loyaltyAccounts = loyaltyAccounts.map((acct: any) => ({
+            airline_iata_code: acct.airlineIataCode || acct.airline_iata_code,
+            account_number: acct.accountNumber || acct.account_number,
+          }));
+        }
 
         return {
-          id: offerPassenger.id, // CRITICAL: Use passenger ID from offer
-          title: passenger.title || offerPassenger.title,
-          gender: passenger.gender || offerPassenger.gender,
-          given_name: passenger.firstName || passenger.given_name || passenger.givenName || offerPassenger.given_name,
-          family_name: passenger.lastName || passenger.family_name || passenger.familyName || offerPassenger.family_name,
+          id: offerPassenger.id,
+          title,
+          gender,
+          given_name: givenName.trim(),
+          family_name: familyName.trim(),
           born_on: bornOn,
-          email: passenger.email || offerPassenger.email,
+          email,
           phone_number: passenger.phone || passenger.phoneNumber || offerPassenger.phone_number,
-          identity_documents: passenger.identityDocuments || passenger.identity_documents || offerPassenger.identity_documents,
+          identity_documents: identityDocs,
+          loyalty_programme_accounts: loyaltyAccounts,
         };
       });
 
@@ -162,6 +241,7 @@ export class CreateDuffelOrderUseCase {
         providerData: {
           ...(booking.providerData as any),
           orderCreationError: error instanceof Error ? error.message : 'Unknown error',
+          orderCreationFailedAt: new Date().toISOString(),
         },
       });
 

@@ -7,7 +7,6 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 // Common
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
-import { ThrottlerGuard } from '@nestjs/throttler';
 import { CustomThrottlerGuard } from './common/guards/throttle.guard';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { validate } from './config/env.validation';
@@ -100,7 +99,7 @@ import { DashboardController } from './presentation/dashboard/dashboard.controll
     },
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard, // Using default guard for now - custom guard needs proper DI setup
+      useClass: CustomThrottlerGuard,
     },
   ],
 })

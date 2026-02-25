@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, Profile } from 'passport-facebook';
 import { ConfigService } from '@nestjs/config';
-import { AuthService } from '../auth.service';
+import { AuthService } from '@application/auth/auth.service';
 
 /**
  * Facebook OAuth Strategy
@@ -62,6 +62,7 @@ export class FacebookStrategy extends PassportStrategy(Strategy, 'facebook') {
           : displayName || 'User',
         image: photos?.[0]?.value,
         accessToken,
+        emailVerified: false, // Facebook does not guarantee email verification
       };
 
       // Find or create user

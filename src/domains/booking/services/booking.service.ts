@@ -10,7 +10,7 @@ export class BookingService {
   constructor(
     @Inject(BOOKING_REPOSITORY)
     private readonly bookingRepository: BookingRepository,
-  ) {}
+  ) { }
 
   async createBooking(bookingData: Partial<Booking>): Promise<Booking> {
     // Generate unique booking reference
@@ -39,11 +39,11 @@ export class BookingService {
     return this.bookingRepository.findByReference(reference);
   }
 
+  async getAllBookings(): Promise<Booking[]> {
+    return this.bookingRepository.findAll();
+  }
+
   async getUserBookings(userId: string): Promise<Booking[]> {
-    if (!userId || userId === '') {
-      // Admin query - get all bookings
-      return this.bookingRepository.findMany({});
-    }
     return this.bookingRepository.findByUserId(userId);
   }
 
@@ -66,3 +66,4 @@ export class BookingService {
     return this.updateBookingStatus(id, BookingStatus.CANCELLED, userId);
   }
 }
+

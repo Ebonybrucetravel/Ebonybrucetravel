@@ -29,15 +29,16 @@ export class EncryptionService {
         'ENCRYPTION_KEY not set. Using a default key (NOT SECURE FOR PRODUCTION). ' +
           'Set ENCRYPTION_KEY for production.',
       );
-      this.key = crypto.scryptSync('default-key-change-in-production', 'salt', 32);
+      this.key = crypto.scryptSync('default-key-change-in-production', 'ebony-bruce-dev-salt-v1', 32);
     } else {
       // Convert hex string to buffer, or use scrypt if it's a password
       if (encryptionKey.length === 64) {
         // Assume hex-encoded 32-byte key
         this.key = Buffer.from(encryptionKey, 'hex');
       } else {
-        // Derive key from password
-        this.key = crypto.scryptSync(encryptionKey, 'salt', 32);
+        // Derive key from password using an HMAC-derived salt
+        const salt = crypto.createHmac('sha256', 'ebony-bruce-encryption-salt').update(encryptionKey).digest();
+        this.key = crypto.scryptSync(encryptionKey, salt, 32);
       }
     }
   }
