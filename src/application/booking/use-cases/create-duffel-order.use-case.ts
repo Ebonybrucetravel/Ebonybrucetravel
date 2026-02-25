@@ -201,6 +201,8 @@ export class CreateDuffelOrderUseCase {
             payments: [
               {
                 type: 'balance', // Using balance payment (you've already paid via Stripe)
+                amount: offer.total_amount,
+                currency: offer.total_currency,
               },
             ],
             metadata: {
