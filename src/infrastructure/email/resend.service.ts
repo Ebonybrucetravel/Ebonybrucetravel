@@ -117,6 +117,16 @@ export interface ContactConfirmationEmailData {
   serviceInterestedIn: string;
 }
 
+export interface BookingFailureEmailData {
+  to: string;
+  customerName: string;
+  bookingReference: string;
+  productType: string;
+  amount: number;
+  currency: string;
+  failureReason?: string;
+}
+
 export interface ContactSubmissionNotificationData {
   to: string[];
   submitterName: string;
@@ -343,6 +353,27 @@ export class ResendService {
   }
 
   /**
+   * Send notification when payment succeeds but order creation fails
+   */
+  async sendBookingFailureEmail(data: BookingFailureEmailData): Promise<void> {
+    try {
+      const subject = `Action Required: Issue with Booking ${data.bookingReference}`;
+      const html = this.getBookingFailureEmailTemplate(data);
+
+      await this.resend.emails.send({
+        from: this.fromEmail,
+        to: data.to,
+        subject,
+        html,
+      });
+
+      this.logger.log(`Booking failure email sent to ${data.to} for booking ${data.bookingReference}`);
+    } catch (error) {
+      this.logger.error(`Failed to send booking failure email to ${data.to}:`, error);
+    }
+  }
+
+  /**
    * Notify admin(s) that a new Contact Us form was submitted
    */
   async sendContactSubmissionNotification(data: ContactSubmissionNotificationData): Promise<void> {
@@ -362,6 +393,63 @@ export class ResendService {
     } catch (error) {
       this.logger.error('Failed to send contact submission notification to admin:', error);
     }
+  }
+
+  private getBookingFailureEmailTemplate(data: BookingFailureEmailData): string {
+    const productTypeLabel =
+      data.productType === 'HOTEL'
+        ? 'Hotel'
+        : data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC'
+          ? 'Flight'
+          : data.productType === 'CAR_RENTAL'
+            ? 'Car Rental'
+            : 'Booking';
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Issue with your Booking</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
+            <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
+          </div>
+          
+          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">
+              Important Update Regarding Your Booking
+            </h2>
+            
+            <p>Dear ${data.customerName || 'Valued Customer'},</p>
+            
+            <p>We successfully received your payment of <strong>${data.currency.toUpperCase()} ${(data.amount / 100).toFixed(2)}</strong> for booking reference <strong>${data.bookingReference}</strong>.</p>
+            
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #856404;">Action Required</h3>
+              <p>Unfortunately, we encountered an unexpected issue while securing your ${productTypeLabel.toLowerCase()} reservation with the provider.</p>
+              <p><strong>Your payment is safe.</strong> Our support team has been automatically notified and is currently looking into this issue.</p>
+            </div>
+            
+            <p>We will either manually secure this booking for you, or issue a full and immediate refund back to your original payment method. We will contact you shortly with an update.</p>
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+              <p>We sincerely apologize for the inconvenience. If you have any immediate questions, please reply directly to this email.</p>
+              <p style="margin-top: 20px;">
+                Best regards,<br>
+                <strong>The Ebony Bruce Travels Support Team</strong>
+              </p>
+            </div>
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+            <p>This is an automated priority notification.</p>
+          </div>
+        </body>
+      </html>
+    `;
   }
 
   private getContactConfirmationEmailTemplate(data: ContactConfirmationEmailData): string {
@@ -448,22 +536,22 @@ export class ResendService {
           <p>Instead of a cash refund, the airline has issued travel credits (vouchers) for your booking.</p>
           <p><strong>Important:</strong> You can use these credits directly with the airline for future bookings.</p>
           ${data.airlineCredits && data.airlineCredits.length > 0
-            ? `
+        ? `
             <ul>
               ${data.airlineCredits
-                .map(
-                  (credit) => `
+          .map(
+            (credit) => `
                 <li>
                   <strong>Credit Code:</strong> ${credit.code || 'N/A'}<br>
                   <strong>Amount:</strong> ${credit.amount} ${credit.amount_currency}<br>
                   <strong>Airline:</strong> ${credit.airline_iata_code || 'N/A'}
                 </li>
               `,
-                )
-                .join('')}
+          )
+          .join('')}
             </ul>
           `
-            : ''}
+        : ''}
         </div>
       `
       : data.refundAmount
@@ -868,7 +956,7 @@ export class ResendService {
    */
   private getBookingConfirmationEmailTemplate(data: BookingConfirmationEmailData): string {
     const productTypeLabel = data.productType === 'HOTEL' ? 'Hotel' : data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC' ? 'Flight' : data.productType === 'CAR_RENTAL' ? 'Car Rental' : 'Booking';
-    
+
     const bookingDetailsSection = data.bookingDetails.hotelName
       ? `
         <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
@@ -992,7 +1080,7 @@ export class ResendService {
    */
   private getPaymentReceiptEmailTemplate(data: PaymentReceiptEmailData): string {
     const productTypeLabel = data.productType === 'HOTEL' ? 'Hotel' : data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC' ? 'Flight' : data.productType === 'CAR_RENTAL' ? 'Car Rental' : 'Booking';
-    
+
     const bookingDetailsSection = data.bookingDetails
       ? data.bookingDetails.hotelName
         ? `

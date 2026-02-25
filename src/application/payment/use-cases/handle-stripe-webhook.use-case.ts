@@ -216,6 +216,20 @@ export class HandleStripeWebhookUseCase {
             `Failed to create Duffel order for booking ${bookingId}. Payment confirmed but order creation failed. No confirmation email sent.`,
             error,
           );
+
+          // Send failure notification email
+          if (booking.user?.email) {
+            this.resendService.sendBookingFailureEmail({
+              to: booking.user.email,
+              customerName: booking.user.name || 'Valued Customer',
+              bookingReference: booking.reference || booking.id,
+              productType: booking.productType,
+              amount: Number(booking.totalAmount),
+              currency: booking.currency,
+              failureReason: error instanceof Error ? error.message : 'Unknown provider error',
+            }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}:`, err));
+          }
+
           // Booking status and providerData are already updated to FAILED by CreateDuffelOrderUseCase
         }
       }
@@ -236,6 +250,19 @@ export class HandleStripeWebhookUseCase {
               `Failed to create Amadeus hotel order for booking ${bookingId}. Payment confirmed but order creation failed:`,
               error,
             );
+
+            // Send failure notification email
+            if (booking.user?.email) {
+              this.resendService.sendBookingFailureEmail({
+                to: booking.user.email,
+                customerName: booking.user.name || 'Valued Customer',
+                bookingReference: booking.reference || booking.id,
+                productType: booking.productType,
+                amount: Number(booking.totalAmount),
+                currency: booking.currency,
+                failureReason: error instanceof Error ? error.message : 'Unknown provider error',
+              }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}:`, err));
+            }
 
             // Build sanitized Amadeus error details (safe for storage/display)
             let amadeusError: any = {
@@ -304,6 +331,20 @@ export class HandleStripeWebhookUseCase {
               `Failed to create Amadeus transfer order for car rental booking ${bookingId}. Payment confirmed but order creation failed:`,
               error,
             );
+
+            // Send failure notification email
+            if (booking.user?.email) {
+              this.resendService.sendBookingFailureEmail({
+                to: booking.user.email,
+                customerName: booking.user.name || 'Valued Customer',
+                bookingReference: booking.reference || booking.id,
+                productType: booking.productType,
+                amount: Number(booking.totalAmount),
+                currency: booking.currency,
+                failureReason: error instanceof Error ? error.message : 'Unknown provider error',
+              }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}:`, err));
+            }
+
             this.prisma.booking
               .update({
                 where: { id: bookingId },
