@@ -32,12 +32,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
       errorType = (message as any).error;
     }
 
+    // Translate provider-specific error terminology to our frontend terminology
+    let finalMessage = errorMessage;
+    if (Array.isArray(errorMessage)) {
+      finalMessage = errorMessage.map((err) =>
+        typeof err === 'string' ? this.translateProviderError(err) : err,
+      ) as any;
+    } else if (typeof errorMessage === 'string') {
+      finalMessage = this.translateProviderError(errorMessage);
+    }
+
     const errorResponse = {
       success: false,
       statusCode: status,
       timestamp: new Date().toISOString(),
       path: request.url,
-      message: errorMessage,
+      message: finalMessage,
       error: errorType,
       ...(request['correlationId'] && { correlationId: request['correlationId'] }),
     };
@@ -49,11 +59,43 @@ export class HttpExceptionFilter implements ExceptionFilter {
         exception instanceof Error ? exception.stack : exception,
       );
     } else if (status >= 400) {
+      // For arrays, log the joined string
+      const logMsg = Array.isArray(errorResponse.message)
+        ? errorResponse.message.join(', ')
+        : errorResponse.message;
+
       this.logger.warn(
-        `Client Error: ${request.method} ${request.url} - ${errorResponse.message}`,
+        `Client Error: ${request.method} ${request.url} - ${logMsg}`,
       );
     }
 
     response.status(status).json(errorResponse);
+  }
+
+  /**
+   * Translates third-party provider terminology into our API's standard nomenclature
+   * to ensure frontend developers get understandable error messages.
+   */
+  private translateProviderError(msg: string): string {
+    if (!msg || typeof msg !== 'string') return msg;
+
+    // Map third-provider specific terms (like Duffel/Amadeus) to our DTO schema terms
+    const termMap: Record<string, string> = {
+      born_on: 'dateOfBirth',
+      given_name: 'firstName',
+      family_name: 'lastName',
+      identity_documents: 'identityDocuments',
+      phone_number: 'phone',
+      identity_document: 'identity document',
+    };
+
+    let translatedMsg = msg;
+    for (const [providerTerm, ourTerm] of Object.entries(termMap)) {
+      // Use regex with word boundaries to replace exactly that term
+      const regex = new RegExp(`\\b${providerTerm}\\b`, 'gi');
+      translatedMsg = translatedMsg.replace(regex, ourTerm);
+    }
+
+    return translatedMsg;
   }
 }
