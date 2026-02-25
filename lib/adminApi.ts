@@ -241,7 +241,7 @@ export async function cancelBooking(id: string, reason?: string) {
 }
 
 
-export async function processRefund(id: string, data: { amount?: number; reason?: string }) {
+export async function processRefund(id: string, data: { refundAmount: number; refundStatus: string }) {
   return adminFetch<any>(`/api/v1/admin/bookings/${id}/refund`, {
     method: 'POST',
     body: data,

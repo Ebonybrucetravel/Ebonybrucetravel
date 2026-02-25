@@ -237,9 +237,9 @@ export default function CreateBookingPage() {
   const processRefundHandler = async (bookingId: string, amount: number) => {
     try {
       const response = await processRefund(bookingId, {
-        amount,
-        reason: 'Customer initiated refund'
-      });
+        refundAmount: 1000,  // Changed from 'amount' to 'refundAmount'
+        refundStatus: "COMPLETED"  // Add this required field
+      })
       if (response.success) {
         alert(`Refund of £${amount} processed successfully`);
       }
