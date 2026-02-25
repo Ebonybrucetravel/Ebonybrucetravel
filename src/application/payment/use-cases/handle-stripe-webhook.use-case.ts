@@ -23,7 +23,7 @@ export class HandleStripeWebhookUseCase {
     private readonly createAmadeusHotelBookingUseCase: CreateAmadeusHotelBookingUseCase,
     private readonly createCarRentalBookingUseCase: CreateCarRentalBookingUseCase,
     private readonly resendService: ResendService,
-  ) {}
+  ) { }
 
   async execute(event: Stripe.Event): Promise<void> {
     this.logger.log(`Processing Stripe webhook: ${event.type}`);
@@ -66,7 +66,7 @@ export class HandleStripeWebhookUseCase {
       if (verifiedPaymentIntent.status !== 'succeeded') {
         this.logger.warn(
           `Payment intent ${paymentIntent.id} status is ${verifiedPaymentIntent.status}, not 'succeeded'. ` +
-            `Not processing booking ${bookingId}. This may be a test mode simulation.`,
+          `Not processing booking ${bookingId}. This may be a test mode simulation.`,
         );
         return; // Don't process if payment hasn't actually succeeded
       }
@@ -82,8 +82,7 @@ export class HandleStripeWebhookUseCase {
       // CRITICAL: If we can't verify with Stripe, DO NOT process the booking
       // This prevents false positives and ensures we only mark bookings as successful when payment is verified
       this.logger.error(
-        `CRITICAL: Could not verify payment intent ${paymentIntent.id} with Stripe: ${
-          error instanceof Error ? error.message : 'Unknown error'
+        `CRITICAL: Could not verify payment intent ${paymentIntent.id} with Stripe: ${error instanceof Error ? error.message : 'Unknown error'
         }. Booking ${bookingId} will NOT be marked as successful for security reasons.`,
       );
       return; // DO NOT process if we can't verify - this is a security requirement
@@ -95,6 +94,19 @@ export class HandleStripeWebhookUseCase {
         : (paymentIntent.latest_charge as any)?.id ?? null;
 
     try {
+      // Check for idempotency: if already completed, don't process again
+      const existingBooking = await this.prisma.booking.findUnique({
+        where: { id: bookingId },
+        select: { paymentStatus: true },
+      });
+
+      if (existingBooking?.paymentStatus === 'COMPLETED') {
+        this.logger.log(
+          `Booking ${bookingId} is already marked as COMPLETED. Ignoring duplicate webhook event.`,
+        );
+        return;
+      }
+
       // First, update booking payment status and store Stripe charge ID for dispute evidence
       const booking = await this.prisma.booking.update({
         where: { id: bookingId },
