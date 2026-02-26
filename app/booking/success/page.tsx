@@ -939,7 +939,7 @@ export default function BookingSuccessPage() {
               <p className="text-sm text-amber-800">
                 <span className="font-medium">Guest Booking:</span> You're viewing a summary of your booking. 
                 <button 
-                  onClick={() => router.push(`/auth/signup?email=${encodeURIComponent(email)}&bookingRef=${bookingRef}`)}
+                  onClick={() => router.push(`/auth/register?email=${encodeURIComponent(email)}&bookingRef=${bookingRef}`)}
                   className="ml-1 underline font-medium hover:text-amber-900"
                 >
                   Create an account
