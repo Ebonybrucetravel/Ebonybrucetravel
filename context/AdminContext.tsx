@@ -70,12 +70,41 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Logout
+  // FIXED: Proper logout that clears ALL admin-related storage
   const logout = useCallback(() => {
     if (typeof window !== 'undefined') {
+      // Clear admin user data
       localStorage.removeItem('adminUser');
+      // Clear admin token if stored separately
+      localStorage.removeItem('adminToken');
+      localStorage.removeItem('adminRefreshToken');
+      // Clear any session storage
+      sessionStorage.removeItem('adminToken');
+      sessionStorage.removeItem('adminUser');
+      
+      // Dispatch event for other tabs
+      window.dispatchEvent(new CustomEvent('admin-logout'));
     }
     setUserState(null);
+    
+    // Optional: Redirect to admin login
+    if (typeof window !== 'undefined') {
+      window.location.href = '/admin';
+    }
+  }, []);
+
+  // Listen for logout events from other tabs
+  useEffect(() => {
+    const handleAdminLogout = () => {
+      console.log('Admin logout event received from another tab');
+      setUserState(null);
+    };
+    
+    window.addEventListener('admin-logout', handleAdminLogout);
+    
+    return () => {
+      window.removeEventListener('admin-logout', handleAdminLogout);
+    };
   }, []);
 
   // Check permission
@@ -84,6 +113,21 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     if (user.role === 'SUPER_ADMIN') return true;
     return user.permissions?.[permission] ?? false;
   }, [user]);
+
+  // Check token validity on mount
+  useEffect(() => {
+    const validateToken = async () => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null;
+      
+      if (!token && user) {
+        // Token missing but user exists - inconsistent state
+        console.warn('Token missing but user found - logging out');
+        logout();
+      }
+    };
+    
+    validateToken();
+  }, [user, logout]);
 
   useEffect(() => {
     refresh();
