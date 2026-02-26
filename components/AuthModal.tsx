@@ -56,6 +56,40 @@ const AuthModal: React.FC<AuthModalProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [resetPasswordToken, setResetPasswordToken] = useState(resetToken || '');
 
+  // ✅ ADD THIS: Listen for auth success events from the callback page
+  useEffect(() => {
+    const handleAuthSuccess = (event: CustomEvent) => {
+      const { token, user } = event.detail;
+      
+      console.log('Auth success event received:', { token, user });
+      
+      if (token) {
+        // Set auth token
+        api.setAuthToken(token);
+        
+        // Store user data if available
+        if (user) {
+          localStorage.setItem('travelUser', JSON.stringify(user));
+        }
+        
+        // Call success callback
+        onLoginSuccess({
+          name: user?.name || user?.email?.split('@')[0] || 'User',
+          email: user?.email || '',
+          token
+        });
+        
+        onClose();
+      }
+    };
+
+    window.addEventListener('auth-success', handleAuthSuccess as EventListener);
+
+    return () => {
+      window.removeEventListener('auth-success', handleAuthSuccess as EventListener);
+    };
+  }, [onLoginSuccess, onClose]);
+
   useEffect(() => {
     setMode(initialMode);
     setError(null);
@@ -454,10 +488,14 @@ const AuthModal: React.FC<AuthModalProps> = ({
       onSocialLogin(provider);
     } else {
       console.log(`Social login with ${provider}`);
+      
+      // Store the current URL to redirect back after OAuth
+      const redirectUri = encodeURIComponent(window.location.origin + '/auth/callback');
+      
       if (provider === 'google') {
-        window.location.href = 'https://ebony-bruce-production.up.railway.app/api/v1/auth/google';
+        window.location.href = `https://ebony-bruce-production.up.railway.app/api/v1/auth/google?redirect_uri=${redirectUri}`;
       } else if (provider === 'facebook') {
-        window.location.href = 'https://ebony-bruce-production.up.railway.app/api/v1/auth/facebook';
+        window.location.href = `https://ebony-bruce-production.up.railway.app/api/v1/auth/facebook?redirect_uri=${redirectUri}`;
       }
     }
   };
