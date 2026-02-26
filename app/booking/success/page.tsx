@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
 import type { Booking as BookingType } from '@/lib/types';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function BookingSuccessPage() {
   const router = useRouter();
@@ -186,6 +188,299 @@ export default function BookingSuccessPage() {
       localStorage.setItem('guestEmail', email);
       fetchGuestBooking(bookingRef, email);
     }
+  };
+
+  // PDF Download Function for Flights
+  const downloadFlightPDF = () => {
+    if (!booking) return;
+    
+    const doc = new jsPDF();
+    
+    // Set document properties
+    doc.setFontSize(22);
+    doc.setTextColor(51, 168, 222); // #33a8da
+    doc.text('Ebony Bruce Travels', 105, 20, { align: 'center' });
+    
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Flight Booking Confirmation', 105, 30, { align: 'center' });
+    
+    // Booking reference
+    doc.setFontSize(12);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Booking Reference: ${booking.reference}`, 20, 45);
+    doc.text(`Status: ${booking.status}`, 20, 52);
+    doc.text(`Booked On: ${formatDate(booking.createdAt)}`, 20, 59);
+    
+    // Flight details
+    const bookingData = booking?.bookingData || {};
+    const airline = bookingData.airline || 'N/A';
+    const flightNumber = bookingData.flightNumber || 'N/A';
+    const origin = bookingData.origin || 'N/A';
+    const destination = bookingData.destination || 'N/A';
+    const departureDate = bookingData.departureDate || '';
+    const cabinClass = bookingData.cabinClass || 'Economy';
+    
+    doc.setFontSize(14);
+    doc.setTextColor(51, 168, 222);
+    doc.text('Flight Details', 20, 75);
+    
+    // Create table for flight info
+    autoTable(doc, {
+      startY: 80,
+      head: [['Detail', 'Information']],
+      body: [
+        ['Airline', airline],
+        ['Flight Number', flightNumber],
+        ['From', `${origin} - ${getAirportName(origin)}`],
+        ['To', `${destination} - ${getAirportName(destination)}`],
+        ['Departure Date', formatDate(departureDate)],
+        ['Departure Time', '10:00 AM'],
+        ['Cabin Class', cabinClass],
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: [51, 168, 222] },
+    });
+    
+    // Get the final Y position from the table - use type assertion
+    const finalY1 = (doc as any).lastAutoTable?.finalY || 80;
+    
+    // Passenger information
+    const passengerInfo = booking?.passengerInfo || {};
+    const passengers = typeof bookingData.passengers === 'object' 
+      ? bookingData.passengers 
+      : { adults: bookingData.passengers || 1, children: 0, infants: 0 };
+    
+    doc.setFontSize(14);
+    doc.setTextColor(51, 168, 222);
+    doc.text('Passenger Information', 20, finalY1 + 15);
+    
+    autoTable(doc, {
+      startY: finalY1 + 20,
+      head: [['Type', 'Count']],
+      body: [
+        ['Adults', passengers.adults?.toString() || '1'],
+        ['Children', passengers.children?.toString() || '0'],
+        ['Infants', passengers.infants?.toString() || '0'],
+        ['Total Passengers', ((passengers.adults || 1) + (passengers.children || 0) + (passengers.infants || 0)).toString()],
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: [51, 168, 222] },
+    });
+    
+    // Get the final Y position from the second table
+    const finalY2 = (doc as any).lastAutoTable?.finalY || finalY1 + 50;
+    
+    // Price breakdown
+    doc.setFontSize(14);
+    doc.setTextColor(51, 168, 222);
+    doc.text('Price Breakdown', 20, finalY2 + 15);
+    
+    autoTable(doc, {
+      startY: finalY2 + 20,
+      head: [['Item', 'Amount']],
+      body: [
+        ['Base Price', formatPrice(booking.basePrice || 0, booking.currency)],
+        ['Markup', formatPrice(booking.markupAmount || 0, booking.currency)],
+        ['Service Fee', formatPrice(booking.serviceFee || 0, booking.currency)],
+        ['Total Amount', formatPrice(booking.totalAmount || 0, booking.currency)],
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: [51, 168, 222] },
+      foot: [['Total', formatPrice(booking.totalAmount || 0, booking.currency)]],
+      footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+    });
+    
+    // Get the final Y position from the third table
+    const finalY3 = (doc as any).lastAutoTable?.finalY || finalY2 + 50;
+    
+    // Footer
+    doc.setFontSize(10);
+    doc.setTextColor(150, 150, 150);
+    doc.text('Thank you for choosing Ebony Bruce Travels!', 105, doc.internal.pageSize.height - 20, { align: 'center' });
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 105, doc.internal.pageSize.height - 15, { align: 'center' });
+    
+    // Save the PDF
+    doc.save(`flight-booking-${booking.reference}.pdf`);
+  };
+
+  // PDF Download Function for Hotels
+  const downloadHotelPDF = () => {
+    if (!booking) return;
+    
+    const doc = new jsPDF();
+    
+    // Set document properties
+    doc.setFontSize(22);
+    doc.setTextColor(51, 168, 222);
+    doc.text('Ebony Bruce Travels', 105, 20, { align: 'center' });
+    
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Hotel Booking Confirmation', 105, 30, { align: 'center' });
+    
+    // Booking reference
+    doc.setFontSize(12);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Booking Reference: ${booking.reference}`, 20, 45);
+    doc.text(`Status: ${booking.status}`, 20, 52);
+    doc.text(`Booked On: ${formatDate(booking.createdAt)}`, 20, 59);
+    
+    // Hotel details
+    const providerData = booking?.providerData as any;
+    const hotelBookings = providerData?.hotelBookings?.[0];
+    const hotelOffer = hotelBookings?.hotelOffer;
+    const hotel = hotelBookings?.hotel;
+    const bookingData = booking?.bookingData || {};
+    
+    const hotelName = hotel?.name || hotelOffer?.hotel?.name || bookingData.hotelName || 'Hotel';
+    const checkInDate = hotelOffer?.checkInDate || bookingData.checkInDate || '';
+    const checkOutDate = hotelOffer?.checkOutDate || bookingData.checkOutDate || '';
+    const roomType = hotelOffer?.room?.type || bookingData.roomType || 'Standard Room';
+    const adults = hotelOffer?.guests?.adults || bookingData.guests || 1;
+    const nights = calculateNights(checkInDate, checkOutDate);
+    
+    doc.setFontSize(14);
+    doc.setTextColor(51, 168, 222);
+    doc.text('Hotel Details', 20, 75);
+    
+    // First table
+    autoTable(doc, {
+      startY: 80,
+      head: [['Detail', 'Information']],
+      body: [
+        ['Hotel Name', hotelName],
+        ['Check-in Date', formatDate(checkInDate)],
+        ['Check-out Date', formatDate(checkOutDate)],
+        ['Nights', nights.toString()],
+        ['Room Type', roomType],
+        ['Guests', `${adults} Adult(s)`],
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: [51, 168, 222] },
+    });
+    
+    // Get the final Y position - use type assertion
+    const finalY1 = (doc as any).lastAutoTable?.finalY || 80;
+    
+    // Price breakdown
+    doc.setFontSize(14);
+    doc.setTextColor(51, 168, 222);
+    doc.text('Price Breakdown', 20, finalY1 + 15);
+    
+    autoTable(doc, {
+      startY: finalY1 + 20,
+      head: [['Item', 'Amount']],
+      body: [
+        ['Base Price', formatPrice(booking.basePrice || 0, booking.currency)],
+        ['Markup', formatPrice(booking.markupAmount || 0, booking.currency)],
+        ['Service Fee', formatPrice(booking.serviceFee || 0, booking.currency)],
+        ['Total Amount', formatPrice(booking.totalAmount || 0, booking.currency)],
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: [51, 168, 222] },
+      foot: [['Total', formatPrice(booking.totalAmount || 0, booking.currency)]],
+      footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+    });
+    
+    // Get the final Y position from the second table
+    const finalY2 = (doc as any).lastAutoTable?.finalY || finalY1 + 50;
+    
+    // Footer
+    doc.setFontSize(10);
+    doc.setTextColor(150, 150, 150);
+    doc.text('Thank you for choosing Ebony Bruce Travels!', 105, doc.internal.pageSize.height - 20, { align: 'center' });
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 105, doc.internal.pageSize.height - 15, { align: 'center' });
+    
+    doc.save(`hotel-booking-${booking.reference}.pdf`);
+  };
+
+  // PDF Download Function for Car Rentals
+  const downloadCarPDF = () => {
+    if (!booking) return;
+    
+    const doc = new jsPDF();
+    
+    // Set document properties
+    doc.setFontSize(22);
+    doc.setTextColor(51, 168, 222);
+    doc.text('Ebony Bruce Travels', 105, 20, { align: 'center' });
+    
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Car Rental Confirmation', 105, 30, { align: 'center' });
+    
+    // Booking reference
+    doc.setFontSize(12);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Booking Reference: ${booking.reference}`, 20, 45);
+    doc.text(`Status: ${booking.status}`, 20, 52);
+    doc.text(`Booked On: ${formatDate(booking.createdAt)}`, 20, 59);
+    
+    // Car rental details
+    const bookingData = booking?.bookingData || {};
+    
+    const vehicleType = bookingData.vehicleType || 'Car Rental';
+    const pickupLocationCode = bookingData.pickupLocationCode || 'N/A';
+    const dropoffLocationCode = bookingData.dropoffLocationCode || 'N/A';
+    const pickupDateTime = bookingData.pickupDateTime || '';
+    const dropoffDateTime = bookingData.dropoffDateTime || '';
+    const rentalDays = calculateRentalDays(pickupDateTime, dropoffDateTime);
+    
+    doc.setFontSize(14);
+    doc.setTextColor(51, 168, 222);
+    doc.text('Car Rental Details', 20, 75);
+    
+    autoTable(doc, {
+      startY: 80,
+      head: [['Detail', 'Information']],
+      body: [
+        ['Vehicle', vehicleType],
+        ['Pick-up Location', `${pickupLocationCode} - ${getAirportName(pickupLocationCode)}`],
+        ['Pick-up Date', formatDate(pickupDateTime)],
+        ['Pick-up Time', formatTime(pickupDateTime)],
+        ['Drop-off Location', `${dropoffLocationCode} - ${getAirportName(dropoffLocationCode)}`],
+        ['Drop-off Date', formatDate(dropoffDateTime)],
+        ['Drop-off Time', formatTime(dropoffDateTime)],
+        ['Rental Duration', `${rentalDays} day(s)`],
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: [51, 168, 222] },
+    });
+    
+    // Get the final Y position from the table - use type assertion
+    const finalY1 = (doc as any).lastAutoTable?.finalY || 80;
+    
+    // Price breakdown
+    doc.setFontSize(14);
+    doc.setTextColor(51, 168, 222);
+    doc.text('Price Breakdown', 20, finalY1 + 15);
+    
+    autoTable(doc, {
+      startY: finalY1 + 20,
+      head: [['Item', 'Amount']],
+      body: [
+        ['Base Price', formatPrice(booking.basePrice || 0, booking.currency)],
+        ['Markup', formatPrice(booking.markupAmount || 0, booking.currency)],
+        ['Service Fee', formatPrice(booking.serviceFee || 0, booking.currency)],
+        ['Total Amount', formatPrice(booking.totalAmount || 0, booking.currency)],
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: [51, 168, 222] },
+      foot: [['Total', formatPrice(booking.totalAmount || 0, booking.currency)]],
+      footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+    });
+    
+    // Get the final Y position from the second table
+    const finalY2 = (doc as any).lastAutoTable?.finalY || finalY1 + 50;
+    
+    // Footer
+    doc.setFontSize(10);
+    doc.setTextColor(150, 150, 150);
+    doc.text('Thank you for choosing Ebony Bruce Travels!', 105, doc.internal.pageSize.height - 20, { align: 'center' });
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 105, doc.internal.pageSize.height - 15, { align: 'center' });
+    
+    doc.save(`car-rental-${booking.reference}.pdf`);
   };
 
   // Helper function to format date
@@ -1196,19 +1491,45 @@ export default function BookingSuccessPage() {
       {/* Action buttons */}
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
         {!isGuest ? (
-          <button 
-            onClick={() => router.push('/profile?tab=bookings')} 
-            className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
-          >
-            View My Bookings
-          </button>
+          <>
+            <button 
+              onClick={() => router.push('/profile?tab=bookings')} 
+              className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
+            >
+              View My Bookings
+            </button>
+            
+            {/* PDF Download Button for Authenticated Users */}
+            <button 
+              onClick={productType?.includes('FLIGHT') ? downloadFlightPDF : productType?.includes('HOTEL') ? downloadHotelPDF : downloadCarPDF}
+              className="px-6 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Download {productType?.includes('FLIGHT') ? 'Flight' : productType?.includes('HOTEL') ? 'Hotel' : 'Car Rental'} Report
+            </button>
+          </>
         ) : (
-          <button 
-            onClick={() => router.push(`/auth/register?email=${encodeURIComponent(email)}&bookingRef=${bookingRef}`)} 
-            className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
-          >
-            Create Account to View Full Details
-          </button>
+          <>
+            <button 
+              onClick={() => router.push(`/auth/register?email=${encodeURIComponent(email)}&bookingRef=${bookingRef}`)} 
+              className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
+            >
+              Create Account to View Full Details
+            </button>
+            
+            {/* Optional: Allow guests to download basic summary */}
+            <button 
+              onClick={downloadFlightPDF}
+              className="px-6 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Download Summary
+            </button>
+          </>
         )}
         
         <button 
