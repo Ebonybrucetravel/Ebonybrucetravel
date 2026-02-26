@@ -8,16 +8,30 @@ export default function AuthCallbackPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(true);
 
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        // Get token and user data from URL params facebook/google
+        // Check for error parameters
+        const errorParam = searchParams.get('error');
+        const errorMessage = searchParams.get('error_message');
+        
+        if (errorParam) {
+          setError(errorMessage || 'Authentication failed');
+          setIsProcessing(false);
+          return;
+        }
+
+        // Get token and user data from URL params
         const token = searchParams.get('token');
         const userDataParam = searchParams.get('user');
         
+        console.log('Callback params:', { token, userDataParam });
+        
         if (!token) {
           setError('No authentication token received');
+          setIsProcessing(false);
           return;
         }
 
@@ -26,6 +40,7 @@ export default function AuthCallbackPage() {
         if (userDataParam) {
           try {
             userData = JSON.parse(decodeURIComponent(userDataParam));
+            console.log('Parsed user data:', userData);
           } catch (e) {
             console.error('Failed to parse user data:', e);
           }
@@ -44,22 +59,33 @@ export default function AuthCallbackPage() {
           try {
             const profile = await api.userApi.getProfile();
             localStorage.setItem('travelUser', JSON.stringify(profile));
+            userData = profile;
           } catch (err) {
             console.error('Failed to fetch user profile:', err);
           }
         }
 
-        // Close any open modals and redirect to home
+        // Check if there's a pending booking to redirect to
+        const pendingBookingRef = localStorage.getItem('pendingBookingRef');
+        
+        // Dispatch event for AuthModal
         window.dispatchEvent(new CustomEvent('auth-success', { 
           detail: { token, user: userData } 
         }));
 
-        // Redirect to home page
-        router.push('/');
+        // Redirect based on pending booking
+        if (pendingBookingRef) {
+          localStorage.removeItem('pendingBookingRef');
+          localStorage.removeItem('pendingBookingEmail');
+          router.push(`/booking/success?ref=${pendingBookingRef}`);
+        } else {
+          router.push('/');
+        }
         
       } catch (err) {
         console.error('Auth callback error:', err);
         setError('Authentication failed');
+        setIsProcessing(false);
       }
     };
 
@@ -68,24 +94,30 @@ export default function AuthCallbackPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="bg-white p-8 rounded-xl shadow-lg max-w-md text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Authentication Failed</h2>
+            <p className="text-gray-600 mb-6">{error}</p>
+            <button
+              onClick={() => router.push('/')}
+              className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
+            >
+              Back to Home
+            </button>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Authentication Failed</h2>
-          <p className="text-gray-600 mb-6">{error}</p>
-          <button
-            onClick={() => router.push('/')}
-            className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
-          >
-            Back to Home
-          </button>
         </div>
       </div>
     );
+  }
+
+  if (!isProcessing) {
+    return null;
   }
 
   return (

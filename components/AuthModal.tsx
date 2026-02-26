@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation'; // Add this import
 import api from '../lib/api'; 
 
 interface AuthModalProps {
@@ -44,6 +45,8 @@ const AuthModal: React.FC<AuthModalProps> = ({
   initialMode = 'login',
   resetToken,
 }) => {
+  const router = useRouter(); // Add this line
+  
   const [mode, setMode] = useState<'login' | 'register' | 'forgot-password' | 'reset-password' | 'verify-email'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -56,7 +59,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [resetPasswordToken, setResetPasswordToken] = useState(resetToken || '');
 
-  // ✅ ADD THIS: Listen for auth success events from the callback page
+  // ✅ Listen for auth success events from the callback page
   useEffect(() => {
     const handleAuthSuccess = (event: CustomEvent) => {
       const { token, user } = event.detail;
@@ -72,6 +75,9 @@ const AuthModal: React.FC<AuthModalProps> = ({
           localStorage.setItem('travelUser', JSON.stringify(user));
         }
         
+        // Check if there's a pending booking
+        const pendingBookingRef = localStorage.getItem('pendingBookingRef');
+        
         // Call success callback
         onLoginSuccess({
           name: user?.name || user?.email?.split('@')[0] || 'User',
@@ -79,7 +85,16 @@ const AuthModal: React.FC<AuthModalProps> = ({
           token
         });
         
+        // Clear pending booking data
+        localStorage.removeItem('pendingBookingRef');
+        localStorage.removeItem('pendingBookingEmail');
+        
         onClose();
+        
+        // Redirect to booking if pending
+        if (pendingBookingRef) {
+          router.push(`/booking/success?ref=${pendingBookingRef}`);
+        }
       }
     };
 
@@ -88,7 +103,28 @@ const AuthModal: React.FC<AuthModalProps> = ({
     return () => {
       window.removeEventListener('auth-success', handleAuthSuccess as EventListener);
     };
-  }, [onLoginSuccess, onClose]);
+  }, [onLoginSuccess, onClose, router]); // Add router to dependencies
+
+  // ✅ Check for pending booking when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      // Check if there are pending booking params in the URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const bookingRefParam = urlParams.get('bookingRef');
+      const emailParam = urlParams.get('email');
+      
+      if (bookingRefParam && emailParam) {
+        // Store them for later use
+        localStorage.setItem('pendingBookingRef', bookingRefParam);
+        localStorage.setItem('pendingBookingEmail', emailParam);
+        
+        // Pre-fill the email field if in register mode
+        if (mode === 'register') {
+          setEmail(emailParam);
+        }
+      }
+    }
+  }, [isOpen, mode]);
 
   useEffect(() => {
     setMode(initialMode);
@@ -262,13 +298,25 @@ const AuthModal: React.FC<AuthModalProps> = ({
                        response?.data || 
                        { name: name || email.split('@')[0], email };
       
+      // Check for pending booking
+      const pendingBookingRef = localStorage.getItem('pendingBookingRef');
+      
       onLoginSuccess({ 
         name: userData.name || userData.fullName || name || email.split('@')[0], 
         email: userData.email || email, 
         token 
       });
       
+      // Clear pending booking data
+      localStorage.removeItem('pendingBookingRef');
+      localStorage.removeItem('pendingBookingEmail');
+      
       onClose();
+      
+      // Redirect to booking if pending
+      if (pendingBookingRef) {
+        router.push(`/booking/success?ref=${pendingBookingRef}`);
+      }
       
     } catch (err: any) {
       console.error('❌ Auth error:', err);
@@ -489,13 +537,17 @@ const AuthModal: React.FC<AuthModalProps> = ({
     } else {
       console.log(`Social login with ${provider}`);
       
+      // Generate a random state for CSRF protection
+      const state = Math.random().toString(36).substring(7);
+      localStorage.setItem('oauth_state', state);
+      
       // Store the current URL to redirect back after OAuth
-      const redirectUri = encodeURIComponent(window.location.origin + '/auth/callback');
+      const redirectUri = encodeURIComponent(`${window.location.origin}/auth/callback`);
       
       if (provider === 'google') {
-        window.location.href = `https://ebony-bruce-production.up.railway.app/api/v1/auth/google?redirect_uri=${redirectUri}`;
+        window.location.href = `https://ebony-bruce-production.up.railway.app/api/v1/auth/google?redirect_uri=${redirectUri}&state=${state}`;
       } else if (provider === 'facebook') {
-        window.location.href = `https://ebony-bruce-production.up.railway.app/api/v1/auth/facebook?redirect_uri=${redirectUri}`;
+        window.location.href = `https://ebony-bruce-production.up.railway.app/api/v1/auth/facebook?redirect_uri=${redirectUri}&state=${state}`;
       }
     }
   };
