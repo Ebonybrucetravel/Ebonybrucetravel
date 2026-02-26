@@ -1156,7 +1156,7 @@ export default function BookingSuccessPage() {
                 Create a free account to view your complete itinerary, manage your booking, and earn loyalty points.
               </p>
               <button
-                onClick={() => router.push(`/auth/signup?email=${encodeURIComponent(email)}&bookingRef=${bookingRef}`)}
+                onClick={() => router.push(`/auth/register?email=${encodeURIComponent(email)}&bookingRef=${bookingRef}`)}
                 className="w-full px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition mb-3"
               >
                 Create Free Account
@@ -1204,7 +1204,7 @@ export default function BookingSuccessPage() {
           </button>
         ) : (
           <button 
-            onClick={() => router.push(`/auth/signup?email=${encodeURIComponent(email)}&bookingRef=${bookingRef}`)} 
+            onClick={() => router.push(`/auth/register?email=${encodeURIComponent(email)}&bookingRef=${bookingRef}`)} 
             className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
           >
             Create Account to View Full Details
