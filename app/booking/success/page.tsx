@@ -72,12 +72,12 @@ export default function BookingSuccessPage() {
           return;
         }
         
-        // CASE 3: Guest booking - use public endpoint with reference + email
+        
         if (bookingRef) {
           console.log('👤 Guest user fetching by reference:', bookingRef);
           setIsGuest(true);
           
-          // Check if we have email from various sources
+     
           const storedEmail = localStorage.getItem('guestEmail') || 
                              sessionStorage.getItem('guestEmail');
           
