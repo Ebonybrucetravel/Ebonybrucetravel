@@ -12,7 +12,7 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        // Get token and user data from URL params
+        // Get token and user data from URL params facebook/google
         const token = searchParams.get('token');
         const userDataParam = searchParams.get('user');
         
