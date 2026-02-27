@@ -1,4 +1,6 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'https://ebony-bruce-production.up.railway.app';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  "https://ebony-bruce-production.up.railway.app";
 
 export class ApiError extends Error {
   status: number;
@@ -7,7 +9,7 @@ export class ApiError extends Error {
 
   constructor(message: string, status: number, code?: string, details?: any) {
     super(message);
-    this.name = 'ApiError';
+    this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.details = details;
@@ -307,7 +309,6 @@ export interface CarRentalSearchParams {
   [key: string]: any;
 }
 
-
 export interface CarRentalOffer {
   id: string;
   type: string;
@@ -525,32 +526,35 @@ export interface CarRentalCancellationResponse {
 }
 
 function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  const fromTravelUser = localStorage.getItem('travelUser')
-    ? JSON.parse(localStorage.getItem('travelUser') || '{}').token
+  if (typeof window === "undefined") return null;
+  const fromTravelUser = localStorage.getItem("travelUser")
+    ? JSON.parse(localStorage.getItem("travelUser") || "{}").token
     : null;
   return (
-    localStorage.getItem('travelToken') ||
-    localStorage.getItem('authToken') ||
-    localStorage.getItem('token') ||
+    localStorage.getItem("travelToken") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("token") ||
     fromTravelUser ||
     null
   );
 }
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+async function request<T>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
   const url = `${API_BASE}${cleanEndpoint}`;
-  
+
   const token = getAuthToken();
 
   const headers: Record<string, string> = {
-    'Accept': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    Accept: "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
   if (!(options.body instanceof FormData)) {
-    headers['Content-Type'] = 'application/json';
+    headers["Content-Type"] = "application/json";
   }
 
   if (options.headers) {
@@ -575,7 +579,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     const response = await fetch(url, config);
     const contentType = response.headers.get("content-type");
     let data: any;
-    
+
     if (contentType && contentType.includes("application/json")) {
       data = await response.json();
     } else {
@@ -585,48 +589,70 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
     if (response.status === 401) {
       const currentToken = getAuthToken();
-      if (!currentToken || currentToken.trim() === '') {
-        throw new ApiError('Invalid credentials. Please check your email and password.', 401, 'INVALID_CREDENTIALS');
+      if (!currentToken || currentToken.trim() === "") {
+        throw new ApiError(
+          "Invalid credentials. Please check your email and password.",
+          401,
+          "INVALID_CREDENTIALS",
+        );
       }
       clearAuthToken();
-      window.dispatchEvent(new CustomEvent('auth-expired'));
-      throw new ApiError('Session expired. Please sign in again.', 401, 'UNAUTHORIZED');
+      window.dispatchEvent(new CustomEvent("auth-expired"));
+      throw new ApiError(
+        "Session expired. Please sign in again.",
+        401,
+        "UNAUTHORIZED",
+      );
     }
 
     if (response.status === 403) {
-      throw new ApiError('You do not have permission to perform this action.', 403, 'FORBIDDEN');
+      throw new ApiError(
+        "You do not have permission to perform this action.",
+        403,
+        "FORBIDDEN",
+      );
     }
 
     if (!response.ok) {
-      const errorMessage = data?.message || data?.error || `Server error: ${response.status}`;
+      const errorMessage =
+        data?.message || data?.error || `Server error: ${response.status}`;
       throw new ApiError(errorMessage, response.status, data?.code, data);
     }
 
     return data as T;
-
   } catch (error: any) {
-    console.error(`[API Request Error] ${options.method || 'GET'} ${url}:`, error);
+    console.error(
+      `[API Request Error] ${options.method || "GET"} ${url}:`,
+      error,
+    );
 
     if (error instanceof ApiError) {
       throw error;
     }
 
-    if (error.name === 'AbortError') {
-      throw new ApiError('Request timed out. Server is slow or unreachable.', 504, 'TIMEOUT');
+    if (error.name === "AbortError") {
+      throw new ApiError(
+        "Request timed out. Server is slow or unreachable.",
+        504,
+        "TIMEOUT",
+      );
     }
 
-    if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+    if (
+      error.message?.includes("Failed to fetch") ||
+      error.message?.includes("NetworkError")
+    ) {
       throw new ApiError(
-        'Cannot connect to server. Check your internet or try again later.',
+        "Cannot connect to server. Check your internet or try again later.",
         0,
-        'NETWORK_ERROR'
+        "NETWORK_ERROR",
       );
     }
 
     throw new ApiError(
-      error.message || 'An unexpected error occurred',
+      error.message || "An unexpected error occurred",
       error.status || 0,
-      'UNKNOWN_ERROR'
+      "UNKNOWN_ERROR",
     );
   } finally {
     clearTimeout(timeoutId);
@@ -634,43 +660,47 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export function setAuthToken(token: string, user?: User) {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('travelToken', token);
-    sessionStorage.setItem('authToken', token);
-    
+  if (typeof window !== "undefined") {
+    localStorage.setItem("travelToken", token);
+    sessionStorage.setItem("authToken", token);
+
     if (user) {
-      localStorage.setItem('travelUser', JSON.stringify({ ...user, token }));
+      localStorage.setItem("travelUser", JSON.stringify({ ...user, token }));
     }
-    
-    window.dispatchEvent(new CustomEvent('auth-token-set', { detail: { token, user } }));
+
+    window.dispatchEvent(
+      new CustomEvent("auth-token-set", { detail: { token, user } }),
+    );
   }
 }
 
 export function clearAuthToken() {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('travelToken');
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('travelUser');
-    sessionStorage.removeItem('authToken');
-    window.dispatchEvent(new CustomEvent('auth-token-cleared'));
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("travelToken");
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("travelUser");
+    sessionStorage.removeItem("authToken");
+    window.dispatchEvent(new CustomEvent("auth-token-cleared"));
   }
 }
 
 export function getStoredAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
   return (
-    localStorage.getItem('travelToken') ||
-    localStorage.getItem('authToken') ||
-    localStorage.getItem('token') ||
-    (localStorage.getItem('travelUser') ? JSON.parse(localStorage.getItem('travelUser') || '{}').token : null) ||
+    localStorage.getItem("travelToken") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("token") ||
+    (localStorage.getItem("travelUser")
+      ? JSON.parse(localStorage.getItem("travelUser") || "{}").token
+      : null) ||
     null
   );
 }
 
 export function getStoredUser(): User | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
   try {
-    const userStr = localStorage.getItem('travelUser');
+    const userStr = localStorage.getItem("travelUser");
     return userStr ? JSON.parse(userStr) : null;
   } catch (e) {
     return null;
@@ -681,101 +711,108 @@ export function getStoredUser(): User | null {
 export const getCityCode = (cityName: string): string => {
   const cityMap: Record<string, string> = {
     // Nigeria - Only Lagos for now (Abuja has no hotels in API)
-    'lagos': 'LOS',
-    
+    lagos: "LOS",
+
     // International destinations with available hotels
-    'london': 'LHR',
-    'new york': 'NYC',
-    'paris': 'PAR',
-    'dubai': 'DXB',
-    'sydney': 'SYD',
-    'toronto': 'YYZ',
-    'los angeles': 'LAX',
-    'miami': 'MIA',
-    'chicago': 'ORD',
-    'san francisco': 'SFO',
-    'seattle': 'SEA',
-    'amsterdam': 'AMS',
-    'berlin': 'BER',
-    'frankfurt': 'FRA',
-    'madrid': 'MAD',
-    'barcelona': 'BCN',
-    'rome': 'ROM',
-    'milan': 'MIL',
-    'singapore': 'SIN',
-    'tokyo': 'TYO',
-    'hong kong': 'HKG',
-    'lagos, nigeria': 'LOS',
+    london: "LHR",
+    "new york": "NYC",
+    paris: "PAR",
+    dubai: "DXB",
+    sydney: "SYD",
+    toronto: "YYZ",
+    "los angeles": "LAX",
+    miami: "MIA",
+    chicago: "ORD",
+    "san francisco": "SFO",
+    seattle: "SEA",
+    amsterdam: "AMS",
+    berlin: "BER",
+    frankfurt: "FRA",
+    madrid: "MAD",
+    barcelona: "BCN",
+    rome: "ROM",
+    milan: "MIL",
+    singapore: "SIN",
+    tokyo: "TYO",
+    "hong kong": "HKG",
+    "lagos, nigeria": "LOS",
   };
 
   const normalizedCity = cityName.toLowerCase().trim();
-  
+
   // Try exact match first
   if (cityMap[normalizedCity]) {
     return cityMap[normalizedCity];
   }
-  
+
   // Try partial match
   for (const [key, code] of Object.entries(cityMap)) {
     if (normalizedCity.includes(key) || key.includes(normalizedCity)) {
       return code;
     }
   }
-  
+
   // If no match, try to extract IATA code from parentheses (e.g., "Lagos (LOS)")
   const match = cityName.match(/\(([A-Z]{3})\)/);
   if (match) {
     return match[1];
   }
-  
+
   // Return first 3 uppercase letters as fallback
   return cityName.slice(0, 3).toUpperCase();
 };
 
 // Hotel Search API - Amadeus Endpoint
 export const searchHotelsAmadeus = async (
-  searchParams: HotelSearchParams
+  searchParams: HotelSearchParams,
 ): Promise<HotelSearchResponse> => {
   try {
-    console.log('🏨 Starting hotel search with params:', searchParams);
-    
+    console.log("🏨 Starting hotel search with params:", searchParams);
+
     const response = await request<HotelSearchResponse>(
-      '/api/v1/bookings/search/hotels/amadeus',
+      "/api/v1/bookings/search/hotels/amadeus",
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({
           cityCode: searchParams.cityCode,
           checkInDate: searchParams.checkInDate,
           checkOutDate: searchParams.checkOutDate,
           adults: searchParams.adults,
           roomQuantity: searchParams.roomQuantity,
-          currency: searchParams.currency || 'GBP',
+          currency: searchParams.currency || "GBP",
           bestRateOnly: searchParams.bestRateOnly ?? true,
         }),
-      }
+      },
     );
 
-    console.log('✅ Hotel search response structure:', {
+    console.log("✅ Hotel search response structure:", {
       success: response.success,
       message: response.message,
       hasData: !!response.data,
       hotelCount: response.data?.data?.length || 0,
     });
-    
+
     return response;
-    
   } catch (error: any) {
-    console.error('❌ Hotel search failed:', error);
-    
+    console.error("❌ Hotel search failed:", error);
+
     // Provide more specific error messages
-    if (error.message?.includes('cityCode')) {
-      throw new ApiError('Invalid city code. Please check the location.', 400, 'INVALID_CITY_CODE');
+    if (error.message?.includes("cityCode")) {
+      throw new ApiError(
+        "Invalid city code. Please check the location.",
+        400,
+        "INVALID_CITY_CODE",
+      );
     }
-    
-    if (error.message?.includes('date')) {
-      throw new ApiError('Invalid date format. Please use YYYY-MM-DD format.', 400, 'INVALID_DATE_FORMAT');
+
+    if (error.message?.includes("date")) {
+      throw new ApiError(
+        "Invalid date format. Please use YYYY-MM-DD format.",
+        400,
+        "INVALID_DATE_FORMAT",
+      );
     }
-    
+
     throw error;
   }
 };
@@ -787,12 +824,12 @@ export async function searchHotelsWithPagination(
     maxPrice?: number;
     ratings?: number[];
     amenities?: string[];
-    sortBy?: 'price' | 'rating' | 'name';
-    sortOrder?: 'asc' | 'desc';
+    sortBy?: "price" | "rating" | "name";
+    sortOrder?: "asc" | "desc";
     page?: number;
     limit?: number;
   },
-  maxPages: number = 2
+  maxPages: number = 2,
 ): Promise<{
   success: boolean;
   data: HotelOffer[];
@@ -803,8 +840,8 @@ export async function searchHotelsWithPagination(
   hasMore: boolean;
 }> {
   try {
-    console.log('🔍 Starting hotel search with pagination:', params);
-    
+    console.log("🔍 Starting hotel search with pagination:", params);
+
     // Step 1: Initial search
     const response = await searchHotelsAmadeus({
       cityCode: params.cityCode,
@@ -815,72 +852,80 @@ export async function searchHotelsWithPagination(
       currency: params.currency,
       bestRateOnly: params.bestRateOnly,
     });
-    
+
     if (!response.success) {
-      throw new ApiError(response.message || 'Hotel search failed', 400, 'HOTEL_SEARCH_FAILED');
+      throw new ApiError(
+        response.message || "Hotel search failed",
+        400,
+        "HOTEL_SEARCH_FAILED",
+      );
     }
-    
+
     let allHotels = response.data?.data || [];
-    
+
     console.log(`✅ Initial hotel results: ${allHotels.length} hotels`);
-    
+
     // Step 2: Apply filters locally
     if (allHotels.length > 0) {
       // Filter by price range
       if (params.minPrice !== undefined || params.maxPrice !== undefined) {
-        allHotels = allHotels.filter(hotel => {
-          const offerPrice = parseFloat(hotel.offers?.[0]?.price?.total || '0');
+        allHotels = allHotels.filter((hotel) => {
+          const offerPrice = parseFloat(hotel.offers?.[0]?.price?.total || "0");
           const minPrice = params.minPrice || 0;
           const maxPrice = params.maxPrice || Number.MAX_SAFE_INTEGER;
           return offerPrice >= minPrice && offerPrice <= maxPrice;
         });
       }
-      
+
       // Filter by rating (if available in response)
-      if (params.ratings && params.ratings.length > 0 && allHotels[0].hotel.rating) {
-        allHotels = allHotels.filter(hotel => {
+      if (
+        params.ratings &&
+        params.ratings.length > 0 &&
+        allHotels[0].hotel.rating
+      ) {
+        allHotels = allHotels.filter((hotel) => {
           const rating = hotel.hotel.rating || 0;
-          return params.ratings!.some(minRating => rating >= minRating);
+          return params.ratings!.some((minRating) => rating >= minRating);
         });
       }
-      
+
       // Sort results
       if (params.sortBy) {
         allHotels.sort((a, b) => {
           let aValue: any, bValue: any;
-          
+
           switch (params.sortBy) {
-            case 'price':
-              aValue = parseFloat(a.offers?.[0]?.price?.total || '0');
-              bValue = parseFloat(b.offers?.[0]?.price?.total || '0');
+            case "price":
+              aValue = parseFloat(a.offers?.[0]?.price?.total || "0");
+              bValue = parseFloat(b.offers?.[0]?.price?.total || "0");
               break;
-            case 'rating':
+            case "rating":
               aValue = a.hotel.rating || 0;
               bValue = b.hotel.rating || 0;
               break;
-            case 'name':
-              aValue = a.hotel.name || '';
-              bValue = b.hotel.name || '';
+            case "name":
+              aValue = a.hotel.name || "";
+              bValue = b.hotel.name || "";
               break;
             default:
               return 0;
           }
-          
-          const order = params.sortOrder === 'desc' ? -1 : 1;
-          
+
+          const order = params.sortOrder === "desc" ? -1 : 1;
+
           if (aValue < bValue) return -1 * order;
           if (aValue > bValue) return 1 * order;
           return 0;
         });
       }
-      
+
       // Apply pagination
       const page = params.page || 1;
       const limit = params.limit || 10;
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + limit;
       const paginatedHotels = allHotels.slice(startIndex, endIndex);
-      
+
       return {
         success: true,
         data: paginatedHotels,
@@ -891,7 +936,7 @@ export async function searchHotelsWithPagination(
         hasMore: endIndex < allHotels.length,
       };
     }
-    
+
     return {
       success: true,
       data: [],
@@ -901,44 +946,47 @@ export async function searchHotelsWithPagination(
       totalPages: 0,
       hasMore: false,
     };
-    
   } catch (error: any) {
-    console.error('❌ Hotel search with pagination failed:', error);
-    
+    console.error("❌ Hotel search with pagination failed:", error);
+
     if (error instanceof ApiError) {
       throw error;
     }
-    
+
     throw new ApiError(
-      error.message || 'Hotel search failed',
+      error.message || "Hotel search failed",
       error.status || 500,
-      'HOTEL_SEARCH_ERROR'
+      "HOTEL_SEARCH_ERROR",
     );
   }
 }
 
 // Transform hotel API data to SearchResult format for your frontend
 export function transformHotelToSearchResult(
-  hotel: HotelOffer, 
+  hotel: HotelOffer,
   location: string,
   checkInDate: string,
   checkOutDate: string,
-  index: number
+  index: number,
 ): any {
   const hotelInfo = hotel.hotel;
   const offer = hotel.offers?.[0];
-  
+
   if (!offer) {
     const noOfferPrimary = (hotel as any).primaryImageUrl ?? null;
     return {
       id: hotelInfo.hotelId || `hotel-${index}`,
-      provider: hotelInfo.chainCode ? `${hotelInfo.chainCode} Hotels` : "Premium Hotels",
+      provider: hotelInfo.chainCode
+        ? `${hotelInfo.chainCode} Hotels`
+        : "Premium Hotels",
       title: hotelInfo.name || "Hotel",
       subtitle: `${location} • Standard Hotel`,
       price: "₦0/night",
       totalPrice: "₦0 total",
       rating: 4.0,
-      image: noOfferPrimary ?? "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400",
+      image:
+        noOfferPrimary ??
+        "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400",
       primaryImageUrl: noOfferPrimary,
       amenities: ["Free WiFi", "Air Conditioning", "TV", "Private Bathroom"],
       features: ["Standard Room", "2 guests", "1 night"],
@@ -949,7 +997,7 @@ export function transformHotelToSearchResult(
         checkInDate,
         checkOutDate,
         price: 0,
-        currency: 'NGN',
+        currency: "NGN",
         guests: 2,
         rooms: 1,
         roomType: "Standard Room",
@@ -957,47 +1005,53 @@ export function transformHotelToSearchResult(
       },
     };
   }
-  
+
   // Calculate price
   const price = offer.price;
-  const totalPrice = parseFloat(price?.total || '0');
-  const basePrice = parseFloat(price?.base || '0');
-  const currency = price?.currency || 'GBP';
-  
+  const totalPrice = parseFloat(price?.total || "0");
+  const basePrice = parseFloat(price?.base || "0");
+  const currency = price?.currency || "GBP";
+
   // Convert currency symbols
   const getCurrencySymbol = (curr: string): string => {
     const symbols: Record<string, string> = {
-      'GBP': '£',
-      'USD': '$',
-      'EUR': '€',
-      'NGN': '₦',
+      GBP: "£",
+      USD: "$",
+      EUR: "€",
+      NGN: "₦",
     };
     return symbols[curr.toUpperCase()] || curr;
   };
-  
+
   const priceSymbol = getCurrencySymbol(currency);
-  
+
   // Calculate nights
   const checkIn = new Date(checkInDate);
   const checkOut = new Date(checkOutDate);
-  const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+  const nights = Math.ceil(
+    (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24),
+  );
   const pricePerNight = nights > 0 ? totalPrice / nights : totalPrice;
-  
+
   // Extract room info
-  const roomType = offer.room?.typeEstimated?.category || offer.room?.type || "Standard Room";
+  const roomType =
+    offer.room?.typeEstimated?.category || offer.room?.type || "Standard Room";
   const bedType = offer.room?.typeEstimated?.bedType || "King/Queen";
   const beds = offer.room?.typeEstimated?.beds || 1;
-  
+
   // Generate amenities based on room description and hotel chain
-  const description = offer.room?.description?.text || '';
-  const amenities = extractAmenitiesFromDescription(description, hotelInfo.chainCode);
-  
+  const description = offer.room?.description?.text || "";
+  const amenities = extractAmenitiesFromDescription(
+    description,
+    hotelInfo.chainCode,
+  );
+
   // Determine hotel rating (if not provided, generate based on chain and price)
   const rating = calculateHotelRating(hotelInfo.chainCode, totalPrice);
-  
+
   // Determine hotel star rating
   const starRating = determineStarRating(rating, hotelInfo.chainCode);
-  
+
   const primaryImageUrl = (hotel as any).primaryImageUrl ?? null;
   return {
     id: hotelInfo.hotelId || `hotel-${index}`,
@@ -1012,10 +1066,10 @@ export function transformHotelToSearchResult(
     amenities: amenities.slice(0, 6),
     features: [
       roomType,
-      `${beds} ${bedType.toLowerCase()} bed${beds > 1 ? 's' : ''}`,
-      `${offer.guests.adults} guest${offer.guests.adults > 1 ? 's' : ''}`,
-      `${nights} night${nights !== 1 ? 's' : ''}`,
-      offer.rateCode ? offer.rateCode.replace('_', ' ') : "Best Rate",
+      `${beds} ${bedType.toLowerCase()} bed${beds > 1 ? "s" : ""}`,
+      `${offer.guests.adults} guest${offer.guests.adults > 1 ? "s" : ""}`,
+      `${nights} night${nights !== 1 ? "s" : ""}`,
+      offer.rateCode ? offer.rateCode.replace("_", " ") : "Best Rate",
     ],
     type: "hotels" as const,
     realData: {
@@ -1033,92 +1087,103 @@ export function transformHotelToSearchResult(
       bedType: bedType,
       beds: beds,
       nights: nights,
-      isRefundable: offer.policies?.refundable?.cancellationRefund !== 'NON_REFUNDABLE',
+      isRefundable:
+        offer.policies?.refundable?.cancellationRefund !== "NON_REFUNDABLE",
       cancellationDeadline: offer.policies?.cancellations?.[0]?.deadline,
-      cancellationPolicy: offer.policies?.cancellations?.[0]?.description?.text || "Standard cancellation policy applies",
+      cancellationPolicy:
+        offer.policies?.cancellations?.[0]?.description?.text ||
+        "Standard cancellation policy applies",
       paymentType: offer.policies?.paymentType || "prepay",
       finalPrice: parseFloat(offer.final_price || price.total),
-      markupAmount: parseFloat(offer.markup_amount || '0'),
-      serviceFee: parseFloat(offer.service_fee || '0'),
+      markupAmount: parseFloat(offer.markup_amount || "0"),
+      serviceFee: parseFloat(offer.service_fee || "0"),
     },
   };
 }
 
 // Helper function to extract amenities from description
-function extractAmenitiesFromDescription(description: string, chainCode?: string): string[] {
+function extractAmenitiesFromDescription(
+  description: string,
+  chainCode?: string,
+): string[] {
   const amenities: string[] = [];
   const desc = description.toLowerCase();
-  
+
   // Check for common amenities in description
-  if (desc.includes('wifi') || desc.includes('internet')) {
-    amenities.push('Free WiFi');
+  if (desc.includes("wifi") || desc.includes("internet")) {
+    amenities.push("Free WiFi");
   }
-  if (desc.includes('breakfast') || desc.includes('board')) {
-    amenities.push('Breakfast Included');
+  if (desc.includes("breakfast") || desc.includes("board")) {
+    amenities.push("Breakfast Included");
   }
-  if (desc.includes('parking')) {
-    amenities.push('Free Parking');
+  if (desc.includes("parking")) {
+    amenities.push("Free Parking");
   }
-  if (desc.includes('pool')) {
-    amenities.push('Swimming Pool');
+  if (desc.includes("pool")) {
+    amenities.push("Swimming Pool");
   }
-  if (desc.includes('gym') || desc.includes('fitness')) {
-    amenities.push('Fitness Center');
+  if (desc.includes("gym") || desc.includes("fitness")) {
+    amenities.push("Fitness Center");
   }
-  if (desc.includes('spa')) {
-    amenities.push('Spa');
+  if (desc.includes("spa")) {
+    amenities.push("Spa");
   }
-  if (desc.includes('restaurant')) {
-    amenities.push('Restaurant');
+  if (desc.includes("restaurant")) {
+    amenities.push("Restaurant");
   }
-  if (desc.includes('bar')) {
-    amenities.push('Bar');
+  if (desc.includes("bar")) {
+    amenities.push("Bar");
   }
-  if (desc.includes('room service')) {
-    amenities.push('24/7 Room Service');
+  if (desc.includes("room service")) {
+    amenities.push("24/7 Room Service");
   }
-  if (desc.includes('business center')) {
-    amenities.push('Business Center');
+  if (desc.includes("business center")) {
+    amenities.push("Business Center");
   }
-  
+
   // Add chain-specific amenities
   if (chainCode) {
     switch (chainCode) {
-      case 'HI': // Holiday Inn
-        amenities.push('Kids Stay Free', 'Family Rooms');
+      case "HI": // Holiday Inn
+        amenities.push("Kids Stay Free", "Family Rooms");
         break;
-      case 'MC': // Marriott
-        amenities.push('Luxury Bedding', 'Premium Toiletries');
+      case "MC": // Marriott
+        amenities.push("Luxury Bedding", "Premium Toiletries");
         break;
-      case 'HS': // Hilton
-        amenities.push('Executive Lounge Access', 'Digital Key');
+      case "HS": // Hilton
+        amenities.push("Executive Lounge Access", "Digital Key");
         break;
     }
   }
-  
+
   // Add default amenities if not enough
   if (amenities.length < 4) {
     amenities.push(
-      'Air Conditioning',
-      'TV',
-      'Private Bathroom',
-      'Hair Dryer',
-      'Coffee/Tea Maker',
-      'Safe',
-      'Desk'
+      "Air Conditioning",
+      "TV",
+      "Private Bathroom",
+      "Hair Dryer",
+      "Coffee/Tea Maker",
+      "Safe",
+      "Desk",
     );
   }
-  
+
   return Array.from(new Set(amenities)); // Remove duplicates
 }
 
-export async function publicRequest<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+export async function publicRequest<T = any>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
   const url = `${API_BASE}${cleanEndpoint}`;
-  
+
   const headers: Record<string, string> = {
-    'Accept': 'application/json',
-    ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
+    Accept: "application/json",
+    ...(options.body && !(options.body instanceof FormData)
+      ? { "Content-Type": "application/json" }
+      : {}),
   };
 
   if (options.headers) {
@@ -1128,18 +1193,23 @@ export async function publicRequest<T = any>(endpoint: string, options: RequestI
   }
 
   const res = await fetch(url, { ...options, headers });
-  
-  const contentType = res.headers.get('content-type');
+
+  const contentType = res.headers.get("content-type");
   let data: any;
-  
-  if (contentType?.includes('application/json')) {
+
+  if (contentType?.includes("application/json")) {
     data = await res.json();
   } else {
-    data = { message: await res.text() || res.statusText };
+    data = { message: (await res.text()) || res.statusText };
   }
 
   if (!res.ok) {
-    throw new ApiError(data?.message || 'Request failed', res.status, data?.code, data);
+    throw new ApiError(
+      data?.message || "Request failed",
+      res.status,
+      data?.code,
+      data,
+    );
   }
 
   return data as T;
@@ -1148,38 +1218,38 @@ export async function publicRequest<T = any>(endpoint: string, options: RequestI
 // Helper function to calculate hotel rating
 function calculateHotelRating(chainCode?: string, price?: number): number {
   let baseRating = 4.0;
-  
+
   // Adjust based on chain
   if (chainCode) {
     switch (chainCode) {
-      case 'MC': // Marriott
+      case "MC": // Marriott
         baseRating = 4.5;
         break;
-      case 'HI': // Holiday Inn
+      case "HI": // Holiday Inn
         baseRating = 4.2;
         break;
-      case 'HS': // Hilton
+      case "HS": // Hilton
         baseRating = 4.4;
         break;
-      case 'AC': // Accor
+      case "AC": // Accor
         baseRating = 4.3;
         break;
       default:
         baseRating = 4.0;
     }
   }
-  
+
   // Adjust based on price (higher price = higher expected rating)
   if (price) {
     if (price > 500) baseRating += 0.3;
     else if (price > 200) baseRating += 0.1;
     else if (price < 100) baseRating -= 0.2;
   }
-  
+
   // Add some random variation
-  const variation = (Math.random() * 0.4) - 0.2; // -0.2 to +0.2
+  const variation = Math.random() * 0.4 - 0.2; // -0.2 to +0.2
   const finalRating = Math.min(5.0, Math.max(3.0, baseRating + variation));
-  
+
   return parseFloat(finalRating.toFixed(1));
 }
 
@@ -1188,61 +1258,61 @@ function determineStarRating(rating: number, chainCode?: string): string {
   if (rating >= 4.5) return "5-star";
   if (rating >= 4.0) return "4-star";
   if (rating >= 3.5) return "3-star";
-  
+
   // Chain-specific adjustments
-  if (chainCode === 'MC' || chainCode === 'HS') {
+  if (chainCode === "MC" || chainCode === "HS") {
     return "4-star"; // Marriott and Hilton are generally 4-star+
   }
-  
+
   return "Standard";
 }
 
 // Helper function to get hotel provider name
 function getHotelProviderName(chainCode?: string): string {
   const providers: Record<string, string> = {
-    'HI': 'Holiday Inn',
-    'MC': 'Marriott',
-    'HS': 'Hilton',
-    'AC': 'Accor Hotels',
-    'HY': 'Hyatt',
-    'SH': 'Sheraton',
-    'IC': 'InterContinental',
-    'CP': 'Courtyard by Marriott',
-    'RI': 'Radisson',
-    'BW': 'Best Western',
+    HI: "Holiday Inn",
+    MC: "Marriott",
+    HS: "Hilton",
+    AC: "Accor Hotels",
+    HY: "Hyatt",
+    SH: "Sheraton",
+    IC: "InterContinental",
+    CP: "Courtyard by Marriott",
+    RI: "Radisson",
+    BW: "Best Western",
   };
-  
-  return chainCode && providers[chainCode] 
-    ? `${providers[chainCode]} Hotels` 
+
+  return chainCode && providers[chainCode]
+    ? `${providers[chainCode]} Hotels`
     : "Premium Hotels";
 }
 
 // Helper function to get hotel image
 function getHotelImage(chainCode?: string, index: number = 0): string {
   const hotelImages = [
-    'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400',
-    'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=400',
-    'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&q=80&w=400',
-    'https://images.unsplash.com/photo-1564501049418-3c27787d01e8?auto=format&fit=crop&q=80&w=400',
-    'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&q=80&w=400',
-    'https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=400',
-    'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?auto=format&fit=crop&q=80&w=400',
-    'https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=400',
+    "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400",
+    "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=400",
+    "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&q=80&w=400",
+    "https://images.unsplash.com/photo-1564501049418-3c27787d01e8?auto=format&fit=crop&q=80&w=400",
+    "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&q=80&w=400",
+    "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=400",
+    "https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?auto=format&fit=crop&q=80&w=400",
+    "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=400",
   ];
-  
+
   // Chain-specific images
   if (chainCode) {
     const chainImages: Record<string, string> = {
-      'MC': 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=400', // Marriott
-      'HI': 'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?auto=format&fit=crop&q=80&w=400', // Holiday Inn
-      'HS': 'https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=400', // Hilton
+      MC: "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=400", // Marriott
+      HI: "https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?auto=format&fit=crop&q=80&w=400", // Holiday Inn
+      HS: "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=400", // Hilton
     };
-    
+
     if (chainImages[chainCode]) {
       return chainImages[chainCode];
     }
   }
-  
+
   return hotelImages[index % hotelImages.length];
 }
 
@@ -1252,31 +1322,33 @@ export async function formatHotelSearchParams(
   checkInDate?: string,
   checkOutDate?: string,
   guests?: number,
-  rooms?: number
+  rooms?: number,
 ): Promise<HotelSearchParams> {
   // Get city code
   const cityCode = getCityCode(location);
-  
+
   // Set default dates if not provided
   const today = new Date();
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);
-  
-  const checkIn = checkInDate || tomorrow.toISOString().split('T')[0];
-  
-  const checkOut = checkOutDate || (() => {
-    const checkOutDate = new Date(checkIn);
-    checkOutDate.setDate(checkOutDate.getDate() + 3); // Default 3-night stay
-    return checkOutDate.toISOString().split('T')[0];
-  })();
-  
+
+  const checkIn = checkInDate || tomorrow.toISOString().split("T")[0];
+
+  const checkOut =
+    checkOutDate ||
+    (() => {
+      const checkOutDate = new Date(checkIn);
+      checkOutDate.setDate(checkOutDate.getDate() + 3); // Default 3-night stay
+      return checkOutDate.toISOString().split("T")[0];
+    })();
+
   return {
     cityCode,
     checkInDate: checkIn,
     checkOutDate: checkOut,
     adults: Math.max(1, guests || 2),
     roomQuantity: Math.max(1, rooms || 1),
-    currency: 'GBP', // Default to GBP since API returns GBP
+    currency: "GBP", // Default to GBP since API returns GBP
     bestRateOnly: true,
   };
 }
@@ -1284,7 +1356,7 @@ export async function formatHotelSearchParams(
 // Search hotels and transform results for frontend
 export async function searchAndTransformHotels(
   searchParams: HotelSearchParams,
-  location: string
+  location: string,
 ): Promise<{
   success: boolean;
   results: any[];
@@ -1293,26 +1365,32 @@ export async function searchAndTransformHotels(
   isRealData: boolean;
 }> {
   try {
-    console.log('🔍 Searching and transforming hotels...');
-    
+    console.log("🔍 Searching and transforming hotels...");
+
     const response = await searchHotelsAmadeus(searchParams);
-    
+
     // Handle case where API returns success but no data
     if (!response.data?.data || response.data.data.length === 0) {
       return {
         success: false,
         results: [],
-        message: 'No hotels found for your search criteria',
+        message: "No hotels found for your search criteria",
         total: 0,
         isRealData: false,
       };
     }
-    
+
     const hotels = response.data.data;
     const transformedResults = hotels.map((hotel, index) =>
-      transformHotelToSearchResult(hotel, location, searchParams.checkInDate, searchParams.checkOutDate, index)
+      transformHotelToSearchResult(
+        hotel,
+        location,
+        searchParams.checkInDate,
+        searchParams.checkOutDate,
+        index,
+      ),
     );
-    
+
     return {
       success: true,
       results: transformedResults,
@@ -1320,27 +1398,29 @@ export async function searchAndTransformHotels(
       total: hotels.length,
       isRealData: true,
     };
-    
   } catch (error: any) {
-    console.error('❌ Search and transform hotels failed:', error);
-    
+    console.error("❌ Search and transform hotels failed:", error);
+
     // Special handling for "no hotels found" error
-    if (error.message?.includes('Nothing found') || 
-        error.message?.includes('No hotels found') ||
-        error.status === 404) {
+    if (
+      error.message?.includes("Nothing found") ||
+      error.message?.includes("No hotels found") ||
+      error.status === 404
+    ) {
       return {
         success: false,
         results: [],
-        message: 'No hotels found for your search criteria. Please try different dates or location.',
+        message:
+          "No hotels found for your search criteria. Please try different dates or location.",
         total: 0,
         isRealData: false,
       };
     }
-    
+
     return {
       success: false,
       results: [],
-      message: error.message || 'Failed to search hotels',
+      message: error.message || "Failed to search hotels",
       total: 0,
       isRealData: false,
     };
@@ -1355,73 +1435,80 @@ export function validateHotelBookingData(bookingData: HotelBookingRequest): {
   const errors: string[] = [];
 
   // Validate hotelOfferId
-  if (!bookingData.hotelOfferId || bookingData.hotelOfferId.trim() === '') {
-    errors.push('Hotel offer ID is required');
+  if (!bookingData.hotelOfferId || bookingData.hotelOfferId.trim() === "") {
+    errors.push("Hotel offer ID is required");
   }
 
   // Validate price
   if (bookingData.offerPrice <= 0) {
-    errors.push('Offer price must be greater than 0');
+    errors.push("Offer price must be greater than 0");
   }
 
   // Validate currency
-  if (!bookingData.currency || bookingData.currency.trim() === '') {
-    errors.push('Currency is required');
+  if (!bookingData.currency || bookingData.currency.trim() === "") {
+    errors.push("Currency is required");
   }
 
   // Validate guests
   if (!bookingData.guests || bookingData.guests.length === 0) {
-    errors.push('At least one guest is required');
+    errors.push("At least one guest is required");
   } else {
     bookingData.guests.forEach((guest, index) => {
-      if (!guest.name.firstName || guest.name.firstName.trim() === '') {
+      if (!guest.name.firstName || guest.name.firstName.trim() === "") {
         errors.push(`Guest ${index + 1}: First name is required`);
       }
-      if (!guest.name.lastName || guest.name.lastName.trim() === '') {
+      if (!guest.name.lastName || guest.name.lastName.trim() === "") {
         errors.push(`Guest ${index + 1}: Last name is required`);
       }
       if (!guest.contact.email || !isValidEmail(guest.contact.email)) {
         errors.push(`Guest ${index + 1}: Valid email is required`);
       }
-      if (!guest.contact.phone || guest.contact.phone.trim() === '') {
+      if (!guest.contact.phone || guest.contact.phone.trim() === "") {
         errors.push(`Guest ${index + 1}: Phone number is required`);
       }
     });
   }
 
   // Validate room associations
-  if (!bookingData.roomAssociations || bookingData.roomAssociations.length === 0) {
-    errors.push('Room associations are required');
+  if (
+    !bookingData.roomAssociations ||
+    bookingData.roomAssociations.length === 0
+  ) {
+    errors.push("Room associations are required");
   } else {
     bookingData.roomAssociations.forEach((room, index) => {
-      if (!room.hotelOfferId || room.hotelOfferId.trim() === '') {
-        errors.push(`Room association ${index + 1}: Hotel offer ID is required`);
+      if (!room.hotelOfferId || room.hotelOfferId.trim() === "") {
+        errors.push(
+          `Room association ${index + 1}: Hotel offer ID is required`,
+        );
       }
       if (!room.guestReferences || room.guestReferences.length === 0) {
-        errors.push(`Room association ${index + 1}: At least one guest reference is required`);
+        errors.push(
+          `Room association ${index + 1}: At least one guest reference is required`,
+        );
       }
     });
   }
 
   // Validate payment
   if (!bookingData.payment) {
-    errors.push('Payment information is required');
-  } else if (bookingData.payment.method === 'CREDIT_CARD') {
+    errors.push("Payment information is required");
+  } else if (bookingData.payment.method === "CREDIT_CARD") {
     const cardInfo = bookingData.payment.paymentCard?.paymentCardInfo;
     if (!cardInfo) {
-      errors.push('Credit card information is required');
+      errors.push("Credit card information is required");
     } else {
       if (!isValidCreditCardNumber(cardInfo.cardNumber)) {
-        errors.push('Invalid credit card number');
+        errors.push("Invalid credit card number");
       }
       if (!isValidExpiryDate(cardInfo.expiryDate)) {
-        errors.push('Invalid expiry date. Use YYYY-MM format');
+        errors.push("Invalid expiry date. Use YYYY-MM format");
       }
-      if (!cardInfo.holderName || cardInfo.holderName.trim() === '') {
-        errors.push('Card holder name is required');
+      if (!cardInfo.holderName || cardInfo.holderName.trim() === "") {
+        errors.push("Card holder name is required");
       }
       if (!cardInfo.securityCode || cardInfo.securityCode.length < 3) {
-        errors.push('Security code must be at least 3 digits');
+        errors.push("Security code must be at least 3 digits");
       }
     }
   }
@@ -1441,12 +1528,12 @@ function isValidEmail(email: string): boolean {
 // Helper function to validate credit card number
 function isValidCreditCardNumber(cardNumber: string): boolean {
   // Remove spaces and dashes
-  const cleanNumber = cardNumber.replace(/\s+/g, '').replace(/-/g, '');
-  
+  const cleanNumber = cardNumber.replace(/\s+/g, "").replace(/-/g, "");
+
   // Check if it's all digits and has valid length
   if (!/^\d+$/.test(cleanNumber)) return false;
   if (cleanNumber.length < 13 || cleanNumber.length > 19) return false;
-  
+
   // Luhn algorithm check
   return luhnCheck(cleanNumber);
 }
@@ -1455,48 +1542,48 @@ function isValidCreditCardNumber(cardNumber: string): boolean {
 function luhnCheck(cardNumber: string): boolean {
   let sum = 0;
   let isEven = false;
-  
+
   for (let i = cardNumber.length - 1; i >= 0; i--) {
     let digit = parseInt(cardNumber.charAt(i), 10);
-    
+
     if (isEven) {
       digit *= 2;
       if (digit > 9) {
         digit -= 9;
       }
     }
-    
+
     sum += digit;
     isEven = !isEven;
   }
-  
+
   return sum % 10 === 0;
 }
 
 // Helper function to validate expiry date
 function isValidExpiryDate(expiryDate: string): boolean {
   if (!expiryDate || !/^\d{4}-\d{2}$/.test(expiryDate)) return false;
-  
-  const [year, month] = expiryDate.split('-').map(Number);
+
+  const [year, month] = expiryDate.split("-").map(Number);
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1; // January is 0
-  
+
   // Check if year is in the future or current year with future month
   if (year < currentYear) return false;
   if (year === currentYear && month < currentMonth) return false;
   if (month < 1 || month > 12) return false;
-  
+
   return true;
 }
 
 // FIXED: Flight Search API with correct parameters
 export const searchFlightsFixed = async (
-  params: FlightSearchParams
+  params: FlightSearchParams,
 ): Promise<FlightSearchResponse> => {
   try {
-    console.log('✈️ Starting flight search with params:', params);
-    
+    console.log("✈️ Starting flight search with params:", params);
+
     // Format parameters exactly as your API expects
     const requestBody: any = {
       origin: params.origin.toUpperCase(),
@@ -1505,61 +1592,88 @@ export const searchFlightsFixed = async (
       passengers: params.passengers,
       cabinClass: params.cabinClass.toLowerCase(),
     };
-    
+
     // Add optional parameters only if they exist
-    if (params.returnDate && params.returnDate.trim() !== '' && params.returnDate !== params.departureDate) {
+    if (
+      params.returnDate &&
+      params.returnDate.trim() !== "" &&
+      params.returnDate !== params.departureDate
+    ) {
       requestBody.returnDate = params.returnDate;
     }
-    
+
     if (params.currency) {
       requestBody.currency = params.currency.toUpperCase();
     }
-    
+
     if (params.maxConnections !== undefined) {
       requestBody.maxConnections = params.maxConnections;
     }
-    
-    console.log('📤 Sending flight search request body:', JSON.stringify(requestBody, null, 2));
-    
-    const response = await request<FlightSearchResponse>('/api/v1/bookings/search/flights', {
-      method: 'POST',
-      body: JSON.stringify(requestBody),
-    });
-    
-    console.log('✅ Flight search response:', {
+
+    console.log(
+      "📤 Sending flight search request body:",
+      JSON.stringify(requestBody, null, 2),
+    );
+
+    const response = await request<FlightSearchResponse>(
+      "/api/v1/bookings/search/flights",
+      {
+        method: "POST",
+        body: JSON.stringify(requestBody),
+      },
+    );
+
+    console.log("✅ Flight search response:", {
       success: response.success,
       message: response.message,
       error: response.error,
       hasData: !!response.data,
       offerRequestId: response.data?.offer_request_id,
     });
-    
+
     return response;
-    
   } catch (error: any) {
-    console.error('❌ Flight search failed:', error);
-    
+    console.error("❌ Flight search failed:", error);
+
     if (error instanceof ApiError) {
       throw error;
     }
-    
+
     // Provide more specific error messages
-    if (error.message?.includes('origin') || error.message?.includes('destination')) {
-      throw new ApiError('Invalid origin or destination airport code', 400, 'INVALID_AIRPORT_CODE');
+    if (
+      error.message?.includes("origin") ||
+      error.message?.includes("destination")
+    ) {
+      throw new ApiError(
+        "Invalid origin or destination airport code",
+        400,
+        "INVALID_AIRPORT_CODE",
+      );
     }
-    
-    if (error.message?.includes('date')) {
-      throw new ApiError('Invalid date format. Please use YYYY-MM-DD format.', 400, 'INVALID_DATE_FORMAT');
+
+    if (error.message?.includes("date")) {
+      throw new ApiError(
+        "Invalid date format. Please use YYYY-MM-DD format.",
+        400,
+        "INVALID_DATE_FORMAT",
+      );
     }
-    
-    if (error.message?.includes('returnDate') && error.message?.includes('before')) {
-      throw new ApiError('Return date must be after departure date', 400, 'INVALID_RETURN_DATE');
+
+    if (
+      error.message?.includes("returnDate") &&
+      error.message?.includes("before")
+    ) {
+      throw new ApiError(
+        "Return date must be after departure date",
+        400,
+        "INVALID_RETURN_DATE",
+      );
     }
-    
+
     throw new ApiError(
-      error.message || 'Failed to search for flights',
+      error.message || "Failed to search for flights",
       error.status || 500,
-      'FLIGHT_SEARCH_ERROR'
+      "FLIGHT_SEARCH_ERROR",
     );
   }
 };
@@ -1567,7 +1681,7 @@ export const searchFlightsFixed = async (
 // Enhanced flight search with pagination
 export async function searchFlightsWithPagination(
   params: FlightSearchParams,
-  maxPages: number = 3
+  maxPages: number = 3,
 ): Promise<{
   success: boolean;
   offerRequestId?: string;
@@ -1577,69 +1691,74 @@ export async function searchFlightsWithPagination(
   isRoundTrip: boolean;
 }> {
   try {
-    console.log('🔍 Starting flight search with pagination:', params);
-    
+    console.log("🔍 Starting flight search with pagination:", params);
+
     // Step 1: Create search request
     const searchResult = await searchFlightsFixed(params);
-    
+
     if (!searchResult.success) {
       throw new ApiError(
-        searchResult.message || 'Flight search failed',
+        searchResult.message || "Flight search failed",
         400,
-        'SEARCH_FAILED',
-        searchResult
+        "SEARCH_FAILED",
+        searchResult,
       );
     }
-    
+
     const offerRequestId = searchResult.data?.offer_request_id;
-    
+
     if (!offerRequestId) {
-      console.warn('⚠️ No offer_request_id received:', searchResult);
-      
+      console.warn("⚠️ No offer_request_id received:", searchResult);
+
       // Try alternative field names
-      const altId = searchResult.data?.id || searchResult.data?.requestId || searchResult.id;
+      const altId =
+        searchResult.data?.id ||
+        searchResult.data?.requestId ||
+        searchResult.id;
       if (altId) {
         console.log(`📋 Using alternative ID: ${altId}`);
       } else {
         throw new ApiError(
-          'Flight search completed but no request ID returned. Please try again.',
+          "Flight search completed but no request ID returned. Please try again.",
           500,
-          'NO_REQUEST_ID'
+          "NO_REQUEST_ID",
         );
       }
     }
-    
-    console.log('📋 Offer Request ID:', offerRequestId);
-    
+
+    console.log("📋 Offer Request ID:", offerRequestId);
+
     // Step 2: Fetch offers with pagination
     let allOffers: any[] = [];
     let nextCursor: string | null = null;
     let page = 1;
-    const isRoundTrip = !!(params.returnDate && params.returnDate !== params.departureDate);
-    
+    const isRoundTrip = !!(
+      params.returnDate && params.returnDate !== params.departureDate
+    );
+
     // If we have an offer request ID, fetch offers
     if (offerRequestId) {
       do {
         console.log(`📄 Fetching flight offers page ${page}...`);
-        
+
         try {
           const offersResult = await bookingApi.getOffers(
             offerRequestId,
             nextCursor || undefined,
             20,
-            page === 1 ? 'total_amount' : undefined,
-            'asc'
+            page === 1 ? "total_amount" : undefined,
+            "asc",
           );
-          
+
           console.log(`📦 Page ${page} response:`, {
             hasData: !!offersResult.data,
             dataType: typeof offersResult.data,
             isArray: Array.isArray(offersResult.data),
           });
-          
+
           // Extract offers from response
           let offers: any[] = [];
-          
+
           if (Array.isArray(offersResult.data)) {
             offers = offersResult.data;
           } else if (Array.isArray(offersResult.offers)) {
@@ -1648,7 +1767,10 @@ export async function searchFlightsWithPagination(
             offers = offersResult.results;
           } else if (Array.isArray(offersResult)) {
             offers = offersResult;
-          } else if (offersResult.data && typeof offersResult.data === 'object') {
+          } else if (
+            offersResult.data &&
+            typeof offersResult.data === "object"
+          ) {
             // Check if data contains an array
             const dataObj = offersResult.data;
             for (const key in dataObj) {
@@ -1658,45 +1780,44 @@ export async function searchFlightsWithPagination(
               }
             }
           }
-          
+
           console.log(`📦 Extracted ${offers.length} offers from page ${page}`);
-          
+
           if (offers.length > 0) {
             allOffers = [...allOffers, ...offers];
           }
-          
+
           // Update cursor for next page
-          nextCursor = offersResult?.next_cursor || 
-                      offersResult?.pagination?.next || 
-                      offersResult?.meta?.next_cursor || 
-                      offersResult?.data?.next_cursor || 
-                      null;
-          
+          nextCursor =
+            offersResult?.next_cursor ||
+            offersResult?.pagination?.next ||
+            offersResult?.meta?.next_cursor ||
+            offersResult?.data?.next_cursor ||
+            null;
+
           console.log(`📄 Next cursor for page ${page}:`, nextCursor);
-          
+
           page++;
-          
+
           // Safety limit
           if (page > maxPages) {
             console.log(`⚠️ Reached maximum pages (${maxPages})`);
             break;
           }
-          
+
           // Small delay between requests
           if (nextCursor) {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, 500));
           }
-          
         } catch (error) {
           console.error(`❌ Error fetching page ${page}:`, error);
           break;
         }
-        
       } while (nextCursor && allOffers.length < 50);
     }
-    
+
     console.log(`✅ Total offers fetched: ${allOffers.length}`);
-    
+
     return {
       success: true,
       offerRequestId,
@@ -1705,70 +1826,80 @@ export async function searchFlightsWithPagination(
       message: searchResult.message,
       isRoundTrip,
     };
-    
   } catch (error: any) {
-    console.error('❌ Flight search with pagination error:', error);
-    
+    console.error("❌ Flight search with pagination error:", error);
+
     if (error instanceof ApiError) {
       throw error;
     }
-    
+
     throw new ApiError(
-      error.message || 'Flight search failed',
+      error.message || "Flight search failed",
       error.status || 500,
-      'FLIGHT_SEARCH_ERROR'
+      "FLIGHT_SEARCH_ERROR",
     );
   }
 }
 
 // Car Rental Search API - Enhanced Implementation
 export const searchCarRentals = async (
-  searchParams: CarRentalSearchParams
+  searchParams: CarRentalSearchParams,
 ): Promise<CarRentalSearchResponse> => {
   try {
-    console.log('🚗 Starting car rental search with params:', searchParams);
-    
+    console.log("🚗 Starting car rental search with params:", searchParams);
+
     const response = await request<CarRentalSearchResponse>(
-      '/api/v1/bookings/search/car-rentals',
+      "/api/v1/bookings/search/car-rentals",
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({
           pickupLocationCode: searchParams.pickupLocationCode,
           pickupDateTime: searchParams.pickupDateTime,
           dropoffLocationCode: searchParams.dropoffLocationCode,
           dropoffDateTime: searchParams.dropoffDateTime,
-          currency: searchParams.currency || 'GBP',
+          currency: searchParams.currency || "GBP",
           passengers: searchParams.passengers || 2,
         }),
-      }
+      },
     );
 
-    console.log('✅ Car rental search response structure:', {
+    console.log("✅ Car rental search response structure:", {
       success: response.success,
       message: response.message,
       hasData: !!response.data?.data,
       carCount: response.data?.data?.length || 0,
       meta: response.data?.meta,
     });
-    
+
     return response;
-    
   } catch (error: any) {
-    console.error('❌ Car rental search failed:', error);
-    
+    console.error("❌ Car rental search failed:", error);
+
     // Provide more specific error messages
-    if (error.message?.includes('location')) {
-      throw new ApiError('Invalid location code. Please check the pickup/dropoff locations.', 400, 'INVALID_LOCATION_CODE');
+    if (error.message?.includes("location")) {
+      throw new ApiError(
+        "Invalid location code. Please check the pickup/dropoff locations.",
+        400,
+        "INVALID_LOCATION_CODE",
+      );
     }
-    
-    if (error.message?.includes('date')) {
-      throw new ApiError('Invalid date format. Please use YYYY-MM-DDTHH:mm:ss format.', 400, 'INVALID_DATE_FORMAT');
+
+    if (error.message?.includes("date")) {
+      throw new ApiError(
+        "Invalid date format. Please use YYYY-MM-DDTHH:mm:ss format.",
+        400,
+        "INVALID_DATE_FORMAT",
+      );
     }
-    
-    if (error.message?.includes('time')) {
-      throw new ApiError('Pickup time must be before dropoff time.', 400, 'INVALID_TIME_RANGE');
+
+    if (error.message?.includes("time")) {
+      throw new ApiError(
+        "Pickup time must be before dropoff time.",
+        400,
+        "INVALID_TIME_RANGE",
+      );
     }
-    
+
     throw error;
   }
 };
@@ -1780,12 +1911,12 @@ export async function searchCarRentalsWithPagination(
     maxPrice?: number;
     vehicleTypes?: string[];
     providers?: string[];
-    sortBy?: 'price' | 'vehicle_category' | 'provider';
-    sortOrder?: 'asc' | 'desc';
+    sortBy?: "price" | "vehicle_category" | "provider";
+    sortOrder?: "asc" | "desc";
     page?: number;
     limit?: number;
   },
-  maxPages: number = 3
+  maxPages: number = 3,
 ): Promise<{
   success: boolean;
   data: CarRentalOffer[];
@@ -1797,8 +1928,8 @@ export async function searchCarRentalsWithPagination(
   meta?: any;
 }> {
   try {
-    console.log('🔍 Starting car rental search with pagination:', params);
-    
+    console.log("🔍 Starting car rental search with pagination:", params);
+
     // Step 1: Initial search
     const response = await searchCarRentals({
       pickupLocationCode: params.pickupLocationCode,
@@ -1808,85 +1939,98 @@ export async function searchCarRentalsWithPagination(
       currency: params.currency,
       passengers: params.passengers,
     });
-    
+
     if (!response.success) {
-      throw new ApiError(response.message || 'Car rental search failed', 400, 'CAR_RENTAL_SEARCH_FAILED');
+      throw new ApiError(
+        response.message || "Car rental search failed",
+        400,
+        "CAR_RENTAL_SEARCH_FAILED",
+      );
     }
-    
+
     let allCars = response.data?.data || [];
-    
+
     console.log(`✅ Initial car rental results: ${allCars.length} cars`);
-    
+
     // Step 2: Apply filters locally
     if (allCars.length > 0) {
       // Filter by price range
       if (params.minPrice !== undefined || params.maxPrice !== undefined) {
-        allCars = allCars.filter(car => {
-          const offerPrice = parseFloat(car.final_price || car.converted?.monetaryAmount || '0');
+        allCars = allCars.filter((car) => {
+          const offerPrice = parseFloat(
+            car.final_price || car.converted?.monetaryAmount || "0",
+          );
           const minPrice = params.minPrice || 0;
           const maxPrice = params.maxPrice || Number.MAX_SAFE_INTEGER;
           return offerPrice >= minPrice && offerPrice <= maxPrice;
         });
       }
-      
+
       // Filter by vehicle types
       if (params.vehicleTypes && params.vehicleTypes.length > 0) {
-        allCars = allCars.filter(car => {
+        allCars = allCars.filter((car) => {
           const vehicleType = car.vehicle.code.toLowerCase();
-          return params.vehicleTypes!.some(type => 
-            vehicleType.includes(type.toLowerCase()) || 
-            car.vehicle.description.toLowerCase().includes(type.toLowerCase())
+          return params.vehicleTypes!.some(
+            (type) =>
+              vehicleType.includes(type.toLowerCase()) ||
+              car.vehicle.description
+                .toLowerCase()
+                .includes(type.toLowerCase()),
           );
         });
       }
-      
+
       // Filter by providers
       if (params.providers && params.providers.length > 0) {
-        allCars = allCars.filter(car => {
+        allCars = allCars.filter((car) => {
           const providerName = car.serviceProvider.name.toLowerCase();
-          return params.providers!.some(provider => 
-            providerName.includes(provider.toLowerCase())
+          return params.providers!.some((provider) =>
+            providerName.includes(provider.toLowerCase()),
           );
         });
       }
-      
+
       // Sort results
       if (params.sortBy) {
         allCars.sort((a, b) => {
           let aValue: any, bValue: any;
-          
+
           switch (params.sortBy) {
-            case 'price':
-              aValue = parseFloat(a.final_price || a.converted?.monetaryAmount || '0');
-              bValue = parseFloat(b.final_price || b.converted?.monetaryAmount || '0');
+            case "price":
+              aValue = parseFloat(
+                a.final_price || a.converted?.monetaryAmount || "0",
+              );
+              bValue = parseFloat(
+                b.final_price || b.converted?.monetaryAmount || "0",
+              );
               break;
-            case 'vehicle_category':
-              aValue = a.vehicle.category || '';
-              bValue = b.vehicle.category || '';
+            case "vehicle_category":
+              aValue = a.vehicle.category || "";
+              bValue = b.vehicle.category || "";
               break;
-            case 'provider':
-              aValue = a.serviceProvider.name || '';
-              bValue = b.serviceProvider.name || '';
+            case "provider":
+              aValue = a.serviceProvider.name || "";
+              bValue = b.serviceProvider.name || "";
               break;
             default:
               return 0;
           }
-          
-          const order = params.sortOrder === 'desc' ? -1 : 1;
-          
+
+          const order = params.sortOrder === "desc" ? -1 : 1;
+
           if (aValue < bValue) return -1 * order;
           if (aValue > bValue) return 1 * order;
           return 0;
         });
       }
-      
+
       // Apply pagination
       const page = params.page || 1;
       const limit = params.limit || 10;
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + limit;
       const paginatedCars = allCars.slice(startIndex, endIndex);
-      
+
       return {
         success: true,
         data: paginatedCars,
@@ -1898,7 +2042,7 @@ export async function searchCarRentalsWithPagination(
         meta: response.data?.meta,
       };
     }
-    
+
     return {
       success: true,
       data: [],
@@ -1908,29 +2052,28 @@ export async function searchCarRentalsWithPagination(
       totalPages: 0,
       hasMore: false,
     };
-    
   } catch (error: any) {
-    console.error('❌ Car rental search with pagination failed:', error);
-    
+    console.error("❌ Car rental search with pagination failed:", error);
+
     if (error instanceof ApiError) {
       throw error;
     }
-    
+
     throw new ApiError(
-      error.message || 'Car rental search failed',
+      error.message || "Car rental search failed",
       error.status || 500,
-      'CAR_RENTAL_SEARCH_ERROR'
+      "CAR_RENTAL_SEARCH_ERROR",
     );
   }
 }
 
-// Update transformCarRentalToSearchResult 
+// Update transformCarRentalToSearchResult
 
 export function transformCarRentalToSearchResult(
-  car: CarRentalOffer | null | undefined, 
+  car: CarRentalOffer | null | undefined,
   pickupLocation: string,
   dropoffLocation: string,
-  index: number
+  index: number,
 ): any {
   if (!car) {
     return {
@@ -1941,7 +2084,8 @@ export function transformCarRentalToSearchResult(
       price: "₦0/day",
       totalPrice: "₦0 total",
       rating: 4.0,
-      image: "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=400",
+      image:
+        "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=400",
       amenities: ["Air Conditioning", "Automatic Transmission", "GPS"],
       features: ["Standard Car", "2 passengers", "Unlimited mileage"],
       type: "car-rentals" as const,
@@ -1950,68 +2094,89 @@ export function transformCarRentalToSearchResult(
         pickupLocation,
         dropoffLocation,
         pickupDateTime: new Date().toISOString(),
-        dropoffDateTime: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        dropoffDateTime: new Date(
+          Date.now() + 3 * 24 * 60 * 60 * 1000,
+        ).toISOString(),
         price: 0,
-        currency: 'GBP',
+        currency: "GBP",
         passengers: 2,
         vehicleType: "Standard Car",
       },
     };
   }
-  
+
   const carInfo = car;
-  
-  const finalPrice = parseFloat(carInfo.final_price || carInfo.converted?.monetaryAmount || '0');
-  const currency = carInfo.currency || carInfo.converted?.currencyCode || 'GBP';
-  
+
+  const finalPrice = parseFloat(
+    carInfo.final_price || carInfo.converted?.monetaryAmount || "0",
+  );
+  const currency = carInfo.currency || carInfo.converted?.currencyCode || "GBP";
+
   const getCurrencySymbol = (curr: string): string => {
     const symbols: Record<string, string> = {
-      'GBP': '£',
-      'USD': '$',
-      'EUR': '€',
-      'NGN': '₦',
+      GBP: "£",
+      USD: "$",
+      EUR: "€",
+      NGN: "₦",
     };
     return symbols[curr.toUpperCase()] || curr;
   };
-  
+
   const priceSymbol = getCurrencySymbol(currency);
-  
-  const pickupDate = carInfo.start?.dateTime ? new Date(carInfo.start.dateTime) : new Date();
-  const dropoffDate = carInfo.end?.dateTime ? new Date(carInfo.end.dateTime) : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-  const days = Math.ceil((dropoffDate.getTime() - pickupDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  const pickupDate = carInfo.start?.dateTime
+    ? new Date(carInfo.start.dateTime)
+    : new Date();
+  const dropoffDate = carInfo.end?.dateTime
+    ? new Date(carInfo.end.dateTime)
+    : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  const days = Math.ceil(
+    (dropoffDate.getTime() - pickupDate.getTime()) / (1000 * 60 * 60 * 24),
+  );
   const pricePerDay = days > 0 ? finalPrice / days : finalPrice;
-  
+
   const vehicleType = carInfo.vehicle?.description || "Car";
   const vehicleCategory = carInfo.vehicle?.category || "Standard";
   const seats = carInfo.vehicle?.seats?.[0]?.count || 4;
   const baggage = carInfo.vehicle?.baggages?.[0]?.count || 2;
-  
-  const amenities = extractCarAmenities(carInfo.vehicle?.category, carInfo.serviceProvider?.name);
-  const rating = calculateCarRentalRating(carInfo.serviceProvider?.name, carInfo.vehicle?.category);
-  
+
+  const amenities = extractCarAmenities(
+    carInfo.vehicle?.category,
+    carInfo.serviceProvider?.name,
+  );
+  const rating = calculateCarRentalRating(
+    carInfo.serviceProvider?.name,
+    carInfo.vehicle?.category,
+  );
+
   const formatDateTime = (dateTime: string | undefined) => {
-    if (!dateTime) return 'N/A';
+    if (!dateTime) return "N/A";
     try {
       const date = new Date(dateTime);
-      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return (
+        date.toLocaleDateString() +
+        " " +
+        date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      );
     } catch {
       return dateTime;
     }
   };
-  
+
   const cancellationRules = carInfo.cancellationRules || [];
-  const isRefundable = cancellationRules.length === 0 || 
-                      !cancellationRules[0]?.feeValue?.includes('100');
-  
-  const pickupCode = carInfo.start?.locationCode || 'Unknown';
-  const dropoffCode = carInfo.end?.locationCode || 'Unknown';
-  
+  const isRefundable =
+    cancellationRules.length === 0 ||
+    !cancellationRules[0]?.feeValue?.includes("100");
+
+  const pickupCode = carInfo.start?.locationCode || "Unknown";
+  const dropoffCode = carInfo.end?.locationCode || "Unknown";
+
   // CRITICAL: Get the image URL from the API response
   const imageUrl = carInfo.vehicle?.imageURL || null;
-  
+
   // Log for debugging (remove in production)
   console.log(`Car ${vehicleType} image URL:`, imageUrl);
-  
+
   return {
     id: carInfo.id || `car-${index}`,
     provider: getCarProviderName(carInfo.serviceProvider?.name),
@@ -2021,27 +2186,37 @@ export function transformCarRentalToSearchResult(
     totalPrice: `${priceSymbol}${Math.round(finalPrice).toLocaleString()} total`,
     rating: parseFloat(rating.toFixed(1)),
     // Set the image to the API URL, fallback to Unsplash if not available
-    image: imageUrl || getCarImage(carInfo.vehicle?.code, carInfo.vehicle?.category, index),
+    image:
+      imageUrl ||
+      getCarImage(carInfo.vehicle?.code, carInfo.vehicle?.category, index),
     // Also pass provider logo separately
-    providerLogo: carInfo.serviceProvider?.logoUrl || carInfo.partnerInfo?.serviceProvider?.logoUrl,
+    providerLogo:
+      carInfo.serviceProvider?.logoUrl ||
+      carInfo.partnerInfo?.serviceProvider?.logoUrl,
     amenities: amenities.slice(0, 6),
     features: [
       `${seats} seats`,
-      `${baggage} baggage${baggage > 1 ? 's' : ''}`,
-      `${days} day${days !== 1 ? 's' : ''} rental`,
+      `${baggage} baggage${baggage > 1 ? "s" : ""}`,
+      `${days} day${days !== 1 ? "s" : ""} rental`,
       `Pickup: ${formatDateTime(carInfo.start?.dateTime)}`,
       vehicleCategory,
     ],
     type: "car-rentals" as const,
-    
+
     // Car-specific fields
     vehicleCode: carInfo.vehicle?.code,
     vehicleCategory: carInfo.vehicle?.category,
     seats: seats,
     baggage: baggage.toString(),
-    transmission: carInfo.vehicle?.code?.includes('AUTO') ? 'Automatic' : 'Manual',
-    distance: carInfo.distance ? `${carInfo.distance.value} ${carInfo.distance.unit}` : undefined,
-    cancellationPolicy: cancellationRules[0]?.ruleDescription || (isRefundable ? 'Free cancellation' : 'Non-refundable'),
+    transmission: carInfo.vehicle?.code?.includes("AUTO")
+      ? "Automatic"
+      : "Manual",
+    distance: carInfo.distance
+      ? `${carInfo.distance.value} ${carInfo.distance.unit}`
+      : undefined,
+    cancellationPolicy:
+      cancellationRules[0]?.ruleDescription ||
+      (isRefundable ? "Free cancellation" : "Non-refundable"),
     isRefundable: isRefundable,
     termsUrl: carInfo.serviceProvider?.termsUrl,
     pickupLocation: pickupCode,
@@ -2052,8 +2227,10 @@ export function transformCarRentalToSearchResult(
     originalPrice: carInfo.original_price,
     originalCurrency: carInfo.original_currency,
     conversionFee: carInfo.conversion_fee,
-    conversionNote: carInfo.conversion_fee_percentage ? `Includes ${carInfo.conversion_fee_percentage}% conversion fee` : undefined,
-    
+    conversionNote: carInfo.conversion_fee_percentage
+      ? `Includes ${carInfo.conversion_fee_percentage}% conversion fee`
+      : undefined,
+
     realData: {
       offerId: carInfo.id,
       pickupLocation: pickupCode,
@@ -2061,7 +2238,7 @@ export function transformCarRentalToSearchResult(
       pickupDateTime: carInfo.start?.dateTime || pickupDate.toISOString(),
       dropoffDateTime: carInfo.end?.dateTime || dropoffDate.toISOString(),
       price: finalPrice,
-      basePrice: parseFloat(carInfo.base_price || '0'),
+      basePrice: parseFloat(carInfo.base_price || "0"),
       currency,
       passengers: seats,
       vehicleType: vehicleType,
@@ -2070,115 +2247,146 @@ export function transformCarRentalToSearchResult(
       baggage: baggage,
       days: days,
       isRefundable: isRefundable,
-      cancellationPolicy: cancellationRules[0]?.ruleDescription || "Standard cancellation policy applies",
+      cancellationPolicy:
+        cancellationRules[0]?.ruleDescription ||
+        "Standard cancellation policy applies",
       providerName: carInfo.serviceProvider?.name,
       providerCode: carInfo.serviceProvider?.code,
-      distance: carInfo.distance ? `${carInfo.distance.value} ${carInfo.distance.unit}` : null,
+      distance: carInfo.distance
+        ? `${carInfo.distance.value} ${carInfo.distance.unit}`
+        : null,
       duration: carInfo.duration,
       finalPrice: finalPrice,
-      markupAmount: parseFloat(carInfo.markup_amount || '0'),
-      serviceFee: parseFloat(carInfo.service_fee || '0'),
+      markupAmount: parseFloat(carInfo.markup_amount || "0"),
+      serviceFee: parseFloat(carInfo.service_fee || "0"),
       // Include vehicle.imageURL in realData for component access
       vehicle: {
-        imageURL: carInfo.vehicle?.imageURL    }
+        imageURL: carInfo.vehicle?.imageURL,
+      },
     },
   };
 }
 
 // Helper function to extract car amenities
-function extractCarAmenities(category?: string, providerName?: string): string[] {
+function extractCarAmenities(
+  category?: string,
+  providerName?: string,
+): string[] {
   const amenities: string[] = [];
-  
+
   // Add category-based amenities
-  if (category?.includes('FC') || category?.includes('Luxury')) {
-    amenities.push('Premium Sound System', 'Leather Seats', 'Climate Control', 'Premium Package');
-  } else if (category?.includes('BU') || category?.includes('Business')) {
-    amenities.push('Business Class', 'WiFi', 'Charging Ports', 'Comfort Package');
+  if (category?.includes("FC") || category?.includes("Luxury")) {
+    amenities.push(
+      "Premium Sound System",
+      "Leather Seats",
+      "Climate Control",
+      "Premium Package",
+    );
+  } else if (category?.includes("BU") || category?.includes("Business")) {
+    amenities.push(
+      "Business Class",
+      "WiFi",
+      "Charging Ports",
+      "Comfort Package",
+    );
   } else {
-    amenities.push('Air Conditioning', 'Radio', 'Basic Package');
+    amenities.push("Air Conditioning", "Radio", "Basic Package");
   }
-  
+
   // Add provider-specific amenities
-  if (providerName?.includes('Sixt')) {
-    amenities.push('24/7 Roadside Assistance', 'Premium Service');
-  } else if (providerName?.includes('GroundSpan') || providerName?.includes('Amadeus')) {
-    amenities.push('Professional Driver', 'Meet & Greet');
+  if (providerName?.includes("Sixt")) {
+    amenities.push("24/7 Roadside Assistance", "Premium Service");
+  } else if (
+    providerName?.includes("GroundSpan") ||
+    providerName?.includes("Amadeus")
+  ) {
+    amenities.push("Professional Driver", "Meet & Greet");
   }
-  
+
   // Add standard amenities
   amenities.push(
-    'Unlimited Mileage',
-    'Full Insurance',
-    '24/7 Customer Support',
-    'Free Cancellation',
-    'Child Seats Available'
+    "Unlimited Mileage",
+    "Full Insurance",
+    "24/7 Customer Support",
+    "Free Cancellation",
+    "Child Seats Available",
   );
-  
+
   return Array.from(new Set(amenities)); // Remove duplicates
 }
 
 // Helper function to calculate car rental rating
-function calculateCarRentalRating(providerName?: string, category?: string): number {
+function calculateCarRentalRating(
+  providerName?: string,
+  category?: string,
+): number {
   let baseRating = 4.0;
-  
+
   // Adjust based on provider
-  if (providerName?.includes('Sixt')) {
+  if (providerName?.includes("Sixt")) {
     baseRating = 4.5;
-  } else if (providerName?.includes('GroundSpan') || providerName?.includes('Amadeus')) {
+  } else if (
+    providerName?.includes("GroundSpan") ||
+    providerName?.includes("Amadeus")
+  ) {
     baseRating = 4.3;
   }
-  
+
   // Adjust based on category
-  if (category?.includes('FC') || category?.includes('Luxury')) {
+  if (category?.includes("FC") || category?.includes("Luxury")) {
     baseRating += 0.3;
-  } else if (category?.includes('BU') || category?.includes('Business')) {
+  } else if (category?.includes("BU") || category?.includes("Business")) {
     baseRating += 0.2;
   }
-  
+
   // Add some random variation
-  const variation = (Math.random() * 0.4) - 0.2; // -0.2 to +0.2
+  const variation = Math.random() * 0.4 - 0.2; // -0.2 to +0.2
   const finalRating = Math.min(5.0, Math.max(3.0, baseRating + variation));
-  
+
   return parseFloat(finalRating.toFixed(1));
 }
 
 // Helper function to get car provider name
 function getCarProviderName(providerName?: string): string {
-  if (!providerName) return 'Premium Car Rental';
-  
-  if (providerName.includes('Sixt')) {
-    return 'Sixt Ride';
-  } else if (providerName.includes('GroundSpan')) {
-    return 'GroundSpan';
-  } else if (providerName.includes('Amadeus')) {
-    return 'Amadeus Cars';
+  if (!providerName) return "Premium Car Rental";
+
+  if (providerName.includes("Sixt")) {
+    return "Sixt Ride";
+  } else if (providerName.includes("GroundSpan")) {
+    return "GroundSpan";
+  } else if (providerName.includes("Amadeus")) {
+    return "Amadeus Cars";
   }
-  
+
   return providerName;
 }
 
 // Helper function to get car image
-function getCarImage(vehicleCode?: string, category?: string, index: number = 0): string {
+function getCarImage(
+  vehicleCode?: string,
+  category?: string,
+  index: number = 0,
+): string {
   const carImages = [
-    'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=400', // Sedan
-    'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&q=80&w=400', // SUV
-    'https://images.unsplash.com/photo-1511919884226-fd3cad34687c?auto=format&fit=crop&q=80&w=400', // Luxury
-    'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=400', // Van
-    'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=400', // Convertible
-    'https://images.unsplash.com/photo-1563720223486-3294265d5a7c?auto=format&fit=crop&q=80&w=400', // Electric
+    "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=400", // Sedan
+    "https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&q=80&w=400", // SUV
+    "https://images.unsplash.com/photo-1511919884226-fd3cad34687c?auto=format&fit=crop&q=80&w=400", // Luxury
+    "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=400", // Van
+    "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=400", // Convertible
+    "https://images.unsplash.com/photo-1563720223486-3294265d5a7c?auto=format&fit=crop&q=80&w=400", // Electric
   ];
-  
+
   // Map vehicle codes to images
-  if (vehicleCode?.includes('CAR') && category?.includes('FC')) {
+  if (vehicleCode?.includes("CAR") && category?.includes("FC")) {
     return carImages[2]; // Luxury car
-  } else if (vehicleCode?.includes('SUV')) {
+  } else if (vehicleCode?.includes("SUV")) {
     return carImages[1]; // SUV
-  } else if (vehicleCode?.includes('VAN')) {
+  } else if (vehicleCode?.includes("VAN")) {
     return carImages[3]; // Van
-  } else if (category?.includes('BU')) {
+  } else if (category?.includes("BU")) {
     return carImages[5]; // Business/Electric
   }
-  
+
   return carImages[index % carImages.length]; // Default to sedan
 }
 
@@ -2190,25 +2398,30 @@ export async function formatCarRentalSearchParams(
   dropoffDate?: string,
   pickupTime?: string,
   dropoffTime?: string,
-  passengers?: number
+  passengers?: number,
 ): Promise<CarRentalSearchParams> {
   // Get location codes
   const pickupCode = getCityCode(pickupLocation);
   const dropoffCode = getCityCode(dropoffLocation);
-  
-  console.log('📍 Location codes:', { pickupLocation, dropoffLocation, pickupCode, dropoffCode });
-  
+
+  console.log("📍 Location codes:", {
+    pickupLocation,
+    dropoffLocation,
+    pickupCode,
+    dropoffCode,
+  });
+
   // Create proper Date objects
   const today = new Date();
-  
+
   let pickupDateTime: Date;
   let dropoffDateTime: Date;
-  
+
   if (pickupDate) {
     // If pickupDate is provided (format: YYYY-MM-DD)
     pickupDateTime = new Date(pickupDate);
     if (pickupTime) {
-      const [hours, minutes] = pickupTime.split(':').map(Number);
+      const [hours, minutes] = pickupTime.split(":").map(Number);
       pickupDateTime.setHours(hours || 10, minutes || 0, 0, 0);
     } else {
       pickupDateTime.setHours(10, 0, 0, 0);
@@ -2219,12 +2432,12 @@ export async function formatCarRentalSearchParams(
     pickupDateTime.setDate(today.getDate() + 1);
     pickupDateTime.setHours(10, 0, 0, 0);
   }
-  
+
   if (dropoffDate) {
     // If dropoffDate is provided (format: YYYY-MM-DD)
     dropoffDateTime = new Date(dropoffDate);
     if (dropoffTime) {
-      const [hours, minutes] = dropoffTime.split(':').map(Number);
+      const [hours, minutes] = dropoffTime.split(":").map(Number);
       dropoffDateTime.setHours(hours || 10, minutes || 0, 0, 0);
     } else {
       dropoffDateTime.setHours(10, 0, 0, 0);
@@ -2234,27 +2447,27 @@ export async function formatCarRentalSearchParams(
     dropoffDateTime = new Date(pickupDateTime);
     dropoffDateTime.setDate(pickupDateTime.getDate() + 3);
   }
-  
+
   // Ensure dropoff is after pickup
   if (dropoffDateTime <= pickupDateTime) {
     dropoffDateTime = new Date(pickupDateTime);
     dropoffDateTime.setDate(pickupDateTime.getDate() + 1);
     dropoffDateTime.setHours(10, 0, 0, 0);
   }
-  
+
   // Format as ISO strings
   const pickupDateTimeStr = pickupDateTime.toISOString();
   const dropoffDateTimeStr = dropoffDateTime.toISOString();
-  
-  console.log('📅 Formatted dates:', { pickupDateTimeStr, dropoffDateTimeStr });
-  
+
+  console.log("📅 Formatted dates:", { pickupDateTimeStr, dropoffDateTimeStr });
+
   // Return ALL required fields
   return {
     pickupLocationCode: pickupCode,
     pickupDateTime: pickupDateTimeStr,
-    dropoffLocationCode: dropoffCode,  // ✅ This was missing!
+    dropoffLocationCode: dropoffCode, // ✅ This was missing!
     dropoffDateTime: dropoffDateTimeStr,
-    currency: 'GBP',
+    currency: "GBP",
     passengers: Math.max(1, passengers || 2),
   };
 }
@@ -2262,7 +2475,7 @@ export async function formatCarRentalSearchParams(
 export async function searchAndTransformCarRentals(
   searchParams: CarRentalSearchParams,
   pickupLocation: string,
-  dropoffLocation: string
+  dropoffLocation: string,
 ): Promise<{
   success: boolean;
   results: any[];
@@ -2271,26 +2484,31 @@ export async function searchAndTransformCarRentals(
   isRealData: boolean;
 }> {
   try {
-    console.log('🔍 Searching and transforming car rentals...');
-    
+    console.log("🔍 Searching and transforming car rentals...");
+
     const response = await searchCarRentals(searchParams);
-    
+
     // Handle case where API returns success but no data
     if (!response.data?.data || response.data.data.length === 0) {
       return {
         success: false,
         results: [],
-        message: 'No car rentals found for your search criteria',
+        message: "No car rentals found for your search criteria",
         total: 0,
         isRealData: false,
       };
     }
-    
+
     const cars = response.data.data;
     const transformedResults = cars.map((car, index) =>
-      transformCarRentalToSearchResult(car, pickupLocation, dropoffLocation, index)
+      transformCarRentalToSearchResult(
+        car,
+        pickupLocation,
+        dropoffLocation,
+        index,
+      ),
     );
-    
+
     return {
       success: true,
       results: transformedResults,
@@ -2298,27 +2516,29 @@ export async function searchAndTransformCarRentals(
       total: cars.length,
       isRealData: true,
     };
-    
   } catch (error: any) {
-    console.error('❌ Search and transform car rentals failed:', error);
-    
+    console.error("❌ Search and transform car rentals failed:", error);
+
     // Special handling for "no cars found" error
-    if (error.message?.includes('Nothing found') || 
-        error.message?.includes('No car rentals found') ||
-        error.status === 404) {
+    if (
+      error.message?.includes("Nothing found") ||
+      error.message?.includes("No car rentals found") ||
+      error.status === 404
+    ) {
       return {
         success: false,
         results: [],
-        message: 'No car rentals found for your search criteria. Please try different dates or locations.',
+        message:
+          "No car rentals found for your search criteria. Please try different dates or locations.",
         total: 0,
         isRealData: false,
       };
     }
-    
+
     return {
       success: false,
       results: [],
-      message: error.message || 'Failed to search car rentals',
+      message: error.message || "Failed to search car rentals",
       total: 0,
       isRealData: false,
     };
@@ -2326,58 +2546,69 @@ export async function searchAndTransformCarRentals(
 }
 
 // Validate car rental booking data
-export function validateCarRentalBookingData(bookingData: CarRentalBookingRequest): {
+export function validateCarRentalBookingData(
+  bookingData: CarRentalBookingRequest,
+): {
   isValid: boolean;
   errors: string[];
 } {
   const errors: string[] = [];
 
   // Validate offerId
-  if (!bookingData.offerId || bookingData.offerId.trim() === '') {
-    errors.push('Offer ID is required');
+  if (!bookingData.offerId || bookingData.offerId.trim() === "") {
+    errors.push("Offer ID is required");
   }
 
   // Validate pickup location
-  if (!bookingData.pickupLocationCode || bookingData.pickupLocationCode.trim() === '') {
-    errors.push('Pickup location code is required');
+  if (
+    !bookingData.pickupLocationCode ||
+    bookingData.pickupLocationCode.trim() === ""
+  ) {
+    errors.push("Pickup location code is required");
   }
 
   // Validate pickup date/time
-  if (!bookingData.pickupDateTime || bookingData.pickupDateTime.trim() === '') {
-    errors.push('Pickup date and time are required');
+  if (!bookingData.pickupDateTime || bookingData.pickupDateTime.trim() === "") {
+    errors.push("Pickup date and time are required");
   } else if (!isValidDateTime(bookingData.pickupDateTime)) {
-    errors.push('Pickup date must be in YYYY-MM-DDTHH:mm:ss format');
+    errors.push("Pickup date must be in YYYY-MM-DDTHH:mm:ss format");
   }
 
   // Validate dropoff location
-  if (!bookingData.dropoffLocationCode || bookingData.dropoffLocationCode.trim() === '') {
-    errors.push('Dropoff location code is required');
+  if (
+    !bookingData.dropoffLocationCode ||
+    bookingData.dropoffLocationCode.trim() === ""
+  ) {
+    errors.push("Dropoff location code is required");
   }
 
   // Validate dropoff date/time
-  if (!bookingData.dropoffDateTime || bookingData.dropoffDateTime.trim() === '') {
-    errors.push('Dropoff date and time are required');
+  if (
+    !bookingData.dropoffDateTime ||
+    bookingData.dropoffDateTime.trim() === ""
+  ) {
+    errors.push("Dropoff date and time are required");
   } else if (!isValidDateTime(bookingData.dropoffDateTime)) {
-    errors.push('Dropoff date must be in YYYY-MM-DDTHH:mm:ss format');
+    errors.push("Dropoff date must be in YYYY-MM-DDTHH:mm:ss format");
   }
 
   // Validate passenger info
   if (!bookingData.passengerInfo) {
-    errors.push('Passenger information is required');
+    errors.push("Passenger information is required");
   } else {
     const { firstName, lastName, email, phone } = bookingData.passengerInfo;
-    
-    if (!firstName || firstName.trim() === '') {
-      errors.push('First name is required');
+
+    if (!firstName || firstName.trim() === "") {
+      errors.push("First name is required");
     }
-    if (!lastName || lastName.trim() === '') {
-      errors.push('Last name is required');
+    if (!lastName || lastName.trim() === "") {
+      errors.push("Last name is required");
     }
     if (!email || !isValidEmail(email)) {
-      errors.push('Valid email is required');
+      errors.push("Valid email is required");
     }
-    if (!phone || phone.trim() === '') {
-      errors.push('Phone number is required');
+    if (!phone || phone.trim() === "") {
+      errors.push("Phone number is required");
     }
   }
 
@@ -2389,8 +2620,9 @@ export function validateCarRentalBookingData(bookingData: CarRentalBookingReques
 
 // Helper function to validate date-time format
 function isValidDateTime(dateTime: string): boolean {
-  if (!dateTime || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(dateTime)) return false;
-  
+  if (!dateTime || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(dateTime))
+    return false;
+
   try {
     const date = new Date(dateTime);
     return !isNaN(date.getTime());
@@ -2401,27 +2633,27 @@ function isValidDateTime(dateTime: string): boolean {
 
 // Create car rental booking - FIXED VERSION
 export const createCarRentalBooking = async (
-  bookingData: CarRentalBookingRequest
+  bookingData: CarRentalBookingRequest,
 ): Promise<CarRentalBookingResponse> => {
   try {
-    console.log('🚗 Creating car rental booking...');
-    
+    console.log("🚗 Creating car rental booking...");
+
     // Validate booking data
     const validation = validateCarRentalBookingData(bookingData);
     if (!validation.isValid) {
       throw new ApiError(
-        `Booking validation failed: ${validation.errors.join(', ')}`,
+        `Booking validation failed: ${validation.errors.join(", ")}`,
         400,
-        'BOOKING_VALIDATION_FAILED'
+        "BOOKING_VALIDATION_FAILED",
       );
     }
-    
+
     // Create properly formatted request payload according to backend expectations
     // The backend expects a generic booking structure, not car-specific fields
     const requestPayload = {
-      productType: 'CAR_RENTAL',
-      provider: 'AMADEUS', // Must be one of: DUFFEL, TRIPS_AFRICA, BOOKING_COM, AMADEUS
-      
+      productType: "CAR_RENTAL",
+      provider: "AMADEUS", // Must be one of: DUFFEL, TRIPS_AFRICA, BOOKING_COM, AMADEUS
+
       // Use car data from the offer (not from bookingData)
       bookingData: {
         offerId: bookingData.offerId,
@@ -2432,132 +2664,140 @@ export const createCarRentalBooking = async (
         specialRequests: bookingData.specialRequests,
         flightNumber: bookingData.flightNumber,
       },
-      
+
       // Base price should come from the offer lookup, not bookingData
       basePrice: 0, // This should be populated from the offer
-      currency: 'GBP', // Default currency
-      
+      currency: "GBP", // Default currency
+
       // Passenger info in correct format
       passengerInfo: {
         firstName: bookingData.passengerInfo.firstName,
         lastName: bookingData.passengerInfo.lastName,
         email: bookingData.passengerInfo.email,
         phone: bookingData.passengerInfo.phone,
-      }
+      },
     };
-    
-    console.log('📤 Sending car rental booking request:', JSON.stringify(requestPayload, null, 2));
-    
-    // Use the generic booking endpoint, not car-specific endpoint
-    const response = await request<CarRentalBookingResponse>(
-      '/api/v1/bookings', // Generic bookings endpoint
-      {
-        method: 'POST',
-        body: JSON.stringify(requestPayload),
-      }
+
+    console.log(
+      "📤 Sending car rental booking request:",
+      JSON.stringify(requestPayload, null, 2),
     );
 
-    console.log('✅ Car rental booking response:', {
+    // Use the generic booking endpoint, not car-specific endpoint
+    const response = await request<CarRentalBookingResponse>(
+      "/api/v1/bookings", // Generic bookings endpoint
+      {
+        method: "POST",
+        body: JSON.stringify(requestPayload),
+      },
+    );
+
+    console.log("✅ Car rental booking response:", {
       success: response.success,
       message: response.message,
       bookingId: response.data?.bookingId,
     });
-    
+
     return response;
-    
   } catch (error: any) {
-    console.error('❌ Car rental booking failed:', error);
-    
+    console.error("❌ Car rental booking failed:", error);
+
     if (error instanceof ApiError) {
       throw error;
     }
-    
+
     throw new ApiError(
-      error.message || 'Failed to create car rental booking',
+      error.message || "Failed to create car rental booking",
       error.status || 500,
-      'CAR_RENTAL_BOOKING_ERROR'
+      "CAR_RENTAL_BOOKING_ERROR",
     );
   }
 };
 
 // Cancel car rental booking
 export const cancelCarRentalBooking = async (
-  bookingId: string
+  bookingId: string,
 ): Promise<CarRentalCancellationResponse> => {
   try {
     console.log(`🚗 Cancelling car rental booking: ${bookingId}`);
-    
+
     const response = await request<CarRentalCancellationResponse>(
       `/api/v1/bookings/car-rentals/bookings/${bookingId}/cancel`,
       {
-        method: 'POST',
-      }
+        method: "POST",
+      },
     );
 
-    console.log('✅ Car rental cancellation response:', {
+    console.log("✅ Car rental cancellation response:", {
       success: response.success,
       message: response.message,
       status: response.data?.status,
     });
-    
+
     return response;
-    
   } catch (error: any) {
-    console.error('❌ Car rental cancellation failed:', error);
-    
+    console.error("❌ Car rental cancellation failed:", error);
+
     if (error instanceof ApiError) {
       throw error;
     }
-    
+
     // Provide more specific error messages
-    if (error.message?.includes('not found')) {
-      throw new ApiError('Booking not found. Please check the booking ID.', 404, 'BOOKING_NOT_FOUND');
+    if (error.message?.includes("not found")) {
+      throw new ApiError(
+        "Booking not found. Please check the booking ID.",
+        404,
+        "BOOKING_NOT_FOUND",
+      );
     }
-    
-    if (error.message?.includes('cannot be cancelled')) {
-      throw new ApiError('This booking cannot be cancelled. Please check the cancellation policy.', 400, 'CANCELLATION_NOT_ALLOWED');
+
+    if (error.message?.includes("cannot be cancelled")) {
+      throw new ApiError(
+        "This booking cannot be cancelled. Please check the cancellation policy.",
+        400,
+        "CANCELLATION_NOT_ALLOWED",
+      );
     }
-    
+
     throw new ApiError(
-      error.message || 'Failed to cancel car rental booking',
+      error.message || "Failed to cancel car rental booking",
       error.status || 500,
-      'CAR_RENTAL_CANCELLATION_ERROR'
+      "CAR_RENTAL_CANCELLATION_ERROR",
     );
   }
 };
 
 // Get car rental booking details
 export const getCarRentalBooking = async (
-  bookingId: string
+  bookingId: string,
 ): Promise<CarRentalBookingResponse> => {
   try {
     console.log(`🚗 Fetching car rental booking: ${bookingId}`);
-    
+
     const response = await request<CarRentalBookingResponse>(
       `/api/v1/bookings/car-rentals/bookings/${bookingId}`,
       {
-        method: 'GET',
-      }
+        method: "GET",
+      },
     );
 
-    console.log('✅ Car rental booking details:', {
+    console.log("✅ Car rental booking details:", {
       success: response.success,
       status: response.data?.status,
     });
-    
+
     return response;
-    
   } catch (error: any) {
-    console.error('❌ Failed to fetch car rental booking:', error);
-    
+    console.error("❌ Failed to fetch car rental booking:", error);
+
     if (error instanceof ApiError) {
       throw error;
     }
-    
+
     throw new ApiError(
-      error.message || 'Failed to fetch car rental booking',
+      error.message || "Failed to fetch car rental booking",
       error.status || 500,
-      'CAR_RENTAL_BOOKING_FETCH_ERROR'
+      "CAR_RENTAL_BOOKING_FETCH_ERROR",
     );
   }
 };
@@ -2573,18 +2813,18 @@ export async function createCompleteCarRentalBooking(
     phone: string;
   },
   specialRequests?: string,
-  flightNumber?: string
+  flightNumber?: string,
 ): Promise<CarRentalBookingResponse> {
   try {
-    console.log('🚗 Creating complete car rental booking...');
-    
+    console.log("🚗 Creating complete car rental booking...");
+
     // Validate car data
     if (!carData || !carData.realData) {
-      throw new ApiError('Invalid car data', 400, 'INVALID_CAR_DATA');
+      throw new ApiError("Invalid car data", 400, "INVALID_CAR_DATA");
     }
-    
+
     const realData = carData.realData;
-    
+
     // Prepare booking data with correct field structure
     const bookingData: CarRentalBookingRequest = {
       offerId: offerId,
@@ -2602,32 +2842,31 @@ export async function createCompleteCarRentalBooking(
       specialRequests: specialRequests,
       flightNumber: flightNumber,
     };
-    
+
     // Create booking using the fixed function
     const response = await createCarRentalBooking(bookingData);
-    
+
     if (!response.success) {
       throw new ApiError(
-        response.message || 'Car rental booking failed',
+        response.message || "Car rental booking failed",
         response.status || 500,
-        'CAR_RENTAL_BOOKING_FAILED'
+        "CAR_RENTAL_BOOKING_FAILED",
       );
     }
-    
-    console.log('✅ Car rental booking created successfully:', response);
+
+    console.log("✅ Car rental booking created successfully:", response);
     return response;
-    
   } catch (error: any) {
-    console.error('❌ Complete car rental booking failed:', error);
-    
+    console.error("❌ Complete car rental booking failed:", error);
+
     if (error instanceof ApiError) {
       throw error;
     }
-    
+
     throw new ApiError(
-      error.message || 'Failed to create car rental booking',
+      error.message || "Failed to create car rental booking",
       error.status || 500,
-      'CAR_RENTAL_BOOKING_ERROR'
+      "CAR_RENTAL_BOOKING_ERROR",
     );
   }
 }
@@ -2637,35 +2876,38 @@ export async function createCompleteCarRentalBooking(
 export const trackPaymentStatus = async (
   paymentIntentId: string,
   interval: number = 2000,
-  maxAttempts: number = 30
+  maxAttempts: number = 30,
 ): Promise<{
   status: string;
   succeeded: boolean;
   error?: string;
 }> => {
   let attempts = 0;
-  
+
   return new Promise((resolve, reject) => {
     const checkStatus = async () => {
       attempts++;
-      
+
       try {
         const status = await paymentApi.getPaymentStatus(paymentIntentId);
-        
-        if (status.succeeded || status.status === 'succeeded') {
-          resolve({ status: 'succeeded', succeeded: true });
-        } else if (status.status === 'requires_action' || status.status === 'requires_payment_method') {
+
+        if (status.succeeded || status.status === "succeeded") {
+          resolve({ status: "succeeded", succeeded: true });
+        } else if (
+          status.status === "requires_action" ||
+          status.status === "requires_payment_method"
+        ) {
           // Payment needs additional action
-          resolve({ 
-            status: status.status, 
+          resolve({
+            status: status.status,
             succeeded: false,
-            error: status.error?.message 
+            error: status.error?.message,
           });
         } else if (attempts >= maxAttempts) {
-          resolve({ 
-            status: 'timeout', 
+          resolve({
+            status: "timeout",
             succeeded: false,
-            error: 'Payment verification timed out' 
+            error: "Payment verification timed out",
           });
         } else {
           // Check again after interval
@@ -2673,20 +2915,20 @@ export const trackPaymentStatus = async (
         }
       } catch (error) {
         if (attempts >= maxAttempts) {
-          reject(new Error('Payment verification failed'));
+          reject(new Error("Payment verification failed"));
         } else {
           setTimeout(checkStatus, interval);
         }
       }
     };
-    
+
     checkStatus();
   });
 };
 
 // Unified payment processing for all booking types
 export const processBookingPayment = async (
-  bookingType: 'flights' | 'hotels' | 'car-rentals',
+  bookingType: "flights" | "hotels" | "car-rentals",
   bookingData: any,
   userInfo: {
     firstName: string;
@@ -2695,7 +2937,7 @@ export const processBookingPayment = async (
     phone: string;
     [key: string]: any;
   },
-  isAuthenticated: boolean = false
+  isAuthenticated: boolean = false,
 ): Promise<{
   success: boolean;
   paymentIntent?: any;
@@ -2704,55 +2946,57 @@ export const processBookingPayment = async (
 }> => {
   try {
     console.log(`💳 Processing payment for ${bookingType}...`);
-    
+
     // Generate a unique booking reference
     const bookingReference = `BOOK-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // Get price from booking data
     const realData = bookingData.realData || bookingData;
     const amount = realData.price || realData.totalPrice || 0;
-    const currency = realData.currency || 'GBP';
-    
+    const currency = realData.currency || "GBP";
+
     // Create payment intent based on authentication status
     let paymentIntent;
-    
+
     if (isAuthenticated) {
       // Authenticated user — server calculates amount from booking
       paymentIntent = await paymentApi.createStripeIntent(bookingReference);
     } else {
       // Guest user
-      paymentIntent = await paymentApi.createGuestStripeIntent(bookingReference, userInfo.email);
+      paymentIntent = await paymentApi.createGuestStripeIntent(
+        bookingReference,
+        userInfo.email,
+      );
     }
-    
+
     if (!paymentIntent?.clientSecret) {
       return {
         success: false,
-        error: 'Failed to initialize payment. Please try again.',
+        error: "Failed to initialize payment. Please try again.",
       };
     }
-    
+
     return {
       success: true,
       paymentIntent,
       clientSecret: paymentIntent.clientSecret,
     };
-    
   } catch (error: any) {
-    console.error('❌ Payment processing failed:', error);
+    console.error("❌ Payment processing failed:", error);
     return {
       success: false,
-      error: error.message || 'Payment processing failed',
+      error: error.message || "Payment processing failed",
     };
   }
 };
 
 // Create booking after successful payment
 export const createBookingAfterPayment = async (
-  bookingType: 'flights' | 'hotels' | 'car-rentals',
+  bookingType: "flights" | "hotels" | "car-rentals",
   selectedResult: any,
   userInfo: any,
   paymentIntentId: string,
-  specialRequests?: string
+  specialRequests?: string,
 ): Promise<{
   success: boolean;
   bookingId?: string;
@@ -2761,21 +3005,34 @@ export const createBookingAfterPayment = async (
 }> => {
   try {
     console.log(`📝 Creating ${bookingType} booking after payment...`);
-    
+
     switch (bookingType) {
-      case 'flights':
-        return await createFlightBookingAfterPayment(selectedResult, userInfo, paymentIntentId);
-      
-      case 'hotels':
-        return await createHotelBookingAfterPayment(selectedResult, userInfo, paymentIntentId, specialRequests);
-      
-      case 'car-rentals':
-        return await createCarRentalBookingAfterPayment(selectedResult, userInfo, paymentIntentId, specialRequests);
-      
+      case "flights":
+        return await createFlightBookingAfterPayment(
+          selectedResult,
+          userInfo,
+          paymentIntentId,
+        );
+
+      case "hotels":
+        return await createHotelBookingAfterPayment(
+          selectedResult,
+          userInfo,
+          paymentIntentId,
+          specialRequests,
+        );
+
+      case "car-rentals":
+        return await createCarRentalBookingAfterPayment(
+          selectedResult,
+          userInfo,
+          paymentIntentId,
+          specialRequests,
+        );
+
       default:
         throw new ApiError(`Unsupported booking type: ${bookingType}`, 400);
     }
-    
   } catch (error: any) {
     console.error(`❌ ${bookingType} booking creation failed:`, error);
     return {
@@ -2789,15 +3046,15 @@ export const createBookingAfterPayment = async (
 async function createFlightBookingAfterPayment(
   flightData: any,
   userInfo: any,
-  paymentIntentId: string
+  paymentIntentId: string,
 ) {
   const realData = flightData.realData || flightData;
-  
+
   const bookingPayload = {
-    productType: 'FLIGHT',
-    provider: realData.airlineCode ? 'DUFFEL' : 'TRIPS_AFRICA',
+    productType: "FLIGHT",
+    provider: realData.airlineCode ? "DUFFEL" : "TRIPS_AFRICA",
     basePrice: realData.price || 0,
-    currency: realData.currency || 'GBP',
+    currency: realData.currency || "GBP",
     bookingData: {
       offerId: realData.offerId,
       origin: realData.departureAirport,
@@ -2818,7 +3075,7 @@ async function createFlightBookingAfterPayment(
     },
     paymentIntentId, // Link to the successful payment
   };
-  
+
   const response = await bookingApi.createBooking(bookingPayload);
   return {
     success: response.success || false,
@@ -2832,15 +3089,15 @@ async function createHotelBookingAfterPayment(
   hotelData: any,
   userInfo: any,
   paymentIntentId: string,
-  specialRequests?: string
+  specialRequests?: string,
 ) {
   const realData = hotelData.realData || hotelData;
-  
+
   const bookingPayload = {
-    productType: 'HOTEL',
-    provider: 'AMADEUS', // or 'BOOKING_COM'
+    productType: "HOTEL",
+    provider: "AMADEUS", // or 'BOOKING_COM'
     basePrice: realData.price || 0,
-    currency: realData.currency || 'GBP',
+    currency: realData.currency || "GBP",
     bookingData: {
       hotelId: realData.hotelId,
       offerId: realData.offerId,
@@ -2861,7 +3118,7 @@ async function createHotelBookingAfterPayment(
     },
     paymentIntentId,
   };
-  
+
   const response = await bookingApi.createBooking(bookingPayload);
   return {
     success: response.success || false,
@@ -2875,15 +3132,15 @@ async function createCarRentalBookingAfterPayment(
   carData: any,
   userInfo: any,
   paymentIntentId: string,
-  specialRequests?: string
+  specialRequests?: string,
 ) {
   const realData = carData.realData || carData;
-  
+
   const bookingPayload = {
-    productType: 'CAR_RENTAL',
-    provider: 'AMADEUS', // Must match backend expected values
+    productType: "CAR_RENTAL",
+    provider: "AMADEUS", // Must match backend expected values
     basePrice: realData.price || 0,
-    currency: realData.currency || 'GBP',
+    currency: realData.currency || "GBP",
     bookingData: {
       offerId: realData.offerId,
       pickupLocationCode: realData.pickupLocation,
@@ -2904,9 +3161,12 @@ async function createCarRentalBookingAfterPayment(
     },
     paymentIntentId,
   };
-  
-  console.log('📤 Car rental booking payload (after payment):', JSON.stringify(bookingPayload, null, 2));
-  
+
+  console.log(
+    "📤 Car rental booking payload (after payment):",
+    JSON.stringify(bookingPayload, null, 2),
+  );
+
   const response = await bookingApi.createBooking(bookingPayload);
   return {
     success: response.success || false,
@@ -2917,7 +3177,7 @@ async function createCarRentalBookingAfterPayment(
 
 // Complete booking function with integrated payment
 export const completeBookingWithPayment = async (
-  bookingType: 'flights' | 'hotels' | 'car-rentals',
+  bookingType: "flights" | "hotels" | "car-rentals",
   selectedResult: any,
   userInfo: {
     firstName: string;
@@ -2929,7 +3189,7 @@ export const completeBookingWithPayment = async (
   stripe: any,
   elements: any,
   isAuthenticated: boolean = false,
-  specialRequests?: string
+  specialRequests?: string,
 ): Promise<{
   success: boolean;
   bookingId?: string;
@@ -2939,22 +3199,22 @@ export const completeBookingWithPayment = async (
 }> => {
   try {
     console.log(`🎯 Starting complete booking process for ${bookingType}...`);
-    
+
     // Step 1: Process payment
-    console.log('💳 Step 1: Processing payment...');
+    console.log("💳 Step 1: Processing payment...");
     const paymentResult = await processBookingPayment(
       bookingType,
       selectedResult,
       userInfo,
-      isAuthenticated
+      isAuthenticated,
     );
-    
+
     if (!paymentResult.success || !paymentResult.clientSecret) {
-      throw new Error(paymentResult.error || 'Payment initialization failed');
+      throw new Error(paymentResult.error || "Payment initialization failed");
     }
-    
+
     // Step 2: Confirm payment with Stripe
-    console.log('💳 Step 2: Confirming payment with Stripe...');
+    console.log("💳 Step 2: Confirming payment with Stripe...");
     const stripeResult = await stripe.confirmPayment({
       elements,
       clientSecret: paymentResult.clientSecret,
@@ -2968,72 +3228,85 @@ export const completeBookingWithPayment = async (
           },
         },
       },
-      redirect: 'if_required',
+      redirect: "if_required",
     });
-    
+
     if (stripeResult.error) {
       throw new Error(stripeResult.error.message);
     }
-    
+
     // Step 3: Verify payment succeeded
-    console.log('✅ Step 3: Verifying payment succeeded...');
-    const paymentStatus = await trackPaymentStatus(stripeResult.paymentIntent.id);
-    
+    console.log("✅ Step 3: Verifying payment succeeded...");
+    const paymentStatus = await trackPaymentStatus(
+      stripeResult.paymentIntent.id,
+    );
+
     if (!paymentStatus.succeeded) {
-      throw new Error(paymentStatus.error || 'Payment verification failed');
+      throw new Error(paymentStatus.error || "Payment verification failed");
     }
-    
+
     // Step 4: Create booking after successful payment
-    console.log('📝 Step 4: Creating booking...');
+    console.log("📝 Step 4: Creating booking...");
     const bookingResult = await createBookingAfterPayment(
       bookingType,
       selectedResult,
       userInfo,
       stripeResult.paymentIntent.id,
-      specialRequests
+      specialRequests,
     );
-    
+
     if (!bookingResult.success) {
       // If booking fails, try to refund the payment
       try {
         await paymentApi.refundPayment(stripeResult.paymentIntent.id);
       } catch (refundError) {
-        console.error('Failed to refund payment after booking error:', refundError);
+        console.error(
+          "Failed to refund payment after booking error:",
+          refundError,
+        );
       }
-      throw new Error(bookingResult.error || 'Booking creation failed');
+      throw new Error(bookingResult.error || "Booking creation failed");
     }
-    
+
     // Step 5: Send confirmation email
-    console.log('📧 Step 5: Sending confirmation email...');
+    console.log("📧 Step 5: Sending confirmation email...");
     try {
-      await paymentApi.sendConfirmation(bookingResult.bookingId!, userInfo.email);
+      await paymentApi.sendConfirmation(
+        bookingResult.bookingId!,
+        userInfo.email,
+      );
     } catch (emailError) {
-      console.warn('Email sending failed, but booking was created:', emailError);
+      console.warn(
+        "Email sending failed, but booking was created:",
+        emailError,
+      );
     }
-    
+
     return {
       success: true,
       bookingId: bookingResult.bookingId,
       message: bookingResult.message || `${bookingType} booked successfully!`,
       paymentIntentId: stripeResult.paymentIntent.id,
     };
-    
   } catch (error: any) {
-    console.error('❌ Complete booking process failed:', error);
-    
+    console.error("❌ Complete booking process failed:", error);
+
     // Provide user-friendly error messages
-    let errorMessage = error.message || 'Booking failed. Please try again.';
-    
-    if (error.message.includes('payment')) {
-      errorMessage = 'Payment failed. Please check your payment details and try again.';
-    } else if (error.message.includes('unavailable')) {
-      errorMessage = 'The selected option is no longer available. Please search again.';
-    } else if (error.message.includes('network')) {
-      errorMessage = 'Network error. Please check your connection and try again.';
-    } else if (error.message.includes('expired')) {
-      errorMessage = 'Session expired. Please refresh the page and try again.';
+    let errorMessage = error.message || "Booking failed. Please try again.";
+
+    if (error.message.includes("payment")) {
+      errorMessage =
+        "Payment failed. Please check your payment details and try again.";
+    } else if (error.message.includes("unavailable")) {
+      errorMessage =
+        "The selected option is no longer available. Please search again.";
+    } else if (error.message.includes("network")) {
+      errorMessage =
+        "Network error. Please check your connection and try again.";
+    } else if (error.message.includes("expired")) {
+      errorMessage = "Session expired. Please refresh the page and try again.";
     }
-    
+
     return {
       success: false,
       error: errorMessage,
@@ -3044,10 +3317,10 @@ export const completeBookingWithPayment = async (
 // Auth API
 export const authApi = {
   login: (credentials: { email: string; password: string }) => {
-    return request<any>('/api/v1/auth/login', {
-      method: 'POST',
+    return request<any>("/api/v1/auth/login", {
+      method: "POST",
       body: JSON.stringify(credentials),
-    }).then(response => {
+    }).then((response) => {
       if (response.token && response.user) {
         setAuthToken(response.token, response.user);
       } else if (response.data?.token && response.data?.user) {
@@ -3058,10 +3331,10 @@ export const authApi = {
   },
 
   register: (userData: { name: string; email: string; password: string }) => {
-    return request<any>('/api/v1/auth/register', {
-      method: 'POST',
+    return request<any>("/api/v1/auth/register", {
+      method: "POST",
       body: JSON.stringify(userData),
-    }).then(response => {
+    }).then((response) => {
       if (response.token && response.user) {
         setAuthToken(response.token, response.user);
       } else if (response.data?.token && response.data?.user) {
@@ -3072,55 +3345,68 @@ export const authApi = {
   },
 
   logout: () => {
-    return request('/api/v1/auth/logout', {
-      method: 'POST',
-    }).then(() => {
-      clearAuthToken();
-      return { message: 'Logged out successfully' };
-    }).catch(() => {
-      clearAuthToken();
-      return { message: 'Logged out locally' };
-    });
+    return request("/api/v1/auth/logout", {
+      method: "POST",
+    })
+      .then(() => {
+        clearAuthToken();
+        return { message: "Logged out successfully" };
+      })
+      .catch(() => {
+        clearAuthToken();
+        return { message: "Logged out locally" };
+      });
   },
 
   // Forgot password endpoint
   forgotPassword: (email: string) => {
-    return request<ApiResponse<{ message: string }>>('/api/v1/auth/forgot-password', {
-      method: 'POST',
-      body: JSON.stringify({ email }),
-    });
+    return request<ApiResponse<{ message: string }>>(
+      "/api/v1/auth/forgot-password",
+      {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      },
+    );
   },
 
   // Reset password endpoint
   resetPassword: (token: string, password: string) => {
-    return request<ApiResponse<{ message: string; user?: User }>>('/api/v1/auth/reset-password', {
-      method: 'POST',
-      body: JSON.stringify({ token, password }),
-    });
+    return request<ApiResponse<{ message: string; user?: User }>>(
+      "/api/v1/auth/reset-password",
+      {
+        method: "POST",
+        body: JSON.stringify({ token, password }),
+      },
+    );
   },
 
   // Verify email endpoint
   verifyEmail: (token: string) => {
-    return request<ApiResponse<{ message: string; user?: User; verified: boolean }>>('/api/v1/auth/verify-email', {
-      method: 'POST',
+    return request<
+      ApiResponse<{ message: string; user?: User; verified: boolean }>
+    >("/api/v1/auth/verify-email", {
+      method: "POST",
       body: JSON.stringify({ token }),
     });
   },
 
   // Resend verification email
   resendVerificationEmail: (email: string) => {
-    return request<ApiResponse<{ message: string }>>('/api/v1/auth/resend-verification', {
-      method: 'POST',
-      body: JSON.stringify({ email }),
-    });
+    return request<ApiResponse<{ message: string }>>(
+      "/api/v1/auth/resend-verification",
+      {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      },
+    );
   },
 
   // Social login endpoints (if supported)
   googleLogin: (accessToken: string) => {
-    return request<any>('/api/v1/auth/google', {
-      method: 'POST',
+    return request<any>("/api/v1/auth/google", {
+      method: "POST",
       body: JSON.stringify({ accessToken }),
-    }).then(response => {
+    }).then((response) => {
       if (response.token && response.user) {
         setAuthToken(response.token, response.user);
       } else if (response.data?.token && response.data?.user) {
@@ -3131,10 +3417,10 @@ export const authApi = {
   },
 
   facebookLogin: (accessToken: string) => {
-    return request<any>('/api/v1/auth/facebook', {
-      method: 'POST',
+    return request<any>("/api/v1/auth/facebook", {
+      method: "POST",
       body: JSON.stringify({ accessToken }),
-    }).then(response => {
+    }).then((response) => {
       if (response.token && response.user) {
         setAuthToken(response.token, response.user);
       } else if (response.data?.token && response.data?.user) {
@@ -3146,92 +3432,104 @@ export const authApi = {
 
   // Check if email exists
   checkEmailExists: (email: string) => {
-    return request<ApiResponse<{ exists: boolean }>>('/api/v1/auth/check-email', {
-      method: 'POST',
-      body: JSON.stringify({ email }),
-    });
+    return request<ApiResponse<{ exists: boolean }>>(
+      "/api/v1/auth/check-email",
+      {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      },
+    );
   },
 };
 
 // User Profile API
 export const userApi = {
   getProfile: () => {
-    return request<User>('/api/v1/users/me', {
-      method: 'GET',
+    return request<User>("/api/v1/users/me", {
+      method: "GET",
     });
   },
 
   updateProfile: (profileData: Partial<User>) => {
-    return request<User>('/api/v1/users/me', {
-      method: 'PUT',
+    return request<User>("/api/v1/users/me", {
+      method: "PUT",
       body: JSON.stringify(profileData),
     });
   },
 
   uploadProfileImage: (file: File) => {
     const formData = new FormData();
-    formData.append('image', file);
-    
-    return request<{ image?: string; avatar?: string; url?: string; imageUrl?: string; profilePicture?: string }>('/api/v1/users/me/avatar', {
-      method: 'PUT',
+    formData.append("image", file);
+
+    return request<{
+      image?: string;
+      avatar?: string;
+      url?: string;
+      imageUrl?: string;
+      profilePicture?: string;
+    }>("/api/v1/users/me/avatar", {
+      method: "PUT",
       body: formData,
     });
   },
 
   changePassword: (data: { currentPassword: string; newPassword: string }) => {
-    return request<{ message: string }>('/api/v1/users/me/password', {
-      method: 'PATCH',
+    return request<{ message: string }>("/api/v1/users/me/password", {
+      method: "PATCH",
       body: JSON.stringify(data),
     });
   },
 
   deleteAccount: () => {
-    return request<{ message: string }>('/api/v1/users/me', {
-      method: 'DELETE',
+    return request<{ message: string }>("/api/v1/users/me", {
+      method: "DELETE",
     });
   },
 
   // Update email address (may require re-verification)
   updateEmail: (email: string, password: string) => {
-    return request<{ message: string; requiresVerification: boolean }>('/api/v1/users/me/email', {
-      method: 'PUT',
-      body: JSON.stringify({ email, password }),
-    });
+    return request<{ message: string; requiresVerification: boolean }>(
+      "/api/v1/users/me/email",
+      {
+        method: "PUT",
+        body: JSON.stringify({ email, password }),
+      },
+    );
   },
 
   // Get user's bookings
   getMyBookings: () => {
-    return request<any[]>('/api/v1/users/me/bookings', {
-      method: 'GET',
+    return request<any[]>("/api/v1/users/me/bookings", {
+      method: "GET",
     });
   },
 
   // Loyalty, vouchers, dashboard (v3.0)
   // Get current user's loyalty account details
   getLoyaltyAccount: () => {
-    return request<any>('/api/v1/users/me/loyalty', {
-      method: 'GET',
+    return request<any>("/api/v1/users/me/loyalty", {
+      method: "GET",
     });
   },
 
   // Get loyalty transactions
   getLoyaltyTransactions: () => {
-    return request<any[]>('/api/v1/users/me/loyalty/transactions', {
-      method: 'GET',
+    return request<any[]>("/api/v1/users/me/loyalty/transactions", {
+      method: "GET",
     });
   },
 
   // Get available rewards the user can redeem
   getAvailableRewards: () => {
-    return request<any[]>('/api/v1/users/me/loyalty/available-rewards', {
-      method: 'GET',
+    return request<any[]>("/api/v1/users/me/loyalty/available-rewards", {
+      method: "GET",
     });
   },
 
   // Redeem loyalty points for a voucher
   redeemReward: (rewardRuleId: string) => {
-    return request<any>('/api/v1/users/me/loyalty/redeem', {
-      method: 'POST',
+    return request<any>("/api/v1/users/me/loyalty/redeem", {
+      method: "POST",
       body: JSON.stringify({ rewardRuleId }),
     });
   },
@@ -3243,78 +3541,104 @@ export const userApi = {
     bookingAmount: number;
     currency: string;
   }) => {
-    return request<any>('/api/v1/users/me/vouchers/validate', {
-      method: 'POST',
+    return request<any>("/api/v1/users/me/vouchers/validate", {
+      method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   // Get all vouchers for current user
   getMyVouchers: () => {
-    return request<any[]>('/api/v1/users/me/vouchers', {
-      method: 'GET',
+    return request<any[]>("/api/v1/users/me/vouchers", {
+      method: "GET",
     });
   },
 
   // User dashboard (aggregated profile/loyalty/stats)
   getDashboard: () => {
-    return request<any>('/api/v1/users/me/dashboard', {
-      method: 'GET',
+    return request<any>("/api/v1/users/me/dashboard", {
+      method: "GET",
     });
   },
 
-  // Saved items / wishlist (v3.0)
-  // Save an item to wishlist
   saveItem: (data: {
-    itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
-    itemId: string;
-    itemDetails?: Record<string, any>;
+    productType:
+      | "FLIGHT_DOMESTIC"
+      | "FLIGHT_INTERNATIONAL"
+      | "HOTEL"
+      | "CAR_RENTAL"
+      | "PACKAGE";
+    title: string;
+    description?: string;
+    price?: number;
+    currency?: string;
+    image?: string;
+    metadata?: Record<string, any>;
     notes?: string;
   }) => {
-    return request<any>('/api/v1/users/me/saved-items', {
-      method: 'POST',
+    return request<any>("/api/v1/users/me/saved-items", {
+      method: "POST",
       body: JSON.stringify(data),
     });
   },
 
   // Get saved items, optionally filtered by type
-  getSavedItems: (itemType?: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL') => {
+  getSavedItems: (
+    productType?:
+      | "FLIGHT_DOMESTIC"
+      | "FLIGHT_INTERNATIONAL"
+      | "HOTEL"
+      | "CAR_RENTAL"
+      | "PACKAGE",
+  ) => {
     const params = new URLSearchParams();
-    if (itemType) params.set('itemType', itemType);
+    if (productType) params.set("productType", productType);
     const query = params.toString();
-    const path = query ? `/api/v1/users/me/saved-items?${query}` : '/api/v1/users/me/saved-items';
+    const path = query
+      ? `/api/v1/users/me/saved-items?${query}`
+      : "/api/v1/users/me/saved-items";
 
     return request<any[]>(path, {
-      method: 'GET',
+      method: "GET",
     });
   },
 
   // Get counts of saved items by type
   getSavedItemCounts: () => {
-    return request<any>('/api/v1/users/me/saved-items/counts', {
-      method: 'GET',
+    return request<any>("/api/v1/users/me/saved-items/counts", {
+      method: "GET",
     });
   },
 
   // Toggle saved / unsaved for an item
   toggleSavedItem: (data: {
-    itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+    productType:
+      | "FLIGHT_DOMESTIC"
+      | "FLIGHT_INTERNATIONAL"
+      | "HOTEL"
+      | "CAR_RENTAL"
+      | "PACKAGE";
     itemId: string;
     itemDetails?: Record<string, any>;
   }) => {
-    return request<any>('/api/v1/users/me/saved-items/toggle', {
-      method: 'POST',
+    return request<any>("/api/v1/users/me/saved-items/toggle", {
+      method: "POST",
       body: JSON.stringify(data),
     });
   },
 
   // Check if an item is saved
   checkSavedItem: (data: {
-    itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+    productType:
+      | "FLIGHT_DOMESTIC"
+      | "FLIGHT_INTERNATIONAL"
+      | "HOTEL"
+      | "CAR_RENTAL"
+      | "PACKAGE";
     itemId: string;
   }) => {
-    return request<any>('/api/v1/users/me/saved-items/check', {
-      method: 'POST',
+    return request<any>("/api/v1/users/me/saved-items/check", {
+      method: "POST",
       body: JSON.stringify(data),
     });
   },
@@ -3322,7 +3646,7 @@ export const userApi = {
   // Update notes on a saved item
   updateSavedItemNotes: (id: string, notes: string) => {
     return request<any>(`/api/v1/users/me/saved-items/${id}/notes`, {
-      method: 'PATCH',
+      method: "PATCH",
       body: JSON.stringify({ notes }),
     });
   },
@@ -3330,7 +3654,7 @@ export const userApi = {
   // Remove saved item
   removeSavedItem: (id: string) => {
     return request<any>(`/api/v1/users/me/saved-items/${id}`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   },
 
@@ -3346,39 +3670,42 @@ export const userApi = {
     nationality?: string;
     frequentFlyerNumber?: string;
   }) => {
-    return request<any>('/api/v1/users/me/travelers', {
-      method: 'POST',
+    return request<any>("/api/v1/users/me/travelers", {
+      method: "POST",
       body: JSON.stringify(data),
     });
   },
 
   // List all saved travelers
   listTravelers: () => {
-    return request<any[]>('/api/v1/users/me/travelers', {
-      method: 'GET',
+    return request<any[]>("/api/v1/users/me/travelers", {
+      method: "GET",
     });
   },
 
   // Get single traveler
   getTraveler: (id: string) => {
     return request<any>(`/api/v1/users/me/travelers/${id}`, {
-      method: 'GET',
+      method: "GET",
     });
   },
 
   // Update traveler
-  updateTraveler: (id: string, data: Partial<{
-    firstName: string;
-    lastName: string;
-    dateOfBirth: string;
-    gender: string;
-    passportNumber: string;
-    passportExpiry: string;
-    nationality: string;
-    frequentFlyerNumber: string;
-  }>) => {
+  updateTraveler: (
+    id: string,
+    data: Partial<{
+      firstName: string;
+      lastName: string;
+      dateOfBirth: string;
+      gender: string;
+      passportNumber: string;
+      passportExpiry: string;
+      nationality: string;
+      frequentFlyerNumber: string;
+    }>,
+  ) => {
     return request<any>(`/api/v1/users/me/travelers/${id}`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(data),
     });
   },
@@ -3386,14 +3713,14 @@ export const userApi = {
   // Delete traveler
   deleteTraveler: (id: string) => {
     return request<any>(`/api/v1/users/me/travelers/${id}`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   },
 
   // Batch get travelers (for multi-passenger checkout)
   getTravelersBatch: (travelerIds: string[]) => {
-    return request<any[]>('/api/v1/users/me/travelers/batch', {
-      method: 'POST',
+    return request<any[]>("/api/v1/users/me/travelers/batch", {
+      method: "POST",
       body: JSON.stringify({ travelerIds }),
     });
   },
@@ -3402,40 +3729,40 @@ export const userApi = {
   // Create a Stripe SetupIntent to save a new payment method
   createPaymentMethodSetup: () => {
     return request<{ clientSecret: string; setupIntentId: string }>(
-      '/api/v1/users/me/payment-methods/setup',
+      "/api/v1/users/me/payment-methods/setup",
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({}),
-      }
+      },
     );
   },
 
   // Confirm and persist a payment method after Stripe SetupIntent succeeds
   confirmPaymentMethodSetup: (setupIntentId: string) => {
-    return request<any>('/api/v1/users/me/payment-methods/confirm', {
-      method: 'POST',
+    return request<any>("/api/v1/users/me/payment-methods/confirm", {
+      method: "POST",
       body: JSON.stringify({ setupIntentId }),
     });
   },
 
   // List saved payment methods
   listPaymentMethods: () => {
-    return request<any[]>('/api/v1/users/me/payment-methods', {
-      method: 'GET',
+    return request<any[]>("/api/v1/users/me/payment-methods", {
+      method: "GET",
     });
   },
 
   // Set default payment method
   setDefaultPaymentMethod: (id: string) => {
     return request<any>(`/api/v1/users/me/payment-methods/${id}/default`, {
-      method: 'PATCH',
+      method: "PATCH",
     });
   },
 
   // Delete saved payment method
   deletePaymentMethod: (id: string) => {
     return request<any>(`/api/v1/users/me/payment-methods/${id}`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   },
 };
@@ -3444,17 +3771,17 @@ export const userApi = {
 export const bookingApi = {
   // Flight search - FIXED version with all parameters
   searchFlights: searchFlightsFixed,
-  
+
   // Flight search with pagination
   searchFlightsWithPagination: searchFlightsWithPagination,
-  
+
   // Get flight offers with pagination and sorting options
   getOffers: (
-    offerRequestId: string, 
-    cursor?: string, 
+    offerRequestId: string,
+    cursor?: string,
     limit: number = 20,
-    sort?: 'total_amount' | 'total_duration',
-    sortOrder: 'asc' | 'desc' = 'asc'
+    sort?: "total_amount" | "total_duration",
+    sortOrder: "asc" | "desc" = "asc",
   ) => {
     const params = new URLSearchParams({
       offer_request_id: offerRequestId,
@@ -3463,47 +3790,52 @@ export const bookingApi = {
       ...(sort && { sort }),
       ...(sort && { sortOrder }),
     });
-    
+
     return request<any>(`/api/v1/bookings/offers?${params.toString()}`, {
-      method: 'GET',
+      method: "GET",
     });
   },
-  
+
   // Create hotel booking via Amadeus endpoint
-  createHotelBookingAmadeus: (bookingData: HotelBookingRequest): Promise<HotelBookingResponse> => {
-    return request<HotelBookingResponse>('/api/v1/bookings/hotels/bookings/amadeus', {
-      method: 'POST',
+  createHotelBookingAmadeus: (
+    bookingData: HotelBookingRequest,
+  ): Promise<HotelBookingResponse> => {
+    return request<HotelBookingResponse>(
+      "/api/v1/bookings/hotels/bookings/amadeus",
+      {
+        method: "POST",
+        body: JSON.stringify(bookingData),
+      },
+    );
+  },
+
+  // In the bookingApi object, replace the createBooking function with:
+  createBooking: (bookingData: {
+    productType: string;
+    provider: string;
+    basePrice: number;
+    currency: string;
+    bookingData: {
+      [key: string]: any;
+      offerId: string;
+    };
+    passengerInfo: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone: string;
+      dateOfBirth?: string;
+      [key: string]: any;
+    };
+    paymentIntentId?: string;
+    [key: string]: any;
+  }) => {
+    return request<any>("/api/v1/bookings", {
+      method: "POST",
       body: JSON.stringify(bookingData),
     });
   },
 
-// In the bookingApi object, replace the createBooking function with:
-createBooking: (bookingData: {
-  productType: string;
-  provider: string;
-  basePrice: number;
-  currency: string;
-  bookingData: {
-    [key: string]: any;
-    offerId: string;
-  };
-  passengerInfo: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone: string;
-    dateOfBirth?: string;
-    [key: string]: any;
-  };
-  paymentIntentId?: string;
-  [key: string]: any;
-}) => {
-  return request<any>('/api/v1/bookings', {
-    method: 'POST',
-    body: JSON.stringify(bookingData),
-  });
-},
-  
   // Create guest booking
   createGuestBooking: (bookingData: {
     productType: string;
@@ -3528,38 +3860,41 @@ createBooking: (bookingData: {
     };
     [key: string]: any;
   }) => {
-    return request<any>('/api/v1/bookings/guest', {
-      method: 'POST',
+    return request<any>("/api/v1/bookings/guest", {
+      method: "POST",
       body: JSON.stringify(bookingData),
     });
   },
-  
+
   // List bookings
   listBookings: () => {
-    return request<any[]>('/api/v1/bookings', { 
-      method: 'GET' 
+    return request<any[]>("/api/v1/bookings", {
+      method: "GET",
     });
   },
-  
+
   // Get booking by ID
   getBookingById: (id: string) => {
-    return request<any>(`/api/v1/bookings/${id}`, { 
-      method: 'GET' 
+    return request<any>(`/api/v1/bookings/${id}`, {
+      method: "GET",
     });
   },
-  
+
   // Public endpoint: load booking by reference only (e.g. EBT-2...). By-ID requires auth: GET /bookings/:id
   getPublicBookingByReference: (reference: string) => {
-    return request<any>(`/api/v1/bookings/public/by-reference/${encodeURIComponent(reference)}`, { method: 'GET' });
+    return request<any>(
+      `/api/v1/bookings/public/by-reference/${encodeURIComponent(reference)}`,
+      { method: "GET" },
+    );
   },
 
   // Cancel booking
   cancelBooking: (id: string) => {
-    return request<any>(`/api/v1/bookings/${id}/cancel`, { 
-      method: 'POST' 
+    return request<any>(`/api/v1/bookings/${id}/cancel`, {
+      method: "POST",
     });
   },
-  
+
   // Hotel booking (generic)
   createHotelBooking: (hotelBookingData: {
     productType: string;
@@ -3587,12 +3922,12 @@ createBooking: (bookingData: {
     };
     [key: string]: any;
   }) => {
-    return request<any>('/api/v1/bookings', {
-      method: 'POST',
+    return request<any>("/api/v1/bookings", {
+      method: "POST",
       body: JSON.stringify({
         ...hotelBookingData,
-        productType: 'HOTEL',
-        provider: 'BOOKING_COM',
+        productType: "HOTEL",
+        provider: "BOOKING_COM",
       }),
     });
   },
@@ -3603,70 +3938,62 @@ export const paymentApi = {
   // Create Stripe intent for authenticated users
   // Server expects { bookingId, voucherCode? } — it calculates amount from booking
   createStripeIntent: (bookingId: string, voucherCode?: string) => {
-    return request<any>('/api/v1/payments/stripe/create-intent', {
-      method: 'POST',
-      body: JSON.stringify({ 
+    return request<any>("/api/v1/payments/stripe/create-intent", {
+      method: "POST",
+      body: JSON.stringify({
         bookingId,
         ...(voucherCode && { voucherCode }),
       }),
     });
   },
-  
+
   // Create Stripe intent for guests
   // Server expects { bookingReference, email } — it calculates amount from booking
   createGuestStripeIntent: (bookingReference: string, email: string) => {
-    return request<any>('/api/v1/payments/stripe/create-intent/guest', {
-      method: 'POST',
-      body: JSON.stringify({ 
+    return request<any>("/api/v1/payments/stripe/create-intent/guest", {
+      method: "POST",
+      body: JSON.stringify({
         bookingReference,
         email,
       }),
     });
   },
-  
+
   // Verify payment status
   getPaymentStatus: (paymentIntentId: string) => {
     return request<any>(`/api/v1/payments/${paymentIntentId}/status`, {
-      method: 'GET',
+      method: "GET",
     });
   },
-  
+
   // Send booking confirmation
   sendConfirmation: (bookingId: string, email: string) => {
-    return request<any>('/api/v1/bookings/send-confirmation', {
-      method: 'POST',
+    return request<any>("/api/v1/bookings/send-confirmation", {
+      method: "POST",
       body: JSON.stringify({ bookingId, email }),
     });
   },
-  
+
   // Refund payment
   refundPayment: (paymentIntentId: string, amount?: number) => {
     return request<any>(`/api/v1/payments/${paymentIntentId}/refund`, {
-      method: 'POST',
-      body: JSON.stringify({ 
+      method: "POST",
+      body: JSON.stringify({
         paymentIntentId,
         ...(amount !== undefined && { amount: Math.round(amount * 100) }), // Convert to cents
       }),
     });
   },
-  
+
   // Create PayPal payment
-  createPaypalPayment: (bookingId: string, amount?: number, currency?: string) => {
-    return request<any>('/api/v1/payments/paypal/create', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        bookingId,
-        ...(amount !== undefined && { amount }),
-        ...(currency && { currency }),
-      }),
-    });
-  },
-  
-  // Create Flutterwave payment
-  createFlutterwavePayment: (bookingId: string, amount?: number, currency?: string) => {
-    return request<any>('/api/v1/payments/flutterwave/create', {
-      method: 'POST',
-      body: JSON.stringify({ 
+  createPaypalPayment: (
+    bookingId: string,
+    amount?: number,
+    currency?: string,
+  ) => {
+    return request<any>("/api/v1/payments/paypal/create", {
+      method: "POST",
+      body: JSON.stringify({
         bookingId,
         ...(amount !== undefined && { amount }),
         ...(currency && { currency }),
@@ -3674,25 +4001,50 @@ export const paymentApi = {
     });
   },
 
-  getHotelImages: (hotelId: string, params?: { hotelName?: string; googlePlaceId?: string }) => {
+  // Create Flutterwave payment
+  createFlutterwavePayment: (
+    bookingId: string,
+    amount?: number,
+    currency?: string,
+  ) => {
+    return request<any>("/api/v1/payments/flutterwave/create", {
+      method: "POST",
+      body: JSON.stringify({
+        bookingId,
+        ...(amount !== undefined && { amount }),
+        ...(currency && { currency }),
+      }),
+    });
+  },
+
+  getHotelImages: (
+    hotelId: string,
+    params?: { hotelName?: string; googlePlaceId?: string },
+  ) => {
     const search = new URLSearchParams();
-    if (params?.hotelName) search.set('hotelName', params.hotelName);
-    if (params?.googlePlaceId) search.set('googlePlaceId', params.googlePlaceId);
+    if (params?.hotelName) search.set("hotelName", params.hotelName);
+    if (params?.googlePlaceId)
+      search.set("googlePlaceId", params.googlePlaceId);
     const query = search.toString();
     return request<{
       success?: boolean;
       data?: {
         hotelId?: string;
         hotelName?: string;
-        images?: Array<{ url: string; type?: string; source?: string; attribution?: string }>;
+        images?: Array<{
+          url: string;
+          type?: string;
+          source?: string;
+          attribution?: string;
+        }>;
         cached?: boolean;
         fallbackUsed?: boolean;
         message?: string;
       };
       message?: string;
     }>(
-      `/api/v1/bookings/hotels/${encodeURIComponent(hotelId)}/images${query ? `?${query}` : ''}`,
-      { method: 'GET' }
+      `/api/v1/bookings/hotels/${encodeURIComponent(hotelId)}/images${query ? `?${query}` : ""}`,
+      { method: "GET" },
     );
   },
 };
@@ -3701,115 +4053,123 @@ export const paymentApi = {
 export const hotelApi = {
   // Amadeus hotel search
   searchHotelsAmadeus: searchHotelsAmadeus,
-  
+
   // Hotel search with pagination and filtering
   searchHotelsWithPagination: searchHotelsWithPagination,
-  
+
   // Search and transform hotels for frontend
   searchAndTransformHotels: searchAndTransformHotels,
-  
+
   // Format hotel search parameters
   formatHotelSearchParams: formatHotelSearchParams,
-  
+
   // Transform hotel to search result
   transformHotelToSearchResult: transformHotelToSearchResult,
-  
+
   // Validate hotel booking data
   validateHotelBookingData: validateHotelBookingData,
-  
+
   // Get city code
   getCityCode: getCityCode,
-  
+
   // Book hotel via Amadeus
-  bookHotelAmadeus: (bookingData: HotelBookingRequest): Promise<HotelBookingResponse> => {
-    return request<HotelBookingResponse>('/api/v1/bookings/hotels/bookings/amadeus', {
-      method: 'POST',
-      body: JSON.stringify(bookingData),
-    });
+  bookHotelAmadeus: (
+    bookingData: HotelBookingRequest,
+  ): Promise<HotelBookingResponse> => {
+    return request<HotelBookingResponse>(
+      "/api/v1/bookings/hotels/bookings/amadeus",
+      {
+        method: "POST",
+        body: JSON.stringify(bookingData),
+      },
+    );
   },
-  
+
   // Get hotel details
   getHotelDetails: async (hotelId: string) => {
     try {
       console.log(`🏨 Fetching details for hotel: ${hotelId}`);
-      
+
       const response = await request<any>(`/api/v1/hotels/${hotelId}/details`, {
-        method: 'GET',
+        method: "GET",
       });
-      
-      console.log('✅ Hotel details response:', response);
+
+      console.log("✅ Hotel details response:", response);
       return response;
-      
     } catch (error: any) {
-      console.error('❌ Failed to fetch hotel details:', error);
+      console.error("❌ Failed to fetch hotel details:", error);
       throw error;
     }
   },
-  
+
   // Get hotel photos
   getHotelPhotos: async (hotelId: string, limit: number = 5) => {
     try {
       console.log(`📸 Fetching photos for hotel: ${hotelId}`);
-      
-      const response = await request<any>(`/api/v1/hotels/${hotelId}/photos?limit=${limit}`, {
-        method: 'GET',
-      });
-      
+
+      const response = await request<any>(
+        `/api/v1/hotels/${hotelId}/photos?limit=${limit}`,
+        {
+          method: "GET",
+        },
+      );
+
       return response;
-      
     } catch (error: any) {
-      console.error('❌ Failed to fetch hotel photos:', error);
+      console.error("❌ Failed to fetch hotel photos:", error);
       // Return fallback images
       return {
         data: [
-          'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400',
-          'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=400',
-          'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&q=80&w=400',
-          'https://images.unsplash.com/photo-1564501049418-3c27787d01e8?auto=format&fit=crop&q=80&w=400',
+          "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400",
+          "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=400",
+          "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&q=80&w=400",
+          "https://images.unsplash.com/photo-1564501049418-3c27787d01e8?auto=format&fit=crop&q=80&w=400",
         ].slice(0, limit),
       };
     }
   },
-  
+
   // Get hotel reviews
   getHotelReviews: async (hotelId: string, limit: number = 10) => {
     try {
       console.log(`📝 Fetching reviews for hotel: ${hotelId}`);
-      
-      const response = await request<any>(`/api/v1/hotels/${hotelId}/reviews?limit=${limit}`, {
-        method: 'GET',
-      });
-      
+
+      const response = await request<any>(
+        `/api/v1/hotels/${hotelId}/reviews?limit=${limit}`,
+        {
+          method: "GET",
+        },
+      );
+
       return response;
-      
     } catch (error: any) {
-      console.error('❌ Failed to fetch hotel reviews:', error);
+      console.error("❌ Failed to fetch hotel reviews:", error);
       // Return mock reviews
       return {
         data: [
           {
-            id: '1',
-            author: 'John D.',
+            id: "1",
+            author: "John D.",
             rating: 5,
-            date: '2024-01-15',
-            title: 'Excellent stay!',
-            text: 'Great location, clean rooms, and friendly staff.',
+            date: "2024-01-15",
+            title: "Excellent stay!",
+            text: "Great location, clean rooms, and friendly staff.",
             helpful: 12,
           },
           {
-            id: '2',
-            author: 'Sarah M.',
+            id: "2",
+            author: "Sarah M.",
             rating: 4,
-            date: '2024-01-10',
-            title: 'Very good',
-            text: 'Comfortable beds and good amenities.',
+            date: "2024-01-10",
+            title: "Very good",
+            text: "Comfortable beds and good amenities.",
             helpful: 8,
           },
         ],
       };
     }
   },
-  
+
   // Validate hotel booking
   validateHotelBooking: async (
     hotelId: string,
@@ -3817,13 +4177,13 @@ export const hotelApi = {
     checkInDate: string,
     checkOutDate: string,
     guests: number,
-    rooms: number
+    rooms: number,
   ) => {
     try {
       console.log(`✅ Validating hotel booking for: ${hotelId}`);
-      
-      const response = await request<any>('/api/v1/hotels/validate-booking', {
-        method: 'POST',
+
+      const response = await request<any>("/api/v1/hotels/validate-booking", {
+        method: "POST",
         body: JSON.stringify({
           hotelId,
           offerId,
@@ -3833,62 +4193,97 @@ export const hotelApi = {
           rooms,
         }),
       });
-      
+
       return response;
-      
     } catch (error: any) {
-      console.error('❌ Hotel booking validation failed:', error);
+      console.error("❌ Hotel booking validation failed:", error);
       throw error;
     }
   },
-  
+
   // Hotel booking (generic)
   bookHotel: (hotelId: string, bookingData: any) => {
     return request<any>(`/api/v1/hotels/${hotelId}/book`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(bookingData),
     });
   },
-  
+
   // Get available hotel amenities
   getAvailableAmenities: () => {
-    return request<string[]>('/api/v1/hotels/amenities', {
-      method: 'GET',
+    return request<string[]>("/api/v1/hotels/amenities", {
+      method: "GET",
     }).catch(() => {
       // Return default amenities if API fails
       return [
-        'Free WiFi',
-        'Swimming Pool',
-        'Spa',
-        'Restaurant',
-        'Fitness Center',
-        'Room Service',
-        'Airport Shuttle',
-        'Parking',
-        'Breakfast Included',
-        'Bar',
-        'Business Center',
-        'Concierge',
-        'Laundry Service',
-        'Pet Friendly',
-        'Family Rooms',
+        "Free WiFi",
+        "Swimming Pool",
+        "Spa",
+        "Restaurant",
+        "Fitness Center",
+        "Room Service",
+        "Airport Shuttle",
+        "Parking",
+        "Breakfast Included",
+        "Bar",
+        "Business Center",
+        "Concierge",
+        "Laundry Service",
+        "Pet Friendly",
+        "Family Rooms",
       ];
     });
   },
-  
+
   // Get popular hotel destinations
   getPopularDestinations: () => {
-    return request<any[]>('/api/v1/hotels/popular-destinations', {
-      method: 'GET',
+    return request<any[]>("/api/v1/hotels/popular-destinations", {
+      method: "GET",
     }).catch(() => {
       // Return default destinations if API fails
       return [
-        { cityCode: 'LOS', cityName: 'Lagos', country: 'Nigeria', image: 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D' },
-        { cityCode: 'LHR', cityName: 'London', country: 'UK', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
-        { cityCode: 'NYC', cityName: 'New York', country: 'USA', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400' },
-        { cityCode: 'PAR', cityName: 'Paris', country: 'France', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400' },
-        { cityCode: 'DXB', cityName: 'Dubai', country: 'UAE', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400' },
-        { cityCode: 'SYD', cityName: 'Sydney', country: 'Australia', image: 'https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?auto=format&fit=crop&q=80&w=400' },
+        {
+          cityCode: "LOS",
+          cityName: "Lagos",
+          country: "Nigeria",
+          image:
+            "https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D",
+        },
+        {
+          cityCode: "LHR",
+          cityName: "London",
+          country: "UK",
+          image:
+            "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400",
+        },
+        {
+          cityCode: "NYC",
+          cityName: "New York",
+          country: "USA",
+          image:
+            "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400",
+        },
+        {
+          cityCode: "PAR",
+          cityName: "Paris",
+          country: "France",
+          image:
+            "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400",
+        },
+        {
+          cityCode: "DXB",
+          cityName: "Dubai",
+          country: "UAE",
+          image:
+            "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400",
+        },
+        {
+          cityCode: "SYD",
+          cityName: "Sydney",
+          country: "Australia",
+          image:
+            "https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?auto=format&fit=crop&q=80&w=400",
+        },
       ];
     });
   },
@@ -3898,12 +4293,12 @@ export const hotelApi = {
 export const carApi = {
   // Existing search function (keep for backward compatibility)
   searchCars: (params: any) => {
-    return request<any>('/api/v1/cars/search', {
-      method: 'POST',
+    return request<any>("/api/v1/cars/search", {
+      method: "POST",
       body: JSON.stringify(params),
     });
   },
-  
+
   // New car rental search functions
   searchCarRentals: searchCarRentals,
   searchCarRentalsWithPagination: searchCarRentalsWithPagination,
@@ -3911,53 +4306,89 @@ export const carApi = {
   formatCarRentalSearchParams: formatCarRentalSearchParams,
   transformCarRentalToSearchResult: transformCarRentalToSearchResult,
   validateCarRentalBookingData: validateCarRentalBookingData,
-  
+
   // Car rental booking functions
   createCarRentalBooking: createCarRentalBooking,
   createCompleteCarRentalBooking: createCompleteCarRentalBooking,
   cancelCarRentalBooking: cancelCarRentalBooking,
   getCarRentalBooking: getCarRentalBooking,
-  
+
   // Car rental booking (generic - backward compatibility)
   bookCar: (carId: string, bookingData: any) => {
     return request<any>(`/api/v1/cars/${carId}/book`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(bookingData),
     });
   },
-  
+
   // Get popular car rental locations
   getPopularLocations: () => {
-    return request<any[]>('/api/v1/cars/popular-locations', {
-      method: 'GET',
+    return request<any[]>("/api/v1/cars/popular-locations", {
+      method: "GET",
     }).catch(() => {
       // Return default locations if API fails
       return [
-        { locationCode: 'LOS', locationName: 'Lagos', country: 'Nigeria', image: 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D' },
-        { locationCode: 'LHR', locationName: 'London', country: 'UK', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
-        { locationCode: 'NYC', locationName: 'New York', country: 'USA', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400' },
-        { locationCode: 'PAR', locationName: 'Paris', country: 'France', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400' },
-        { locationCode: 'DXB', locationName: 'Dubai', country: 'UAE', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400' },
-        { locationCode: 'SYD', locationName: 'Sydney', country: 'Australia', image: 'https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?auto=format&fit=crop&q=80&w=400' },
+        {
+          locationCode: "LOS",
+          locationName: "Lagos",
+          country: "Nigeria",
+          image:
+            "https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D",
+        },
+        {
+          locationCode: "LHR",
+          locationName: "London",
+          country: "UK",
+          image:
+            "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400",
+        },
+        {
+          locationCode: "NYC",
+          locationName: "New York",
+          country: "USA",
+          image:
+            "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400",
+        },
+        {
+          locationCode: "PAR",
+          locationName: "Paris",
+          country: "France",
+          image:
+            "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400",
+        },
+        {
+          locationCode: "DXB",
+          locationName: "Dubai",
+          country: "UAE",
+          image:
+            "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400",
+        },
+        {
+          locationCode: "SYD",
+          locationName: "Sydney",
+          country: "Australia",
+          image:
+            "https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?auto=format&fit=crop&q=80&w=400",
+        },
       ];
     });
   },
-  
+
   // Get available vehicle types
   getAvailableVehicleTypes: () => {
-    return request<string[]>('/api/v1/cars/vehicle-types', {
-      method: 'GET',
+    return request<string[]>("/api/v1/cars/vehicle-types", {
+      method: "GET",
     }).catch(() => {
       // Return default vehicle types if API fails
       return [
-        'Sedan',
-        'SUV',
-        'Van',
-        'Luxury',
-        'Convertible',
-        'Electric',
-        'Business',
-        'Standard',
+        "Sedan",
+        "SUV",
+        "Van",
+        "Luxury",
+        "Convertible",
+        "Electric",
+        "Business",
+        "Standard",
       ];
     });
   },
@@ -3966,26 +4397,26 @@ export const carApi = {
 // Notification API
 export const notificationApi = {
   getNotifications: () => {
-    return request<any[]>('/api/v1/notifications', {
-      method: 'GET',
+    return request<any[]>("/api/v1/notifications", {
+      method: "GET",
     });
   },
-  
+
   markAsRead: (notificationId: string) => {
     return request<any>(`/api/v1/notifications/${notificationId}/read`, {
-      method: 'PUT',
+      method: "PUT",
     });
   },
-  
+
   markAllAsRead: () => {
-    return request<any>('/api/v1/notifications/read-all', {
-      method: 'PUT',
+    return request<any>("/api/v1/notifications/read-all", {
+      method: "PUT",
     });
   },
-  
+
   deleteNotification: (notificationId: string) => {
     return request<any>(`/api/v1/notifications/${notificationId}`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   },
 };
@@ -3999,33 +4430,33 @@ export const supportApi = {
     message: string;
     phone?: string;
   }) => {
-    return request<any>('/api/v1/support/contact', {
-      method: 'POST',
+    return request<any>("/api/v1/support/contact", {
+      method: "POST",
       body: JSON.stringify(data),
     });
   },
-  
+
   submitFeedback: (data: {
     rating: number;
     comment: string;
     bookingId?: string;
     category?: string;
   }) => {
-    return request<any>('/api/v1/support/feedback', {
-      method: 'POST',
+    return request<any>("/api/v1/support/feedback", {
+      method: "POST",
       body: JSON.stringify(data),
     });
   },
-  
+
   reportIssue: (data: {
     title: string;
     description: string;
     category: string;
-    priority?: 'low' | 'medium' | 'high';
+    priority?: "low" | "medium" | "high";
     screenshot?: string;
   }) => {
-    return request<any>('/api/v1/support/issues', {
-      method: 'POST',
+    return request<any>("/api/v1/support/issues", {
+      method: "POST",
       body: JSON.stringify(data),
     });
   },
@@ -4040,20 +4471,22 @@ export async function fetchUserProfile(): Promise<User | null> {
     const response = await userApi.getProfile();
     return response as User;
   } catch (error) {
-    console.error('Failed to fetch user profile:', error);
+    console.error("Failed to fetch user profile:", error);
     return null;
   }
 }
 
-export async function updateUserProfile(updates: Partial<User>): Promise<User | null> {
+export async function updateUserProfile(
+  updates: Partial<User>,
+): Promise<User | null> {
   try {
     const token = getAuthToken();
-    if (!token) throw new ApiError('Not authenticated', 401);
+    if (!token) throw new ApiError("Not authenticated", 401);
 
     const response = await userApi.updateProfile(updates);
     return response as User;
   } catch (error) {
-    console.error('Failed to update user profile:', error);
+    console.error("Failed to update user profile:", error);
     throw error;
   }
 }
@@ -4061,64 +4494,86 @@ export async function updateUserProfile(updates: Partial<User>): Promise<User | 
 export async function uploadUserAvatar(file: File): Promise<string | null> {
   try {
     const token = getAuthToken();
-    if (!token) throw new ApiError('Not authenticated', 401);
+    if (!token) throw new ApiError("Not authenticated", 401);
 
     const response = await userApi.uploadProfileImage(file);
-    return response?.image || response?.avatar || response?.url || response?.imageUrl || response?.profilePicture || null;
+    return (
+      response?.image ||
+      response?.avatar ||
+      response?.url ||
+      response?.imageUrl ||
+      response?.profilePicture ||
+      null
+    );
   } catch (error) {
-    console.error('Failed to upload avatar:', error);
+    console.error("Failed to upload avatar:", error);
     throw error;
   }
 }
 
 // Auth helper functions
-export async function handleForgotPassword(email: string): Promise<{ success: boolean; message: string }> {
+export async function handleForgotPassword(
+  email: string,
+): Promise<{ success: boolean; message: string }> {
   try {
     const response = await authApi.forgotPassword(email);
     return {
       success: true,
-      message: response?.message || 'Password reset instructions sent to your email.'
+      message:
+        response?.message || "Password reset instructions sent to your email.",
     };
   } catch (error: any) {
-    console.error('Forgot password error:', error);
+    console.error("Forgot password error:", error);
     return {
       success: false,
-      message: error?.message || 'Failed to send reset instructions. Please try again.'
+      message:
+        error?.message ||
+        "Failed to send reset instructions. Please try again.",
     };
   }
 }
 
-export async function handleResetPassword(token: string, password: string): Promise<{ success: boolean; message: string; user?: User }> {
+export async function handleResetPassword(
+  token: string,
+  password: string,
+): Promise<{ success: boolean; message: string; user?: User }> {
   try {
     const response = await authApi.resetPassword(token, password);
     return {
       success: true,
-      message: response?.message || 'Password reset successfully!',
-      user: response?.user
+      message: response?.message || "Password reset successfully!",
+      user: response?.user,
     };
   } catch (error: any) {
-    console.error('Reset password error:', error);
+    console.error("Reset password error:", error);
     return {
       success: false,
-      message: error?.message || 'Failed to reset password. Please try again.'
+      message: error?.message || "Failed to reset password. Please try again.",
     };
   }
 }
 
-export async function handleVerifyEmail(token: string): Promise<{ success: boolean; message: string; user?: User; verified?: boolean }> {
+export async function handleVerifyEmail(
+  token: string,
+): Promise<{
+  success: boolean;
+  message: string;
+  user?: User;
+  verified?: boolean;
+}> {
   try {
     const response = await authApi.verifyEmail(token);
     return {
       success: true,
-      message: response?.message || 'Email verified successfully!',
+      message: response?.message || "Email verified successfully!",
       user: response?.user,
-      verified: response?.verified || true
+      verified: response?.verified || true,
     };
   } catch (error: any) {
-    console.error('Verify email error:', error);
+    console.error("Verify email error:", error);
     return {
       success: false,
-      message: error?.message || 'Failed to verify email. Please try again.'
+      message: error?.message || "Failed to verify email. Please try again.",
     };
   }
 }
@@ -4128,23 +4583,25 @@ export async function checkEmailVerified(): Promise<boolean> {
     const user = await fetchUserProfile();
     return user?.isVerified || false;
   } catch (error) {
-    console.error('Check email verified error:', error);
+    console.error("Check email verified error:", error);
     return false;
   }
 }
 
-export async function resendVerificationEmail(email: string): Promise<{ success: boolean; message: string }> {
+export async function resendVerificationEmail(
+  email: string,
+): Promise<{ success: boolean; message: string }> {
   try {
     const response = await authApi.resendVerificationEmail(email);
     return {
       success: true,
-      message: response?.message || 'Verification email sent successfully!'
+      message: response?.message || "Verification email sent successfully!",
     };
   } catch (error: any) {
-    console.error('Resend verification error:', error);
+    console.error("Resend verification error:", error);
     return {
       success: false,
-      message: error?.message || 'Failed to resend verification email.'
+      message: error?.message || "Failed to resend verification email.",
     };
   }
 }
@@ -4160,60 +4617,74 @@ export function validateFlightSearchParams(params: FlightSearchParams): {
 
   // Validate origin
   if (!params.origin || params.origin.trim().length < 2) {
-    errors.push('Origin airport code is required (e.g., LOS, LHR)');
+    errors.push("Origin airport code is required (e.g., LOS, LHR)");
   } else if (params.origin.length !== 3) {
-    warnings.push('Origin should be a 3-letter IATA airport code (e.g., LOS for Lagos)');
+    warnings.push(
+      "Origin should be a 3-letter IATA airport code (e.g., LOS for Lagos)",
+    );
   }
 
   // Validate destination
   if (!params.destination || params.destination.trim().length < 2) {
-    errors.push('Destination airport code is required (e.g., LOS, LHR)');
+    errors.push("Destination airport code is required (e.g., LOS, LHR)");
   } else if (params.destination.length !== 3) {
-    warnings.push('Destination should be a 3-letter IATA airport code');
+    warnings.push("Destination should be a 3-letter IATA airport code");
   }
 
   // Validate origin and destination are not the same
-  if (params.origin && params.destination && 
-      params.origin.toUpperCase() === params.destination.toUpperCase()) {
-    errors.push('Origin and destination cannot be the same');
+  if (
+    params.origin &&
+    params.destination &&
+    params.origin.toUpperCase() === params.destination.toUpperCase()
+  ) {
+    errors.push("Origin and destination cannot be the same");
   }
 
   // Validate departure date
   if (!params.departureDate) {
-    errors.push('Departure date is required');
+    errors.push("Departure date is required");
   } else if (!/^\d{4}-\d{2}-\d{2}$/.test(params.departureDate)) {
-    errors.push('Departure date must be in YYYY-MM-DD format');
+    errors.push("Departure date must be in YYYY-MM-DD format");
   } else {
     const depDate = new Date(params.departureDate);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     if (isNaN(depDate.getTime())) {
-      errors.push('Invalid departure date');
+      errors.push("Invalid departure date");
     } else if (depDate < today) {
-      errors.push('Departure date cannot be in the past');
-    } else if (depDate > new Date(today.getFullYear() + 2, today.getMonth(), today.getDate())) {
-      warnings.push('Departure date is more than 2 years in the future, some airlines may not have schedules');
+      errors.push("Departure date cannot be in the past");
+    } else if (
+      depDate >
+      new Date(today.getFullYear() + 2, today.getMonth(), today.getDate())
+    ) {
+      warnings.push(
+        "Departure date is more than 2 years in the future, some airlines may not have schedules",
+      );
     }
   }
 
   // Validate return date if provided
-  if (params.returnDate && params.returnDate.trim() !== '') {
+  if (params.returnDate && params.returnDate.trim() !== "") {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(params.returnDate)) {
-      errors.push('Return date must be in YYYY-MM-DD format');
+      errors.push("Return date must be in YYYY-MM-DD format");
     } else {
       const depDate = new Date(params.departureDate);
       const retDate = new Date(params.returnDate);
-      
+
       if (isNaN(retDate.getTime())) {
-        errors.push('Invalid return date');
+        errors.push("Invalid return date");
       } else if (retDate <= depDate) {
-        errors.push('Return date must be after departure date');
+        errors.push("Return date must be after departure date");
       } else {
         const maxReturnDays = 365;
-        const diffDays = Math.ceil((retDate.getTime() - depDate.getTime()) / (1000 * 60 * 60 * 24));
+        const diffDays = Math.ceil(
+          (retDate.getTime() - depDate.getTime()) / (1000 * 60 * 60 * 24),
+        );
         if (diffDays > maxReturnDays) {
-          warnings.push(`Return date is more than ${maxReturnDays} days after departure`);
+          warnings.push(
+            `Return date is more than ${maxReturnDays} days after departure`,
+          );
         }
       }
     }
@@ -4221,33 +4692,40 @@ export function validateFlightSearchParams(params: FlightSearchParams): {
 
   // Validate passengers
   if (!params.passengers || params.passengers < 1) {
-    errors.push('At least 1 passenger is required');
+    errors.push("At least 1 passenger is required");
   } else if (params.passengers > 9) {
-    errors.push('Maximum 9 passengers per booking');
+    errors.push("Maximum 9 passengers per booking");
   } else if (params.passengers > 6) {
-    warnings.push('Large group bookings may have limited availability');
+    warnings.push("Large group bookings may have limited availability");
   }
 
   // Validate cabin class
-  const validClasses = ['economy', 'premium_economy', 'business', 'first'];
+  const validClasses = ["economy", "premium_economy", "business", "first"];
   if (!params.cabinClass) {
-    errors.push('Cabin class is required');
+    errors.push("Cabin class is required");
   } else if (!validClasses.includes(params.cabinClass.toLowerCase())) {
-    errors.push(`Cabin class must be one of: ${validClasses.join(', ')}`);
+    errors.push(`Cabin class must be one of: ${validClasses.join(", ")}`);
   }
 
   // Validate currency
-  const validCurrencies = ['GBP', 'USD', 'EUR', 'NGN'];
-  if (params.currency && !validCurrencies.includes(params.currency.toUpperCase())) {
-    warnings.push(`Currency ${params.currency} may not be supported. Using GBP instead.`);
+  const validCurrencies = ["GBP", "USD", "EUR", "NGN"];
+  if (
+    params.currency &&
+    !validCurrencies.includes(params.currency.toUpperCase())
+  ) {
+    warnings.push(
+      `Currency ${params.currency} may not be supported. Using GBP instead.`,
+    );
   }
 
   // Validate max connections
   if (params.maxConnections !== undefined) {
     if (!Number.isInteger(params.maxConnections) || params.maxConnections < 0) {
-      warnings.push('Max connections must be a positive integer');
+      warnings.push("Max connections must be a positive integer");
     } else if (params.maxConnections > 3) {
-      warnings.push('More than 3 connections may result in very long travel times');
+      warnings.push(
+        "More than 3 connections may result in very long travel times",
+      );
     }
   }
 
@@ -4274,33 +4752,36 @@ export async function createAmadeusHotelBooking(
     holderName?: string;
     securityCode?: string;
   },
-  isGuest: boolean = true
+  isGuest: boolean = true,
+  voucherCode?: string, // ← ADD THIS LINE (optional parameter)
 ): Promise<HotelBookingResponse> {
   try {
-    console.log('🏨 Creating Amadeus hotel booking...');
-    
+    console.log("🏨 Creating Amadeus hotel booking...");
+
     // Validate hotel data
     if (!hotelData || !hotelData.realData) {
-      throw new ApiError('Invalid hotel data', 400, 'INVALID_HOTEL_DATA');
+      throw new ApiError("Invalid hotel data", 400, "INVALID_HOTEL_DATA");
     }
-    
+
     const realData = hotelData.realData;
-    
+
     // Get cancellation deadline from realData or calculate a default
     let cancellationDeadline = realData.cancellationDeadline;
     if (!cancellationDeadline) {
       // Default to 24 hours before check-in
-      const checkInDate = realData.checkInDate || new Date().toISOString().split('T')[0];
+      const checkInDate =
+        realData.checkInDate || new Date().toISOString().split("T")[0];
       const deadline = new Date(checkInDate);
       deadline.setDate(deadline.getDate() - 1);
       deadline.setHours(23, 59, 0, 0);
       cancellationDeadline = deadline.toISOString();
     }
-    
+
     // Get cancellation policy
-    const cancellationPolicySnapshot = realData.cancellationPolicy || 
+    const cancellationPolicySnapshot =
+      realData.cancellationPolicy ||
       "Free cancellation until 24 hours before check-in. After that, full stay amount may be charged.";
-    
+
     // Prepare booking data with ALL required fields
     const bookingData: HotelBookingRequest & {
       cancellationDeadline: string;
@@ -4309,11 +4790,11 @@ export async function createAmadeusHotelBooking(
     } = {
       hotelOfferId: offerId,
       offerPrice: realData.finalPrice ?? realData.price,
-      currency: (realData.currency || 'GBP').toUpperCase(),
+      currency: (realData.currency || "GBP").toUpperCase(),
       guests: [
         {
           name: {
-            title: 'MR',
+            title: "MR",
             firstName: guestInfo.firstName,
             lastName: guestInfo.lastName,
           },
@@ -4328,160 +4809,171 @@ export async function createAmadeusHotelBooking(
           hotelOfferId: offerId,
           guestReferences: [
             {
-              guestReference: '1',
+              guestReference: "1",
             },
           ],
         },
       ],
       payment: {
-        method: 'CREDIT_CARD',
+        method: "CREDIT_CARD",
         paymentCard: {
-          paymentCardInfo: paymentInfo ? {
-            vendorCode: getVendorCodeFromCardNumber(paymentInfo.cardNumber || ''),
-            cardNumber: paymentInfo.cardNumber || '',
-            expiryDate: paymentInfo.expiryDate || '',
-            holderName: paymentInfo.holderName || '',
-            securityCode: paymentInfo.securityCode || '',
-          } : {
-            vendorCode: 'VI',
-            cardNumber: '4242424242424242',
-            expiryDate: '2026-12',
-            holderName: 'TEST USER',
-            securityCode: '123',
-          },
+          paymentCardInfo: paymentInfo
+            ? {
+                vendorCode: getVendorCodeFromCardNumber(
+                  paymentInfo.cardNumber || "",
+                ),
+                cardNumber: paymentInfo.cardNumber || "",
+                expiryDate: paymentInfo.expiryDate || "",
+                holderName: paymentInfo.holderName || "",
+                securityCode: paymentInfo.securityCode || "",
+              }
+            : {
+                vendorCode: "VI",
+                cardNumber: "4242424242424242",
+                expiryDate: "2026-12",
+                holderName: "TEST USER",
+                securityCode: "123",
+              },
         },
       },
       // ✅ ADD THESE REQUIRED FIELDS
       cancellationDeadline: cancellationDeadline,
       cancellationPolicySnapshot: cancellationPolicySnapshot,
-      policyAccepted: true
+      policyAccepted: true,
     };
-    
+
     // Validate booking data
     const validation = validateHotelBookingData(bookingData);
     if (!validation.isValid) {
       throw new ApiError(
-        `Booking validation failed: ${validation.errors.join(', ')}`,
+        `Booking validation failed: ${validation.errors.join(", ")}`,
         400,
-        'BOOKING_VALIDATION_FAILED'
+        "BOOKING_VALIDATION_FAILED",
       );
     }
-    
+
     // Use different endpoints for guest vs authenticated users
     let response: HotelBookingResponse;
-    
+
     if (isGuest) {
       // Use publicRequest for guest bookings (no auth required)
-      console.log('📝 Creating guest Amadeus hotel booking...');
-      console.log('📦 Guest booking payload:', JSON.stringify(bookingData, null, 2));
-      
+      console.log("📝 Creating guest Amadeus hotel booking...");
+      console.log(
+        "📦 Guest booking payload:",
+        JSON.stringify(bookingData, null, 2),
+      );
+
       response = await publicRequest<HotelBookingResponse>(
-        '/api/v1/bookings/hotels/bookings/amadeus/guest',
+        "/api/v1/bookings/hotels/bookings/amadeus/guest",
         {
-          method: 'POST',
+          method: "POST",
           body: JSON.stringify(bookingData),
-        }
+        },
       );
     } else {
       // Use authenticated endpoint for logged-in users
-      console.log('📝 Creating authenticated Amadeus hotel booking...');
+      console.log("📝 Creating authenticated Amadeus hotel booking...");
       response = await bookingApi.createHotelBookingAmadeus(bookingData);
     }
-    
+
     if (!response.success) {
       throw new ApiError(
-        response.message || 'Hotel booking failed',
+        response.message || "Hotel booking failed",
         response.status || 500,
-        'HOTEL_BOOKING_FAILED'
+        "HOTEL_BOOKING_FAILED",
       );
     }
-    
-    console.log('✅ Hotel booking created successfully:', response);
+
+    console.log("✅ Hotel booking created successfully:", response);
     return response;
-    
   } catch (error: any) {
-    console.error('❌ Hotel booking failed:', error);
-    
+    console.error("❌ Hotel booking failed:", error);
+
     if (error instanceof ApiError) {
       throw error;
     }
-    
+
     throw new ApiError(
-      error.message || 'Failed to create hotel booking',
+      error.message || "Failed to create hotel booking",
       error.status || 500,
-      'HOTEL_BOOKING_ERROR'
+      "HOTEL_BOOKING_ERROR",
     );
   }
 }
 
 /** Card brand to Amadeus vendor code. Export for Amadeus hotel booking flow. */
 export function getVendorCodeFromCardNumber(cardNumber: string): string {
-  if (!cardNumber) return 'VI';
+  if (!cardNumber) return "VI";
 
-  const cleanNumber = cardNumber.replace(/\s+/g, '').replace(/-/g, '');
+  const cleanNumber = cardNumber.replace(/\s+/g, "").replace(/-/g, "");
 
-  if (cleanNumber.startsWith('4')) return 'VI';
-  if (/^5[1-5]/.test(cleanNumber)) return 'MC';
-  if (/^3[47]/.test(cleanNumber)) return 'AX';
-  if (/^6(011|4[4-9]|5)/.test(cleanNumber)) return 'DS';
-  if (/^3(0[0-5]|6|8)/.test(cleanNumber)) return 'DC';
-  if (/^35(2[8-9]|[3-8][0-9])/.test(cleanNumber)) return 'JC';
-  return 'VI';
+  if (cleanNumber.startsWith("4")) return "VI";
+  if (/^5[1-5]/.test(cleanNumber)) return "MC";
+  if (/^3[47]/.test(cleanNumber)) return "AX";
+  if (/^6(011|4[4-9]|5)/.test(cleanNumber)) return "DS";
+  if (/^3(0[0-5]|6|8)/.test(cleanNumber)) return "DC";
+  if (/^35(2[8-9]|[3-8][0-9])/.test(cleanNumber)) return "JC";
+  return "VI";
 }
 
 // Transform flight data for frontend
 export function transformFlightOfferToSearchResult(
   offer: any,
   index: number,
-  isReturnFlight: boolean = false
+  isReturnFlight: boolean = false,
 ): any {
   try {
     // Extract flight information from offer
     const itineraries = offer.itineraries || [];
     const price = offer.price || offer.total_amount || {};
-    const airline = offer.validating_airline_codes?.[0] || 'Multiple';
-    
+    const airline = offer.validating_airline_codes?.[0] || "Multiple";
+
     // Get first itinerary for basic info
     const firstItinerary = itineraries[0] || {};
     const segments = firstItinerary.segments || [];
     const firstSegment = segments[0] || {};
     const lastSegment = segments[segments.length - 1] || firstSegment;
-    
+
     // Calculate duration
-    const duration = firstItinerary.duration || '';
-    
+    const duration = firstItinerary.duration || "";
+
     // Get stops information
     const stops = Math.max(0, segments.length - 1);
-    const stopsText = stops === 0 ? 'Direct' : `${stops} stop${stops > 1 ? 's' : ''}`;
-    
+    const stopsText =
+      stops === 0 ? "Direct" : `${stops} stop${stops > 1 ? "s" : ""}`;
+
     // Format price
     const totalPrice = price.total || price.amount || 0;
-    const currency = price.currency || 'GBP';
+    const currency = price.currency || "GBP";
     const currencySymbol = getCurrencySymbol(currency);
-    
+
     // Format airline name
     const airlineName = getAirlineName(airline);
-    
+
     // Get departure and arrival info
-    const departureTime = firstSegment.departure?.at || '';
-    const arrivalTime = lastSegment.arrival?.at || '';
-    const departureAirport = firstSegment.departure?.iataCode || '';
-    const arrivalAirport = lastSegment.arrival?.iataCode || '';
-    
+    const departureTime = firstSegment.departure?.at || "";
+    const arrivalTime = lastSegment.arrival?.at || "";
+    const departureAirport = firstSegment.departure?.iataCode || "";
+    const arrivalAirport = lastSegment.arrival?.iataCode || "";
+
     // Format times
     const formatTime = (dateTime: string) => {
-      if (!dateTime) return '';
+      if (!dateTime) return "";
       try {
         const date = new Date(dateTime);
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return date.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
       } catch {
-        return dateTime.split('T')[1]?.substring(0, 5) || '';
+        return dateTime.split("T")[1]?.substring(0, 5) || "";
       }
     };
-    
+
     // Create result object
     const result = {
-      id: offer.id || `flight-${index}-${isReturnFlight ? 'return' : 'outbound'}`,
+      id:
+        offer.id || `flight-${index}-${isReturnFlight ? "return" : "outbound"}`,
       provider: airlineName,
       title: `${airlineName} Flight`,
       subtitle: `${departureAirport} → ${arrivalAirport} • ${stopsText} • ${duration}`,
@@ -4490,16 +4982,16 @@ export function transformFlightOfferToSearchResult(
       rating: 4.0, // Default rating
       image: getAirlineImage(airline),
       amenities: [
-        'Seat Selection',
-        'Cabin Baggage',
-        'In-flight Entertainment',
-        'Meal Service',
+        "Seat Selection",
+        "Cabin Baggage",
+        "In-flight Entertainment",
+        "Meal Service",
       ],
       features: [
         `Depart: ${formatTime(departureTime)}`,
         `Arrive: ${formatTime(arrivalTime)}`,
         `Duration: ${duration}`,
-        `Class: ${offer.cabin_class || 'Economy'}`,
+        `Class: ${offer.cabin_class || "Economy"}`,
         stopsText,
       ],
       type: "flights" as const,
@@ -4516,7 +5008,7 @@ export function transformFlightOfferToSearchResult(
         duration,
         price: totalPrice,
         currency,
-        cabinClass: offer.cabin_class || 'ECONOMY',
+        cabinClass: offer.cabin_class || "ECONOMY",
         segments,
         itineraries,
         travelerPricings: offer.traveler_pricings,
@@ -4526,23 +5018,24 @@ export function transformFlightOfferToSearchResult(
         bookingRequirements: offer.booking_requirements,
       },
     };
-    
+
     return result;
   } catch (error) {
-    console.error('Error transforming flight offer:', error, offer);
-    
+    console.error("Error transforming flight offer:", error, offer);
+
     // Return a fallback result
     return {
       id: `flight-error-${index}`,
-      provider: 'Airline',
-      title: 'Flight',
-      subtitle: 'Flight details unavailable',
-      price: 'Price unavailable',
-      totalPrice: 'Price unavailable',
+      provider: "Airline",
+      title: "Flight",
+      subtitle: "Flight details unavailable",
+      price: "Price unavailable",
+      totalPrice: "Price unavailable",
       rating: 0,
-      image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400',
-      amenities: ['Information unavailable'],
-      features: ['Details not available'],
+      image:
+        "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400",
+      amenities: ["Information unavailable"],
+      features: ["Details not available"],
       type: "flights" as const,
       isReturnFlight,
       realData: {},
@@ -4553,43 +5046,46 @@ export function transformFlightOfferToSearchResult(
 // Helper functions for flight transformation
 function getCurrencySymbol(currency: string): string {
   const symbols: Record<string, string> = {
-    'GBP': '£',
-    'USD': '$',
-    'EUR': '€',
-    'NGN': '₦',
+    GBP: "£",
+    USD: "$",
+    EUR: "€",
+    NGN: "₦",
   };
   return symbols[currency.toUpperCase()] || currency;
 }
 
 function getAirlineName(code: string): string {
   const airlines: Record<string, string> = {
-    'BA': 'British Airways',
-    'LH': 'Lufthansa',
-    'AF': 'Air France',
-    'KL': 'KLM',
-    'TK': 'Turkish Airlines',
-    'EK': 'Emirates',
-    'QR': 'Qatar Airways',
-    'ET': 'Ethiopian Airlines',
-    'VS': 'Virgin Atlantic',
-    'AA': 'American Airlines',
-    'DL': 'Delta Air Lines',
-    'UA': 'United Airlines',
-    'WN': 'Southwest Airlines',
-    'FR': 'Ryanair',
-    'U2': 'easyJet',
+    BA: "British Airways",
+    LH: "Lufthansa",
+    AF: "Air France",
+    KL: "KLM",
+    TK: "Turkish Airlines",
+    EK: "Emirates",
+    QR: "Qatar Airways",
+    ET: "Ethiopian Airlines",
+    VS: "Virgin Atlantic",
+    AA: "American Airlines",
+    DL: "Delta Air Lines",
+    UA: "United Airlines",
+    WN: "Southwest Airlines",
+    FR: "Ryanair",
+    U2: "easyJet",
   };
-  return airlines[code] || code || 'Multiple Airlines';
+  return airlines[code] || code || "Multiple Airlines";
 }
 
 function getAirlineImage(code: string): string {
   const airlineImages: Record<string, string> = {
-    'BA': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80&w=400',
-    'EK': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80&w=400',
-    'QR': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80&w=400',
-    'LH': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80&w=400',
+    BA: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80&w=400",
+    EK: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80&w=400",
+    QR: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80&w=400",
+    LH: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80&w=400",
   };
-  return airlineImages[code] || 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400';
+  return (
+    airlineImages[code] ||
+    "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=400"
+  );
 }
 
 // Session management helper
@@ -4601,52 +5097,55 @@ export class SessionManager {
       const profile = await userApi.getProfile();
       return !!profile;
     } catch (error) {
-      console.error('Session validation error:', error);
+      console.error("Session validation error:", error);
       return false;
     }
   }
-  
+
   static async refreshSession(): Promise<boolean> {
     try {
       const user = getStoredUser();
       if (!user?.email) return false;
-      
+
       // In a real app, you'd call a refresh token endpoint
       // For now, we'll just re-validate
       return await this.validateSession();
     } catch (error) {
-      console.error('Session refresh error:', error);
+      console.error("Session refresh error:", error);
       return false;
     }
   }
-  
+
   static async logoutEverywhere(): Promise<void> {
     try {
       await authApi.logout();
     } catch (error) {
-      console.error('Logout everywhere error:', error);
+      console.error("Logout everywhere error:", error);
       clearAuthToken();
     }
   }
 }
 
 // Auth event listeners
-if (typeof window !== 'undefined') {
-  window.addEventListener('auth-expired', () => {
+if (typeof window !== "undefined") {
+  window.addEventListener("auth-expired", () => {
     clearAuthToken();
   });
-  
+
   // Auto-refresh session every 5 minutes
-  window.addEventListener('load', () => {
+  window.addEventListener("load", () => {
     const token = getAuthToken();
     if (token) {
-      setInterval(async () => {
-        const isValid = await SessionManager.validateSession();
-        if (!isValid) {
-          clearAuthToken();
-          window.dispatchEvent(new CustomEvent('session-expired'));
-        }
-      }, 5 * 60 * 1000); // 5 minutes
+      setInterval(
+        async () => {
+          const isValid = await SessionManager.validateSession();
+          if (!isValid) {
+            clearAuthToken();
+            window.dispatchEvent(new CustomEvent("session-expired"));
+          }
+        },
+        5 * 60 * 1000,
+      ); // 5 minutes
     }
   });
 }
@@ -4654,71 +5153,94 @@ if (typeof window !== 'undefined') {
 // API Configuration
 export const apiConfig = {
   endpoints: {
-    user: '/api/v1/users',
-    auth: '/api/v1/auth',
-    bookings: '/api/v1/bookings',
-    payments: '/api/v1/payments',
-    hotels: '/api/v1/hotels',
-    cars: '/api/v1/cars',
-    notifications: '/api/v1/notifications',
-    support: '/api/v1/support',
+    user: "/api/v1/users",
+    auth: "/api/v1/auth",
+    bookings: "/api/v1/bookings",
+    payments: "/api/v1/payments",
+    hotels: "/api/v1/hotels",
+    cars: "/api/v1/cars",
+    notifications: "/api/v1/notifications",
+    support: "/api/v1/support",
   },
-  
+
   defaultHeaders: {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
+    Accept: "application/json",
+    "Content-Type": "application/json",
   },
-  
+
   timeout: 30000,
   retryAttempts: 3,
 };
 
 // Type guard utilities
 export function isUser(obj: any): obj is User {
-  return obj && typeof obj === 'object' && 'email' in obj && 'name' in obj;
+  return obj && typeof obj === "object" && "email" in obj && "name" in obj;
 }
 
 export function isHotelSearchParams(obj: any): obj is HotelSearchParams {
-  return obj && typeof obj === 'object' && 
-         'cityCode' in obj && 
-         'checkInDate' in obj && 
-         'checkOutDate' in obj;
+  return (
+    obj &&
+    typeof obj === "object" &&
+    "cityCode" in obj &&
+    "checkInDate" in obj &&
+    "checkOutDate" in obj
+  );
 }
 
 export function isHotelOffer(obj: any): obj is HotelOffer {
-  return obj && typeof obj === 'object' && 
-         'type' in obj && 
-         'hotel' in obj && 
-         'available' in obj;
+  return (
+    obj &&
+    typeof obj === "object" &&
+    "type" in obj &&
+    "hotel" in obj &&
+    "available" in obj
+  );
 }
 
 export function isHotelSearchResponse(obj: any): obj is HotelSearchResponse {
-  return obj && typeof obj === 'object' && 
-         ('success' in obj || 'data' in obj || 'message' in obj);
+  return (
+    obj &&
+    typeof obj === "object" &&
+    ("success" in obj || "data" in obj || "message" in obj)
+  );
 }
 
 export function isHotelBookingRequest(obj: any): obj is HotelBookingRequest {
-  return obj && typeof obj === 'object' && 
-         'hotelOfferId' in obj && 
-         'guests' in obj && 
-         'payment' in obj;
+  return (
+    obj &&
+    typeof obj === "object" &&
+    "hotelOfferId" in obj &&
+    "guests" in obj &&
+    "payment" in obj
+  );
 }
 
 export function isHotelBookingResponse(obj: any): obj is HotelBookingResponse {
-  return obj && typeof obj === 'object' && 
-         ('success' in obj || 'data' in obj || 'message' in obj);
+  return (
+    obj &&
+    typeof obj === "object" &&
+    ("success" in obj || "data" in obj || "message" in obj)
+  );
 }
 
 export function isCarRentalOffer(obj: any): obj is CarRentalOffer {
-  return obj && typeof obj === 'object' && 
-         'id' in obj && 
-         'vehicle' in obj && 
-         'serviceProvider' in obj;
+  return (
+    obj &&
+    typeof obj === "object" &&
+    "id" in obj &&
+    "vehicle" in obj &&
+    "serviceProvider" in obj
+  );
 }
 
-export function isCarRentalSearchResponse(obj: any): obj is CarRentalSearchResponse {
-  return obj && typeof obj === 'object' && 
-         ('success' in obj || 'data' in obj || 'message' in obj);
+export function isCarRentalSearchResponse(
+  obj: any,
+): obj is CarRentalSearchResponse {
+  return (
+    obj &&
+    typeof obj === "object" &&
+    ("success" in obj || "data" in obj || "message" in obj)
+  );
 }
 
 // Export everything as an API object
@@ -4733,7 +5255,7 @@ const api = {
   notificationApi,
   supportApi,
   publicRequest,
-  
+
   // Hotel search functions
   searchHotelsAmadeus,
   searchHotelsWithPagination,
@@ -4742,13 +5264,13 @@ const api = {
   transformHotelToSearchResult,
   validateHotelBookingData,
   getCityCode,
-  
+
   // Flight search functions
   searchFlightsFixed,
   searchFlightsWithPagination,
   validateFlightSearchParams,
   transformFlightOfferToSearchResult,
-  
+
   // Car rental functions
   searchCarRentals,
   searchCarRentalsWithPagination,
@@ -4760,40 +5282,40 @@ const api = {
   createCompleteCarRentalBooking,
   cancelCarRentalBooking,
   getCarRentalBooking,
-  
+
   // Hotel booking functions
   createAmadeusHotelBooking,
-  
+
   // NEW: Unified Payment Functions
   processBookingPayment,
   createBookingAfterPayment,
   completeBookingWithPayment,
   trackPaymentStatus,
-  
+
   // Token management
   setAuthToken,
   clearAuthToken,
   getStoredAuthToken,
   getStoredUser,
-  
+
   // User profile
   fetchUserProfile,
   updateUserProfile,
   uploadUserAvatar,
-  
+
   // Auth helper functions
   handleForgotPassword,
   handleResetPassword,
   handleVerifyEmail,
   checkEmailVerified,
   resendVerificationEmail,
-  
+
   // Session management
   SessionManager,
-  
+
   // API Configuration
   apiConfig,
-  
+
   // Type guards
   isUser,
   isHotelSearchParams,
@@ -4803,7 +5325,7 @@ const api = {
   isHotelBookingResponse,
   isCarRentalOffer,
   isCarRentalSearchResponse,
-  
+
   // Classes
   ApiError,
 };

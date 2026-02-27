@@ -93,7 +93,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const [stopsFilter, setStopsFilter] = useState('Any');
   const [maxPrice, setMaxPrice] = useState(2000);
   const [segments, setSegments] = useState<Segment[]>([
-    { from: 'LOS - Lagos, Nigeria', to: 'ABV - Abuja, Nigeria', date: '' }
+    { from: 'LHR - London, United Kingdom', to: 'CDG - Paris, France', date: '' }
   ]);
   const [returnDate, setReturnDate] = useState('');
   const [showFromDropdown, setShowFromDropdown] = useState(false);
@@ -144,7 +144,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
  
 
   const getCityCode = (location: string): string => {
-    if (!location) return 'LOS';
+    if (!location) return 'LHR';
     
     const match = location.match(/\(([A-Z]{3})\)/);
     if (match) return match[1];
@@ -160,7 +160,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     if (popularDest) return popularDest.cityCode;
     
     const anyCode = location.match(/([A-Z]{3})/);
-    return anyCode ? anyCode[1] : 'LOS';
+    return anyCode ? anyCode[1] : 'LHR';
   };
 
   const popularHotelDestinations: HotelDestination[] = [
@@ -226,7 +226,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const fetchCarLocationSuggestions = useCallback(async (query: string): Promise<CarLocationSuggestion[]> => {
     if (!query || query.length < 1) {
       const popularCarLocations = airportsWithCities
-        .filter(location => ['PAR', 'LHR', 'NYC', 'CDG', 'LOS', 'ABV'].includes(location.code))
+        .filter(location => ['PAR', 'LHR', 'NYC', 'CDG', 'LOS', 'ABV', 'DXB'].includes(location.code))
         .slice(0, 8);
       return popularCarLocations.map(location => ({
         ...location,

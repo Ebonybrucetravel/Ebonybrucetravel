@@ -3,24 +3,27 @@
 import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import api from '../lib/api';
+import { format } from 'date-fns';
 
 interface CarDetailsProps {
   item: any;
   searchParams: any;
   onBack: () => void;
   onBook: () => void;
+  createdBooking?: any; // Add this to receive the created booking data
 }
 
 const CarDetails: React.FC<CarDetailsProps> = ({ 
   item, 
   searchParams, 
   onBack, 
-  onBook 
+  onBook,
+  createdBooking // Add this
 }) => {
   const { currency } = useLanguage();
   const [promoCode, setPromoCode] = useState('');
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
-  const [detailedCarData, setDetailedCarData] = useState<any>(item?.realData || null);
+  const [detailedCarData, setDetailedCarData] = useState<any>(createdBooking || item?.realData || null);
   const [error, setError] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
   const [appliedPromo, setAppliedPromo] = useState<{
@@ -32,6 +35,21 @@ const CarDetails: React.FC<CarDetailsProps> = ({
   useEffect(() => {
     window.scrollTo(0, 0);
     
+    // If we have createdBooking from the API, use it directly
+    if (createdBooking) {
+      console.log('✅ Using created booking data:', createdBooking);
+      setDetailedCarData({
+        ...item?.realData,
+        ...createdBooking.bookingData,
+        // Merge the pricing from the booking
+        basePrice: createdBooking.basePrice,
+        totalAmount: createdBooking.totalAmount,
+        currency: createdBooking.currency
+      });
+      return;
+    }
+    
+    // Otherwise fetch details as before
     const fetchCarDetails = async () => {
       if (!item) return;
       
@@ -53,9 +71,6 @@ const CarDetails: React.FC<CarDetailsProps> = ({
         }
 
         // Extract search parameters from the correct locations
-        // The searchParams from the parent component might be in different formats
-        
-        // Try to get pickup location from various sources
         let pickupLocationCode = 'LOS';
         let pickupDateTime = new Date().toISOString();
         let dropoffLocationCode = 'LOS';
@@ -167,12 +182,15 @@ const CarDetails: React.FC<CarDetailsProps> = ({
     };
     
     fetchCarDetails();
-  }, [item, searchParams]);
+  }, [item, searchParams, createdBooking]);
 
   if (!item && !detailedCarData) return null;
 
   // Use detailedCarData if available, otherwise fallback to item.realData or item
   const carData = detailedCarData || item.realData || item;
+  
+  // If we have createdBooking, use its data directly
+  const bookingData = createdBooking?.bookingData || {};
   
   // Extract all possible data structures
   const vehicle = carData.vehicle || {};
@@ -225,9 +243,25 @@ const CarDetails: React.FC<CarDetailsProps> = ({
   };
   
   // --- EXTRACT PICKUP AND DROPOFF LOCATIONS CORRECTLY ---
-  // Priority: 1. API response data, 2. item.realData, 3. searchParams, 4. defaults
+  // Priority: 1. Created booking data, 2. API response data, 3. item.realData, 4. searchParams
   
   const getPickupLocation = (): { code: string; display: string; dateTime: string } => {
+    // First try created booking data
+    if (createdBooking) {
+      const pickupDateTime = createdBooking.bookingData?.pickupDateTime || 
+                            createdBooking.bookingData?.start?.dateTime;
+      const pickupLocation = createdBooking.bookingData?.pickupLocationCode ||
+                            createdBooking.bookingData?.start?.locationCode;
+      
+      if (pickupLocation) {
+        return {
+          code: pickupLocation,
+          display: pickupLocation,
+          dateTime: pickupDateTime || ''
+        };
+      }
+    }
+    
     // Try API response first
     if (carData.start?.locationCode) {
       return {
@@ -248,13 +282,11 @@ const CarDetails: React.FC<CarDetailsProps> = ({
     
     // Try searchParams
     if (searchParams) {
-      // Try to get the display name with airport code
       if (searchParams.carPickUp) {
         const display = searchParams.carPickUp;
         const match = display.match(/\(([A-Z]{3})\)/);
         const code = match ? match[1] : display.substring(0, 3).toUpperCase();
         
-        // Construct dateTime
         let dateTime = '';
         if (searchParams.pickUpDate) {
           const time = searchParams.pickUpTime || '10:00';
@@ -269,6 +301,22 @@ const CarDetails: React.FC<CarDetailsProps> = ({
   };
 
   const getDropoffLocation = (): { code: string; display: string; dateTime: string } => {
+    // First try created booking data
+    if (createdBooking) {
+      const dropoffDateTime = createdBooking.bookingData?.dropoffDateTime ||
+                             createdBooking.bookingData?.end?.dateTime;
+      const dropoffLocation = createdBooking.bookingData?.dropoffLocationCode ||
+                             createdBooking.bookingData?.end?.locationCode;
+      
+      if (dropoffLocation) {
+        return {
+          code: dropoffLocation,
+          display: dropoffLocation,
+          dateTime: dropoffDateTime || ''
+        };
+      }
+    }
+    
     // Try API response first
     if (carData.end?.locationCode) {
       return {
@@ -302,16 +350,6 @@ const CarDetails: React.FC<CarDetailsProps> = ({
         
         return { code, display, dateTime };
       }
-      
-      // If no dropoff, use pickup
-      if (searchParams.carPickUp) {
-        const pickup = getPickupLocation();
-        return { 
-          code: pickup.code, 
-          display: pickup.display,
-          dateTime: pickup.dateTime
-        };
-      }
     }
     
     const pickup = getPickupLocation();
@@ -323,24 +361,43 @@ const CarDetails: React.FC<CarDetailsProps> = ({
 
   // --- CALCULATE RENTAL DURATION CORRECTLY ---
   const calculateRentalDuration = (): { days: number; hours: number; minutes: number; totalMinutes: number } => {
-    // Try to get dates from various sources
     let startDate: Date | null = null;
     let endDate: Date | null = null;
     
-    // 1. From API response
-    if (carData.start?.dateTime) {
+    // 1. From created booking
+    if (createdBooking) {
+      const startDateTime = createdBooking.bookingData?.pickupDateTime ||
+                           createdBooking.bookingData?.start?.dateTime;
+      const endDateTime = createdBooking.bookingData?.dropoffDateTime ||
+                         createdBooking.bookingData?.end?.dateTime;
+      
+      if (startDateTime) {
+        try {
+          startDate = new Date(startDateTime);
+        } catch (e) {}
+      }
+      
+      if (endDateTime) {
+        try {
+          endDate = new Date(endDateTime);
+        } catch (e) {}
+      }
+    }
+    
+    // 2. From API response
+    if (!startDate && carData.start?.dateTime) {
       try {
         startDate = new Date(carData.start.dateTime);
       } catch (e) {}
     }
     
-    if (carData.end?.dateTime) {
+    if (!endDate && carData.end?.dateTime) {
       try {
         endDate = new Date(carData.end.dateTime);
       } catch (e) {}
     }
     
-    // 2. From item.realData
+    // 3. From item.realData
     if (!startDate && item.realData?.pickupDateTime) {
       try {
         startDate = new Date(item.realData.pickupDateTime);
@@ -353,7 +410,7 @@ const CarDetails: React.FC<CarDetailsProps> = ({
       } catch (e) {}
     }
     
-    // 3. From searchParams
+    // 4. From searchParams
     if (!startDate && searchParams) {
       if (searchParams.pickUpDate) {
         const time = searchParams.pickUpTime || '10:00';
@@ -369,15 +426,10 @@ const CarDetails: React.FC<CarDetailsProps> = ({
         try {
           endDate = new Date(`${searchParams.dropOffDate}T${time}:00`);
         } catch (e) {}
-      } else if (searchParams.pickUpDate) {
-        // Default to 3 days after pickup
-        const date = new Date(`${searchParams.pickUpDate}T10:00:00`);
-        date.setDate(date.getDate() + 3);
-        endDate = date;
       }
     }
     
-    // 4. Default values
+    // 5. Default values
     if (!startDate) {
       startDate = new Date();
     }
@@ -412,11 +464,7 @@ const CarDetails: React.FC<CarDetailsProps> = ({
     if (!dateTimeStr) return 'N/A';
     try {
       const date = new Date(dateTimeStr);
-      return date.toLocaleDateString('en-GB', { 
-        day: '2-digit', 
-        month: 'short', 
-        year: 'numeric' 
-      });
+      return format(date, 'dd MMM yyyy');
     } catch {
       return dateTimeStr;
     }
@@ -426,22 +474,15 @@ const CarDetails: React.FC<CarDetailsProps> = ({
     if (!dateTimeStr) return 'N/A';
     try {
       const date = new Date(dateTimeStr);
-      return date.toLocaleTimeString([], { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: true 
-      });
+      return format(date, 'hh:mm a');
     } catch {
       return dateTimeStr;
     }
   };
 
   // Get display date/time strings
-  const pickupDisplayDateTime = pickupLocation.dateTime || 
-                                (searchParams?.pickUpDate ? `${searchParams.pickUpDate}T${searchParams.pickUpTime || '10:00'}:00` : '');
-  
-  const dropoffDisplayDateTime = dropoffLocation.dateTime || 
-                                 (searchParams?.dropOffDate ? `${searchParams.dropOffDate}T${searchParams.dropOffTime || '10:00'}:00` : '');
+  const pickupDisplayDateTime = pickupLocation.dateTime;
+  const dropoffDisplayDateTime = dropoffLocation.dateTime;
 
   // Vehicle specs
   const seats = vehicle.seats?.[0]?.count || 4;
@@ -458,8 +499,13 @@ const CarDetails: React.FC<CarDetailsProps> = ({
   let basePrice = 0;
   let currencyCode = 'GBP';
   
+  // If we have createdBooking, use its exact amounts
+  if (createdBooking) {
+    basePrice = createdBooking.totalAmount || createdBooking.basePrice || 0;
+    currencyCode = createdBooking.currency || 'GBP';
+  }
   // Try to get price from API response
-  if (carData.final_price) {
+  else if (carData.final_price) {
     basePrice = parseFloat(carData.final_price);
     currencyCode = carData.currency || 'GBP';
   } else if (carData.converted?.monetaryAmount) {
@@ -472,21 +518,18 @@ const CarDetails: React.FC<CarDetailsProps> = ({
     basePrice = parseFloat(carData.price.total);
     currencyCode = carData.price.currency || 'GBP';
   } else if (item.price) {
-    // Parse from price string (e.g., "£494.76" or "₦731.00")
     const priceStr = item.price.toString();
     const numericMatch = priceStr.match(/[\d,.]+/);
     if (numericMatch) {
       basePrice = parseFloat(numericMatch[0].replace(/,/g, ''));
     }
     
-    // Detect currency
     if (priceStr.includes('£')) currencyCode = 'GBP';
     else if (priceStr.includes('₦')) currencyCode = 'NGN';
     else if (priceStr.includes('€')) currencyCode = 'EUR';
     else if (priceStr.includes('$')) currencyCode = 'USD';
   }
 
-  // Use currency from context or detected currency
   const displayCurrency = currency || { 
     symbol: currencyCode === 'GBP' ? '£' : 
            currencyCode === 'USD' ? '$' : 
@@ -495,7 +538,6 @@ const CarDetails: React.FC<CarDetailsProps> = ({
     code: currencyCode 
   };
 
-  // Calculate price per day
   const pricePerDay = rentalDays > 0 ? basePrice / rentalDays : basePrice;
   
   const formattedBasePrice = `${displayCurrency.symbol}${basePrice.toLocaleString(undefined, { 
@@ -508,7 +550,6 @@ const CarDetails: React.FC<CarDetailsProps> = ({
     maximumFractionDigits: 2 
   })}`;
 
-  // Handle promo code
   const handleApplyPromo = async () => {
     if (!promoCode.trim()) {
       alert('Please enter a promo code');
@@ -537,7 +578,6 @@ const CarDetails: React.FC<CarDetailsProps> = ({
     }
   };
 
-  // Calculate discounted price
   const getDiscountedTotal = (): number => {
     if (!appliedPromo) return basePrice;
     
@@ -591,6 +631,15 @@ const CarDetails: React.FC<CarDetailsProps> = ({
               <p className="text-sm font-bold text-yellow-800">Using cached car details</p>
               <p className="text-xs text-yellow-700 mt-1">{error}</p>
             </div>
+          </div>
+        )}
+
+        {/* Booking Reference if available */}
+        {createdBooking?.reference && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <span className="font-semibold">Booking Reference:</span> {createdBooking.reference}
+            </p>
           </div>
         )}
 
@@ -774,7 +823,7 @@ const CarDetails: React.FC<CarDetailsProps> = ({
             </div>
           </div>
 
-          {/* Right Column: Booking Summary (35%) - CORRECTED */}
+          {/* Right Column: Booking Summary */}
           <aside className="w-full lg:w-[440px] sticky top-24">
             <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
               <div className="p-8 border-b border-gray-50 bg-gray-50/30">

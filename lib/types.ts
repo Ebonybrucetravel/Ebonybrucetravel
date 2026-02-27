@@ -7,15 +7,17 @@ export interface SearchSegment {
 }
 
 export interface SearchParams {
-  type: 'flights' | 'hotels' | 'cars' | 'car-rentals';
-  tripType?: 'round-trip' | 'one-way' | 'multi-city';
+  type: "flights" | "hotels" | "cars" | "car-rentals";
+  tripType?: "round-trip" | "one-way" | "multi-city";
   segments?: SearchSegment[];
   returnDate?: string;
-  passengers?: number | {
-      adults: number;
-      children: number;
-      infants: number;
-  };
+  passengers?:
+    | number
+    | {
+        adults: number;
+        children: number;
+        infants: number;
+      };
   adults?: number;
   guests?: number;
   rooms?: number;
@@ -56,7 +58,7 @@ export interface SearchResult {
   image?: string;
   amenities?: string[];
   features?: string[];
-  type?: 'flights' | 'hotels' | 'car-rentals';
+  type?: "flights" | "hotels" | "car-rentals";
   isRefundable?: boolean;
   realData?: any;
   baggage?: string;
@@ -80,9 +82,9 @@ export interface User {
   profilePicture?: string;
   avatar?: string;
   dob?: string;
-  dateOfBirth?: string;  
-  gender?: string;       
-  phone?: string;        
+  dateOfBirth?: string;
+  gender?: string;
+  phone?: string;
   address?: string;
   city?: string;
   country?: string;
@@ -99,9 +101,13 @@ export interface Booking {
   id: string;
   reference: string;
   userId?: string;
-  status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'CANCELLED';
+  status: "PENDING" | "CONFIRMED" | "FAILED" | "CANCELLED";
   paymentStatus: string;
-  productType: 'FLIGHT_INTERNATIONAL' | 'FLIGHT_DOMESTIC' | 'HOTEL' | 'CAR_RENTAL';
+  productType:
+    | "FLIGHT_INTERNATIONAL"
+    | "FLIGHT_DOMESTIC"
+    | "HOTEL"
+    | "CAR_RENTAL";
   provider: string;
   providerBookingId?: string | null;
   basePrice: number;
@@ -120,7 +126,7 @@ export interface Booking {
     departureDate?: string;
     cabinClass?: string;
     passengers?: number | { adults: number; infants: number; children: number };
-    
+
     // Hotel fields
     guests?: number;
     rooms?: number;
@@ -129,14 +135,14 @@ export interface Booking {
     location?: string;
     hotelName?: string;
     hotelId?: string;
-    
+
     // Car rental fields
     vehicleType?: string;
     pickupDateTime?: string;
     dropoffDateTime?: string;
     pickupLocationCode?: string;
     dropoffLocationCode?: string;
-    
+
     // Common fields
     offerId?: string;
     [key: string]: any;
@@ -162,6 +168,18 @@ export interface PassengerInfo {
   lastName: string;
   email: string;
   phone: string;
+  title?: "mr" | "ms" | "mrs" | "miss" | "dr";
+  gender?: "m" | "f";
+  dateOfBirth?: string;
+  born_on?: string;
+  passengers?: Array<{
+    firstName: string;
+    lastName: string;
+    dateOfBirth: string;
+    title: "mr" | "ms" | "mrs" | "miss" | "dr";
+    gender: "m" | "f";
+  }>;
+  voucherCode?: string;
 }
 
 export interface ContentSection {
@@ -183,7 +201,7 @@ export interface ContactFormData {
   name: string;
   email: string;
   phone: string;
-  service: 'travel' | 'logistics' | 'education' | 'hotel' | 'other' | '';
+  service: "travel" | "logistics" | "education" | "hotel" | "other" | "";
   message: string;
 }
 
@@ -215,11 +233,11 @@ export interface ContactInfo {
 export interface FAQ {
   question: string;
   answer: string;
-  category?: 'general' | 'travel' | 'logistics' | 'education';
+  category?: "general" | "travel" | "logistics" | "education";
 }
 
 export interface SocialMediaLink {
-  platform: 'facebook' | 'twitter' | 'instagram' | 'linkedin';
+  platform: "facebook" | "twitter" | "instagram" | "linkedin";
   url: string;
 }
 

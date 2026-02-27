@@ -4,17 +4,28 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 
+interface ContactFormData {
+  name: string;
+  email: string;
+  phone: string;
+  serviceInterestedIn: string;
+  message: string;
+}
+
 export default function ContactPage() {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ContactFormData>({
     name: '',
     email: '',
     phone: '',
-    service: '',
+    serviceInterestedIn: '',
     message: ''
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<null | 'success' | 'error'>(null);
+  const [errorMessage, setErrorMessage] = useState<string>('');
+
+  const API_BASE_URL = 'https://ebony-bruce-production.up.railway.app/api/v1';
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -24,16 +35,69 @@ export default function ContactPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setErrorMessage('');
     
-    // Simulate form submission
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      // Map the form service value to match API expected format
+      const serviceMapping: { [key: string]: string } = {
+        'travel': 'Travel Services',
+        'logistics': 'Logistics - DHL',
+        'education': 'Educational Consulting',
+        'hotel': 'Hotel Reservations',
+        'other': 'Other'
+      };
+
+      const payload = {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone || '', // Send empty string if not provided
+        serviceInterestedIn: serviceMapping[formData.serviceInterestedIn] || formData.serviceInterestedIn,
+        message: formData.message
+      };
+
+      console.log('📡 Sending contact form:', payload);
+
+      const response = await fetch(`${API_BASE_URL}/contact`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      console.log('📦 API Response:', data);
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to send message');
+      }
+
+      // Success
       setSubmitStatus('success');
-      setFormData({ name: '', email: '', phone: '', service: '', message: '' });
+      setFormData({
+        name: '',
+        email: '',
+        phone: '',
+        serviceInterestedIn: '',
+        message: ''
+      });
       
       // Reset success message after 5 seconds
       setTimeout(() => setSubmitStatus(null), 5000);
-    }, 1500);
+
+    } catch (err) {
+      console.error('❌ Error sending message:', err);
+      setSubmitStatus('error');
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to send message. Please try again.');
+      
+      // Reset error message after 5 seconds
+      setTimeout(() => {
+        setSubmitStatus(null);
+        setErrorMessage('');
+      }, 5000);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -199,6 +263,12 @@ export default function ContactPage() {
             </div>
           )}
 
+          {submitStatus === 'error' && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-center">
+              {errorMessage || 'Failed to send message. Please try again.'}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
@@ -242,8 +312,8 @@ export default function ContactPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Service Interested In *</label>
                 <select
-                  name="service"
-                  value={formData.service}
+                  name="serviceInterestedIn"
+                  value={formData.serviceInterestedIn}
                   onChange={handleChange}
                   required
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#33a8da] focus:border-transparent outline-none transition"

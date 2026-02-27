@@ -15,8 +15,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [isAiOpen, setIsAiOpen] = useState(false);
 
-  // Check if current route is admin dashboard
-  const isAdminRoute = pathname?.startsWith('/admin') || pathname?.includes('/admin/');
+  // Admin routes: no main site nav/footer, full-screen admin UI
+  const isAdminRoute = pathname?.startsWith('/admin');
 
   // ── Auth modal state (popup overlay, synced with route) ───
   const authRoutes = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email'];
@@ -35,7 +35,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [pathname, isAuthRoute]);
 
   const openAuth = (mode: 'login' | 'register') => {
-    // Remember current page before navigating to auth route
     sessionStorage.setItem('authReturnTo', pathname);
     router.push(`/${mode}`);
   };
@@ -47,68 +46,56 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   const handleAuthSuccess = (userData: { name: string; email: string; token?: string; expiresIn?: number }) => {
-    // Update user in auth context if needed
-    if (updateUser) {
-      updateUser(userData);
-    }
-    
+    if (updateUser) updateUser(userData);
     const returnTo = sessionStorage.getItem('authReturnTo') || '/';
     sessionStorage.removeItem('authReturnTo');
-    // Full navigation to refresh auth state
     window.location.href = returnTo;
   };
 
-  // Derive active tab from the current pathname
   const activeTab: 'flights' | 'hotels' | 'cars' = pathname.startsWith('/hotels')
     ? 'hotels'
     : pathname.startsWith('/cars')
       ? 'cars'
       : 'flights';
 
+  // Admin routes: render only children (no Navbar, Newsletter, Footer)
+  if (isAdminRoute) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Only show Navbar on non-admin routes */}
-      {!isAdminRoute && (
-        <Navbar
-          isLoggedIn={isLoggedIn}
-          user={user ?? { name: '', email: '' }}
-          activeTab={activeTab}
-          onSignIn={() => openAuth('login')}
-          onRegister={() => openAuth('register')}
-          onLogoClick={() => router.push('/')}
-          onTabClick={(tab) => router.push(`/${tab}`)}
-          onProfileClick={() => router.push('/profile')}
-          onSignOut={() => { logout(); router.push('/'); }}
-          onProfileTabSelect={(tab: string) => router.push(`/profile?tab=${tab}`)}
-        />
-      )}
+      <Navbar
+        isLoggedIn={isLoggedIn}
+        user={user ?? { name: '', email: '' }}
+        activeTab={activeTab}
+        onSignIn={() => openAuth('login')}
+        onRegister={() => openAuth('register')}
+        onLogoClick={() => router.push('/')}
+        onTabClick={(tab) => router.push(`/${tab}`)}
+        onProfileClick={() => router.push('/profile')}
+        onSignOut={() => { logout(); router.push('/'); }}
+        onProfileTabSelect={(tab: string) => router.push(`/profile?tab=${tab}`)}
+      />
 
-      <main className={`flex-1 ${isAdminRoute ? 'pt-0' : ''}`}>{children}</main>
+      <main className="flex-1">{children}</main>
 
-      {/* Only show Newsletter and Footer on non-admin routes */}
-      {!isAdminRoute && (
-        <>
-          <Newsletter />
-          <Footer
-            onLogoClick={() => router.push('/')}
-            onAdminClick={() => router.push('/admin')}
-          />
-        </>
-      )}
+      <Newsletter />
+      <Footer
+        onLogoClick={() => router.push('/')}
+        onAdminClick={() => router.push('/admin')}
+      />
 
-      {/* Auth popup overlay — shown when on an auth route */}
       {isAuthRoute && (
         <AuthModal
           isOpen={isAuthRoute}
           initialMode={authMode}
           onLoginSuccess={handleAuthSuccess}
           onClose={closeAuth}
-          // Optional: Add resetToken if needed from URL params
-          // resetToken={resetTokenFromUrl}
         />
       )}
 
-      {isLoggedIn && !isAdminRoute && (
+      {isLoggedIn && (
         <button
           onClick={() => setIsAiOpen(!isAiOpen)}
           className="fixed bottom-8 right-8 w-16 h-16 bg-[#33a8da] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition z-50"

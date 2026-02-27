@@ -8,7 +8,6 @@ import CancelBooking from './CancelBooking';
 import { userApi, ApiError } from '../lib/api';
 import { config } from '../lib/config';
 
-
 const formatDateForDisplay = (dateStr?: string): string => {
   if (!dateStr) return '';
   try {
@@ -68,10 +67,60 @@ interface SavedItem {
   price: string;
   image: string;
   type: string;
+  notes?: string;
+}
+
+// Enhanced loyalty interfaces
+interface LoyaltyAccount {
+  id: string;
+  points: number;
+  tier: string;
+  tierName?: string;
+  nextTier?: string;
+  pointsToNextTier?: number;
+  lifetimePoints: number;
+  joinDate: string;
+  lastActivity: string;
+}
+
+interface LoyaltyTransaction {
+  id: string;
+  type: 'EARNED' | 'REDEEMED' | 'EXPIRED' | 'ADJUSTED';
+  points: number;
+  description: string;
+  source: string;
+  sourceId?: string;
+  createdAt: string;
+  expiryDate?: string;
+}
+
+interface AvailableReward {
+  id: string;
+  name: string;
+  description: string;
+  pointsCost: number;
+  discountType: 'PERCENTAGE' | 'FIXED';
+  discountValue: number;
+  minSpend?: number;
+  validUntil?: string;
+  canAfford?: boolean;
+}
+
+interface Voucher {
+  id: string;
+  code: string;
+  type: 'DISCOUNT' | 'FREE_ITEM' | 'UPGRADE';
+  value: number;
+  discountType?: 'PERCENTAGE' | 'FIXED';
+  minSpend?: number;
+  validFrom: string;
+  validUntil: string;
+  status: 'ACTIVE' | 'USED' | 'EXPIRED';
+  productTypes?: string[];
 }
 
 // Remove 'payment' from ProfileTab
-type ProfileTab = 'details' | 'travelers' | 'bookings' | 'saved' | 'rewards' | 'security' | 'preferences';
+type ProfileTab = 'details' | 'travelers' | 'bookings' | 'saved' | 'rewards' | 'security' | 'preferences' | 'vouchers';
 
 // Remove stripePromise
 
@@ -133,13 +182,23 @@ const Profile: React.FC<ProfileProps> = ({
   const [showAddTravelerForm, setShowAddTravelerForm] = useState(false);
   const [newTraveler, setNewTraveler] = useState<Omit<OtherTraveler, 'id'>>({ name: '', relationship: 'Spouse', dob: '', gender: 'Male' });
 
-  // Remove savedCards related state
-
-  const [loyalty, setLoyalty] = useState<any | null>(null);
-  const [availableRewards, setAvailableRewards] = useState<any[]>([]);
+  // Loyalty state
+  const [loyalty, setLoyalty] = useState<LoyaltyAccount | null>(null);
+  const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
+  const [availableRewards, setAvailableRewards] = useState<AvailableReward[]>([]);
+  const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [isLoadingLoyalty, setIsLoadingLoyalty] = useState(false);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
   const [isLoadingRewards, setIsLoadingRewards] = useState(false);
+  const [isLoadingVouchers, setIsLoadingVouchers] = useState(false);
+  const [hasLoadedLoyalty, setHasLoadedLoyalty] = useState(false);
+  const [hasLoadedTransactions, setHasLoadedTransactions] = useState(false);
   const [hasLoadedRewards, setHasLoadedRewards] = useState(false);
+  const [hasLoadedVouchers, setHasLoadedVouchers] = useState(false);
   const [isRedeemingReward, setIsRedeemingReward] = useState(false);
+  const [selectedReward, setSelectedReward] = useState<AvailableReward | null>(null);
+  const [showRedeemModal, setShowRedeemModal] = useState(false);
+  const [redeemResult, setRedeemResult] = useState<{ success: boolean; voucher?: Voucher; message: string } | null>(null);
 
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -153,6 +212,17 @@ const Profile: React.FC<ProfileProps> = ({
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
   const [hasLoadedBookings, setHasLoadedBookings] = useState(false);
+
+  // Add this state for editing notes
+  const [editingNotes, setEditingNotes] = useState<Record<string, { isEditing: boolean; notes: string }>>({});
+
+  const getProductType = (itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL'): 
+    'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE' => {
+    if (itemType === 'HOTEL') return 'HOTEL';
+    if (itemType === 'CAR_RENTAL') return 'CAR_RENTAL';
+    // For flights, default to international
+    return 'FLIGHT_INTERNATIONAL';
+  };
 
   useEffect(() => {
     setFormData({ 
@@ -216,41 +286,7 @@ const Profile: React.FC<ProfileProps> = ({
       setIsLoadingSavedItems(true);
       userApi.getSavedItems()
         .then((data: any) => {
-          const items = Array.isArray(data) ? data : (data?.data || []);
-          const mapped: SavedItem[] = items.map((s: any) => {
-            const details = s.itemDetails || {};
-            const title = details.name || details.title || s.itemId || 'Saved item';
-            const location =
-              [details.city, details.country]
-                .filter(Boolean)
-                .join(', ') ||
-              details.location ||
-              'Saved for later';
-            const priceValue = details.pricePerNight ?? details.price ?? details.amount;
-            const price =
-              typeof priceValue === 'number'
-                ? `$${priceValue.toFixed(2)}`
-                : (priceValue || '');
-            const image =
-              details.image ||
-              details.imageUrl ||
-              'https://images.unsplash.com/photo-1526779259212-939e64788e3c?auto=format&fit=crop&q=80&w=800';
-            const type =
-              s.itemType === 'HOTEL'
-                ? 'Hotels'
-                : s.itemType === 'CAR_RENTAL'
-                ? 'Car Rentals'
-                : 'Flights';
-
-            return {
-              id: s.id,
-              name: title,
-              location,
-              price,
-              image,
-              type,
-            };
-          });
+          const mapped = mapSavedItems(data);
           setSavedItems(mapped);
           setHasLoadedSavedItems(true);
         })
@@ -261,7 +297,7 @@ const Profile: React.FC<ProfileProps> = ({
         .finally(() => setIsLoadingSavedItems(false));
     }
   }, [activeTab, hasLoadedSavedItems, isLoadingSavedItems]);
-
+  
   useEffect(() => {
     if (activeTab === 'travelers' && !hasLoadedTravelers && !isLoadingTravelers) {
       setIsLoadingTravelers(true);
@@ -286,43 +322,237 @@ const Profile: React.FC<ProfileProps> = ({
     }
   }, [activeTab, hasLoadedTravelers, isLoadingTravelers]);
 
-  // Remove payment-related useEffect
+  // Enhanced loyalty data loading
+  useEffect(() => {
+    if (activeTab === 'rewards' && !hasLoadedLoyalty && !isLoadingLoyalty) {
+      loadLoyaltyData();
+    }
+  }, [activeTab, hasLoadedLoyalty, isLoadingLoyalty]);
 
   useEffect(() => {
-    if (activeTab === 'rewards' && !hasLoadedRewards && !isLoadingRewards) {
-      setIsLoadingRewards(true);
-      Promise.all([userApi.getLoyaltyAccount(), userApi.getAvailableRewards()])
-        .then(([loyaltyData, rewardsResponse]) => {
-          setLoyalty(loyaltyData);
-          
-          // Safe extraction of rewards array
-          let items: any[] = [];
-          
-          if (rewardsResponse) {
-            if (Array.isArray(rewardsResponse)) {
-              items = rewardsResponse;
-            } else {
-              // Try to extract from common response structures
-              const response = rewardsResponse as Record<string, any>;
-              items = response.data || response.rewards || response.items || [];
-              
-              // Ensure items is an array
-              if (!Array.isArray(items)) {
-                items = [];
-              }
-            }
+    if (activeTab === 'vouchers' && !hasLoadedVouchers && !isLoadingVouchers) {
+      loadVouchers();
+    }
+  }, [activeTab, hasLoadedVouchers, isLoadingVouchers]);
+
+  const loadLoyaltyData = async () => {
+    setIsLoadingLoyalty(true);
+    setIsLoadingTransactions(true);
+    setIsLoadingRewards(true);
+    
+    try {
+      const [loyaltyData, transactionsData, rewardsResponse] = await Promise.all([
+        userApi.getLoyaltyAccount().catch(() => null), // Don't fail if this errors
+        userApi.getLoyaltyTransactions(),
+        userApi.getAvailableRewards().catch(() => []) // Don't fail if this errors
+      ]);
+      
+      // Calculate total points from transactions
+      let calculatedPoints = 0;
+      let lifetimePoints = 0;
+      let transactions: LoyaltyTransaction[] = [];
+      
+      if (transactionsData) {
+        if (Array.isArray(transactionsData)) {
+          transactions = transactionsData;
+        } else {
+          const response = transactionsData as Record<string, any>;
+          transactions = response.data || response.transactions || response.items || [];
+        }
+        
+        // Calculate points from EARNED transactions
+        calculatedPoints = transactions
+          .filter(tx => tx.type === 'EARNED')
+          .reduce((sum, tx) => sum + tx.points, 0);
+        
+        // Subtract REDEEMED points
+        const redeemedPoints = transactions
+          .filter(tx => tx.type === 'REDEEMED')
+          .reduce((sum, tx) => sum + Math.abs(tx.points), 0);
+        
+        calculatedPoints = calculatedPoints - redeemedPoints;
+        
+        // Calculate lifetime points (all EARNED transactions)
+        lifetimePoints = transactions
+          .filter(tx => tx.type === 'EARNED')
+          .reduce((sum, tx) => sum + tx.points, 0);
+        
+        setLoyaltyTransactions(transactions);
+      }
+      
+      // Use loyaltyData if it has points, otherwise use calculated points
+      const finalLoyaltyData: LoyaltyAccount = {
+        id: loyaltyData?.id || `loyalty-${user.id || 'temp'}`,
+        points: loyaltyData?.points > 0 ? loyaltyData.points : calculatedPoints,
+        lifetimePoints: loyaltyData?.lifetimePoints > 0 ? loyaltyData.lifetimePoints : lifetimePoints,
+        tier: loyaltyData?.tier || 'BRONZE',
+        tierName: loyaltyData?.tierName || 'Bronze',
+        joinDate: loyaltyData?.joinDate || new Date().toISOString(),
+        lastActivity: loyaltyData?.lastActivity || new Date().toISOString(),
+        pointsToNextTier: loyaltyData?.pointsToNextTier || 1000,
+        nextTier: loyaltyData?.nextTier || 'SILVER'
+      };
+      
+      setLoyalty(finalLoyaltyData);
+      console.log('Loyalty data loaded:', finalLoyaltyData);
+  
+      // Process available rewards
+      let items: AvailableReward[] = [];
+      if (rewardsResponse) {
+        if (Array.isArray(rewardsResponse)) {
+          items = rewardsResponse;
+        } else {
+          const response = rewardsResponse as Record<string, any>;
+          items = response.data || response.rewards || response.items || [];
+        }
+        
+        // Use calculated points for canAfford flag
+        items = items.map(reward => ({
+          ...reward,
+          canAfford: (finalLoyaltyData.points || 0) >= reward.pointsCost
+        }));
+      }
+      setAvailableRewards(Array.isArray(items) ? items : []);
+      
+      setHasLoadedLoyalty(true);
+      setHasLoadedTransactions(true);
+      setHasLoadedRewards(true);
+      
+    } catch (error: any) {
+      console.error('Failed to load loyalty data:', error);
+      
+      // Try to at least load transactions
+      try {
+        const transactionsData = await userApi.getLoyaltyTransactions();
+        if (transactionsData) {
+          let transactions: LoyaltyTransaction[] = [];
+          if (Array.isArray(transactionsData)) {
+            transactions = transactionsData;
+          } else {
+            const response = transactionsData as Record<string, any>;
+            transactions = response.data || response.transactions || response.items || [];
           }
           
-          setAvailableRewards(items);
-          setHasLoadedRewards(true);
-        })
-        .catch((error: any) => {
-          setHasLoadedRewards(true);
-          console.error('Failed to load loyalty data:', error);
-        })
-        .finally(() => setIsLoadingRewards(false));
+          // Calculate points from transactions
+          const earnedPoints = transactions
+            .filter(tx => tx.type === 'EARNED')
+            .reduce((sum, tx) => sum + tx.points, 0);
+          
+          const redeemedPoints = transactions
+            .filter(tx => tx.type === 'REDEEMED')
+            .reduce((sum, tx) => sum + Math.abs(tx.points), 0);
+          
+          const calculatedPoints = earnedPoints - redeemedPoints;
+          
+          const fallbackLoyalty: LoyaltyAccount = {
+            id: `loyalty-${user.id || 'temp'}`,
+            points: calculatedPoints,
+            lifetimePoints: earnedPoints,
+            tier: 'BRONZE',
+            tierName: 'Bronze',
+            joinDate: new Date().toISOString(),
+            lastActivity: new Date().toISOString(),
+            pointsToNextTier: 1000,
+            nextTier: 'SILVER'
+          };
+          
+          setLoyalty(fallbackLoyalty);
+          setLoyaltyTransactions(transactions);
+          setHasLoadedTransactions(true);
+        }
+      } catch (txError) {
+        console.error('Failed to load even transactions:', txError);
+      }
+      
+      setHasLoadedLoyalty(false);
+      setHasLoadedRewards(false);
+      
+      
+    } finally {
+      setIsLoadingLoyalty(false);
+      setIsLoadingTransactions(false);
+      setIsLoadingRewards(false);
     }
-  }, [activeTab, hasLoadedRewards, isLoadingRewards]);
+  };
+  
+  const loadVouchers = async () => {
+    setIsLoadingVouchers(true);
+    try {
+      const vouchersData = await userApi.getMyVouchers();
+      let items: Voucher[] = [];
+      
+      if (Array.isArray(vouchersData)) {
+        items = vouchersData;
+      } else {
+        const response = vouchersData as Record<string, any>;
+        items = response.data || response.vouchers || response.items || [];
+      }
+      
+      setVouchers(Array.isArray(items) ? items : []);
+      setHasLoadedVouchers(true);
+    } catch (error: any) {
+      console.error('Failed to load vouchers:', error);
+      setHasLoadedVouchers(true);
+    } finally {
+      setIsLoadingVouchers(false);
+    }
+  };
+
+  const handleRedeemReward = async (reward: AvailableReward) => {
+    if (!reward.id) return;
+    
+    setIsRedeemingReward(true);
+    setRedeemResult(null);
+    
+    try {
+      const result = await userApi.redeemReward(reward.id);
+      
+      // Refresh loyalty account to get updated points
+      const updatedLoyalty = await userApi.getLoyaltyAccount();
+      setLoyalty(updatedLoyalty);
+      
+      // Refresh available rewards with updated canAfford flag
+      if (updatedLoyalty?.points) {
+        setAvailableRewards(prev => prev.map(r => ({
+          ...r,
+          canAfford: (updatedLoyalty.points || 0) >= r.pointsCost
+        })));
+      }
+      
+      // Refresh vouchers
+      await loadVouchers();
+      
+      setRedeemResult({
+        success: true,
+        voucher: result?.voucher,
+        message: result?.message || 'Reward redeemed successfully!'
+      });
+    } catch (error: any) {
+      const msg = error instanceof ApiError ? error.message : (error?.message || 'Failed to redeem reward');
+      setRedeemResult({
+        success: false,
+        message: msg
+      });
+    } finally {
+      setIsRedeemingReward(false);
+    }
+  };
+
+  const handleValidateVoucher = async (voucherCode: string, productType: string, bookingAmount: number) => {
+    try {
+      const result = await userApi.validateVoucher({
+        voucherCode,
+        productType,
+        bookingAmount,
+        currency: currentCurr.code
+      });
+      
+      return result;
+    } catch (error: any) {
+      console.error('Voucher validation failed:', error);
+      throw error;
+    }
+  };
 
   useEffect(() => {
     if (activeTabProp) {
@@ -515,6 +745,159 @@ const Profile: React.FC<ProfileProps> = ({
       alert(error instanceof ApiError ? error.message : 'Failed to remove saved item');
     }
   };
+// Update handleSaveItem with proper typing
+const handleSaveItem = async (itemData: {
+  itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+  itemId: string;
+  itemDetails?: any;
+  notes?: string;
+}) => {
+  try {
+    // Convert to the format expected by the API with proper typing
+    const apiData: {
+      productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
+      title: string;
+      description?: string;
+      price?: number;
+      currency?: string;
+      image?: string;
+      metadata?: Record<string, any>;
+      notes?: string;
+    } = {
+      productType: getProductType(itemData.itemType),
+      title: itemData.itemDetails?.name || itemData.itemId || 'Saved item',
+      description: itemData.itemDetails?.description,
+      price: itemData.itemDetails?.pricePerNight || itemData.itemDetails?.price,
+      currency: 'GBP',
+      image: itemData.itemDetails?.image,
+      metadata: itemData.itemDetails,
+      notes: itemData.notes
+    };
+    
+    const result = await userApi.saveItem(apiData);
+    
+    // Refresh saved items list
+    const updatedItems = await userApi.getSavedItems();
+    const mapped = mapSavedItems(updatedItems);
+    setSavedItems(mapped);
+    
+    alert('Item saved successfully!');
+    return result;
+  } catch (error: any) {
+    console.error('Failed to save item:', error);
+    alert(error instanceof ApiError ? error.message : 'Failed to save item');
+    throw error;
+  }
+};
+
+// Update handleToggleSaved with proper typing
+const handleToggleSaved = async (itemData: {
+  itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+  itemId: string;
+  itemDetails?: any;
+}) => {
+  try {
+    // Convert to the format expected by the API with proper typing
+    const apiData: {
+      productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
+      itemId: string;
+      itemDetails?: Record<string, any>;
+    } = {
+      productType: getProductType(itemData.itemType),
+      itemId: itemData.itemId,
+      itemDetails: itemData.itemDetails
+    };
+    
+    const result = await userApi.toggleSavedItem(apiData);
+    
+    // Refresh saved items list
+    const updatedItems = await userApi.getSavedItems();
+    const mapped = mapSavedItems(updatedItems);
+    setSavedItems(mapped);
+      
+    return result;
+  } catch (error: any) {
+    console.error('Failed to toggle saved item:', error);
+    throw error;
+  }
+};
+
+// Update handleCheckSaved with proper typing
+const handleCheckSaved = async (itemData: {
+  itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+  itemId: string;
+}): Promise<boolean> => {
+  try {
+    // Convert to the format expected by the API with proper typing
+    const apiData: {
+      productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
+      itemId: string;
+    } = {
+      productType: getProductType(itemData.itemType),
+      itemId: itemData.itemId
+    };
+    
+    const result = await userApi.checkSavedItem(apiData);
+    return result?.isSaved || false;
+  } catch (error: any) {
+    console.error('Failed to check saved item:', error);
+    return false;
+  }
+};
+  
+  // ADD THIS MISSING FUNCTION - handleUpdateNotes
+  const handleUpdateNotes = async (id: string, notes: string) => {
+    try {
+      const result = await userApi.updateSavedItemNotes(id, notes);
+      
+      // Update local state
+      setSavedItems(prev => prev.map(item => 
+        item.id === id ? { ...item, notes } : item
+      ));
+      
+      alert('Notes updated successfully!');
+      return result;
+    } catch (error: any) {
+      console.error('Failed to update notes:', error);
+      alert(error instanceof ApiError ? error.message : 'Failed to update notes');
+      throw error;
+    }
+  };
+  
+  // Update mapSavedItems to handle the new response format
+  const mapSavedItems = (data: any): SavedItem[] => {
+    const items = Array.isArray(data) ? data : (data?.data || []);
+    return items.map((s: any) => {
+      // Handle both possible response formats
+      const metadata = s.metadata || s.itemDetails || {};
+      const title = s.title || metadata.name || metadata.title || s.itemId || 'Saved item';
+      const location = metadata.location || 
+        [metadata.city, metadata.country].filter(Boolean).join(', ') || 
+        'Saved for later';
+      
+      const priceValue = metadata.pricePerNight ?? metadata.price ?? s.price ?? 0;
+      const price = typeof priceValue === 'number' 
+        ? `$${priceValue.toFixed(2)}` 
+        : (priceValue || '');
+      
+      const image = metadata.image || s.image || metadata.imageUrl || 
+        'https://images.unsplash.com/photo-1526779259212-939e64788e3c?auto=format&fit=crop&q=80&w=800';
+      
+      const type = s.productType?.includes('HOTEL') ? 'Hotels' : 
+                   s.productType?.includes('CAR') ? 'Car Rentals' : 
+                   'Flights';
+  
+      return {
+        id: s.id,
+        name: title,
+        location,
+        price,
+        image,
+        type,
+        notes: s.notes,
+      };
+    });
+  };
 
   const handleUpdatePassword = async () => {
     if (!passwords.current) {
@@ -611,8 +994,6 @@ const Profile: React.FC<ProfileProps> = ({
       alert(msg);
     }
   };
-
-  // Remove handleRemoveCard function
 
   const handleManageBooking = (booking: Booking) => {
     setSelectedBooking(booking);
@@ -804,8 +1185,44 @@ const Profile: React.FC<ProfileProps> = ({
     );
   };
 
-  const renderSavedCard = (item: SavedItem) => {
+  // Update the renderSavedCard function
+  const renderSavedCard = (item: SavedItem & { notes?: string }) => {
     const formattedItem = { ...item, title: item.name, subtitle: item.location };
+    const itemState = editingNotes[item.id] || { isEditing: false, notes: item.notes || '' };
+    
+    const handleStartEdit = () => {
+      setEditingNotes(prev => ({
+        ...prev,
+        [item.id]: { isEditing: true, notes: item.notes || '' }
+      }));
+    };
+
+    const handleCancelEdit = () => {
+      setEditingNotes(prev => ({
+        ...prev,
+        [item.id]: { isEditing: false, notes: item.notes || '' }
+      }));
+    };
+
+    const handleSaveNotes = async () => {
+      try {
+        await handleUpdateNotes(item.id, itemState.notes);
+        setEditingNotes(prev => ({
+          ...prev,
+          [item.id]: { isEditing: false, notes: itemState.notes }
+        }));
+      } catch (error) {
+        console.error('Failed to save notes:', error);
+      }
+    };
+
+    const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setEditingNotes(prev => ({
+        ...prev,
+        [item.id]: { ...prev[item.id], notes: e.target.value }
+      }));
+    };
+
     return (
       <div key={item.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow relative">
         <div className="w-full md:w-32 h-32 rounded-2xl overflow-hidden shrink-0 relative">
@@ -817,24 +1234,361 @@ const Profile: React.FC<ProfileProps> = ({
         <div className="flex-1 text-center md:text-left">
           <h4 className="text-lg font-black text-gray-900 tracking-tight">{item.name}</h4>
           <p className="text-[11px] font-bold text-gray-400">{item.location}</p>
+          
+          {/* Notes section */}
+          {item.notes && !itemState.isEditing && (
+            <div className="mt-2 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
+              <p className="italic">"{item.notes}"</p>
+            </div>
+          )}
+          
+          {itemState.isEditing && (
+            <div className="mt-2">
+              <textarea
+                value={itemState.notes}
+                onChange={handleNotesChange}
+                className="w-full p-2 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#33a8da]"
+                rows={2}
+                placeholder="Add notes..."
+              />
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={handleSaveNotes}
+                  className="text-xs bg-[#33a8da] text-white px-3 py-1 rounded-lg"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  className="text-xs bg-gray-200 text-gray-700 px-3 py-1 rounded-lg"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          
           <div className="flex items-center justify-center md:justify-start gap-1 mt-2 text-yellow-400">
             {[...Array(5)].map((_, i) => <svg key={i} className="w-3 h-3 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>)}
           </div>
         </div>
         <div className="text-center md:text-right">
           <p className="text-xl font-black text-[#33a8da]">{item.price}</p>
-          <button onClick={() => onBookItem(formattedItem)} className="text-[10px] font-black text-[#33a8da] uppercase tracking-widest hover:underline mt-2">View Details</button>
+          <div className="flex gap-2 mt-2">
+            <button 
+              onClick={handleStartEdit}
+              className="text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-[#33a8da] transition"
+            >
+              {item.notes ? 'Edit Notes' : 'Add Notes'}
+            </button>
+            <button 
+              onClick={() => onBookItem(formattedItem)} 
+              className="text-[10px] font-black text-[#33a8da] uppercase tracking-widest hover:underline"
+            >
+              View Details
+            </button>
+          </div>
         </div>
       </div>
     );
   };
 
-  // Remove 'payment' from menuItems
+  const renderRewardsContent = () => {
+    if (isLoadingLoyalty) {
+      return (
+        <div className="bg-white rounded-[24px] p-10 border border-gray-100 shadow-sm">
+          <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-center text-gray-500 font-bold">Loading your loyalty data…</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-8">
+        {/* Loyalty Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-[24px] p-8 text-white shadow-lg">
+            <p className="text-xs font-bold uppercase tracking-widest mb-2 opacity-80">Current Balance</p>
+            <p className="text-6xl font-black mb-1">
+              {loyalty?.points ?? 0}
+            </p>
+            <p className="text-sm font-bold opacity-90">points</p>
+            
+            {loyalty?.tier && (
+              <div className="mt-6 pt-6 border-t border-white/20">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold uppercase tracking-widest opacity-80">Tier</span>
+                  <span className="text-lg font-black">{loyalty.tierName || loyalty.tier}</span>
+                </div>
+                {loyalty?.pointsToNextTier && loyalty?.nextTier && (
+                  <div className="mt-3">
+                    <div className="flex justify-between text-xs font-bold mb-2">
+                      <span>{loyalty.pointsToNextTier} pts to {loyalty.nextTier}</span>
+                      <span>Next tier</span>
+                    </div>
+                    <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-white rounded-full" 
+                        style={{ 
+                          width: loyalty?.points && loyalty?.pointsToNextTier 
+                            ? `${Math.min(100, (loyalty.points / (loyalty.points + loyalty.pointsToNextTier)) * 100)}%` 
+                            : '0%' 
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
+            <h3 className="font-bold text-gray-900 text-lg mb-4">Quick Stats</h3>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-bold text-gray-500">Lifetime Points</span>
+                <span className="text-xl font-black text-gray-900">{loyalty?.lifetimePoints ?? 0}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-bold text-gray-500">Join Date</span>
+                <span className="text-sm font-bold text-gray-900">
+                  {loyalty?.joinDate ? new Date(loyalty.joinDate).toLocaleDateString() : 'N/A'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-bold text-gray-500">Last Activity</span>
+                <span className="text-sm font-bold text-gray-900">
+                  {loyalty?.lastActivity ? new Date(loyalty.lastActivity).toLocaleDateString() : 'N/A'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Available Rewards */}
+        <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
+          <h3 className="font-bold text-gray-900 text-lg mb-6">Available Rewards</h3>
+          
+          {isLoadingRewards ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin w-6 h-6 border-2 border-[#33a8da] border-t-transparent rounded-full" />
+            </div>
+          ) : availableRewards.length === 0 ? (
+            <p className="text-sm font-bold text-gray-400 text-center py-8">
+              No rewards available yet. Complete bookings to earn points.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {availableRewards.map((reward) => (
+                <div key={reward.id} className="border border-gray-100 rounded-2xl p-5 hover:border-[#33a8da]/30 transition-colors">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h4 className="font-black text-gray-900">{reward.name}</h4>
+                      <p className="text-xs font-bold text-gray-400 mt-1">{reward.description}</p>
+                    </div>
+                    <div className="bg-blue-50 px-3 py-1.5 rounded-xl">
+                      <span className="text-[#33a8da] font-black">{reward.pointsCost}</span>
+                      <span className="text-[10px] font-bold text-gray-400 ml-1">pts</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between mt-4">
+                    <span className="text-xs font-bold text-gray-500">
+                      {reward.discountType === 'PERCENTAGE' ? `${reward.discountValue}% off` : `${reward.discountValue} off`}
+                      {reward.minSpend && ` min. spend ${reward.minSpend}`}
+                    </span>
+                    <button
+                      onClick={() => handleRedeemReward(reward)}
+                      disabled={isRedeemingReward || reward.canAfford === false}
+                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition ${
+                        reward.canAfford === false
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-[#33a8da] text-white hover:bg-[#2c98c7]'
+                      }`}
+                    >
+                      {reward.canAfford === false ? 'Insufficient Points' : 'Redeem'}
+                    </button>
+                  </div>
+                  
+                  {reward.validUntil && (
+                    <p className="text-[10px] font-bold text-gray-400 mt-3">
+                      Valid until {new Date(reward.validUntil).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Transaction History */}
+        <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
+          <h3 className="font-bold text-gray-900 text-lg mb-6">Transaction History</h3>
+          
+          {isLoadingTransactions ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin w-6 h-6 border-2 border-[#33a8da] border-t-transparent rounded-full" />
+            </div>
+          ) : loyaltyTransactions.length === 0 ? (
+            <p className="text-sm font-bold text-gray-400 text-center py-8">
+              No transactions yet. Start earning points with your next booking!
+            </p>
+          ) : (
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+              {loyaltyTransactions.map((tx) => (
+                <div key={tx.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                      tx.type === 'EARNED' ? 'bg-green-100 text-green-600' :
+                      tx.type === 'REDEEMED' ? 'bg-red-100 text-red-500' :
+                      'bg-gray-100 text-gray-500'
+                    }`}>
+                      {tx.type === 'EARNED' && (
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                      )}
+                      {tx.type === 'REDEEMED' && (
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                        </svg>
+                      )}
+                      {tx.type === 'EXPIRED' && (
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">{tx.description}</p>
+                      <p className="text-[10px] font-bold text-gray-400 mt-1">
+                        {new Date(tx.createdAt).toLocaleDateString()} • {tx.source}
+                        {tx.expiryDate && ` • Expires ${new Date(tx.expiryDate).toLocaleDateString()}`}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`text-sm font-black ${
+  tx.type === 'EARNED' ? 'text-green-600' :
+  tx.type === 'REDEEMED' ? 'text-red-500' :
+  'text-gray-400'
+}`}>
+  {tx.type === 'EARNED' ? '+' : ''}
+  {tx.type === 'REDEEMED' && tx.points > 0 ? '-' : ''}
+  {Math.abs(tx.points)} pts
+</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderVouchersContent = () => {
+    if (isLoadingVouchers) {
+      return (
+        <div className="bg-white rounded-[24px] p-10 border border-gray-100 shadow-sm">
+          <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-center text-gray-500 font-bold">Loading your vouchers…</p>
+        </div>
+      );
+    }
+
+    const activeVouchers = vouchers.filter(v => v.status === 'ACTIVE');
+    const usedVouchers = vouchers.filter(v => v.status === 'USED');
+    const expiredVouchers = vouchers.filter(v => v.status === 'EXPIRED');
+
+    return (
+      <div className="space-y-8">
+        {/* Active Vouchers */}
+        <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
+          <h3 className="font-bold text-gray-900 text-lg mb-6">Active Vouchers</h3>
+          
+          {activeVouchers.length === 0 ? (
+            <p className="text-sm font-bold text-gray-400 text-center py-8">
+              No active vouchers. Redeem points for rewards to get vouchers!
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {activeVouchers.map((voucher) => (
+                <div key={voucher.id} className="bg-gradient-to-br from-[#33a8da]/10 to-blue-50 rounded-2xl p-6 border border-[#33a8da]/20">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <span className="text-xs font-bold text-[#33a8da] uppercase tracking-widest">Voucher Code</span>
+                      <p className="text-xl font-black text-gray-900 font-mono mt-1">{voucher.code}</p>
+                    </div>
+                    <span className="bg-green-100 text-green-600 px-3 py-1 rounded-full text-[10px] font-black uppercase">
+                      Active
+                    </span>
+                  </div>
+                  
+                  <div className="mt-4">
+                    <p className="text-lg font-black text-gray-900">
+                      {voucher.discountType === 'PERCENTAGE' 
+                        ? `${voucher.value}% OFF` 
+                        : `${voucher.value} ${voucher.discountType === 'FIXED' ? 'off' : ''}`}
+                    </p>
+                    {voucher.minSpend && (
+                      <p className="text-xs font-bold text-gray-400 mt-1">Min. spend: {voucher.minSpend}</p>
+                    )}
+                  </div>
+                  
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <p className="text-[10px] font-bold text-gray-400">
+                      Valid until {new Date(voucher.validUntil).toLocaleDateString()}
+                    </p>
+                    {voucher.productTypes && voucher.productTypes.length > 0 && (
+                      <p className="text-[10px] font-bold text-gray-400 mt-1">
+                        Valid for: {voucher.productTypes.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Voucher History */}
+        {(usedVouchers.length > 0 || expiredVouchers.length > 0) && (
+          <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
+            <h3 className="font-bold text-gray-900 text-lg mb-6">Voucher History</h3>
+            
+            <div className="space-y-3">
+              {usedVouchers.map((voucher) => (
+                <div key={voucher.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900 font-mono">{voucher.code}</p>
+                    <p className="text-[10px] font-bold text-gray-400 mt-1">Used • {new Date(voucher.validUntil).toLocaleDateString()}</p>
+                  </div>
+                  <span className="text-xs font-bold text-gray-400">USED</span>
+                </div>
+              ))}
+              
+              {expiredVouchers.map((voucher) => (
+                <div key={voucher.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl opacity-60">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900 font-mono">{voucher.code}</p>
+                    <p className="text-[10px] font-bold text-gray-400 mt-1">Expired • {new Date(voucher.validUntil).toLocaleDateString()}</p>
+                  </div>
+                  <span className="text-xs font-bold text-gray-400">EXPIRED</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Updated menuItems with vouchers
   const menuItems = [
     { id: 'details', label: 'Personal Details', icon: <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /> },
     { id: 'bookings', label: 'My Bookings', icon: <path d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745V20a2 2 0 002 2h14a2 2 0 002-2v-6.745zM16 8V5a3 3 0 00-6 0v3h6z" /> },
     { id: 'saved', label: 'Saved Items', icon: <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /> },
     { id: 'rewards', label: 'Rewards', icon: <path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /> },
+    { id: 'vouchers', label: 'My Vouchers', icon: <path d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /> },
     { id: 'travelers', label: 'Other Travelers', icon: <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2m16 0h2a4 4 0 0 0 4-4v-2a4 4 0 0 0-4-4h-2m-1-10a4 4 0 1 1-8 0 4 4 0 0 1 8 0z" /> },
     { id: 'security', label: 'Security', icon: <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /> },
     { id: 'preferences', label: 'Preferences', icon: <path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /> },
@@ -954,12 +1708,23 @@ const Profile: React.FC<ProfileProps> = ({
                     <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
                   </svg>
                 </div>
-                <h3 className="text-xs font-bold text-gray-900 uppercase tracking-tighter">Gold Level</h3>
+                <h3 className="text-xs font-bold text-gray-900 uppercase tracking-tighter">
+                  {loyalty?.tierName || 'Gold Level'}
+                </h3>
               </div>
               <div className="w-full bg-white h-1.5 rounded-full overflow-hidden mb-3">
-                <div className="h-full bg-orange-400 w-3/4 rounded-full" />
+                <div 
+                  className="h-full bg-orange-400 rounded-full" 
+                  style={{ 
+                    width: loyalty?.points && loyalty?.pointsToNextTier 
+                      ? `${Math.min(100, (loyalty.points / (loyalty.points + loyalty.pointsToNextTier)) * 100)}%` 
+                      : '75%' 
+                  }} 
+                />
               </div>
-              <p className="text-[11px] text-gray-500 font-bold uppercase tracking-widest">1,200 points Platinum</p>
+              <p className="text-[11px] text-gray-500 font-bold uppercase tracking-widest">
+                {loyalty?.points ?? 1200} points • {loyalty?.pointsToNextTier ?? 800} to next tier
+              </p>
             </div>
           </aside>
 
@@ -1183,127 +1948,104 @@ const Profile: React.FC<ProfileProps> = ({
               </div>
             )}
 
-            {/* Remove payment tab section completely */}
-
-            {activeTab === 'saved' && (
-              <div className="animate-in fade-in duration-500 space-y-8">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Saved Items</h1>
-                    <p className="text-gray-400 font-bold text-sm mt-1">Your personal travel wishlist.</p>
-                  </div>
-                  <button onClick={handleShareList} disabled={isSharing} className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 rounded-xl text-[#33a8da] font-bold text-xs uppercase tracking-widest hover:bg-gray-50 active:scale-95 disabled:opacity-50">
-                    {isSharing ? (
-                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
-                      </svg>
-                    )}
-                    {isSharing ? 'Sharing...' : 'Share List'}
-                  </button>
-                </div>
-                <div className="space-y-4">
-                  {isLoadingSavedItems ? (
-                    <div className="bg-white rounded-[32px] p-16 text-center border border-gray-100">
-                      <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
-                      <p className="text-gray-500 font-bold">Loading your saved items…</p>
-                    </div>
-                  ) : savedItems.length > 0 ? (
-                    savedItems.map(renderSavedCard)
-                  ) : (
-                    <div className="bg-white rounded-[32px] p-16 text-center border-4 border-dashed border-gray-100">
-                      <h3 className="text-xl font-bold text-gray-900 mb-2">No saved items</h3>
-                      <p className="text-gray-400 font-bold">Items you "love" will appear here.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+{activeTab === 'saved' && (
+  <div className="animate-in fade-in duration-500 space-y-8">
+    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div>
+        <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Saved Items</h1>
+        <p className="text-gray-400 font-bold text-sm mt-1">Your personal travel wishlist.</p>
+      </div>
+      <div className="flex items-center gap-3">
+        {/* Filter buttons */}
+        <div className="flex bg-gray-100 rounded-xl p-1">
+          {['All', 'Hotels', 'Flights', 'Car Rentals'].map((filter) => (
+            <button
+              key={filter}
+              onClick={() => {
+                // Add filter logic here if needed
+                console.log(`Filter by ${filter}`);
+              }}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition ${
+                filter === 'All' 
+                  ? 'bg-white text-[#33a8da] shadow-sm' 
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {filter}
+            </button>
+          ))}
+        </div>
+        <button onClick={handleShareList} disabled={isSharing} className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 rounded-xl text-[#33a8da] font-bold text-xs uppercase tracking-widest hover:bg-gray-50 active:scale-95 disabled:opacity-50">
+          {isSharing ? (
+            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+            </svg>
+          )}
+          {isSharing ? 'Sharing...' : 'Share List'}
+        </button>
+      </div>
+    </div>
+    
+    {/* Saved items count badge */}
+    {savedItems.length > 0 && (
+      <div className="bg-blue-50 rounded-2xl px-4 py-2 inline-block">
+        <p className="text-xs font-bold text-[#33a8da]">
+          {savedItems.length} saved {savedItems.length === 1 ? 'item' : 'items'}
+        </p>
+      </div>
+    )}
+    
+    <div className="space-y-4">
+      {isLoadingSavedItems ? (
+        <div className="bg-white rounded-[32px] p-16 text-center border border-gray-100">
+          <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-gray-500 font-bold">Loading your saved items…</p>
+        </div>
+      ) : savedItems.length > 0 ? (
+        savedItems.map(renderSavedCard)
+      ) : (
+        <div className="bg-white rounded-[32px] p-16 text-center border-4 border-dashed border-gray-100">
+          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">No saved items yet</h3>
+          <p className="text-gray-400 font-bold mb-6">Start exploring and save your favorite hotels, flights, and car rentals!</p>
+          <button 
+            onClick={() => window.location.href = '/search'} 
+            className="px-8 py-3 bg-[#33a8da] text-white rounded-xl font-bold text-sm uppercase tracking-widest hover:bg-[#2c98c7] transition shadow-lg"
+          >
+            Explore Now
+          </button>
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
             {activeTab === 'rewards' && (
               <div className="animate-in fade-in duration-500 space-y-8">
-                <div>
+                <div className="bg-white rounded-[24px] p-8 md:p-10 shadow-sm border border-gray-100/50">
                   <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Rewards</h1>
                   <p className="text-gray-400 font-bold text-sm mt-1">Track your loyalty points and redeem rewards.</p>
                 </div>
-                {isLoadingRewards && !loyalty ? (
-                  <div className="bg-white rounded-[24px] p-10 border border-gray-100 shadow-sm">
-                    <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
-                    <p className="text-center text-gray-500 font-bold">Loading your loyalty data…</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
-                      <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Current Balance</p>
-                      <p className="text-5xl font-black text-gray-900">
-                        {loyalty?.points ?? 0}{' '}
-                        <span className="text-sm font-bold text-gray-400">pts</span>
-                      </p>
-                      {loyalty?.tier && (
-                        <p className="mt-3 text-xs font-bold text-gray-500 uppercase tracking-widest">
-                          Tier: {loyalty.tierName || loyalty.tier}
-                        </p>
-                      )}
-                      {loyalty?.nextTier && (
-                        <p className="mt-1 text-[11px] text-gray-400 font-bold">
-                          {loyalty.pointsToNextTier} pts to {loyalty.nextTier}
-                        </p>
-                      )}
-                    </div>
-                    <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
-                      <h3 className="font-bold text-gray-900 uppercase text-xs mb-4">Available Rewards</h3>
-                      {availableRewards.length === 0 ? (
-                        <p className="text-xs font-bold text-gray-400">
-                          No rewards available yet. Complete bookings to earn points.
-                        </p>
-                      ) : (
-                        <ul className="space-y-3 text-xs font-bold text-gray-600">
-                          {availableRewards.map((r: any) => (
-                            <li key={r.id} className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="text-gray-900">{r.name}</p>
-                                <p className="text-[10px] text-gray-400 uppercase tracking-widest">
-                                  {r.pointsCost} pts • {r.discountType} {r.discountValue}
-                                </p>
-                              </div>
-                              <button
-                                disabled={isRedeemingReward || r.canAfford === false}
-                                onClick={async () => {
-                                  if (!r.id) return;
-                                  setIsRedeemingReward(true);
-                                  try {
-                                    const result = await userApi.redeemReward(r.id);
-                                    const code = result?.voucher?.code;
-                                    alert(
-                                      code
-                                        ? `Voucher redeemed: ${code}. You can apply it at checkout.`
-                                        : 'Reward redeemed successfully.'
-                                    );
-                                  } catch (error: any) {
-                                    const msg =
-                                      error instanceof ApiError
-                                        ? error.message
-                                        : (error?.message || 'Failed to redeem reward');
-                                    alert(msg);
-                                  } finally {
-                                    setIsRedeemingReward(false);
-                                  }
-                                }}
-                                className="px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-[#33a8da] text-[#33a8da] hover:bg-[#33a8da] hover:text-white transition disabled:opacity-40"
-                              >
-                                {r.canAfford === false ? 'Not enough pts' : 'Redeem'}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </div>
-                )}
+                {renderRewardsContent()}
+              </div>
+            )}
+
+            {activeTab === 'vouchers' && (
+              <div className="animate-in fade-in duration-500 space-y-8">
+                <div className="bg-white rounded-[24px] p-8 md:p-10 shadow-sm border border-gray-100/50">
+                  <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">My Vouchers</h1>
+                  <p className="text-gray-400 font-bold text-sm mt-1">View and manage your discount vouchers.</p>
+                </div>
+                {renderVouchersContent()}
               </div>
             )}
 

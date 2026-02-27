@@ -9,10 +9,7 @@ const Partners: React.FC = () => {
   const partners = [
     { name: "DHL", logo: "/logos/DHL-Logo-500x281.png" },
     { name: "IATA", logo: "/logos/IATA_logo.svg.png" },
-    {
-      name: "Apply Board",
-      logo: "/logos/interior-third-applyboard-logo.jpg.jpeg",
-    },
+    { name: "Apply Board", logo: "/logos/interior-third-applyboard-logo.jpg" },
     { name: "Nanta", logo: "/logos/nanta.png" },
   ];
 
