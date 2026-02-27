@@ -223,104 +223,115 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       }
 
       // Transform offers with proper logo handling
-      const transformed: SearchResult[] = offers.map((offer: any, i: number) => {
-        const slices = offer.slices ?? offer.segments ?? [];
-        const first = slices[0] ?? {};
-        const last = slices[slices.length - 1] ?? {};
-        
-        // Get airline information from the offer owner (primary airline)
-        const ownerAirline = offer.owner;
-        const operatingCarrier = first.segments?.[0]?.operating_carrier || first.operating_carrier;
-        
-        // Use owner airline as primary, fallback to operating carrier
-        const airline = ownerAirline || operatingCarrier;
-        const airlineName = airline?.name ?? 'Unknown Airline';
-        const airlineCode = airline?.iata_code ?? '';
-        const airlineLogoUrl = airline?.logo_symbol_url ?? '';
-        
-        const flightNumber = first.flight_number ?? `FL${1000 + i}`;
+const transformed: SearchResult[] = offers.map((offer: any, i: number) => {
+  const slices = offer.slices ?? offer.segments ?? [];
+  const first = slices[0] ?? {};
+  const last = slices[slices.length - 1] ?? {};
+  
+  // Get airline information from the offer owner (primary airline)
+  const ownerAirline = offer.owner;
+  const operatingCarrier = first.segments?.[0]?.operating_carrier || first.operating_carrier;
+  
+  // Use owner airline as primary, fallback to operating carrier
+  const airline = ownerAirline || operatingCarrier;
+  const airlineName = airline?.name ?? 'Unknown Airline';
+  const airlineCode = airline?.iata_code ?? '';
+  const airlineLogoUrl = airline?.logo_symbol_url ?? '';
+  
+  const flightNumber = first.flight_number ?? `FL${1000 + i}`;
 
-        let totalPrice = offer.total_amount ?? offer.total_price ?? offer.amount ?? offer.price?.total ?? 85;
-        let currency = offer.total_currency ?? offer.currency ?? offer.price?.currency ?? 'GBP';
+  let totalPrice = offer.total_amount ?? offer.total_price ?? offer.amount ?? offer.price?.total ?? 85;
+  let currency = offer.total_currency ?? offer.currency ?? offer.price?.currency ?? 'GBP';
 
-        // Parse duration correctly
-        let durMin = 90;
-        if (offer.total_duration) {
-          const match = offer.total_duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
-          const hours = match?.[1] ? parseInt(match[1]) : 0;
-          const minutes = match?.[2] ? parseInt(match[2]) : 0;
-          durMin = hours * 60 + minutes;
-        } else if (first.duration_minutes) {
-          durMin = first.duration_minutes;
-        }
-        
-        const h = Math.floor(durMin / 60);
-        const m = durMin % 60;
-        const stopsCount = Math.max(0, slices.length - 1);
+  // Parse duration correctly
+  let durMin = 90;
+  if (offer.total_duration) {
+    const match = offer.total_duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
+    const hours = match?.[1] ? parseInt(match[1]) : 0;
+    const minutes = match?.[2] ? parseInt(match[2]) : 0;
+    durMin = hours * 60 + minutes;
+  } else if (first.duration_minutes) {
+    durMin = first.duration_minutes;
+  }
+  
+  const h = Math.floor(durMin / 60);
+  const m = durMin % 60;
+  const stopsCount = Math.max(0, slices.length - 1);
 
-        let timeDisplay = '08:00';
-        const dep = first.departing_at ?? first.departure_time;
-        if (dep) try { 
-          timeDisplay = new Date(dep).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }); 
-        } catch { /* */ }
+  let timeDisplay = '08:00';
+  const dep = first.departing_at ?? first.departure_time;
+  if (dep) try { 
+    timeDisplay = new Date(dep).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }); 
+  } catch { /* */ }
 
-        const sym = currency === 'GBP' ? '£' : currency === 'NGN' ? '₦' : currency === 'EUR' ? '€' : '$';
-        const flightOrigin = first.origin?.iata_code ?? first.origin ?? origin;
-        const flightDest = last.destination?.iata_code ?? last.destination ?? destination;
+  const sym = currency === 'GBP' ? '£' : currency === 'NGN' ? '₦' : currency === 'EUR' ? '€' : '$';
+  const flightOrigin = first.origin?.iata_code ?? first.origin ?? origin;
+  const flightDest = last.destination?.iata_code ?? last.destination ?? destination;
 
-        // Create a complete owner object with logo
-        const ownerObject = airline ? {
-          id: airline.id,
-          name: airlineName,
-          iata_code: airlineCode,
-          logo_symbol_url: airlineLogoUrl
-        } : undefined;
+  // Create a complete owner object with logo
+  const ownerObject = airline ? {
+    id: airline.id,
+    name: airlineName,
+    iata_code: airlineCode,
+    logo_symbol_url: airlineLogoUrl
+  } : undefined;
 
-        return {
-          id: offer.id ?? `flight-${i}`,
-          provider: airlineName,
-          title: `${airlineName} ${flightNumber}`,
-          subtitle: `${flightOrigin} → ${flightDest}`,
-          price: `${sym}${Number(totalPrice).toLocaleString('en-GB', { maximumFractionDigits: 0 })}`,
-          time: timeDisplay,
-          duration: `${h}h ${String(m).padStart(2, '0')}m`,
-          rating: 4 + Math.random(),
-          // Set the image to the logo URL directly
-          image: airlineLogoUrl || `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2`,
-          amenities: ['Seat Selection', 'Cabin Baggage'],
-          features: [
-            stopsCount === 0 ? 'Direct' : `${stopsCount} stop${stopsCount > 1 ? 's' : ''}`, 
-            `${h}h ${m}m`, 
-            cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1)
-          ],
-          type: 'flights' as const,
-          owner: ownerObject,
-          airlineCode,
-          realData: {
-            id: offer.id,
-            offerId: offer.id,
-            offerRequestId,
-            departureTime: dep,
-            arrivalTime: last.arriving_at ?? last.arrival_time,
-            airline: airlineName,
-            airlineCode,
-            airlineLogo: airlineLogoUrl,
-            flightNumber,
-            totalDuration: durMin,
-            stops: stopsCount,
-            price: Number(totalPrice),
-            currency,
-            slices,
-            owner: ownerObject,
-            original_amount: offer.original_amount,
-            original_currency: offer.original_currency,
-            conversion_fee: offer.conversion_fee,
-            markup_percentage: offer.markup_percentage,
-            final_amount: offer.final_amount
-          },
-        };
-      });
-
+  // Return object that matches ExtendedSearchResult interface
+  return {
+    // Required BaseSearchResult fields
+    id: offer.id ?? `flight-${i}`,
+    provider: airlineName,
+    title: `${airlineName} ${flightNumber}`,
+    subtitle: `${flightOrigin} → ${flightDest}`,
+    price: `${sym}${Number(totalPrice).toLocaleString('en-GB', { maximumFractionDigits: 0 })}`, // Keep for backward compatibility
+    time: timeDisplay,
+    duration: `${h}h ${String(m).padStart(2, '0')}m`,
+    rating: 4 + Math.random(),
+    image: airlineLogoUrl || `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2`,
+    amenities: ['Seat Selection', 'Cabin Baggage'],
+    features: [
+      stopsCount === 0 ? 'Direct' : `${stopsCount} stop${stopsCount > 1 ? 's' : ''}`, 
+      `${h}h ${m}m`, 
+      cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1)
+    ],
+    type: 'flights' as const,
+    
+    // ExtendedSearchResult fields
+    owner: ownerObject,
+    airlineCode,
+    final_amount: offer.final_amount,
+    currency: offer.currency,
+    original_amount: offer.original_amount,
+    original_currency: offer.original_currency,
+    conversion_fee: offer.conversion_fee,
+    markup_percentage: offer.markup_percentage,
+    slices: slices,
+    
+    // Keep realData for backward compatibility
+    realData: {
+      id: offer.id,
+      offerId: offer.id,
+      offerRequestId,
+      departureTime: dep,
+      arrivalTime: last.arriving_at ?? last.arrival_time,
+      airline: airlineName,
+      airlineCode,
+      airlineLogo: airlineLogoUrl,
+      flightNumber,
+      totalDuration: durMin,
+      stops: stopsCount,
+      price: Number(totalPrice),
+      currency,
+      slices,
+      owner: ownerObject,
+      original_amount: offer.original_amount,
+      original_currency: offer.original_currency,
+      conversion_fee: offer.conversion_fee,
+      markup_percentage: offer.markup_percentage,
+      final_amount: offer.final_amount
+    },
+  };
+});
       const valid = transformed.filter((r) => r.price && !r.price.includes('£0'));
       console.log('Transformed flights with logos:', valid.map(f => ({
         airline: f.provider,

@@ -23,14 +23,18 @@ export default function SearchPage() {
   useEffect(() => {
     console.log('🔍 searchResults from context:', searchResults);
     if (Array.isArray(searchResults) && searchResults.length > 0) {
+      // Cast to any to access properties not in the type
+      const firstItem = searchResults[0] as any;
       console.log('🔍 First item structure:', {
-        id: searchResults[0].id,
-        type: searchResults[0].type,
-        provider: searchResults[0].provider,
-        price: searchResults[0].price,
-        image: searchResults[0].image,
-        hasRealData: !!searchResults[0].realData,
-        realDataKeys: searchResults[0].realData ? Object.keys(searchResults[0].realData) : []
+        id: firstItem.id,
+        type: firstItem.type,
+        provider: firstItem.provider,
+        final_amount: firstItem.final_amount,
+        currency: firstItem.currency,
+        price: firstItem.price,
+        image: firstItem.image,
+        hasRealData: !!firstItem.realData,
+        realDataKeys: firstItem.realData ? Object.keys(firstItem.realData) : []
       });
     }
   }, [searchResults]);
@@ -58,7 +62,7 @@ export default function SearchPage() {
         const lastSegment = firstSlice.segments?.slice(-1)[0] || firstSegment;
 
         return {
-          ...item,
+          ...item, // This preserves final_amount, currency, etc.
           // Add computed fields that SearchResults expects
           departureAirport: firstSegment.origin?.iata_code || item.realData?.departureAirport || '---',
           arrivalAirport: lastSegment.destination?.iata_code || item.realData?.arrivalAirport || '---',
@@ -76,14 +80,7 @@ export default function SearchPage() {
           duration: item.realData?.totalDuration ? 
                    `${Math.floor(item.realData.totalDuration / 60)}h ${item.realData.totalDuration % 60}m` : 
                    item.duration,
-          displayPrice: item.price,
-          rawPrice: item.realData?.price || parseFloat(item.price?.replace(/[^0-9.]/g, '') || '0'),
-          flightNumber: item.realData?.flightNumber,
-          cabin: searchParams?.cabinClass,
-          baggage: JSON.stringify([
-            { type: 'checked', quantity: 1 },
-            { type: 'carry_on', quantity: 1 }
-          ]),
+          // Don't override price fields - let SearchResults handle them
         };
       });
     }

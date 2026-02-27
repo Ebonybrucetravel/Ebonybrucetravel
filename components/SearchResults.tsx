@@ -76,7 +76,7 @@ interface ExtendedSearchResult extends BaseSearchResult {
     conditions_of_carriage_url?: string;
   };
   
-  // Slices (journey segments)
+  // Slices (journey segments) - Duffel format
   slices?: Array<{
     duration?: string;
     segments: Array<{
@@ -110,6 +110,7 @@ interface ExtendedSearchResult extends BaseSearchResult {
         logo_symbol_url?: string;
       };
       flight_number?: string;
+      marketing_carrier_flight_number?: string;
       passengers?: Array<{
         baggages?: Array<{
           type: string;
@@ -117,6 +118,63 @@ interface ExtendedSearchResult extends BaseSearchResult {
         }>;
         cabin_class_marketing_name?: string;
       }>;
+    }>;
+  }>;
+  
+  // Itineraries - Amadeus format (using a different name to avoid conflict)
+  flightItineraries?: Array<{
+    duration?: string;
+    segments: Array<{
+      departure?: {
+        iataCode?: string;
+        at?: string;
+      };
+      arrival?: {
+        iataCode?: string;
+        at?: string;
+      };
+      carrierCode?: string;
+      number?: string;
+      aircraft?: {
+        code?: string;
+      };
+      operating?: {
+        carrierCode?: string;
+      };
+    }>;
+  }>;
+  
+  // Price object - Amadeus format (using a different name to avoid conflict)
+  priceDetails?: {
+    total?: string;
+    currency?: string;
+    base?: string;
+    fees?: Array<{
+      amount?: string;
+      type?: string;
+    }>;
+    grandTotal?: string;
+  };
+  
+  // Traveler pricing
+  traveler_pricings?: Array<{
+    traveler_id?: string;
+    fare_option?: string;
+    traveler_type?: string;
+    price?: {
+      currency?: string;
+      total?: string;
+      base?: string;
+    };
+    fare_details_by_segment?: Array<{
+      segment_id?: string;
+      cabin?: string;
+      fare_basis?: string;
+      branded_fare?: string;
+      class?: string;
+      included_checked_bags?: {
+        quantity?: number;
+      };
     }>;
   }>;
   
@@ -194,6 +252,7 @@ interface ExtendedSearchResult extends BaseSearchResult {
     arrivalTime?: string;
     departureAirport?: string;
     arrivalAirport?: string;
+    slices?: Array<any>;
     [key: string]: any;
   };
   
@@ -220,16 +279,45 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const { currency } = useLanguage();
   const searchType = (searchParams?.type || "flights").toLowerCase() as "flights" | "hotels" | "car-rentals";
 
+  // Debug log to see what we're receiving
+  useEffect(() => {
+    console.log('🔍 SearchResults received:', {
+      resultsType: typeof results,
+      isArray: Array.isArray(results),
+      hasData: results && typeof results === 'object' && 'data' in results,
+      dataLength: results && typeof results === 'object' && 'data' in results && Array.isArray(results.data) ? results.data.length : 0,
+      arrayLength: Array.isArray(results) ? results.length : 0
+    });
+  }, [results]);
+
   // Extract flight offers from the response
   const flightOffers = useMemo(() => {
     if (results && typeof results === 'object' && 'data' in results && Array.isArray(results.data)) {
+      console.log('✅ Using results.data with', results.data.length, 'items');
       return results.data;
     }
     if (Array.isArray(results)) {
+      console.log('✅ Using results array with', results.length, 'items');
       return results;
     }
+    console.log('❌ No valid flight offers found');
     return [];
   }, [results]);
+
+  // Debug log for flight offers
+  useEffect(() => {
+    if (flightOffers.length > 0) {
+      console.log('📦 First flight offer raw data:', {
+        id: flightOffers[0].id,
+        hasSlices: !!flightOffers[0].slices,
+        slicesLength: flightOffers[0].slices?.length,
+        hasItineraries: !!flightOffers[0].flightItineraries,
+        itinerariesLength: flightOffers[0].flightItineraries?.length,
+        segmentsFromSlices: flightOffers[0].slices?.[0]?.segments?.length,
+        segmentsFromItineraries: flightOffers[0].flightItineraries?.[0]?.segments?.length
+      });
+    }
+  }, [flightOffers]);
 
   // Shared States
   const [priceRange, setPriceRange] = useState<number>(2000000);
@@ -265,23 +353,56 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   // Format duration from ISO 8601
   const formatDuration = (duration?: string): string => {
     if (!duration) return '';
-    const hours = duration.match(/(\d+)H/);
-    const minutes = duration.match(/(\d+)M/);
-    return `${hours ? hours[1] + 'h ' : ''}${minutes ? minutes[1] + 'm' : ''}`.trim();
+    
+    // Handle durations like "PT14H45M" or "P1DT3H5M"
+    let totalHours = 0;
+    let totalMinutes = 0;
+    
+    // Extract days if present (format: P1DT3H5M)
+    const daysMatch = duration.match(/P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?/);
+    if (daysMatch) {
+      const days = parseInt(daysMatch[1]) || 0;
+      const hours = parseInt(daysMatch[2]) || 0;
+      const minutes = parseInt(daysMatch[3]) || 0;
+      
+      totalHours = (days * 24) + hours;
+      totalMinutes = minutes;
+    } else {
+      // Try simple format: PT14H45M
+      const hours = duration.match(/(\d+)H/);
+      const minutes = duration.match(/(\d+)M/);
+      totalHours = hours ? parseInt(hours[1]) : 0;
+      totalMinutes = minutes ? parseInt(minutes[1]) : 0;
+    }
+    
+    if (totalHours === 0 && totalMinutes === 0) return '';
+    
+    if (totalHours > 0 && totalMinutes > 0) {
+      return `${totalHours}h ${totalMinutes}m`;
+    } else if (totalHours > 0) {
+      return `${totalHours}h`;
+    } else {
+      return `${totalMinutes}m`;
+    }
   };
 
-  // Format price
-  const formatPrice = (amount: string, currencyCode: string): string => {
-    const numericAmount = parseFloat(amount);
-    if (isNaN(numericAmount)) return 'Price on request';
-    
+// Format price
+const formatPrice = (amount: string, currencyCode: string): string => {
+  const numericAmount = parseFloat(amount);
+  if (isNaN(numericAmount)) return 'Price on request';
+  
+  try {
     return new Intl.NumberFormat('en-GB', {
       style: 'currency',
       currency: currencyCode,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(numericAmount);
-  };
+  } catch (e) {
+    // Fallback if currency code is invalid
+    return `${currencyCode} ${numericAmount.toFixed(2)}`;
+  }
+};
 
   // Format time
   const formatTime = (dateTimeStr?: string): string => {
@@ -317,81 +438,223 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     }
   };
 
-  // Process flight offers - ONLY if they don't already have computed fields
-  const processedFlightOffers = useMemo(() => {
-    if (searchType !== 'flights' || flightOffers.length === 0) return [];
 
-    return flightOffers.map((offer: ExtendedSearchResult) => {
-      // If the offer already has computed fields (from context), use them
-      if (offer.departureAirport && offer.arrivalAirport && offer.departureTime) {
-        return offer;
+  // Process flight offers - ONLY use API values, NO FALLBACKS
+const processedFlightOffers = useMemo(() => {
+  if (searchType !== 'flights' || flightOffers.length === 0) return [];
+
+  console.log('Processing flight offers:', flightOffers.length);
+
+  return flightOffers.map((offer: ExtendedSearchResult, index) => {
+    // Try multiple ways to get segments
+    let segments: any[] = [];
+    let firstSlice: any = null;
+    let firstSegment: any = null;
+    let lastSegment: any = null;
+    
+    // Method 1: Check if offer has slices (standard Duffel format)
+    if (offer.slices && offer.slices.length > 0) {
+      firstSlice = offer.slices[0];
+      segments = firstSlice?.segments || [];
+    } 
+    // Method 2: Check if offer has flightItineraries (Amadeus format)
+    else if (offer.flightItineraries && offer.flightItineraries.length > 0) {
+      firstSlice = offer.flightItineraries[0];
+      segments = firstSlice?.segments || [];
+    }
+    // Method 3: Check if offer has realData with slices
+    else if (offer.realData?.slices && offer.realData.slices.length > 0) {
+      firstSlice = offer.realData.slices[0];
+      segments = firstSlice?.segments || [];
+    }
+    
+    if (segments.length > 0) {
+      firstSegment = segments[0];
+      lastSegment = segments[segments.length - 1];
+    }
+    
+    // Get carrier information
+    let airlineCode = '';
+    let airlineName = 'Unknown Airline';
+    let logoUrl = '';
+    
+    // Try to get from offer.owner first
+    if (offer.owner) {
+      airlineCode = offer.owner.iata_code || '';
+      airlineName = offer.owner.name || 'Unknown Airline';
+      logoUrl = offer.owner.logo_symbol_url || '';
+    }
+    
+    // Try to get from first segment
+    if (firstSegment) {
+      const carrier = firstSegment.operating_carrier || firstSegment.marketing_carrier;
+      if (carrier) {
+        airlineCode = carrier.iata_code || carrier.carrierCode || airlineCode;
+        airlineName = carrier.name || airlineName;
+        logoUrl = carrier.logo_symbol_url || logoUrl;
       }
+    }
+    
+    // Try to get from airlinesMap if we have airlineCode
+    if (!logoUrl && airlineCode) {
+      const airlineFromMap = airlinesMap.get(airlineCode);
+      if (airlineFromMap) {
+        logoUrl = airlineFromMap.logo_symbol_url || '';
+      }
+    }
 
-      // Otherwise, compute them from raw data
-      const firstSlice = offer.slices?.[0];
-      const firstSegment = firstSlice?.segments?.[0];
-      const lastSegment = firstSlice?.segments?.slice(-1)[0];
-      
-      const carrier = firstSegment?.operating_carrier || 
-                     firstSegment?.marketing_carrier || 
-                     offer.owner;
-      
-      const airlineCode = carrier?.iata_code || '';
-      const airlineName = carrier?.name || offer.owner?.name || 'Unknown Airline';
-      
-      const logoUrl = carrier?.logo_symbol_url || 
-                     offer.owner?.logo_symbol_url || 
-                     (airlineCode ? airlinesMap.get(airlineCode)?.logo_symbol_url : undefined);
+    // CRITICAL: Calculate stops based on number of segments
+    const segmentCount = segments.length;
+    const stopCount = segmentCount > 0 ? segmentCount - 1 : 0;
+    
+    // Determine stop text
+    let stopText = 'Direct';
+    if (stopCount === 1) {
+      stopText = '1 Stop';
+    } else if (stopCount > 1) {
+      stopText = `${stopCount} Stops`;
+    }
 
-      const segmentCount = firstSlice?.segments?.length || 1;
-      const stopCount = segmentCount - 1;
-      const stopText = stopCount === 0 ? 'Direct' : stopCount === 1 ? '1 Stop' : `${stopCount} Stops`;
+    // Get departure and arrival information
+    let departureAirport = '---';
+    let departureCity = '';
+    let departureTime = '';
+    let arrivalAirport = '---';
+    let arrivalCity = '';
+    let arrivalTime = '';
+    
+    if (firstSegment) {
+      // Try Duffel format
+      if (firstSegment.origin) {
+        departureAirport = firstSegment.origin.iata_code || departureAirport;
+        departureCity = firstSegment.origin.city_name || firstSegment.origin.city?.name || '';
+      }
+      // Try Amadeus format
+      if (firstSegment.departure) {
+        departureAirport = firstSegment.departure.iataCode || departureAirport;
+        departureTime = firstSegment.departure.at || '';
+      }
+      departureTime = firstSegment.departing_at || firstSegment.departure?.at || departureTime;
+    }
+    
+    if (lastSegment) {
+      // Try Duffel format
+      if (lastSegment.destination) {
+        arrivalAirport = lastSegment.destination.iata_code || arrivalAirport;
+        arrivalCity = lastSegment.destination.city_name || lastSegment.destination.city?.name || '';
+      }
+      // Try Amadeus format
+      if (lastSegment.arrival) {
+        arrivalAirport = lastSegment.arrival.iataCode || arrivalAirport;
+        arrivalTime = lastSegment.arrival.at || '';
+      }
+      arrivalTime = lastSegment.arriving_at || lastSegment.arrival?.at || arrivalTime;
+    }
 
-      const departureAirport = firstSegment?.origin?.iata_code || '---';
-      const departureCity = firstSegment?.origin?.city_name || firstSegment?.origin?.city?.name || '';
-      const departureTime = firstSegment?.departing_at;
-      
-      const arrivalAirport = lastSegment?.destination?.iata_code || '---';
-      const arrivalCity = lastSegment?.destination?.city_name || lastSegment?.destination?.city?.name || '';
-      const arrivalTime = lastSegment?.arriving_at;
+    // Get duration
+    const duration = firstSlice?.duration || '';
 
-      const priceAmount = offer.final_amount || offer.total_amount || '0';
-      const priceCurrency = offer.currency || offer.total_currency || 'GBP';
-      const formattedPrice = formatPrice(priceAmount, priceCurrency);
+    // ===========================================
+    // PRICE FROM API - ONLY use final_amount and currency
+    // ===========================================
+    let priceAmount = '0';
+    let priceCurrency = 'GBP';
+    
+    // DIRECT from API - these fields exist in your response
+    if (offer.final_amount) {
+      priceAmount = offer.final_amount;
+      priceCurrency = offer.currency || 'GBP';
+      console.log(`✅ API PRICE for ${offer.id}:`, { 
+        final_amount: offer.final_amount, 
+        currency: offer.currency,
+        formatted: formatPrice(offer.final_amount, offer.currency || 'GBP')
+      });
+    } else {
+      console.error(`❌ No final_amount found in API response for offer:`, offer.id);
+    }
+    
+    const formattedPrice = formatPrice(priceAmount, priceCurrency);
 
-      const baggageInfo = firstSegment?.passengers?.[0]?.baggages || [];
-      
-      const baggageString = baggageInfo.length > 0 ? JSON.stringify(baggageInfo) : undefined;
+    // Get baggage information
+    let baggageInfo: any[] = [];
+    if (firstSegment?.passengers?.[0]?.baggages) {
+      baggageInfo = firstSegment.passengers[0].baggages;
+    } else if (offer.traveler_pricings?.[0]?.fare_details_by_segment?.[0]?.included_checked_bags) {
+      const bags = offer.traveler_pricings[0].fare_details_by_segment[0].included_checked_bags;
+      if (bags?.quantity) {
+        baggageInfo = [{ type: 'checked', quantity: bags.quantity }];
+      }
+    }
+    
+    const baggageString = baggageInfo.length > 0 ? JSON.stringify(baggageInfo) : undefined;
 
-      const processedOffer: ExtendedSearchResult = {
-        ...offer,
-        type: 'flights',
-        departureAirport,
-        arrivalAirport,
-        departureCity,
-        arrivalCity,
-        departureTime,
-        arrivalTime,
-        airlineCode,
-        airlineName,
-        airlineLogo: logoUrl,
-        stopCount,
-        stopText,
-        duration: firstSlice?.duration || firstSegment?.duration,
-        displayPrice: formattedPrice,
-        rawPrice: parseFloat(priceAmount),
-        flightNumber: firstSegment?.flight_number,
-        cabin: firstSegment?.passengers?.[0]?.cabin_class_marketing_name,
-        baggage: baggageString,
-        title: `${departureAirport} → ${arrivalAirport}`,
-        subtitle: airlineName,
-        provider: airlineName,
-        image: logoUrl,
-      };
-      
-      return processedOffer;
-    });
-  }, [flightOffers, searchType, airlinesMap]);
+    // Get flight number
+    let flightNumber = '';
+    if (firstSegment?.marketing_carrier_flight_number) {
+      flightNumber = firstSegment.marketing_carrier_flight_number;
+    } else if (firstSegment?.flight_number) {
+      flightNumber = firstSegment.flight_number;
+    } else if (firstSegment?.number) {
+      flightNumber = firstSegment.number;
+    }
+
+    // Get cabin class
+    let cabin = 'Economy';
+    if (firstSegment?.passengers?.[0]?.cabin_class_marketing_name) {
+      cabin = firstSegment.passengers[0].cabin_class_marketing_name;
+    } else if (offer.traveler_pricings?.[0]?.fare_details_by_segment?.[0]?.cabin) {
+      cabin = offer.traveler_pricings[0].fare_details_by_segment[0].cabin;
+    }
+
+    const processedOffer: ExtendedSearchResult = {
+      ...offer,
+      type: 'flights',
+      departureAirport,
+      arrivalAirport,
+      departureCity,
+      arrivalCity,
+      departureTime,
+      arrivalTime,
+      airlineCode,
+      airlineName,
+      airlineLogo: logoUrl,
+      stopCount,
+      stopText,
+      duration,
+      // PRICE FIELDS - DIRECT FROM API
+      displayPrice: formattedPrice,
+      rawPrice: parseFloat(priceAmount),
+      price: formattedPrice,
+      // Preserve original API values
+      final_amount: offer.final_amount,
+      currency: offer.currency,
+      flightNumber,
+      cabin,
+      baggage: baggageString,
+      title: `${departureAirport} → ${arrivalAirport}`,
+      subtitle: airlineName,
+      provider: airlineName,
+      image: logoUrl,
+    };
+    
+    return processedOffer;
+  });
+}, [flightOffers, searchType, airlinesMap]);
+
+
+
+  // Debug log for processed offers
+  useEffect(() => {
+    if (processedFlightOffers.length > 0) {
+      console.log('✅ Processed flight offers:', processedFlightOffers.map(o => ({
+        id: o.id,
+        stopCount: o.stopCount,
+        stopText: o.stopText,
+        price: o.price,
+        displayPrice: o.displayPrice
+      })));
+    }
+  }, [processedFlightOffers]);
 
   // Combine results
   const allResults = useMemo(() => {
@@ -638,173 +901,184 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
 
-  // ===========================================
-  // FLIGHT CARD (UPDATED)
-  // ===========================================
-  const renderFlightCard = (item: ExtendedSearchResult) => {
-    const departureAirport = item.departureAirport || '---';
-    const arrivalAirport = item.arrivalAirport || '---';
-    const departureTime = item.departureTime;
-    const arrivalTime = item.arrivalTime;
-    const airlineName = item.airlineName || item.provider || 'Unknown Airline';
-    const airlineCode = item.airlineCode || '';
-    const logoUrl = item.airlineLogo || item.image;
-    const stopCount = item.stopCount || 0;
-    const stopText = item.stopText || (stopCount === 0 ? 'Direct' : stopCount === 1 ? '1 Stop' : `${stopCount} Stops`);
-    const duration = formatDuration(item.duration);
-    
-    const displayPrice = item.displayPrice || 
-                        (item.final_amount ? formatPrice(item.final_amount, item.currency || 'GBP') : 
-                        item.price || formatPrice(item.total_amount || '0', item.total_currency || 'GBP'));
+// ===========================================
+// FLIGHT CARD - USE ONLY PROCESSED VALUES
+// ===========================================
+const renderFlightCard = (item: ExtendedSearchResult) => {
+  const departureAirport = item.departureAirport || '---';
+  const arrivalAirport = item.arrivalAirport || '---';
+  const departureTime = item.departureTime;
+  const arrivalTime = item.arrivalTime;
+  const airlineName = item.airlineName || item.provider || 'Unknown Airline';
+  const airlineCode = item.airlineCode || '';
+  const logoUrl = item.airlineLogo || item.image;
+  
+  // Get stop info - from processed fields
+  const stopCount = item.stopCount || 0;
+  const stopText = item.stopText || (stopCount === 0 ? 'Direct' : stopCount === 1 ? '1 Stop' : `${stopCount} Stops`);
+  
+  const duration = formatDuration(item.duration);
+  
+  // ===== USE ONLY THE PROCESSED DISPLAY PRICE =====
+  // This comes DIRECTLY from final_amount in the API
+  const displayPrice = item.displayPrice || 'Price on request';
+  
+  console.log(`Rendering flight ${item.id} with API price:`, {
+    final_amount: item.final_amount,
+    currency: item.currency,
+    displayPrice: displayPrice
+  });
 
-    const showOriginal = item.original_amount && item.original_currency !== (item.currency || 'GBP');
+  const showOriginal = item.original_amount && item.original_currency !== (item.currency || 'GBP');
 
-    // Parse baggage from JSON string
-    const baggageInfo = parseBaggage(item.baggage);
+  // Parse baggage from JSON string
+  const baggageInfo = parseBaggage(item.baggage);
 
-    return (
-      <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden animate-in fade-in slide-in-from-bottom-2">
-        <div className="flex flex-col md:flex-row p-8 gap-8">
-          <div className="flex-1">
-            {/* Airline Info */}
-            <div className="flex items-center gap-4 mb-6">
-              {logoUrl ? (
-                <img 
-                  src={logoUrl} 
-                  className="w-12 h-12 object-contain rounded-lg border border-gray-100 p-1" 
-                  alt={airlineName}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2&size=48`;
-                  }}
-                />
-              ) : (
-                <div className="w-12 h-12 bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-lg flex items-center justify-center text-white font-black text-sm">
-                  {airlineCode?.substring(0, 2) || airlineName?.substring(0, 2) || 'FL'}
-                </div>
+  // Get connection info for multi-stop flights
+  const segments = item.slices?.[0]?.segments || [];
+  const hasConnection = segments.length > 1;
+  const connectionAirport = hasConnection ? segments[1]?.origin?.iata_code : null;
+
+  return (
+    <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden animate-in fade-in slide-in-from-bottom-2">
+      <div className="flex flex-col md:flex-row p-8 gap-8">
+        <div className="flex-1">
+          {/* Airline Info */}
+          <div className="flex items-center gap-4 mb-6">
+            {logoUrl ? (
+              <img 
+                src={logoUrl} 
+                className="w-12 h-12 object-contain rounded-lg border border-gray-100 p-1" 
+                alt={airlineName}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2&size=48`;
+                }}
+              />
+            ) : (
+              <div className="w-12 h-12 bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-lg flex items-center justify-center text-white font-black text-sm">
+                {airlineCode?.substring(0, 2) || airlineName?.substring(0, 2) || 'FL'}
+              </div>
+            )}
+            <div>
+              <h4 className="text-base font-black text-gray-900">{airlineName}</h4>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                {item.flightNumber && `Flight ${item.flightNumber}`} {item.cabin && `• ${item.cabin}`}
+              </p>
+            </div>
+          </div>
+
+          {/* Flight Route */}
+          <div className="flex items-center justify-between">
+            {/* Departure */}
+            <div className="text-center flex-1">
+              <p className="text-3xl font-black text-gray-900">
+                {formatTime(departureTime)}
+              </p>
+              <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Depart</p>
+              <p className="text-sm font-bold text-gray-900 mt-1">{departureAirport}</p>
+              {item.departureCity && (
+                <p className="text-[9px] font-bold text-gray-400">{item.departureCity}</p>
               )}
-              <div>
-                <h4 className="text-base font-black text-gray-900">{airlineName}</h4>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                  {item.flightNumber && `Flight ${item.flightNumber}`} {item.cabin && `• ${item.cabin}`}
-                </p>
-              </div>
+              <p className="text-[8px] font-bold text-gray-300 mt-2">
+                {formatDate(departureTime)}
+              </p>
             </div>
 
-            {/* Flight Route */}
-            <div className="flex items-center justify-between">
-              {/* Departure */}
-              <div className="text-center flex-1">
-                <p className="text-3xl font-black text-gray-900">
-                  {formatTime(departureTime)}
-                </p>
-                <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Depart</p>
-                <p className="text-sm font-bold text-gray-900 mt-1">{departureAirport}</p>
-                {item.departureCity && (
-                  <p className="text-[9px] font-bold text-gray-400">{item.departureCity}</p>
-                )}
-                <p className="text-[8px] font-bold text-gray-300 mt-2">
-                  {formatDate(departureTime)}
-                </p>
-              </div>
-
-              {/* Flight Path */}
-              <div className="flex-1 px-6">
-                <div className="relative">
-                  <div className="w-full h-[2px] bg-gray-100"></div>
-                  <div className="absolute left-1/2 -translate-x-1/2 -top-3 text-[#33a8da]">
-                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-                    </svg>
-                  </div>
+            {/* Flight Path */}
+            <div className="flex-1 px-6">
+              <div className="relative">
+                <div className="w-full h-[2px] bg-gray-100"></div>
+                <div className="absolute left-1/2 -translate-x-1/2 -top-3 text-[#33a8da]">
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                  </svg>
                 </div>
-                <div className="flex justify-between mt-4">
-                  <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">
-                    {stopText}
-                  </span>
-                  <span className="text-[9px] font-black text-gray-400">
-                    {duration}
-                  </span>
-                </div>
-                {stopCount > 0 && item.slices?.[0]?.segments?.[1]?.origin?.iata_code && (
-                  <p className="text-[8px] font-bold text-gray-300 text-center mt-2">
-                    via {item.slices[0].segments[1].origin.iata_code}
-                  </p>
-                )}
               </div>
-
-              {/* Arrival */}
-              <div className="text-center flex-1">
-                <p className="text-3xl font-black text-gray-900">
-                  {formatTime(arrivalTime)}
-                </p>
-                <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Arrive</p>
-                <p className="text-sm font-bold text-gray-900 mt-1">{arrivalAirport}</p>
-                {item.arrivalCity && (
-                  <p className="text-[9px] font-bold text-gray-400">{item.arrivalCity}</p>
-                )}
-                <p className="text-[8px] font-bold text-gray-300 mt-2">
-                  {formatDate(arrivalTime)}
-                </p>
+              <div className="flex justify-between mt-4">
+                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">
+                  {stopText}
+                </span>
+                <span className="text-[9px] font-black text-gray-400">
+                  {duration}
+                </span>
               </div>
+              {hasConnection && connectionAirport && (
+                <p className="text-[8px] font-bold text-gray-300 text-center mt-2">
+                  via {connectionAirport}
+                </p>
+              )}
             </div>
 
-            {/* Baggage Info */}
-            {baggageInfo.length > 0 && (
-              <div className="mt-6 pt-6 border-t border-gray-50">
-                <div className="flex items-center gap-4">
-                  {baggageInfo.map((bag: any, idx: number) => (
-                    <span key={idx} className="text-[9px] font-bold text-gray-600 bg-gray-50 px-2 py-1 rounded-full">
-                      {bag.quantity} {bag.type} bag
-                    </span>
-                  ))}
-                </div>
+            {/* Arrival */}
+            <div className="text-center flex-1">
+              <p className="text-3xl font-black text-gray-900">
+                {formatTime(arrivalTime)}
+              </p>
+              <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Arrive</p>
+              <p className="text-sm font-bold text-gray-900 mt-1">{arrivalAirport}</p>
+              {item.arrivalCity && (
+                <p className="text-[9px] font-bold text-gray-400">{item.arrivalCity}</p>
+              )}
+              <p className="text-[8px] font-bold text-gray-300 mt-2">
+                {formatDate(arrivalTime)}
+              </p>
+            </div>
+          </div>
+
+          {/* Baggage Info */}
+          {baggageInfo.length > 0 && (
+            <div className="mt-6 pt-6 border-t border-gray-50">
+              <div className="flex items-center gap-4">
+                {baggageInfo.map((bag: any, idx: number) => (
+                  <span key={idx} className="text-[9px] font-bold text-gray-600 bg-gray-50 px-2 py-1 rounded-full">
+                    {bag.quantity} {bag.type} bag
+                  </span>
+                ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+        </div>
 
-          {/* Price and CTA */}
-          <div className="w-full md:w-[280px] flex flex-col items-center justify-center text-center border-t md:border-t-0 md:border-l border-gray-100 pt-6 md:pt-0 md:pl-8">
-            <p className="text-3xl font-black text-[#33a8da] mb-2">{displayPrice}</p>
-            
-            {showOriginal && (
-              <p className="text-[9px] font-bold text-gray-400 mb-2">
-                Original: {item.original_currency} {parseFloat(item.original_amount || '0').toFixed(2)}
-                {item.conversion_fee && ` • +${item.conversion_fee} fee`}
-              </p>
-            )}
-            
-            {item.markup_percentage && (
-              <p className="text-[9px] font-bold text-gray-400 mb-4">
-                Includes {item.markup_percentage}% markup
-              </p>
-            )}
-            
-            <button 
-              onClick={() => {
-                console.log('Selected flight:', {
-                  id: item.id,
-                  airline: airlineName,
-                  from: departureAirport,
-                  to: arrivalAirport,
-                  price: displayPrice
-                });
-                onSelect?.(item);
-              }} 
-              className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-xs tracking-wider shadow-lg hover:shadow-xl"
-            >
-              Select Flight
-            </button>
+        {/* Price and CTA */}
+        <div className="w-full md:w-[280px] flex flex-col items-center justify-center text-center border-t md:border-t-0 md:border-l border-gray-100 pt-6 md:pt-0 md:pl-8">
+          <p className="text-3xl font-black text-[#33a8da] mb-2">{displayPrice}</p>
+          
+          {showOriginal && (
+            <p className="text-[9px] font-bold text-gray-400 mb-2">
+              Original: {item.original_currency} {parseFloat(item.original_amount || '0').toFixed(2)}
+              {item.conversion_fee && ` • +${item.conversion_fee} fee`}
+            </p>
+          )}
+          
+          
+          
+          <button 
+            onClick={() => {
+              console.log('Selected flight:', {
+                id: item.id,
+                airline: airlineName,
+                from: departureAirport,
+                to: arrivalAirport,
+                price: displayPrice,
+                stops: stopText
+              });
+              onSelect?.(item);
+            }} 
+            className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-xs tracking-wider shadow-lg hover:shadow-xl"
+          >
+            Select Flight
+          </button>
 
-            {item.payment_requirements?.requires_instant_payment && (
-              <p className="text-[8px] font-bold text-orange-600 mt-2">
-                Instant payment required
-              </p>
-            )}
-          </div>
+          {item.payment_requirements?.requires_instant_payment && (
+            <p className="text-[8px] font-bold text-orange-600 mt-2">
+              Instant payment required
+            </p>
+          )}
         </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   // ===========================================
   // CAR CARD (UNTOUCHED)
