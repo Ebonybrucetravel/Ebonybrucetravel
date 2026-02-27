@@ -21,7 +21,7 @@ export interface SearchParams {
   adults?: number;
   guests?: number;
   rooms?: number;
-  roomQuantity?: number; // ✅ ADD THIS - used by Amadeus hotel search API
+  roomQuantity?: number; 
   cabinClass?: string;
   stopsFilter?: string;
   maxPrice?: number;
@@ -97,6 +97,77 @@ export interface User {
   isVerified?: boolean;
 }
 
+
+
+export interface HotelProviderData {
+  hotelBookings?: Array<{
+    hotelOffer?: {
+      checkInDate?: string;
+      checkOutDate?: string;
+      room?: {
+        type?: string;
+        description?: { text?: string };
+      };
+      guests?: { adults?: number };
+      price?: {
+        base?: string;
+        total?: string;
+        currency?: string;
+        taxes?: Array<{
+          code?: string;
+          amount?: string;
+          currency?: string;
+        }>;
+      };
+      policies?: {
+        cancellations?: Array<{
+          deadline?: string;
+          amount?: string;
+        }>;
+      };
+    };
+    hotel?: {
+      name?: string;
+      hotelId?: string;
+      chainCode?: string;
+    };
+    guests?: Array<{
+      name?: {
+        title?: string;
+        firstName?: string;
+        lastName?: string;
+      };
+      contact?: {
+        email?: string;
+        phone?: string;
+      };
+    }>;
+    bookingStatus?: string;
+    hotelProviderInformation?: Array<{
+      confirmationNumber?: string;
+    }>;
+  }>;
+  orderCreationError?: string;
+}
+
+export interface CarRentalProviderData {
+  orderCreationError?: string;
+  orderCreationFailedAt?: string;
+}
+
+export interface PaymentInfo {
+  amount: number;
+  paidAt: {
+    value: string;
+  } | string;
+  status: string;
+  chargeId: string;
+  currency: string;
+  verified: boolean;
+  paymentIntentId: string;
+}
+
+
 export interface Booking {
   id: string;
   reference: string;
@@ -110,6 +181,7 @@ export interface Booking {
     | "CAR_RENTAL";
   provider: string;
   providerBookingId?: string | null;
+  providerData?: any;
   basePrice: number;
   markupAmount?: number;
   serviceFee?: number;
@@ -147,13 +219,7 @@ export interface Booking {
     offerId?: string;
     [key: string]: any;
   };
-  passengerInfo: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone: string;
-    title?: string;
-  };
+  passengerInfo: PassengerInfo;
   voucherId?: string;
   voucherCode?: string;
   voucherDiscount?: number;
@@ -161,6 +227,9 @@ export interface Booking {
   createdAt: string;
   updatedAt?: string;
   deletedAt?: string | null;
+  paymentReference?: string;
+  paymentInfo?: PaymentInfo;
+  stripeChargeId?: string;
 }
 
 export interface PassengerInfo {
@@ -168,6 +237,7 @@ export interface PassengerInfo {
   lastName: string;
   email: string;
   phone: string;
+<<<<<<< HEAD
   title?: "mr" | "ms" | "mrs" | "miss" | "dr";
   gender?: "m" | "f";
   dateOfBirth?: string;
@@ -178,9 +248,27 @@ export interface PassengerInfo {
     dateOfBirth: string;
     title: "mr" | "ms" | "mrs" | "miss" | "dr";
     gender: "m" | "f";
+=======
+  title?: 'mr' | 'ms' | 'mrs' | 'miss' | 'dr';
+  gender?: 'm' | 'f';
+  dateOfBirth?: string;
+  born_on?: string;
+  guests?: Array<{
+    name?: {
+      title?: string;
+      firstName?: string;
+      lastName?: string;
+    };
+    contact?: {
+      email?: string;
+      phone?: string;
+    };
+    travelerId?: number;
+>>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
   }>;
   voucherCode?: string;
 }
+
 
 export interface ContentSection {
   title: string;

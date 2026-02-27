@@ -16,32 +16,49 @@ export default function AdminLoginPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${config.apiBaseUrl}/api/v1/auth/login`, {
+      // FIXED: Use admin auth endpoint instead of regular user auth
+      const res = await fetch(`${config.apiBaseUrl}/api/v1/admin/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message ?? 'Login failed');
       
-      const user = data.user ?? data.data?.user ?? data;
-      const role = (user.role ?? '').toUpperCase();
-      if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
-        throw new Error('Insufficient permissions');
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.message ?? 'Login failed');
       }
       
-      const token = data.token ?? data.data?.token;
-      if (!token) throw new Error('No token received');
+      // Handle response structure - adjust based on your API
+      const responseData = data.data || data;
+      const user = responseData.user || responseData;
+      const token = responseData.token || responseData.accessToken;
       
-      // Set token in localStorage and cookie
+      if (!token) {
+        throw new Error('No token received');
+      }
+      
+      // Verify user has admin role
+      const role = (user.role ?? '').toUpperCase();
+      if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
+        throw new Error('Insufficient permissions - admin access required');
+      }
+      
+      // Store admin data
       localStorage.setItem('adminToken', token);
       localStorage.setItem('adminUser', JSON.stringify(user));
       
-      // Set cookie for middleware
-      document.cookie = `adminToken=${token}; path=/; max-age=86400; SameSite=Strict`;
+      // Set cookie for middleware (more secure options)
+      document.cookie = `adminToken=${token}; path=/; max-age=86400; SameSite=Strict; secure=${window.location.protocol === 'https:'}`;
       
+      // Dispatch event for other tabs
+      window.dispatchEvent(new CustomEvent('admin-login', { detail: { user } }));
+      
+      // Redirect to admin dashboard
       router.push('/admin/dashboard/analytics');
+      
     } catch (err: unknown) {
+      console.error('Admin login error:', err);
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setLoading(false);
@@ -55,7 +72,13 @@ export default function AdminLoginPage() {
           <h1 className="text-2xl font-bold text-gray-900">Admin Login</h1>
           <p className="text-gray-500 mt-1 text-sm">Enter your admin credentials</p>
         </div>
-        {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
+        
+        {error && (
+          <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">
+            {error}
+          </div>
+        )}
+        
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
           <input
@@ -63,10 +86,12 @@ export default function AdminLoginPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#33a8da] focus:border-transparent"
+            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#33a8da] focus:border-transparent transition-all"
             placeholder="admin@ebonybruce.com"
+            disabled={loading}
           />
         </div>
+        
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
           <input
@@ -74,10 +99,12 @@ export default function AdminLoginPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#33a8da] focus:border-transparent"
+            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#33a8da] focus:border-transparent transition-all"
             placeholder="••••••••••••"
+            disabled={loading}
           />
         </div>
+        
         <button
           type="submit"
           disabled={loading}
@@ -95,10 +122,12 @@ export default function AdminLoginPage() {
             'Sign in'
           )}
         </button>
+        
         <button
           type="button"
           onClick={() => router.push('/')}
           className="w-full py-3 text-gray-500 hover:text-gray-700 font-medium text-sm transition"
+          disabled={loading}
         >
           Return to site
         </button>
