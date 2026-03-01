@@ -22,23 +22,8 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
   // Debug log
   useEffect(() => {
     console.log('🎯 FlightDetails received item:', item);
-    console.log('🎯 Item has transformed fields:', {
-      departureAirport: item.departureAirport,
-      arrivalAirport: item.arrivalAirport,
-      departureTime: item.departureTime,
-      arrivalTime: item.arrivalTime,
-      airlineName: item.airlineName,
-      stopCount: item.stopCount,
-      flightNumber: item.flightNumber,
-      cabin: item.cabin,
-      displayPrice: item.displayPrice,
-      // Check for price fields
-      original_amount: item.original_amount,
-      markup_amount: item.markup_amount,
-      service_fee: item.service_fee,
-      final_amount: item.final_amount,
-      currency: item.currency
-    });
+    console.log('🎯 Item slices:', item.slices);
+    console.log('🎯 Number of slices:', item.slices?.length);
   }, [item]);
 
   // Handle booking with complete data preservation
@@ -167,55 +152,75 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     router.push('/booking/review');
   };
 
-  // Use transformed fields if available (from context/SearchResults)
-  if (item.departureAirport && item.arrivalAirport && item.departureTime) {
-    // Format functions
-    const formatTime = (dateTime?: string) => {
-      if (!dateTime) return '--:--';
-      try {
-        const date = new Date(dateTime);
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-      } catch {
-        return '--:--';
-      }
-    };
+  // Format functions
+  const formatTime = (dateTime?: string) => {
+    if (!dateTime) return '--:--';
+    try {
+      const date = new Date(dateTime);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch {
+      return '--:--';
+    }
+  };
 
-    const formatDate = (dateTime?: string) => {
-      if (!dateTime) return '';
-      try {
-        const date = new Date(dateTime);
-        return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-      } catch {
+  const formatDate = (dateTime?: string) => {
+    if (!dateTime) return '';
+    try {
+      const date = new Date(dateTime);
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return '';
+    }
+  };
+
+  // Fixed calculateDuration function to handle both string and object
+  const calculateDuration = (duration?: any) => {
+    if (!duration) return '';
+    
+    // If it's an object with a duration property
+    if (typeof duration === 'object' && duration !== null) {
+      if (duration.duration) {
+        duration = duration.duration;
+      } else {
         return '';
-      }
-    };
-
-    const calculateDuration = (duration?: string) => {
-      if (!duration) return '';
-      const hours = duration.match(/(\d+)H/);
-      const minutes = duration.match(/(\d+)M/);
-      return `${hours ? hours[1] + 'h ' : ''}${minutes ? minutes[1] + 'm' : ''}`.trim();
-    };
-
-    // Parse baggage
-    let baggageInfo: any[] = [];
-    if (item.baggage) {
-      try {
-        baggageInfo = JSON.parse(item.baggage);
-      } catch {
-        baggageInfo = [];
       }
     }
     
-    const checkedBaggage = baggageInfo.find((b: any) => b.type === 'checked') || { quantity: 0 };
-    const carryOnBaggage = baggageInfo.find((b: any) => b.type === 'carry_on') || { quantity: 0 };
+    // Ensure it's a string
+    const durationStr = String(duration);
+    
+    // Parse ISO 8601 duration format like PT1H35M
+    const hours = durationStr.match(/(\d+)H/);
+    const minutes = durationStr.match(/(\d+)M/);
+    return `${hours ? hours[1] + 'h ' : ''}${minutes ? minutes[1] + 'm' : ''}`.trim() || durationStr;
+  };
 
-    // Get refund policy
-    const isRefundable = item.conditions?.refund_before_departure?.allowed || false;
+  // Parse baggage
+  let baggageInfo: any[] = [];
+  if (item.baggage) {
+    try {
+      baggageInfo = JSON.parse(item.baggage);
+    } catch {
+      baggageInfo = [];
+    }
+  }
+  
+  const checkedBaggage = baggageInfo.find((b: any) => b.type === 'checked') || { quantity: 0 };
+  const carryOnBaggage = baggageInfo.find((b: any) => b.type === 'carry_on') || { quantity: 0 };
 
+  // Get refund policy
+  const isRefundable = item.conditions?.refund_before_departure?.allowed || false;
+
+  // Check if this is a round trip (has multiple slices)
+  const isRoundTrip = item.slices && item.slices.length > 1;
+  const outboundSlice = item.slices?.[0];
+  const returnSlice = item.slices?.[1];
+
+  // Use transformed fields if available (from context/SearchResults)
+  if (item.departureAirport && item.arrivalAirport && item.departureTime) {
     return (
       <div className="bg-[#f8fbfe] min-h-screen py-12">
-        <div className="max-w-4xl mx-auto px-4">
+        <div className="max-w-6xl mx-auto px-4">
           <button onClick={onBack} className="flex items-center gap-2 text-[11px] font-black text-gray-400 uppercase tracking-widest hover:text-[#33a8da] transition mb-8 group">
             <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
               <path d="M15 19l-7-7 7-7" />
@@ -225,82 +230,270 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
 
           <div className="bg-white rounded-[32px] shadow-xl border border-gray-100 overflow-hidden">
             {/* Header */}
-            <div className="p-8 md:p-12 border-b border-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-              <div className="flex items-center gap-6">
-                <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center p-3 border border-gray-100">
-                  {item.airlineLogo ? (
-                    <img 
-                      src={item.airlineLogo} 
-                      className="max-w-full max-h-full object-contain" 
-                      alt={item.airlineName || item.provider}
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${item.airlineCode || item.airlineName || item.provider}&background=33a8da&color=fff&bold=true&size=64`;
-                      }}
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-xl flex items-center justify-center text-white font-black text-sm">
-                      {item.airlineCode?.substring(0, 2) || item.airlineName?.substring(0, 2) || item.provider?.substring(0, 2) || 'FL'}
+            <div className="p-8 md:p-12 border-b border-gray-50">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+                <div className="flex items-center gap-6">
+                  <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center p-3 border border-gray-100">
+                    {item.airlineLogo ? (
+                      <img 
+                        src={item.airlineLogo} 
+                        className="max-w-full max-h-full object-contain" 
+                        alt={item.airlineName || item.provider}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${item.airlineCode || item.airlineName || item.provider}&background=33a8da&color=fff&bold=true&size=64`;
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-xl flex items-center justify-center text-white font-black text-sm">
+                        {item.airlineCode?.substring(0, 2) || item.airlineName?.substring(0, 2) || item.provider?.substring(0, 2) || 'FL'}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-black text-gray-900 tracking-tight">{item.airlineName || item.provider}</h1>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{item.flightNumber}</p>
+                      <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{item.stopText}</p>
                     </div>
-                  )}
-                </div>
-                <div>
-                  <h1 className="text-2xl font-black text-gray-900 tracking-tight">{item.airlineName || item.provider}</h1>
-                  <div className="flex items-center gap-2 mt-1">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{item.flightNumber}</p>
-                    <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{item.stopText}</p>
                   </div>
                 </div>
+                <div className="text-right">
+                  <p className="text-3xl font-black text-[#33a8da] tracking-tighter">{item.displayPrice || item.price}</p>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase">Per Passenger</p>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-3xl font-black text-[#33a8da] tracking-tighter">{item.displayPrice || item.price}</p>
-                <p className="text-[10px] font-bold text-gray-400 uppercase">Per Passenger</p>
-              </div>
+
+              {/* Flight Summary - Shows both outbound and return for round trips */}
+              {isRoundTrip && outboundSlice && returnSlice ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-gray-100">
+                  {/* Outbound Summary */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 flex items-center justify-center text-[#33a8da] font-black text-sm flex-shrink-0">
+                      1
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-black text-gray-900">
+                          {outboundSlice.origin?.iata_code || item.departureAirport}
+                        </span>
+                        <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                        <span className="font-black text-gray-900">
+                          {outboundSlice.destination?.iata_code || item.arrivalAirport}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-gray-500 mt-1">
+                        {formatTime(outboundSlice.segments?.[0]?.departing_at)} - {formatTime(outboundSlice.segments?.[outboundSlice.segments.length - 1]?.arriving_at)}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        Flight • {outboundSlice.segments?.[0]?.operating_carrier?.name || item.airlineName} • {calculateDuration(outboundSlice.duration)}
+                      </p>
+                      {(outboundSlice.segments?.length || 1) > 1 && (
+                        <p className="text-[9px] font-bold text-amber-600 mt-1">
+                          {outboundSlice.segments.length - 1} stop
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Return Summary */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 flex items-center justify-center text-[#33a8da] font-black text-sm flex-shrink-0">
+                      2
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-black text-gray-900">
+                          {returnSlice.origin?.iata_code || item.arrivalAirport}
+                        </span>
+                        <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                        <span className="font-black text-gray-900">
+                          {returnSlice.destination?.iata_code || item.departureAirport}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-gray-500 mt-1">
+                        {formatTime(returnSlice.segments?.[0]?.departing_at)} - {formatTime(returnSlice.segments?.[returnSlice.segments.length - 1]?.arriving_at)}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        Flight • {returnSlice.segments?.[0]?.operating_carrier?.name || item.airlineName} • {calculateDuration(returnSlice.duration)}
+                      </p>
+                      {(returnSlice.segments?.length || 1) > 1 && (
+                        <p className="text-[9px] font-bold text-amber-600 mt-1">
+                          {returnSlice.segments.length - 1} stop
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Single Flight Summary for one-way */
+                <div className="mt-8 flex items-start gap-3 pt-6 border-t border-gray-100">
+                  <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 flex items-center justify-center text-[#33a8da] font-black text-sm flex-shrink-0">
+                    1
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="font-black text-gray-900">{item.departureAirport}</span>
+                      <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                      </svg>
+                      <span className="font-black text-gray-900">{item.arrivalAirport}</span>
+                    </div>
+                    <p className="text-xs font-bold text-gray-500 mt-1">
+                      {formatTime(item.departureTime)} - {formatTime(item.arrivalTime)}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      Flight • {item.airlineName} • {calculateDuration(item.duration)}
+                    </p>
+                    {(item.stopCount || 0) > 0 && (
+                      <p className="text-[9px] font-bold text-amber-600 mt-1">
+                        {item.stopCount} stop{item.stopCount > 1 ? 's' : ''}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="p-8 md:p-12 space-y-12">
-              {/* Journey Details */}
+              {/* Journey Details - Two Column Layout for Round Trip */}
               <div>
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Outbound Journey</h3>
-                  <p className="text-xs font-bold text-gray-600">{formatDate(item.departureTime)}</p>
-                </div>
-                
-                <div className="flex items-center justify-between relative">
-                  <div className="text-center md:text-left">
-                    <p className="text-3xl font-black text-gray-900">{formatTime(item.departureTime)}</p>
-                    <p className="text-sm font-bold text-gray-400 mt-1 uppercase">
-                      {item.departureAirport} <span className="text-xs font-normal text-gray-300">•</span> {item.departureCity || item.departureAirport}
-                    </p>
-                  </div>
-                  
-                  <div className="flex-1 px-8 hidden md:block">
-                    <div className="w-full h-[2px] bg-gray-100 relative">
-                      <div className="absolute left-1/2 -translate-x-1/2 -top-[11px] bg-white px-3">
-                        <svg className="w-6 h-6 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-                        </svg>
-                      </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
+                  {/* Outbound Journey */}
+                  <div>
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Outbound Journey</h3>
+                      <p className="text-xs font-bold text-gray-600">
+                        {formatDate(outboundSlice?.segments?.[0]?.departing_at || item.departureTime)}
+                      </p>
                     </div>
-                    <p className="text-[10px] font-black text-gray-400 uppercase text-center mt-3 tracking-widest">
-                      {calculateDuration(item.duration)}
-                    </p>
+                    
+                    {outboundSlice?.segments?.map((segment: any, idx: number) => (
+                      <div key={idx} className="mb-6 last:mb-0">
+                        <div className="flex items-center justify-between">
+                          <div className="text-left">
+                            <p className="text-2xl font-black text-gray-900">{formatTime(segment.departing_at)}</p>
+                            <p className="text-xs font-bold text-gray-400 mt-1 uppercase">
+                              {segment.origin?.iata_code}
+                            </p>
+                            <p className="text-[10px] text-gray-400">{segment.origin?.city?.name || segment.origin?.city || segment.origin?.name}</p>
+                          </div>
+                          
+                          <div className="flex-1 px-4">
+                            <div className="w-full h-[2px] bg-gray-100 relative">
+                              <div className="absolute left-1/2 -translate-x-1/2 -top-[11px] bg-white px-2">
+                                <svg className="w-5 h-5 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                                </svg>
+                              </div>
+                            </div>
+                            <p className="text-[9px] font-black text-gray-400 text-center mt-2 tracking-widest">
+                              {calculateDuration(segment.duration)}
+                            </p>
+                          </div>
+
+                          <div className="text-right">
+                            <p className="text-2xl font-black text-gray-900">{formatTime(segment.arriving_at)}</p>
+                            <p className="text-xs font-bold text-gray-400 mt-1 uppercase">
+                              {segment.destination?.iata_code}
+                            </p>
+                            <p className="text-[10px] text-gray-400">{segment.destination?.city?.name || segment.destination?.city || segment.destination?.name}</p>
+                          </div>
+                        </div>
+
+                        {/* Flight info */}
+                        <div className="mt-2 text-center">
+                          <p className="text-[10px] text-gray-500">
+                            Flight {segment.marketing_carrier_flight_number} • {segment.operating_carrier?.name}
+                          </p>
+                        </div>
+
+                        {/* Stopover info if not last segment */}
+                        {idx < (outboundSlice.segments.length - 1) && (
+                          <div className="my-4 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                            <p className="text-[10px] font-bold text-amber-700">
+                              ✈️ Connection in {segment.destination?.iata_code} • Layover time TBD
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
 
-                  <div className="text-center md:text-right">
-                    <p className="text-3xl font-black text-gray-900">{formatTime(item.arrivalTime)}</p>
-                    <p className="text-sm font-bold text-gray-400 mt-1 uppercase">
-                      {item.arrivalAirport} <span className="text-xs font-normal text-gray-300">•</span> {item.arrivalCity || item.arrivalAirport}
-                    </p>
-                  </div>
+                  {/* Return Journey - Only show if round trip */}
+                  {isRoundTrip && returnSlice && (
+                    <div>
+                      <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Return Journey</h3>
+                        <p className="text-xs font-bold text-gray-600">
+                          {formatDate(returnSlice.segments?.[0]?.departing_at)}
+                        </p>
+                      </div>
+                      
+                      {returnSlice.segments?.map((segment: any, idx: number) => (
+                        <div key={idx} className="mb-6 last:mb-0">
+                          <div className="flex items-center justify-between">
+                            <div className="text-left">
+                              <p className="text-2xl font-black text-gray-900">{formatTime(segment.departing_at)}</p>
+                              <p className="text-xs font-bold text-gray-400 mt-1 uppercase">
+                                {segment.origin?.iata_code}
+                              </p>
+                              <p className="text-[10px] text-gray-400">{segment.origin?.city?.name || segment.origin?.city || segment.origin?.name}</p>
+                            </div>
+                            
+                            <div className="flex-1 px-4">
+                              <div className="w-full h-[2px] bg-gray-100 relative">
+                                <div className="absolute left-1/2 -translate-x-1/2 -top-[11px] bg-white px-2">
+                                  <svg className="w-5 h-5 text-[#33a8da] transform rotate-180" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                                  </svg>
+                                </div>
+                              </div>
+                              <p className="text-[9px] font-black text-gray-400 text-center mt-2 tracking-widest">
+                                {calculateDuration(segment.duration)}
+                              </p>
+                            </div>
+
+                            <div className="text-right">
+                              <p className="text-2xl font-black text-gray-900">{formatTime(segment.arriving_at)}</p>
+                              <p className="text-xs font-bold text-gray-400 mt-1 uppercase">
+                                {segment.destination?.iata_code}
+                              </p>
+                              <p className="text-[10px] text-gray-400">{segment.destination?.city?.name || segment.destination?.city || segment.destination?.name}</p>
+                            </div>
+                          </div>
+
+                          {/* Flight info */}
+                          <div className="mt-2 text-center">
+                            <p className="text-[10px] text-gray-500">
+                              Flight {segment.marketing_carrier_flight_number} • {segment.operating_carrier?.name}
+                            </p>
+                          </div>
+
+                          {/* Stopover info if not last segment */}
+                          {idx < (returnSlice.segments.length - 1) && (
+                            <div className="my-4 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                              <p className="text-[10px] font-bold text-amber-700">
+                                ✈️ Connection in {segment.destination?.iata_code} • Layover time TBD
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* Stopover info if any */}
-                {(item.stopCount || 0) > 0 && (
-                  <div className="mt-8 p-4 bg-amber-50 rounded-xl border border-amber-100">
-                    <p className="text-xs font-bold text-amber-700">
-                      ✈️ {item.stopCount} stop{item.stopCount > 1 ? 's' : ''} • Total journey time {calculateDuration(item.duration)}
-                    </p>
+                {/* Show message if one-way */}
+                {!isRoundTrip && (
+                  <div className="mt-6 text-center">
+                    <span className="inline-block px-4 py-2 bg-gray-100 rounded-full text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                      One-way Flight
+                    </span>
                   </div>
                 )}
               </div>
@@ -333,33 +526,6 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                 </div>
               </div>
 
-              {/* Flight Segments (if multiple) - Use slices from raw data if available */}
-              {item.slices && item.slices[0]?.segments?.length > 1 && (
-                <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-                  <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Flight Details</h4>
-                  <div className="space-y-4">
-                    {item.slices[0].segments.map((segment: any, idx: number) => (
-                      <div key={idx} className="flex items-start gap-4 text-xs">
-                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[#33a8da] font-black">
-                          {idx + 1}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-bold text-gray-900">
-                            {segment.origin?.iata_code} → {segment.destination?.iata_code}
-                          </p>
-                          <p className="text-gray-500">
-                            {formatTime(segment.departing_at)} - {formatTime(segment.arriving_at)}
-                          </p>
-                          <p className="text-gray-400 text-[10px] mt-1">
-                            Flight {segment.flight_number} • {segment.operating_carrier?.name || 'Unknown'} • {calculateDuration(segment.duration)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Checkout Button */}
               <div className="pt-8 border-t border-gray-50 flex flex-col md:flex-row items-center justify-between gap-8">
                 <div className="flex items-center gap-4">
@@ -369,7 +535,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                     </svg>
                   </div>
                   <p className="text-sm font-bold text-gray-600">
-                    {(item.stopCount || 0) === 0 ? 'Direct flight' : `${item.stopCount} stop${item.stopCount > 1 ? 's' : ''}`} • Seats confirmed for immediate booking.
+                    {isRoundTrip ? 'Round trip' : 'One-way'} • {(item.stopCount || 0) === 0 ? 'Direct flight' : `${item.stopCount} stop${item.stopCount > 1 ? 's' : ''}`} • Seats confirmed for immediate booking.
                   </p>
                 </div>
                 <button 

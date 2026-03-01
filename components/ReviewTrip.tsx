@@ -457,7 +457,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                     value={phone} 
                     onChange={e => setPhone(e.target.value)} 
                     className={inputCls} 
-                    placeholder="+234 123 456 789" 
+                    placeholder="+44 7911 123456" 
                     readOnly={!!createdBooking}
                   />
                 </div>
