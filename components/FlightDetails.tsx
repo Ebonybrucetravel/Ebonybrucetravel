@@ -1,5 +1,7 @@
 'use client';
 import React, { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useSearch } from '@/context/SearchContext';
 import { formatPrice } from '@/lib/utils';
 
 interface FlightDetailsProps {
@@ -10,6 +12,9 @@ interface FlightDetailsProps {
 }
 
 const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBack, onBook }) => {
+  const router = useRouter();
+  const { selectItem } = useSearch();
+  
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
@@ -26,20 +31,27 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
       stopCount: item.stopCount,
       flightNumber: item.flightNumber,
       cabin: item.cabin,
-      displayPrice: item.displayPrice
+      displayPrice: item.displayPrice,
+      // Check for price fields
+      original_amount: item.original_amount,
+      markup_amount: item.markup_amount,
+      service_fee: item.service_fee,
+      final_amount: item.final_amount,
+      currency: item.currency
     });
   }, [item]);
 
   // Handle booking with complete data preservation
   const handleBookClick = () => {
-    console.log('📚 Creating booking from flight:', {
-      departureAirport: item.departureAirport,
-      arrivalAirport: item.arrivalAirport,
-      departureTime: item.departureTime,
-      airlineName: item.airlineName
+    console.log('📚 Creating booking from flight with price fields:', {
+      original_amount: item.original_amount,
+      markup_amount: item.markup_amount,
+      service_fee: item.service_fee,
+      final_amount: item.final_amount,
+      currency: item.currency
     });
 
-    // Create a COMPLETE booking object with ALL flight details
+    // Create a COMPLETE booking object with ALL flight details including price fields
     const completeBooking = {
       // Spread all item properties first
       ...item,
@@ -51,6 +63,13 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
       type: 'flight',
       status: 'Confirmed',
       date: item.departureTime || new Date().toISOString(),
+      
+      // Explicitly include ALL price fields at the top level
+      original_amount: item.original_amount,
+      markup_amount: item.markup_amount,
+      service_fee: item.service_fee,
+      final_amount: item.final_amount,
+      currency: item.currency || 'GBP',
       
       // Explicitly include ALL flight fields to ensure they're captured
       departureAirport: item.departureAirport,
@@ -69,7 +88,6 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
       baggage: item.baggage,
       displayPrice: item.displayPrice || item.price,
       price: item.price,
-      currency: item.currency || 'GBP',
       duration: item.duration,
       
       // For backward compatibility
@@ -82,19 +100,27 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
       
       // Include slices for segment details if available
       slices: item.slices,
+      
+      // Include realData if available
+      realData: item.realData,
+      
+      // Include owner if available
+      owner: item.owner,
     };
 
-    console.log('💾 Saving complete booking:', {
+    console.log('💾 Saving complete booking with price fields:', {
       id: completeBooking.id,
-      departureAirport: completeBooking.departureAirport,
-      arrivalAirport: completeBooking.arrivalAirport,
-      departureTime: completeBooking.departureTime,
-      airlineName: completeBooking.airlineName,
-      flightNumber: completeBooking.flightNumber,
-      price: completeBooking.displayPrice
+      original_amount: completeBooking.original_amount,
+      markup_amount: completeBooking.markup_amount,
+      service_fee: completeBooking.service_fee,
+      final_amount: completeBooking.final_amount,
+      currency: completeBooking.currency
     });
 
-    // Save to storage
+    // ✅ STEP 1: Set the selected item in context (this is crucial!)
+    selectItem(completeBooking);
+    
+    // Save to storage as backup
     try {
       // Save as current booking (for immediate use in payment)
       sessionStorage.setItem('currentBooking', JSON.stringify(completeBooking));
@@ -137,10 +163,8 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
       console.error('❌ Error saving booking:', e);
     }
 
-    // Call the original onBook prop to navigate to payment
-    if (onBook) {
-      onBook();
-    }
+    // ✅ STEP 2: Navigate to review page
+    router.push('/booking/review');
   };
 
   // Use transformed fields if available (from context/SearchResults)

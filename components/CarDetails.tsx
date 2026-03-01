@@ -1,7 +1,8 @@
-// components/CarDetails.tsx
 'use client';
 import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
+import { useSearch } from '@/context/SearchContext';
+import { useRouter } from 'next/navigation';
 import api from '../lib/api';
 import { format } from 'date-fns';
 
@@ -10,7 +11,7 @@ interface CarDetailsProps {
   searchParams: any;
   onBack: () => void;
   onBook: () => void;
-  createdBooking?: any; // Add this to receive the created booking data
+  createdBooking?: any;
 }
 
 const CarDetails: React.FC<CarDetailsProps> = ({ 
@@ -18,9 +19,12 @@ const CarDetails: React.FC<CarDetailsProps> = ({
   searchParams, 
   onBack, 
   onBook,
-  createdBooking // Add this
+  createdBooking 
 }) => {
   const { currency } = useLanguage();
+  const router = useRouter();
+  const { selectItem } = useSearch();
+  
   const [promoCode, setPromoCode] = useState('');
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [detailedCarData, setDetailedCarData] = useState<any>(createdBooking || item?.realData || null);
@@ -32,6 +36,155 @@ const CarDetails: React.FC<CarDetailsProps> = ({
     type: 'percentage' | 'fixed';
   } | null>(null);
 
+  const handleSelectCar = () => {
+    // Get current car data (either detailed or original)
+    const currentCarData = detailedCarData || item;
+    
+    console.log('========== 🚗 CAR DETAILS - CALCULATING PRICES ==========');
+    console.log('1. Raw car data:', {
+      original_price: currentCarData.original_price,
+      base_price: currentCarData.base_price,
+      markup_amount: currentCarData.markup_amount,
+      service_fee: currentCarData.service_fee,
+      conversion_fee: currentCarData.conversion_fee,
+      conversion_fee_percentage: currentCarData.conversion_fee_percentage,
+      final_price: currentCarData.final_price,
+      currency: currentCarData.currency
+    });
+  
+    // Calculate all price components
+    const basePrice = parseFloat(currentCarData.base_price || currentCarData.original_price || '0');
+    const markupAmount = parseFloat(currentCarData.markup_amount || '0');
+    const serviceFee = parseFloat(currentCarData.service_fee || '0');
+    const taxes = markupAmount + serviceFee; // Combined taxes (markup + service fee)
+    
+    // Conversion fee
+    const conversionFee = parseFloat(currentCarData.conversion_fee || '0');
+    const conversionPercentage = currentCarData.conversion_fee_percentage || 0;
+    
+    // Total price (base + taxes + conversion fee)
+    const totalPrice = parseFloat(currentCarData.final_price || '0') || (basePrice + taxes + conversionFee);
+  
+    // Format for display
+    const formattedBasePrice = `£${basePrice.toFixed(2)}`;
+    const formattedTaxes = `£${taxes.toFixed(2)}`;
+    const formattedConversionFee = conversionFee > 0 ? `£${conversionFee.toFixed(2)}` : '';
+    const formattedTotalPrice = `£${totalPrice.toFixed(2)}`;
+  
+    console.log('2. Calculated values:', {
+      basePrice,
+      markupAmount,
+      serviceFee,
+      taxes,
+      conversionFee,
+      conversionPercentage,
+      totalPrice,
+      formattedBasePrice,
+      formattedTaxes,
+      formattedConversionFee,
+      formattedTotalPrice
+    });
+  
+    // Extract vehicle details
+    const vehicle = currentCarData.vehicle || {};
+    const pickupLocation = {
+      code: currentCarData.start?.locationCode || currentCarData.pickupLocation || '',
+      dateTime: currentCarData.start?.dateTime || currentCarData.pickupDateTime || ''
+    };
+    const dropoffLocation = {
+      code: currentCarData.end?.locationCode || currentCarData.dropoffLocation || '',
+      dateTime: currentCarData.end?.dateTime || currentCarData.dropoffDateTime || ''
+    };
+  
+    // Vehicle specs
+    const seats = vehicle.seats?.[0]?.count || currentCarData.seats || 0;
+    const baggage = vehicle.baggages?.reduce((total: number, bag: any) => 
+      total + (bag.count || 0), 0) || currentCarData.baggage || 0;
+    const vehicleCode = vehicle.code || currentCarData.vehicleCode || '';
+    const vehicleCategory = vehicle.category || currentCarData.vehicleCategory || '';
+  
+    // Create complete booking with ALL price fields
+    const completeBooking = {
+      ...currentCarData,
+      
+      // Raw API fields
+      original_price: currentCarData.original_price,
+      base_price: currentCarData.base_price,
+      markup_amount: currentCarData.markup_amount,
+      service_fee: currentCarData.service_fee,
+      conversion_fee: currentCarData.conversion_fee,
+      conversion_fee_percentage: currentCarData.conversion_fee_percentage,
+      final_price: currentCarData.final_price,
+      currency: currentCarData.currency || 'GBP',
+      
+      // ✅ CALCULATED NUMERIC VALUES
+      calculatedBasePrice: basePrice,
+      calculatedMarkup: markupAmount,
+      calculatedServiceFee: serviceFee,
+      calculatedTaxes: taxes,
+      calculatedConversionFee: conversionFee,
+      calculatedTotal: totalPrice,
+      
+      // ✅ FORMATTED STRINGS for display
+      displayBasePrice: formattedBasePrice,
+      displayTaxes: formattedTaxes,
+      displayConversionFee: formattedConversionFee,
+      displayConversionPercentage: conversionPercentage,
+      displayTotalPrice: formattedTotalPrice,
+      
+      // Flight format compatibility
+      original_amount: currentCarData.original_price,
+      final_amount: currentCarData.final_price,
+      
+      // Vehicle details
+      vehicle: vehicle,
+      pickupLocation: pickupLocation,
+      dropoffLocation: dropoffLocation,
+      
+      // Booking metadata
+      type: 'car-rentals' as const,
+      status: 'Pending',
+      
+      // Store everything in bookingData
+      bookingData: {
+        ...currentCarData.bookingData,
+        vehicleCode,
+        vehicleCategory,
+        seats,
+        baggage,
+        serviceFee,
+        basePrice,
+        taxes,
+        conversionFee,
+        conversionPercentage,
+        totalPrice,
+        formattedBasePrice,
+        formattedTaxes,
+        formattedConversionFee,
+        formattedTotalPrice
+      }
+    };
+  
+    console.log('3. Complete booking object with ALL price fields:', {
+      basePrice: completeBooking.calculatedBasePrice,
+      taxes: completeBooking.calculatedTaxes,
+      conversionFee: completeBooking.calculatedConversionFee,
+      total: completeBooking.calculatedTotal,
+      displayBasePrice: completeBooking.displayBasePrice,
+      displayTaxes: completeBooking.displayTaxes,
+      displayConversionFee: completeBooking.displayConversionFee,
+      displayTotalPrice: completeBooking.displayTotalPrice
+    });
+  
+    // Save to context
+    selectItem(completeBooking);
+    
+    // Save to sessionStorage as backup
+    sessionStorage.setItem('lastSelectedItem', JSON.stringify(completeBooking));
+    
+    // Navigate to review page
+    router.push('/booking/review');
+  };
   useEffect(() => {
     window.scrollTo(0, 0);
     
@@ -42,23 +195,36 @@ const CarDetails: React.FC<CarDetailsProps> = ({
         ...item?.realData,
         ...createdBooking.bookingData,
         // Merge the pricing from the booking
-        basePrice: createdBooking.basePrice,
-        totalAmount: createdBooking.totalAmount,
+        base_price: createdBooking.basePrice,
+        final_price: createdBooking.totalAmount,
         currency: createdBooking.currency
       });
       return;
     }
     
-    // Otherwise fetch details as before
     const fetchCarDetails = async () => {
       if (!item) return;
       
-      // If we already have full realData with vehicle and imageURL, use it
-      if (item.realData?.vehicle?.imageURL || item.realData?.imageURL) {
+      // If we already have full data from the search results, use it directly
+      if (item.start?.locationCode && item.end?.locationCode && item.vehicle) {
+        console.log('✅ Using existing car data from search results:', {
+          id: item.id,
+          start: item.start,
+          end: item.end,
+          vehicle: item.vehicle
+        });
+        setDetailedCarData(item);
+        return;
+      }
+      
+      // If we have realData with the structure, use that
+      if (item.realData?.start?.locationCode) {
+        console.log('✅ Using car data from realData');
         setDetailedCarData(item.realData);
         return;
       }
       
+      // Only make API call if we're missing critical data
       setIsLoadingDetails(true);
       setError(null);
       setImageError(false);
@@ -69,79 +235,34 @@ const CarDetails: React.FC<CarDetailsProps> = ({
         if (!offerId) {
           throw new Error('No offer ID found');
         }
-
-        // Extract search parameters from the correct locations
-        let pickupLocationCode = 'LOS';
-        let pickupDateTime = new Date().toISOString();
-        let dropoffLocationCode = 'LOS';
-        let dropoffDateTime = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-        let passengers = 2;
-
-        // Check searchParams structure from Home.tsx
-        if (searchParams) {
-          console.log('🔍 Search params received:', searchParams);
-          
-          // For car rentals, the params might be under carPickUp/carDropOff
-          if (searchParams.carPickUp) {
-            pickupLocationCode = searchParams.carPickUp;
-            // Try to extract airport code from display name
-            const match = searchParams.carPickUp.match(/\(([A-Z]{3})\)/);
-            if (match) {
-              pickupLocationCode = match[1];
-            }
-          }
-          
-          if (searchParams.carDropOff) {
-            dropoffLocationCode = searchParams.carDropOff;
-            const match = searchParams.carDropOff.match(/\(([A-Z]{3})\)/);
-            if (match) {
-              dropoffLocationCode = match[1];
-            }
-          } else {
-            dropoffLocationCode = pickupLocationCode;
-          }
-          
-          // Handle dates
-          if (searchParams.pickUpDate) {
-            const time = searchParams.pickUpTime || '10:00';
-            pickupDateTime = `${searchParams.pickUpDate}T${time}:00`;
-          }
-          
-          if (searchParams.dropOffDate) {
-            const time = searchParams.dropOffTime || '10:00';
-            dropoffDateTime = `${searchParams.dropOffDate}T${time}:00`;
-          }
-          
-          if (searchParams.passengers) {
-            passengers = parseInt(searchParams.passengers) || 2;
-          }
+    
+        // Extract data from the item
+        let pickupLocationCode = item.start?.locationCode || item.pickupLocation;
+        let pickupDateTime = item.start?.dateTime || item.pickupDateTime;
+        let dropoffLocationCode = item.end?.locationCode || item.dropoffLocation;
+        let dropoffDateTime = item.end?.dateTime || item.dropoffDateTime;
+        let passengers = item.seats || 2;
+    
+        if (!pickupLocationCode || !pickupDateTime || !dropoffLocationCode || !dropoffDateTime) {
+          console.error('❌ Missing required car rental parameters:', {
+            pickupLocationCode,
+            pickupDateTime,
+            dropoffLocationCode,
+            dropoffDateTime
+          });
+          setError('This car rental offer is missing location or date information.');
+          setIsLoadingDetails(false);
+          return;
         }
-
-        // Also check if the item itself has the location data
-        if (item.realData) {
-          if (item.realData.pickupLocation) {
-            pickupLocationCode = item.realData.pickupLocation;
-          }
-          if (item.realData.pickupDateTime) {
-            pickupDateTime = item.realData.pickupDateTime;
-          }
-          if (item.realData.dropoffLocation) {
-            dropoffLocationCode = item.realData.dropoffLocation;
-          }
-          if (item.realData.dropoffDateTime) {
-            dropoffDateTime = item.realData.dropoffDateTime;
-          }
-        }
-
-        console.log('📅 Using search params:', {
+    
+        console.log('📅 Fetching full details with params:', {
           pickupLocationCode,
           pickupDateTime,
           dropoffLocationCode,
           dropoffDateTime,
           passengers
         });
-
-        // Search for cars with the same parameters to get the full offer with images
+    
         const searchResponse = await api.carApi.searchCarRentals({
           pickupLocationCode,
           pickupDateTime,
@@ -150,32 +271,27 @@ const CarDetails: React.FC<CarDetailsProps> = ({
           currency: 'GBP',
           passengers
         });
-
+    
         if (searchResponse.success && searchResponse.data?.data) {
-          // Find the specific offer by ID
           const fullOffer = searchResponse.data.data.find(
             (offer: any) => offer.id === offerId
           );
-
+    
           if (fullOffer) {
-            console.log('✅ Found full car offer:', {
-              id: fullOffer.id,
-              pickup: fullOffer.start?.locationCode,
-              dropoff: fullOffer.end?.locationCode,
-              pickupTime: fullOffer.start?.dateTime,
-              dropoffTime: fullOffer.end?.dateTime
-            });
+            console.log('✅ Found full car offer from API');
             setDetailedCarData(fullOffer);
           } else {
-            setDetailedCarData(item.realData);
+            console.log('⚠️ Offer not found, using original item');
+            setDetailedCarData(item);
           }
         } else {
-          setDetailedCarData(item.realData);
+          console.log('⚠️ API returned no data, using original item');
+          setDetailedCarData(item);
         }
       } catch (err: any) {
         console.error('Failed to fetch car details:', err);
-        setError(err.message || 'Unable to load additional car details');
-        setDetailedCarData(item.realData);
+        setError(err.message || 'Unable to load car details');
+        setDetailedCarData(item);
       } finally {
         setIsLoadingDetails(false);
       }
@@ -186,272 +302,75 @@ const CarDetails: React.FC<CarDetailsProps> = ({
 
   if (!item && !detailedCarData) return null;
 
-  // Use detailedCarData if available, otherwise fallback to item.realData or item
-  const carData = detailedCarData || item.realData || item;
+  // Use detailedCarData from API
+  const carData = detailedCarData;
   
-  // If we have createdBooking, use its data directly
-  const bookingData = createdBooking?.bookingData || {};
+  // If we don't have API data, show nothing
+  if (!carData) {
+    return (
+      <div className="bg-gray-50 min-h-screen py-10">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-8 text-center">
+            <p className="text-yellow-800">No car data available</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   
-  // Extract all possible data structures
+  // Extract data directly from API response structure
   const vehicle = carData.vehicle || {};
   const serviceProvider = carData.serviceProvider || 
                          carData.partnerInfo?.serviceProvider || 
                          {};
   const partnerInfo = carData.partnerInfo || {};
   
-  // --- IMAGE HANDLING ---
-  const getCarImage = (): string => {
-    if (vehicle.imageURL) return vehicle.imageURL;
-    if (carData.imageURL) return carData.imageURL;
-    if (partnerInfo.serviceProvider?.logoUrl) return partnerInfo.serviceProvider.logoUrl;
-    if (serviceProvider.logoUrl) return serviceProvider.logoUrl;
-    if (item.image) return item.image;
-    
-    // Unsplash fallbacks by vehicle type
-    if (vehicle.category === 'FC' || vehicle.code === 'FC') {
-      return 'https://images.unsplash.com/photo-1556189250-72ba954cfc2b?auto=format&fit=crop&q=80&w=600';
-    } else if (vehicle.category === 'BU' || vehicle.code === 'BU') {
-      return 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600';
-    } else if (vehicle.code === 'SUV') {
-      return 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&q=80&w=600';
-    } else if (vehicle.code === 'VAN') {
-      return 'https://images.unsplash.com/photo-1511919884226-fd3cad34687c?auto=format&fit=crop&q=80&w=600';
-    } else {
-      return 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600';
-    }
-  };
-
-  const carImage = getCarImage();
-
+  // Get image URL from API
+  const carImage = vehicle.imageURL || carData.imageURL || partnerInfo.serviceProvider?.logoUrl || serviceProvider.logoUrl;
+  
   const handleImageError = () => {
     setImageError(true);
-    console.log('❌ Failed to load image:', carImage);
+    console.log('❌ Failed to load image from API:', carImage);
   };
 
-  const getFallbackImage = (): string => {
-    if (vehicle.category === 'FC' || vehicle.code === 'FC') {
-      return 'https://images.unsplash.com/photo-1556189250-72ba954cfc2b?auto=format&fit=crop&q=80&w=600';
-    } else if (vehicle.category === 'BU' || vehicle.code === 'BU') {
-      return 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600';
-    } else if (vehicle.code === 'SUV') {
-      return 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&q=80&w=600';
-    } else if (vehicle.code === 'VAN') {
-      return 'https://images.unsplash.com/photo-1511919884226-fd3cad34687c?auto=format&fit=crop&q=80&w=600';
-    } else {
-      return 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600';
-    }
-  };
-  
-  // --- EXTRACT PICKUP AND DROPOFF LOCATIONS CORRECTLY ---
-  // Priority: 1. Created booking data, 2. API response data, 3. item.realData, 4. searchParams
-  
-  const getPickupLocation = (): { code: string; display: string; dateTime: string } => {
-    // First try created booking data
-    if (createdBooking) {
-      const pickupDateTime = createdBooking.bookingData?.pickupDateTime || 
-                            createdBooking.bookingData?.start?.dateTime;
-      const pickupLocation = createdBooking.bookingData?.pickupLocationCode ||
-                            createdBooking.bookingData?.start?.locationCode;
-      
-      if (pickupLocation) {
-        return {
-          code: pickupLocation,
-          display: pickupLocation,
-          dateTime: pickupDateTime || ''
-        };
-      }
-    }
-    
-    // Try API response first
-    if (carData.start?.locationCode) {
-      return {
-        code: carData.start.locationCode,
-        display: carData.start.locationCode,
-        dateTime: carData.start.dateTime || ''
-      };
-    }
-    
-    // Try item.realData
-    if (item.realData?.pickupLocation) {
-      return {
-        code: item.realData.pickupLocation,
-        display: item.realData.pickupLocation,
-        dateTime: item.realData.pickupDateTime || ''
-      };
-    }
-    
-    // Try searchParams
-    if (searchParams) {
-      if (searchParams.carPickUp) {
-        const display = searchParams.carPickUp;
-        const match = display.match(/\(([A-Z]{3})\)/);
-        const code = match ? match[1] : display.substring(0, 3).toUpperCase();
-        
-        let dateTime = '';
-        if (searchParams.pickUpDate) {
-          const time = searchParams.pickUpTime || '10:00';
-          dateTime = `${searchParams.pickUpDate}T${time}:00`;
-        }
-        
-        return { code, display, dateTime };
-      }
-    }
-    
-    return { code: 'LOS', display: 'Lagos (LOS)', dateTime: '' };
+  // Extract pickup and dropoff from API
+  const pickupLocation = {
+    code: carData.start?.locationCode || '',
+    display: carData.start?.locationCode || '',
+    dateTime: carData.start?.dateTime || ''
   };
 
-  const getDropoffLocation = (): { code: string; display: string; dateTime: string } => {
-    // First try created booking data
-    if (createdBooking) {
-      const dropoffDateTime = createdBooking.bookingData?.dropoffDateTime ||
-                             createdBooking.bookingData?.end?.dateTime;
-      const dropoffLocation = createdBooking.bookingData?.dropoffLocationCode ||
-                             createdBooking.bookingData?.end?.locationCode;
-      
-      if (dropoffLocation) {
-        return {
-          code: dropoffLocation,
-          display: dropoffLocation,
-          dateTime: dropoffDateTime || ''
-        };
-      }
-    }
-    
-    // Try API response first
-    if (carData.end?.locationCode) {
-      return {
-        code: carData.end.locationCode,
-        display: carData.end.locationCode,
-        dateTime: carData.end.dateTime || ''
-      };
-    }
-    
-    // Try item.realData
-    if (item.realData?.dropoffLocation) {
-      return {
-        code: item.realData.dropoffLocation,
-        display: item.realData.dropoffLocation,
-        dateTime: item.realData.dropoffDateTime || ''
-      };
-    }
-    
-    // Try searchParams
-    if (searchParams) {
-      if (searchParams.carDropOff) {
-        const display = searchParams.carDropOff;
-        const match = display.match(/\(([A-Z]{3})\)/);
-        const code = match ? match[1] : display.substring(0, 3).toUpperCase();
-        
-        let dateTime = '';
-        if (searchParams.dropOffDate) {
-          const time = searchParams.dropOffTime || '10:00';
-          dateTime = `${searchParams.dropOffDate}T${time}:00`;
-        }
-        
-        return { code, display, dateTime };
-      }
-    }
-    
-    const pickup = getPickupLocation();
-    return { code: pickup.code, display: pickup.display, dateTime: '' };
+  const dropoffLocation = {
+    code: carData.end?.locationCode || '',
+    display: carData.end?.locationCode || '',
+    dateTime: carData.end?.dateTime || ''
   };
 
-  const pickupLocation = getPickupLocation();
-  const dropoffLocation = getDropoffLocation();
-
-  // --- CALCULATE RENTAL DURATION CORRECTLY ---
-  const calculateRentalDuration = (): { days: number; hours: number; minutes: number; totalMinutes: number } => {
-    let startDate: Date | null = null;
-    let endDate: Date | null = null;
+  // Calculate duration from API dates
+  const calculateRentalDuration = (): { days: number; hours: number; minutes: number } => {
+    if (!carData.start?.dateTime || !carData.end?.dateTime) {
+      return { days: 0, hours: 0, minutes: 0 };
+    }
     
-    // 1. From created booking
-    if (createdBooking) {
-      const startDateTime = createdBooking.bookingData?.pickupDateTime ||
-                           createdBooking.bookingData?.start?.dateTime;
-      const endDateTime = createdBooking.bookingData?.dropoffDateTime ||
-                         createdBooking.bookingData?.end?.dateTime;
+    try {
+      const startDate = new Date(carData.start.dateTime);
+      const endDate = new Date(carData.end.dateTime);
       
-      if (startDateTime) {
-        try {
-          startDate = new Date(startDateTime);
-        } catch (e) {}
-      }
+      const diffMs = Math.abs(endDate.getTime() - startDate.getTime());
+      const diffMinutes = Math.floor(diffMs / (1000 * 60));
+      const diffHours = Math.floor(diffMinutes / 60);
+      const diffDays = Math.floor(diffHours / 24);
+      const remainingHours = diffHours % 24;
+      const remainingMinutes = diffMinutes % 60;
       
-      if (endDateTime) {
-        try {
-          endDate = new Date(endDateTime);
-        } catch (e) {}
-      }
+      return {
+        days: diffDays,
+        hours: remainingHours,
+        minutes: remainingMinutes
+      };
+    } catch {
+      return { days: 0, hours: 0, minutes: 0 };
     }
-    
-    // 2. From API response
-    if (!startDate && carData.start?.dateTime) {
-      try {
-        startDate = new Date(carData.start.dateTime);
-      } catch (e) {}
-    }
-    
-    if (!endDate && carData.end?.dateTime) {
-      try {
-        endDate = new Date(carData.end.dateTime);
-      } catch (e) {}
-    }
-    
-    // 3. From item.realData
-    if (!startDate && item.realData?.pickupDateTime) {
-      try {
-        startDate = new Date(item.realData.pickupDateTime);
-      } catch (e) {}
-    }
-    
-    if (!endDate && item.realData?.dropoffDateTime) {
-      try {
-        endDate = new Date(item.realData.dropoffDateTime);
-      } catch (e) {}
-    }
-    
-    // 4. From searchParams
-    if (!startDate && searchParams) {
-      if (searchParams.pickUpDate) {
-        const time = searchParams.pickUpTime || '10:00';
-        try {
-          startDate = new Date(`${searchParams.pickUpDate}T${time}:00`);
-        } catch (e) {}
-      }
-    }
-    
-    if (!endDate && searchParams) {
-      if (searchParams.dropOffDate) {
-        const time = searchParams.dropOffTime || '10:00';
-        try {
-          endDate = new Date(`${searchParams.dropOffDate}T${time}:00`);
-        } catch (e) {}
-      }
-    }
-    
-    // 5. Default values
-    if (!startDate) {
-      startDate = new Date();
-    }
-    
-    if (!endDate) {
-      endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 3);
-    }
-    
-    const diffMs = Math.abs(endDate.getTime() - startDate.getTime());
-    const diffMinutes = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMinutes / 60);
-    const diffDays = Math.floor(diffHours / 24);
-    const remainingHours = diffHours % 24;
-    const remainingMinutes = diffMinutes % 60;
-    
-    return {
-      days: Math.max(1, diffDays),
-      hours: remainingHours,
-      minutes: remainingMinutes,
-      totalMinutes: diffMinutes
-    };
   };
 
   const duration = calculateRentalDuration();
@@ -461,7 +380,7 @@ const CarDetails: React.FC<CarDetailsProps> = ({
 
   // Format date for display
   const formatDate = (dateTimeStr: string): string => {
-    if (!dateTimeStr) return 'N/A';
+    if (!dateTimeStr) return '';
     try {
       const date = new Date(dateTimeStr);
       return format(date, 'dd MMM yyyy');
@@ -471,7 +390,7 @@ const CarDetails: React.FC<CarDetailsProps> = ({
   };
 
   const formatTime = (dateTimeStr: string): string => {
-    if (!dateTimeStr) return 'N/A';
+    if (!dateTimeStr) return '';
     try {
       const date = new Date(dateTimeStr);
       return format(date, 'hh:mm a');
@@ -480,75 +399,28 @@ const CarDetails: React.FC<CarDetailsProps> = ({
     }
   };
 
-  // Get display date/time strings
-  const pickupDisplayDateTime = pickupLocation.dateTime;
-  const dropoffDisplayDateTime = dropoffLocation.dateTime;
-
-  // Vehicle specs
-  const seats = vehicle.seats?.[0]?.count || 4;
+  // Vehicle specs from API
+  const seats = vehicle.seats?.[0]?.count || 0;
   const baggage = vehicle.baggages?.reduce((total: number, bag: any) => 
-    total + (bag.count || 0), 0) || 2;
-  const vehicleCategory = vehicle.category || carData.vehicleCategory || 'ST';
-  const vehicleCode = vehicle.code || carData.vehicleCode || 'CAR';
-  const vehicleDescription = vehicle.description || 
-                            carData.vehicleType || 
-                            item.title || 
-                            'Luxury Vehicle';
+    total + (bag.count || 0), 0) || 0;
+  const vehicleCategory = vehicle.category || '';
+  const vehicleCode = vehicle.code || '';
+  const vehicleDescription = vehicle.description || '';
   
-  // --- PRICING ---
-  let basePrice = 0;
-  let currencyCode = 'GBP';
-  
-  // If we have createdBooking, use its exact amounts
-  if (createdBooking) {
-    basePrice = createdBooking.totalAmount || createdBooking.basePrice || 0;
-    currencyCode = createdBooking.currency || 'GBP';
-  }
-  // Try to get price from API response
-  else if (carData.final_price) {
-    basePrice = parseFloat(carData.final_price);
-    currencyCode = carData.currency || 'GBP';
-  } else if (carData.converted?.monetaryAmount) {
-    basePrice = parseFloat(carData.converted.monetaryAmount);
-    currencyCode = carData.converted.currencyCode || 'GBP';
-  } else if (carData.quotation?.monetaryAmount) {
-    basePrice = parseFloat(carData.quotation.monetaryAmount);
-    currencyCode = carData.quotation.currencyCode || 'GBP';
-  } else if (carData.price?.total) {
-    basePrice = parseFloat(carData.price.total);
-    currencyCode = carData.price.currency || 'GBP';
-  } else if (item.price) {
-    const priceStr = item.price.toString();
-    const numericMatch = priceStr.match(/[\d,.]+/);
-    if (numericMatch) {
-      basePrice = parseFloat(numericMatch[0].replace(/,/g, ''));
-    }
-    
-    if (priceStr.includes('£')) currencyCode = 'GBP';
-    else if (priceStr.includes('₦')) currencyCode = 'NGN';
-    else if (priceStr.includes('€')) currencyCode = 'EUR';
-    else if (priceStr.includes('$')) currencyCode = 'USD';
-  }
-
-  const displayCurrency = currency || { 
-    symbol: currencyCode === 'GBP' ? '£' : 
-           currencyCode === 'USD' ? '$' : 
-           currencyCode === 'EUR' ? '€' : 
-           currencyCode === 'NGN' ? '₦' : '£',
-    code: currencyCode 
-  };
+  // Pricing from API
+  const basePrice = parseFloat(carData.base_price || carData.original_price || '0');
+  const markupAmount = parseFloat(carData.markup_amount || '0');
+  const serviceFee = parseFloat(carData.service_fee || '0');
+  const taxes = markupAmount + serviceFee;
+  const totalPrice = parseFloat(carData.final_price || '0') || (basePrice + taxes);
+  const currencyCode = carData.currency || 'GBP';
 
   const pricePerDay = rentalDays > 0 ? basePrice / rentalDays : basePrice;
   
-  const formattedBasePrice = `${displayCurrency.symbol}${basePrice.toLocaleString(undefined, { 
-    minimumFractionDigits: 2, 
-    maximumFractionDigits: 2 
-  })}`;
-  
-  const formattedPricePerDay = `${displayCurrency.symbol}${pricePerDay.toLocaleString(undefined, { 
-    minimumFractionDigits: 2, 
-    maximumFractionDigits: 2 
-  })}`;
+  const formattedBasePrice = basePrice > 0 ? `£${basePrice.toFixed(2)}` : '';
+  const formattedTaxes = taxes > 0 ? `£${taxes.toFixed(2)}` : '';
+  const formattedTotalPrice = totalPrice > 0 ? `£${totalPrice.toFixed(2)}` : '';
+  const formattedPricePerDay = pricePerDay > 0 ? `£${pricePerDay.toFixed(2)}` : '';
 
   const handleApplyPromo = async () => {
     if (!promoCode.trim()) {
@@ -579,20 +451,30 @@ const CarDetails: React.FC<CarDetailsProps> = ({
   };
 
   const getDiscountedTotal = (): number => {
-    if (!appliedPromo) return basePrice;
+    if (!appliedPromo) return totalPrice;
     
     if (appliedPromo.type === 'percentage') {
-      return basePrice * (1 - appliedPromo.discount / 100);
+      return totalPrice * (1 - appliedPromo.discount / 100);
     } else {
-      return Math.max(0, basePrice - appliedPromo.discount);
+      return Math.max(0, totalPrice - appliedPromo.discount);
     }
   };
 
   const discountedTotal = getDiscountedTotal();
-  const formattedDiscountedTotal = `${displayCurrency.symbol}${discountedTotal.toLocaleString(undefined, { 
-    minimumFractionDigits: 2, 
-    maximumFractionDigits: 2 
-  })}`;
+  const formattedDiscountedTotal = discountedTotal > 0 ? `£${discountedTotal.toFixed(2)}` : '';
+
+  // Only show if we have required data
+  if (!pickupLocation.code || !dropoffLocation.code || !basePrice) {
+    return (
+      <div className="bg-gray-50 min-h-screen py-10">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-8 text-center">
+            <p className="text-yellow-800">Incomplete car data from API</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gray-50 min-h-screen py-10">
@@ -616,20 +498,20 @@ const CarDetails: React.FC<CarDetailsProps> = ({
             <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md text-center">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-[#33a8da] mb-4"></div>
               <h3 className="text-lg font-bold text-gray-900 mb-2">Loading Car Details</h3>
-              <p className="text-sm text-gray-500">Fetching the latest vehicle information...</p>
+              <p className="text-sm text-gray-500">Fetching from API...</p>
             </div>
           </div>
         )}
 
         {/* Error Banner */}
         {error && (
-          <div className="mb-8 bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-start gap-3">
-            <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="mb-8 bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+            <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
             <div>
-              <p className="text-sm font-bold text-yellow-800">Using cached car details</p>
-              <p className="text-xs text-yellow-700 mt-1">{error}</p>
+              <p className="text-sm font-bold text-red-800">API Error</p>
+              <p className="text-xs text-red-700 mt-1">{error}</p>
             </div>
           </div>
         )}
@@ -651,82 +533,108 @@ const CarDetails: React.FC<CarDetailsProps> = ({
             {/* Main Car Card */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col md:flex-row min-h-[340px]">
               <div className="md:w-1/3 flex items-center justify-center p-8 bg-gray-50/50">
-                <img 
-                  src={!imageError ? carImage : getFallbackImage()}
-                  className="max-w-full max-h-48 object-contain transition-all duration-300 hover:scale-110" 
-                  alt={vehicleDescription}
-                  onError={handleImageError}
-                  loading="lazy"
-                />
+                {carImage && !imageError ? (
+                  <img 
+                    src={carImage}
+                    className="max-w-full max-h-48 object-contain transition-all duration-300 hover:scale-110" 
+                    alt={vehicleDescription}
+                    onError={handleImageError}
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-full h-48 bg-gray-200 flex items-center justify-center">
+                    <span className="text-gray-400 text-xs">No image from API</span>
+                  </div>
+                )}
               </div>
               
               <div className="flex-1 p-8">
                 <div className="flex justify-between items-start">
                   <div>
                     <h1 className="text-2xl font-bold text-gray-900 uppercase tracking-tight">
-                      {vehicleDescription}
+                      {vehicleDescription || 'Vehicle from API'}
                     </h1>
-                    <div className="flex items-center gap-4 mt-2 text-sm font-semibold text-gray-500 flex-wrap">
-                      <span>{seats} Passengers</span>
-                      <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                      <span>Automatic</span>
-                      <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                      <div className="flex items-center gap-1">
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M17,14H15V12H17M13,14H11V12H13M9,14H7V12H9M17,10H15V8H17M13,10H11V8H13M9,10H7V8H9M19,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3Z" />
-                        </svg>
-                        {baggage}
+                    {seats > 0 && (
+                      <div className="flex items-center gap-4 mt-2 text-sm font-semibold text-gray-500 flex-wrap">
+                        <span>{seats} Passengers</span>
+                        <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                        <span>Automatic</span>
+                        {baggage > 0 && (
+                          <>
+                            <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                            <div className="flex items-center gap-1">
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M17,14H15V12H17M13,14H11V12H13M9,14H7V12H9M17,10H15V8H17M13,10H11V8H13M9,10H7V8H9M19,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3Z" />
+                              </svg>
+                              {baggage}
+                            </div>
+                          </>
+                        )}
                       </div>
-                    </div>
+                    )}
                     
                     {/* Provider Info */}
-                    <div className="mt-4 flex items-center gap-3 flex-wrap">
-                      <span className="text-xs font-bold text-gray-400 uppercase">Provided by</span>
-                      <span className="text-sm font-black text-gray-900">
-                        {serviceProvider.name || partnerInfo.serviceProvider?.name || 'Amadeus Cars'}
-                      </span>
-                      {serviceProvider.isPreferred && (
-                        <span className="bg-blue-50 text-blue-600 text-xs font-black px-2 py-1 rounded">
-                          Preferred Partner
+                    {(serviceProvider.name || partnerInfo.serviceProvider?.name) && (
+                      <div className="mt-4 flex items-center gap-3 flex-wrap">
+                        <span className="text-xs font-bold text-gray-400 uppercase">Provided by</span>
+                        <span className="text-sm font-black text-gray-900">
+                          {serviceProvider.name || partnerInfo.serviceProvider?.name}
                         </span>
-                      )}
-                    </div>
+                        {serviceProvider.isPreferred && (
+                          <span className="bg-blue-50 text-blue-600 text-xs font-black px-2 py-1 rounded">
+                            Preferred Partner
+                          </span>
+                        )}
+                      </div>
+                    )}
                     
-                    {/* Vehicle Code Badge */}
-                    <div className="mt-3 flex items-center gap-2">
-                      <span className="bg-gray-100 text-gray-700 text-[10px] font-black px-2 py-1 rounded-full uppercase">
-                        {vehicleCode}
-                      </span>
-                      <span className="bg-gray-100 text-gray-700 text-[10px] font-black px-2 py-1 rounded-full uppercase">
-                        {vehicleCategory}
-                      </span>
-                    </div>
+                    {/* Vehicle Code Badges */}
+                    {(vehicleCode || vehicleCategory) && (
+                      <div className="mt-3 flex items-center gap-2">
+                        {vehicleCode && (
+                          <span className="bg-gray-100 text-gray-700 text-[10px] font-black px-2 py-1 rounded-full uppercase">
+                            {vehicleCode}
+                          </span>
+                        )}
+                        {vehicleCategory && (
+                          <span className="bg-gray-100 text-gray-700 text-[10px] font-black px-2 py-1 rounded-full uppercase">
+                            {vehicleCategory}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Vehicle Features Grid */}
-                <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">Vehicle Code</p>
-                    <p className="text-sm font-bold text-gray-900">{vehicleCode}</p>
+                {(vehicleCode || vehicleCategory || seats > 0 || baggage > 0) && (
+                  <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {vehicleCode && (
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <p className="text-[10px] font-black text-gray-400 uppercase">Vehicle Code</p>
+                        <p className="text-sm font-bold text-gray-900">{vehicleCode}</p>
+                      </div>
+                    )}
+                    {vehicleCategory && (
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <p className="text-[10px] font-black text-gray-400 uppercase">Category</p>
+                        <p className="text-sm font-bold text-gray-900">{vehicleCategory}</p>
+                      </div>
+                    )}
+                    {seats > 0 && (
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <p className="text-[10px] font-black text-gray-400 uppercase">Seats</p>
+                        <p className="text-sm font-bold text-gray-900">{seats}</p>
+                      </div>
+                    )}
+                    {baggage > 0 && (
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <p className="text-[10px] font-black text-gray-400 uppercase">Baggage</p>
+                        <p className="text-sm font-bold text-gray-900">{baggage}</p>
+                      </div>
+                    )}
                   </div>
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">Category</p>
-                    <p className="text-sm font-bold text-gray-900">
-                      {vehicleCategory === 'FC' ? 'First Class' : 
-                       vehicleCategory === 'BU' ? 'Business' : 
-                       vehicleCategory === 'ST' ? 'Standard' : vehicleCategory}
-                    </p>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">Seats</p>
-                    <p className="text-sm font-bold text-gray-900">{seats}</p>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">Baggage</p>
-                    <p className="text-sm font-bold text-gray-900">{baggage}</p>
-                  </div>
-                </div>
+                )}
 
                 {/* Vehicle Description */}
                 {vehicle.description && (
@@ -737,7 +645,7 @@ const CarDetails: React.FC<CarDetailsProps> = ({
               </div>
             </div>
 
-            {/* Pickup & Dropoff Details Card - CORRECTED */}
+            {/* Pickup & Dropoff Details Card */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
               <h3 className="text-xl font-bold text-gray-900 mb-6">Trip Details</h3>
               
@@ -753,15 +661,15 @@ const CarDetails: React.FC<CarDetailsProps> = ({
                     <div className="flex-1">
                       <p className="text-xs font-black text-gray-900 uppercase mb-1">Pickup Location</p>
                       <p className="text-sm font-bold text-gray-900">
-                        {pickupLocation.display}
+                        {pickupLocation.code}
                       </p>
-                      {pickupDisplayDateTime && (
+                      {pickupLocation.dateTime && (
                         <>
                           <p className="text-xs font-medium text-gray-600 mt-2">
-                            {formatDate(pickupDisplayDateTime)}
+                            {formatDate(pickupLocation.dateTime)}
                           </p>
                           <p className="text-xs font-bold text-gray-800">
-                            {formatTime(pickupDisplayDateTime)}
+                            {formatTime(pickupLocation.dateTime)}
                           </p>
                         </>
                       )}
@@ -780,15 +688,15 @@ const CarDetails: React.FC<CarDetailsProps> = ({
                     <div className="flex-1">
                       <p className="text-xs font-black text-gray-900 uppercase mb-1">Dropoff Location</p>
                       <p className="text-sm font-bold text-gray-900">
-                        {dropoffLocation.display}
+                        {dropoffLocation.code}
                       </p>
-                      {dropoffDisplayDateTime && (
+                      {dropoffLocation.dateTime && (
                         <>
                           <p className="text-xs font-medium text-gray-600 mt-2">
-                            {formatDate(dropoffDisplayDateTime)}
+                            {formatDate(dropoffLocation.dateTime)}
                           </p>
                           <p className="text-xs font-bold text-gray-800">
-                            {formatTime(dropoffDisplayDateTime)}
+                            {formatTime(dropoffLocation.dateTime)}
                           </p>
                         </>
                       )}
@@ -797,29 +705,31 @@ const CarDetails: React.FC<CarDetailsProps> = ({
                 </div>
               </div>
 
-              {/* Duration Display - CORRECTED */}
-              <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-sm font-bold text-gray-700">Rental Duration</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-sm font-black text-gray-900">
-                      {rentalDays} day{rentalDays !== 1 ? 's' : ''}
-                    </span>
-                    {(rentalHours > 0 || rentalMinutes > 0) && (
-                      <span className="text-xs font-medium text-gray-600 block">
-                        {rentalHours > 0 && `${rentalHours} hour${rentalHours !== 1 ? 's' : ''}`}
-                        {rentalHours > 0 && rentalMinutes > 0 && ' '}
-                        {rentalMinutes > 0 && `${rentalMinutes} min`}
+              {/* Duration Display */}
+              {rentalDays > 0 && (
+                <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-sm font-bold text-gray-700">Rental Duration</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm font-black text-gray-900">
+                        {rentalDays} day{rentalDays !== 1 ? 's' : ''}
                       </span>
-                    )}
+                      {(rentalHours > 0 || rentalMinutes > 0) && (
+                        <span className="text-xs font-medium text-gray-600 block">
+                          {rentalHours > 0 && `${rentalHours} hour${rentalHours !== 1 ? 's' : ''}`}
+                          {rentalHours > 0 && rentalMinutes > 0 && ' '}
+                          {rentalMinutes > 0 && `${rentalMinutes} min`}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -829,7 +739,7 @@ const CarDetails: React.FC<CarDetailsProps> = ({
               <div className="p-8 border-b border-gray-50 bg-gray-50/30">
                 <h2 className="text-2xl font-bold text-gray-900 mb-8">Booking Summary</h2>
                 
-                {/* Timeline with CORRECT locations and times */}
+                {/* Timeline with locations from API */}
                 <div className="space-y-8 relative">
                   <div className="absolute left-[7px] top-[14px] bottom-[14px] w-px bg-gray-200"></div>
                   
@@ -839,11 +749,11 @@ const CarDetails: React.FC<CarDetailsProps> = ({
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-black text-gray-900 uppercase">Pick Up</p>
                       <p className="text-xs font-bold text-gray-900 mt-1">
-                        {pickupLocation.display}
+                        {pickupLocation.code}
                       </p>
-                      {pickupDisplayDateTime && (
+                      {pickupLocation.dateTime && (
                         <p className="text-[10px] font-bold text-gray-400 mt-1">
-                          {formatDate(pickupDisplayDateTime)} {formatTime(pickupDisplayDateTime)}
+                          {formatDate(pickupLocation.dateTime)} {formatTime(pickupLocation.dateTime)}
                         </p>
                       )}
                     </div>
@@ -855,11 +765,11 @@ const CarDetails: React.FC<CarDetailsProps> = ({
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-black text-gray-900 uppercase">Drop Off</p>
                       <p className="text-xs font-bold text-gray-900 mt-1">
-                        {dropoffLocation.display}
+                        {dropoffLocation.code}
                       </p>
-                      {dropoffDisplayDateTime && (
+                      {dropoffLocation.dateTime && (
                         <p className="text-[10px] font-bold text-gray-400 mt-1">
-                          {formatDate(dropoffDisplayDateTime)} {formatTime(dropoffDisplayDateTime)}
+                          {formatDate(dropoffLocation.dateTime)} {formatTime(dropoffLocation.dateTime)}
                         </p>
                       )}
                     </div>
@@ -867,103 +777,115 @@ const CarDetails: React.FC<CarDetailsProps> = ({
                 </div>
 
                 {/* Duration and Price Summary */}
-                <div className="mt-10 grid grid-cols-2 gap-y-4">
-                  <span className="text-sm font-bold text-gray-900">Duration</span>
-                  <span className="text-sm font-bold text-gray-900 text-right">
-                    {rentalDays} day{rentalDays !== 1 ? 's' : ''}
-                    {rentalHours > 0 && ` ${rentalHours}h`}
-                  </span>
-                  
-                  <span className="text-sm font-bold text-gray-900">Price per day</span>
-                  <span className="text-sm font-bold text-gray-900 text-right">
-                    {formattedPricePerDay}
-                  </span>
-                  
-                  {carData.distance && (
-                    <>
-                      <span className="text-sm font-bold text-gray-900">Distance</span>
-                      <span className="text-sm font-bold text-gray-900 text-right">
-                        {carData.distance.value} {carData.distance.unit}
-                      </span>
-                    </>
-                  )}
-                </div>
+                {rentalDays > 0 && basePrice > 0 && (
+                  <div className="mt-10 grid grid-cols-2 gap-y-4">
+                    <span className="text-sm font-bold text-gray-900">Duration</span>
+                    <span className="text-sm font-bold text-gray-900 text-right">
+                      {rentalDays} day{rentalDays !== 1 ? 's' : ''}
+                      {rentalHours > 0 && ` ${rentalHours}h`}
+                    </span>
+                    
+                    <span className="text-sm font-bold text-gray-900">Price per day</span>
+                    <span className="text-sm font-bold text-gray-900 text-right">
+                      {formattedPricePerDay}
+                    </span>
+                    
+                    {carData.distance && (
+                      <>
+                        <span className="text-sm font-bold text-gray-900">Distance</span>
+                        <span className="text-sm font-bold text-gray-900 text-right">
+                          {carData.distance.value} {carData.distance.unit}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Fare Breakdown */}
-              <div className="p-8 space-y-6">
-                <div>
-                  <h3 className="text-sm font-black text-gray-900 mb-4 uppercase">Fare Breakdown</h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center text-xs font-bold text-gray-400">
-                      <span>Base Fare ({rentalDays} days)</span>
-                      <span className="text-gray-900">{formattedBasePrice}</span>
-                    </div>
-                    
-                    {carData.conversion_fee && (
+              {/* Fare Breakdown with Taxes */}
+              {basePrice > 0 && (
+                <div className="p-8 space-y-6">
+                  <div>
+                    <h3 className="text-sm font-black text-gray-900 mb-4 uppercase">Fare Breakdown</h3>
+                    <div className="space-y-3">
                       <div className="flex justify-between items-center text-xs font-bold text-gray-400">
-                        <span>Conversion Fee ({carData.conversion_fee_percentage}%)</span>
-                        <span className="text-gray-900">
-                          {displayCurrency.symbol}{parseFloat(carData.conversion_fee).toFixed(2)}
+                        <span>Base Fare {rentalDays > 0 ? `(${rentalDays} days)` : ''}</span>
+                        <span className="text-gray-900">{formattedBasePrice}</span>
+                      </div>
+                      
+                      {/* Taxes - Markup + Service fee combined */}
+                      {taxes > 0 && (
+                        <div className="flex justify-between items-center text-xs font-bold text-gray-400">
+                          <span>Taxes</span>
+                          <span className="text-gray-900">{formattedTaxes}</span>
+                        </div>
+                      )}
+                      
+                      {carData.conversion_fee && parseFloat(carData.conversion_fee) > 0 && (
+                        <div className="flex justify-between items-center text-xs font-bold text-gray-400">
+                          <span>Conversion Fee ({carData.conversion_fee_percentage}%)</span>
+                          <span className="text-gray-900">
+                            £{parseFloat(carData.conversion_fee).toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {appliedPromo && (
+                        <div className="flex justify-between items-center text-xs font-bold text-green-600">
+                          <span>Discount ({appliedPromo.code})</span>
+                          <span>- {formattedDiscountedTotal}</span>
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-between items-center text-sm font-black text-gray-900 pt-2 border-t border-gray-100">
+                        <span>Total Fare</span>
+                        <span className="text-lg font-black text-[#33a8da]">
+                          {appliedPromo ? formattedDiscountedTotal : formattedTotalPrice}
                         </span>
                       </div>
-                    )}
-                    
-                    {appliedPromo && (
-                      <div className="flex justify-between items-center text-xs font-bold text-green-600">
-                        <span>Discount ({appliedPromo.code})</span>
-                        <span>- {formattedDiscountedTotal}</span>
-                      </div>
-                    )}
-                    
-                    <div className="flex justify-between items-center text-sm font-black text-gray-900 pt-2 border-t border-gray-100">
-                      <span>Total Fare</span>
-                      <span className="text-lg font-black text-[#33a8da]">
-                        {appliedPromo ? formattedDiscountedTotal : formattedBasePrice}
-                      </span>
                     </div>
                   </div>
-                </div>
 
-                <div className="h-px bg-gray-100 border-dashed border-t w-full"></div>
+                  <div className="h-px bg-gray-100 border-dashed border-t w-full"></div>
 
-                {/* Promo Code */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-black text-gray-900 uppercase">Promo Code</h3>
-                  <div className="flex gap-2">
-                    <input 
-                      value={promoCode}
-                      onChange={e => setPromoCode(e.target.value.toUpperCase())}
-                      placeholder="Enter Promo Code" 
-                      className="flex-1 px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm font-medium focus:ring-1 focus:ring-[#33a8da] outline-none transition-all"
-                      disabled={isLoadingDetails}
-                    />
+                  {/* Promo Code */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-black text-gray-900 uppercase">Promo Code</h3>
+                    <div className="flex gap-2">
+                      <input 
+                        value={promoCode}
+                        onChange={e => setPromoCode(e.target.value.toUpperCase())}
+                        placeholder="Enter Promo Code" 
+                        className="flex-1 px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm font-medium focus:ring-1 focus:ring-[#33a8da] outline-none transition-all"
+                        disabled={isLoadingDetails}
+                      />
+                      <button 
+                        onClick={handleApplyPromo}
+                        disabled={isLoadingDetails || !promoCode.trim()}
+                        className="px-6 py-3 border border-[#33a8da] text-[#33a8da] font-bold text-sm rounded-lg hover:bg-blue-50 transition active:scale-95 disabled:opacity-50"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                    {appliedPromo && (
+                      <p className="text-xs text-green-600 font-bold">
+                        ✓ Promo code {appliedPromo.code} applied!
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Book Button */}
+                  <div className="pt-6 border-t border-gray-100">
                     <button 
-                      onClick={handleApplyPromo}
-                      disabled={isLoadingDetails || !promoCode.trim()}
-                      className="px-6 py-3 border border-[#33a8da] text-[#33a8da] font-bold text-sm rounded-lg hover:bg-blue-50 transition active:scale-95 disabled:opacity-50"
+                      onClick={handleSelectCar}
+                      disabled={isLoadingDetails || !pickupLocation.code || !dropoffLocation.code}
+                      className="w-full bg-[#33a8da] text-white font-black py-5 rounded-xl shadow-xl shadow-blue-500/10 hover:bg-[#2c98c7] transition active:scale-95 text-base uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Apply
+                      {isLoadingDetails ? 'Loading...' : 'Confirm & Book Now'}
                     </button>
                   </div>
-                  {appliedPromo && (
-                    <p className="text-xs text-green-600 font-bold">
-                      ✓ Promo code {appliedPromo.code} applied!
-                    </p>
-                  )}
                 </div>
-
-                {/* Book Button */}
-                <div className="pt-6 border-t border-gray-100">
-                  <button 
-                    onClick={onBook}
-                    disabled={isLoadingDetails}
-                    className="w-full bg-[#33a8da] text-white font-black py-5 rounded-xl shadow-xl shadow-blue-500/10 hover:bg-[#2c98c7] transition active:scale-95 text-base uppercase tracking-widest disabled:opacity-50"
-                  >
-                    {isLoadingDetails ? 'Loading...' : 'Confirm & Book Now'}
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
           </aside>
         </div>
