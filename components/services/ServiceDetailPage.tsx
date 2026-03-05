@@ -10,7 +10,7 @@ interface ServiceDetailPageProps {
 
 const serviceData = {
   travel: {
-    title: "Travel Services (Non-Flight)",
+    title: "Travel Services",
     headline:
       "Tailored travel experiences and ticketing solutions for both local and international clients.",
     bannerImage:

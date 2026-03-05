@@ -9,13 +9,16 @@ const Partners: React.FC = () => {
   const partners = [
     { name: "DHL", logo: "/logos/DHL-Logo-500x281.png" },
     { name: "IATA", logo: "/logos/IATA_logo.svg.png" },
-    { name: "Apply Board", logo: "/logos/interior-third-applyboard-logo.jpg" },
+    {
+      name: "Apply Board",
+      logo: "/logos/interior-third-applyboard-logo.jpg.png",
+    },
     { name: "Nanta", logo: "/logos/nanta.png" },
   ];
 
   return (
-    <section className="py-12 bg-white">
-      <div className="max-w-7xl mx-auto px-4">
+    <section className="py-18  w-full">
+      <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-10">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
             {t?.("Global Partners") || "Global Partners"}

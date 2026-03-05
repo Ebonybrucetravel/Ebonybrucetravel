@@ -73,7 +73,7 @@ export default function ServicesPageContent({
             </div>
             <div className="p-8">
               <h3 className="text-2xl font-bold text-[#001f3f] mb-4">
-                Travel Services (Non-Flight)
+                Travel Services
               </h3>
               <p className="text-gray-600 leading-relaxed mb-4">
                 We specialize in organizing and managing tours, excursions, and
