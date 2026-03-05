@@ -44,7 +44,11 @@ const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
 
         <div className="relative max-w-7xl mx-auto px-6 text-center">
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold tracking-tight mb-5 md:mb-6">
-            Ebony Bruce <span className="text-[#33a8da]">Privacy Policy</span>
+            Ebony Bruce Travels
+            <span className="text-[#33a8da]">
+              <br />
+              Privacy Policy
+            </span>
           </h1>
           <p className="text-lg md:text-xl text-gray-200 max-w-3xl mx-auto leading-relaxed">
             How Ebony Bruce Travels collects, uses, protects and shares your

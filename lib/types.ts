@@ -21,7 +21,7 @@ export interface SearchParams {
   adults?: number;
   guests?: number;
   rooms?: number;
-  roomQuantity?: number; 
+  roomQuantity?: number;
   cabinClass?: string;
   stopsFilter?: string;
   maxPrice?: number;
@@ -72,6 +72,66 @@ export interface SearchResult {
     iata_code?: string;
     logo_symbol_url?: string;
   };
+
+  // ✅ PRICE FIELDS
+  original_amount?: string;
+  original_currency?: string;
+  markup_percentage?: number;
+  markup_amount?: string;
+  service_fee?: string;
+  final_amount?: string;
+  currency?: string;
+
+  // ✅ CUSTOM CALCULATED FIELDS (FOR BOOKING PREVIEW)
+  calculatedBasePrice?: number;
+  calculatedMarkup?: number;
+  calculatedTaxes?: number;
+  calculatedTotal?: number;
+  selectedRoom?: any;
+  roomPrice?: number;
+
+  // ✅ BOOKING DATA - Add this!
+  bookingData?: {
+    roomType?: string;
+    guests?: number;
+    roomPrice?: number;
+    serviceFee?: number;
+    [key: string]: any;
+  };
+
+  // ✅ FLIGHT SPECIFIC FIELDS
+  departureAirport?: string;
+  arrivalAirport?: string;
+  departureCity?: string;
+  arrivalCity?: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  airlineName?: string;
+  airlineLogo?: string;
+  stopCount?: number;
+  stopText?: string;
+  flightNumber?: string;
+  cabin?: string;
+  slices?: any[];
+
+  // ✅ HOTEL SPECIFIC FIELDS
+  checkInDate?: string;
+  checkOutDate?: string;
+  rooms?: number;
+  guests?: number;
+  hotelAddress?: string;
+  hotelAmenities?: string[];
+
+  // ✅ CAR RENTAL SPECIFIC FIELDS
+  pickupLocation?: string;
+  dropoffLocation?: string;
+  pickupDateTime?: string;
+  dropoffDateTime?: string;
+  vehicleCode?: string;
+  vehicleCategory?: string;
+  seats?: number;
+  transmission?: string;
+  fuelType?: string;
 }
 
 export interface User {
@@ -96,8 +156,6 @@ export interface User {
   token?: string;
   isVerified?: boolean;
 }
-
-
 
 export interface HotelProviderData {
   hotelBookings?: Array<{
@@ -157,16 +215,17 @@ export interface CarRentalProviderData {
 
 export interface PaymentInfo {
   amount: number;
-  paidAt: {
-    value: string;
-  } | string;
+  paidAt:
+    | {
+        value: string;
+      }
+    | string;
   status: string;
   chargeId: string;
   currency: string;
   verified: boolean;
   paymentIntentId: string;
 }
-
 
 export interface Booking {
   id: string;
@@ -189,6 +248,21 @@ export interface Booking {
   currency: string;
   cancellationDeadline?: string | null;
   cancellationPolicySnapshot?: string | null;
+
+  // ✅ TAXES FIELD
+  taxes?: number;
+
+  // ✅ ADD THESE MISSING PROPERTIES
+  conversionFee?: number;
+  conversionPercentage?: number;
+  appliedPromo?: {
+    code: string;
+    discountAmount: number;
+    valid?: boolean;
+    message?: string;
+  };
+  formattedDiscountedTotal?: string;
+
   bookingData: {
     // Flight fields
     origin?: string;
@@ -217,8 +291,17 @@ export interface Booking {
 
     // Common fields
     offerId?: string;
+
+    // ✅ PRICE FIELDS IN BOOKINGDATA
+    original_amount?: string;
+    markup_amount?: string;
+    service_fee?: string;
+    final_amount?: string;
+    taxes?: number;
+
     [key: string]: any;
   };
+
   passengerInfo: PassengerInfo;
   voucherId?: string;
   voucherCode?: string;
@@ -237,20 +320,8 @@ export interface PassengerInfo {
   lastName: string;
   email: string;
   phone: string;
-<<<<<<< HEAD
   title?: "mr" | "ms" | "mrs" | "miss" | "dr";
   gender?: "m" | "f";
-  dateOfBirth?: string;
-  born_on?: string;
-  passengers?: Array<{
-    firstName: string;
-    lastName: string;
-    dateOfBirth: string;
-    title: "mr" | "ms" | "mrs" | "miss" | "dr";
-    gender: "m" | "f";
-=======
-  title?: 'mr' | 'ms' | 'mrs' | 'miss' | 'dr';
-  gender?: 'm' | 'f';
   dateOfBirth?: string;
   born_on?: string;
   guests?: Array<{
@@ -264,11 +335,8 @@ export interface PassengerInfo {
       phone?: string;
     };
     travelerId?: number;
->>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
   }>;
-  voucherCode?: string;
 }
-
 
 export interface ContentSection {
   title: string;

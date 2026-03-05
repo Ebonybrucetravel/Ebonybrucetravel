@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { useSearch } from "@/context/SearchContext";
@@ -9,16 +9,37 @@ import { config } from "@/lib/config";
 import ReviewTrip from "@/components/ReviewTrip";
 import PaymentModal from "@/components/payment/PaymentModal";
 import AmadeusHotelPaymentModal from "@/components/payment/AmadeusHotelPaymentModal";
-import type { Booking, PassengerInfo } from "@/lib/types";
+import type { Booking, PassengerInfo, SearchResult } from "@/lib/types";
 
-function isAmadeusHotel(item: {
-  type?: string;
+// Extend the SearchResult type to include pricing fields
+interface ExtendedSearchResult extends SearchResult {
+  // Flight fields
+  final_amount?: string;
+  original_amount?: string;
+
+  // Car rental & Hotel fields
+  final_price?: string;
+  original_price?: string;
+  base_price?: string;
+
+  // Common fields
+  original_currency?: string;
+  markup_percentage?: number;
+  markup_amount?: string;
+  service_fee?: string;
+  currency?: string;
+
   realData?: {
     offerId?: string;
     finalPrice?: number;
     price?: number;
+    currency?: string;
+    [key: string]: any;
   };
-}): boolean {
+  [key: string]: any;
+}
+
+function isAmadeusHotel(item: ExtendedSearchResult): boolean {
   const rawType = (item?.type ?? "").toLowerCase();
   if (!rawType.includes("hotel")) return false;
   const hasOffer = !!item.realData?.offerId;
@@ -44,11 +65,136 @@ export default function BookingReviewPage() {
     string | undefined
   >(undefined);
 
+  // ✅ State for enhanced item with calculated taxes
+  const [enhancedItem, setEnhancedItem] = useState<ExtendedSearchResult | null>(
+    null,
+  );
+
   const redirectToLogin = () => {
     persistSelectionForReturn();
     sessionStorage.setItem("authReturnTo", "/booking/review");
     router.push("/login");
   };
+
+  // ✅ Helper function to safely extract price value
+  const extractPriceValue = (price: any): number => {
+    if (!price) return 0;
+    if (typeof price === "number") return price;
+    if (typeof price === "string") {
+      return parseFloat(price.replace(/[^\d.]/g, "")) || 0;
+    }
+    return 0;
+  };
+
+  // ✅ Determine product type
+  const getProductType = (
+    item: ExtendedSearchResult,
+  ): "flight" | "hotel" | "car" => {
+    const type = item.type?.toLowerCase() || "";
+    if (type.includes("hotel")) return "hotel";
+    if (type.includes("car")) return "car";
+    return "flight";
+  };
+
+  // ✅ Get price fields based on product type
+  const getPriceFields = (item: ExtendedSearchResult) => {
+    const productType = getProductType(item);
+
+    // For flights
+    if (productType === "flight") {
+      return {
+        original: item.original_amount,
+        final: item.final_amount,
+        base: item.original_amount,
+      };
+    }
+
+    // For hotels and car rentals
+    return {
+      original: item.original_price,
+      final: item.final_price,
+      base: item.base_price || item.original_price,
+    };
+  };
+
+  // In BookingReviewPage.tsx, update the useEffect that creates enhancedItem
+
+  useEffect(() => {
+    if (selectedItem) {
+      const item = selectedItem as ExtendedSearchResult;
+      const productType = getProductType(item);
+      const priceFields = getPriceFields(item);
+
+      // Safely extract price value
+      const priceValue = extractPriceValue(item.price);
+
+      // ✅ CRITICAL: Get base price from the correct field
+      let basePrice = 0;
+
+      // For car rentals and hotels
+      if (productType === "car" || productType === "hotel") {
+        // Try original_price first, then base_price
+        basePrice = parseFloat(item.original_price || item.base_price || "0");
+        console.log(`💰 ${productType} - Using original_price/base_price:`, {
+          original_price: item.original_price,
+          base_price: item.base_price,
+          parsed: basePrice,
+        });
+      } else {
+        // For flights
+        basePrice = parseFloat(item.original_amount || "0") || priceValue;
+      }
+
+      // Get markup and service fee
+      const markupAmount = parseFloat(item.markup_amount || "0");
+      const serviceFee = parseFloat(item.service_fee || "0");
+
+      // Calculate taxes (markup + service fee)
+      const taxes = markupAmount + serviceFee;
+
+      // Get final amount
+      let finalAmount = 0;
+      if (productType === "car" || productType === "hotel") {
+        finalAmount = parseFloat(item.final_price || "0");
+      } else {
+        finalAmount = parseFloat(item.final_amount || "0");
+      }
+
+      // If final amount is not available, calculate it
+      if (!finalAmount && basePrice > 0) {
+        finalAmount = basePrice + taxes;
+      }
+
+      console.log(`💰 REVIEW PAGE - ${productType} final breakdown:`, {
+        basePrice,
+        markupAmount,
+        serviceFee,
+        taxes,
+        finalAmount,
+      });
+
+      // Create enhanced item with calculated values
+      const enhanced = {
+        ...item,
+        // Preserve original API fields
+        original_amount: item.original_amount,
+        original_price: item.original_price,
+        base_price: item.base_price,
+        markup_amount: item.markup_amount,
+        service_fee: item.service_fee,
+        final_amount: item.final_amount,
+        final_price: item.final_price,
+        // Add calculated fields for ReviewTrip
+        calculatedBasePrice: basePrice,
+        calculatedMarkup: markupAmount,
+        calculatedServiceFee: serviceFee,
+        calculatedTaxes: taxes,
+        calculatedTotal: finalAmount,
+      };
+
+      setEnhancedItem(enhanced);
+    }
+  }, [selectedItem]);
 
   if (!selectedItem) {
     return (
@@ -69,7 +215,10 @@ export default function BookingReviewPage() {
     );
   }
 
-  const useAmadeusFlow = isAmadeusHotel(selectedItem);
+  // Cast selectedItem to ExtendedSearchResult to access pricing fields
+  const extendedItem = selectedItem as ExtendedSearchResult;
+  const useAmadeusFlow = isAmadeusHotel(extendedItem);
+  const productType = getProductType(extendedItem);
 
   const handleProceedToPayment = async (
     passengerInfo: PassengerInfo,
@@ -77,17 +226,9 @@ export default function BookingReviewPage() {
   ) => {
     const isGuest = !isLoggedIn;
 
-    // Block voucher for guests (prevents backend confusion)
-    if (isGuest && voucherCode) {
-      toast.error(
-        "Vouchers are not available for guest bookings yet. Please remove the code and try again.",
-      );
-      return;
-    }
-
     const isFlight =
-      selectedItem?.type?.toLowerCase().includes("flight") ||
-      selectedItem?.type?.toLowerCase().includes("duffel");
+      extendedItem?.type?.toLowerCase().includes("flight") ||
+      extendedItem?.type?.toLowerCase().includes("duffel");
 
     if (isFlight) {
       if (!passengerInfo.dateOfBirth) {
@@ -118,44 +259,112 @@ export default function BookingReviewPage() {
       }
     }
 
+    if (useAmadeusFlow && isMerchantPaymentModel) {
+      try {
+        // Step 1: Create the booking first (without payment)
+        console.log("📝 Creating Amadeus hotel booking...");
+
+        // Calculate combined taxes for Amadeus hotel (Markup + Service fee)
+        const markupAmount = parseFloat(extendedItem.markup_amount || "0");
+        const serviceFee = parseFloat(extendedItem.service_fee || "0");
+        const combinedTaxes = markupAmount + serviceFee;
+
+        console.log("💰 Amadeus hotel price breakdown:", {
+          basePrice: parseFloat(extendedItem.original_price || "0"),
+          markupAmount,
+          serviceFee,
+          taxes: combinedTaxes,
+          totalAmount:
+            parseFloat(extendedItem.original_price || "0") + combinedTaxes,
+        });
+
+        const newBooking = await createAmadeusHotelBooking(
+          extendedItem,
+          passengerInfo,
+          undefined,
+          isGuest,
+        );
+
+        console.log("✅ Booking created:", newBooking);
+
+        // Step 2: Store booking and show Amadeus payment modal
+        setBooking(newBooking);
+        setAppliedVoucherCode(voucherCode);
+        setShowPayment(true);
+      } catch (err: any) {
+        console.error("❌ Booking creation failed:", err);
+        toast.error(
+          err?.message ??
+            "We couldn’t create your booking. Please check your details and try again.",
+        );
+      }
+      return;
+    }
+
+    if (useAmadeusFlow) {
+      setPendingPassengerInfo(passengerInfo);
+      setAppliedVoucherCode(voucherCode);
+      setShowAmadeusPayment(true);
+      return;
+    }
+
     try {
-      let newBooking: Booking;
+      // For flights and other non-Amadeus items
+      const priceFields = getPriceFields(extendedItem);
+      const priceValue = extractPriceValue(extendedItem.price);
 
-      if (useAmadeusFlow) {
-        console.log("Creating pending Amadeus hotel booking...");
-        newBooking = await createAmadeusHotelBooking(
-          selectedItem,
-          passengerInfo,
-          undefined, // ← card param (keep as undefined since you're not using card here)
-          isGuest,
-        );
-      } else {
-        console.log("Creating pending normal booking...");
-        newBooking = await createBooking(
-          selectedItem,
-          searchParams,
-          passengerInfo,
-          isGuest,
-        );
-      }
+      // Get base price (original amount/price)
+      const basePrice =
+        parseFloat(priceFields.original || priceFields.base || "0") ||
+        priceValue;
 
-      console.log("✅ Pending booking created successfully:", newBooking);
+      // Calculate markup and service fee
+      const markupAmount = parseFloat(extendedItem.markup_amount || "0");
+      const serviceFee = parseFloat(extendedItem.service_fee || "0");
 
+      // Calculate combined taxes (Markup + Service fee)
+      const combinedTaxes = markupAmount + serviceFee;
+
+      // Final amount = basePrice + combinedTaxes
+      const finalAmount =
+        parseFloat(priceFields.final || "0") || basePrice + combinedTaxes;
+
+      console.log(`💰 ${productType} booking price breakdown (payment):`, {
+        original: priceFields.original,
+        base: priceFields.base,
+        final: priceFields.final,
+        basePrice: basePrice.toFixed(2),
+        markupAmount: markupAmount.toFixed(2),
+        serviceFee: serviceFee.toFixed(2),
+        taxes: combinedTaxes.toFixed(2),
+        finalAmount: finalAmount.toFixed(2),
+        markup_percentage: extendedItem.markup_percentage,
+      });
+
+      // Create booking with combined taxes
+      const newBooking = await createBooking(
+        extendedItem,
+        searchParams,
+        passengerInfo,
+        isGuest,
+        {
+          taxes: combinedTaxes,
+          basePrice: basePrice,
+          finalAmount: finalAmount,
+        },
+      );
+
+      console.log("✅ Booking created:", newBooking);
+
+      // Set the booking state so ReviewTrip can display the exact amounts
       setBooking(newBooking);
-      setAppliedVoucherCode(voucherCode); // still remember for modal
-
-      if (useAmadeusFlow && isMerchantPaymentModel) {
-        setShowPayment(true);
-      } else if (useAmadeusFlow) {
-        setShowAmadeusPayment(true);
-      } else {
-        setShowPayment(true);
-      }
+      setAppliedVoucherCode(voucherCode);
+      setShowPayment(true);
     } catch (err: any) {
-      console.error("❌ Failed to create pending booking:", err);
+      console.error("❌ Booking creation failed:", err);
       toast.error(
-        err?.message ||
-          "Could not prepare your booking. Please check your details and try again.",
+        err.message ??
+          "We couldn’t create your booking. Please check your details and try again.",
       );
     }
   };
@@ -164,21 +373,16 @@ export default function BookingReviewPage() {
     setShowPayment(false);
     setShowAmadeusPayment(false);
     setPendingPassengerInfo(null);
-
-    const isGuest = !confirmed.userId; // or use your isLoggedIn logic
-    const query = new URLSearchParams({
-      id: confirmed.id,
-      ref: confirmed.reference,
-      email: confirmed.passengerInfo.email, // ← critical for guest public fetch
-    });
-
-    router.push(`/booking/success?${query.toString()}`);
+    router.push(
+      `/booking/success?id=${confirmed.id}&ref=${confirmed.reference}`,
+    );
   };
 
   return (
     <>
       <ReviewTrip
-        item={selectedItem}
+        // ✅ Pass enhanced item with pre-calculated taxes
+        item={enhancedItem || selectedItem}
         searchParams={searchParams}
         isLoggedIn={isLoggedIn}
         user={user}

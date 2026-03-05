@@ -33,7 +33,7 @@ const Partners: React.FC = () => {
               <img
                 src={partner.logo}
                 alt={`${partner.name} logo`}
-                className="h-10 md:h-12 w-auto object-contain transition-transform duration-300 hover:scale-110"
+                className="h-16 md:h-20 w-auto object-contain transition-transform duration-300 hover:scale-110"
               />
             </div>
           ))}

@@ -44,8 +44,11 @@ const TermsAndConditions: React.FC<TermsAndConditionsProps> = ({ onBack }) => {
 
         <div className="relative max-w-7xl mx-auto px-6 text-center">
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold tracking-tight mb-5 md:mb-6">
-            Ebony Bruce{" "}
-            <span className="text-[#33a8da]"> Terms Of Service</span>
+            Ebony Bruce Travels{" "}
+            <span className="text-[#33a8da]">
+              <br />
+              Terms Of Service
+            </span>
           </h1>
           <p className="text-lg md:text-xl text-gray-200 max-w-3xl mx-auto leading-relaxed">
             Your agreement with the best travel booking app – clear rules for

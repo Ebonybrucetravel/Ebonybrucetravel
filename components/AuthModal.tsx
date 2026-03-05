@@ -541,8 +541,15 @@ const AuthModal: React.FC<AuthModalProps> = ({
       const state = Math.random().toString(36).substring(7);
       localStorage.setItem('oauth_state', state);
       
-      // Store the current URL to redirect back after OAuth
-      const redirectUri = encodeURIComponent(`${window.location.origin}/auth/callback`);
+      // Use Vercel domain for production, localhost for development
+      const baseUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:3000'
+        : 'https://ebonybrucetravel-a4uy.vercel.app';
+      
+      const redirectUri = encodeURIComponent(`${baseUrl}/auth/callback`);
+      
+      console.log(`Redirect URI: ${baseUrl}/auth/callback`);
+      console.log(`Auth URL: https://ebony-bruce-production.up.railway.app/api/v1/auth/${provider}?redirect_uri=${redirectUri}&state=${state}`);
       
       if (provider === 'google') {
         window.location.href = `https://ebony-bruce-production.up.railway.app/api/v1/auth/google?redirect_uri=${redirectUri}&state=${state}`;

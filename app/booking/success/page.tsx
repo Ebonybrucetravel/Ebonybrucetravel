@@ -1,12 +1,5 @@
 "use client";
 
-<<<<<<< HEAD
-import React, { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import api from "@/lib/api";
-import { formatPrice } from "@/lib/utils";
-import type { Booking } from "@/lib/types";
-=======
 import React, { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
@@ -14,19 +7,13 @@ import { formatPrice } from '@/lib/utils';
 import type { Booking as BookingType } from '@/lib/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
->>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
 
 export default function BookingSuccessPage() {
   const router = useRouter();
   const params = useSearchParams();
-<<<<<<< HEAD
-  const bookingId = params.get("id");
-  const bookingRef = params.get("ref");
-=======
   const bookingId = params.get('id');
   const bookingRef = params.get('ref');
   const emailParam = params.get('email');
->>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
 
   const [booking, setBooking] = useState<BookingType | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,21 +35,6 @@ export default function BookingSuccessPage() {
 
     const fetchBooking = async () => {
       try {
-<<<<<<< HEAD
-        let data;
-        let methodUsed = "unknown";
-
-        // Priority 1: Guest-safe path (reference + email)
-        if (ref && email) {
-          console.log(
-            `[DEBUG] Attempting public fetch → ref: ${ref} | email: ${email}`,
-          );
-          try {
-            data = await api.bookingApi.getPublicBookingByReference(ref); // assumes it uses email from context or needs ?email=
-            methodUsed = "public-by-ref";
-          } catch (err) {
-            console.warn("[DEBUG] Public ref fetch failed:", err);
-=======
         // Check if user is authenticated FIRST
         const token = api.getStoredAuthToken();
         const isAuthenticated = !!token;
@@ -100,49 +72,9 @@ export default function BookingSuccessPage() {
               setShowEmailForm(true);
               setLoading(false);
             }
->>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
           }
           return;
         }
-<<<<<<< HEAD
-
-        // Priority 2: Authenticated / fallback by ID
-        if (!data && id) {
-          console.log(`[DEBUG] Attempting fetch by ID: ${id}`);
-          try {
-            data = await api.bookingApi.getBookingById(id);
-            methodUsed = "by-id";
-          } catch (err) {
-            console.warn("[DEBUG] ID fetch failed:", err);
-          }
-        }
-
-        if (!data) {
-          throw new Error("All fetch attempts failed");
-        }
-
-        const bookingData =
-          data?.data?.booking ?? data?.booking ?? data ?? null;
-
-        console.log(`[DEBUG] Success — loaded via ${methodUsed}:`, {
-          id: bookingData?.id,
-          reference: bookingData?.reference,
-          status: bookingData?.status,
-          paymentStatus: bookingData?.paymentStatus,
-          createdAt: bookingData?.createdAt,
-        });
-
-        setBooking(bookingData);
-      } catch (err: any) {
-        console.error("[ERROR] Booking fetch failed:", err);
-        setError(
-          err.message?.includes("not found")
-            ? "Booking not found or still being processed. Wait 1–2 minutes and refresh this page."
-            : "Failed to load booking details. Check your email for the reference number and try again.",
-        );
-        setBooking(null);
-      } finally {
-=======
         
         
         if (bookingRef) {
@@ -177,25 +109,11 @@ export default function BookingSuccessPage() {
         
       } catch (err) {
         console.error('Fetch error:', err);
->>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
         setLoading(false);
       }
     };
 
     fetchBooking();
-<<<<<<< HEAD
-
-    // Auto-refresh every 15 seconds if pending
-    const interval = setInterval(() => {
-      if (booking?.status === "PENDING") {
-        console.log("[DEBUG] Auto-refreshing pending booking...");
-        fetchBooking();
-      }
-    }, 15000);
-
-    return () => clearInterval(interval);
-  }, [params, booking]);
-=======
   }, [bookingId, bookingRef, emailParam]);
 
   const fetchGuestBooking = async (ref: string, emailAddress: string) => {
@@ -1197,18 +1115,10 @@ export default function BookingSuccessPage() {
       </div>
     );
   };
->>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
 
   // Function to determine badge color based on status
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, string> = {
-<<<<<<< HEAD
-      CONFIRMED: "green",
-      PENDING: "yellow",
-      FAILED: "red",
-      CANCELLED: "gray",
-      REFUNDED: "purple",
-=======
       'CONFIRMED': 'green',
       'PENDING': 'yellow',
       'FAILED': 'red',
@@ -1216,7 +1126,6 @@ export default function BookingSuccessPage() {
       'REFUNDED': 'purple',
       'COMPLETED': 'green',
       'PAID': 'green'
->>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
     };
     return statusMap[status] || "gray";
   };
@@ -1344,16 +1253,10 @@ export default function BookingSuccessPage() {
   }
 
   // Determine what to show based on actual status
-<<<<<<< HEAD
-  const isConfirmed = booking.status === "CONFIRMED";
-  const isPending = booking.status === "PENDING";
-  const isFailed = booking.status === "FAILED";
-=======
   const isConfirmed = ['CONFIRMED', 'COMPLETED', 'PAID'].includes(booking.status);
   const isPending = ['PENDING', 'PROCESSING'].includes(booking.status);
   const isFailed = ['FAILED', 'CANCELLED'].includes(booking.status);
   const productType = booking.productType || booking.bookingData?.productType;
->>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-16">
@@ -1415,20 +1318,11 @@ export default function BookingSuccessPage() {
                 />
               </svg>
             </div>
-<<<<<<< HEAD
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Booking Confirmed!
-            </h1>
-            <p className="text-gray-600">
-              Your booking has been successfully confirmed. A confirmation email
-              has been sent.
-=======
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Booking Confirmed!</h1>
             <p className="text-gray-600">
               {isGuest 
                 ? 'Your booking has been successfully confirmed. A confirmation email has been sent to your email address.'
                 : 'Your booking has been successfully confirmed. A confirmation email has been sent.'}
->>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
             </p>
           </>
         )}
@@ -1450,18 +1344,8 @@ export default function BookingSuccessPage() {
                 />
               </svg>
             </div>
-<<<<<<< HEAD
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Booking Processing
-            </h1>
-            <p className="text-gray-600">
-              Your payment was successful, but we're still waiting for
-              confirmation from the provider. We'll notify you once confirmed.
-            </p>
-=======
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Booking Processing</h1>
             <p className="text-gray-600">Your payment was successful, but we're still waiting for confirmation from the provider. We'll notify you via email once confirmed.</p>
->>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
           </>
         )}
 
@@ -1493,57 +1377,6 @@ export default function BookingSuccessPage() {
         )}
       </div>
 
-<<<<<<< HEAD
-      {/* Details card */}
-      <div className="bg-white rounded-xl shadow p-6 text-left space-y-4 mb-8 border border-gray-100">
-        <Detail label="Booking Reference" value={booking.reference} highlight />
-
-        {/* Show actual status with appropriate badge */}
-        <Detail
-          label="Status"
-          value={formatStatus(booking.status)}
-          badge={getStatusBadge(booking.status)}
-        />
-
-        <Detail
-          label="Payment"
-          value={booking.paymentStatus?.replace(/_/g, " ") || "COMPLETED"}
-          badge={booking.paymentStatus === "COMPLETED" ? "green" : "yellow"}
-        />
-
-        {booking.totalAmount && (
-          <Detail
-            label="Amount Paid"
-            value={formatPrice(booking.totalAmount, booking.currency)}
-          />
-        )}
-
-        {booking.productType && (
-          <Detail
-            label="Service"
-            value={booking.productType.replace(/_/g, " ")}
-          />
-        )}
-
-        {booking.createdAt && (
-          <Detail
-            label="Booked On"
-            value={new Date(booking.createdAt).toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}
-          />
-        )}
-
-        {/* Show provider booking ID if available */}
-        {booking.providerBookingId && (
-          <Detail
-            label="Provider Reference"
-            value={booking.providerBookingId}
-          />
-        )}
-=======
       {/* Basic booking summary - visible to everyone */}
       <div className="bg-white rounded-xl shadow p-6 mb-8 border border-gray-100">
         <div className="text-center mb-4">
@@ -1596,7 +1429,6 @@ export default function BookingSuccessPage() {
             )}
           </div>
         </div>
->>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
       </div>
 
       {/* For authenticated users: Show full detailed itinerary */}
@@ -1713,19 +1545,9 @@ export default function BookingSuccessPage() {
       {isPending && (
         <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-8 text-sm text-blue-800">
           <p className="font-medium mb-1">What happens next?</p>
-<<<<<<< HEAD
-          <p>
-            We're confirming your booking with the airline. This usually takes
-            1-2 minutes. You'll receive an email once confirmed, or you can
-            refresh this page.
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-=======
           <p>We're confirming your booking with the provider. This usually takes 1-2 minutes. You'll receive an email once confirmed.</p>
           <button 
             onClick={() => window.location.reload()} 
->>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
             className="mt-3 text-blue-600 hover:text-blue-800 font-medium underline"
           >
             Refresh Status
@@ -1746,16 +1568,6 @@ export default function BookingSuccessPage() {
 
       {/* Action buttons */}
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
-<<<<<<< HEAD
-        <button
-          onClick={() => router.push("/profile?tab=bookings")}
-          className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
-        >
-          View My Bookings
-        </button>
-        <button
-          onClick={() => router.push("/")}
-=======
         {!isGuest ? (
           <>
             <button 
@@ -1800,7 +1612,6 @@ export default function BookingSuccessPage() {
         
         <button 
           onClick={() => router.push('/')} 
->>>>>>> 34623a82d053f52f568a6577a67c0d18730200fa
           className="px-6 py-3 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 border border-gray-300"
         >
           Back to Home

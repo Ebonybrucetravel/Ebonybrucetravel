@@ -141,8 +141,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const carDropOffRef = useRef<HTMLDivElement>(null);
   const today = new Date().toISOString().split('T')[0];
 
- 
-
   const getCityCode = (location: string): string => {
     if (!location) return 'LHR';
     
@@ -858,8 +856,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       onSearch(data);
     }
   };
-   // Updated useEffect to use searchParams and handleSubmit dependency
-   useEffect(() => {
+  
+  // Updated useEffect to use searchParams and handleSubmit dependency
+  useEffect(() => {
     const type = searchParams.get('type');
     
     if (type === 'hotels') {
@@ -1657,9 +1656,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     </div>
   </div>
 )}
-
-
-
 
         </form>
       </div>

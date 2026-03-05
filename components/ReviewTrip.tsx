@@ -5,6 +5,51 @@ import type { SearchResult, SearchParams, PassengerInfo, User, Booking } from '.
 import { userApi, ApiError } from '../lib/api';
 import { formatPrice, currencySymbol } from '../lib/utils';
 
+// Extended interface for Amadeus hotel data
+interface ExtendedSearchResult extends SearchResult {
+  realData?: {
+    hotelId: string;
+    offers: Array<{
+      id: string;
+      checkInDate: string;
+      checkOutDate: string;
+      price: {
+        currency: string;
+        base: string;
+        total: string;
+        variations?: any;
+      };
+      room: {
+        type: string;
+        typeEstimated?: {
+          category: string;
+          beds: number;
+          bedType: string;
+        };
+        description: {
+          text: string;
+        };
+      };
+      guests: {
+        adults: number;
+      };
+      policies?: {
+        cancellations?: Array<{
+          description: { text: string };
+        }>;
+        refundable?: {
+          cancellationRefund: string;
+        };
+      };
+    }>;
+    originalData: any;
+  };
+  markup_percentage?: number;
+  markup_amount?: string;
+  service_fee?: string;
+  conversion_fee?: string;
+  conversion_fee_percentage?: string;
+}
 
 interface ReviewTripProps {
   item: SearchResult | null;
@@ -46,14 +91,19 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     );
   }
 
+  // Cast to extended type to access realData
+  const extendedItem = item as ExtendedSearchResult;
+  
   const rawType = (item.type || searchParams?.type || 'flights').toLowerCase();
   const isHotel = rawType.includes('hotel');
   const isCar = rawType.includes('car');
   const isFlight = !isHotel && !isCar;
 
-  // Determine if this is an Amadeus hotel (for price calculation)
-  const isAmadeusHotel = isHotel && !!item.realData?.offerId && 
-    (typeof item.realData?.finalPrice === 'number' || typeof item.realData?.price === 'number');
+  // Get the first offer from realData for Amadeus hotels
+  const firstOffer = extendedItem?.realData?.offers?.[0];
+
+  // Determine if this is an Amadeus hotel
+  const isAmadeusHotel = isHotel && !!firstOffer;
 
   // Determine product type
   const productType = propProductType || (
@@ -62,8 +112,12 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     'CAR_RENTAL'
   );
 
-  // Use currency from created booking if available, otherwise from item or context
-  const offerCurrency = createdBooking?.currency || item?.realData?.currency || currency.code || 'GBP';
+  // Use currency from created booking if available, otherwise from item/offer or context
+  const offerCurrency = createdBooking?.currency || 
+                       firstOffer?.price?.currency || 
+                       item?.realData?.currency || 
+                       currency.code || 
+                       'GBP';
 
   // Pre-fill from user profile or created booking
   const splitName = (user?.name || createdBooking?.passengerInfo?.firstName || '').trim().split(/\s+/);
@@ -83,6 +137,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [isValidatingVoucher, setIsValidatingVoucher] = useState(false);
   const [voucherError, setVoucherError] = useState<string | null>(null);
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
+  const [appliedPromo, setAppliedPromo] = useState<any | null>(null);
 
   // Sync user data
   useEffect(() => {
@@ -97,48 +152,115 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
   }, [user]);
 
-  // Calculate totals based on whether we have a created booking or not
-  let subtotal = 0;
-  let markupAmount = 0;
-  let serviceFeeAmount = 0;
+  // Extract Amadeus hotel details
+  const getHotelDetails = () => {
+    if (!isAmadeusHotel || !firstOffer) return null;
+    
+    return {
+      hotelName: item.title,
+      checkIn: firstOffer.checkInDate,
+      checkOut: firstOffer.checkOutDate,
+      roomType: firstOffer.room?.typeEstimated?.category?.replace(/_/g, ' ') || 'Standard Room',
+      bedType: firstOffer.room?.typeEstimated?.bedType || 'Unknown',
+      adults: firstOffer.guests?.adults || 2,
+      description: firstOffer.room?.description?.text || 'Room description not available',
+      cancellationPolicy: firstOffer.policies?.cancellations?.[0]?.description?.text || 
+                          (firstOffer.policies?.refundable?.cancellationRefund === 'NON_REFUNDABLE' 
+                            ? 'Non-refundable' 
+                            : 'Free cancellation within policy period')
+    };
+  };
+
+  const hotelDetails = getHotelDetails();
+
+  // Price calculation for Amadeus hotels
+  let basePrice = 0;
+  let taxes = 0;
+  let conversionFee = 0;
+  let conversionPercentage = 0;
   let totalDue = 0;
-  let effectiveSubtotal = 0;
-  
-  // If we have a created booking, use its exact amounts from the backend
+  let displayBasePrice = '';
+  let displayTaxes = '';
+  let displayConversionFee = '';
+  let displayTotalDue = '';
+
   if (createdBooking) {
-    subtotal = createdBooking.basePrice || 0;
-    markupAmount = createdBooking.markupAmount || 0;
-    serviceFeeAmount = createdBooking.serviceFee || 0;
+    // Use created booking values
+    basePrice = createdBooking.basePrice || 0;
+    taxes = (createdBooking.markupAmount || 0) + (createdBooking.serviceFee || 0);
+    conversionFee = (createdBooking as any).conversionFee || 0;
+    conversionPercentage = (createdBooking as any).conversionPercentage || 0;
     totalDue = createdBooking.totalAmount || 0;
-    effectiveSubtotal = subtotal; // Base price without markup
     
-    console.log('Using created booking amounts:', {
-      subtotal,
-      markupAmount,
-      serviceFeeAmount,
-      totalDue,
-      currency: offerCurrency
-    });
+    displayBasePrice = formatPrice(basePrice, offerCurrency);
+    displayTaxes = formatPrice(taxes, offerCurrency);
+    displayConversionFee = conversionFee > 0 ? formatPrice(conversionFee, offerCurrency) : '';
+    displayTotalDue = formatPrice(totalDue, offerCurrency);
+  } else if (isAmadeusHotel && firstOffer) {
+    // Amadeus hotel price calculation
+    basePrice = parseFloat(firstOffer.price.base || firstOffer.price.total || '0');
+    
+    // Calculate taxes (total - base = taxes + fees)
+    const totalAmount = parseFloat(firstOffer.price.total || '0');
+    taxes = totalAmount - basePrice;
+    
+    // Add our markup and service fee
+    const markupAmount = parseFloat(extendedItem.markup_amount || '0');
+    const serviceFee = parseFloat(extendedItem.service_fee || '0');
+    taxes += markupAmount + serviceFee;
+    
+    conversionFee = parseFloat(extendedItem.conversion_fee || '0');
+    conversionPercentage = parseFloat(extendedItem.conversion_fee_percentage || '0');
+    totalDue = basePrice + taxes + conversionFee;
+    
+    displayBasePrice = formatPrice(basePrice, offerCurrency);
+    displayTaxes = formatPrice(taxes, offerCurrency);
+    displayConversionFee = conversionFee > 0 ? formatPrice(conversionFee, offerCurrency) : '';
+    displayTotalDue = formatPrice(totalDue, offerCurrency);
   } else {
-    // Fallback to old calculation method for initial display before booking is created
-    subtotal = typeof item.realData?.price === 'number'
-      ? item.realData.price
-      : parseFloat((item.price || '0').replace(/[^\d.]/g, '') || '0');
-    
-    serviceFeeAmount = typeof item.realData?.serviceFee === 'number' ? item.realData.serviceFee : 0;
-    
-    effectiveSubtotal = voucherApplied?.finalAmount ?? 
-      (isAmadeusHotel && typeof item.realData?.finalPrice === 'number' ? item.realData.finalPrice : subtotal);
-    
-    const BACKEND_MARKUP_PERCENT_HOTEL = 0.15;
-    markupAmount = isHotel && !isAmadeusHotel ? effectiveSubtotal * BACKEND_MARKUP_PERCENT_HOTEL : 0;
-    totalDue = isAmadeusHotel ? effectiveSubtotal : (effectiveSubtotal + markupAmount + serviceFeeAmount);
+    // For car rentals and other items
+    if ((item as any).type === 'car-rentals') {
+      displayBasePrice = (item as any).displayBasePrice || `${currencySymbol(offerCurrency)}0.00`;
+      displayTaxes = (item as any).displayTaxes || `${currencySymbol(offerCurrency)}0.00`;
+      displayConversionFee = (item as any).displayConversionFee || '';
+      conversionPercentage = (item as any).displayConversionPercentage || 0;
+      displayTotalDue = (item as any).displayTotalPrice || `${currencySymbol(offerCurrency)}0.00`;
+      
+      basePrice = (item as any).calculatedBasePrice || 0;
+      taxes = (item as any).calculatedTaxes || 0;
+      conversionFee = (item as any).calculatedConversionFee || 0;
+      totalDue = (item as any).calculatedTotal || 0;
+    } else {
+      // For flights
+      let priceValue = 0;
+      if (typeof item.realData?.price === 'number') {
+        priceValue = item.realData.price;
+      } else if (item.price) {
+        if (typeof item.price === 'string') {
+          priceValue = parseFloat(item.price.replace(/[^\d.]/g, '') || '0');
+        } else if (typeof item.price === 'number') {
+          priceValue = item.price;
+        }
+      }
+      
+      basePrice = priceValue;
+      const markupAmount = parseFloat((item as any).markup_amount || '0');
+      const serviceFee = parseFloat((item as any).service_fee || '0');
+      taxes = markupAmount + serviceFee;
+      conversionFee = parseFloat((item as any).conversion_fee || '0');
+      conversionPercentage = parseFloat((item as any).conversion_fee_percentage || '0');
+      totalDue = basePrice + taxes + conversionFee;
+      
+      displayBasePrice = formatPrice(basePrice, offerCurrency);
+      displayTaxes = formatPrice(taxes, offerCurrency);
+      displayConversionFee = conversionFee > 0 ? formatPrice(conversionFee, offerCurrency) : '';
+      displayTotalDue = formatPrice(totalDue, offerCurrency);
+    }
   }
-  
-  const formattedReservation = formatPrice(effectiveSubtotal, offerCurrency);
-  const formattedMarkup = formatPrice(markupAmount, offerCurrency);
-  const formattedServiceFee = formatPrice(serviceFeeAmount, offerCurrency);
-  const formattedTotalDue = formatPrice(totalDue, offerCurrency);
+
+  const formattedDiscountedTotal = appliedPromo?.discountAmount 
+    ? formatPrice(appliedPromo.discountAmount, offerCurrency) 
+    : '';
 
   const productTypeForVoucher = (() => {
     if (isHotel) return 'HOTEL';
@@ -158,20 +280,23 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       const result = await userApi.validateVoucher({
         voucherCode: code,
         productType: productTypeForVoucher,
-        bookingAmount: subtotal,
+        bookingAmount: basePrice,
         currency: offerCurrency,
       });
       if (!result.valid) {
         setVoucherApplied(null);
+        setAppliedPromo(null);
         setVoucherError(result.message || 'Voucher is not valid for this booking');
       } else {
         setVoucherApplied(result);
+        setAppliedPromo(result);
       }
     } catch (error: any) {
       console.error('Failed to validate voucher:', error);
       const msg = error instanceof ApiError ? error.message : (error?.message || 'Failed to validate voucher');
       setVoucherError(msg);
       setVoucherApplied(null);
+      setAppliedPromo(null);
     } finally {
       setIsValidatingVoucher(false);
     }
@@ -196,14 +321,12 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         alert('Date of birth is required for flight bookings.');
         return;
       }
-      
   
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (!dateRegex.test(dateOfBirth)) {
         alert('Date of birth must be in YYYY-MM-DD format.');
         return;
       }
-      
     
       const dob = new Date(dateOfBirth);
       const today = new Date();
@@ -221,7 +344,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
     setIsBooking(true);
     try {
-
       const passengerInfo: PassengerInfo = {
         firstName,
         lastName,
@@ -230,10 +352,9 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         ...(isFlight && {
           title: title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr',
           gender: gender as 'm' | 'f',
-          dateOfBirth // 👈 CHANGED BACK FROM born_on TO dateOfBirth
+          dateOfBirth
         })
       };
-
 
       await onProceedToPayment(
         passengerInfo,
@@ -247,10 +368,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
   };
 
-  // Second UI design input styles
   const inputCls = 'w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/30 focus:border-[#33a8da] transition-all text-sm font-medium text-gray-900 placeholder-gray-400';
 
-  // Show booking reference if available
   const bookingReference = createdBooking?.reference;
 
   return (
@@ -267,7 +386,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           {createdBooking ? 'Complete your payment' : 'Complete your booking'}
         </h1>
         
-        {/* Show booking reference if available */}
+        {/* Booking Reference */}
         {bookingReference && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
             <p className="text-sm text-blue-800">
@@ -276,164 +395,206 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           </div>
         )}
         
+        {/* Amadeus Hotel Notice */}
+        {isAmadeusHotel && (
+          <div className="mb-6 p-4 bg-purple-50 border border-purple-100 rounded-lg">
+            <p className="text-sm text-purple-800 flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Amadeus hotel booking • Real-time availability and pricing
+            </p>
+          </div>
+        )}
+        
         <div className="flex flex-col lg:flex-row gap-8">
           <div className="flex-1 space-y-6">
-          {/* Identity & Contact Section */}
-<div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-  <div className="flex items-center justify-between mb-4">
-    <h2 className="text-lg font-semibold text-gray-900">Your details</h2>
-    {isLoggedIn && user && (
-      <span className="text-xs text-green-600 bg-green-50 px-3 py-1 rounded-full">
-        Logged in
-      </span>
-    )}
-  </div>
+            {/* Identity & Contact Section */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900">Your details</h2>
+                {isLoggedIn && user && (
+                  <span className="text-xs text-green-600 bg-green-50 px-3 py-1 rounded-full">
+                    Logged in
+                  </span>
+                )}
+              </div>
 
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div>
-      <label className="block text-xs font-medium text-gray-500 mb-1">First name</label>
-      <input 
-        value={firstName} 
-        onChange={e => setFirstName(e.target.value)} 
-        className={inputCls} 
-        placeholder="John" 
-        readOnly={!!createdBooking}
-      />
-    </div>
-    <div>
-      <label className="block text-xs font-medium text-gray-500 mb-1">Last name</label>
-      <input 
-        value={lastName} 
-        onChange={e => setLastName(e.target.value)} 
-        className={inputCls} 
-        placeholder="Doe" 
-        readOnly={!!createdBooking}
-      />
-    </div>
-    <div>
-      <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
-      <input 
-        value={email} 
-        onChange={e => setEmail(e.target.value)} 
-        className={inputCls} 
-        placeholder="john@example.com" 
-        readOnly={!!createdBooking}
-      />
-    </div>
-    <div>
-      <label className="block text-xs font-medium text-gray-500 mb-1">Phone</label>
-      <input 
-        value={phone} 
-        onChange={e => setPhone(e.target.value)} 
-        className={inputCls} 
-        placeholder="+234 123 456 789" 
-        readOnly={!!createdBooking}
-      />
-    </div>
-  </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">First name</label>
+                  <input 
+                    value={firstName} 
+                    onChange={e => setFirstName(e.target.value)} 
+                    className={inputCls} 
+                    placeholder="John" 
+                    readOnly={!!createdBooking}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Last name</label>
+                  <input 
+                    value={lastName} 
+                    onChange={e => setLastName(e.target.value)} 
+                    className={inputCls} 
+                    placeholder="Doe" 
+                    readOnly={!!createdBooking}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+                  <input 
+                    value={email} 
+                    onChange={e => setEmail(e.target.value)} 
+                    className={inputCls} 
+                    placeholder="john@example.com" 
+                    readOnly={!!createdBooking}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Phone</label>
+                  <input 
+                    value={phone} 
+                    onChange={e => setPhone(e.target.value)} 
+                    className={inputCls} 
+                    placeholder="+44 7911 123456" 
+                    readOnly={!!createdBooking}
+                  />
+                </div>
+              </div>
 
-  {/* Flight-specific fields - only show for flights */}
-  {isFlight && !createdBooking && (
-    <div className="mt-4 pt-4 border-t border-gray-100">
-      <h3 className="text-sm font-semibold text-gray-900 mb-3">Passenger Information (Required for flights)</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Title *</label>
-          <select
-            value={title}
-            onChange={(e) => setTitle(e.target.value as any)}
-            className={inputCls}
-            required
-          >
-            <option value="">Select title</option>
-            <option value="mr">Mr</option>
-            <option value="ms">Ms</option>
-            <option value="mrs">Mrs</option>
-            <option value="miss">Miss</option>
-            <option value="dr">Dr</option>
-          </select>
-        </div>
+              {/* Flight-specific fields */}
+              {isFlight && !createdBooking && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Passenger Information (Required for flights)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Title *</label>
+                      <select
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value as any)}
+                        className={inputCls}
+                        required
+                      >
+                        <option value="">Select title</option>
+                        <option value="mr">Mr</option>
+                        <option value="ms">Ms</option>
+                        <option value="mrs">Mrs</option>
+                        <option value="miss">Miss</option>
+                        <option value="dr">Dr</option>
+                      </select>
+                    </div>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Gender *</label>
-          <select
-            value={gender}
-            onChange={(e) => setGender(e.target.value as any)}
-            className={inputCls}
-            required
-          >
-            <option value="">Select gender</option>
-            <option value="m">Male</option>
-            <option value="f">Female</option>
-          </select>
-        </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Gender *</label>
+                      <select
+                        value={gender}
+                        onChange={(e) => setGender(e.target.value as any)}
+                        className={inputCls}
+                        required
+                      >
+                        <option value="">Select gender</option>
+                        <option value="m">Male</option>
+                        <option value="f">Female</option>
+                      </select>
+                    </div>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Date of Birth *</label>
-          <input
-            type="date"
-            value={dateOfBirth}
-            onChange={(e) => setDateOfBirth(e.target.value)}
-            max={new Date().toISOString().split('T')[0]}
-            className={inputCls}
-            required
-          />
-          <p className="text-xs text-gray-400 mt-1">Format: YYYY-MM-DD</p>
-        </div>
-      </div>
-    </div>
-  )}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Date of Birth *</label>
+                      <input
+                        type="date"
+                        value={dateOfBirth}
+                        onChange={(e) => setDateOfBirth(e.target.value)}
+                        max={new Date().toISOString().split('T')[0]}
+                        className={inputCls}
+                        required
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Format: YYYY-MM-DD</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-  {!isLoggedIn && onSignInRequired && !createdBooking && (
-    <div className="mt-4 p-3 bg-blue-50 rounded-lg flex items-center gap-2">
-      <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-      <p className="text-xs text-gray-600">
-        <button onClick={onSignInRequired} className="font-medium text-[#33a8da] hover:underline">Sign in</button>
-        {' '}to auto-fill your details
-      </p>
-    </div>
-  )}
-</div>
+              {!isLoggedIn && onSignInRequired && !createdBooking && (
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg flex items-center gap-2">
+                  <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs text-gray-600">
+                    <button onClick={onSignInRequired} className="font-medium text-[#33a8da] hover:underline">Sign in</button>
+                    {' '}to auto-fill your details
+                  </p>
+                </div>
+              )}
+            </div>
 
-            {/* Trip Summary Section */}
+            {/* Trip Summary Section - Enhanced for Amadeus Hotels */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Trip summary</h2>
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">
-                  {isFlight ? '✈️' : isHotel ? '🏨' : '🚗'}
+                  {isHotel ? '🏨' : isFlight ? '✈️' : '🚗'}
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-gray-900">
-                    {createdBooking?.bookingData?.airline || item.title}
+                    {item.title}
                   </h3>
                   <p className="text-sm text-gray-500">
-                    {createdBooking?.bookingData?.origin || ''} → {createdBooking?.bookingData?.destination || item.subtitle}
+                    {isHotel ? 'London, United Kingdom' : (createdBooking?.bookingData?.origin || '') + ' → ' + (createdBooking?.bookingData?.destination || item.subtitle)}
                   </p>
+                  
+                  {/* Amadeus Hotel Details */}
+                  {isAmadeusHotel && hotelDetails && (
+                    <div className="mt-3 space-y-2">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full">
+                          {hotelDetails.roomType}
+                        </span>
+                        <span className="px-2 py-1 bg-gray-50 text-gray-600 rounded-full">
+                          {hotelDetails.bedType}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 line-clamp-2">
+                        {hotelDetails.description}
+                      </p>
+                    </div>
+                  )}
+                  
                   <p className="text-xs text-gray-400 mt-1">
-                    {createdBooking?.provider || item.provider} • Flight {createdBooking?.bookingData?.flightNumber || ''}
+                    {isAmadeusHotel ? 'Amadeus • Direct booking' : (createdBooking?.provider || item.provider)}
                   </p>
-                  {createdBooking?.bookingData?.departureDate && (
-                    <p className="text-xs text-gray-400 mt-1">
-                      Departure: {new Date(createdBooking.bookingData.departureDate).toLocaleDateString()}
+                  
+                  {/* Dates for Amadeus Hotels */}
+                  {isAmadeusHotel && hotelDetails && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      📅 {new Date(hotelDetails.checkIn).toLocaleDateString()} - {new Date(hotelDetails.checkOut).toLocaleDateString()}
+                      {' • '}{hotelDetails.adults} Adult{hotelDetails.adults > 1 ? 's' : ''}
                     </p>
                   )}
                 </div>
               </div>
               
-              {/* Cancellation Policy - Only show for hotels */}
+              {/* Cancellation Policy - Enhanced for Amadeus Hotels */}
               {isHotel && (
                 <div className="mt-6 pt-6 border-t border-gray-100">
                   <h3 className="text-md font-semibold text-gray-900 mb-3">Cancellation Policy</h3>
                   <div className="space-y-3">
                     <p className="text-sm text-gray-600">
-                      <span className="font-medium text-green-600">Free cancellation</span> until {
-                        item?.realData?.cancellationDeadline || "16 Feb 2026, 23:59 UTC"
-                      }.
+                      <span className="font-medium text-green-600">
+                        {isAmadeusHotel && firstOffer?.policies?.refundable?.cancellationRefund === 'NON_REFUNDABLE' 
+                          ? 'Non-refundable' 
+                          : 'Free cancellation'}
+                      </span>
+                      {isAmadeusHotel && hotelDetails?.cancellationPolicy && (
+                        <span className="block mt-1 text-xs text-gray-500">
+                          {hotelDetails.cancellationPolicy}
+                        </span>
+                      )}
                     </p>
                     <p className="text-sm text-gray-600">
-                      {item?.realData?.cancellationPolicy || "In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed."}
+                      {isAmadeusHotel 
+                        ? "Please review the cancellation policy carefully. Some rates may be non-refundable."
+                        : (item?.realData?.cancellationPolicy || "In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.")}
                     </p>
                     <div className="flex items-start gap-2 mt-4 p-3 bg-gray-50 rounded-lg">
                       <input 
@@ -443,10 +604,10 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                         onChange={(e) => setAgreedToPolicy(e.target.checked)}
                         className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
                         required 
-                        disabled={!!createdBooking} // Disable if booking already created
+                        disabled={!!createdBooking}
                       />
                       <label htmlFor="cancellationPolicy" className="text-sm text-gray-700">
-                        By booking, I agree to the cancellation and no-show policy.
+                        I have read and agree to the cancellation policy.
                       </label>
                     </div>
                   </div>
@@ -455,40 +616,67 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
             </div>
           </div>
 
-          {/* Price Sidebar */}
+          {/* Price Sidebar - Enhanced for Amadeus Hotels */}
           <aside className="w-full lg:w-[380px]">
             <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-24 border border-gray-100">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Price details</h3>
               
               <div className="space-y-3 mb-6">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Base price</span>
-                  <span className="font-medium text-gray-900">{formatPrice(subtotal, offerCurrency)}</span>
+                {/* Fare Breakdown */}
+                <div>
+                  <h3 className="text-sm font-black text-gray-900 mb-4 uppercase">Fare Breakdown</h3>
+                  <div className="space-y-3">
+                    {/* Base Price */}
+                    <div className="flex justify-between items-center text-xs font-bold text-gray-400">
+                      <span>Base Fare</span>
+                      <span className="text-gray-900">{displayBasePrice}</span>
+                    </div>
+                    
+                    {/* Taxes */}
+                    {parseFloat(taxes.toString()) > 0 && (
+                      <div className="flex justify-between items-center text-xs font-bold text-gray-400">
+                        <span>Taxes & Fees</span>
+                        <span className="text-gray-900">{displayTaxes}</span>
+                      </div>
+                    )}
+                    
+                    {/* Conversion Fee */}
+                    {conversionFee > 0 && displayConversionFee && (
+                      <div className="flex justify-between items-center text-xs font-bold text-gray-400">
+                        <span>Conversion Fee ({conversionPercentage}%)</span>
+                        <span className="text-gray-900">{displayConversionFee}</span>
+                      </div>
+                    )}
+                    
+                    {/* Discount */}
+                    {appliedPromo && (
+                      <div className="flex justify-between items-center text-xs font-bold text-green-600">
+                        <span>Discount ({appliedPromo.code})</span>
+                        <span>- {formattedDiscountedTotal}</span>
+                      </div>
+                    )}
+                    
+                    {/* Total */}
+                    <div className="flex justify-between items-center text-sm font-black text-gray-900 pt-2 border-t border-gray-100">
+                      <span>Total Fare</span>
+                      <span className="text-lg font-black text-[#33a8da]">
+                        {displayTotalDue}
+                      </span>
+                    </div>
+
+                    {/* Amadeus Price Breakdown */}
+                    {isAmadeusHotel && firstOffer && (
+                      <div className="mt-2 text-[10px] text-gray-400 border-t border-gray-50 pt-2">
+                        <p>Original price: {firstOffer.price.currency} {parseFloat(firstOffer.price.total).toFixed(2)}</p>
+                        {extendedItem.markup_percentage && (
+                          <p>Includes {extendedItem.markup_percentage}% markup</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                
-                {markupAmount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Markup</span>
-                    <span className="font-medium text-gray-900">{formatPrice(markupAmount, offerCurrency)}</span>
-                  </div>
-                )}
-                
-                {serviceFeeAmount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Service fee</span>
-                    <span className="font-medium text-gray-900">{formatPrice(serviceFeeAmount, offerCurrency)}</span>
-                  </div>
-                )}
 
-                {/* Only show "Included" for Amadeus hotels when there's no separate service fee */}
-                {isAmadeusHotel && serviceFeeAmount === 0 && !createdBooking && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Service fee</span>
-                    <span className="text-xs text-gray-500">Included</span>
-                  </div>
-                )}
-
-                {/* Voucher Section - Only show if booking not yet created */}
+                {/* Voucher Section */}
                 {!createdBooking && (
                   <div className="pt-3 border-t border-gray-100">
                     <label className="block text-xs font-medium text-gray-500 mb-2">
@@ -521,13 +709,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                     )}
                   </div>
                 )}
-
-                <div className="pt-3 border-t border-gray-100">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-gray-900">Total</span>
-                    <span className="text-xl font-bold text-[#33a8da]">{formatPrice(totalDue, offerCurrency)}</span>
-                  </div>
-                </div>
               </div>
               
               <button 

@@ -3,15 +3,42 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
 import CarDetails from '@/components/CarDetails';
+
 export default function CarDetailsPage() {
     const router = useRouter();
-    const { selectedItem, searchParams } = useSearch();
+    const { selectedItem, searchParams, selectItem } = useSearch();
+
     if (!selectedItem) {
-        return (<div className="max-w-7xl mx-auto px-4 py-20 text-center">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">Car Not Found</h1>
-        <p className="text-gray-600 mb-8">Please select a car from the search results.</p>
-        <button onClick={() => router.push('/search')} className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg">Back to Search</button>
-      </div>);
+        return (
+            <div className="max-w-7xl mx-auto px-4 py-20 text-center">
+                <h1 className="text-3xl font-bold text-gray-900 mb-4">Car Not Found</h1>
+                <p className="text-gray-600 mb-8">Please select a car from the search results.</p>
+                <button onClick={() => router.push('/search')} className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg">Back to Search</button>
+            </div>
+        );
     }
-    return (<CarDetails item={selectedItem} searchParams={searchParams} onBack={() => router.push('/search')} onBook={() => router.push('/booking/review')}/>);
+
+    const handleBook = () => {
+        // Ensure the item is in context before navigating
+        selectItem(selectedItem);
+        
+        // Also save to sessionStorage as backup
+        try {
+            sessionStorage.setItem('lastSelectedItem', JSON.stringify(selectedItem));
+        } catch (e) {
+            console.error('Failed to save to sessionStorage:', e);
+        }
+        
+        // Navigate to review page
+        router.push('/booking/review');
+    };
+
+    return (
+        <CarDetails 
+            item={selectedItem} 
+            searchParams={searchParams} 
+            onBack={() => router.push('/search')} 
+            onBook={handleBook}
+        />
+    );
 }
