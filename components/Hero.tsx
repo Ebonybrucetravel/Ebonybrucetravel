@@ -182,7 +182,7 @@ const Hero: React.FC<HeroProps> = ({
           </p>
         </div>
 
-        <div className="relative z-20 animate-in fade-in zoom-in-95 delay-300 duration-700 mb-4 md:mb-6">
+        <div className="relative z-20 animate-in fade-in zoom-in-95 delay-300 duration-700 mb-2 md:mb-3">
           <SearchBox
             onSearch={onSearch}
             loading={loading}
@@ -193,9 +193,9 @@ const Hero: React.FC<HeroProps> = ({
 
         {/* Popular Destinations Section - Shows based on active tab */}
         {(isHotelTab() || isCarTab()) && (
-          <div className="mt-8 md:mt-12 animate-in fade-in delay-500 duration-1000">
-            <div className="text-center mb-6">
-              <h3 className="text-xl md:text-2xl font-bold text-white mb-2 drop-shadow-md">
+          <div className="mt-4 md:mt-6 animate-in fade-in delay-500 duration-1000">
+            <div className="text-center mb-4">
+              <h3 className="text-xl md:text-2xl font-bold text-white mb-1 drop-shadow-md">
                 {isHotelTab()
                   ? t("Popular Hotel Destinations")
                   : t("Popular Car Rental Locations")}
@@ -257,7 +257,7 @@ const Hero: React.FC<HeroProps> = ({
         )}
 
         {/* Trust Indicators */}
-        <div className="mt-10 md:mt-16 animate-in fade-in delay-700 duration-1000">
+        <div className="mt-6 md:mt-8 animate-in fade-in delay-700 duration-1000">
           <div className="flex flex-col md:flex-row items-center justify-center gap-8 text-white">
             <div className="text-center">
               <div className="text-2xl md:text-3xl font-bold mb-1">5000+</div>

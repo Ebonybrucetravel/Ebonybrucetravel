@@ -66,8 +66,8 @@ const TrendingDestinations: React.FC<TrendingDestinationsProps> = ({
   };
 
   return (
-    <section className="px-4 md:px-8 lg:px-16 py-12">
-      <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8">
+    <section className="px-4 md:px-8 lg:px-16 pt-0 pb-8">
+      <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
         {t("Trending Destinations") || "Trending Destinations"}
       </h2>
 

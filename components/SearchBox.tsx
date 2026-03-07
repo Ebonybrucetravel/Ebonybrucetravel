@@ -1153,20 +1153,20 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     const isFirst = index === 0;
     const isMultiCity = tripType === 'multi-city';
     const isRangeSelected = tripType === 'round-trip' && index === 0 && segment.date && returnDate;
-
+  
     return (
-      <div key={index} className="bg-[#33a8da] rounded-[12px] p-1 flex flex-col lg:flex-row items-stretch gap-1 mb-2 shadow-sm animate-in slide-in-from-left duration-200">
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-1">
+      <div key={index} className="bg-[#33a8da] rounded-xl p-[2px] flex flex-col lg:flex-row items-stretch gap-[2px] mb-2 shadow-sm animate-in slide-in-from-left duration-200">
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-[2px]">
           {/* From / To Section with Autocomplete */}
-          <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-1">
+          <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-[2px]">
             {/* From Input with Autocomplete */}
             <div className="relative" ref={index === activeSegmentIndex ? fromRef : null}>
-              <div className="bg-white p-3 md:p-4 flex items-center gap-3 relative rounded-t-lg sm:rounded-l-lg sm:rounded-tr-none">
-                <svg className="w-6 h-6 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
+              <div className="bg-white p-4 md:p-5 flex items-center gap-3 relative rounded-t-lg sm:rounded-l-lg sm:rounded-tr-none min-h-[96px]">
+                <svg className="w-6 h-6 text-[#33a8da] self-start mt-1" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
                 </svg>
                 <div className="flex-1 relative">
-                  <label className="block text-[9px] font-bold text-gray-400 uppercase mb-0.5 leading-none">From</label>
+                  <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1 leading-none">From</label>
                   <input 
                     type="text" 
                     value={segment.from}
@@ -1205,15 +1205,15 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
               </div>
               {showFromDropdown && activeSegmentIndex === index && renderAirportDropdown(fromSuggestions, 'from', index)}
             </div>
-
+  
             {/* To Input with Autocomplete */}
             <div className="relative" ref={index === activeSegmentIndex ? toRef : null}>
-              <div className="bg-white p-3 md:p-4 flex items-center gap-3 border-t sm:border-t-0 sm:border-l border-gray-100 rounded-b-lg sm:rounded-r-lg sm:rounded-bl-none">
-                <svg className="w-6 h-6 text-[#33a8da] rotate-180 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+              <div className="bg-white p-4 md:p-5 flex items-center gap-3 border-t sm:border-t-0 sm:border-l border-gray-100 rounded-b-lg sm:rounded-r-lg sm:rounded-bl-none min-h-[96px]">
+                <svg className="w-6 h-6 text-[#33a8da] rotate-180 shrink-0 self-start mt-1" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
                 </svg>
                 <div className="flex-1 relative">
-                  <label className="block text-[9px] font-bold text-gray-400 uppercase mb-0.5 leading-none">To</label>
+                  <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1 leading-none">To</label>
                   <input 
                     type="text" 
                     value={segment.to}
@@ -1248,16 +1248,16 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
               {showToDropdown && activeSegmentIndex === index && renderAirportDropdown(toSuggestions, 'to', index)}
             </div>
           </div>
-
+  
           {/* Dates / Travellers Section */}
-          <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-1">
-            <div className={`p-3 md:p-4 flex items-center gap-3 relative cursor-pointer group hover:bg-gray-50 transition border-t sm:border-t-0 lg:border-l border-gray-100 ${isRangeSelected ? 'bg-blue-50/50' : 'bg-white'}`}>
-              <svg className="w-6 h-6 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-[2px]">
+            <div className={`p-4 md:p-5 flex items-center gap-3 relative cursor-pointer group hover:bg-gray-50 transition border-t sm:border-t-0 lg:border-l border-gray-100 min-h-[96px] ${isRangeSelected ? 'bg-blue-50/50' : 'bg-white'}`}>
+              <svg className="w-6 h-6 text-gray-600 flex-shrink-0 self-start mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               <div className="flex-1 flex gap-2 min-w-0">
-                <div className="flex-1 min-w-0 relative h-10 flex flex-col justify-center">
-                  <label className="block text-[9px] font-bold text-gray-400 uppercase mb-0.5 leading-none truncate">Depart</label>
+                <div className="flex-1 min-w-0 relative h-auto flex flex-col justify-center">
+                  <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1 leading-none truncate">Depart</label>
                   <span className={`block font-bold text-xs md:text-sm leading-tight truncate ${segment.date ? 'text-gray-900' : 'text-gray-400'}`}>
                     {segment.date ? new Date(segment.date).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'Select date'}
                   </span>
@@ -1271,8 +1271,8 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                   />
                 </div>
                 {tripType === 'round-trip' && index === 0 && (
-                  <div className="flex-1 min-w-0 border-l border-gray-100 pl-2 relative h-10 flex flex-col justify-center">
-                    <label className="block text-[9px] font-bold text-gray-400 uppercase mb-0.5 leading-none truncate">Return</label>
+                  <div className="flex-1 min-w-0 border-l border-gray-100 pl-2 relative h-auto flex flex-col justify-center">
+                    <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1 leading-none truncate">Return</label>
                     <span className={`block font-bold text-xs md:text-sm leading-tight truncate ${returnDate ? 'text-gray-900' : 'text-gray-400'}`}>
                       {returnDate ? new Date(returnDate).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'Select date'}
                     </span>
@@ -1288,14 +1288,14 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 )}
               </div>
             </div>
-            <div className="bg-white p-3 md:p-4 flex items-center gap-3 relative cursor-pointer group hover:bg-gray-50 transition border-t sm:border-t-0 sm:border-l border-gray-100 rounded-b-lg lg:rounded-r-lg" 
+            <div className="bg-white p-4 md:p-5 flex items-center gap-3 relative cursor-pointer group hover:bg-gray-50 transition border-t sm:border-t-0 sm:border-l border-gray-100 min-h-[96px]" 
                  ref={isFirst ? travellerRef : null} 
                  onClick={() => isFirst && setShowTravellerDropdown(!showTravellerDropdown)}>
-              <svg className="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 text-gray-700 self-start mt-1" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
               </svg>
               <div className="flex-1 min-w-0">
-                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-0.5 leading-none">Travellers</label>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1 leading-none">Travellers</label>
                 <span className="block font-bold text-gray-900 text-xs md:text-sm leading-tight truncate">{getTravellerSummary()}</span>
               </div>
               {isFirst && renderTravellerDropdown()}
@@ -1311,7 +1311,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         </div>
         
         {isFirst && (
-          <button type="submit" disabled={loading || !segment.from || !segment.to || !segment.date} className="w-full lg:w-auto bg-black text-white px-8 py-4 lg:py-5 font-bold text-lg rounded-xl lg:rounded-lg hover:bg-gray-900 transition active:scale-95 lg:ml-1 min-w-[140px] shadow-lg flex items-center justify-center mt-2 lg:mt-0 disabled:opacity-50 disabled:cursor-not-allowed">
+          <button type="submit" disabled={loading || !segment.from || !segment.to || !segment.date} className="w-full lg:w-auto bg-black text-white px-8 py-5 lg:py-6 font-bold text-lg rounded-xl lg:rounded-lg hover:bg-gray-900 transition active:scale-95 min-w-[140px] shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
             {loading ? (
               <>
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
@@ -1323,7 +1323,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       </div>
     );
   };
-
   return (
     <div className="w-full max-w-7xl mx-auto px-2 md:px-4">
       <div className="bg-white rounded-2xl md:rounded-[24px] shadow-2xl overflow-visible">

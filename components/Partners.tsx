@@ -17,10 +17,10 @@ const Partners: React.FC = () => {
   ];
 
   return (
-    <section className="py-18  w-full">
+    <section className="pt-0 pb-0 md:pt-1 md:pb-0 w-full">
       <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-10">
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
+        <div className="text-center mb-4">
+          <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-1">
             {t?.("Global Partners") || "Global Partners"}
           </h2>
           <p className="text-gray-600 text-sm md:text-base">
@@ -29,14 +29,15 @@ const Partners: React.FC = () => {
           </p>
         </div>
 
-        {/* Single horizontal line */}
-        <div className="flex items-center justify-center space-x-8 md:space-x-12 lg:space-x-16 overflow-x-auto pb-4 hide-scrollbar">
+        {/* Single horizontal line - fixed for mobile */}
+        <div className="flex items-center justify-start md:justify-center space-x-6 md:space-x-12 lg:space-x-16 overflow-x-auto px-2 pb-2 hide-scrollbar">
           {partners.map((partner) => (
             <div key={partner.name} className="flex-shrink-0">
               <img
                 src={partner.logo}
                 alt={`${partner.name} logo`}
-                className="h-16 md:h-20 w-auto object-contain transition-transform duration-300 hover:scale-110"
+                className="h-14 md:h-20 w-auto object-contain transition-transform duration-300 hover:scale-110"
+                style={{ maxWidth: 'none' }}
               />
             </div>
           ))}

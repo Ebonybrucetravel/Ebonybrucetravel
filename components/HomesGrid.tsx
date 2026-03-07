@@ -507,8 +507,8 @@ const HomesGrid: React.FC<HomesGridProps> = ({
 
   if (isLoading) {
     return (
-      <section className="px-4 md:px-8 lg:px-16 py-12">
-        <div className="flex justify-between items-end mb-10">
+      <section className="px-4 md:px-8 lg:px-16 pt-0 pb-12">
+        <div className="flex justify-between items-end mb-8">
           <div>
             <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
               {title}
@@ -543,7 +543,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
 
   if (hasError) {
     return (
-      <section className="px-4 md:px-8 lg:px-16 py-12">
+      <section className="px-4 md:px-8 lg:px-16 pt-0 pb-12">
         <div className="text-center">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
             {title}
@@ -561,8 +561,8 @@ const HomesGrid: React.FC<HomesGridProps> = ({
   }
 
   return (
-    <section className="px-4 md:px-8 lg:px-16 py-12">
-      <div className="flex justify-between items-end mb-10">
+    <section className="px-4 md:px-8 lg:px-16 pt-0 pb-12">
+      <div className="flex justify-between items-end mb-8">
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
             {title}
