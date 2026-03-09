@@ -1161,12 +1161,12 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
           <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-[2px]">
             {/* From Input with Autocomplete */}
             <div className="relative" ref={index === activeSegmentIndex ? fromRef : null}>
-              <div className="bg-white p-4 md:p-5 flex items-center gap-3 relative rounded-t-lg sm:rounded-l-lg sm:rounded-tr-none min-h-[96px]">
-                <svg className="w-6 h-6 text-[#33a8da] self-start mt-1" fill="currentColor" viewBox="0 0 24 24">
+              <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 relative rounded-t-lg sm:rounded-l-lg sm:rounded-tr-none min-h-[72px]">
+                <svg className="w-4 h-4 text-[#33a8da] self-center" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
                 </svg>
                 <div className="flex-1 relative">
-                  <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1 leading-none">From</label>
+                  <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none">From</label>
                   <input 
                     type="text" 
                     value={segment.from}
@@ -1179,8 +1179,8 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                       setShowFromDropdown(true);
                       setShowToDropdown(false);
                     }}
-                    className="w-full font-bold text-gray-900 focus:outline-none text-base bg-transparent p-0 pr-6" 
-                    placeholder="City or airport code" 
+                    className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0 pr-5" 
+                    placeholder="City/Code" 
                   />
                   {segment.from && (
                     <button 
@@ -1191,14 +1191,14 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                         setSegments(newSegments);
                         setShowFromDropdown(false);
                       }}
-                      className="absolute right-0 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
                     >
                       ×
                     </button>
                   )}
                 </div>
-                <button type="button" onClick={() => handleSwap(index)} className="absolute right-[-10px] sm:right-[-18px] top-1/2 -translate-y-1/2 z-20 bg-white border border-gray-100 rounded-full p-1.5 shadow-sm hover:bg-gray-50 transition hidden sm:block">
-                  <svg className="w-3 h-3 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <button type="button" onClick={() => handleSwap(index)} className="absolute right-[-10px] sm:right-[-16px] top-1/2 -translate-y-1/2 z-20 bg-white border border-gray-100 rounded-full p-0.5 shadow-sm hover:bg-gray-50 transition hidden sm:block">
+                  <svg className="w-2 h-2 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                     <path d="M7 16V4M7 4L3 8M7 4L11 8M17 8V20M17 20L13 16M17 20L21 16" />
                   </svg>
                 </button>
@@ -1208,12 +1208,12 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   
             {/* To Input with Autocomplete */}
             <div className="relative" ref={index === activeSegmentIndex ? toRef : null}>
-              <div className="bg-white p-4 md:p-5 flex items-center gap-3 border-t sm:border-t-0 sm:border-l border-gray-100 rounded-b-lg sm:rounded-r-lg sm:rounded-bl-none min-h-[96px]">
-                <svg className="w-6 h-6 text-[#33a8da] rotate-180 shrink-0 self-start mt-1" fill="currentColor" viewBox="0 0 24 24">
+              <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 border-t sm:border-t-0 sm:border-l border-gray-100 rounded-b-lg sm:rounded-r-lg sm:rounded-bl-none min-h-[72px]">
+                <svg className="w-4 h-4 text-[#33a8da] rotate-180 shrink-0 self-center" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
                 </svg>
                 <div className="flex-1 relative">
-                  <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1 leading-none">To</label>
+                  <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none">To</label>
                   <input 
                     type="text" 
                     value={segment.to}
@@ -1226,8 +1226,8 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                       setShowToDropdown(true);
                       setShowFromDropdown(false);
                     }}
-                    className="w-full font-bold text-gray-900 focus:outline-none text-base bg-transparent p-0 pr-6" 
-                    placeholder="City or airport code" 
+                    className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0 pr-5" 
+                    placeholder="City/Code" 
                   />
                   {segment.to && (
                     <button 
@@ -1238,7 +1238,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                         setSegments(newSegments);
                         setShowToDropdown(false);
                       }}
-                      className="absolute right-0 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
                     >
                       ×
                     </button>
@@ -1251,15 +1251,15 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   
           {/* Dates / Travellers Section */}
           <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-[2px]">
-            <div className={`p-4 md:p-5 flex items-center gap-3 relative cursor-pointer group hover:bg-gray-50 transition border-t sm:border-t-0 lg:border-l border-gray-100 min-h-[96px] ${isRangeSelected ? 'bg-blue-50/50' : 'bg-white'}`}>
-              <svg className="w-6 h-6 text-gray-600 flex-shrink-0 self-start mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <div className={`p-2.5 md:p-3 flex items-center gap-2 relative cursor-pointer group hover:bg-gray-50 transition border-t sm:border-t-0 lg:border-l border-gray-100 min-h-[72px] ${isRangeSelected ? 'bg-blue-50/50' : 'bg-white'}`}>
+              <svg className="w-4 h-4 text-gray-600 flex-shrink-0 self-center" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               <div className="flex-1 flex gap-2 min-w-0">
                 <div className="flex-1 min-w-0 relative h-auto flex flex-col justify-center">
-                  <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1 leading-none truncate">Depart</label>
-                  <span className={`block font-bold text-xs md:text-sm leading-tight truncate ${segment.date ? 'text-gray-900' : 'text-gray-400'}`}>
-                    {segment.date ? new Date(segment.date).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'Select date'}
+                  <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none truncate">Depart</label>
+                  <span className={`block font-bold text-xs leading-tight truncate ${segment.date ? 'text-gray-900' : 'text-gray-400'}`}>
+                    {segment.date ? new Date(segment.date).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'Select'}
                   </span>
                   <input 
                     type="date" 
@@ -1272,9 +1272,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 </div>
                 {tripType === 'round-trip' && index === 0 && (
                   <div className="flex-1 min-w-0 border-l border-gray-100 pl-2 relative h-auto flex flex-col justify-center">
-                    <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1 leading-none truncate">Return</label>
-                    <span className={`block font-bold text-xs md:text-sm leading-tight truncate ${returnDate ? 'text-gray-900' : 'text-gray-400'}`}>
-                      {returnDate ? new Date(returnDate).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'Select date'}
+                    <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none truncate">Return</label>
+                    <span className={`block font-bold text-xs leading-tight truncate ${returnDate ? 'text-gray-900' : 'text-gray-400'}`}>
+                      {returnDate ? new Date(returnDate).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'Select'}
                     </span>
                     <input 
                       type="date" 
@@ -1288,20 +1288,20 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 )}
               </div>
             </div>
-            <div className="bg-white p-4 md:p-5 flex items-center gap-3 relative cursor-pointer group hover:bg-gray-50 transition border-t sm:border-t-0 sm:border-l border-gray-100 min-h-[96px]" 
+            <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 relative cursor-pointer group hover:bg-gray-50 transition border-t sm:border-t-0 sm:border-l border-gray-100 min-h-[72px]" 
                  ref={isFirst ? travellerRef : null} 
                  onClick={() => isFirst && setShowTravellerDropdown(!showTravellerDropdown)}>
-              <svg className="w-6 h-6 text-gray-700 self-start mt-1" fill="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-gray-700 self-center" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
               </svg>
               <div className="flex-1 min-w-0">
-                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1 leading-none">Travellers</label>
-                <span className="block font-bold text-gray-900 text-xs md:text-sm leading-tight truncate">{getTravellerSummary()}</span>
+                <label className="block text-[7px] font-bold text-gray-500 uppercase mb-0 leading-none">Travellers</label>
+                <span className="block font-bold text-gray-900 text-xs leading-tight truncate">{getTravellerSummary()}</span>
               </div>
               {isFirst && renderTravellerDropdown()}
               {isMultiCity && index > 0 && (
-                <button type="button" onClick={(e) => { e.stopPropagation(); removeSegment(index); }} className="absolute -right-3 -top-3 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-600 transition shadow-md z-30">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <button type="button" onClick={(e) => { e.stopPropagation(); removeSegment(index); }} className="absolute -right-2.5 -top-2.5 bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center hover:bg-red-600 transition shadow-md z-30">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                     <path d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
@@ -1311,11 +1311,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         </div>
         
         {isFirst && (
-          <button type="submit" disabled={loading || !segment.from || !segment.to || !segment.date} className="w-full lg:w-auto bg-black text-white px-8 py-5 lg:py-6 font-bold text-lg rounded-xl lg:rounded-lg hover:bg-gray-900 transition active:scale-95 min-w-[140px] shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+          <button type="submit" disabled={loading || !segment.from || !segment.to || !segment.date} className="w-full lg:w-auto bg-black text-white px-5 py-3.5 lg:py-4 font-bold text-sm rounded-xl lg:rounded-lg hover:bg-gray-900 transition active:scale-95 min-w-[100px] shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
             {loading ? (
               <>
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                Searching...
+                <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white mr-1.5"></div>
+                <span className="text-xs">Search</span>
               </>
             ) : 'Search'}
           </button>
@@ -1454,204 +1454,263 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             </div>
           )}
 
-          {activeTab === 'hotels' && (
-            <div className="flex flex-col lg:flex-row items-stretch gap-1 bg-[#33a8da] rounded-xl p-1">
-              <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-1">
-                {/* Hotel Location with Autocomplete */}
-                <div className="md:col-span-4 relative" ref={hotelLocationRef}>
-                  <div className="bg-white p-3 md:p-4 flex items-center gap-3 rounded-t-lg md:rounded-l-lg md:rounded-tr-none">
-                    <svg className="w-6 h-6 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24"><path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" /></svg>
-                    <div className="flex-1 relative">
-                      <label className="block text-[9px] font-bold text-gray-400 uppercase mb-0.5">Destination</label>
-                      <input 
-                        type="text" 
-                        value={hotelLocation} 
-                        onChange={(e) => handleHotelLocationChange(e.target.value)}
-                        onFocus={() => {
-                          if (hotelLocation.length < 2) {
-                            setHotelLocationSuggestions(popularHotelDestinations.slice(0, 6));
-                          }
-                          setShowHotelLocationDropdown(true);
-                        }}
-                        className="w-full font-bold text-gray-900 focus:outline-none text-sm md:text-base bg-transparent p-0 pr-6" 
-                        placeholder="City, country, or landmark" 
-                      />
-                      {hotelLocation && (
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            setHotelLocation('');
-                            setShowHotelLocationDropdown(false);
-                          }}
-                          className="absolute right-0 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {showHotelLocationDropdown && renderHotelLocationDropdown()}
-                </div>
-
-                {/* Check-in Date */}
-                <div className="md:col-span-4 bg-white p-3 md:p-4 flex items-center gap-3 relative border-t md:border-t-0 md:border-l border-gray-100">
-                  <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                  <div className="flex-1 grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">In</label>
-                      <input 
-                        type="date" 
-                        min={today} 
-                        value={checkInDate} 
-                        onChange={(e) => setCheckInDate(e.target.value)} 
-                        className="w-full font-bold outline-none text-xs bg-transparent p-0" 
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Out</label>
-                      <input 
-                        type="date" 
-                        min={checkInDate || today} 
-                        value={checkOutDate} 
-                        onChange={(e) => setCheckOutDate(e.target.value)} 
-                        className="w-full font-bold outline-none text-xs bg-transparent p-0" 
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Guests & Rooms */}
-                <div className="md:col-span-4 bg-white p-3 md:p-4 rounded-b-lg md:rounded-r-lg md:rounded-bl-none flex items-center justify-between border-t md:border-t-0 md:border-l border-gray-100">
-                  <div onClick={() => setShowTravellerDropdown(!showTravellerDropdown)} className="cursor-pointer">
-                    <span className="block text-[9px] font-bold text-gray-400 uppercase">Guests</span>
-                    <span className="text-xs font-bold">{travellers.adults} Adults, {rooms} Room</span>
-                  </div>
-                  <button 
-  type="submit" 
-  disabled={loading} 
-  className="bg-black text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-gray-800 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex items-center justify-center min-w-[80px]"
->
-  {loading ? (
-    <div className="flex items-center gap-2">
-      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-      <span>...</span>
-    </div>
-  ) : 'Search'}
-</button>
-                </div>
-              </div>
-            </div>
+{activeTab === 'hotels' && (
+  <div className="flex flex-col lg:flex-row items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px]">
+    <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-[2px]">
+      {/* Hotel Location with Autocomplete */}
+      <div className="md:col-span-4 relative" ref={hotelLocationRef}>
+        <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 md:rounded-l-lg min-h-[72px]">
+          <svg className="w-4 h-4 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" />
+          </svg>
+          <div className="flex-1">
+            <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">Destination</label>
+            <input 
+              type="text" 
+              value={hotelLocation} 
+              onChange={(e) => handleHotelLocationChange(e.target.value)}
+              onFocus={() => {
+                if (hotelLocation.length < 2) {
+                  setHotelLocationSuggestions(popularHotelDestinations.slice(0, 6));
+                }
+                setShowHotelLocationDropdown(true);
+              }}
+              className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0" 
+              placeholder="City/Country" 
+            />
+          </div>
+          {hotelLocation && (
+            <button 
+              type="button"
+              onClick={() => {
+                setHotelLocation('');
+                setShowHotelLocationDropdown(false);
+              }}
+              className="text-gray-400 hover:text-gray-600 text-sm font-bold px-1"
+            >
+              ×
+            </button>
           )}
-
-
-{activeTab === 'cars' && (
-  <div className="flex flex-col lg:flex-row items-stretch gap-1 bg-[#33a8da] rounded-xl p-1">
-    <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-1">
-      
-      {/* Pick-up Location with Autocomplete - Fixed padding */}
-      <div className="md:col-span-3 relative" ref={carPickUpRef}>
-        <div className="bg-white p-4 md:p-5 rounded-t-lg md:rounded-l-lg h-full flex flex-col justify-center">
-          <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">PICK-UP LOCATION</span>
-          <input 
-            type="text" 
-            value={carPickUp} 
-            onChange={(e) => handleCarPickUpChange(e.target.value)} 
-            onFocus={() => setShowCarPickUpDropdown(true)} 
-            placeholder="City or Airport" 
-            className="w-full font-bold text-gray-800 focus:outline-none bg-transparent p-0 text-sm md:text-base" 
-          />
         </div>
-        {showCarPickUpDropdown && renderCarLocationDropdown(carPickUpSuggestions, 'pickUp')}
+        {showHotelLocationDropdown && renderHotelLocationDropdown()}
       </div>
-      
-      {/* Drop-off Location with Autocomplete - Fixed padding */}
-      <div className="md:col-span-3 relative" ref={carDropOffRef}>
-        <div className="bg-white p-4 md:p-5 border-t md:border-t-0 md:border-l border-gray-100 h-full flex flex-col justify-center">
-          <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">DROP-OFF LOCATION</span>
-          <input 
-            type="text" 
-            value={carDropOff} 
-            onChange={(e) => handleCarDropOffChange(e.target.value)} 
-            onFocus={() => setShowCarDropOffDropdown(true)} 
-            placeholder="City or Airport" 
-            className="w-full font-bold text-gray-800 focus:outline-none bg-transparent p-0 text-sm md:text-base" 
-          />
-        </div>
-        {showCarDropOffDropdown && renderCarLocationDropdown(carDropOffSuggestions, 'dropOff')}
-      </div>
-      
-      {/* Pick-up Date & Time - Matching padding */}
-      <div className="md:col-span-2 bg-white p-4 md:p-5 border-t md:border-t-0 md:border-l border-gray-100 h-full">
-        <div className="h-full flex flex-col justify-center">
-          <div className="mb-3">
-            <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">PICK-UP DATE</span>
+
+      {/* Check-in Date */}
+      <div className="md:col-span-4 bg-white p-2.5 md:p-3 flex items-center gap-2 relative border-t md:border-t-0 md:border-l border-gray-100 min-h-[72px]">
+        <svg className="w-4 h-4 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        <div className="flex-1 grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">In</label>
             <input 
               type="date" 
               min={today} 
-              value={carPickUpDate} 
-              onChange={(e) => setCarPickUpDate(e.target.value)} 
-              className="w-full font-bold text-gray-800 outline-none text-xs md:text-sm bg-transparent p-0" 
+              value={checkInDate} 
+              onChange={(e) => setCheckInDate(e.target.value)} 
+              className="w-full font-bold outline-none text-xs bg-transparent p-0" 
             />
           </div>
           <div>
-            <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">PICK-UP TIME</span>
-            <input 
-              type="time" 
-              value={carPickUpTime} 
-              onChange={(e) => setCarPickUpTime(e.target.value)} 
-              className="w-full font-bold text-gray-800 outline-none text-xs md:text-sm bg-transparent p-0" 
-            />
-          </div>
-        </div>
-      </div>
-      
-      {/* Drop-off Date & Time - Matching padding */}
-      <div className="md:col-span-2 bg-white p-4 md:p-5 border-t md:border-t-0 md:border-l border-gray-100 h-full">
-        <div className="h-full flex flex-col justify-center">
-          <div className="mb-3">
-            <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">DROP-OFF DATE</span>
+            <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">Out</label>
             <input 
               type="date" 
-              min={carPickUpDate || today} 
-              value={carDropOffDate} 
-              onChange={(e) => setCarDropOffDate(e.target.value)} 
-              className="w-full font-bold text-gray-800 outline-none text-xs md:text-sm bg-transparent p-0" 
-            />
-          </div>
-          <div>
-            <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">DROP-OFF TIME</span>
-            <input 
-              type="time" 
-              value={carDropOffTime} 
-              onChange={(e) => setCarDropOffTime(e.target.value)} 
-              className="w-full font-bold text-gray-800 outline-none text-xs md:text-sm bg-transparent p-0" 
+              min={checkInDate || today} 
+              value={checkOutDate} 
+              onChange={(e) => setCheckOutDate(e.target.value)} 
+              className="w-full font-bold outline-none text-xs bg-transparent p-0" 
             />
           </div>
         </div>
       </div>
-      
-      {/* Passengers & Search Button - Matching padding */}
-      <div className="md:col-span-2 bg-white p-4 md:p-5 rounded-b-lg md:rounded-r-lg border-t md:border-t-0 md:border-l border-gray-100 h-full">
-        <div className="h-full flex flex-col justify-between">
-          <div onClick={() => setShowCarTravellerDropdown(!showCarTravellerDropdown)} className="cursor-pointer mb-4">
-            <span className="block text-[9px] font-bold text-gray-400 uppercase mb-1">PASSENGERS</span>
-            <span className="text-sm md:text-base font-bold text-gray-800">{carTravellers} People</span>
+
+      {/* Guests & Search Button */}
+      <div className="md:col-span-4 bg-white p-2.5 md:p-3 flex items-center justify-between md:rounded-r-lg border-t md:border-t-0 md:border-l border-gray-100 min-h-[72px]">
+        <div className="flex items-center gap-2 flex-1">
+          <svg className="w-4 h-4 text-gray-700 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+          </svg>
+          <div onClick={() => setShowTravellerDropdown(!showTravellerDropdown)} className="cursor-pointer">
+            <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">Guests</label>
+            <span className="block font-bold text-gray-900 text-xs">{travellers.adults} Adults, {rooms} Room</span>
           </div>
-          <button 
-            type="submit" 
-            disabled={loading || !carPickUp || !carDropOff || !carPickUpDate || !carDropOffDate} 
-            className="w-full bg-black text-white py-3 font-bold text-sm rounded-lg hover:bg-gray-800 transition-all active:scale-[0.98] shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+        </div>
+        <button 
+          type="submit" 
+          disabled={loading} 
+          className="bg-black text-white px-5 py-3.5 lg:py-4 font-bold text-sm rounded-xl lg:rounded-lg hover:bg-gray-900 transition active:scale-95 min-w-[100px] shadow-lg h-[42px] flex items-center justify-center"
+        >
+          {loading ? (
+            <div className="flex items-center gap-1.5">
+              <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
+              <span className="text-xs">Search</span>
+            </div>
+          ) : 'Search'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{activeTab === 'cars' && (
+  <div className="flex flex-wrap items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px] relative">
+    {/* Pick-up Location - 2 columns */}
+    <div className="flex-1 lg:flex-2 relative">
+      <div className="bg-white p-2 md:p-2.5 flex items-center gap-1.5 rounded-t-lg lg:rounded-l-lg lg:rounded-tr-none min-h-[68px]">
+        <svg className="w-3.5 h-3.5 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" />
+        </svg>
+        <div className="flex-1 relative">
+          <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PICK-UP</label>
+          <input
+            type="text"
+            value={carPickUp}
+            onChange={(e) => handleCarPickUpChange(e.target.value)}
+            onFocus={() => setShowCarPickUpDropdown(true)}
+            placeholder="City"
+            className="w-full font-bold text-gray-900 focus:outline-none text-[11px] bg-transparent p-0"
+          />
+        </div>
+        {carPickUp && (
+          <button
+            type="button"
+            onClick={() => {
+              setCarPickUp('');
+              setShowCarPickUpDropdown(false);
+            }}
+            className="text-gray-400 hover:text-gray-600 text-xs font-bold px-0.5"
           >
-            {loading ? (
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                <span className="hidden sm:inline">Searching</span>
-                <span className="sm:hidden">...</span>
-              </div>
-            ) : 'Search Cars'}
+            ×
           </button>
-        </div>
+        )}
       </div>
+      {showCarPickUpDropdown && renderCarLocationDropdown(carPickUpSuggestions, 'pickUp')}
+    </div>
+
+    {/* Drop-off Location - 2 columns */}
+    <div className="flex-1 lg:flex-2 relative">
+      <div className="bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+        <svg className="w-3.5 h-3.5 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" />
+        </svg>
+        <div className="flex-1">
+          <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">DROP-OFF</label>
+          <input
+            type="text"
+            value={carDropOff}
+            onChange={(e) => handleCarDropOffChange(e.target.value)}
+            onFocus={() => setShowCarDropOffDropdown(true)}
+            placeholder="City"
+            className="w-full font-bold text-gray-900 focus:outline-none text-[11px] bg-transparent p-0"
+          />
+        </div>
+        {carDropOff && (
+          <button
+            type="button"
+            onClick={() => {
+              setCarDropOff('');
+              setShowCarDropOffDropdown(false);
+            }}
+            className="text-gray-400 hover:text-gray-600 text-xs font-bold px-0.5"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {showCarDropOffDropdown && renderCarLocationDropdown(carDropOffSuggestions, 'dropOff')}
+    </div>
+
+    {/* Pick-up Time - 1.5 columns */}
+    <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+      <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <div className="flex-1">
+        <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PICK TIME</label>
+        <input
+          type="time"
+          value={carPickUpTime}
+          onChange={(e) => setCarPickUpTime(e.target.value)}
+          className="w-full font-bold outline-none text-[11px] bg-transparent p-0"
+        />
+      </div>
+    </div>
+
+    {/* Pick-up Date - 1.5 columns */}
+    <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+      <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+      <div className="flex-1">
+        <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PICK DATE</label>
+        <input
+          type="date"
+          min={today}
+          value={carPickUpDate}
+          onChange={(e) => setCarPickUpDate(e.target.value)}
+          className="w-full font-bold outline-none text-[11px] bg-transparent p-0"
+        />
+      </div>
+    </div>
+
+    {/* Drop-off Time - 1.5 columns */}
+    <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+      <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <div className="flex-1">
+        <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">DROP TIME</label>
+        <input
+          type="time"
+          value={carDropOffTime}
+          onChange={(e) => setCarDropOffTime(e.target.value)}
+          className="w-full font-bold outline-none text-[11px] bg-transparent p-0"
+        />
+      </div>
+    </div>
+
+    {/* Drop-off Date - 1.5 columns */}
+    <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+      <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+      <div className="flex-1">
+        <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">DROP DATE</label>
+        <input
+          type="date"
+          min={carPickUpDate || today}
+          value={carDropOffDate}
+          onChange={(e) => setCarDropOffDate(e.target.value)}
+          className="w-full font-bold outline-none text-[11px] bg-transparent p-0"
+        />
+      </div>
+    </div>
+
+    {/* Passengers - 1 column */}
+    <div className="flex-1 lg:flex-1 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+      <svg className="w-3.5 h-3.5 text-gray-700 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+      </svg>
+      <div onClick={() => setShowCarTravellerDropdown(!showCarTravellerDropdown)} className="cursor-pointer flex-1">
+        <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PASSENGERS</label>
+        <span className="block font-bold text-gray-900 text-[11px] leading-tight">{carTravellers}</span>
+      </div>
+    </div>
+
+    {/* Search Button - 1 column */}
+    <div className="flex-1 lg:flex-1 bg-white p-2 md:p-2.5 flex items-center justify-center md:rounded-r-lg border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+      <button
+        type="submit"
+        disabled={loading || !carPickUp || !carDropOff || !carPickUpDate || !carDropOffDate}
+        className="bg-black text-white px-3 py-2 font-bold text-xs rounded-lg hover:bg-gray-900 transition active:scale-95 w-full shadow-lg h-[36px] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {loading ? (
+          <div className="flex items-center gap-1">
+            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+            <span className="text-[10px]">Search</span>
+          </div>
+        ) : 'Search'}
+      </button>
     </div>
   </div>
 )}
