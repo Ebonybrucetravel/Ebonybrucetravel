@@ -16,7 +16,7 @@ const serviceData = {
     bannerImage:
       "https://images.unsplash.com/photo-1506929562872-bb421503ef21?q=80&w=1968&auto=format&fit=crop",
     overview:
-      "We specialize in organizing and managing tours, excursions, and event ticketing. We do not book or manage flight reservations or offer immigration services. Our focus is providing tailored travel experiences and ticketing solutions for both local and international clients.",
+      "We are a specialized flight travel agency focused on professional flight booking and reservation management. We handle the complexities of air travel so you don't have to. From individual itineraries to large-scale ticketing solutions, our mission is to provide efficient, reliable flight services for a global clientele.",
     features: [
       {
         icon: "🗺️",

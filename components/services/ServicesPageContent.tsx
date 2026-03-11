@@ -76,9 +76,12 @@ export default function ServicesPageContent({
                 Travel Services
               </h3>
               <p className="text-gray-600 leading-relaxed mb-4">
-                We specialize in organizing and managing tours, excursions, and
-                event ticketing. We do not book or manage flight reservations or
-                offer immigration services.
+                We are a specialized flight travel agency focused on
+                professional flight booking and reservation management. We
+                handle the complexities of air travel so you don't have to. From
+                individual itineraries to large-scale ticketing solutions, our
+                mission is to provide efficient, reliable flight services for a
+                global clientele.
               </p>
               <p className="text-gray-600 leading-relaxed mb-6">
                 Our focus is providing tailored travel experiences and ticketing

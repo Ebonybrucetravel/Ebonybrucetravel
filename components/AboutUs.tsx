@@ -196,7 +196,7 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
 
               <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
                 {[
-                  "Travel Services (Non-Flight)",
+                  "Travel Services",
                   "Logistics – DHL Franchised Services ",
                   "Hotel Reservations",
                   "Educational Consulting",

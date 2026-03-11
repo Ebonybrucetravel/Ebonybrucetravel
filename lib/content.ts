@@ -176,34 +176,7 @@ export const pageContentMap: Record<string, PageContent> = {
       },
     ],
   },
-  Career: {
-    title: "Join the Elite Team",
-    subtitle: "Build the future of travel with Ebony Bruce.",
-    image:
-      "https://images.unsplash.com/photo-1521737711867-e3b97375f902?auto=format&fit=crop&q=80&w=1200",
-    sections: [
-      {
-        title: "Why Us?",
-        body: "Work in a fast-paced, innovative environment with global impact and unlimited growth potential.",
-        icon: "🚀",
-      },
-      {
-        title: "Open Roles",
-        body: "We are currently hiring for Travel Consultants, Software Engineers, and Logistics Managers.",
-        icon: "💼",
-      },
-      {
-        title: "Our Culture",
-        body: "Join a team that values integrity, excellence, and collaboration. We invest in our people and celebrate diverse perspectives.",
-        icon: "🌟",
-      },
-      {
-        title: "Benefits",
-        body: "Competitive compensation, professional development opportunities, and exclusive travel perks for our team members.",
-        icon: "🎁",
-      },
-    ],
-  },
+
   Sustainability: {
     title: "Travel with a Conscience",
     subtitle: "Protecting the destinations we love for generations to come.",

@@ -8,19 +8,19 @@ interface PrivacyPolicyProps {
 
 const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Top Navigation Bar */}
-      <div className="max-w-7xl mx-auto px-6 py-6 border-b border-gray-100 flex items-center bg-white sticky top-0 z-10 shadow-sm">
+    <div className="min-h-screen bg-white animate-in fade-in duration-500">
+      {/* 1. Top Navigation Bar - Exact Match to About Us */}
+      <div className="max-w-7xl mx-auto px-6 py-6 border-b border-gray-50 flex items-center bg-white sticky top-0 z-50 shadow-sm">
         <button
           onClick={onBack}
-          className="flex items-center gap-2 text-base font-semibold text-gray-700 hover:text-[#2D97C4] transition-colors"
+          className="flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-[#33a8da] transition group"
         >
           <svg
-            className="w-5 h-5"
+            className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
-            strokeWidth={2.5}
+            strokeWidth={3}
           >
             <path
               strokeLinecap="round"
@@ -32,256 +32,270 @@ const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
         </button>
       </div>
 
-      {/* Hero Banner – consistent with Terms page */}
-      <section className="relative bg-gradient-to-br from-[#001f3f] to-[#003366] text-white py-20 md:py-28 overflow-hidden">
-        <div className="absolute inset-0 opacity-15 pointer-events-none">
+      {/* 2. Banner Section - Bold High-Contrast Matched to About Us */}
+      <section className="relative bg-gradient-to-br from-[#001f3f] to-[#002b4f] text-white py-24 overflow-hidden">
+        <div className="absolute inset-0 opacity-10">
           <img
-            src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&q=80&w=1600"
-            alt="Global travel routes"
+            src="https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&q=80&w=1600"
+            alt="Security Background"
             className="w-full h-full object-cover"
           />
         </div>
 
         <div className="relative max-w-7xl mx-auto px-6 text-center">
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold tracking-tight mb-5 md:mb-6">
+          <h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-6">
             Ebony Bruce Travels
             <span className="text-[#33a8da]">
               <br />
               Privacy Policy
             </span>
           </h1>
-          <p className="text-lg md:text-xl text-gray-200 max-w-3xl mx-auto leading-relaxed">
-            How Ebony Bruce Travels collects, uses, protects and shares your
-            personal information.
+          <p className="text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed font-medium">
+            Your trust is our greatest asset. Learn how we collect, use, and
+            safeguard your personal data with global security standards.
           </p>
         </div>
       </section>
 
-      {/* Main Content */}
-      <section className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 xl:px-10 py-10 md:py-12 lg:py-16">
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
-          <div className="p-6 sm:p-8 md:p-12 lg:p-14 xl:p-16 prose prose-lg md:prose-xl max-w-none leading-relaxed">
-            <p className="text-gray-700 leading-relaxed mb-10 text-lg md:text-xl font-medium">
+      {/* 3. Main Content Section */}
+      <section className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-10 md:py-16">
+        {/* Privacy Summary Grid - High Impact */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20 -mt-24 relative z-20">
+          {[
+            {
+              title: "Data Protection",
+              desc: "Military-grade encryption for all your travel and identity documents.",
+              icon: "🔐",
+            },
+            {
+              title: "Transparency",
+              desc: "We never sell your data. We only share it with confirmed travel suppliers.",
+              icon: "💎",
+            },
+            {
+              title: "Your Rights",
+              desc: "Total control over your data, including the right to delete your profile.",
+              icon: "⚙️",
+            },
+          ].map((card, i) => (
+            <div
+              key={i}
+              className="bg-white p-8 rounded-2xl shadow-2xl border border-gray-100 hover:translate-y-[-4px] transition-transform"
+            >
+              <div className="text-4xl mb-4">{card.icon}</div>
+              <h3 className="text-xl font-black text-[#001f3f] mb-2">
+                {card.title}
+              </h3>
+              <p className="text-gray-500 text-sm leading-relaxed font-bold">
+                {card.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-white rounded-[2.5rem] overflow-hidden">
+          <div className="p-6 sm:p-8 md:p-12 lg:p-16 max-w-none leading-relaxed">
+            <p className="text-[#001f3f] leading-relaxed mb-12 text-xl md:text-2xl font-black">
               At{" "}
-              <span className="font-bold text-[#2D97C4]">
+              <span className="text-[#33a8da]">
                 Ebony Bruce Travels Limited
               </span>
-              , we value your trust and are committed to protecting your
-              privacy.
+              , we are committed to global data compliance (NDPR/GDPR).
             </p>
 
-            <p className="text-gray-600 mb-10 text-base md:text-lg">
-              This Privacy Policy explains how we collect, use, disclose, store,
-              and protect your personal information when you use our website,
-              mobile application, booking services, customer support,
-              newsletters, and any other services we provide (collectively, the
-              “Platform”).
-            </p>
+            <div className="space-y-16">
+              {/* Section 1: Information Collection */}
+              <section>
+                <h2 className="text-sm font-black text-[#33a8da] uppercase tracking-widest mb-4">
+                  1. Information We Collect
+                </h2>
+                <h3 className="text-3xl font-black text-[#001f3f] tracking-tight mb-8">
+                  What Data We Manage
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="bg-gray-50 p-6 rounded-2xl border-l-4 border-[#33a8da]">
+                    <h4 className="font-black text-[#001f3f] mb-2">
+                      Personal Identity
+                    </h4>
+                    <p className="text-gray-600 text-sm">
+                      Full name, email, phone number, passport details,
+                      nationality, and emergency contacts.
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-6 rounded-2xl border-l-4 border-[#33a8da]">
+                    <h4 className="font-black text-[#001f3f] mb-2">
+                      Booking & Payment
+                    </h4>
+                    <p className="text-gray-600 text-sm">
+                      Flight/hotel details, travel dates, billing address, and
+                      partial payment info (last 4 digits).
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-6 rounded-2xl border-l-4 border-[#33a8da]">
+                    <h4 className="font-black text-[#001f3f] mb-2">
+                      Technical Data
+                    </h4>
+                    <p className="text-gray-600 text-sm">
+                      IP addresses, browser type, device ID, and usage analytics
+                      through cookies.
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-6 rounded-2xl border-l-4 border-[#33a8da]">
+                    <h4 className="font-black text-[#001f3f] mb-2">
+                      Communications
+                    </h4>
+                    <p className="text-gray-600 text-sm">
+                      Customer support tickets, chat logs, and marketing
+                      preference data.
+                    </p>
+                  </div>
+                </div>
+              </section>
 
-            <hr className="my-10 md:my-12 border-gray-200" />
+              {/* Section 2: Collection Methods */}
+              <section>
+                <h2 className="text-sm font-black text-[#33a8da] uppercase tracking-widest mb-4">
+                  2. How We Collect Information
+                </h2>
+                <h3 className="text-3xl font-black text-[#001f3f] tracking-tight mb-6">
+                  Direct and Indirect Channels
+                </h3>
+                <ul className="space-y-4 text-gray-700 text-lg font-medium">
+                  <li className="flex gap-3">
+                    <span className="text-[#33a8da] font-black">•</span>{" "}
+                    Directly from you during account registration or booking.
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="text-[#33a8da] font-black">•</span>{" "}
+                    Automatically via cookies, pixels, and web beacons.
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="text-[#33a8da] font-black">•</span> From
+                    third-party suppliers (Airlines/Hotels) and payment
+                    processors.
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="text-[#33a8da] font-black">•</span> Social
+                    login providers (Google, Apple, Facebook) upon your consent.
+                  </li>
+                </ul>
+              </section>
 
-            <h2 className="text-2xl md:text-3xl lg:text-4xl mb-6 text-[#2D97C4]">
-              1. Information We Collect
-            </h2>
-            <p className="text-gray-700 mb-6 text-base md:text-lg">
-              We may collect the following types of information:
-            </p>
-            <ul className="list-disc pl-6 space-y-3 text-gray-700 mb-8 text-base md:text-lg">
-              <li>
-                <strong>Personal Information</strong>: full name, email address,
-                phone number, date of birth, passport/ID details, nationality,
-                gender, emergency contact
-              </li>
-              <li>
-                <strong>Booking & Travel Information</strong>: flight/hotel/car
-                details, travel dates, payment information (card type & last 4
-                digits – we do not store full card numbers), billing address
-              </li>
-              <li>
-                <strong>Device & Usage Data</strong>: IP address, browser type,
-                device ID, operating system, pages visited, time spent, referral
-                source, cookies & similar technologies
-              </li>
-              <li>
-                <strong>Communication Data</strong>: messages sent via chat,
-                email support tickets, call recordings (where permitted by law)
-              </li>
-              <li>
-                <strong>Marketing & Preference Data</strong>: newsletter
-                subscriptions, marketing preferences, survey responses
-              </li>
-            </ul>
+              {/* Section 3: Usage */}
+              <section className="bg-gray-50 p-10 rounded-[2.5rem] border-l-8 border-[#33a8da]">
+                <h2 className="text-sm font-black text-[#33a8da] uppercase tracking-widest mb-4">
+                  3. Purpose of Processing
+                </h2>
+                <p className="text-gray-700 text-lg mb-6 leading-relaxed">
+                  We process your information to{" "}
+                  <span className="font-black">fulfill bookings</span>, provide
+                  world-class customer support, send service updates,
+                  personalize your travel offers, and comply with international
+                  aviation and immigration laws.
+                </p>
+              </section>
 
-            <h2 className="text-2xl md:text-3xl lg:text-4xl mt-14 mb-6 text-[#2D97C4]">
-              2. How We Collect Information
-            </h2>
-            <ul className="list-disc pl-6 space-y-3 text-gray-700 mb-8 text-base md:text-lg">
-              <li>
-                Directly from you when you create an account, make a booking,
-                contact support, subscribe to newsletters, or fill forms
-              </li>
-              <li>
-                Automatically through cookies, pixels, web beacons, device
-                identifiers, and analytics tools
-              </li>
-              <li>
-                From third parties: travel suppliers (airlines/hotels), payment
-                processors, identity verification services, fraud prevention
-                providers
-              </li>
-              <li>
-                From social login providers (Google, Facebook, Apple) if you
-                choose to sign in that way
-              </li>
-            </ul>
+              {/* Section 4: Sharing */}
+              <section>
+                <h2 className="text-sm font-black text-[#33a8da] uppercase tracking-widest mb-4">
+                  4. Sharing Your Information
+                </h2>
+                <h3 className="text-3xl font-black text-[#001f3f] tracking-tight mb-6">
+                  Controlled Disclosure
+                </h3>
+                <p className="text-gray-600 text-lg mb-6">
+                  We only share your data with{" "}
+                  <span className="text-[#001f3f] font-bold">
+                    verified partners
+                  </span>{" "}
+                  including travel suppliers (Airlines/Hotels), payment
+                  gateways, and regulatory authorities when legally required.
+                  All third-party service providers are bound by strict
+                  confidentiality agreements.
+                </p>
+              </section>
 
-            <h2 className="text-2xl md:text-3xl lg:text-4xl mt-14 mb-6 text-[#2D97C4]">
-              3. How We Use Your Information
-            </h2>
-            <p className="text-gray-700 mb-6 text-base md:text-lg">
-              We use your information to:
-            </p>
-            <ul className="list-disc pl-6 space-y-3 text-gray-700 mb-8 text-base md:text-lg">
-              <li>Process and confirm your bookings</li>
-              <li>
-                Provide customer support and communicate with you about your
-                reservations
-              </li>
-              <li>
-                Send important service messages (booking confirmations, changes,
-                cancellations)
-              </li>
-              <li>
-                Personalize your experience and show relevant offers (if you
-                consented)
-              </li>
-              <li>Prevent fraud, abuse, and unauthorized access</li>
-              <li>
-                Comply with legal obligations (tax, immigration, aviation
-                security)
-              </li>
-              <li>
-                Improve our services, analyze usage trends, and conduct research
-              </li>
-            </ul>
+              {/* Section 5: Security */}
+              <section className="bg-[#001f3f] p-10 rounded-[2.5rem] text-white">
+                <h2 className="text-sm font-black text-[#33a8da] uppercase tracking-widest mb-4">
+                  5. Security Infrastructure
+                </h2>
+                <h3 className="text-3xl font-black tracking-tight mb-6">
+                  Proactive Protection
+                </h3>
+                <p className="text-gray-300 text-lg leading-relaxed">
+                  We implement robust technical and organizational measures to
+                  prevent unauthorized access, loss, or alteration. Our systems
+                  are periodically audited to ensure your data remains protected
+                  against emerging cyber threats.
+                </p>
+              </section>
 
-            <h2 className="text-2xl md:text-3xl lg:text-4xl mt-14 mb-6 text-[#2D97C4]">
-              4. Sharing Your Information
-            </h2>
-            <p className="text-gray-700 mb-6 text-base md:text-lg">
-              We share your information only when necessary:
-            </p>
-            <ul className="list-disc pl-6 space-y-3 text-gray-700 mb-8 text-base md:text-lg">
-              <li>
-                With travel suppliers (airlines, hotels, car companies, tour
-                operators) to fulfill your booking
-              </li>
-              <li>With payment processors and fraud detection partners</li>
-              <li>
-                With service providers (cloud hosting, analytics, email
-                marketing, customer support tools) under strict confidentiality
-                agreements
-              </li>
-              <li>
-                When required by law, court order, regulatory authority, or to
-                protect our rights
-              </li>
-              <li>
-                In the event of merger, acquisition, or sale of assets (your
-                data would be transferred under similar protections)
-              </li>
-            </ul>
+              {/* Section 6: Rights */}
+              <section>
+                <h2 className="text-sm font-black text-[#33a8da] uppercase tracking-widest mb-4">
+                  6. Your Privacy Rights
+                </h2>
+                <p className="text-gray-700 text-lg mb-8 font-medium">
+                  You have the following rights regarding your data:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[#001f3f] font-black uppercase text-xs tracking-widest">
+                  <div className="border border-gray-100 p-4 rounded-xl flex items-center gap-3">
+                    <span className="text-[#33a8da] text-xl">🔘</span> Right to
+                    Access
+                  </div>
+                  <div className="border border-gray-100 p-4 rounded-xl flex items-center gap-3">
+                    <span className="text-[#33a8da] text-xl">🔘</span> Right to
+                    Correction
+                  </div>
+                  <div className="border border-gray-100 p-4 rounded-xl flex items-center gap-3">
+                    <span className="text-[#33a8da] text-xl">🔘</span> Right to
+                    Deletion
+                  </div>
+                  <div className="border border-gray-100 p-4 rounded-xl flex items-center gap-3">
+                    <span className="text-[#33a8da] text-xl">🔘</span> Data
+                    Portability
+                  </div>
+                </div>
+              </section>
 
-            <h2 className="text-2xl md:text-3xl lg:text-4xl mt-14 mb-6 text-[#2D97C4]">
-              5. International Transfers
-            </h2>
-            <p className="text-gray-700 text-base md:text-lg">
-              Your information may be transferred to and processed in countries
-              outside Nigeria (including the UK, EU, US, UAE, and other
-              countries where our suppliers or partners operate). We ensure
-              appropriate safeguards are in place (e.g., Standard Contractual
-              Clauses, adequacy decisions, or binding corporate rules) to
-              protect your data in line with applicable laws.
-            </p>
+              {/* Section 7: Children */}
+              <section>
+                <h2 className="text-sm font-black text-[#33a8da] uppercase tracking-widest mb-4">
+                  7. Children's Privacy
+                </h2>
+                <p className="text-gray-600 text-lg">
+                  Our services are not directed at individuals under 18. We do
+                  not knowingly collect personal data from minors. If such data
+                  is discovered, it is immediately purged from our servers.
+                </p>
+              </section>
+            </div>
 
-            <h2 className="text-2xl md:text-3xl lg:text-4xl mt-14 mb-6 text-[#2D97C4]">
-              6. Your Rights
-            </h2>
-            <p className="text-gray-700 mb-6 text-base md:text-lg">
-              Depending on your location and applicable law, you may have the
-              right to:
-            </p>
-            <ul className="list-disc pl-6 space-y-3 text-gray-700 mb-8 text-base md:text-lg">
-              <li>
-                Access, correct, update or delete your personal information
-              </li>
-              <li>Object to or restrict certain processing</li>
-              <li>Withdraw consent (where processing is based on consent)</li>
-              <li>Request data portability</li>
-              <li>Lodge a complaint with a supervisory authority</li>
-            </ul>
-            <p className="text-gray-700 text-base md:text-lg">
-              To exercise these rights, contact us at{" "}
-              <a href="/contact" className="text-[#2D97C4] hover:underline">
-                privacy@ebonybrucetravels.com
-              </a>
-              .
-            </p>
-
-            <h2 className="text-2xl md:text-3xl lg:text-4xl mt-14 mb-6 text-[#2D97C4]">
-              7. Security
-            </h2>
-            <p className="text-gray-700 text-base md:text-lg">
-              We implement reasonable technical and organizational measures to
-              protect your information from unauthorized access, loss, misuse,
-              or alteration. However, no method of transmission over the
-              internet or electronic storage is 100% secure.
-            </p>
-
-            <h2 className="text-2xl md:text-3xl lg:text-4xl mt-14 mb-6 text-[#2D97C4]">
-              8. Cookies & Tracking Technologies
-            </h2>
-            <p className="text-gray-700 text-base md:text-lg">
-              We use cookies, pixels, and similar technologies to enhance your
-              experience, analyze usage, and deliver personalized content/ads.
-              You can manage preferences via our Cookie Settings or your
-              browser.
-            </p>
-
-            <h2 className="text-2xl md:text-3xl lg:text-4xl mt-14 mb-6 text-[#2D97C4]">
-              9. Children's Privacy
-            </h2>
-            <p className="text-gray-700 text-base md:text-lg">
-              Our services are not directed to individuals under 18. We do not
-              knowingly collect personal information from children under 18. If
-              we become aware that we have collected such data, we will delete
-              it.
-            </p>
-
-            <h2 className="text-2xl md:text-3xl lg:text-4xl mt-14 mb-6 text-[#2D97C4]">
-              10. Changes to This Policy
-            </h2>
-            <p className="text-gray-700 text-base md:text-lg">
-              We may update this Privacy Policy from time to time. Changes will
-              be posted on this page with an updated “Last updated” date. We
-              encourage you to review it periodically.
-            </p>
-
-            {/* Contact CTA */}
-            <div className="mt-16 p-8 bg-blue-50 rounded-2xl text-center border border-blue-100">
-              <h3 className="text-2xl md:text-3xl font-extrabold text-[#2D97C4] mb-4">
-                Questions or Requests?
-              </h3>
-              <p className="text-gray-700 mb-6 text-base md:text-lg">
-                Contact our Data Protection team if you have any concerns about
-                your privacy.
-              </p>
-              <a
-                href="/contact"
-                className="inline-block bg-[#2D97C4] text-white font-bold px-10 py-5 md:px-14 md:py-6 rounded-xl hover:bg-[#257cab] transition shadow-md text-base md:text-lg w-full sm:w-auto min-w-[240px] text-center"
-              >
-                Contact Privacy Team
-              </a>
+            {/* Final CTA - Dark Mode Matched to About Us */}
+            <div className="mt-24 p-12 bg-[#121212] rounded-[3rem] text-center text-white relative overflow-hidden">
+              <div className="absolute inset-0 opacity-10">
+                <img
+                  src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&q=80&w=1200"
+                  className="w-full h-full object-cover grayscale"
+                  alt=""
+                />
+              </div>
+              <div className="relative z-10">
+                <h3 className="text-4xl font-black mb-6 tracking-tight">
+                  Privacy Questions?
+                </h3>
+                <p className="text-gray-400 mb-10 text-xl max-w-2xl mx-auto font-medium">
+                  Our Data Protection Officer is ready to assist you with any
+                  inquiries regarding your personal information.
+                </p>
+                <a
+                  href="mailto:privacy@ebonybrucetravels.com"
+                  className="inline-block bg-[#33a8da] text-white font-black px-16 py-6 rounded-2xl hover:bg-[#2c98c7] transition shadow-2xl text-lg uppercase tracking-widest active:scale-95"
+                >
+                  Contact Privacy Team
+                </a>
+              </div>
             </div>
           </div>
         </div>

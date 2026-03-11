@@ -554,7 +554,7 @@ export default function ContactPage() {
           {[
             {
               q: "Do you book flights?",
-              a: "No, we specialize in non-flight travel services including tours, excursions, and event ticketing. For flights, we recommend working with your preferred airline directly.",
+              a: "Yes, flights are our specialty! From finding the best deals to managing your seat assignments, we take the stress out of air travel.",
             },
             {
               q: "What DHL services do you offer?",

@@ -38,7 +38,7 @@ const Footer: React.FC<FooterProps> = ({
       links: [
         { label: t?.("About Us") || "About Us", href: "/about" },
         { label: t?.("Services") || "Services", href: "/services" },
-        { label: t?.("Career") || "Career", href: "/content/Career" },
+        { label: t?.("Career") || "Careers", href: "/careers" },
         { label: t?.("Contact") || "Contact", href: "/contact" },
       ],
     },
@@ -47,7 +47,7 @@ const Footer: React.FC<FooterProps> = ({
       links: [
         {
           label: t?.("Help Center") || "Help Center",
-          href: "/content/Help Center",
+          href: "/contact",
         },
         {
           label: t?.("Terms of Service") || "Terms of Service",
@@ -57,7 +57,7 @@ const Footer: React.FC<FooterProps> = ({
           label: t?.("Privacy Policy") || "Privacy Policy",
           href: "/privacy",
         },
-        { label: t?.("Blog") || "Blog", href: "/blog" },
+        { label: t?.("Blog") || "Blog", href: "/blo" },
       ],
     },
     {
