@@ -86,8 +86,8 @@ export interface HotelOffer {
     checkOutDate: string;
     rateCode?: string;
     boardType?: string;
-    room: {
-      type: string;
+    room?: {
+      type?: string;
       typeEstimated?: {
         category?: string;
         beds?: number;
@@ -98,10 +98,16 @@ export interface HotelOffer {
         lang?: string;
       };
     };
-    isLoyaltyRate?: string;
-    guests: {
+    guests?: {
       adults: number;
     };
+    boardName?: string;
+    boardCode?: string;
+    seller?: string;
+    cancellationPolicies?: Array<{
+      amount: string;
+      from: string;
+    }>;
     price: {
       currency: string;
       base: string;
@@ -124,6 +130,10 @@ export interface HotelOffer {
       };
       original_total?: string;
       original_currency?: string;
+      markup_amount?: string;
+      markup_percentage?: string;
+      service_fee?: string;
+      final_price?: string;
     };
     policies?: {
       cancellations?: Array<{
@@ -1103,13 +1113,11 @@ export function transformHotelToSearchResult(
     };
   }
 
-  // Calculate price
   const price = offer.price;
   const totalPrice = parseFloat(price?.total || "0");
   const basePrice = parseFloat(price?.base || "0");
   const currency = price?.currency || "GBP";
 
-  // Convert currency symbols
   const getCurrencySymbol = (curr: string): string => {
     const symbols: Record<string, string> = {
       GBP: "£",
@@ -1122,7 +1130,6 @@ export function transformHotelToSearchResult(
 
   const priceSymbol = getCurrencySymbol(currency);
 
-  // Calculate nights
   const checkIn = new Date(checkInDate);
   const checkOut = new Date(checkOutDate);
   const nights = Math.ceil(
@@ -1130,23 +1137,20 @@ export function transformHotelToSearchResult(
   );
   const pricePerNight = nights > 0 ? totalPrice / nights : totalPrice;
 
-  // Extract room info
+  const rating = hotelInfo.rating || calculateHotelRating(hotelInfo.chainCode, totalPrice);
+
   const roomType =
-    offer.room?.typeEstimated?.category || offer.room?.type || "Standard Room";
+    offer.room?.typeEstimated?.category || offer.room?.type || "Standard Hotel";
   const bedType = offer.room?.typeEstimated?.bedType || "King/Queen";
   const beds = offer.room?.typeEstimated?.beds || 1;
 
-  // Generate amenities based on room description and hotel chain
-  const description = offer.room?.description?.text || "";
-  const amenities = extractAmenitiesFromDescription(
-    description,
-    hotelInfo.chainCode,
-  );
+  const amenities = hotelInfo.amenities && hotelInfo.amenities.length > 0
+    ? hotelInfo.amenities
+    : extractAmenitiesFromDescription(
+      offer.room?.description?.text || "",
+      hotelInfo.chainCode,
+    );
 
-  // Determine hotel rating (if not provided, generate based on chain and price)
-  const rating = calculateHotelRating(hotelInfo.chainCode, totalPrice);
-
-  // Determine hotel star rating
   const starRating = determineStarRating(rating, hotelInfo.chainCode);
 
   const primaryImageUrl = (hotel as any).primaryImageUrl ?? null;
@@ -1164,108 +1168,49 @@ export function transformHotelToSearchResult(
     features: [
       roomType,
       `${beds} ${bedType.toLowerCase()} bed${beds > 1 ? "s" : ""}`,
-      `${offer.guests.adults} guest${offer.guests.adults > 1 ? "s" : ""}`,
+      `${offer.guests?.adults || 2} guest${(offer.guests?.adults || 2) > 1 ? "s" : ""}`,
       `${nights} night${nights !== 1 ? "s" : ""}`,
-      offer.rateCode ? offer.rateCode.replace("_", " ") : "Best Rate",
+      offer.rateCode ? offer.rateCode.replace("_", " ") : (offer.boardName || "Best Rate"),
     ],
     type: "hotels" as const,
+    original_amount: (hotel as any).original_price,
+    final_amount: (hotel as any).final_price,
+    original_price: (hotel as any).original_price, // For compatibility
+    final_price: (hotel as any).final_price, // For compatibility
+    markup_amount: (hotel as any).markup_amount,
+    markup_percentage: (hotel as any).markup_percentage,
+    service_fee: (hotel as any).service_fee,
+    currency: (hotel as any).currency || currency,
     realData: {
       hotelId: hotelInfo.hotelId,
       offerId: offer.id,
+      rateKey: offer.id, // Support components expecting rateKey
       hotelName: hotelInfo.name,
       checkInDate,
       checkOutDate,
       price: totalPrice,
       basePrice: basePrice,
       currency,
-      guests: offer.guests.adults,
+      guests: offer.guests?.adults || 2,
       rooms: 1,
       roomType: roomType,
       bedType: bedType,
       beds: beds,
       nights: nights,
       isRefundable:
-        offer.policies?.refundable?.cancellationRefund !== "NON_REFUNDABLE",
-      cancellationDeadline: offer.policies?.cancellations?.[0]?.deadline,
+        offer.policies?.refundable?.cancellationRefund !== "NON_REFUNDABLE" ||
+        (offer as any).cancellationPolicies?.length > 0,
+      cancellationDeadline:
+        offer.policies?.cancellations?.[0]?.deadline ||
+        (offer as any).cancellationPolicies?.[0]?.from,
       cancellationPolicy:
         offer.policies?.cancellations?.[0]?.description?.text ||
-        "Standard cancellation policy applies",
+        ((offer as any).cancellationPolicies?.[0] ? `Cancel by ${(offer as any).cancellationPolicies[0].from}` : "Standard cancellation policy applies"),
       paymentType: offer.policies?.paymentType || "prepay",
       finalPrice: parseFloat(offer.final_price || price.total),
       markupAmount: parseFloat(offer.markup_amount || "0"),
       serviceFee: parseFloat(offer.service_fee || "0"),
     },
-  };
-}
-
-/**
- * Transform Hotelbeds (HBX) hotel result to SearchResult format
- */
-export function transformHBXHotelToSearchResult(
-  hotel: any,
-  location: string,
-  checkInDate: string,
-  checkOutDate: string,
-  index: number,
-): any {
-  const currency = hotel.currency || "GBP";
-  const getCurrencySymbol = (curr: string): string => {
-    const symbols: Record<string, string> = {
-      GBP: "£",
-      USD: "$",
-      EUR: "€",
-      NGN: "₦",
-    };
-    return symbols[curr.toUpperCase()] || curr;
-  };
-  const priceSymbol = getCurrencySymbol(currency);
-
-  const checkIn = new Date(checkInDate);
-  const checkOut = new Date(checkOutDate);
-  const nights = Math.ceil(
-    (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24),
-  );
-
-  const firstRoom = hotel.rooms?.[0];
-  const firstRate = firstRoom?.rates?.[0];
-
-  // Use finalAmount which includes markup
-  const finalAmount = parseFloat(firstRate?.finalAmount || hotel.minRate || "0");
-  const pricePerNight = nights > 0 ? finalAmount / nights : finalAmount;
-
-  const roomType = firstRoom?.name || "Standard Room";
-  const imageUrl = getHBXImageUrl(hotel.images?.[0]?.path);
-
-  return {
-    id: hotel.code?.toString() || `hbx-${index}`,
-    provider: "Hotelbeds",
-    title: hotel.name,
-    subtitle: `${hotel.destinationName || location} • ${hotel.categoryName || 'Hotel'} • ${roomType}`,
-    price: `${priceSymbol}${Math.round(pricePerNight).toLocaleString()}/night`,
-    totalPrice: `${priceSymbol}${Math.round(finalAmount).toLocaleString()} total`,
-    rating: 4.0,
-    image: imageUrl || "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400",
-    amenities: ["WiFi", "Air Conditioning", "Hotelbeds Provider"],
-    features: [
-      roomType,
-      `${nights} night${nights !== 1 ? "s" : ""}`,
-      "Real-time availability"
-    ],
-    type: "hotels" as const,
-    realData: {
-      provider: "HOTELBEDS",
-      hotelCode: hotel.code,
-      hotelName: hotel.name,
-      rateKey: firstRate?.rateKey,
-      checkInDate,
-      checkOutDate,
-      price: finalAmount,
-      currency,
-      nights,
-      finalAmount: finalAmount,
-      rooms: hotel.rooms,
-      categoryName: hotel.categoryName
-    }
   };
 }
 
@@ -1537,7 +1482,6 @@ export async function searchAndTransformHotels(
     console.log(`🔍 Searching and transforming hotels (${provider})...`);
 
     if (provider === "hotelbeds") {
-      // Correct HBX payload mapping
       const hbxParams: import("./types").HBXSearchRequest = {
         checkInDate: searchParams.checkInDate,
         checkOutDate: searchParams.checkOutDate,
@@ -1554,7 +1498,7 @@ export async function searchAndTransformHotels(
 
       const response = await searchHotelsHBX(hbxParams);
 
-      if (!response.data?.hotels?.hotels || response.data.hotels.hotels.length === 0) {
+      if (!response.data?.data || response.data.data.length === 0) {
         return {
           success: false,
           results: [],
@@ -1564,16 +1508,17 @@ export async function searchAndTransformHotels(
         };
       }
 
-      const hotels = response.data.hotels.hotels;
-      const transformedResults = hotels.map((hotel: any, index: number) =>
-        transformHBXHotelToSearchResult(
+      const hotels = response.data.data;
+      const transformedResults = hotels.map((hotel: any, index: number) => {
+        const result = transformHotelToSearchResult(
           hotel,
           location,
           searchParams.checkInDate,
           searchParams.checkOutDate,
           index,
-        ),
-      );
+        );
+        return { ...result, provider: "Hotelbeds" };
+      });
 
       return {
         success: true,

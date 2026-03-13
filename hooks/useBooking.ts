@@ -655,8 +655,8 @@ export function useBooking() {
           paymentStatus: "PENDING",
           productType: "HOTEL",
           provider: "HOTELBEDS",
-          basePrice: parseFloat(item.original_price || "0"),
-          totalAmount: parseFloat(item.final_price || "0"),
+          basePrice: parseFloat(item.original_price || item.original_amount || "0"),
+          totalAmount: parseFloat(item.final_price || item.final_amount || "0"),
           currency: (item.currency || "GBP").toUpperCase(),
           bookingData: {
             ...response,

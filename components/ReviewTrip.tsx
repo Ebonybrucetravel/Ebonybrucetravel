@@ -137,7 +137,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [voucherApplied, setVoucherApplied] = useState<any | null>(null);
   const [isValidatingVoucher, setIsValidatingVoucher] = useState(false);
   const [voucherError, setVoucherError] = useState<string | null>(null);
-  const isHBXHotel = isHotel && extendedItem.provider === 'hotelbeds';
+  const isHBXHotel = isHotel && extendedItem.provider?.toLowerCase() === 'hotelbeds';
   const [hbxQuote, setHbxQuote] = useState<any | null>(null);
   const [isQuoting, setIsQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -192,25 +192,26 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
   }, [user]);
 
-  // Extract HBX hotel details (NEW)
+  // Extract HBX hotel details (updated for Amadeus-compatible server schema)
   const hbxHotelDetails = (() => {
-    if (!isHBXHotel || !hbxQuote?.hotel) return null;
+    const quoteData = hbxQuote?.data?.data || hbxQuote?.data;
+    if (!isHBXHotel || !quoteData?.hotel) return null;
 
-    const hotel = hbxQuote.hotel;
-    const firstRoom = hotel.rooms?.[0];
-    const firstRate = firstRoom?.rates?.[0];
+    const hotel = quoteData.hotel;
+    const firstOffer = quoteData.offers?.[0];
 
     return {
       hotelName: hotel.name,
-      checkIn: searchParams?.checkInDate || '',
-      checkOut: searchParams?.checkOutDate || '',
-      roomType: firstRoom?.name || 'Standard Room',
-      bedType: 'Standard',
-      adults: searchParams?.adults || 2,
-      description: hotel.destinationName || '',
-      cancellationPolicy: firstRate?.cancellationPolicies?.[0]?.amount
-        ? `Cancellation fee: ${firstRate.cancellationPolicies[0].amount}. Deadline: ${firstRate.cancellationDeadline || 'N/A'}`
-        : 'Free cancellation'
+      checkIn: firstOffer?.checkInDate || searchParams?.checkInDate || '',
+      checkOut: firstOffer?.checkOutDate || searchParams?.checkOutDate || '',
+      roomType: firstOffer?.room?.description?.text || firstOffer?.room?.type || 'Standard Room',
+      bedType: firstOffer?.room?.typeEstimated?.bedType || 'Standard',
+      adults: firstOffer?.guests?.adults || searchParams?.adults || 2,
+      description: hotel.address?.cityName || hotel.destinationName || '',
+      cancellationPolicy: firstOffer?.policies?.cancellations?.[0]?.description?.text ||
+        (firstOffer?.policies?.refundable?.cancellationRefund === 'NON_REFUNDABLE'
+          ? 'Non-refundable'
+          : 'Free cancellation')
     };
   })();
 
@@ -276,12 +277,12 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     totalDue = basePrice + taxes + conversionFee;
 
     displayTotalDue = formatPrice(totalDue, offerCurrency);
-  } else if (isHBXHotel && hbxQuote?.hotel) {
-    // Hotelbeds hotel price calculation
-    const hotel = hbxQuote.hotel;
-    const rate = hotel.rooms?.[0]?.rates?.[0];
+  } else if (isHBXHotel && hbxQuote) {
+    // Hotelbeds hotel price calculation (updated for Amadeus-compatible server schema)
+    const quoteData = hbxQuote?.data?.data || hbxQuote?.data;
+    const firstOffer = quoteData?.offers?.[0];
 
-    basePrice = parseFloat(rate?.net || '0');
+    basePrice = parseFloat(firstOffer?.price?.base || firstOffer?.price?.total || '0');
 
     // Add our markup and service fee
     const markupAmount = parseFloat(extendedItem.markup_amount || '0');
@@ -438,13 +439,15 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       // Prepare HBX metadata if applicable
       let hbxMetadata: any = undefined;
       const provider = (item as any).provider || searchParams?.provider;
-      if (provider === 'hotelbeds' && hbxQuote?.hotel) {
-        const rate = hbxQuote.hotel.rooms[0].rates[0];
+      if (provider?.toLowerCase() === 'hotelbeds' && hbxQuote) {
+        const quoteData = hbxQuote?.data?.data || hbxQuote?.data;
+        const firstOffer = quoteData?.offers?.[0];
+
         hbxMetadata = {
-          totalAmount: totalDue, // This already includes markups and calculated in hbxHotelDetails useMemo/useEffect logic
-          currency: (hbxQuote.hotel.currency || 'GBP').toUpperCase(),
+          totalAmount: totalDue,
+          currency: (firstOffer?.price?.currency || item.currency || 'GBP').toUpperCase(),
           cancellationPolicySnapshot: hbxHotelDetails?.cancellationPolicy || "Standard policy",
-          cancellationDeadline: hbxHotelDetails?.cancellationDeadline || new Date().toISOString(),
+          cancellationDeadline: firstOffer?.policies?.cancellations?.[0]?.deadline || new Date().toISOString(),
           policyAccepted: true
         };
       }

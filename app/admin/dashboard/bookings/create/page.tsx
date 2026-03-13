@@ -2,33 +2,33 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  createBooking, 
-  listBookings, 
+import {
+  createBooking,
+  listBookings,
   exportBookingsCsv,
   getBooking,
   updateBookingStatus,
   cancelBooking,
   processRefund,
   sendBookingEmail,
-  getBookingDisputeEvidence 
+  getBookingDisputeEvidence
 } from '@/lib/adminApi';
 
 export default function CreateBookingPage() {
   const router = useRouter();
-  
+
   const [serviceType, setServiceType] = useState<'Flight' | 'Car Rental' | 'Hotel'>('Flight');
   const [customerType, setCustomerType] = useState<'Existing User' | 'New Guest'>('Existing User');
   const [paymentMethod, setPaymentMethod] = useState<'CREDIT CARD' | 'BANK TRANSFER'>('CREDIT CARD');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
-  
+
   // For searching existing users
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     customerSearch: '',
     customerId: '',
@@ -55,11 +55,11 @@ export default function CreateBookingPage() {
       try {
         // Import dynamically to avoid circular dependency
         const { listCustomers } = await import('@/lib/adminApi');
-        const response = await listCustomers({ 
+        const response = await listCustomers({
           search: formData.customerSearch,
-          limit: 5 
+          limit: 5
         });
-        
+
         if (response.success && response.data) {
           const customers = Array.isArray(response.data) ? response.data : response.data.customers || [];
           setSearchResults(customers);
@@ -87,7 +87,7 @@ export default function CreateBookingPage() {
 
   // Map UI service type to API product type
   const getProductType = () => {
-    switch(serviceType) {
+    switch (serviceType) {
       case 'Flight':
         return 'FLIGHT_INTERNATIONAL';
       case 'Hotel':
@@ -109,21 +109,22 @@ export default function CreateBookingPage() {
       };
       return flightProviders[formData.provider] || 'DUFFEL';
     }
-    
+
     // For hotels
     if (serviceType === 'Hotel') {
       const hotelProviders: Record<string, string> = {
         'BOOKING_COM': 'BOOKING_COM',
         'AMADEUS': 'AMADEUS',
+        'HOTELBEDS': 'HOTELBEDS',
       };
       return hotelProviders[formData.provider] || 'BOOKING_COM';
     }
-    
+
     // For car rentals
     if (serviceType === 'Car Rental') {
       return 'AMADEUS'; // Default for car rentals
     }
-    
+
     return 'DUFFEL';
   };
 
@@ -132,7 +133,7 @@ export default function CreateBookingPage() {
     setIsSubmitting(true);
     setSubmitError(null);
     setSubmitSuccess(null);
-    
+
     try {
       // Build the request body according to the API format
       const bookingData: any = {
@@ -156,7 +157,7 @@ export default function CreateBookingPage() {
         const nameParts = formData.customerName.split(' ');
         const firstName = nameParts[0] || '';
         const lastName = nameParts.slice(1).join(' ') || '';
-        
+
         bookingData.passengerInfo = {
           firstName,
           lastName,
@@ -167,10 +168,10 @@ export default function CreateBookingPage() {
       console.log('📤 Submitting booking:', bookingData);
 
       const response = await createBooking(bookingData);
-      
+
       if (response.success) {
         setSubmitSuccess('Booking created successfully!');
-        
+
         // Optional: Send confirmation email
         if (response.data?.id) {
           try {
@@ -180,7 +181,7 @@ export default function CreateBookingPage() {
             console.error('Failed to send confirmation email:', emailError);
           }
         }
-        
+
         // Reset form after successful submission
         setTimeout(() => {
           router.push('/admin/dashboard/bookings?success=Booking created successfully');
@@ -315,6 +316,7 @@ export default function CreateBookingPage() {
       return [
         { value: 'BOOKING_COM', label: 'Booking.com' },
         { value: 'AMADEUS', label: 'Amadeus' },
+        { value: 'HOTELBEDS', label: 'Hotelbeds' },
       ];
     } else {
       return [
@@ -326,8 +328,8 @@ export default function CreateBookingPage() {
   return (
     <div className="p-4 md:p-8 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <button 
-          onClick={() => router.back()} 
+        <button
+          onClick={() => router.back()}
           className="flex items-center gap-2 text-gray-500 hover:text-gray-700 mb-6 transition group"
         >
           <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center group-hover:bg-[#33a8da] group-hover:text-white transition-all">
@@ -337,7 +339,7 @@ export default function CreateBookingPage() {
           </div>
           <span className="text-sm font-medium">Back to Bookings</span>
         </button>
-        
+
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
@@ -346,7 +348,7 @@ export default function CreateBookingPage() {
             <p className="text-gray-500 mt-2">Fill in the details to create a reservation</p>
           </div>
           <div className="flex gap-3">
-            <button 
+            <button
               onClick={exportBookings}
               type="button"
               className="px-6 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:border-[#33a8da] transition-all flex items-center gap-2"
@@ -356,7 +358,7 @@ export default function CreateBookingPage() {
               </svg>
               Export
             </button>
-            <button 
+            <button
               onClick={handleRefresh}
               type="button"
               className="px-6 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:border-[#33a8da] transition-all flex items-center gap-2"
@@ -409,17 +411,15 @@ export default function CreateBookingPage() {
                       setServiceType(item.id as any);
                       setFormData(prev => ({ ...prev, provider: '' })); // Reset provider when service type changes
                     }}
-                    className={`relative group overflow-hidden rounded-xl transition-all duration-300 ${
-                      serviceType === item.id ? 'shadow-lg scale-105' : 'hover:shadow-md'
-                    }`}
+                    className={`relative group overflow-hidden rounded-xl transition-all duration-300 ${serviceType === item.id ? 'shadow-lg scale-105' : 'hover:shadow-md'
+                      }`}
                   >
                     {serviceType === item.id && (
                       <div className={`absolute inset-0 bg-gradient-to-r ${item.gradient} opacity-100`} />
                     )}
                     <div className={`absolute inset-0 bg-gradient-to-r ${item.gradient} opacity-0 group-hover:opacity-10 transition-opacity`} />
-                    <div className={`relative p-4 text-center ${
-                      serviceType === item.id ? 'text-white' : 'text-gray-600'
-                    }`}>
+                    <div className={`relative p-4 text-center ${serviceType === item.id ? 'text-white' : 'text-gray-600'
+                      }`}>
                       <span className="text-3xl mb-2 block">{item.icon}</span>
                       <span className="text-sm font-medium">{item.label}</span>
                     </div>
@@ -436,22 +436,20 @@ export default function CreateBookingPage() {
                   <button
                     type="button"
                     onClick={() => setCustomerType('Existing User')}
-                    className={`px-4 py-2 text-xs font-medium rounded-lg transition-all ${
-                      customerType === 'Existing User'
+                    className={`px-4 py-2 text-xs font-medium rounded-lg transition-all ${customerType === 'Existing User'
                         ? 'bg-white text-[#33a8da] shadow-sm'
                         : 'text-gray-500'
-                    }`}
+                      }`}
                   >
                     Existing
                   </button>
                   <button
                     type="button"
                     onClick={() => setCustomerType('New Guest')}
-                    className={`px-4 py-2 text-xs font-medium rounded-lg transition-all ${
-                      customerType === 'New Guest'
+                    className={`px-4 py-2 text-xs font-medium rounded-lg transition-all ${customerType === 'New Guest'
                         ? 'bg-white text-[#33a8da] shadow-sm'
                         : 'text-gray-500'
-                    }`}
+                      }`}
                   >
                     New Guest
                   </button>
@@ -470,7 +468,7 @@ export default function CreateBookingPage() {
                     placeholder="Search by name or email..."
                     className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]"
                   />
-                  
+
                   {/* Search Results Dropdown */}
                   {showResults && searchResults.length > 0 && (
                     <div className="absolute z-10 mt-2 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-60 overflow-auto">
@@ -582,7 +580,7 @@ export default function CreateBookingPage() {
                   </select>
                   <p className="text-xs text-gray-400 mt-1">
                     {serviceType === 'Flight' && 'Available: DUFFEL, AMADEUS'}
-                    {serviceType === 'Hotel' && 'Available: BOOKING_COM, AMADEUS'}
+                    {serviceType === 'Hotel' && 'Available: BOOKING_COM, AMADEUS, HOTELBEDS'}
                     {serviceType === 'Car Rental' && 'Available: AMADEUS'}
                   </p>
                 </div>
@@ -623,7 +621,7 @@ export default function CreateBookingPage() {
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900">Booking Summary</h3>
               </div>
-              
+
               <div className="space-y-4">
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
                   <span className="text-sm text-gray-500">Service Type</span>
@@ -657,22 +655,20 @@ export default function CreateBookingPage() {
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('CREDIT CARD')}
-                      className={`py-3 rounded-xl text-xs font-medium border transition-all ${
-                        paymentMethod === 'CREDIT CARD'
+                      className={`py-3 rounded-xl text-xs font-medium border transition-all ${paymentMethod === 'CREDIT CARD'
                           ? 'bg-gradient-to-r from-[#33a8da] to-[#2c8fc0] text-white border-transparent shadow-lg'
                           : 'border-gray-200 text-gray-500 hover:border-[#33a8da]'
-                      }`}
+                        }`}
                     >
                       Credit Card
                     </button>
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('BANK TRANSFER')}
-                      className={`py-3 rounded-xl text-xs font-medium border transition-all ${
-                        paymentMethod === 'BANK TRANSFER'
+                      className={`py-3 rounded-xl text-xs font-medium border transition-all ${paymentMethod === 'BANK TRANSFER'
                           ? 'bg-gradient-to-r from-[#33a8da] to-[#2c8fc0] text-white border-transparent shadow-lg'
                           : 'border-gray-200 text-gray-500 hover:border-[#33a8da]'
-                      }`}
+                        }`}
                     >
                       Bank Transfer
                     </button>
@@ -682,11 +678,10 @@ export default function CreateBookingPage() {
                 <button
                   type="submit"
                   disabled={!isFormValid() || isSubmitting}
-                  className={`w-full py-4 rounded-xl font-medium transition-all mt-4 ${
-                    !isFormValid() || isSubmitting
+                  className={`w-full py-4 rounded-xl font-medium transition-all mt-4 ${!isFormValid() || isSubmitting
                       ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                       : 'bg-gradient-to-r from-[#33a8da] to-[#2c8fc0] text-white hover:shadow-lg hover:shadow-[#33a8da]/25'
-                  }`}
+                    }`}
                 >
                   {isSubmitting ? (
                     <div className="flex items-center justify-center gap-2">
