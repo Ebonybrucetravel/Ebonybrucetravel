@@ -182,6 +182,7 @@ enum Provider {
   TRIPS_AFRICA
   BOOKING_COM
   AMADEUS
+  HOTELBEDS
 }
 
 enum BookingStatus {

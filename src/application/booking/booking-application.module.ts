@@ -21,6 +21,9 @@ import { GetAccommodationReviewsUseCase } from './use-cases/get-accommodation-re
 import { SearchPlaceSuggestionsUseCase } from './use-cases/search-place-suggestions.use-case';
 import { ListAirlinesUseCase } from './use-cases/list-airlines.use-case';
 import { SearchAmadeusHotelsUseCase } from './use-cases/search-amadeus-hotels.use-case';
+import { SearchHotelbedsUseCase } from './use-cases/search-hotelbeds.use-case';
+import { CheckHotelbedsRateUseCase } from './use-cases/check-hotelbeds-rate.use-case';
+import { CreateHotelbedsBookingUseCase } from './use-cases/create-hotelbeds-booking.use-case';
 import { GetAmadeusHotelDetailsUseCase } from './use-cases/get-amadeus-hotel-details.use-case';
 import { SearchCarRentalsUseCase } from './use-cases/search-car-rentals.use-case';
 import { CreateCarRentalBookingUseCase } from './use-cases/create-car-rental-booking.use-case';
@@ -77,6 +80,9 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     SearchPlaceSuggestionsUseCase,
     ListAirlinesUseCase,
     SearchAmadeusHotelsUseCase,
+    SearchHotelbedsUseCase,
+    CheckHotelbedsRateUseCase,
+    CreateHotelbedsBookingUseCase,
     GetAmadeusHotelDetailsUseCase,
     SearchCarRentalsUseCase,
     CreateCarRentalBookingUseCase,
@@ -108,6 +114,9 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     SearchPlaceSuggestionsUseCase,
     ListAirlinesUseCase,
     SearchAmadeusHotelsUseCase,
+    SearchHotelbedsUseCase,
+    CheckHotelbedsRateUseCase,
+    CreateHotelbedsBookingUseCase,
     GetAmadeusHotelDetailsUseCase,
     SearchCarRentalsUseCase,
     CreateCarRentalBookingUseCase,
@@ -117,4 +126,4 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     ProcessCancellationRequestUseCase,
   ],
 })
-export class BookingApplicationModule {}
+export class BookingApplicationModule { }

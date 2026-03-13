@@ -11,12 +11,17 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ExchangeOttDto } from './dto/exchange-ott.dto';
+import { OttService } from '@infrastructure/cache/ott.service';
 import { Response } from 'express';
 
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) { }
+  constructor(
+    private readonly authService: AuthService,
+    private readonly ottService: OttService,
+  ) { }
 
   @Public()
   @Throttle(3, 60000) // 3 requests per minute for registration
@@ -80,19 +85,20 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Facebook login successful' })
   @ApiResponse({ status: 401, description: 'Facebook authentication failed' })
   async facebookAuthCallback(@Req() req: any, @Res() res: Response) {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     try {
       if (!req.user) {
-        return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?error=authentication_failed`);
+        return res.redirect(`${frontendUrl}/auth/callback?error=authentication_failed`);
       }
 
       const user = req.user;
       const { accessToken, refreshToken } = await this.authService.generateOAuthToken(user);
 
-      // Redirect to frontend with tokens
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-      res.redirect(`${frontendUrl}/auth/callback?token=${accessToken}&refreshToken=${refreshToken}&user=${encodeURIComponent(JSON.stringify(user))}`);
+      const code = this.ottService.generateOtt({ accessToken, refreshToken, user });
+
+      // Redirect to frontend with the one-time code only
+      res.redirect(`${frontendUrl}/auth/callback?code=${code}`);
     } catch (error) {
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       res.redirect(`${frontendUrl}/auth/callback?error=authentication_failed`);
     }
   }
@@ -115,21 +121,43 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Google login successful' })
   @ApiResponse({ status: 401, description: 'Google authentication failed' })
   async googleAuthCallback(@Req() req: any, @Res() res: Response) {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     try {
       if (!req.user) {
-        return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?error=authentication_failed`);
+        return res.redirect(`${frontendUrl}/auth/callback?error=authentication_failed`);
       }
 
       const user = req.user;
       const { accessToken, refreshToken } = await this.authService.generateOAuthToken(user);
 
-      // Redirect to frontend with tokens
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-      res.redirect(`${frontendUrl}/auth/callback?token=${accessToken}&refreshToken=${refreshToken}&user=${encodeURIComponent(JSON.stringify(user))}`);
+      const code = this.ottService.generateOtt({ accessToken, refreshToken, user });
+
+      // Redirect to frontend with the one-time code only
+      res.redirect(`${frontendUrl}/auth/callback?code=${code}`);
     } catch (error) {
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       res.redirect(`${frontendUrl}/auth/callback?error=authentication_failed`);
     }
+  }
+
+  @Public()
+  @Throttle(10, 60000)
+  @Post('ott/exchange')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Exchange One-Time Token (OTT) for Auth Tokens' })
+  @ApiResponse({ status: 200, description: 'Token exchanged successfully' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired one-time code' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  async exchangeOtt(@Body() exchangeOttDto: ExchangeOttDto) {
+    const payload = this.ottService.consumeOtt(exchangeOttDto.code);
+    return {
+      success: true,
+      message: 'Tokens retrieved successfully',
+      data: {
+        token: payload.accessToken,
+        refreshToken: payload.refreshToken,
+        user: payload.user,
+      },
+    };
   }
 
   @Public()

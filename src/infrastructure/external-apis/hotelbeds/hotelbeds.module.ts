@@ -1,0 +1,12 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { HotelbedsService } from './hotelbeds.service';
+import { HotelbedsContentService } from './hotelbeds-content.service';
+import { CacheModule } from '../../cache/cache.module';
+
+@Module({
+    imports: [ConfigModule, CacheModule],
+    providers: [HotelbedsService, HotelbedsContentService],
+    exports: [HotelbedsService, HotelbedsContentService],
+})
+export class HotelbedsModule { }

@@ -23,7 +23,7 @@ export class HandleDuffelWebhookUseCase {
     private readonly bookingRepository: BookingRepository,
     private readonly resendService: ResendService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) { }
 
   async execute(event: DuffelWebhookEvent): Promise<void> {
     this.logger.log(`Processing Duffel webhook: ${event.type}`);
@@ -97,10 +97,7 @@ export class HandleDuffelWebhookUseCase {
         const offerId = orderData.offer_id || orderData.metadata?.offer_id;
         if (offerId) {
           try {
-            const bookings = await this.bookingRepository.findAll();
-            const matchingBooking = bookings.find(
-              (b) => (b.bookingData as any)?.offerId === offerId,
-            );
+            const matchingBooking = await this.bookingRepository.findByOfferIdInBookingData(offerId);
             if (matchingBooking) {
               await this.updateBookingOrderFailed(matchingBooking.id, orderData);
               return;

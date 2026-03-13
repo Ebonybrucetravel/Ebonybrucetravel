@@ -18,16 +18,23 @@ export class EncryptionService {
     // Get encryption key from environment (32 bytes for AES-256)
     const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
     const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+    const paymentModel = this.configService.get<string>('PAYMENT_MODEL')?.toLowerCase();
+    const isGuestCardModel = paymentModel !== 'merchant';
 
     if (!encryptionKey) {
-      if (isProduction) {
+      if (isGuestCardModel && isProduction) {
+        throw new Error(
+          'CRITICAL SECURITY ERROR: PAYMENT_MODEL is guest-card (or unset), meaning raw customer cards are handled. ' +
+          'ENCRYPTION_KEY is STRICTLY REQUIRED in production for PCI compliance. Set ENCRYPTION_KEY (32-byte hex or strong password).'
+        );
+      } else if (isProduction) {
         throw new Error(
           'ENCRYPTION_KEY is required in production for PCI-safe card storage. Set ENCRYPTION_KEY (32-byte hex or strong password) in environment.',
         );
       }
       this.logger.warn(
         'ENCRYPTION_KEY not set. Using a default key (NOT SECURE FOR PRODUCTION). ' +
-          'Set ENCRYPTION_KEY for production.',
+        'Set ENCRYPTION_KEY for production.',
       );
       this.key = crypto.scryptSync('default-key-change-in-production', 'ebony-bruce-dev-salt-v1', 32);
     } else {

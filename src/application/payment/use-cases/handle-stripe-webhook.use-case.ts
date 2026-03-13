@@ -6,6 +6,7 @@ import { VoucherService } from '@domains/loyalty/voucher.service';
 import { CreateDuffelOrderUseCase } from '@application/booking/use-cases/create-duffel-order.use-case';
 import { CreateAmadeusHotelBookingUseCase } from '@application/booking/use-cases/create-amadeus-hotel-booking.use-case';
 import { CreateCarRentalBookingUseCase } from '@application/booking/use-cases/create-car-rental-booking.use-case';
+import { CreateHotelbedsBookingUseCase } from '@application/booking/use-cases/create-hotelbeds-booking.use-case';
 import { ResendService } from '@infrastructure/email/resend.service';
 import { Provider } from '@prisma/client';
 import Stripe from 'stripe';
@@ -22,11 +23,12 @@ export class HandleStripeWebhookUseCase {
     private readonly createDuffelOrderUseCase: CreateDuffelOrderUseCase,
     private readonly createAmadeusHotelBookingUseCase: CreateAmadeusHotelBookingUseCase,
     private readonly createCarRentalBookingUseCase: CreateCarRentalBookingUseCase,
+    private readonly createHotelbedsBookingUseCase: CreateHotelbedsBookingUseCase,
     private readonly resendService: ResendService,
   ) { }
 
   async execute(event: Stripe.Event): Promise<void> {
-    this.logger.log(`Processing Stripe webhook: ${event.type}`);
+    this.logger.log(`Processing Stripe webhook: ${event.type} `);
 
     switch (event.type) {
       case 'payment_intent.succeeded':
@@ -46,7 +48,7 @@ export class HandleStripeWebhookUseCase {
         break;
 
       default:
-        this.logger.warn(`Unhandled webhook event type: ${event.type}`);
+        this.logger.warn(`Unhandled webhook event type: ${event.type} `);
     }
   }
 
@@ -74,7 +76,7 @@ export class HandleStripeWebhookUseCase {
       // Additional validation: ensure payment was actually charged
       if (verifiedPaymentIntent.amount_received === 0) {
         this.logger.warn(
-          `Payment intent ${paymentIntent.id} has amount_received=0. Not processing booking ${bookingId}.`,
+          `Payment intent ${paymentIntent.id} has amount_received = 0. Not processing booking ${bookingId}.`,
         );
         return; // Don't process if no payment was actually received
       }
@@ -102,7 +104,7 @@ export class HandleStripeWebhookUseCase {
 
       if (existingBooking?.paymentStatus === 'COMPLETED') {
         this.logger.log(
-          `Booking ${bookingId} is already marked as COMPLETED. Ignoring duplicate webhook event.`,
+          `Booking ${bookingId} is already marked as COMPLETED.Ignoring duplicate webhook event.`,
         );
         return;
       }
@@ -145,7 +147,7 @@ export class HandleStripeWebhookUseCase {
             this.logger.log(`Voucher ${booking.voucherId} marked as used for booking ${bookingId}`);
           })
           .catch((error) => {
-            this.logger.error(`Failed to mark voucher as used for booking ${bookingId}:`, error);
+            this.logger.error(`Failed to mark voucher as used for booking ${bookingId}: `, error);
             // Don't throw - voucher marking failure shouldn't break the webhook
           });
       }
@@ -163,12 +165,12 @@ export class HandleStripeWebhookUseCase {
         .then(({ pointsEarned, newBalance }) => {
           if (pointsEarned > 0) {
             this.logger.log(
-              `Awarded ${pointsEarned} loyalty points to user ${booking.userId} for booking ${bookingId}. Balance: ${newBalance}`,
+              `Awarded ${pointsEarned} loyalty points to user ${booking.userId} for booking ${bookingId}.Balance: ${newBalance} `,
             );
           }
         })
         .catch((error) => {
-          this.logger.error(`Failed to award loyalty points for booking ${bookingId}:`, error);
+          this.logger.error(`Failed to award loyalty points for booking ${bookingId}: `, error);
           // Don't throw - loyalty failure shouldn't break the webhook
         });
 
@@ -187,7 +189,7 @@ export class HandleStripeWebhookUseCase {
             }),
           )
           .catch((error) => {
-            this.logger.error(`Failed to send booking emails for ${bookingId}:`, error);
+            this.logger.error(`Failed to send booking emails for ${bookingId}: `, error);
           });
       }
 
@@ -213,9 +215,27 @@ export class HandleStripeWebhookUseCase {
         } catch (error) {
           // Log error but don't fail the webhook - payment is already confirmed
           this.logger.error(
-            `Failed to create Duffel order for booking ${bookingId}. Payment confirmed but order creation failed. No confirmation email sent.`,
+            `Failed to create Duffel order for booking ${bookingId}.Payment confirmed but order creation failed.Initiating automatic refund.`,
             error,
           );
+
+          // Initiate automatic refund — payment collected but flight not deliverable
+          if (booking.stripeChargeId || chargeId) {
+            try {
+              this.logger.log(`Initiating automatic Stripe refund for failed booking ${bookingId}...`);
+              // StripeService.createRefund takes paymentIntentId, but since a charge is part of a payment intent, 
+              // we pass the paymentIntent.id directly instead of the chargeId. Both exist for this booking.
+              await this.stripeService.createRefund({ paymentIntentId: paymentIntent.id });
+
+              const refundStatusUpdated = await this.prisma.booking.update({
+                where: { id: bookingId },
+                data: { refundStatus: 'PROCESSING', paymentStatus: 'REFUNDED' }
+              });
+              this.logger.log(`Automatic refund initiated for booking ${bookingId}`);
+            } catch (refundError) {
+              this.logger.error(`Failed to initiate automatic refund for booking ${bookingId}: `, refundError);
+            }
+          }
 
           // Send failure notification email
           if (booking.user?.email) {
@@ -226,8 +246,8 @@ export class HandleStripeWebhookUseCase {
               productType: booking.productType,
               amount: Number(booking.totalAmount),
               currency: booking.currency,
-              failureReason: error instanceof Error ? error.message : 'Unknown provider error',
-            }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}:`, err));
+              failureReason: `Flight booking failed with provider: ${error instanceof Error ? error.message : 'Unknown provider error'}. We have automatically initiated a full refund back to your payment method.`,
+            }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
           }
 
           // Booking status and providerData are already updated to FAILED by CreateDuffelOrderUseCase
@@ -247,7 +267,7 @@ export class HandleStripeWebhookUseCase {
           .catch((error) => {
             // Log error but don't fail the webhook - payment is already confirmed
             this.logger.error(
-              `Failed to create Amadeus hotel order for booking ${bookingId}. Payment confirmed but order creation failed:`,
+              `Failed to create Amadeus hotel order for booking ${bookingId}.Payment confirmed but order creation failed: `,
               error,
             );
 
@@ -261,7 +281,7 @@ export class HandleStripeWebhookUseCase {
                 amount: Number(booking.totalAmount),
                 currency: booking.currency,
                 failureReason: error instanceof Error ? error.message : 'Unknown provider error',
-              }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}:`, err));
+              }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
             }
 
             // Build sanitized Amadeus error details (safe for storage/display)
@@ -309,8 +329,48 @@ export class HandleStripeWebhookUseCase {
                 },
               })
               .catch((updateError) => {
-                this.logger.error(`Failed to update booking ${bookingId} with error status:`, updateError);
+                this.logger.error(`Failed to update booking ${bookingId} with error status: `, updateError);
               });
+          });
+      }
+
+      // If this is a Hotelbeds hotel booking, create the Hotelbeds order
+      if (booking.provider === Provider.HOTELBEDS && booking.productType === 'HOTEL') {
+        this.logger.log(`Processing Hotelbeds hotel order creation for booking ${bookingId} asynchronously...`);
+        this.createHotelbedsBookingUseCase
+          .createHotelbedsBookingAfterPayment(bookingId)
+          .then(({ orderId }) => {
+            this.logger.log(`Successfully created Hotelbeds hotel order ${orderId} for booking ${bookingId}`);
+          })
+          .catch((error) => {
+            this.logger.error(
+              `Failed to create Hotelbeds hotel order for booking ${bookingId}.Initiating automatic refund.`,
+              error,
+            );
+
+            // Automatic refund for Hotelbeds failure (matching Duffel pattern)
+            if (booking.stripeChargeId || chargeId) {
+              this.stripeService.createRefund({ paymentIntentId: paymentIntent.id })
+                .then(() => {
+                  return this.prisma.booking.update({
+                    where: { id: bookingId },
+                    data: { refundStatus: 'PROCESSING', paymentStatus: 'REFUNDED' }
+                  });
+                })
+                .catch(err => this.logger.error(`Failed automatic refund for Hotelbeds booking ${bookingId}: `, err));
+            }
+
+            if (booking.user?.email) {
+              this.resendService.sendBookingFailureEmail({
+                to: booking.user.email,
+                customerName: booking.user.name || 'Valued Customer',
+                bookingReference: booking.reference || booking.id,
+                productType: booking.productType,
+                amount: Number(booking.totalAmount),
+                currency: booking.currency,
+                failureReason: `Hotel booking failed with provider: ${error instanceof Error ? error.message : 'Unknown provider error'}. We have automatically initiated a full refund back to your payment method.`,
+              }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
+            }
           });
       }
 
@@ -323,12 +383,12 @@ export class HandleStripeWebhookUseCase {
           .createAmadeusOrderAfterPayment(bookingId)
           .then(({ orderId }) => {
             this.logger.log(
-              `Successfully created Amadeus transfer order ${orderId} for car rental booking ${bookingId}`,
+              `Successfully created Amadeus transfer order ${orderId} for car rental booking ${bookingId} `,
             );
           })
           .catch((error) => {
             this.logger.error(
-              `Failed to create Amadeus transfer order for car rental booking ${bookingId}. Payment confirmed but order creation failed:`,
+              `Failed to create Amadeus transfer order for car rental booking ${bookingId}. Payment confirmed but order creation failed: `,
               error,
             );
 
@@ -342,7 +402,7 @@ export class HandleStripeWebhookUseCase {
                 amount: Number(booking.totalAmount),
                 currency: booking.currency,
                 failureReason: error instanceof Error ? error.message : 'Unknown provider error',
-              }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}:`, err));
+              }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
             }
 
             this.prisma.booking
@@ -357,12 +417,12 @@ export class HandleStripeWebhookUseCase {
                 },
               })
               .catch((updateError) => {
-                this.logger.error(`Failed to update booking ${bookingId} with error status:`, updateError);
+                this.logger.error(`Failed to update booking ${bookingId} with error status: `, updateError);
               });
           });
       }
     } catch (error) {
-      this.logger.error(`Failed to update booking ${bookingId}:`, error);
+      this.logger.error(`Failed to update booking ${bookingId}: `, error);
       throw error;
     }
   }
@@ -391,7 +451,7 @@ export class HandleStripeWebhookUseCase {
 
       this.logger.log(`Booking ${bookingId} payment failed`);
     } catch (error) {
-      this.logger.error(`Failed to update booking ${bookingId}:`, error);
+      this.logger.error(`Failed to update booking ${bookingId}: `, error);
     }
   }
 
@@ -418,7 +478,7 @@ export class HandleStripeWebhookUseCase {
 
       this.logger.log(`Booking ${bookingId} payment canceled`);
     } catch (error) {
-      this.logger.error(`Failed to update booking ${bookingId}:`, error);
+      this.logger.error(`Failed to update booking ${bookingId}: `, error);
     }
   }
 
@@ -437,7 +497,7 @@ export class HandleStripeWebhookUseCase {
       });
 
       if (!booking) {
-        this.logger.warn(`Booking not found for payment intent ${paymentIntentId}`);
+        this.logger.warn(`Booking not found for payment intent ${paymentIntentId} `);
         return;
       }
 
@@ -476,10 +536,10 @@ export class HandleStripeWebhookUseCase {
         }
       } catch (emailError) {
         // Don't fail refund if email fails
-        this.logger.error(`Failed to send refund email:`, emailError);
+        this.logger.error(`Failed to send refund email: `, emailError);
       }
     } catch (error) {
-      this.logger.error(`Failed to process refund:`, error);
+      this.logger.error(`Failed to process refund: `, error);
     }
   }
 
@@ -560,7 +620,7 @@ export class HandleStripeWebhookUseCase {
 
       this.logger.log(`Booking confirmation and receipt emails sent for booking ${booking.id}`);
     } catch (error) {
-      this.logger.error(`Failed to send booking emails:`, error);
+      this.logger.error(`Failed to send booking emails: `, error);
       // Don't throw - email failure shouldn't break the webhook
     }
   }

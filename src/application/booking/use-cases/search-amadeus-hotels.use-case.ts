@@ -17,7 +17,7 @@ export class SearchAmadeusHotelsUseCase {
     private readonly cacheService: CacheService,
     private readonly currencyService: CurrencyService,
     private readonly hotelImageCacheService: HotelImageCacheService,
-  ) {}
+  ) { }
 
   async execute(searchParams: SearchAmadeusHotelsDto) {
     const {
@@ -218,11 +218,11 @@ export class SearchAmadeusHotelsUseCase {
               // IMPORTANT: Use original currency/price from Amadeus if available
               // Amadeus may have already converted to requested currency, but we want
               // to use our own exchange rate API for consistency and accuracy
-              const originalPrice = offer.price?.original_total 
-                ? parseFloat(offer.price.original_total) 
+              const originalPrice = offer.price?.original_total
+                ? parseFloat(offer.price.original_total)
                 : parseFloat(offer.price?.total || offer.price?.base || '0');
-              const originalCurrency = offer.price?.original_currency 
-                ? offer.price.original_currency 
+              const originalCurrency = offer.price?.original_currency
+                ? offer.price.original_currency
                 : (offer.price?.currency || 'USD');
 
               // Convert currency using our own exchange rate API
@@ -242,7 +242,7 @@ export class SearchAmadeusHotelsUseCase {
 
               // Apply markup percentage to price after conversion fee
               const markupAmount = (conversionDetails.totalWithFee * markupPercentage) / 100;
-              
+
               // Apply service fee (flat amount)
               const finalPrice = conversionDetails.totalWithFee + markupAmount + serviceFeeAmount;
 
@@ -339,7 +339,7 @@ export class SearchAmadeusHotelsUseCase {
 
       return result;
     } catch (error) {
-      console.error('Error searching Amadeus hotels:', error);
+      this.logger.error('Error searching Amadeus hotels:', error);
       if (error instanceof HttpException) {
         throw error;
       }
@@ -372,9 +372,9 @@ export class SearchAmadeusHotelsUseCase {
       radius,
       radiusUnit,
     } = searchParams;
-    
+
     let key = `amadeus_hotel_search:${checkInDate}-${checkOutDate}-${adults}-${roomQuantity}-${currency}`;
-    
+
     if (hotelIds && hotelIds.length > 0) {
       // Sort hotel IDs for consistent cache key
       key += `:hotels-${[...hotelIds].sort().join(',')}`;

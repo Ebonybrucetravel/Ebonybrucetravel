@@ -40,6 +40,7 @@ import { BookingController } from './presentation/booking/booking.controller';
 import { PaymentController } from './presentation/payment/payment.controller';
 import { MarkupController } from './presentation/markup/markup.controller';
 import { DashboardController } from './presentation/dashboard/dashboard.controller';
+import { BookingHotelbedsController } from './presentation/booking/booking-hotelbeds.controller';
 
 @Module({
   imports: [
@@ -87,7 +88,7 @@ import { DashboardController } from './presentation/dashboard/dashboard.controll
     HealthModule,
     ContactModule,
   ],
-  controllers: [BookingController, PaymentController, MarkupController, DashboardController],
+  controllers: [BookingController, PaymentController, MarkupController, DashboardController, BookingHotelbedsController],
   providers: [
     {
       provide: APP_FILTER,

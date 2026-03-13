@@ -1,4 +1,4 @@
-import { Injectable, HttpException, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, BadRequestException, Logger } from '@nestjs/common';
 import { DuffelService } from '@infrastructure/external-apis/duffel/duffel.service';
 import { TripsAfricaService } from '@infrastructure/external-apis/trips-africa/trips-africa.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
@@ -13,13 +13,15 @@ import { ProductType } from '@prisma/client';
 
 @Injectable()
 export class SearchFlightsUseCase {
+  private readonly logger = new Logger(SearchFlightsUseCase.name);
+
   constructor(
     private readonly duffelService: DuffelService,
     private readonly tripsAfricaService: TripsAfricaService,
     private readonly markupRepository: MarkupRepository,
     private readonly cacheService: CacheService,
     private readonly currencyService: CurrencyService,
-  ) {}
+  ) { }
 
   async execute(
     searchParams: SearchFlightsDto,
@@ -52,10 +54,10 @@ export class SearchFlightsUseCase {
     // Validate dates
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Reset time to start of day
-    
+
     const departure = new Date(departureDate);
     departure.setHours(0, 0, 0, 0);
-    
+
     if (departure < today) {
       throw new BadRequestException(
         `Departure date (${departureDate}) cannot be in the past. Please select a future date.`,
@@ -66,7 +68,7 @@ export class SearchFlightsUseCase {
     if (returnDate) {
       const returnD = new Date(returnDate);
       returnD.setHours(0, 0, 0, 0);
-      
+
       if (returnD < departure) {
         throw new BadRequestException(
           `Return date (${returnDate}) must be after departure date (${departureDate}).`,
@@ -101,7 +103,7 @@ export class SearchFlightsUseCase {
 
     if (isDomestic) {
       // TODO: Implement Trips Africa API integration
-      console.log(
+      this.logger.warn(
         '⚠️  Domestic route detected, but Trips Africa API not yet implemented. Using Duffel.',
       );
     }
@@ -263,7 +265,7 @@ export class SearchFlightsUseCase {
       };
     } catch (error) {
       // Log error for debugging
-      console.error('Error searching flights:', error);
+      this.logger.error('Error searching flights:', error);
 
       // Re-throw HttpException as-is (from DuffelService or validation)
       if (error instanceof HttpException) {
@@ -272,7 +274,7 @@ export class SearchFlightsUseCase {
 
       // Convert other errors to proper HTTP exceptions
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      
+
       // Check for network/API errors
       if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('ECONNREFUSED')) {
         throw new HttpException(

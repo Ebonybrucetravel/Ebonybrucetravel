@@ -112,6 +112,18 @@ class EnvironmentVariables {
 
   @IsString()
   @IsOptional()
+  HOTELBEDS_API_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  HOTELBEDS_API_SECRET?: string;
+
+  @IsString()
+  @IsOptional()
+  HOTELBEDS_ENV?: string; // 'test' or 'live'
+
+  @IsString()
+  @IsOptional()
   ENCRYPTION_KEY?: string; // 32-byte hex string or password for AES-256-GCM encryption (used for secure card storage)
 
   @IsString()

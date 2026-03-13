@@ -3218,11 +3218,145 @@
 			"description": "Payment processing endpoints using Stripe.\n\n**Payment Flow:**\n1. Create booking → Get `bookingId`\n2. Create payment intent (or Amadeus charge-margin for hotel/car) → Get `clientSecret` or confirm charge\n3. Use `clientSecret` with Stripe.js on frontend (flights)\n4. Webhook updates booking status automatically\n\n**Admin pay on behalf:** For create-intent and Amadeus charge-margin, when caller is ADMIN/SUPER_ADMIN the backend uses the booking's userId so the payment is attributed to the customer.\n\n**Amadeus Hotel/Car:** Use charge-margin (authenticated or guest) after creating the Amadeus booking; margin is charged via Stripe.\n\n**Webhook Setup:**\n- Configure in Stripe Dashboard\n- Endpoint URL: `https://your-domain.com/api/v1/payments/stripe/webhook`\n- Required events: `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`\n- Webhook secret required for security (signature verification)\n\n**Security:**\n- All payment endpoints verify webhook signatures\n- Only legitimate Stripe events are processed\n- Invalid signatures are rejected"
 		},
 		{
-			"name": "Hotels",
+			"name": "Hotels (NEW PRIMARY: HOTELBEDS)",
 			"item": [
 				{
-					"name": "Hotels - Amadeus (Recommended)",
-					"description": "**🎯 RECOMMENDED: Use Amadeus for hotel bookings**\n\n**Why Amadeus?**\n- ✅ Free quota: 2,400-3,000 searches/month\n- ✅ Better test data (use big cities: LON, NYC, PAR)\n- ✅ More reliable and comprehensive\n- ✅ Advanced filtering (amenities, ratings, chain codes)\n- ✅ Map-based search support\n- ✅ Server-side pagination\n\n**📋 Complete Amadeus Hotel Booking Flow:**\n\n**Step 1: Search Hotels**\n`POST /api/v1/bookings/search/hotels/amadeus`\n- Search by city code, geographic coordinates, or hotel IDs\n- Returns hotel offers with pricing, policies, availability\n- Supports pagination, filtering, map-based search\n- **Save `offer.id` from response** (used in Step 2)\n\n**Step 2: Create Booking**\n`POST /api/v1/bookings/hotels/bookings/amadeus`\n- Use `offer.id` from Step 1 as `hotelOfferId`\n- Use `final_price` from offer as `offerPrice`\n- Provide guest details and payment card info\n- **Returns `booking.id`** (used in Step 3)\n- Booking status: `PENDING` (waiting for payment)\n\n**Step 3: Create Payment Intent**\n`POST /api/v1/payments/stripe/create-intent`\n- Use `booking.id` from Step 2\n- Returns `clientSecret` for Stripe Checkout\n\n**Step 4: Complete Payment**\n- Frontend: Use Stripe.js with `clientSecret`\n- User completes payment via Stripe\n\n**Step 5: Automatic Amadeus Booking (Webhook)**\n- After payment success, Stripe webhook triggers\n- System automatically creates Amadeus booking\n- Card details decrypted and sent to Amadeus\n- Booking status updates to `CONFIRMED`\n\n**Step 6: Get Booking (Optional)**\n`GET /api/v1/bookings/hotels/bookings/:bookingId`\n- View booking details from Amadeus\n- Automatically fetches latest data\n\n**Step 7: Cancel Booking (Admin Only)**\n`POST /api/v1/bookings/hotels/bookings/:bookingId/cancel`\n- Admin-only cancellation\n- Cancels in Amadeus system\n- Updates local database\n\n**🔐 Security:**\n- Card details encrypted with AES-256-GCM\n- Encrypted data cleared after successful booking\n- Only last 4 digits stored for display\n\n**📊 API Versions:**\n- **Search**: v3 (`/v3/shopping/hotel-offers`) - Latest\n- **Booking**: v2 (`/v2/booking/hotel-orders`) - Latest\n- *Note: Different endpoints can have different version numbers - this is standard practice*",
+					"name": "Hotels - Hotelbeds (NEW PRIMARY)",
+					"description": "**🎯 NEW PRIMARY: Use Hotelbeds (HBX) for hotel bookings**\n\n**Key Features:**\n- ✅ High speed & low weight API\n- ✅ Real-time price validation via Quote (CheckRate)\n- ✅ Automatic Stripe refund on post-payment failure\n- ✅ Simplified 3-step checkout flow\n\n**📋 Complete Hotelbeds Booking Flow:**\n\n**Step 1: Search Hotels**\n`POST /api/v1/booking/hotelbeds/search`\n- Search by destination code (e.g., PMI, LON) or coordinates\n- Returns availability with `finalAmount` (markup applied)\n- **Save `rateKey` from chosen room**\n\n**Step 2: Quote (Rate Check)**\n`POST /api/v1/booking/hotelbeds/quote`\n- Validates latest price and availability using `rateKey`\n- **Must display cancellation policies** returned here\n- Returns latest `cancellationDeadline` and `cancellationPolicySnapshot`\n\n**Step 3: Create Local Booking**\n`POST /api/v1/booking/hotelbeds/book`\n- Creates `PENDING` booking in local DB\n- Returns `bookingId` for Stripe payment\n\n**Step 4: Confirm Payment**\n- Client pays via Stripe. Webhook triggers actual provider booking.\n",
+					"item": [
+						{
+							"name": "1. Search Destinations (Autocomplete Mock)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/booking/hotelbeds/destinations/search?keyword=Mallorca",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"booking",
+										"hotelbeds",
+										"destinations",
+										"search"
+									],
+									"query": [
+										{
+											"key": "keyword",
+											"value": "Mallorca"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "2. Search Hotels (Hotelbeds)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"checkInDate\": \"2026-06-04\",\n  \"checkOutDate\": \"2026-06-07\",\n  \"destinationCode\": \"PMI\",\n  \"occupancies\": [\n    {\n      \"rooms\": 1,\n      \"adults\": 2,\n      \"children\": 0\n    }\n  ],\n  \"language\": \"ENG\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/booking/hotelbeds/search",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"booking",
+										"hotelbeds",
+										"search"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "3. Quote / Check Rate (Hotelbeds)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"rateKey\": \"{{hotelbedsRateKey}}\",\n  \"language\": \"ENG\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/booking/hotelbeds/quote",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"booking",
+										"hotelbeds",
+										"quote"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "4. Create Booking (Hotelbeds)",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{token}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"rateKey\": \"{{hotelbedsRateKey}}\",\n  \"totalAmount\": 450.50,\n  \"currency\": \"GBP\",\n  \"guests\": [\n    {\n      \"title\": \"MR\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Doe\",\n      \"roomIdx\": 1\n    },\n    {\n      \"title\": \"MRS\",\n      \"firstName\": \"Jane\",\n      \"lastName\": \"Doe\",\n      \"roomIdx\": 1\n    }\n  ],\n  \"policyAccepted\": true,\n  \"cancellationPolicySnapshot\": \"Non-refundable after 2026-05-20\",\n  \"cancellationDeadline\": \"2026-05-20T23:59:59Z\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/v1/booking/hotelbeds/book",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"booking",
+										"hotelbeds",
+										"book"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Hotels - Amadeus (LEGACY REFERENCE)",
+					"description": "**⚠️ LEGACY REFERENCE ONLY**\n\nThis part is kept for backward compatibility and reference. Use Hotelbeds for new implementations as per client request.\n",
 					"item": [
 						{
 							"name": "1. Search Hotels (Amadeus)",

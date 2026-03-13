@@ -7,7 +7,7 @@ import { toNumber } from '@common/utils/decimal.util';
 
 @Injectable()
 export class BookingRepositoryImpl implements BookingRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(booking: Partial<Booking>): Promise<Booking> {
     const created = await this.prisma.booking.create({
@@ -130,6 +130,34 @@ export class BookingRepositoryImpl implements BookingRepository {
     });
 
     if (!booking || booking.deletedAt) {
+      return null;
+    }
+
+    return this.mapToBooking(booking);
+  }
+
+  async findByOfferIdInBookingData(offerId: string): Promise<Booking | null> {
+    const booking = await this.prisma.booking.findFirst({
+      where: {
+        deletedAt: null,
+        bookingData: {
+          path: ['offerId'],
+          equals: offerId,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    if (!booking) {
       return null;
     }
 

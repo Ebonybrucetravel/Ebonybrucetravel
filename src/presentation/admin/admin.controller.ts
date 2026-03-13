@@ -29,6 +29,7 @@ import {
   ApiBearerAuth,
   ApiQuery,
   ApiParam,
+  ApiBody,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
@@ -132,15 +133,26 @@ export class AdminController {
     return this.authService.adminLogin(loginDto);
   }
 
-  @Post('auth/logout')
+  @Post('logout')
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Admin logout' })
+  @ApiOperation({
+    summary: 'Logout admin',
+    description: 'Revokes the provided refresh token. If no refresh token is provided, revokes all refresh tokens for the admin.',
+  })
+  @ApiBody({ schema: { properties: { refreshToken: { type: 'string' } } }, required: false })
   @ApiResponse({ status: 200, description: 'Logout successful' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async adminLogout(@Request() req: any) {
+  async adminLogout(@Request() req: any, @Body('refreshToken') refreshToken?: string) {
+    if (refreshToken) {
+      await this.authService.revokeRefreshToken(refreshToken);
+    } else {
+      await this.authService.revokeAllUserTokens(req.user.id);
+    }
+
+    // In future: could log admin logout event here
     return {
       success: true,
-      message: 'Logout successful. Please remove the token from client storage.',
+      message: 'Admin logged out successfully',
     };
   }
 
@@ -356,10 +368,7 @@ export class AdminController {
     if (updateDto.phone !== undefined) updateData.phone = updateDto.phone;
     if (updateDto.role !== undefined) updateData.role = updateDto.role;
     if (updateDto.permissions !== undefined) {
-      // Store permissions as JSON in a metadata field (we'll add this to schema if needed, or use existing field)
-      // For now, we can store in a JSON field if available, or we'll need to add it to schema
-      // Since we don't have a permissions field, we'll skip this for now and add it via migration later
-      // For MVP, we can use role-based access only
+      updateData.permissions = updateDto.permissions;
     }
 
     const updated = await this.prisma.user.update({
@@ -493,10 +502,11 @@ export class AdminController {
       throw new BadRequestException('Super Admin users have all permissions by default');
     }
 
-    // For now, we'll store permissions in a note or we can add a permissions JSON field
-    // Since we don't have a permissions field in the schema, we'll log this action
-    // and implement permission checking in guards/decorators later
-    // For MVP, role-based access is sufficient
+    // Save permissions as JSON in schema
+    await this.prisma.user.update({
+      where: { id },
+      data: { permissions: assignDto.permissions }
+    });
 
     // Log permission assignment in audit log
     await this.prisma.auditLog.create({
@@ -514,8 +524,7 @@ export class AdminController {
 
     return {
       success: true,
-      message:
-        'Permissions assigned successfully. Note: Full permission system implementation pending schema update.',
+      message: 'Permissions assigned successfully.',
       data: {
         userId: id,
         permissions: assignDto.permissions,
@@ -575,10 +584,18 @@ export class AdminController {
     ]);
     const userIds = users.map((u) => u.id);
     const pointsMap = new Map<string, number>();
-    for (const uid of userIds) {
-      const summary = await this.loyaltyService.getLoyaltySummary(uid);
-      pointsMap.set(uid, (summary?.account?.balance ?? 0) as number);
+
+    // Batch load loyalty accounts to prevent N+1 queries
+    if (userIds.length > 0) {
+      const loyaltyAccounts = await this.prisma.loyaltyAccount.findMany({
+        where: { userId: { in: userIds } },
+        select: { userId: true, balance: true }
+      });
+      for (const account of loyaltyAccounts) {
+        pointsMap.set(account.userId, account.balance);
+      }
     }
+
     const list = users.map((u) => ({
       id: u.id,
       email: u.email,
@@ -750,7 +767,14 @@ export class AdminController {
       where,
       include: { user: { select: { id: true, email: true, name: true } } },
       orderBy: { createdAt: 'desc' },
+      take: 10000, // Hard limit to prevent memory exhaustion
     });
+
+    // Add header to indicate if results might be truncated
+    if (bookings.length === 10000) {
+      res.setHeader('X-Warning-Truncated', 'Results limited to 10000 rows. Please use date filters.');
+    }
+
     const header =
       'Booking ID,Reference,Customer Name,Customer Email,Type,Price,Currency,Status,Payment Status,Booking Date\n';
     const rows = bookings.map(
