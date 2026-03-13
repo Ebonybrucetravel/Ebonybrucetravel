@@ -103,6 +103,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [activeSegmentIndex, setActiveSegmentIndex] = useState(0);
   const [hotelLocation, setHotelLocation] = useState('');
+  const [selectedHotelCityCode, setSelectedHotelCityCode] = useState<string | null>(null);
   const [hotelLocationSuggestions, setHotelLocationSuggestions] = useState<HotelDestination[]>([]);
   const [loadingHotelSuggestions, setLoadingHotelSuggestions] = useState(false);
   const [hotelProvider, setHotelProvider] = useState<'amadeus' | 'hotelbeds'>('hotelbeds');
@@ -158,34 +159,63 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const getCityCode = (location: string): string => {
     if (!location) return 'LOS';
 
-    // HBX often prefers City Codes (LON) over Airport Codes (LHR)
+    // If we have a stored city code from dropdown selection, use it
+    if (selectedHotelCityCode) return selectedHotelCityCode;
+
+    // City-name-to-code lookup (case-insensitive)
+    const cityNameMap: Record<string, string> = {
+      'lagos': 'LOS',
+      'london': 'LON',
+      'new york': 'NYC',
+      'dubai': 'DXB',
+      'paris': 'PAR',
+      'tokyo': 'TYO',
+      'singapore': 'SIN',
+      'palma': 'PMI',
+      'palma mallorca': 'PMI',
+      'cape town': 'CPT',
+      'accra': 'ACC',
+      'madrid': 'MAD',
+      'barcelona': 'BCN',
+      'rome': 'FCO',
+      'istanbul': 'IST',
+      'nairobi': 'NBO',
+      'johannesburg': 'JNB',
+      'cairo': 'CAI',
+      'amsterdam': 'AMS',
+      'frankfurt': 'FRA',
+    };
+
+    // Try matching city name from the typed text
+    const lowerLoc = location.toLowerCase().trim();
+    for (const [cityName, code] of Object.entries(cityNameMap)) {
+      if (lowerLoc.includes(cityName)) return code;
+    }
+
+    // Also check against popularHotelDestinations
+    const matchedDest = popularHotelDestinations.find(d =>
+      lowerLoc.includes(d.city.toLowerCase()) ||
+      lowerLoc.includes(d.name.toLowerCase())
+    );
+    if (matchedDest) return matchedDest.cityCode;
+
+    // Airport code extraction fallbacks
     const airportToCityMap: Record<string, string> = {
-      'LHR': 'LON',
-      'LGW': 'LON',
-      'STN': 'LON',
-      'LTN': 'LON',
-      'JFK': 'NYC',
-      'EWR': 'NYC',
-      'LGA': 'NYC',
-      'ORD': 'CHI',
-      'MDW': 'CHI',
-      'DFW': 'DFW',
-      'DAL': 'DFW',
-      'CDG': 'PAR',
-      'ORY': 'PAR',
-      'DXB': 'DXB',
-      'DWC': 'DXB',
-      'MAD': 'MAD',
-      'PMI': 'PMI', // Palma Mallorca (Stable for HBX Test)
+      'LHR': 'LON', 'LGW': 'LON', 'STN': 'LON', 'LTN': 'LON',
+      'JFK': 'NYC', 'EWR': 'NYC', 'LGA': 'NYC',
+      'ORD': 'CHI', 'MDW': 'CHI',
+      'CDG': 'PAR', 'ORY': 'PAR',
+      'DXB': 'DXB', 'DWC': 'DXB',
+      'MAD': 'MAD', 'PMI': 'PMI',
     };
 
     const match = location.match(/\(([A-Z]{3})\)/);
     const codeMatch = location.match(/^([A-Z]{3})\s*-\s*/);
     const code = match ? match[1] : (codeMatch ? codeMatch[1] : null);
+    const threeLetterMatch = location.match(/([A-Z]{3})/);
+    const finalCode = code || (threeLetterMatch ? threeLetterMatch[1] : 'LOS');
 
-    const finalCode = code || (location.match(/([A-Z]{3})/) ? location.match(/([A-Z]{3})/)?.[1] : 'LOS');
-
-    return airportToCityMap[finalCode as string] || finalCode as string;
+    return airportToCityMap[finalCode] || finalCode;
   };
 
   const popularHotelDestinations: HotelDestination[] = [
@@ -417,6 +447,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
   const handleHotelLocationChange = useCallback(async (value: string) => {
     setHotelLocation(value);
+    setSelectedHotelCityCode(null);
 
     if (value.length >= 1) {
       const suggestions = await fetchHotelLocationSuggestions(value);
@@ -490,6 +521,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
   const handleHotelDestinationSelect = useCallback((destination: HotelDestination) => {
     setHotelLocation(`${destination.city}, ${destination.country}`);
+    setSelectedHotelCityCode(destination.cityCode);
     setShowHotelLocationDropdown(false);
   }, []);
 

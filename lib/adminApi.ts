@@ -6,11 +6,7 @@
 
 import { config } from './config';
 
-// Ensure BASE URL is properly set
 const BASE = config.apiBaseUrl;
-
-// Log the base URL for debugging (remove in production)
-console.log('API Base URL:', BASE);
 
 function getAdminToken(): string {
   if (typeof window === 'undefined') return '';
@@ -34,52 +30,33 @@ async function adminFetch<T>(
   path: string,
   opts?: AdminFetchOpts
 ): Promise<{ success: boolean; data?: T; message?: string; meta?: any }> {
-  // Ensure path starts without double slash
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   const url = `${BASE}${cleanPath}`;
-  
-  // Log the full URL for debugging
-  console.log('🌐 Fetching:', url);
-  console.log('📤 Headers:', authHeaders());
-  console.log('📦 Body:', opts?.body);
-  
+
   try {
     const res = await fetch(url, {
       method: opts?.method ?? 'GET',
       headers: authHeaders(),
       body: opts?.body ? JSON.stringify(opts.body) : undefined,
     });
-    
-    console.log('📥 Response status:', res.status);
-    console.log('📥 Response headers:', Object.fromEntries(res.headers.entries()));
-    
-    // Try to get the response text first
+
     const responseText = await res.text();
-    console.log('📥 Raw response:', responseText);
-    
-    // Try to parse as JSON
+
     let json;
     try {
       json = responseText ? JSON.parse(responseText) : {};
-      console.log('📥 Parsed JSON:', json);
     } catch (e) {
-      console.error('❌ Failed to parse JSON:', responseText);
       json = { message: 'Invalid JSON response' };
     }
-    
+
     if (!res.ok) {
-      console.error('❌ API Error:', {
-        status: res.status,
-        statusText: res.statusText,
-        url,
-        response: json
-      });
+      console.error('Admin API Error:', { status: res.status, url });
       throw new Error(json.message ?? json.error ?? `Request failed: ${res.status}`);
     }
-    
+
     return json;
   } catch (error) {
-    console.error('❌ Fetch error:', error);
+    console.error('Admin fetch error:', error);
     throw error;
   }
 }
@@ -169,8 +146,8 @@ export async function suspendCustomer(id: string, reason: string) {
 }
 
 export async function activateCustomer(id: string) {
-  return adminFetch<void>(`/api/v1/admin/customers/${id}/activate`, { 
-    method: 'POST' 
+  return adminFetch<void>(`/api/v1/admin/customers/${id}/activate`, {
+    method: 'POST'
   });
 }
 
@@ -200,13 +177,13 @@ export async function listBookings(params?: {
 }
 
 export async function createBooking(body: {
-  userId?: string;                    
+  userId?: string;
   productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL';
-  provider: string;                    
-  basePrice: number;                   
-  currency: string;                    
-  bookingData: Record<string, any>;    
-  passengerInfo?: {                    
+  provider: string;
+  basePrice: number;
+  currency: string;
+  bookingData: Record<string, any>;
+  passengerInfo?: {
     firstName: string;
     lastName: string;
     email: string;
@@ -269,20 +246,19 @@ export async function exportBookingsCsv(params?: {
     });
     const query = q.toString();
     const token = getAdminToken();
-    
+
     const url = `${BASE}/api/v1/admin/bookings/export${query ? `?${query}` : ''}`;
-    console.log('📤 Attempting API export from:', url);
-    
+
     const res = await fetch(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    
+
     if (res.ok) {
       const blob = await res.blob();
       const disposition = res.headers.get('Content-Disposition');
-      const filename = disposition?.match(/filename="([^"]+)"/)?.[1] ?? 
+      const filename = disposition?.match(/filename="([^"]+)"/)?.[1] ??
         `bookings_export_${new Date().toISOString().split('T')[0]}.csv`;
-      
+
       // Create download link
       const downloadUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -290,40 +266,38 @@ export async function exportBookingsCsv(params?: {
       a.download = filename;
       document.body.appendChild(a);
       a.click();
-      
+
       // Clean up
       setTimeout(() => {
         document.body.removeChild(a);
         URL.revokeObjectURL(downloadUrl);
       }, 100);
-      
-      console.log('✅ API export successful');
+
       return;
     }
-    
+
     // If API fails, throw to fallback
     throw new Error(`API export failed with status ${res.status}`);
-    
+
   } catch (error) {
-    console.warn('⚠️ API export failed, using client-side export:', error);
-    
-    
+
+
     const bookingsResponse = await listBookings(params);
     if (!bookingsResponse.success) throw new Error('Failed to fetch bookings');
-    
+
     const bookings = bookingsResponse.data;
-    
+
     if (!bookings || bookings.length === 0) {
       throw new Error('No bookings to export');
     }
-    
+
 
     const headers = ['ID', 'Reference', 'Type', 'Customer', 'Amount', 'Currency', 'Status', 'Date'];
-    
+
 
     const csvRows = [
       headers.join(','),
-      ...bookings.map((b: any) => 
+      ...bookings.map((b: any) =>
         [
           b.id || '',
           b.reference || '',
@@ -334,36 +308,35 @@ export async function exportBookingsCsv(params?: {
           b.status || '',
           b.createdAt ? new Date(b.createdAt).toLocaleDateString() : ''
         ].map(value => {
-          
+
           const stringValue = value?.toString() || '';
           const escaped = stringValue.replace(/"/g, '""');
-          return escaped.includes(',') || escaped.includes('\n') || escaped.includes('"') 
-            ? `"${escaped}"` 
+          return escaped.includes(',') || escaped.includes('\n') || escaped.includes('"')
+            ? `"${escaped}"`
             : escaped;
         }).join(',')
       )
     ];
 
     const csvContent = csvRows.join('\n');
-    
-   
+
+
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    
-  
+
+
     const downloadUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = downloadUrl;
     a.download = `bookings_export_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(a);
     a.click();
-    
+
 
     setTimeout(() => {
       document.body.removeChild(a);
       URL.revokeObjectURL(downloadUrl);
     }, 100);
-    
-    console.log('✅ Client-side export successful');
+
   }
 }
 
