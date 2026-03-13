@@ -53,7 +53,7 @@ export default function BookingReviewPage() {
   const router = useRouter();
   const { selectedItem, searchParams, persistSelectionForReturn } = useSearch();
   const { isLoggedIn, user } = useAuth();
-  const { createBooking, createAmadeusHotelBooking, isCreating } = useBooking();
+  const { createBooking, createAmadeusHotelBooking, createHotelbedsBooking, isCreating } = useBooking();
   const isMerchantPaymentModel = config.paymentModel === "merchant";
 
   const [booking, setBooking] = useState<Booking | null>(null);
@@ -220,9 +220,11 @@ export default function BookingReviewPage() {
   const useAmadeusFlow = isAmadeusHotel(extendedItem);
   const productType = getProductType(extendedItem);
 
+
   const handleProceedToPayment = async (
     passengerInfo: PassengerInfo,
     voucherCode?: string,
+    hbxMetadata?: any,
   ) => {
     const isGuest = !isLoggedIn;
 
@@ -261,22 +263,10 @@ export default function BookingReviewPage() {
 
     if (useAmadeusFlow && isMerchantPaymentModel) {
       try {
-        // Step 1: Create the booking first (without payment)
         console.log("📝 Creating Amadeus hotel booking...");
-
-        // Calculate combined taxes for Amadeus hotel (Markup + Service fee)
         const markupAmount = parseFloat(extendedItem.markup_amount || "0");
         const serviceFee = parseFloat(extendedItem.service_fee || "0");
         const combinedTaxes = markupAmount + serviceFee;
-
-        console.log("💰 Amadeus hotel price breakdown:", {
-          basePrice: parseFloat(extendedItem.original_price || "0"),
-          markupAmount,
-          serviceFee,
-          taxes: combinedTaxes,
-          totalAmount:
-            parseFloat(extendedItem.original_price || "0") + combinedTaxes,
-        });
 
         const newBooking = await createAmadeusHotelBooking(
           extendedItem,
@@ -286,8 +276,6 @@ export default function BookingReviewPage() {
         );
 
         console.log("✅ Booking created:", newBooking);
-
-        // Step 2: Store booking and show Amadeus payment modal
         setBooking(newBooking);
         setAppliedVoucherCode(voucherCode);
         setShowPayment(true);
@@ -295,7 +283,7 @@ export default function BookingReviewPage() {
         console.error("❌ Booking creation failed:", err);
         toast.error(
           err?.message ??
-            "We couldn’t create your booking. Please check your details and try again.",
+          "We couldn’t create your booking. Please check your details and try again.",
         );
       }
       return;
@@ -308,40 +296,41 @@ export default function BookingReviewPage() {
       return;
     }
 
+    const isHotelbeds = extendedItem.provider?.toLowerCase() === "hotelbeds";
+    if (isHotelbeds) {
+      try {
+        console.log("🏨 Creating Hotelbeds booking...", { hbxMetadata });
+        const newBooking = await createHotelbedsBooking(
+          extendedItem,
+          passengerInfo,
+          isGuest,
+          hbxMetadata,
+        );
+        console.log("✅ Hotelbeds booking created:", newBooking);
+        setBooking(newBooking);
+        setAppliedVoucherCode(voucherCode);
+        setShowPayment(true);
+      } catch (err: any) {
+        console.error("❌ Hotelbeds booking failed:", err);
+        toast.error(
+          err?.message ??
+          "We couldn’t create your Hotelbeds booking. Please try again.",
+        );
+      }
+      return;
+    }
+
     try {
-      // For flights and other non-Amadeus items
       const priceFields = getPriceFields(extendedItem);
       const priceValue = extractPriceValue(extendedItem.price);
-
-      // Get base price (original amount/price)
-      const basePrice =
-        parseFloat(priceFields.original || priceFields.base || "0") ||
-        priceValue;
-
-      // Calculate markup and service fee
+      const basePrice = parseFloat(priceFields.original || priceFields.base || "0") || priceValue;
       const markupAmount = parseFloat(extendedItem.markup_amount || "0");
       const serviceFee = parseFloat(extendedItem.service_fee || "0");
-
-      // Calculate combined taxes (Markup + Service fee)
       const combinedTaxes = markupAmount + serviceFee;
+      const finalAmount = parseFloat(priceFields.final || "0") || basePrice + combinedTaxes;
 
-      // Final amount = basePrice + combinedTaxes
-      const finalAmount =
-        parseFloat(priceFields.final || "0") || basePrice + combinedTaxes;
+      console.log(`💰 ${productType} booking creation:`, { basePrice, combinedTaxes, finalAmount });
 
-      console.log(`💰 ${productType} booking price breakdown (payment):`, {
-        original: priceFields.original,
-        base: priceFields.base,
-        final: priceFields.final,
-        basePrice: basePrice.toFixed(2),
-        markupAmount: markupAmount.toFixed(2),
-        serviceFee: serviceFee.toFixed(2),
-        taxes: combinedTaxes.toFixed(2),
-        finalAmount: finalAmount.toFixed(2),
-        markup_percentage: extendedItem.markup_percentage,
-      });
-
-      // Create booking with combined taxes
       const newBooking = await createBooking(
         extendedItem,
         searchParams,
@@ -355,17 +344,12 @@ export default function BookingReviewPage() {
       );
 
       console.log("✅ Booking created:", newBooking);
-
-      // Set the booking state so ReviewTrip can display the exact amounts
       setBooking(newBooking);
       setAppliedVoucherCode(voucherCode);
       setShowPayment(true);
     } catch (err: any) {
       console.error("❌ Booking creation failed:", err);
-      toast.error(
-        err.message ??
-          "We couldn’t create your booking. Please check your details and try again.",
-      );
+      toast.error(err.message ?? "We couldn’t create your booking. Please try again.");
     }
   };
 
@@ -373,15 +357,12 @@ export default function BookingReviewPage() {
     setShowPayment(false);
     setShowAmadeusPayment(false);
     setPendingPassengerInfo(null);
-    router.push(
-      `/booking/success?id=${confirmed.id}&ref=${confirmed.reference}`,
-    );
+    router.push(`/booking/success?id=${confirmed.id}&ref=${confirmed.reference}`);
   };
 
   return (
     <>
       <ReviewTrip
-        // ✅ Pass enhanced item with pre-calculated taxes
         item={enhancedItem || selectedItem}
         searchParams={searchParams}
         isLoggedIn={isLoggedIn}

@@ -103,12 +103,26 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [activeSegmentIndex, setActiveSegmentIndex] = useState(0);
   const [hotelLocation, setHotelLocation] = useState('');
-  const [checkInDate, setCheckInDate] = useState('');
-  const [checkOutDate, setCheckOutDate] = useState('');
-  const [rooms, setRooms] = useState(1);
-  const [showHotelLocationDropdown, setShowHotelLocationDropdown] = useState(false);
   const [hotelLocationSuggestions, setHotelLocationSuggestions] = useState<HotelDestination[]>([]);
   const [loadingHotelSuggestions, setLoadingHotelSuggestions] = useState(false);
+  const [hotelProvider, setHotelProvider] = useState<'amadeus' | 'hotelbeds'>('hotelbeds');
+
+  // Set default dates with lead time for better search success
+  const defaultDates = (() => {
+    const d1 = new Date();
+    d1.setDate(d1.getDate() + 4); // 4 days lead for safety
+    const d2 = new Date(d1);
+    d2.setDate(d2.getDate() + 3); // 3 days stay
+    return {
+      in: d1.toISOString().split('T')[0],
+      out: d2.toISOString().split('T')[0]
+    };
+  })();
+
+  const [checkInDate, setCheckInDate] = useState(defaultDates.in);
+  const [checkOutDate, setCheckOutDate] = useState(defaultDates.out);
+  const [rooms, setRooms] = useState(1);
+  const [showHotelLocationDropdown, setShowHotelLocationDropdown] = useState(false);
   const [carPickUp, setCarPickUp] = useState('');
   const [carDropOff, setCarDropOff] = useState('');
   const [carPickUpDate, setCarPickUpDate] = useState('');
@@ -142,33 +156,47 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const today = new Date().toISOString().split('T')[0];
 
   const getCityCode = (location: string): string => {
-    if (!location) return 'LHR';
-    
+    if (!location) return 'LOS';
+
+    // HBX often prefers City Codes (LON) over Airport Codes (LHR)
+    const airportToCityMap: Record<string, string> = {
+      'LHR': 'LON',
+      'LGW': 'LON',
+      'STN': 'LON',
+      'LTN': 'LON',
+      'JFK': 'NYC',
+      'EWR': 'NYC',
+      'LGA': 'NYC',
+      'ORD': 'CHI',
+      'MDW': 'CHI',
+      'DFW': 'DFW',
+      'DAL': 'DFW',
+      'CDG': 'PAR',
+      'ORY': 'PAR',
+      'DXB': 'DXB',
+      'DWC': 'DXB',
+      'MAD': 'MAD',
+      'PMI': 'PMI', // Palma Mallorca (Stable for HBX Test)
+    };
+
     const match = location.match(/\(([A-Z]{3})\)/);
-    if (match) return match[1];
-    
     const codeMatch = location.match(/^([A-Z]{3})\s*-\s*/);
-    if (codeMatch) return codeMatch[1];
-    
-    const popularDest = popularHotelDestinations.find(dest => 
-      location.toLowerCase().includes(dest.city.toLowerCase()) ||
-      location.toLowerCase().includes(dest.name.toLowerCase())
-    );
-    
-    if (popularDest) return popularDest.cityCode;
-    
-    const anyCode = location.match(/([A-Z]{3})/);
-    return anyCode ? anyCode[1] : 'LHR';
+    const code = match ? match[1] : (codeMatch ? codeMatch[1] : null);
+
+    const finalCode = code || (location.match(/([A-Z]{3})/) ? location.match(/([A-Z]{3})/)?.[1] : 'LOS');
+
+    return airportToCityMap[finalCode as string] || finalCode as string;
   };
 
   const popularHotelDestinations: HotelDestination[] = [
     { name: 'Lagos', city: 'Lagos', country: 'Nigeria', cityCode: 'LOS', image: 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D' },
-    { name: 'London', city: 'London', country: 'United Kingdom', cityCode: 'LHR', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
+    { name: 'London', city: 'London', country: 'United Kingdom', cityCode: 'LON', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
     { name: 'New York', city: 'New York', country: 'USA', cityCode: 'NYC', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400' },
     { name: 'Dubai', city: 'Dubai', country: 'UAE', cityCode: 'DXB', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400' },
     { name: 'Paris', city: 'Paris', country: 'France', cityCode: 'PAR', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400' },
     { name: 'Tokyo', city: 'Tokyo', country: 'Japan', cityCode: 'TYO', image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&q=80&w=400' },
     { name: 'Singapore', city: 'Singapore', country: 'Singapore', cityCode: 'SIN', image: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Palma Mallorca', city: 'Palma', country: 'Spain', cityCode: 'PMI', image: 'https://images.unsplash.com/photo-1538332576228-eb5b4c4de6f5?auto=format&fit=crop&q=80&w=400' },
     { name: 'Cape Town', city: 'Cape Town', country: 'South Africa', cityCode: 'CPT', image: 'https://images.unsplash.com/photo-1596394516093-9ba7b6146eba?auto=format&fit=crop&q=80&w=400' },
     { name: 'Accra', city: 'Accra', country: 'Ghana', cityCode: 'ACC', image: 'https://images.unsplash.com/photo-1587496679742-bad502958c4a?auto=format&fit=crop&q=80&w=400' },
   ];
@@ -247,10 +275,10 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
           })).slice(0, 10);
         }
       }
-    } catch (e) {}
-    const filtered = airportsWithCities.filter(location => 
-      location.code.toLowerCase().includes(queryLower) || 
-      location.city.toLowerCase().includes(queryLower) || 
+    } catch (e) { }
+    const filtered = airportsWithCities.filter(location =>
+      location.code.toLowerCase().includes(queryLower) ||
+      location.city.toLowerCase().includes(queryLower) ||
       location.name.toLowerCase().includes(queryLower)
     ).slice(0, 10);
     return filtered.map(location => ({
@@ -263,16 +291,16 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     if (!query || query.length < 2) {
       return popularAirports.slice(0, 8);
     }
-    
+
     try {
       setLoadingSuggestions(true);
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ebony-bruce-production.up.railway.app'}/api/v1/bookings/flights/places/suggestions?query=${encodeURIComponent(query)}`
       );
-      
+
       if (response.ok) {
         const result = await response.json();
-        
+
         if (result.success && Array.isArray(result.data)) {
           const suggestions: Airport[] = result.data
             .map((place: any) => ({
@@ -285,11 +313,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             .filter((place: Airport) => place.code && place.name);
           const uniqueSuggestions = suggestions.filter(
             (airport, index, self) =>
-              index === self.findIndex((a) => 
+              index === self.findIndex((a) =>
                 a.code === airport.code && a.city === airport.city
               )
           );
-          
+
           return uniqueSuggestions.slice(0, 12);
         }
       }
@@ -302,17 +330,17 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       );
       const uniqueFiltered = filtered.filter(
         (airport, index, self) =>
-          index === self.findIndex((a) => 
+          index === self.findIndex((a) =>
             a.code === airport.code && a.city === airport.city
           )
       );
-      
+
       return uniqueFiltered.slice(0, 10);
-      
+
     } catch (error) {
       console.error('Error fetching airport suggestions:', error);
       const lowerQuery = query.toLowerCase();
-      const filtered = popularAirports.filter(airport => 
+      const filtered = popularAirports.filter(airport =>
         airport.code.toLowerCase().includes(lowerQuery) ||
         airport.city.toLowerCase().includes(lowerQuery) ||
         airport.country.toLowerCase().includes(lowerQuery) ||
@@ -334,11 +362,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     if (!query || query.length < 2) {
       return popularHotelDestinations.slice(0, 6);
     }
-    
+
     try {
       setLoadingHotelSuggestions(true);
       const lowerQuery = query.toLowerCase();
-      const filtered = popularHotelDestinations.filter(dest => 
+      const filtered = popularHotelDestinations.filter(dest =>
         dest.city.toLowerCase().includes(lowerQuery) ||
         dest.country.toLowerCase().includes(lowerQuery) ||
         dest.name.toLowerCase().includes(lowerQuery) ||
@@ -346,7 +374,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       );
       await new Promise(resolve => setTimeout(resolve, 200));
       return filtered.length > 0 ? filtered.slice(0, 8) : [];
-      
+
     } catch (error) {
       console.error('Error fetching hotel suggestions:', error);
       return [];
@@ -360,7 +388,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     newSegments[index].from = value;
     setSegments(newSegments);
     setActiveSegmentIndex(index);
-    
+
     if (value.length >= 1) {
       const suggestions = await fetchAirportSuggestions(value);
       setFromSuggestions(suggestions);
@@ -376,7 +404,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     newSegments[index].to = value;
     setSegments(newSegments);
     setActiveSegmentIndex(index);
-    
+
     if (value.length >= 1) {
       const suggestions = await fetchAirportSuggestions(value);
       setToSuggestions(suggestions);
@@ -389,7 +417,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
   const handleHotelLocationChange = useCallback(async (value: string) => {
     setHotelLocation(value);
-    
+
     if (value.length >= 1) {
       const suggestions = await fetchHotelLocationSuggestions(value);
       setHotelLocationSuggestions(suggestions);
@@ -429,7 +457,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const handleAirportSelect = useCallback((airport: Airport, type: 'from' | 'to', index: number = 0) => {
     const newSegments = [...segments];
     const displayValue = `${airport.code} - ${airport.city}, ${airport.country}`;
-    
+
     if (type === 'from') {
       newSegments[index].from = displayValue;
       setShowFromDropdown(false);
@@ -437,9 +465,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       newSegments[index].to = displayValue;
       setShowToDropdown(false);
     }
-    
+
     setSegments(newSegments);
-    
+
     // Clear suggestions to avoid duplicates
     if (type === 'from') {
       setFromSuggestions([]);
@@ -506,11 +534,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowStr = tomorrow.toISOString().split('T')[0];
-    
+
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 4);
     const nextWeekStr = nextWeek.toISOString().split('T')[0];
-    
+
     setSegments(prev => {
       const newSegments = [...prev];
       newSegments[0].date = tomorrowStr;
@@ -621,35 +649,35 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
   const extractAirportCode = (displayValue: string): string => {
     if (!displayValue) return '';
-    
+
     console.log('Extracting code from:', displayValue);
-    
+
     // If it's already just a 3-letter code, return it uppercase
     if (/^[A-Z]{3}$/.test(displayValue.trim())) {
       return displayValue.trim();
     }
-    
+
     // Pattern 1: "LOS - Lagos, Nigeria" or "LHR - Heathrow Airport, London"
     const pattern1 = displayValue.match(/([A-Z]{3})\s*-\s*/);
     if (pattern1) {
       console.log('Pattern 1 match:', pattern1[1]);
       return pattern1[1];
     }
-    
+
     // Pattern 2: Extract from parentheses like "Lagos (LOS)"
     const pattern2 = displayValue.match(/\(([A-Z]{3})\)/);
     if (pattern2) {
       console.log('Pattern 2 match:', pattern2[1]);
       return pattern2[1];
     }
-    
+
     // Pattern 3: Find any 3 uppercase letters at the beginning
     const pattern3 = displayValue.match(/^([A-Z]{3})/);
     if (pattern3) {
       console.log('Pattern 3 match:', pattern3[1]);
       return pattern3[1];
     }
-    
+
     // Try to match from airports list by searching the entire string
     const lowerValue = displayValue.toLowerCase();
     const matchedAirport = airports.find(airport => {
@@ -658,8 +686,8 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         return true;
       }
       // Check if city name is in the string
-      if (airport.city.toLowerCase().includes(lowerValue) || 
-          lowerValue.includes(airport.city.toLowerCase())) {
+      if (airport.city.toLowerCase().includes(lowerValue) ||
+        lowerValue.includes(airport.city.toLowerCase())) {
         return true;
       }
       // Check if airport name contains the search
@@ -668,35 +696,35 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       }
       return false;
     });
-    
+
     if (matchedAirport) {
       console.log('Matched from airports list:', matchedAirport.code);
       return matchedAirport.code;
     }
-    
+
     // Try popular airports as fallback
-    const popularMatch = popularAirports.find(airport => 
+    const popularMatch = popularAirports.find(airport =>
       airport.city.toLowerCase().includes(lowerValue) ||
       lowerValue.includes(airport.city.toLowerCase())
     );
-    
+
     if (popularMatch) {
       console.log('Matched from popular airports:', popularMatch.code);
       return popularMatch.code;
     }
-    
+
     // Last resort: extract any 3 consecutive uppercase letters
     const anyCode = displayValue.match(/\b([A-Z]{3})\b/);
     if (anyCode) {
       console.log('Extracted any 3 uppercase letters:', anyCode[1]);
       return anyCode[1];
     }
-    
+
     // If all else fails, return empty string
     console.log('No airport code found');
     return '';
   };
-  
+
   const extractLocationCode = (input: string): string => {
     if (!input) return '';
     if (/^[A-Z]{3}$/.test(input.trim())) return input.trim();
@@ -708,13 +736,13 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (activeTab === 'cars') {
       console.log('🚗 Car rental search - Starting...');
-      
+
       const pickUpCode = extractLocationCode(carPickUp);
       const dropOffCode = extractLocationCode(carDropOff);
-      
+
       if (!pickUpCode || !dropOffCode || !carPickUpDate || !carDropOffDate) {
         alert('Please fill in all rental details including locations and dates.');
         return;
@@ -737,44 +765,44 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       });
     } else if (activeTab === 'flights') {
       console.log('✈️ Flight search - Starting...');
-      
+
       // Extract airport codes and validate
       const errors = [];
       const flightSegments = segments.map((segment, index) => {
         const fromCode = extractAirportCode(segment.from);
         const toCode = extractAirportCode(segment.to);
-        
+
         if (!fromCode) errors.push(`Segment ${index + 1}: Invalid departure location`);
         if (!toCode) errors.push(`Segment ${index + 1}: Invalid arrival location`);
         if (!segment.date) errors.push(`Segment ${index + 1}: Date is required`);
-        
+
         return {
           from: fromCode,
           to: toCode,
           date: segment.date
         };
       });
-      
+
       if (tripType === 'round-trip' && !returnDate) {
         errors.push('Return date is required for round-trip flights');
       }
-      
+
       if (flightSegments.length === 0) {
         errors.push('At least one flight segment is required');
       }
-      
+
       // Check for duplicate segments
       const segmentKeys = flightSegments.map(s => `${s.from}-${s.to}`);
       const uniqueSegments = new Set(segmentKeys);
       if (uniqueSegments.size !== segmentKeys.length) {
         errors.push('Duplicate flight segments detected');
       }
-      
+
       if (errors.length > 0) {
         alert(errors.join('\n'));
         return;
       }
-      
+
       // Create flight search payload
       const data = {
         type: 'flights',
@@ -791,29 +819,29 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         maxPrice,
         currency: currency.code || 'USD'
       };
-      
+
       console.log('📦 FINAL Flight Payload:', JSON.stringify(data, null, 2));
-      
+
       // Send to API
       onSearch(data);
     } else if (activeTab === 'hotels') {
       console.log('🏨 Hotel search - Starting...');
-      
+
       // Validate hotel search
       const errors = [];
-      
+
       if (!hotelLocation) {
         errors.push('Hotel location is required');
       }
-      
+
       if (!checkInDate) {
         errors.push('Check-in date is required');
       }
-      
+
       if (!checkOutDate) {
         errors.push('Check-out date is required');
       }
-      
+
       if (checkInDate && checkOutDate) {
         const checkIn = new Date(checkInDate);
         const checkOut = new Date(checkOutDate);
@@ -821,20 +849,20 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
           errors.push('Check-out date must be after check-in date');
         }
       }
-      
+
       if (travellers.adults < 1) {
         errors.push('At least one adult is required');
       }
-      
+
       if (rooms < 1) {
         errors.push('At least one room is required');
       }
-      
+
       if (errors.length > 0) {
         alert(errors.join('\n'));
         return;
       }
-      
+
       // Create hotel search payload
       const data = {
         type: 'hotels',
@@ -847,30 +875,31 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
           children: travellers.children
         },
         rooms,
-        currency: currency.code || 'USD'
+        currency: currency.code || 'USD',
+        provider: hotelProvider
       };
-      
+
       console.log('📦 FINAL Hotel Payload:', JSON.stringify(data, null, 2));
-      
+
       // Send to API
       onSearch(data);
     }
   };
-  
+
   // Updated useEffect to use searchParams and handleSubmit dependency
   useEffect(() => {
     const type = searchParams.get('type');
-    
+
     if (type === 'hotels') {
       setActiveTab('hotels');
-      
+
       const location = searchParams.get('location');
       const cityCode = searchParams.get('cityCode');
       const checkIn = searchParams.get('checkIn');
       const checkOut = searchParams.get('checkOut');
       const guests = searchParams.get('guests');
       const rooms_param = searchParams.get('rooms');
-      
+
       if (location) setHotelLocation(decodeURIComponent(location));
       if (checkIn) setCheckInDate(checkIn);
       if (checkOut) setCheckOutDate(checkOut);
@@ -878,18 +907,18 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         setTravellers(prev => ({ ...prev, adults: parseInt(guests) }));
       }
       if (rooms_param) setRooms(parseInt(rooms_param));
-      
+
       const timer = setTimeout(() => {
-        const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+        const fakeEvent = { preventDefault: () => { } } as React.FormEvent;
         handleSubmit(fakeEvent);
       }, 300);
-      
+
       return () => clearTimeout(timer);
     }
-    
+
     else if (type === 'car-rentals') {
       setActiveTab('cars');
-      
+
       const location = searchParams.get('location');
       const pickupCode = searchParams.get('pickupCode');
       const dropoffCode = searchParams.get('dropoffCode');
@@ -898,19 +927,19 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       const pickupTime = searchParams.get('pickupTime') || '10:00';
       const dropoffTime = searchParams.get('dropoffTime') || '16:00';
       const passengers = searchParams.get('passengers');
-      
+
       if (location) {
         const parts = decodeURIComponent(location).split(' to ');
         if (parts.length === 2) {
-          const fromMatch = airportsWithCities.find(a => 
+          const fromMatch = airportsWithCities.find(a =>
             a.city.toLowerCase().includes(parts[0].toLowerCase()) ||
             a.code.toLowerCase() === parts[0].toUpperCase()
           );
-          const toMatch = airportsWithCities.find(a => 
+          const toMatch = airportsWithCities.find(a =>
             a.city.toLowerCase().includes(parts[1].toLowerCase()) ||
             a.code.toLowerCase() === parts[1].toUpperCase()
           );
-          
+
           if (fromMatch) {
             setCarPickUp(`${fromMatch.code} - ${fromMatch.name}, ${fromMatch.city}`);
           }
@@ -919,43 +948,43 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
           }
         }
       }
-      
+
       if (pickupCode) {
         const match = airportsWithCities.find(a => a.code === pickupCode);
         if (match) {
           setCarPickUp(`${match.code} - ${match.name}, ${match.city}`);
         }
       }
-      
+
       if (dropoffCode) {
         const match = airportsWithCities.find(a => a.code === dropoffCode);
         if (match) {
           setCarDropOff(`${match.code} - ${match.name}, ${match.city}`);
         }
       }
-      
+
       if (pickupDate) setCarPickUpDate(pickupDate);
       if (dropoffDate) setCarDropOffDate(dropoffDate);
       if (pickupTime) setCarPickUpTime(pickupTime);
       if (dropoffTime) setCarDropOffTime(dropoffTime);
       if (passengers) setCarTravellers(parseInt(passengers));
-      
+
       const timer = setTimeout(() => {
-        const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+        const fakeEvent = { preventDefault: () => { } } as React.FormEvent;
         handleSubmit(fakeEvent);
       }, 300);
-      
+
       return () => clearTimeout(timer);
     }
   }, [searchParams, handleSubmit]);
-  
+
   const triggerPicker = (e: React.MouseEvent<HTMLInputElement>) => {
-    try { 
+    try {
       if ('showPicker' in HTMLInputElement.prototype) {
-        (e.target as HTMLInputElement).showPicker(); 
+        (e.target as HTMLInputElement).showPicker();
       }
-    } catch (err) { 
-      (e.target as HTMLInputElement).focus(); 
+    } catch (err) {
+      (e.target as HTMLInputElement).focus();
     }
   };
 
@@ -1079,7 +1108,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       )}
     </div>
   );
-  
+
   const renderHotelLocationDropdown = () => (
     showHotelLocationDropdown && (
       <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-gray-200 max-h-60 overflow-y-auto z-50">
@@ -1105,8 +1134,8 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 <div className="flex items-start gap-3">
                   {dest.image && (
                     <div className="flex-shrink-0">
-                      <img 
-                        src={dest.image} 
+                      <img
+                        src={dest.image}
                         alt={dest.city}
                         className="w-10 h-10 rounded-lg object-cover"
                       />
@@ -1153,7 +1182,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     const isFirst = index === 0;
     const isMultiCity = tripType === 'multi-city';
     const isRangeSelected = tripType === 'round-trip' && index === 0 && segment.date && returnDate;
-  
+
     return (
       <div key={index} className="bg-[#33a8da] rounded-xl p-[2px] flex flex-col lg:flex-row items-stretch gap-[2px] mb-2 shadow-sm animate-in slide-in-from-left duration-200">
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-[2px]">
@@ -1163,12 +1192,12 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             <div className="relative" ref={index === activeSegmentIndex ? fromRef : null}>
               <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 relative rounded-t-lg sm:rounded-l-lg sm:rounded-tr-none min-h-[72px]">
                 <svg className="w-4 h-4 text-[#33a8da] self-center" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                  <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
                 </svg>
                 <div className="flex-1 relative">
                   <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none">From</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={segment.from}
                     onChange={(e) => handleFromInputChange(e.target.value, index)}
                     onFocus={() => {
@@ -1179,11 +1208,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                       setShowFromDropdown(true);
                       setShowToDropdown(false);
                     }}
-                    className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0 pr-5" 
-                    placeholder="City/Code" 
+                    className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0 pr-5"
+                    placeholder="City/Code"
                   />
                   {segment.from && (
-                    <button 
+                    <button
                       type="button"
                       onClick={() => {
                         const newSegments = [...segments];
@@ -1205,17 +1234,17 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
               </div>
               {showFromDropdown && activeSegmentIndex === index && renderAirportDropdown(fromSuggestions, 'from', index)}
             </div>
-  
+
             {/* To Input with Autocomplete */}
             <div className="relative" ref={index === activeSegmentIndex ? toRef : null}>
               <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 border-t sm:border-t-0 sm:border-l border-gray-100 rounded-b-lg sm:rounded-r-lg sm:rounded-bl-none min-h-[72px]">
                 <svg className="w-4 h-4 text-[#33a8da] rotate-180 shrink-0 self-center" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                  <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
                 </svg>
                 <div className="flex-1 relative">
                   <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none">To</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={segment.to}
                     onChange={(e) => handleToInputChange(e.target.value, index)}
                     onFocus={() => {
@@ -1226,11 +1255,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                       setShowToDropdown(true);
                       setShowFromDropdown(false);
                     }}
-                    className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0 pr-5" 
-                    placeholder="City/Code" 
+                    className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0 pr-5"
+                    placeholder="City/Code"
                   />
                   {segment.to && (
-                    <button 
+                    <button
                       type="button"
                       onClick={() => {
                         const newSegments = [...segments];
@@ -1248,7 +1277,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
               {showToDropdown && activeSegmentIndex === index && renderAirportDropdown(toSuggestions, 'to', index)}
             </div>
           </div>
-  
+
           {/* Dates / Travellers Section */}
           <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-[2px]">
             <div className={`p-2.5 md:p-3 flex items-center gap-2 relative cursor-pointer group hover:bg-gray-50 transition border-t sm:border-t-0 lg:border-l border-gray-100 min-h-[72px] ${isRangeSelected ? 'bg-blue-50/50' : 'bg-white'}`}>
@@ -1259,40 +1288,40 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 <div className="flex-1 min-w-0 relative h-auto flex flex-col justify-center">
                   <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none truncate">Depart</label>
                   <span className={`block font-bold text-xs leading-tight truncate ${segment.date ? 'text-gray-900' : 'text-gray-400'}`}>
-                    {segment.date ? new Date(segment.date).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'Select'}
+                    {segment.date ? new Date(segment.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Select'}
                   </span>
-                  <input 
-                    type="date" 
-                    min={today} 
-                    value={segment.date} 
-                    onClick={triggerPicker} 
-                    onChange={(e) => handleSegmentChange(index, 'date', e.target.value)} 
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20" 
+                  <input
+                    type="date"
+                    min={today}
+                    value={segment.date}
+                    onClick={triggerPicker}
+                    onChange={(e) => handleSegmentChange(index, 'date', e.target.value)}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20"
                   />
                 </div>
                 {tripType === 'round-trip' && index === 0 && (
                   <div className="flex-1 min-w-0 border-l border-gray-100 pl-2 relative h-auto flex flex-col justify-center">
                     <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none truncate">Return</label>
                     <span className={`block font-bold text-xs leading-tight truncate ${returnDate ? 'text-gray-900' : 'text-gray-400'}`}>
-                      {returnDate ? new Date(returnDate).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'Select'}
+                      {returnDate ? new Date(returnDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Select'}
                     </span>
-                    <input 
-                      type="date" 
-                      min={segment.date || today} 
-                      value={returnDate} 
-                      onClick={triggerPicker} 
-                      onChange={(e) => setReturnDate(e.target.value)} 
-                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20" 
+                    <input
+                      type="date"
+                      min={segment.date || today}
+                      value={returnDate}
+                      onClick={triggerPicker}
+                      onChange={(e) => setReturnDate(e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20"
                     />
                   </div>
                 )}
               </div>
             </div>
-            <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 relative cursor-pointer group hover:bg-gray-50 transition border-t sm:border-t-0 sm:border-l border-gray-100 min-h-[72px]" 
-                 ref={isFirst ? travellerRef : null} 
-                 onClick={() => isFirst && setShowTravellerDropdown(!showTravellerDropdown)}>
+            <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 relative cursor-pointer group hover:bg-gray-50 transition border-t sm:border-t-0 sm:border-l border-gray-100 min-h-[72px]"
+              ref={isFirst ? travellerRef : null}
+              onClick={() => isFirst && setShowTravellerDropdown(!showTravellerDropdown)}>
               <svg className="w-4 h-4 text-gray-700 self-center" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
               </svg>
               <div className="flex-1 min-w-0">
                 <label className="block text-[7px] font-bold text-gray-500 uppercase mb-0 leading-none">Travellers</label>
@@ -1309,7 +1338,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             </div>
           </div>
         </div>
-        
+
         {isFirst && (
           <button type="submit" disabled={loading || !segment.from || !segment.to || !segment.date} className="w-full lg:w-auto bg-black text-white px-5 py-3.5 lg:py-4 font-bold text-sm rounded-xl lg:rounded-lg hover:bg-gray-900 transition active:scale-95 min-w-[100px] shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
             {loading ? (
@@ -1326,7 +1355,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   return (
     <div className="w-full max-w-7xl mx-auto px-2 md:px-4">
       <div className="bg-white rounded-2xl md:rounded-[24px] shadow-2xl overflow-visible">
-        
+
         {/* Navigation Tabs - Optimized for Mobile */}
         <div className="flex items-center gap-4 md:gap-10 px-4 md:px-8 pt-4 md:pt-6 border-b border-gray-100 overflow-x-auto hide-scrollbar">
           {[
@@ -1360,7 +1389,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                   <div className="flex items-center gap-2 md:gap-4 border-l border-gray-100 pl-4 h-8">
                     <div className="relative" ref={cabinRef}>
                       <button type="button" onClick={() => setShowCabinDropdown(!showCabinDropdown)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-100 bg-gray-50 text-gray-700 hover:border-gray-300 text-[10px] md:text-xs font-bold">
-                        {cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1).replace('_', ' ')} <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 9l-7 7-7-7" strokeWidth={3}/></svg>
+                        {cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1).replace('_', ' ')} <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 9l-7 7-7-7" strokeWidth={3} /></svg>
                       </button>
                       {showCabinDropdown && (
                         <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
@@ -1370,13 +1399,13 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                             { label: 'Business', value: 'business' },
                             { label: 'First Class', value: 'first' }
                           ].map((cls) => (
-                            <button 
-                              key={cls.value} 
-                              type="button" 
-                              onClick={() => { 
-                                setCabinClass(cls.value); 
-                                setShowCabinDropdown(false); 
-                              }} 
+                            <button
+                              key={cls.value}
+                              type="button"
+                              onClick={() => {
+                                setCabinClass(cls.value);
+                                setShowCabinDropdown(false);
+                              }}
                               className="w-full text-left px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors"
                             >
                               {cls.label}
@@ -1385,11 +1414,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                         </div>
                       )}
                     </div>
-                    
+
                     <div className="relative" ref={filtersRef}>
-                      <button 
-                        type="button" 
-                        onClick={() => setShowFiltersDropdown(!showFiltersDropdown)} 
+                      <button
+                        type="button"
+                        onClick={() => setShowFiltersDropdown(!showFiltersDropdown)}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] md:text-xs font-bold transition-all ${showFiltersDropdown ? 'border-[#33a8da] bg-blue-50 text-[#33a8da]' : 'border-gray-100 bg-gray-50 text-gray-700 hover:border-gray-300'}`}
                       >
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
@@ -1402,10 +1431,10 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                               <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Stops</h4>
                               <div className="grid grid-cols-2 gap-2">
                                 {['Any', 'Non-stop', '1 Stop', '2+ Stops'].map((stop) => (
-                                  <button 
-                                    key={stop} 
-                                    type="button" 
-                                    onClick={() => setStopsFilter(stop)} 
+                                  <button
+                                    key={stop}
+                                    type="button"
+                                    onClick={() => setStopsFilter(stop)}
                                     className={`py-2 px-3 rounded-lg text-[10px] md:text-xs font-bold border transition-all ${stopsFilter === stop ? 'bg-[#33a8da] text-white border-[#33a8da]' : 'bg-gray-50 text-gray-600 border-gray-100 hover:border-gray-200'}`}
                                   >
                                     {stop}
@@ -1418,18 +1447,18 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                                 <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Max Price</h4>
                                 <span className="text-xs font-black text-[#33a8da]">{currency.symbol}{maxPrice.toLocaleString()}</span>
                               </div>
-                              <input 
-                                type="range" 
-                                min="100" 
-                                max="10000" 
+                              <input
+                                type="range"
+                                min="100"
+                                max="10000"
                                 step="100"
                                 value={maxPrice}
                                 onChange={(e) => setMaxPrice(parseInt(e.target.value))}
                                 className="w-full h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-[#33a8da]"
                               />
                             </div>
-                            <button 
-                              type="button" 
+                            <button
+                              type="button"
                               onClick={() => setShowFiltersDropdown(false)}
                               className="w-full py-2.5 bg-gray-900 text-white text-[10px] md:text-xs font-bold rounded-xl hover:bg-black transition-colors uppercase tracking-widest"
                             >
@@ -1454,290 +1483,334 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             </div>
           )}
 
-{activeTab === 'hotels' && (
-  <div className="flex flex-col lg:flex-row items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px]">
-    <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-[2px]">
-      {/* Hotel Location with Autocomplete */}
-      <div className="md:col-span-4 relative" ref={hotelLocationRef}>
-        <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 md:rounded-l-lg min-h-[72px]">
-          <svg className="w-4 h-4 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" />
-          </svg>
-          <div className="flex-1">
-            <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">Destination</label>
-            <input 
-              type="text" 
-              value={hotelLocation} 
-              onChange={(e) => handleHotelLocationChange(e.target.value)}
-              onFocus={() => {
-                if (hotelLocation.length < 2) {
-                  setHotelLocationSuggestions(popularHotelDestinations.slice(0, 6));
-                }
-                setShowHotelLocationDropdown(true);
-              }}
-              className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0" 
-              placeholder="City/Country" 
-            />
-          </div>
-          {hotelLocation && (
-            <button 
-              type="button"
-              onClick={() => {
-                setHotelLocation('');
-                setShowHotelLocationDropdown(false);
-              }}
-              className="text-gray-400 hover:text-gray-600 text-sm font-bold px-1"
-            >
-              ×
-            </button>
-          )}
-        </div>
-        {showHotelLocationDropdown && renderHotelLocationDropdown()}
-      </div>
+          {activeTab === 'hotels' && (
+            <div className="space-y-3">
+              {/* Provider Selector */}
+              <div className="flex items-center gap-3 px-1">
+                <span className="text-[10px] font-black text-white/80 uppercase tracking-widest">Provider:</span>
+                <div className="flex bg-white/10 p-0.5 rounded-lg border border-white/20">
+                  {[
+                    { id: 'hotelbeds', label: 'Hotelbeds', icon: '🌍' },
+                    { id: 'amadeus', label: 'Amadeus', icon: '✈️' }
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setHotelProvider(p.id as any)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${hotelProvider === p.id
+                        ? 'bg-white text-[#33a8da] shadow-sm'
+                        : 'text-white/70 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                      <span className="text-xs">{p.icon}</span>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-      {/* Check-in Date */}
-      <div className="md:col-span-4 bg-white p-2.5 md:p-3 flex items-center gap-2 relative border-t md:border-t-0 md:border-l border-gray-100 min-h-[72px]">
-        <svg className="w-4 h-4 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-        <div className="flex-1 grid grid-cols-2 gap-2">
-          <div>
-            <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">In</label>
-            <input 
-              type="date" 
-              min={today} 
-              value={checkInDate} 
-              onChange={(e) => setCheckInDate(e.target.value)} 
-              className="w-full font-bold outline-none text-xs bg-transparent p-0" 
-            />
-          </div>
-          <div>
-            <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">Out</label>
-            <input 
-              type="date" 
-              min={checkInDate || today} 
-              value={checkOutDate} 
-              onChange={(e) => setCheckOutDate(e.target.value)} 
-              className="w-full font-bold outline-none text-xs bg-transparent p-0" 
-            />
-          </div>
-        </div>
-      </div>
+              {/* Test Environment Notice */}
+              {hotelProvider === 'hotelbeds' && (
+                <div className="bg-blue-900/40 border border-blue-400/30 rounded-lg p-2 md:p-3 flex items-start gap-2.5 transition-all animate-in fade-in slide-in-from-top-1">
+                  <div className="text-base md:text-lg filter grayscale brightness-200">ℹ️</div>
+                  <div className="flex-1">
+                    <p className="text-[9px] md:text-[10px] font-black text-blue-100 uppercase tracking-widest leading-tight">
+                      Hotelbeds Test Environment
+                    </p>
+                    <p className="text-[8px] md:text-[9px] text-blue-200 mt-0.5 leading-snug font-medium opacity-90">
+                      Inventory is limited to specific areas (use <span className="text-white font-bold px-1 bg-white/10 rounded">PMI</span> for Palma/Mallorca).
+                      A 3+ day lead time ensures active provider availability.
+                    </p>
+                  </div>
+                </div>
+              )}
 
-      {/* Guests & Search Button */}
-      <div className="md:col-span-4 bg-white p-2.5 md:p-3 flex items-center justify-between md:rounded-r-lg border-t md:border-t-0 md:border-l border-gray-100 min-h-[72px]">
-        <div className="flex items-center gap-2 flex-1">
-          <svg className="w-4 h-4 text-gray-700 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-          </svg>
-          <div onClick={() => setShowTravellerDropdown(!showTravellerDropdown)} className="cursor-pointer">
-            <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">Guests</label>
-            <span className="block font-bold text-gray-900 text-xs">{travellers.adults} Adults, {rooms} Room</span>
-          </div>
-        </div>
-        <button 
-          type="submit" 
-          disabled={loading} 
-          className="bg-black text-white px-5 py-3.5 lg:py-4 font-bold text-sm rounded-xl lg:rounded-lg hover:bg-gray-900 transition active:scale-95 min-w-[100px] shadow-lg h-[42px] flex items-center justify-center"
-        >
-          {loading ? (
-            <div className="flex items-center gap-1.5">
-              <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
-              <span className="text-xs">Search</span>
-            </div>
-          ) : 'Search'}
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+              <div className="flex flex-col lg:flex-row items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px] shadow-lg border border-white/20">
+                <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-[2px]">
+                  {/* Hotel Location with Autocomplete */}
+                  <div className="md:col-span-4 relative" ref={hotelLocationRef}>
+                    <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 md:rounded-l-lg min-h-[72px]">
+                      <svg className="w-4 h-4 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" />
+                      </svg>
+                      <div className="flex-1">
+                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">Destination</label>
+                        <input
+                          type="text"
+                          value={hotelLocation}
+                          onChange={(e) => handleHotelLocationChange(e.target.value)}
+                          onFocus={() => {
+                            if (hotelLocation.length < 2) {
+                              setHotelLocationSuggestions(popularHotelDestinations.slice(0, 6));
+                            }
+                            setShowHotelLocationDropdown(true);
+                          }}
+                          className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0"
+                          placeholder="City/Country"
+                        />
+                      </div>
+                      {hotelLocation && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHotelLocation('');
+                            setShowHotelLocationDropdown(false);
+                          }}
+                          className="text-gray-400 hover:text-gray-600 text-sm font-bold px-1"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                    {showHotelLocationDropdown && renderHotelLocationDropdown()}
+                  </div>
 
-{activeTab === 'cars' && (
-  <div className="flex flex-wrap items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px] relative">
-    {/* Pick-up Location - 2 columns */}
-    <div className="flex-1 lg:flex-2 relative">
-      <div className="bg-white p-2 md:p-2.5 flex items-center gap-1.5 rounded-t-lg lg:rounded-l-lg lg:rounded-tr-none min-h-[68px]">
-        <svg className="w-3.5 h-3.5 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" />
-        </svg>
-        <div className="flex-1 relative">
-          <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PICK-UP</label>
-          <input
-            type="text"
-            value={carPickUp}
-            onChange={(e) => handleCarPickUpChange(e.target.value)}
-            onFocus={() => setShowCarPickUpDropdown(true)}
-            placeholder="City"
-            className="w-full font-bold text-gray-900 focus:outline-none text-[11px] bg-transparent p-0"
-          />
-        </div>
-        {carPickUp && (
-          <button
-            type="button"
-            onClick={() => {
-              setCarPickUp('');
-              setShowCarPickUpDropdown(false);
-            }}
-            className="text-gray-400 hover:text-gray-600 text-xs font-bold px-0.5"
-          >
-            ×
-          </button>
-        )}
-      </div>
-      {showCarPickUpDropdown && renderCarLocationDropdown(carPickUpSuggestions, 'pickUp')}
-    </div>
+                  {/* Check-in Date */}
+                  <div className="md:col-span-4 bg-white p-2.5 md:p-3 flex items-center gap-2 relative border-t md:border-t-0 md:border-l border-gray-100 min-h-[72px]">
+                    <svg className="w-4 h-4 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <div className="flex-1 grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">In</label>
+                        <input
+                          type="date"
+                          min={today}
+                          value={checkInDate}
+                          onChange={(e) => setCheckInDate(e.target.value)}
+                          className="w-full font-bold outline-none text-xs bg-transparent p-0"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">Out</label>
+                        <input
+                          type="date"
+                          min={checkInDate || today}
+                          value={checkOutDate}
+                          onChange={(e) => setCheckOutDate(e.target.value)}
+                          className="w-full font-bold outline-none text-xs bg-transparent p-0"
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-    {/* Drop-off Location - 2 columns */}
-    <div className="flex-1 lg:flex-2 relative">
-      <div className="bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
-        <svg className="w-3.5 h-3.5 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" />
-        </svg>
-        <div className="flex-1">
-          <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">DROP-OFF</label>
-          <input
-            type="text"
-            value={carDropOff}
-            onChange={(e) => handleCarDropOffChange(e.target.value)}
-            onFocus={() => setShowCarDropOffDropdown(true)}
-            placeholder="City"
-            className="w-full font-bold text-gray-900 focus:outline-none text-[11px] bg-transparent p-0"
-          />
-        </div>
-        {carDropOff && (
-          <button
-            type="button"
-            onClick={() => {
-              setCarDropOff('');
-              setShowCarDropOffDropdown(false);
-            }}
-            className="text-gray-400 hover:text-gray-600 text-xs font-bold px-0.5"
-          >
-            ×
-          </button>
-        )}
-      </div>
-      {showCarDropOffDropdown && renderCarLocationDropdown(carDropOffSuggestions, 'dropOff')}
-    </div>
-
-    {/* Pick-up Time - 1.5 columns */}
-    <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
-      <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-      <div className="flex-1">
-        <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PICK TIME</label>
-        <input
-          type="time"
-          value={carPickUpTime}
-          onChange={(e) => setCarPickUpTime(e.target.value)}
-          className="w-full font-bold outline-none text-[11px] bg-transparent p-0"
-        />
-      </div>
-    </div>
-
-    {/* Pick-up Date - 1.5 columns */}
-    <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
-      <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-      </svg>
-      <div className="flex-1">
-        <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PICK DATE</label>
-        <input
-          type="date"
-          min={today}
-          value={carPickUpDate}
-          onChange={(e) => setCarPickUpDate(e.target.value)}
-          className="w-full font-bold outline-none text-[11px] bg-transparent p-0"
-        />
-      </div>
-    </div>
-
-    {/* Drop-off Time - 1.5 columns */}
-    <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
-      <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-      <div className="flex-1">
-        <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">DROP TIME</label>
-        <input
-          type="time"
-          value={carDropOffTime}
-          onChange={(e) => setCarDropOffTime(e.target.value)}
-          className="w-full font-bold outline-none text-[11px] bg-transparent p-0"
-        />
-      </div>
-    </div>
-
-    {/* Drop-off Date - 1.5 columns */}
-    <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
-      <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-      </svg>
-      <div className="flex-1">
-        <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">DROP DATE</label>
-        <input
-          type="date"
-          min={carPickUpDate || today}
-          value={carDropOffDate}
-          onChange={(e) => setCarDropOffDate(e.target.value)}
-          className="w-full font-bold outline-none text-[11px] bg-transparent p-0"
-        />
-      </div>
-    </div>
-
-    {/* Passengers - 1 column */}
-    <div className="flex-1 lg:flex-1 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
-      <svg className="w-3.5 h-3.5 text-gray-700 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-      </svg>
-      <div onClick={() => setShowCarTravellerDropdown(!showCarTravellerDropdown)} className="cursor-pointer flex-1">
-        <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PASSENGERS</label>
-        <span className="block font-bold text-gray-900 text-[11px] leading-tight">{carTravellers}</span>
-      </div>
-    </div>
-
-    {/* Search Button - 1 column */}
-    <div className="flex-1 lg:flex-1 bg-white p-2 md:p-2.5 flex items-center justify-center md:rounded-r-lg border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
-      <button
-        type="submit"
-        disabled={loading || !carPickUp || !carDropOff || !carPickUpDate || !carDropOffDate}
-        className="bg-black text-white px-3 py-2 font-bold text-xs rounded-lg hover:bg-gray-900 transition active:scale-95 w-full shadow-lg h-[36px] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {loading ? (
-          <div className="flex items-center gap-1">
-            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-            <span className="text-[10px]">Search</span>
-          </div>
-        ) : 'Search'}
-      </button>
-    </div>
-  </div>
-)}
-
-        </form>
-      </div>
-      
-      {/* Car Traveller Dropdown (moved outside main container) */}
-      {showCarTravellerDropdown && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm" onClick={() => setShowCarTravellerDropdown(false)}>
-          <div className="bg-white p-6 rounded-2xl w-full max-w-xs shadow-2xl" onClick={e => e.stopPropagation()}>
-            <h4 className="font-black text-gray-900 mb-4 uppercase text-xs tracking-widest">Passengers</h4>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-sm">Passengers</span>
-                <div className="flex items-center gap-3">
-                  <button type="button" onClick={() => updateCarTravellers(false)} className="w-8 h-8 rounded-full border border-gray-200">-</button>
-                  <span className="font-bold">{carTravellers}</span>
-                  <button type="button" onClick={() => updateCarTravellers(true)} className="w-8 h-8 rounded-full border border-gray-200">+</button>
+                  {/* Guests & Search Button */}
+                  <div className="md:col-span-4 bg-white p-2.5 md:p-3 flex items-center justify-between md:rounded-r-lg border-t md:border-t-0 md:border-l border-gray-100 min-h-[72px]">
+                    <div className="flex items-center gap-2 flex-1">
+                      <svg className="w-4 h-4 text-gray-700 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                      </svg>
+                      <div onClick={() => setShowTravellerDropdown(!showTravellerDropdown)} className="cursor-pointer">
+                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">Guests</label>
+                        <span className="block font-bold text-gray-900 text-xs">{travellers.adults} Adults, {rooms} Room</span>
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="bg-black text-white px-5 py-3.5 lg:py-4 font-bold text-sm rounded-xl lg:rounded-lg hover:bg-gray-900 transition active:scale-95 min-w-[100px] shadow-lg h-[42px] flex items-center justify-center"
+                    >
+                      {loading ? (
+                        <div className="flex items-center gap-1.5">
+                          <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
+                          <span className="text-xs">Search</span>
+                        </div>
+                      ) : 'Search'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-            <button type="button" onClick={() => setShowCarTravellerDropdown(false)} className="w-full bg-[#33a8da] text-white py-3 rounded-xl font-bold mt-6 text-xs uppercase tracking-widest">Done</button>
+          )}
+
+          {activeTab === 'cars' && (
+            <div className="flex flex-wrap items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px] relative">
+              {/* Pick-up Location - 2 columns */}
+              <div className="flex-1 lg:flex-2 relative">
+                <div className="bg-white p-2 md:p-2.5 flex items-center gap-1.5 rounded-t-lg lg:rounded-l-lg lg:rounded-tr-none min-h-[68px]">
+                  <svg className="w-3.5 h-3.5 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" />
+                  </svg>
+                  <div className="flex-1 relative">
+                    <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PICK-UP</label>
+                    <input
+                      type="text"
+                      value={carPickUp}
+                      onChange={(e) => handleCarPickUpChange(e.target.value)}
+                      onFocus={() => setShowCarPickUpDropdown(true)}
+                      placeholder="City"
+                      className="w-full font-bold text-gray-900 focus:outline-none text-[11px] bg-transparent p-0"
+                    />
+                  </div>
+                  {carPickUp && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCarPickUp('');
+                        setShowCarPickUpDropdown(false);
+                      }}
+                      className="text-gray-400 hover:text-gray-600 text-xs font-bold px-0.5"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                {showCarPickUpDropdown && renderCarLocationDropdown(carPickUpSuggestions, 'pickUp')}
+              </div>
+
+              {/* Drop-off Location - 2 columns */}
+              <div className="flex-1 lg:flex-2 relative">
+                <div className="bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+                  <svg className="w-3.5 h-3.5 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" />
+                  </svg>
+                  <div className="flex-1">
+                    <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">DROP-OFF</label>
+                    <input
+                      type="text"
+                      value={carDropOff}
+                      onChange={(e) => handleCarDropOffChange(e.target.value)}
+                      onFocus={() => setShowCarDropOffDropdown(true)}
+                      placeholder="City"
+                      className="w-full font-bold text-gray-900 focus:outline-none text-[11px] bg-transparent p-0"
+                    />
+                  </div>
+                  {carDropOff && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCarDropOff('');
+                        setShowCarDropOffDropdown(false);
+                      }}
+                      className="text-gray-400 hover:text-gray-600 text-xs font-bold px-0.5"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                {showCarDropOffDropdown && renderCarLocationDropdown(carDropOffSuggestions, 'dropOff')}
+              </div>
+
+              {/* Pick-up Time - 1.5 columns */}
+              <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+                <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex-1">
+                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PICK TIME</label>
+                  <input
+                    type="time"
+                    value={carPickUpTime}
+                    onChange={(e) => setCarPickUpTime(e.target.value)}
+                    className="w-full font-bold outline-none text-[11px] bg-transparent p-0"
+                  />
+                </div>
+              </div>
+
+              {/* Pick-up Date - 1.5 columns */}
+              <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+                <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <div className="flex-1">
+                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PICK DATE</label>
+                  <input
+                    type="date"
+                    min={today}
+                    value={carPickUpDate}
+                    onChange={(e) => setCarPickUpDate(e.target.value)}
+                    className="w-full font-bold outline-none text-[11px] bg-transparent p-0"
+                  />
+                </div>
+              </div>
+
+              {/* Drop-off Time - 1.5 columns */}
+              <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+                <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex-1">
+                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">DROP TIME</label>
+                  <input
+                    type="time"
+                    value={carDropOffTime}
+                    onChange={(e) => setCarDropOffTime(e.target.value)}
+                    className="w-full font-bold outline-none text-[11px] bg-transparent p-0"
+                  />
+                </div>
+              </div>
+
+              {/* Drop-off Date - 1.5 columns */}
+              <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+                <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <div className="flex-1">
+                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">DROP DATE</label>
+                  <input
+                    type="date"
+                    min={carPickUpDate || today}
+                    value={carDropOffDate}
+                    onChange={(e) => setCarDropOffDate(e.target.value)}
+                    className="w-full font-bold outline-none text-[11px] bg-transparent p-0"
+                  />
+                </div>
+              </div>
+
+              {/* Passengers - 1 column */}
+              <div className="flex-1 lg:flex-1 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+                <svg className="w-3.5 h-3.5 text-gray-700 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                </svg>
+                <div onClick={() => setShowCarTravellerDropdown(!showCarTravellerDropdown)} className="cursor-pointer flex-1">
+                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PASSENGERS</label>
+                  <span className="block font-bold text-gray-900 text-[11px] leading-tight">{carTravellers}</span>
+                </div>
+              </div>
+
+              {/* Search Button - 1 column */}
+              <div className="flex-1 lg:flex-1 bg-white p-2 md:p-2.5 flex items-center justify-center md:rounded-r-lg border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
+                <button
+                  type="submit"
+                  disabled={loading || !carPickUp || !carDropOff || !carPickUpDate || !carDropOffDate}
+                  className="bg-black text-white px-3 py-2 font-bold text-xs rounded-lg hover:bg-gray-900 transition active:scale-95 w-full shadow-lg h-[36px] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? (
+                    <div className="flex items-center gap-1">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                      <span className="text-[10px]">Search</span>
+                    </div>
+                  ) : 'Search'}
+                </button>
+              </div>
+            </div>
+          )}
+
+        </form>
+      </div >
+
+      {/* Car Traveller Dropdown (moved outside main container) */}
+      {
+        showCarTravellerDropdown && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm" onClick={() => setShowCarTravellerDropdown(false)}>
+            <div className="bg-white p-6 rounded-2xl w-full max-w-xs shadow-2xl" onClick={e => e.stopPropagation()}>
+              <h4 className="font-black text-gray-900 mb-4 uppercase text-xs tracking-widest">Passengers</h4>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm">Passengers</span>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => updateCarTravellers(false)} className="w-8 h-8 rounded-full border border-gray-200">-</button>
+                    <span className="font-bold">{carTravellers}</span>
+                    <button type="button" onClick={() => updateCarTravellers(true)} className="w-8 h-8 rounded-full border border-gray-200">+</button>
+                  </div>
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowCarTravellerDropdown(false)} className="w-full bg-[#33a8da] text-white py-3 rounded-xl font-bold mt-6 text-xs uppercase tracking-widest">Done</button>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 };
 

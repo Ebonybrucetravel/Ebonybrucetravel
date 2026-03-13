@@ -7,6 +7,7 @@ import api, {
   getStoredAuthToken,
   getVendorCodeFromCardNumber,
   publicRequest,
+  bookHotelHBX,
 } from "@/lib/api";
 
 // Extend the SearchResult type locally to include pricing fields
@@ -75,11 +76,11 @@ export function useBooking() {
           (typeof item.original_amount === "string"
             ? parseFloat(item.original_amount)
             : (() => {
-                const priceMatch = item.price?.match(/[\d,.]+/);
-                return priceMatch
-                  ? parseFloat(priceMatch[0].replace(/,/g, ""))
-                  : 100;
-              })());
+              const priceMatch = item.price?.match(/[\d,.]+/);
+              return priceMatch
+                ? parseFloat(priceMatch[0].replace(/,/g, ""))
+                : 100;
+            })());
 
         // Calculate taxes by adding markup and service fee together
         const markupAmount = parseFloat(item.markup_amount || "0");
@@ -356,12 +357,12 @@ export function useBooking() {
       passenger: PassengerInfo,
       card:
         | {
-            cardNumber: string;
-            expiryMonth: string;
-            expiryYear: string;
-            cvc: string;
-            holderName?: string;
-          }
+          cardNumber: string;
+          expiryMonth: string;
+          expiryYear: string;
+          cvc: string;
+          holderName?: string;
+        }
         | undefined,
       isGuest: boolean,
     ): Promise<Booking> => {
@@ -375,13 +376,13 @@ export function useBooking() {
         // Format payment info if card is provided
         const paymentInfo = card
           ? {
-              cardNumber: card.cardNumber.replace(/\s+/g, ""),
-              expiryDate: `${card.expiryYear}-${card.expiryMonth.padStart(2, "0")}`,
-              holderName:
-                card.holderName ||
-                `${passenger.firstName} ${passenger.lastName}`,
-              securityCode: card.cvc,
-            }
+            cardNumber: card.cardNumber.replace(/\s+/g, ""),
+            expiryDate: `${card.expiryYear}-${card.expiryMonth.padStart(2, "0")}`,
+            holderName:
+              card.holderName ||
+              `${passenger.firstName} ${passenger.lastName}`,
+            securityCode: card.cvc,
+          }
           : undefined;
 
         // Calculate price breakdown for Amadeus hotel
@@ -488,9 +489,9 @@ export function useBooking() {
 
       const body = isGuest
         ? {
-            bookingReference: booking.reference,
-            email: booking.passengerInfo.email,
-          }
+          bookingReference: booking.reference,
+          email: booking.passengerInfo.email,
+        }
         : { bookingId: booking.id };
 
       const res = await fetch(url, {
@@ -578,7 +579,7 @@ export function useBooking() {
             setBooking(b);
             return b;
           }
-        } catch {}
+        } catch { }
       }
       throw new Error("Booking confirmation timed out");
     },
@@ -590,12 +591,107 @@ export function useBooking() {
     setError(null);
   }, []);
 
+  const createHotelbedsBooking = useCallback(
+    async (
+      item: ExtendedSearchResult,
+      passenger: PassengerInfo,
+      isGuest: boolean,
+      hbxMetadata?: {
+        totalAmount: number;
+        currency: string;
+        cancellationPolicySnapshot: string;
+        cancellationDeadline: string;
+        policyAccepted: boolean;
+      }
+    ): Promise<Booking> => {
+      setIsCreating(true);
+      setError(null);
+      try {
+        const rateKey = item.realData?.rateKey;
+        if (!rateKey) throw new Error("Missing rate key for Hotelbeds booking");
+
+        // Prepare guest list for HBX backend wrapper
+        // Map from passenger.guests if available, otherwise fallback to the primary passenger
+        let guests = [];
+
+        if (passenger.guests && passenger.guests.length > 0) {
+          guests = passenger.guests.map((g, index) => ({
+            title: (g.name?.title || passenger.title || "MR").toUpperCase(),
+            firstName: g.name?.firstName || passenger.firstName,
+            lastName: g.name?.lastName || passenger.lastName,
+            roomIdx: g.travelerId || 1, // roomIdx is usually 1-based, mapping from travelerId or default to 1
+          }));
+        } else {
+          // Fallback to primary passenger if no guests array provided
+          guests = [
+            {
+              title: (passenger.title || "MR").toUpperCase(),
+              firstName: passenger.firstName,
+              lastName: passenger.lastName,
+              roomIdx: 1,
+            },
+          ];
+        }
+
+        const response = await bookHotelHBX({
+          rateKey,
+          totalAmount: hbxMetadata?.totalAmount || parseFloat(item.final_price || "0"),
+          currency: hbxMetadata?.currency || (item.currency || "GBP").toUpperCase(),
+          guests,
+          policyAccepted: hbxMetadata?.policyAccepted || true,
+          cancellationPolicySnapshot: hbxMetadata?.cancellationPolicySnapshot || "Standard cancellation policy applies.",
+          cancellationDeadline: hbxMetadata?.cancellationDeadline || new Date().toISOString(),
+        });
+
+        if (!response.success) {
+          throw new Error(response.message || "Hotelbeds booking failed");
+        }
+
+        // Transform HBX response to our internal Booking type
+        const booking: Booking = {
+          id: response.bookingId,
+          reference: response.bookingId,
+          status: (response.status as any) || "PENDING",
+          paymentStatus: "PENDING",
+          productType: "HOTEL",
+          provider: "HOTELBEDS",
+          basePrice: parseFloat(item.original_price || "0"),
+          totalAmount: parseFloat(item.final_price || "0"),
+          currency: (item.currency || "GBP").toUpperCase(),
+          bookingData: {
+            ...response,
+            hotelName: item.title,
+            rateKey,
+          },
+          passengerInfo: {
+            firstName: passenger.firstName,
+            lastName: passenger.lastName,
+            email: passenger.email,
+            phone: passenger.phone,
+          },
+          createdAt: new Date().toISOString(),
+        };
+
+        setBooking(booking);
+        return booking;
+      } catch (err: any) {
+        console.error("❌ Hotelbeds booking failed:", err);
+        setError(err.message);
+        throw err;
+      } finally {
+        setIsCreating(false);
+      }
+    },
+    [BASE],
+  );
+
   return {
     booking,
     isCreating,
     error,
     createBooking,
     createAmadeusHotelBooking,
+    createHotelbedsBooking,
     chargeMarginAmadeusHotel,
     createPaymentIntent,
     pollBookingStatus,

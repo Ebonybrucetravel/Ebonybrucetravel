@@ -12,12 +12,12 @@ export interface SearchParams {
   segments?: SearchSegment[];
   returnDate?: string;
   passengers?:
-    | number
-    | {
-        adults: number;
-        children: number;
-        infants: number;
-      };
+  | number
+  | {
+    adults: number;
+    children: number;
+    infants: number;
+  };
   adults?: number;
   guests?: number;
   rooms?: number;
@@ -36,10 +36,22 @@ export interface SearchParams {
   dropoffDateTime?: string;
   carPickUp?: string;
   carDropOff?: string;
-  travellers?: number;
+  travellers?: number | { adults: number; children: number };
+  provider?: string;
   pickUpDate?: string;
   dropOffDate?: string;
   maxConnections?: number;
+  // Hotelbeds specific
+  occupancies?: Array<{
+    rooms: number;
+    adults: number;
+    children: number;
+    paxes?: Array<{
+      age: number;
+    }>;
+  }>;
+  language?: string;
+  destination?: string;
   // Allow any additional properties for flexibility
   [key: string]: any;
 }
@@ -216,10 +228,10 @@ export interface CarRentalProviderData {
 export interface PaymentInfo {
   amount: number;
   paidAt:
-    | {
-        value: string;
-      }
-    | string;
+  | {
+    value: string;
+  }
+  | string;
   status: string;
   chargeId: string;
   currency: string;
@@ -234,10 +246,10 @@ export interface Booking {
   status: "PENDING" | "CONFIRMED" | "FAILED" | "CANCELLED";
   paymentStatus: string;
   productType:
-    | "FLIGHT_INTERNATIONAL"
-    | "FLIGHT_DOMESTIC"
-    | "HOTEL"
-    | "CAR_RENTAL";
+  | "FLIGHT_INTERNATIONAL"
+  | "FLIGHT_DOMESTIC"
+  | "HOTEL"
+  | "CAR_RENTAL";
   provider: string;
   providerBookingId?: string | null;
   providerData?: any;
@@ -440,4 +452,75 @@ export interface TimelineEvent {
   year: string;
   title: string;
   description: string;
+}
+
+// ✅ HOTELBEDS (HBX) SPECIFIC TYPES
+export interface HBXOccupancy {
+  rooms: number;
+  adults: number;
+  children: number;
+  paxes?: Array<{
+    age: number;
+  }>;
+}
+
+export interface HBXSearchRequest {
+  checkInDate: string;
+  checkOutDate: string;
+  destinationCode: string;
+  occupancies: HBXOccupancy[];
+  language?: string;
+}
+
+export interface HBXQuoteRequest {
+  rateKey: string;
+  language?: string;
+}
+
+export interface HBXBookRequest {
+  rateKey: string;
+  totalAmount: number;
+  currency: string;
+  guests: Array<{
+    title: string;
+    firstName: string;
+    lastName: string;
+    roomIdx: number;
+  }>;
+  policyAccepted: boolean;
+  cancellationPolicySnapshot: string;
+  cancellationDeadline: string;
+}
+
+export interface HBXBookingResponse {
+  success: boolean;
+  bookingId: string;
+  status: string;
+  message?: string;
+}
+
+export interface HBXQuoteResponse {
+  success: boolean;
+  hotel: {
+    code: number;
+    name: string;
+    categoryName: string;
+    destinationName: string;
+    rooms: Array<{
+      code: string;
+      name: string;
+      rates: Array<{
+        rateKey: string;
+        rateClass: string;
+        rateType: string;
+        net: string;
+        allIncluded: boolean;
+        cancellationPolicies: Array<{
+          amount: string;
+          from: string;
+        }>;
+        cancellationDeadline?: string;
+      }>;
+    }>;
+  };
 }

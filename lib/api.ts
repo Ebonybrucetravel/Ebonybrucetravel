@@ -799,20 +799,117 @@ export const searchHotelsAmadeus = async (
     // Provide more specific error messages
     if (error.message?.includes("cityCode")) {
       throw new ApiError(
-        "Invalid city code. Please check the location.",
+        "Invalid city code. Please try a different location.",
         400,
         "INVALID_CITY_CODE",
       );
     }
 
-    if (error.message?.includes("date")) {
+    if (error.message?.includes("checkInDate")) {
       throw new ApiError(
-        "Invalid date format. Please use YYYY-MM-DD format.",
+        "Invalid check-in date. Date must be in the future.",
         400,
-        "INVALID_DATE_FORMAT",
+        "INVALID_CHECK_IN_DATE",
       );
     }
 
+    throw error;
+  }
+};
+
+// --- Hotelbeds (HBX) API Functions ---
+
+/**
+ * Get Hotelbeds high-resolution Giata image URL
+ */
+export const getHBXImageUrl = (path: string | null | undefined): string | null => {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  return `https://photos.hotelbeds.com/giata/${path}`;
+};
+
+/**
+ * Hotel Search API - Hotelbeds Endpoint
+ */
+export const searchHotelsHBX = async (
+  params: import("./types").HBXSearchRequest,
+): Promise<any> => {
+  try {
+    // Optimization: Map common airport codes to city codes for Hotelbeds
+    // This helps avoid empty results when users search with airport codes like LHR
+    const airportToCityMap: Record<string, string> = {
+      'LHR': 'LON', // London
+      'LGW': 'LON',
+      'JFK': 'NYC', // New York
+      'EWR': 'NYC',
+      'CDG': 'PAR', // Paris
+      'ORY': 'PAR',
+      'DXB': 'DXB',
+      'AUH': 'AUH',
+      'IST': 'IST',
+      'ATH': 'ATH',
+      'MAD': 'MAD',
+      'BCN': 'BCN',
+    };
+
+    const destinationCode = airportToCityMap[params.destinationCode.toUpperCase()] || params.destinationCode;
+    const requestParams = { ...params, destinationCode };
+
+    console.log("🏨 Starting HBX hotel search with params:", requestParams);
+    const response = await request<any>(
+      "/api/v1/booking/hotelbeds/search",
+      {
+        method: "POST",
+        body: JSON.stringify(requestParams),
+      },
+    );
+    return response;
+  } catch (error: any) {
+    console.error("❌ HBX Hotel search failed:", error);
+    throw error;
+  }
+};
+
+/**
+ * Hotel Quote API - Hotelbeds Endpoint (Rate Verification)
+ */
+export const quoteHotelHBX = async (
+  params: import("./types").HBXQuoteRequest,
+): Promise<import("./types").HBXQuoteResponse> => {
+  try {
+    console.log("🏨 Starting HBX hotel quote with params:", params);
+    const response = await request<import("./types").HBXQuoteResponse>(
+      "/api/v1/booking/hotelbeds/quote",
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    );
+    return response;
+  } catch (error: any) {
+    console.error("❌ HBX Hotel quote failed:", error);
+    throw error;
+  }
+};
+
+/**
+ * Hotel Book API - Hotelbeds Endpoint
+ */
+export const bookHotelHBX = async (
+  params: import("./types").HBXBookRequest,
+): Promise<import("./types").HBXBookingResponse> => {
+  try {
+    console.log("🏨 Starting HBX hotel book with params:", params);
+    const response = await request<import("./types").HBXBookingResponse>(
+      "/api/v1/booking/hotelbeds/book",
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    );
+    return response;
+  } catch (error: any) {
+    console.error("❌ HBX Hotel book failed:", error);
     throw error;
   }
 };
@@ -1101,6 +1198,77 @@ export function transformHotelToSearchResult(
   };
 }
 
+/**
+ * Transform Hotelbeds (HBX) hotel result to SearchResult format
+ */
+export function transformHBXHotelToSearchResult(
+  hotel: any,
+  location: string,
+  checkInDate: string,
+  checkOutDate: string,
+  index: number,
+): any {
+  const currency = hotel.currency || "GBP";
+  const getCurrencySymbol = (curr: string): string => {
+    const symbols: Record<string, string> = {
+      GBP: "£",
+      USD: "$",
+      EUR: "€",
+      NGN: "₦",
+    };
+    return symbols[curr.toUpperCase()] || curr;
+  };
+  const priceSymbol = getCurrencySymbol(currency);
+
+  const checkIn = new Date(checkInDate);
+  const checkOut = new Date(checkOutDate);
+  const nights = Math.ceil(
+    (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24),
+  );
+
+  const firstRoom = hotel.rooms?.[0];
+  const firstRate = firstRoom?.rates?.[0];
+
+  // Use finalAmount which includes markup
+  const finalAmount = parseFloat(firstRate?.finalAmount || hotel.minRate || "0");
+  const pricePerNight = nights > 0 ? finalAmount / nights : finalAmount;
+
+  const roomType = firstRoom?.name || "Standard Room";
+  const imageUrl = getHBXImageUrl(hotel.images?.[0]?.path);
+
+  return {
+    id: hotel.code?.toString() || `hbx-${index}`,
+    provider: "Hotelbeds",
+    title: hotel.name,
+    subtitle: `${hotel.destinationName || location} • ${hotel.categoryName || 'Hotel'} • ${roomType}`,
+    price: `${priceSymbol}${Math.round(pricePerNight).toLocaleString()}/night`,
+    totalPrice: `${priceSymbol}${Math.round(finalAmount).toLocaleString()} total`,
+    rating: 4.0,
+    image: imageUrl || "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400",
+    amenities: ["WiFi", "Air Conditioning", "Hotelbeds Provider"],
+    features: [
+      roomType,
+      `${nights} night${nights !== 1 ? "s" : ""}`,
+      "Real-time availability"
+    ],
+    type: "hotels" as const,
+    realData: {
+      provider: "HOTELBEDS",
+      hotelCode: hotel.code,
+      hotelName: hotel.name,
+      rateKey: firstRate?.rateKey,
+      checkInDate,
+      checkOutDate,
+      price: finalAmount,
+      currency,
+      nights,
+      finalAmount: finalAmount,
+      rooms: hotel.rooms,
+      categoryName: hotel.categoryName
+    }
+  };
+}
+
 // Helper function to extract amenities from description
 function extractAmenitiesFromDescription(
   description: string,
@@ -1355,8 +1523,9 @@ export async function formatHotelSearchParams(
 
 // Search hotels and transform results for frontend
 export async function searchAndTransformHotels(
-  searchParams: HotelSearchParams,
+  searchParams: any,
   location: string,
+  provider: "amadeus" | "hotelbeds" = "amadeus",
 ): Promise<{
   success: boolean;
   results: any[];
@@ -1365,39 +1534,88 @@ export async function searchAndTransformHotels(
   isRealData: boolean;
 }> {
   try {
-    console.log("🔍 Searching and transforming hotels...");
+    console.log(`🔍 Searching and transforming hotels (${provider})...`);
 
-    const response = await searchHotelsAmadeus(searchParams);
+    if (provider === "hotelbeds") {
+      // Correct HBX payload mapping
+      const hbxParams: import("./types").HBXSearchRequest = {
+        checkInDate: searchParams.checkInDate,
+        checkOutDate: searchParams.checkOutDate,
+        destinationCode: searchParams.cityCode,
+        occupancies: searchParams.occupancies || [
+          {
+            rooms: searchParams.roomQuantity || 1,
+            adults: searchParams.adults || 1,
+            children: searchParams.children || 0
+          }
+        ],
+        language: "ENG"
+      };
 
-    // Handle case where API returns success but no data
-    if (!response.data?.data || response.data.data.length === 0) {
+      const response = await searchHotelsHBX(hbxParams);
+
+      if (!response.data?.hotels?.hotels || response.data.hotels.hotels.length === 0) {
+        return {
+          success: false,
+          results: [],
+          message: "No hotels found in Hotelbeds for your search criteria",
+          total: 0,
+          isRealData: false,
+        };
+      }
+
+      const hotels = response.data.hotels.hotels;
+      const transformedResults = hotels.map((hotel: any, index: number) =>
+        transformHBXHotelToSearchResult(
+          hotel,
+          location,
+          searchParams.checkInDate,
+          searchParams.checkOutDate,
+          index,
+        ),
+      );
+
       return {
-        success: false,
-        results: [],
-        message: "No hotels found for your search criteria",
-        total: 0,
-        isRealData: false,
+        success: true,
+        results: transformedResults,
+        message: response.message,
+        total: hotels.length,
+        isRealData: true,
+      };
+    } else {
+      // Amadeus flow
+      const response = await searchHotelsAmadeus(searchParams);
+
+      // Handle case where API returns success but no data
+      if (!response.data?.data || response.data.data.length === 0) {
+        return {
+          success: false,
+          results: [],
+          message: "No hotels found in Amadeus for your search criteria",
+          total: 0,
+          isRealData: false,
+        };
+      }
+
+      const hotels = response.data.data;
+      const transformedResults = hotels.map((hotel, index) =>
+        transformHotelToSearchResult(
+          hotel,
+          location,
+          searchParams.checkInDate,
+          searchParams.checkOutDate,
+          index,
+        ),
+      );
+
+      return {
+        success: true,
+        results: transformedResults,
+        message: response.message,
+        total: hotels.length,
+        isRealData: true,
       };
     }
-
-    const hotels = response.data.data;
-    const transformedResults = hotels.map((hotel, index) =>
-      transformHotelToSearchResult(
-        hotel,
-        location,
-        searchParams.checkInDate,
-        searchParams.checkOutDate,
-        index,
-      ),
-    );
-
-    return {
-      success: true,
-      results: transformedResults,
-      message: response.message,
-      total: hotels.length,
-      isRealData: true,
-    };
   } catch (error: any) {
     console.error("❌ Search and transform hotels failed:", error);
 
@@ -3563,11 +3781,11 @@ export const userApi = {
 
   saveItem: (data: {
     productType:
-      | "FLIGHT_DOMESTIC"
-      | "FLIGHT_INTERNATIONAL"
-      | "HOTEL"
-      | "CAR_RENTAL"
-      | "PACKAGE";
+    | "FLIGHT_DOMESTIC"
+    | "FLIGHT_INTERNATIONAL"
+    | "HOTEL"
+    | "CAR_RENTAL"
+    | "PACKAGE";
     title: string;
     description?: string;
     price?: number;
@@ -3613,11 +3831,11 @@ export const userApi = {
   // Toggle saved / unsaved for an item
   toggleSavedItem: (data: {
     productType:
-      | "FLIGHT_DOMESTIC"
-      | "FLIGHT_INTERNATIONAL"
-      | "HOTEL"
-      | "CAR_RENTAL"
-      | "PACKAGE";
+    | "FLIGHT_DOMESTIC"
+    | "FLIGHT_INTERNATIONAL"
+    | "HOTEL"
+    | "CAR_RENTAL"
+    | "PACKAGE";
     itemId: string;
     itemDetails?: Record<string, any>;
   }) => {
@@ -3630,11 +3848,11 @@ export const userApi = {
   // Check if an item is saved
   checkSavedItem: (data: {
     productType:
-      | "FLIGHT_DOMESTIC"
-      | "FLIGHT_INTERNATIONAL"
-      | "HOTEL"
-      | "CAR_RENTAL"
-      | "PACKAGE";
+    | "FLIGHT_DOMESTIC"
+    | "FLIGHT_INTERNATIONAL"
+    | "HOTEL"
+    | "CAR_RENTAL"
+    | "PACKAGE";
     itemId: string;
   }) => {
     return request<any>("/api/v1/users/me/saved-items/check", {
@@ -4049,28 +4267,19 @@ export const paymentApi = {
   },
 };
 
-// Hotels API with Amadeus endpoint
+// Hotels API with Hotelbeds and Amadeus support
 export const hotelApi = {
-  // Amadeus hotel search
-  searchHotelsAmadeus: searchHotelsAmadeus,
-
-  // Hotel search with pagination and filtering
-  searchHotelsWithPagination: searchHotelsWithPagination,
-
-  // Search and transform hotels for frontend
-  searchAndTransformHotels: searchAndTransformHotels,
-
-  // Format hotel search parameters
-  formatHotelSearchParams: formatHotelSearchParams,
-
-  // Transform hotel to search result
-  transformHotelToSearchResult: transformHotelToSearchResult,
-
-  // Validate hotel booking data
-  validateHotelBookingData: validateHotelBookingData,
-
-  // Get city code
-  getCityCode: getCityCode,
+  searchHotelsAmadeus,
+  searchHotelsHBX,
+  quoteHotelHBX,
+  bookHotelHBX,
+  getHotelImage,
+  getHBXImageUrl,
+  searchHotelsWithPagination,
+  searchAndTransformHotels,
+  formatHotelSearchParams,
+  transformHotelToSearchResult,
+  validateHotelBookingData,
 
   // Book hotel via Amadeus
   bookHotelAmadeus: (
@@ -4819,21 +5028,21 @@ export async function createAmadeusHotelBooking(
         paymentCard: {
           paymentCardInfo: paymentInfo
             ? {
-                vendorCode: getVendorCodeFromCardNumber(
-                  paymentInfo.cardNumber || "",
-                ),
-                cardNumber: paymentInfo.cardNumber || "",
-                expiryDate: paymentInfo.expiryDate || "",
-                holderName: paymentInfo.holderName || "",
-                securityCode: paymentInfo.securityCode || "",
-              }
+              vendorCode: getVendorCodeFromCardNumber(
+                paymentInfo.cardNumber || "",
+              ),
+              cardNumber: paymentInfo.cardNumber || "",
+              expiryDate: paymentInfo.expiryDate || "",
+              holderName: paymentInfo.holderName || "",
+              securityCode: paymentInfo.securityCode || "",
+            }
             : {
-                vendorCode: "VI",
-                cardNumber: "4242424242424242",
-                expiryDate: "2026-12",
-                holderName: "TEST USER",
-                securityCode: "123",
-              },
+              vendorCode: "VI",
+              cardNumber: "4242424242424242",
+              expiryDate: "2026-12",
+              holderName: "TEST USER",
+              securityCode: "123",
+            },
         },
       },
       // ✅ ADD THESE REQUIRED FIELDS

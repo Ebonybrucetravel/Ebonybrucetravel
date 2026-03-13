@@ -2,13 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import type { SearchResult, SearchParams, PassengerInfo, User, Booking } from '../lib/types';
-import { userApi, ApiError } from '../lib/api';
+import { userApi, ApiError, hotelApi } from '../lib/api';
 import { formatPrice, currencySymbol } from '../lib/utils';
 
 // Extended interface for Amadeus hotel data
 interface ExtendedSearchResult extends SearchResult {
   realData?: {
     hotelId: string;
+    rateKey?: string;
     offers: Array<{
       id: string;
       checkInDate: string;
@@ -58,18 +59,18 @@ interface ReviewTripProps {
   isLoggedIn: boolean;
   user?: User | null;
   isCreating?: boolean;
-  onProceedToPayment: (passengerInfo: PassengerInfo, voucherCode?: string) => Promise<void>;
+  onProceedToPayment: (passengerInfo: PassengerInfo, voucherCode?: string, hbxMetadata?: any) => Promise<void>;
   onSignInRequired?: () => void;
   productType?: 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL';
-  createdBooking?: Booking | null; 
+  createdBooking?: Booking | null;
 }
 
-const ReviewTrip: React.FC<ReviewTripProps> = ({ 
-  item, 
-  searchParams, 
-  onBack, 
-  isLoggedIn, 
-  user, 
+const ReviewTrip: React.FC<ReviewTripProps> = ({
+  item,
+  searchParams,
+  onBack,
+  isLoggedIn,
+  user,
   isCreating,
   onProceedToPayment,
   onSignInRequired,
@@ -77,7 +78,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   createdBooking,
 }) => {
   const { currency } = useLanguage();
-  
+
   if (!item) {
     return (
       <div className="bg-[#f8fbfe] min-h-screen py-12">
@@ -91,9 +92,9 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     );
   }
 
-  // Cast to extended type to access realData
+  // Cast to extended type to access realData (Amadeus and HBX)
   const extendedItem = item as ExtendedSearchResult;
-  
+
   const rawType = (item.type || searchParams?.type || 'flights').toLowerCase();
   const isHotel = rawType.includes('hotel');
   const isCar = rawType.includes('car');
@@ -107,17 +108,17 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
   // Determine product type
   const productType = propProductType || (
-    isFlight ? 'FLIGHT_INTERNATIONAL' : 
-    isHotel ? 'HOTEL' : 
-    'CAR_RENTAL'
+    isFlight ? 'FLIGHT_INTERNATIONAL' :
+      isHotel ? 'HOTEL' :
+        'CAR_RENTAL'
   );
 
   // Use currency from created booking if available, otherwise from item/offer or context
-  const offerCurrency = createdBooking?.currency || 
-                       firstOffer?.price?.currency || 
-                       item?.realData?.currency || 
-                       currency.code || 
-                       'GBP';
+  const offerCurrency = createdBooking?.currency ||
+    firstOffer?.price?.currency ||
+    item?.realData?.currency ||
+    currency.code ||
+    'GBP';
 
   // Pre-fill from user profile or created booking
   const splitName = (user?.name || createdBooking?.passengerInfo?.firstName || '').trim().split(/\s+/);
@@ -131,11 +132,50 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [phone, setPhone] = useState(user?.phone || createdBooking?.passengerInfo?.phone || '');
   const [title, setTitle] = useState<'mr' | 'ms' | 'mrs' | 'miss' | 'dr' | ''>('');
   const [gender, setGender] = useState<'m' | 'f' | ''>('');
-  const [dateOfBirth, setDateOfBirth] = useState('');  
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [voucherCode, setVoucherCode] = useState('');
   const [voucherApplied, setVoucherApplied] = useState<any | null>(null);
   const [isValidatingVoucher, setIsValidatingVoucher] = useState(false);
   const [voucherError, setVoucherError] = useState<string | null>(null);
+  const isHBXHotel = isHotel && extendedItem.provider === 'hotelbeds';
+  const [hbxQuote, setHbxQuote] = useState<any | null>(null);
+  const [isQuoting, setIsQuoting] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [additionalGuests, setAdditionalGuests] = useState<Array<{ firstName: string; lastName: string; title: string }>>([]);
+
+  // Initialize additional guests based on adults count for HBX
+  useEffect(() => {
+    if (isHBXHotel && !createdBooking) {
+      const adultsCount = searchParams?.adults || 1;
+      if (adultsCount > 1) {
+        setAdditionalGuests(Array(adultsCount - 1).fill({ firstName: '', lastName: '', title: 'MR' }));
+      }
+    }
+  }, [isHBXHotel, searchParams, createdBooking]);
+
+  useEffect(() => {
+    if (isHBXHotel && extendedItem?.realData?.rateKey && !createdBooking) {
+      const performQuote = async () => {
+        setIsQuoting(true);
+        setQuoteError(null);
+        try {
+          const rateKey = extendedItem.realData!.rateKey!;
+          const result = await hotelApi.quoteHotelHBX({ rateKey });
+          if (result.success) {
+            setHbxQuote(result);
+          } else {
+            setQuoteError('Failed to verify rate');
+          }
+        } catch (err: any) {
+          setQuoteError(err.message || 'Error verifying rate');
+        } finally {
+          setIsQuoting(false);
+        }
+      };
+      performQuote();
+    }
+  }, [isHBXHotel, extendedItem, createdBooking]);
+
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [appliedPromo, setAppliedPromo] = useState<any | null>(null);
 
@@ -152,10 +192,32 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
   }, [user]);
 
+  // Extract HBX hotel details (NEW)
+  const hbxHotelDetails = (() => {
+    if (!isHBXHotel || !hbxQuote?.hotel) return null;
+
+    const hotel = hbxQuote.hotel;
+    const firstRoom = hotel.rooms?.[0];
+    const firstRate = firstRoom?.rates?.[0];
+
+    return {
+      hotelName: hotel.name,
+      checkIn: searchParams?.checkInDate || '',
+      checkOut: searchParams?.checkOutDate || '',
+      roomType: firstRoom?.name || 'Standard Room',
+      bedType: 'Standard',
+      adults: searchParams?.adults || 2,
+      description: hotel.destinationName || '',
+      cancellationPolicy: firstRate?.cancellationPolicies?.[0]?.amount
+        ? `Cancellation fee: ${firstRate.cancellationPolicies[0].amount}. Deadline: ${firstRate.cancellationDeadline || 'N/A'}`
+        : 'Free cancellation'
+    };
+  })();
+
   // Extract Amadeus hotel details
   const getHotelDetails = () => {
     if (!isAmadeusHotel || !firstOffer) return null;
-    
+
     return {
       hotelName: item.title,
       checkIn: firstOffer.checkInDate,
@@ -164,10 +226,10 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       bedType: firstOffer.room?.typeEstimated?.bedType || 'Unknown',
       adults: firstOffer.guests?.adults || 2,
       description: firstOffer.room?.description?.text || 'Room description not available',
-      cancellationPolicy: firstOffer.policies?.cancellations?.[0]?.description?.text || 
-                          (firstOffer.policies?.refundable?.cancellationRefund === 'NON_REFUNDABLE' 
-                            ? 'Non-refundable' 
-                            : 'Free cancellation within policy period')
+      cancellationPolicy: firstOffer.policies?.cancellations?.[0]?.description?.text ||
+        (firstOffer.policies?.refundable?.cancellationRefund === 'NON_REFUNDABLE'
+          ? 'Non-refundable'
+          : 'Free cancellation within policy period')
     };
   };
 
@@ -191,7 +253,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     conversionFee = (createdBooking as any).conversionFee || 0;
     conversionPercentage = (createdBooking as any).conversionPercentage || 0;
     totalDue = createdBooking.totalAmount || 0;
-    
+
     displayBasePrice = formatPrice(basePrice, offerCurrency);
     displayTaxes = formatPrice(taxes, offerCurrency);
     displayConversionFee = conversionFee > 0 ? formatPrice(conversionFee, offerCurrency) : '';
@@ -199,20 +261,37 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   } else if (isAmadeusHotel && firstOffer) {
     // Amadeus hotel price calculation
     basePrice = parseFloat(firstOffer.price.base || firstOffer.price.total || '0');
-    
+
     // Calculate taxes (total - base = taxes + fees)
     const totalAmount = parseFloat(firstOffer.price.total || '0');
     taxes = totalAmount - basePrice;
-    
+
     // Add our markup and service fee
     const markupAmount = parseFloat(extendedItem.markup_amount || '0');
     const serviceFee = parseFloat(extendedItem.service_fee || '0');
     taxes += markupAmount + serviceFee;
-    
+
     conversionFee = parseFloat(extendedItem.conversion_fee || '0');
     conversionPercentage = parseFloat(extendedItem.conversion_fee_percentage || '0');
     totalDue = basePrice + taxes + conversionFee;
-    
+
+    displayTotalDue = formatPrice(totalDue, offerCurrency);
+  } else if (isHBXHotel && hbxQuote?.hotel) {
+    // Hotelbeds hotel price calculation
+    const hotel = hbxQuote.hotel;
+    const rate = hotel.rooms?.[0]?.rates?.[0];
+
+    basePrice = parseFloat(rate?.net || '0');
+
+    // Add our markup and service fee
+    const markupAmount = parseFloat(extendedItem.markup_amount || '0');
+    const serviceFee = parseFloat(extendedItem.service_fee || '0');
+    taxes = markupAmount + serviceFee;
+
+    conversionFee = parseFloat(extendedItem.conversion_fee || '0');
+    conversionPercentage = parseFloat(extendedItem.conversion_fee_percentage || '0');
+    totalDue = basePrice + taxes + conversionFee;
+
     displayBasePrice = formatPrice(basePrice, offerCurrency);
     displayTaxes = formatPrice(taxes, offerCurrency);
     displayConversionFee = conversionFee > 0 ? formatPrice(conversionFee, offerCurrency) : '';
@@ -225,7 +304,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       displayConversionFee = (item as any).displayConversionFee || '';
       conversionPercentage = (item as any).displayConversionPercentage || 0;
       displayTotalDue = (item as any).displayTotalPrice || `${currencySymbol(offerCurrency)}0.00`;
-      
+
       basePrice = (item as any).calculatedBasePrice || 0;
       taxes = (item as any).calculatedTaxes || 0;
       conversionFee = (item as any).calculatedConversionFee || 0;
@@ -242,7 +321,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           priceValue = item.price;
         }
       }
-      
+
       basePrice = priceValue;
       const markupAmount = parseFloat((item as any).markup_amount || '0');
       const serviceFee = parseFloat((item as any).service_fee || '0');
@@ -250,7 +329,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       conversionFee = parseFloat((item as any).conversion_fee || '0');
       conversionPercentage = parseFloat((item as any).conversion_fee_percentage || '0');
       totalDue = basePrice + taxes + conversionFee;
-      
+
       displayBasePrice = formatPrice(basePrice, offerCurrency);
       displayTaxes = formatPrice(taxes, offerCurrency);
       displayConversionFee = conversionFee > 0 ? formatPrice(conversionFee, offerCurrency) : '';
@@ -258,8 +337,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
   }
 
-  const formattedDiscountedTotal = appliedPromo?.discountAmount 
-    ? formatPrice(appliedPromo.discountAmount, offerCurrency) 
+  const formattedDiscountedTotal = appliedPromo?.discountAmount
+    ? formatPrice(appliedPromo.discountAmount, offerCurrency)
     : '';
 
   const productTypeForVoucher = (() => {
@@ -321,13 +400,13 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         alert('Date of birth is required for flight bookings.');
         return;
       }
-  
+
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (!dateRegex.test(dateOfBirth)) {
         alert('Date of birth must be in YYYY-MM-DD format.');
         return;
       }
-    
+
       const dob = new Date(dateOfBirth);
       const today = new Date();
       const age = today.getFullYear() - dob.getFullYear();
@@ -336,7 +415,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         return;
       }
     }
-  
+
     if (isHotel && !agreedToPolicy) {
       alert('Please agree to the cancellation policy to continue.');
       return;
@@ -356,9 +435,38 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         })
       };
 
+      // Prepare HBX metadata if applicable
+      let hbxMetadata: any = undefined;
+      const provider = (item as any).provider || searchParams?.provider;
+      if (provider === 'hotelbeds' && hbxQuote?.hotel) {
+        const rate = hbxQuote.hotel.rooms[0].rates[0];
+        hbxMetadata = {
+          totalAmount: totalDue, // This already includes markups and calculated in hbxHotelDetails useMemo/useEffect logic
+          currency: (hbxQuote.hotel.currency || 'GBP').toUpperCase(),
+          cancellationPolicySnapshot: hbxHotelDetails?.cancellationPolicy || "Standard policy",
+          cancellationDeadline: hbxHotelDetails?.cancellationDeadline || new Date().toISOString(),
+          policyAccepted: true
+        };
+      }
+
+      // Add additional guests to passengerInfo if HBX
+      if (isHBXHotel && additionalGuests.length > 0) {
+        (passengerInfo as any).guests = [
+          {
+            name: { firstName, lastName, title: (title || 'mr').toUpperCase() },
+            travelerId: 1
+          },
+          ...additionalGuests.map((g, idx) => ({
+            name: { firstName: g.firstName, lastName: g.lastName, title: g.title.toUpperCase() },
+            travelerId: idx + 2
+          }))
+        ];
+      }
+
       await onProceedToPayment(
         passengerInfo,
-        voucherApplied?.valid ? voucherCode.trim() : undefined
+        voucherApplied?.valid ? voucherCode.trim() : undefined,
+        hbxMetadata
       );
     } catch (error: any) {
       console.error('Booking preparation error:', error);
@@ -385,7 +493,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         <h1 className="text-3xl font-bold text-gray-900 mb-8">
           {createdBooking ? 'Complete your payment' : 'Complete your booking'}
         </h1>
-        
+
         {/* Booking Reference */}
         {bookingReference && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
@@ -394,7 +502,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
             </p>
           </div>
         )}
-        
+
         {/* Amadeus Hotel Notice */}
         {isAmadeusHotel && (
           <div className="mb-6 p-4 bg-purple-50 border border-purple-100 rounded-lg">
@@ -406,9 +514,32 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
             </p>
           </div>
         )}
-        
+
         <div className="flex flex-col lg:flex-row gap-8">
           <div className="flex-1 space-y-6">
+            {/* Rate Verification Notice for HBX */}
+            {isHBXHotel && (
+              <div className={`p-4 rounded-xl border ${isQuoting ? 'bg-blue-50 border-blue-100' : quoteError ? 'bg-red-50 border-red-100' : 'bg-green-50 border-green-100'}`}>
+                <div className="flex items-center gap-3">
+                  {isQuoting ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#33a8da]"></div>
+                  ) : quoteError ? (
+                    <span className="text-xl">⚠️</span>
+                  ) : (
+                    <span className="text-xl">✅</span>
+                  )}
+                  <div>
+                    <h3 className={`text-sm font-bold ${isQuoting ? 'text-blue-800' : quoteError ? 'text-red-800' : 'text-green-800'}`}>
+                      {isQuoting ? 'Verifying live rate...' : quoteError ? 'Rate verification failed' : 'Rate verified!'}
+                    </h3>
+                    <p className="text-xs text-gray-600 mt-0.5">
+                      {isQuoting ? 'We are checking the latest availability and price for your room.' : quoteError ? (quoteError + '. Please go back and select another room.') : 'Your selected room is available at the displayed price.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Identity & Contact Section */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <div className="flex items-center justify-between mb-4">
@@ -423,45 +554,103 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">First name</label>
-                  <input 
-                    value={firstName} 
-                    onChange={e => setFirstName(e.target.value)} 
-                    className={inputCls} 
-                    placeholder="John" 
+                  <input
+                    value={firstName}
+                    onChange={e => setFirstName(e.target.value)}
+                    className={inputCls}
+                    placeholder="John"
                     readOnly={!!createdBooking}
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Last name</label>
-                  <input 
-                    value={lastName} 
-                    onChange={e => setLastName(e.target.value)} 
-                    className={inputCls} 
-                    placeholder="Doe" 
+                  <input
+                    value={lastName}
+                    onChange={e => setLastName(e.target.value)}
+                    className={inputCls}
+                    placeholder="Doe"
                     readOnly={!!createdBooking}
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
-                  <input 
-                    value={email} 
-                    onChange={e => setEmail(e.target.value)} 
-                    className={inputCls} 
-                    placeholder="john@example.com" 
+                  <input
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className={inputCls}
+                    placeholder="john@example.com"
                     readOnly={!!createdBooking}
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Phone</label>
-                  <input 
-                    value={phone} 
-                    onChange={e => setPhone(e.target.value)} 
-                    className={inputCls} 
-                    placeholder="+44 7911 123456" 
+                  <input
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    className={inputCls}
+                    placeholder="+44 7911 123456"
                     readOnly={!!createdBooking}
                   />
                 </div>
               </div>
+
+              {/* Additional Guests for HBX */}
+              {isHBXHotel && additionalGuests.length > 0 && !createdBooking && (
+                <div className="mt-6 pt-6 border-t border-gray-100 space-y-6">
+                  <h3 className="text-sm font-semibold text-gray-900">Additional Guests</h3>
+                  {additionalGuests.map((guest, idx) => (
+                    <div key={idx} className="space-y-4">
+                      <p className="text-xs font-bold text-[#33a8da]">Guest {idx + 2}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Title</label>
+                          <select
+                            value={guest.title}
+                            onChange={e => {
+                              const newGuests = [...additionalGuests];
+                              newGuests[idx] = { ...newGuests[idx], title: e.target.value };
+                              setAdditionalGuests(newGuests);
+                            }}
+                            className={inputCls}
+                          >
+                            <option value="MR">Mr</option>
+                            <option value="MS">Ms</option>
+                            <option value="MRS">Mrs</option>
+                            <option value="MISS">Miss</option>
+                            <option value="DR">Dr</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">First name</label>
+                          <input
+                            value={guest.firstName}
+                            onChange={e => {
+                              const newGuests = [...additionalGuests];
+                              newGuests[idx] = { ...newGuests[idx], firstName: e.target.value };
+                              setAdditionalGuests(newGuests);
+                            }}
+                            className={inputCls}
+                            placeholder="First name"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Last name</label>
+                          <input
+                            value={guest.lastName}
+                            onChange={e => {
+                              const newGuests = [...additionalGuests];
+                              newGuests[idx] = { ...newGuests[idx], lastName: e.target.value };
+                              setAdditionalGuests(newGuests);
+                            }}
+                            className={inputCls}
+                            placeholder="Last name"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Flight-specific fields */}
               {isFlight && !createdBooking && (
@@ -542,7 +731,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                   <p className="text-sm text-gray-500">
                     {isHotel ? 'London, United Kingdom' : (createdBooking?.bookingData?.origin || '') + ' → ' + (createdBooking?.bookingData?.destination || item.subtitle)}
                   </p>
-                  
+
                   {/* Amadeus Hotel Details */}
                   {isAmadeusHotel && hotelDetails && (
                     <div className="mt-3 space-y-2">
@@ -559,11 +748,25 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                       </p>
                     </div>
                   )}
-                  
+
+                  {/* HBX Hotel Details (NEW) */}
+                  {isHBXHotel && hbxHotelDetails && (
+                    <div className="mt-3 space-y-2">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full">
+                          {hbxHotelDetails.roomType}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        {hbxQuote?.hotel?.categoryName} • {hbxQuote?.hotel?.destinationName}
+                      </p>
+                    </div>
+                  )}
+
                   <p className="text-xs text-gray-400 mt-1">
-                    {isAmadeusHotel ? 'Amadeus • Direct booking' : (createdBooking?.provider || item.provider)}
+                    {isAmadeusHotel ? 'Amadeus • Direct booking' : isHBXHotel ? 'Hotelbeds • Direct booking' : (createdBooking?.provider || item.provider)}
                   </p>
-                  
+
                   {/* Dates for Amadeus Hotels */}
                   {isAmadeusHotel && hotelDetails && (
                     <p className="text-xs text-gray-500 mt-2">
@@ -571,39 +774,53 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                       {' • '}{hotelDetails.adults} Adult{hotelDetails.adults > 1 ? 's' : ''}
                     </p>
                   )}
+
+                  {/* Dates for HBX Hotels (NEW) */}
+                  {isHBXHotel && hbxHotelDetails && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      📅 {new Date(hbxHotelDetails.checkIn).toLocaleDateString()} - {new Date(hbxHotelDetails.checkOut).toLocaleDateString()}
+                      {' • '}{hbxHotelDetails.adults} Adult{hbxHotelDetails.adults > 1 ? 's' : ''}
+                    </p>
+                  )}
                 </div>
               </div>
-              
-              {/* Cancellation Policy - Enhanced for Amadeus Hotels */}
+
+              {/* Cancellation Policy - Enhanced for Amadeus/HBX Hotels */}
               {isHotel && (
                 <div className="mt-6 pt-6 border-t border-gray-100">
                   <h3 className="text-md font-semibold text-gray-900 mb-3">Cancellation Policy</h3>
                   <div className="space-y-3">
                     <p className="text-sm text-gray-600">
                       <span className="font-medium text-green-600">
-                        {isAmadeusHotel && firstOffer?.policies?.refundable?.cancellationRefund === 'NON_REFUNDABLE' 
-                          ? 'Non-refundable' 
-                          : 'Free cancellation'}
+                        {(isAmadeusHotel && firstOffer?.policies?.refundable?.cancellationRefund !== 'NON_REFUNDABLE') ||
+                          (isHBXHotel && !hbxHotelDetails?.cancellationPolicy?.includes('fee'))
+                          ? 'Free cancellation'
+                          : 'Non-refundable / Specific conditions apply'}
                       </span>
                       {isAmadeusHotel && hotelDetails?.cancellationPolicy && (
                         <span className="block mt-1 text-xs text-gray-500">
                           {hotelDetails.cancellationPolicy}
                         </span>
                       )}
+                      {isHBXHotel && hbxHotelDetails?.cancellationPolicy && (
+                        <span className="block mt-1 text-xs text-gray-500">
+                          {hbxHotelDetails.cancellationPolicy}
+                        </span>
+                      )}
                     </p>
                     <p className="text-sm text-gray-600">
-                      {isAmadeusHotel 
+                      {isAmadeusHotel
                         ? "Please review the cancellation policy carefully. Some rates may be non-refundable."
                         : (item?.realData?.cancellationPolicy || "In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.")}
                     </p>
                     <div className="flex items-start gap-2 mt-4 p-3 bg-gray-50 rounded-lg">
-                      <input 
-                        type="checkbox" 
-                        id="cancellationPolicy" 
+                      <input
+                        type="checkbox"
+                        id="cancellationPolicy"
                         checked={agreedToPolicy}
                         onChange={(e) => setAgreedToPolicy(e.target.checked)}
                         className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
-                        required 
+                        required
                         disabled={!!createdBooking}
                       />
                       <label htmlFor="cancellationPolicy" className="text-sm text-gray-700">
@@ -620,7 +837,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           <aside className="w-full lg:w-[380px]">
             <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-24 border border-gray-100">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Price details</h3>
-              
+
               <div className="space-y-3 mb-6">
                 {/* Fare Breakdown */}
                 <div>
@@ -631,7 +848,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                       <span>Base Fare</span>
                       <span className="text-gray-900">{displayBasePrice}</span>
                     </div>
-                    
+
                     {/* Taxes */}
                     {parseFloat(taxes.toString()) > 0 && (
                       <div className="flex justify-between items-center text-xs font-bold text-gray-400">
@@ -639,7 +856,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                         <span className="text-gray-900">{displayTaxes}</span>
                       </div>
                     )}
-                    
+
                     {/* Conversion Fee */}
                     {conversionFee > 0 && displayConversionFee && (
                       <div className="flex justify-between items-center text-xs font-bold text-gray-400">
@@ -647,7 +864,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                         <span className="text-gray-900">{displayConversionFee}</span>
                       </div>
                     )}
-                    
+
                     {/* Discount */}
                     {appliedPromo && (
                       <div className="flex justify-between items-center text-xs font-bold text-green-600">
@@ -655,7 +872,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                         <span>- {formattedDiscountedTotal}</span>
                       </div>
                     )}
-                    
+
                     {/* Total */}
                     <div className="flex justify-between items-center text-sm font-black text-gray-900 pt-2 border-t border-gray-100">
                       <span>Total Fare</span>
@@ -710,15 +927,15 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                   </div>
                 )}
               </div>
-              
-              <button 
-                onClick={handleCompleteBooking} 
-                disabled={isBooking || isCreating || (isHotel && !agreedToPolicy)} 
+
+              <button
+                onClick={handleCompleteBooking}
+                disabled={isBooking || isCreating || (isHotel && !agreedToPolicy)}
                 className="w-full bg-[#33a8da] text-white font-medium py-3 rounded-xl hover:bg-[#2c98c7] transition disabled:opacity-50"
               >
-                {isCreating ? 'Creating Booking...' : 
-                 isBooking ? 'Please wait...' : 
-                 createdBooking ? 'Proceed to Payment' : 'Continue to payment'}
+                {isCreating ? 'Creating Booking...' :
+                  isBooking ? 'Please wait...' :
+                    createdBooking ? 'Proceed to Payment' : 'Continue to payment'}
               </button>
 
               <p className="mt-4 text-xs text-gray-400 text-center flex items-center justify-center gap-1">
