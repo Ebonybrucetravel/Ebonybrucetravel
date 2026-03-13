@@ -38,30 +38,53 @@ export class CheckHotelbedsRateUseCase {
             const markupPercentage = markupToApply ? Number(markupToApply.markupPercentage) : 0;
             const markupFlatFee = markupToApply ? Number(markupToApply.serviceFeeAmount) : 0;
 
-            // Wrap response with markup
-            const enrichedHotel = {
-                ...hotel,
-                rooms: hotel.rooms?.map((room: any) => ({
-                    ...room,
-                    rates: room.rates?.map((rate: any) => {
-                        const originalAmount = parseFloat(rate.net);
-                        let finalAmount = originalAmount;
-                        if (markupToApply) {
-                            finalAmount = originalAmount + (originalAmount * markupPercentage) / 100 + markupFlatFee;
-                        }
+            const unifiedOffers = hotel.rooms?.flatMap((room: any) =>
+                room.rates?.map((rate: any) => {
+                    const originalAmount = parseFloat(rate.net);
+                    let finalAmount = originalAmount;
+                    if (markupToApply) {
+                        finalAmount = originalAmount + (originalAmount * markupPercentage) / 100 + markupFlatFee;
+                    }
 
-                        return {
-                            ...rate,
-                            originalNet: rate.net,
-                            finalAmount: finalAmount.toFixed(2),
-                            currency: hotel.currency || 'EUR',
-                        };
-                    })
-                }))
-            };
+                    return {
+                        id: rate.rateKey,
+                        rateCode: rate.rateKey,
+                        room: {
+                            type: room.name,
+                            code: room.code,
+                        },
+                        boardName: rate.boardName,
+                        boardCode: rate.boardCode,
+                        seller: 'Hotelbeds',
+                        price: {
+                            currency: rate.currency || hotel.currency || 'EUR',
+                            base: rate.net,
+                            total: finalAmount.toFixed(2),
+                            markup_amount: (finalAmount - originalAmount).toFixed(2),
+                        },
+                        cancellationPolicies: rate.cancellationPolicies,
+                        allotment: rate.allotment,
+                    };
+                })
+            ) || [];
 
             return {
-                hotel: enrichedHotel,
+                hotel: {
+                    hotelId: hotel.code.toString(),
+                    name: hotel.name,
+                    categoryCode: hotel.categoryCode,
+                    categoryName: hotel.categoryName,
+                    destinationCode: hotel.destinationCode,
+                    destinationName: hotel.destinationName,
+                    zoneCode: hotel.zoneCode,
+                    zoneName: hotel.zoneName,
+                    latitude: hotel.latitude,
+                    longitude: hotel.longitude,
+                    currency: hotel.currency || 'EUR',
+                    checkIn: hotel.checkIn,
+                    checkOut: hotel.checkOut,
+                },
+                offers: unifiedOffers,
                 upsell: response.upsell,
                 modificationPolicies: response.modificationPolicies,
             };

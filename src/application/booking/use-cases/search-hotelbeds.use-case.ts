@@ -152,10 +152,53 @@ export class SearchHotelbedsUseCase {
             );
 
             return {
-                available: enrichedHotels.length > 0,
-                hotels: enrichedHotels,
-                checkIn: response.hotels.checkIn,
-                total: response.hotels.total,
+                data: enrichedHotels.map(hotel => ({
+                    hotel: {
+                        hotelId: hotel.code.toString(),
+                        name: hotel.content.name || hotel.name,
+                        latitude: hotel.latitude,
+                        longitude: hotel.longitude,
+                        address: hotel.content.address,
+                        city: hotel.content.city,
+                        description: hotel.content.description,
+                        phones: hotel.content.phones,
+                        facilities: hotel.content.facilities,
+                        categoryCode: hotel.categoryCode || hotel.content.categoryCode,
+                        categoryName: hotel.categoryName,
+                        destinationCode: hotel.destinationCode,
+                        destinationName: hotel.destinationName,
+                        zoneName: hotel.zoneName,
+                        currency: hotel.currency || 'EUR',
+                    },
+                    offers: hotel.rooms.flatMap((room: any) =>
+                        room.rates.map((rate: any) => ({
+                            id: rate.rateKey,
+                            rateCode: rate.rateKey,
+                            room: {
+                                type: room.name,
+                                code: room.code,
+                            },
+                            boardName: rate.boardName,
+                            boardCode: rate.boardCode,
+                            seller: 'Hotelbeds',
+                            price: {
+                                currency: rate.currency || hotel.currency || 'EUR',
+                                base: rate.originalNet || rate.net,
+                                total: rate.finalAmount,
+                                markup_amount: (parseFloat(rate.finalAmount) - parseFloat(rate.originalNet || rate.net)).toFixed(2),
+                            },
+                            cancellationPolicies: rate.cancellationPolicies,
+                        }))
+                    ),
+                    primaryImageUrl: hotel.images?.[0]?.path || null,
+                    allImages: hotel.images || [],
+                })),
+                meta: {
+                    total: response.hotels.total,
+                    count: enrichedHotels.length,
+                    checkIn: response.hotels.checkIn,
+                    checkOut: response.hotels.checkOut,
+                },
                 currency: enrichedHotels[0]?.currency || 'EUR'
             };
 
