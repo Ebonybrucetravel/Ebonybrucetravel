@@ -74,7 +74,7 @@ export class BookingHotelbedsController {
     })
     @ApiResponse({ status: 200, description: 'Rate verified successfully' })
     @ApiResponse({ status: 404, description: 'Rate no longer available' })
-    async checkRate(@Body() quoteDto: { rateKey: string; language?: string }) {
+    async checkRate(@Body() quoteDto: { rateKey: string; language?: string; currency?: string }) {
         const results = await this.checkHotelbedsRateUseCase.execute(quoteDto);
         return {
             success: true,

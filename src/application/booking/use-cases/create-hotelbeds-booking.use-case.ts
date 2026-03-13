@@ -19,9 +19,7 @@ export class CreateHotelbedsBookingUseCase {
         private readonly prisma: PrismaService,
     ) { }
 
-    /**
-     * Step 1: Create local booking (before payment)
-     */
+
     async execute(dto: CreateHotelbedsBookingDto, userId: string) {
         try {
             const {
@@ -43,13 +41,12 @@ export class CreateHotelbedsBookingUseCase {
 
             const deadlineUtc = new Date(cancellationDeadline);
 
-            // Get markup config
             const markupConfig = await this.markupRepository.findActiveMarkupByProductType(ProductType.HOTEL, currency);
             if (!markupConfig) {
                 throw new NotFoundException(`No active markup found for HOTEL in ${currency}`);
             }
 
-            // Reverse calculate base price
+
             const serviceFee = Number(markupConfig.serviceFeeAmount || 0);
             const markupPercentage = Number(markupConfig.markupPercentage || 0);
             const basePrice = (totalAmount - serviceFee) / (1 + markupPercentage / 100);
@@ -111,9 +108,7 @@ export class CreateHotelbedsBookingUseCase {
         }
     }
 
-    /**
-     * Step 2: Create actual Hotelbeds booking (after payment)
-     */
+
     async createHotelbedsBookingAfterPayment(bookingId: string) {
         try {
             const booking = await this.prisma.booking.findUnique({
@@ -132,7 +127,7 @@ export class CreateHotelbedsBookingUseCase {
             const bookingData = booking.bookingData as any;
             const passengerInfo = booking.passengerInfo as any;
 
-            // Prepare Hotelbeds API payload
+
             const hbxPayload = {
                 holder: {
                     name: passengerInfo.firstName,
@@ -159,7 +154,7 @@ export class CreateHotelbedsBookingUseCase {
                 throw new Error('No booking returned from Hotelbeds API');
             }
 
-            // Update local booking
+
             await this.prisma.booking.update({
                 where: { id: bookingId },
                 data: {

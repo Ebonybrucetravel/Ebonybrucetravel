@@ -14,14 +14,15 @@ export class CheckHotelbedsRateUseCase {
         private readonly currencyService: CurrencyService,
     ) { }
 
-    async execute(params: { rateKey: string; language?: string }) {
-        if (!params.rateKey) {
+    async execute(params: { rateKey: string; language?: string; currency?: string }) {
+        const { rateKey, language, currency = 'GBP' } = params;
+        if (!rateKey) {
             throw new BadRequestException('rateKey is required to check rates');
         }
 
         try {
-            this.logger.log(`Checking Hotelbeds rate for key: ${params.rateKey.substring(0, 20)}...`);
-            const response = await this.hotelbedsService.checkRates(params);
+            this.logger.log(`Checking Hotelbeds rate for key: ${rateKey.substring(0, 20)}...`);
+            const response = await this.hotelbedsService.checkRates({ rateKey, language });
 
             if (!response || !response.hotel) {
                 throw new HttpException('Rate no longer available or invalid rateKey', HttpStatus.GONE);
@@ -29,7 +30,6 @@ export class CheckHotelbedsRateUseCase {
 
             const hotel = response.hotel;
 
-            // Apply Markup
             const markupConfigs = await this.markupRepository.findActiveMarkups();
             const defaultMarkup = markupConfigs.find((m) => m.productType === ProductType.HOTEL && m.isActive);
             const supplierMarkup = markupConfigs.find((m) => m.productType === ProductType.HOTEL && (m as any).supplierCode === 'HOTELBEDS');
@@ -38,13 +38,25 @@ export class CheckHotelbedsRateUseCase {
             const markupPercentage = markupToApply ? Number(markupToApply.markupPercentage) : 0;
             const markupFlatFee = markupToApply ? Number(markupToApply.serviceFeeAmount) : 0;
 
-            const unifiedOffers = hotel.rooms?.flatMap((room: any) =>
-                room.rates?.map((rate: any) => {
+            const unifiedOffers = await Promise.all((hotel.rooms || []).flatMap((room: any) =>
+                (room.rates || []).map(async (rate: any) => {
                     const originalAmount = parseFloat(rate.net);
-                    let finalAmount = originalAmount;
-                    if (markupToApply) {
-                        finalAmount = originalAmount + (originalAmount * markupPercentage) / 100 + markupFlatFee;
-                    }
+                    const originalCurrency = hotel.currency || 'EUR';
+
+                    const convertedBasePrice = await this.currencyService.convert(
+                        originalAmount,
+                        originalCurrency,
+                        currency
+                    );
+
+                    const conversionDetails = this.currencyService.calculateConversionFee(
+                        convertedBasePrice,
+                        originalCurrency,
+                        currency
+                    );
+
+                    const markupAmount = (conversionDetails.totalWithFee * markupPercentage) / 100;
+                    const finalPrice = conversionDetails.totalWithFee + markupAmount + markupFlatFee;
 
                     return {
                         id: rate.rateKey,
@@ -57,16 +69,17 @@ export class CheckHotelbedsRateUseCase {
                         boardCode: rate.boardCode,
                         seller: 'Hotelbeds',
                         price: {
-                            currency: rate.currency || hotel.currency || 'EUR',
-                            base: rate.net,
-                            total: finalAmount.toFixed(2),
-                            markup_amount: (finalAmount - originalAmount).toFixed(2),
+                            currency: currency,
+                            base: this.currencyService.formatAmount(convertedBasePrice, currency),
+                            total: this.currencyService.formatAmount(finalPrice, currency),
+                            markup_amount: this.currencyService.formatAmount(markupAmount, currency),
+                            conversionFee: this.currencyService.formatAmount(conversionDetails.conversionFee, currency),
                         },
                         cancellationPolicies: rate.cancellationPolicies,
                         allotment: rate.allotment,
                     };
                 })
-            ) || [];
+            )) || [];
 
             return {
                 hotel: {
@@ -80,7 +93,9 @@ export class CheckHotelbedsRateUseCase {
                     zoneName: hotel.zoneName,
                     latitude: hotel.latitude,
                     longitude: hotel.longitude,
-                    currency: hotel.currency || 'EUR',
+                    amenities: hotel.facilities?.map((f: any) => f.description?.content).filter(Boolean) || [],
+                    facilities: hotel.facilities,
+                    currency: currency,
                     checkIn: hotel.checkIn,
                     checkOut: hotel.checkOut,
                 },

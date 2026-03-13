@@ -84,7 +84,6 @@ export class SearchHotelbedsUseCase {
                 };
             }
 
-            // 1. Get Markup configs to apply our B2C pricing natively out-of-the-box
             const markupConfigs = await this.markupRepository.findActiveMarkups();
             const defaultMarkup = markupConfigs.find((m) => m.productType === ProductType.HOTEL && m.isActive);
             const supplierMarkup = markupConfigs.find((m) => m.productType === ProductType.HOTEL && (m as any).supplierCode === 'HOTELBEDS');
@@ -93,7 +92,6 @@ export class SearchHotelbedsUseCase {
             const markupPercentage = markupToApply ? Number(markupToApply.markupPercentage) : 0;
             const markupFlatFee = markupToApply ? Number(markupToApply.serviceFeeAmount) : 0;
 
-            // 2. Fetch content details concurrently to enrich search results with images
             const enrichedHotels = await Promise.all(
                 response.hotels.hotels.map(async (hotel: any) => {
                     let content = null;
@@ -111,28 +109,46 @@ export class SearchHotelbedsUseCase {
                     })) : [];
 
                     // Format Rooms & Prices
-                    const enrichedRooms = hotel.rooms?.map((room: any) => {
-                        const enrichedRates = room.rates?.map((rate: any) => {
+                    const enrichedRooms = await Promise.all((hotel.rooms || []).map(async (room: any) => {
+                        const enrichedRates = await Promise.all((room.rates || []).map(async (rate: any) => {
                             const originalAmount = parseFloat(rate.net);
-                            let finalAmount = originalAmount;
-                            if (markupToApply) {
-                                finalAmount = originalAmount + (originalAmount * markupPercentage) / 100 + markupFlatFee;
-                            }
+                            const originalCurrency = hotel.currency || 'EUR';
+
+                            // 1. Convert to target currency
+                            const convertedBasePrice = await this.currencyService.convert(
+                                originalAmount,
+                                originalCurrency,
+                                currency // targetCurrency
+                            );
+
+                            // 2. Apply conversion fee/buffer
+                            const conversionDetails = this.currencyService.calculateConversionFee(
+                                convertedBasePrice,
+                                originalCurrency,
+                                currency
+                            );
+
+                            // 3. Apply Markup to the total with conversion fee
+                            const markupAmount = (conversionDetails.totalWithFee * markupPercentage) / 100;
+                            const finalPrice = conversionDetails.totalWithFee + markupAmount + markupFlatFee;
 
                             return {
                                 ...rate,
-                                originalNet: rate.net,     // keep raw
-                                sellingRate: rate.sellingRate,
-                                finalAmount: finalAmount.toFixed(2), // formatted for display
-                                currency: hotel.currency || 'EUR',
+                                originalNet: rate.net,
+                                originalCurrency: originalCurrency,
+                                baseAmount: this.currencyService.formatAmount(convertedBasePrice, currency),
+                                conversionFee: this.currencyService.formatAmount(conversionDetails.conversionFee, currency),
+                                markupAmount: this.currencyService.formatAmount(markupAmount, currency),
+                                finalAmount: this.currencyService.formatAmount(finalPrice, currency),
+                                currency: currency,
                             };
-                        });
+                        }));
 
                         return {
                             ...room,
                             rates: enrichedRates,
                         };
-                    });
+                    }));
 
                     return {
                         ...hotel,
@@ -163,6 +179,7 @@ export class SearchHotelbedsUseCase {
                         description: hotel.content.description,
                         phones: hotel.content.phones,
                         facilities: hotel.content.facilities,
+                        amenities: hotel.content.facilities?.map((f: any) => f.description?.content).filter(Boolean) || [],
                         categoryCode: hotel.categoryCode || hotel.content.categoryCode,
                         categoryName: hotel.categoryName,
                         destinationCode: hotel.destinationCode,
@@ -182,10 +199,11 @@ export class SearchHotelbedsUseCase {
                             boardCode: rate.boardCode,
                             seller: 'Hotelbeds',
                             price: {
-                                currency: rate.currency || hotel.currency || 'EUR',
-                                base: rate.originalNet || rate.net,
+                                currency: rate.currency,
+                                base: rate.baseAmount,
                                 total: rate.finalAmount,
-                                markup_amount: (parseFloat(rate.finalAmount) - parseFloat(rate.originalNet || rate.net)).toFixed(2),
+                                markup_amount: rate.markupAmount,
+                                conversionFee: rate.conversionFee,
                             },
                             cancellationPolicies: rate.cancellationPolicies,
                         }))
@@ -199,7 +217,7 @@ export class SearchHotelbedsUseCase {
                     checkIn: response.hotels.checkIn,
                     checkOut: response.hotels.checkOut,
                 },
-                currency: enrichedHotels[0]?.currency || 'EUR'
+                currency: currency
             };
 
         } catch (error: any) {

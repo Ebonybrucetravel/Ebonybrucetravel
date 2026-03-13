@@ -4,8 +4,7 @@ import { MarkupCalculationService } from '@domains/markup/services/markup-calcul
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 import { CreateBookingDto } from '@presentation/booking/dto/create-booking.dto';
 import { Booking } from '@domains/booking/entities/booking.entity';
-import { BookingStatus } from '@prisma/client';
-import { Provider } from '@prisma/client';
+import { BookingStatus, Provider, ProductType } from '@prisma/client';
 
 @Injectable()
 export class CreateBookingUseCase {
@@ -13,7 +12,7 @@ export class CreateBookingUseCase {
     private readonly bookingService: BookingService,
     private readonly markupCalculationService: MarkupCalculationService,
     private readonly markupRepository: MarkupRepository,
-  ) {}
+  ) { }
 
   async execute(dto: CreateBookingDto, userId: string): Promise<Booking> {
     const isDuffelFlight =
@@ -51,11 +50,13 @@ export class CreateBookingUseCase {
     };
     let bookingData = { ...dto.bookingData };
 
-    // Amadeus hotel via generic POST /bookings: frontend often sends final_price as basePrice.
+    // Amadeus or Hotelbeds hotel via generic POST /bookings: frontend often sends final_price as basePrice.
     // Treat it as final total and reverse-calculate so we don't double-add markup.
-    const isAmadeusHotel =
-      dto.productType === 'HOTEL' && (dto.provider as string) === 'AMADEUS';
-    if (isAmadeusHotel) {
+    const isHotelProvider =
+      dto.productType === ProductType.HOTEL &&
+      (dto.provider === Provider.AMADEUS || dto.provider === Provider.HOTELBEDS);
+
+    if (isHotelProvider) {
       const serviceFee = markupConfig.serviceFeeAmount || 0;
       const markupPct = markupConfig.markupPercentage || 0;
       const baseFromFinal = (dto.basePrice - serviceFee) / (1 + markupPct / 100);

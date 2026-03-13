@@ -139,7 +139,7 @@ export class HotelbedsService {
         }
     }
 
-    // ==================== BOOKING APIs ====================
+
 
     /**
      * Search Hotels (Availability)
