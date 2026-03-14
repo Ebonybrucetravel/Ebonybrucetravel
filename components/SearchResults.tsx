@@ -335,6 +335,22 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
   rawPrice?: number;
   
   // ===========================================
+  // RETURN FLIGHT FIELDS (for round trips)
+  // ===========================================
+  isRoundTrip?: boolean;
+  returnFlight?: {
+    departureAirport?: string;
+    arrivalAirport?: string;
+    departureCity?: string;
+    arrivalCity?: string;
+    departureTime?: string;
+    arrivalTime?: string;
+    flightNumber?: string;
+    duration?: string;
+    stopCount?: number;
+  };
+  
+  // ===========================================
   // BACKWARD COMPATIBILITY (Keep as is)
   // ===========================================
   realData?: {
@@ -561,207 +577,243 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       return [];
     }
   };
+// Process flight offers - ONLY if not already processed
+const processedFlightOffers = useMemo(() => {
+  if (searchType !== 'flights' || flightOffers.length === 0) return [];
 
-  // Process flight offers - ONLY if not already processed
-  const processedFlightOffers = useMemo(() => {
-    if (searchType !== 'flights' || flightOffers.length === 0) return [];
+  // If results are already processed, return them as-is WITHOUT PROCESSING
+  if (areResultsProcessed) {
+    console.log('✅ Using already processed flight offers, skipping transformation');
+    return flightOffers;
+  }
 
-    // If results are already processed, return them as-is WITHOUT PROCESSING
-    if (areResultsProcessed) {
-      console.log('✅ Using already processed flight offers, skipping transformation');
-      return flightOffers;
+  console.log('🔄 Processing raw flight offers:', flightOffers.length);
+
+  return flightOffers.map((offer: ExtendedSearchResult) => {
+    // Try multiple ways to get segments
+    let segments: any[] = [];
+    let firstSlice: any = null;
+    let firstSegment: any = null;
+    let lastSegment: any = null;
+    
+    // Method 1: Check if offer has slices (standard Duffel format)
+    if (offer.slices && offer.slices.length > 0) {
+      firstSlice = offer.slices[0];
+      segments = firstSlice?.segments || [];
+    } 
+    // Method 2: Check if offer has flightItineraries (Amadeus format)
+    else if (offer.flightItineraries && offer.flightItineraries.length > 0) {
+      firstSlice = offer.flightItineraries[0];
+      segments = firstSlice?.segments || [];
+    }
+    // Method 3: Check if offer has realData with slices
+    else if (offer.realData?.slices && offer.realData.slices.length > 0) {
+      firstSlice = offer.realData.slices[0];
+      segments = firstSlice?.segments || [];
+    }
+    
+    if (segments.length > 0) {
+      firstSegment = segments[0];
+      lastSegment = segments[segments.length - 1];
+    }
+    
+    // Get carrier information
+    let airlineCode = '';
+    let airlineName = 'Unknown Airline';
+    let logoUrl = '';
+    
+    // Try to get from offer.owner first
+    if (offer.owner) {
+      airlineCode = offer.owner.iata_code || '';
+      airlineName = offer.owner.name || 'Unknown Airline';
+      logoUrl = offer.owner.logo_symbol_url || '';
+    }
+    
+    // Try to get from first segment
+    if (firstSegment) {
+      const carrier = firstSegment.operating_carrier || firstSegment.marketing_carrier;
+      if (carrier) {
+        airlineCode = carrier.iata_code || carrier.carrierCode || airlineCode;
+        airlineName = carrier.name || airlineName;
+        logoUrl = carrier.logo_symbol_url || logoUrl;
+      }
+    }
+    
+    // Try to get from airlinesMap if we have airlineCode
+    if (!logoUrl && airlineCode) {
+      const airlineFromMap = airlinesMap.get(airlineCode);
+      if (airlineFromMap) {
+        logoUrl = airlineFromMap.logo_symbol_url || '';
+      }
     }
 
-    console.log('🔄 Processing raw flight offers:', flightOffers.length);
+    // Calculate stops based on number of segments
+    const segmentCount = segments.length;
+    const stopCount = segmentCount > 0 ? segmentCount - 1 : 0;
+    
+    // Determine stop text
+    let stopText = 'Direct';
+    if (stopCount === 1) {
+      stopText = '1 Stop';
+    } else if (stopCount > 1) {
+      stopText = `${stopCount} Stops`;
+    }
 
-    return flightOffers.map((offer: ExtendedSearchResult) => {
-      // Try multiple ways to get segments
-      let segments: any[] = [];
-      let firstSlice: any = null;
-      let firstSegment: any = null;
-      let lastSegment: any = null;
-      
-      // Method 1: Check if offer has slices (standard Duffel format)
-      if (offer.slices && offer.slices.length > 0) {
-        firstSlice = offer.slices[0];
-        segments = firstSlice?.segments || [];
-      } 
-      // Method 2: Check if offer has flightItineraries (Amadeus format)
-      else if (offer.flightItineraries && offer.flightItineraries.length > 0) {
-        firstSlice = offer.flightItineraries[0];
-        segments = firstSlice?.segments || [];
+    // Get departure and arrival information
+    let departureAirport = '---';
+    let departureCity = '';
+    let departureTime = '';
+    let arrivalAirport = '---';
+    let arrivalCity = '';
+    let arrivalTime = '';
+    let flightNumber = '';
+    
+    if (firstSegment) {
+      // Duffel format
+      if (firstSegment.origin) {
+        departureAirport = firstSegment.origin.iata_code || departureAirport;
+        departureCity = firstSegment.origin.city_name || firstSegment.origin.city?.name || '';
       }
-      // Method 3: Check if offer has realData with slices
-      else if (offer.realData?.slices && offer.realData.slices.length > 0) {
-        firstSlice = offer.realData.slices[0];
-        segments = firstSlice?.segments || [];
+      // Amadeus format
+      if (firstSegment.departure) {
+        departureAirport = firstSegment.departure.iataCode || departureAirport;
+        departureTime = firstSegment.departure.at || '';
       }
       
-      if (segments.length > 0) {
-        firstSegment = segments[0];
-        lastSegment = segments[segments.length - 1];
-      }
+      // Get departure time from either format
+      departureTime = firstSegment.departing_at || firstSegment.departure?.at || departureTime;
       
-      // Get carrier information
-      let airlineCode = '';
-      let airlineName = 'Unknown Airline';
-      let logoUrl = '';
-      
-      // Try to get from offer.owner first
-      if (offer.owner) {
-        airlineCode = offer.owner.iata_code || '';
-        airlineName = offer.owner.name || 'Unknown Airline';
-        logoUrl = offer.owner.logo_symbol_url || '';
-      }
-      
-      // Try to get from first segment
-      if (firstSegment) {
-        const carrier = firstSegment.operating_carrier || firstSegment.marketing_carrier;
-        if (carrier) {
-          airlineCode = carrier.iata_code || carrier.carrierCode || airlineCode;
-          airlineName = carrier.name || airlineName;
-          logoUrl = carrier.logo_symbol_url || logoUrl;
-        }
-      }
-      
-      // Try to get from airlinesMap if we have airlineCode
-      if (!logoUrl && airlineCode) {
-        const airlineFromMap = airlinesMap.get(airlineCode);
-        if (airlineFromMap) {
-          logoUrl = airlineFromMap.logo_symbol_url || '';
-        }
-      }
-
-      // Calculate stops based on number of segments
-      const segmentCount = segments.length;
-      const stopCount = segmentCount > 0 ? segmentCount - 1 : 0;
-      
-      // Determine stop text
-      let stopText = 'Direct';
-      if (stopCount === 1) {
-        stopText = '1 Stop';
-      } else if (stopCount > 1) {
-        stopText = `${stopCount} Stops`;
-      }
-
-      // Get departure and arrival information
-      let departureAirport = '---';
-      let departureCity = '';
-      let departureTime = '';
-      let arrivalAirport = '---';
-      let arrivalCity = '';
-      let arrivalTime = '';
-      
-      if (firstSegment) {
-        // Try Duffel format
-        if (firstSegment.origin) {
-          departureAirport = firstSegment.origin.iata_code || departureAirport;
-          departureCity = firstSegment.origin.city_name || firstSegment.origin.city?.name || '';
-        }
-        // Try Amadeus format
-        if (firstSegment.departure) {
-          departureAirport = firstSegment.departure.iataCode || departureAirport;
-          departureTime = firstSegment.departure.at || '';
-        }
-        departureTime = firstSegment.departing_at || firstSegment.departure?.at || departureTime;
-      }
-      
-      if (lastSegment) {
-        // Try Duffel format
-        if (lastSegment.destination) {
-          arrivalAirport = lastSegment.destination.iata_code || arrivalAirport;
-          arrivalCity = lastSegment.destination.city_name || lastSegment.destination.city?.name || '';
-        }
-        // Try Amadeus format
-        if (lastSegment.arrival) {
-          arrivalAirport = lastSegment.arrival.iataCode || arrivalAirport;
-          arrivalTime = lastSegment.arrival.at || '';
-        }
-        arrivalTime = lastSegment.arriving_at || lastSegment.arrival?.at || arrivalTime;
-      }
-
-      // Get duration
-      const duration = firstSlice?.duration || '';
-
-      // PRICE FROM API - USE original_amount (base price without markup)
-      let priceAmount = '0';
-      let priceCurrency = 'GBP';
-      
-      if (offer.original_amount) {
-        priceAmount = offer.original_amount;
-        priceCurrency = offer.original_currency || 'GBP';
-      }
-      
-      const formattedPrice = formatPrice(priceAmount, priceCurrency);
-
-      // Get baggage information
-      let baggageInfo: any[] = [];
-      if (firstSegment?.passengers?.[0]?.baggages) {
-        baggageInfo = firstSegment.passengers[0].baggages;
-      } else if (offer.traveler_pricings?.[0]?.fare_details_by_segment?.[0]?.included_checked_bags) {
-        const bags = offer.traveler_pricings[0].fare_details_by_segment[0].included_checked_bags;
-        if (bags?.quantity) {
-          baggageInfo = [{ type: 'checked', quantity: bags.quantity }];
-        }
-      }
-      
-      const baggageString = baggageInfo.length > 0 ? JSON.stringify(baggageInfo) : undefined;
-
-      // Get flight number
-      let flightNumber = '';
-      if (firstSegment?.marketing_carrier_flight_number) {
+      // ===== CRITICAL: Get flight number from marketing_carrier_flight_number =====
+      if (firstSegment.marketing_carrier_flight_number) {
         flightNumber = firstSegment.marketing_carrier_flight_number;
-      } else if (firstSegment?.flight_number) {
+        console.log(`✈️ Found flight number: ${flightNumber} for offer ${offer.id}`);
+      }
+      // Fallback to other formats if marketing_carrier_flight_number doesn't exist
+      else if (firstSegment.flight_number) {
         flightNumber = firstSegment.flight_number;
-      } else if (firstSegment?.number) {
+      }
+      else if (firstSegment.number) {
         flightNumber = firstSegment.number;
       }
-
-      // Get cabin class
-      let cabin = 'Economy';
-      if (firstSegment?.passengers?.[0]?.cabin_class_marketing_name) {
-        cabin = firstSegment.passengers[0].cabin_class_marketing_name;
-      } else if (offer.traveler_pricings?.[0]?.fare_details_by_segment?.[0]?.cabin) {
-        cabin = offer.traveler_pricings[0].fare_details_by_segment[0].cabin;
+      else {
+        // Try to get from carrier objects
+        const carrier = firstSegment.operating_carrier || firstSegment.marketing_carrier;
+        if (carrier && carrier.flight_number) {
+          flightNumber = carrier.flight_number;
+        }
       }
+    }
+    
+    if (lastSegment) {
+      // Duffel format
+      if (lastSegment.destination) {
+        arrivalAirport = lastSegment.destination.iata_code || arrivalAirport;
+        arrivalCity = lastSegment.destination.city_name || lastSegment.destination.city?.name || '';
+      }
+      // Amadeus format
+      if (lastSegment.arrival) {
+        arrivalAirport = lastSegment.arrival.iataCode || arrivalAirport;
+        arrivalTime = lastSegment.arrival.at || '';
+      }
+      arrivalTime = lastSegment.arriving_at || lastSegment.arrival?.at || arrivalTime;
+    }
 
-      const processedOffer: ExtendedSearchResult = {
-        ...offer,
-        type: 'flights',
-        departureAirport,
-        arrivalAirport,
-        departureCity,
-        arrivalCity,
-        departureTime,
-        arrivalTime,
-        airlineCode,
-        airlineName,
-        airlineLogo: logoUrl,
-        stopCount,
-        stopText,
-        duration,
-        displayPrice: formattedPrice,
-        rawPrice: parseFloat(priceAmount),
-        price: formattedPrice,
-        original_amount: offer.original_amount,
-        original_currency: offer.original_currency,
-        final_amount: offer.final_amount,
-        currency: offer.currency,
-        markup_percentage: offer.markup_percentage,
-        markup_amount: offer.markup_amount,
-        flightNumber,
-        cabin,
-        baggage: baggageString,
-        title: `${departureAirport} → ${arrivalAirport}`,
-        subtitle: airlineName,
-        provider: airlineName,
-        image: logoUrl,
-      };
-      
-      return processedOffer;
+    // Get duration
+    const duration = firstSlice?.duration || '';
+
+    // PRICE FROM API - USE original_amount (base price without markup)
+    let priceAmount = '0';
+    let priceCurrency = 'GBP';
+    
+    if (offer.original_amount) {
+      priceAmount = offer.original_amount;
+      priceCurrency = offer.original_currency || 'GBP';
+    }
+    
+    const formattedPrice = formatPrice(priceAmount, priceCurrency);
+
+    // Get baggage information
+    let baggageInfo: any[] = [];
+    if (firstSegment?.passengers?.[0]?.baggages) {
+      baggageInfo = firstSegment.passengers[0].baggages;
+    } else if (offer.traveler_pricings?.[0]?.fare_details_by_segment?.[0]?.included_checked_bags) {
+      const bags = offer.traveler_pricings[0].fare_details_by_segment[0].included_checked_bags;
+      if (bags?.quantity) {
+        baggageInfo = [{ type: 'checked', quantity: bags.quantity }];
+      }
+    }
+    
+    const baggageString = baggageInfo.length > 0 ? JSON.stringify(baggageInfo) : undefined;
+
+    // Get cabin class
+    let cabin = 'Economy';
+    if (firstSegment?.passengers?.[0]?.cabin_class_marketing_name) {
+      cabin = firstSegment.passengers[0].cabin_class_marketing_name;
+    } else if (offer.traveler_pricings?.[0]?.fare_details_by_segment?.[0]?.cabin) {
+      cabin = offer.traveler_pricings[0].fare_details_by_segment[0].cabin;
+    }
+
+    // Debug log to verify extraction
+    console.log('📊 Flight extraction:', {
+      id: offer.id,
+      departureAirport,
+      arrivalAirport,
+      flightNumber: flightNumber || 'NOT FOUND',
+      marketing_carrier_flight_number: firstSegment?.marketing_carrier_flight_number,
+      airlineCode,
+      airlineName
     });
-  }, [flightOffers, searchType, airlinesMap, areResultsProcessed, formatPrice]);
 
+    const processedOffer: ExtendedSearchResult = {
+      ...offer,
+      type: 'flights',
+      departureAirport,
+      arrivalAirport,
+      departureCity,
+      arrivalCity,
+      departureTime,
+      arrivalTime,
+      airlineCode,
+      airlineName,
+      airlineLogo: logoUrl,
+      stopCount,
+      stopText,
+      duration,
+      displayPrice: formattedPrice,
+      rawPrice: parseFloat(priceAmount),
+      price: formattedPrice,
+      original_amount: offer.original_amount,
+      original_currency: offer.original_currency,
+      final_amount: offer.final_amount,
+      currency: offer.currency,
+      markup_percentage: offer.markup_percentage,
+      markup_amount: offer.markup_amount,
+      flightNumber: flightNumber,
+      cabin,
+      baggage: baggageString,
+      title: `${departureAirport} → ${arrivalAirport}`,
+      subtitle: airlineName,
+      provider: airlineName,
+      image: logoUrl,
+      
+      // Add these new fields
+      isRoundTrip: (offer.slices?.length || 0) > 1,
+      returnFlight: (offer.slices?.length || 0) > 1 ? {
+        departureAirport: offer.slices?.[1]?.segments?.[0]?.origin?.iata_code,
+        arrivalAirport: offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.destination?.iata_code,
+        departureCity: offer.slices?.[1]?.segments?.[0]?.origin?.city_name,
+        arrivalCity: offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.destination?.city_name,
+        departureTime: offer.slices?.[1]?.segments?.[0]?.departing_at,
+        arrivalTime: offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.arriving_at,
+        flightNumber: offer.slices?.[1]?.segments?.[0]?.marketing_carrier_flight_number,
+        duration: offer.slices?.[1]?.duration,
+        stopCount: Math.max(0, (offer.slices?.[1]?.segments?.length || 1) - 1)
+      } : undefined,
+    };
+    
+    return processedOffer;
+  });
+}, [flightOffers, searchType, airlinesMap, areResultsProcessed, formatPrice]);
   // Debug log for processed offers
   useEffect(() => {
     if (processedFlightOffers.length > 0 && !areResultsProcessed) {
@@ -1050,38 +1102,30 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
 
-  // ===========================================
-  // FLIGHT CARD - USE ONLY PROCESSED VALUES
-  // ===========================================
-  const renderFlightCard = (item: ExtendedSearchResult) => {
-    const departureAirport = item.departureAirport || '---';
-    const arrivalAirport = item.arrivalAirport || '---';
-    const departureTime = item.departureTime;
-    const arrivalTime = item.arrivalTime;
-    const airlineName = item.airlineName || item.provider || 'Unknown Airline';
-    const airlineCode = item.airlineCode || '';
-    const logoUrl = item.airlineLogo || item.image;
-    
-    // Get stop info - from processed fields
-    const stopCount = item.stopCount || 0;
-    const stopText = item.stopText || (stopCount === 0 ? 'Direct' : stopCount === 1 ? '1 Stop' : `${stopCount} Stops`);
-    
-    const duration = formatDuration(item.duration);
-    
-    // USE THE PROCESSED DISPLAY PRICE
-    const displayPrice = item.displayPrice || 'Price on request';
-    
-    // Parse baggage from JSON string
-    const baggageInfo = parseBaggage(item.baggage);
 
-    // Get connection info for multi-stop flights
-    const segments = item.slices?.[0]?.segments || [];
-    const hasConnection = segments.length > 1;
-    const connectionAirport = hasConnection ? segments[1]?.origin?.iata_code : null;
+const renderFlightCard = (item: ExtendedSearchResult) => {
+  const departureAirport = item.departureAirport || '---';
+  const arrivalAirport = item.arrivalAirport || '---';
+  const departureTime = item.departureTime;
+  const arrivalTime = item.arrivalTime;
+  const airlineName = item.airlineName || item.provider || 'Unknown Airline';
+  const airlineCode = item.airlineCode || '';
+  const logoUrl = item.airlineLogo || item.image;
+  
+  // Get return flight info if available with safe defaults
+  const returnFlight = item.returnFlight;
+  const hasReturn = !!returnFlight?.departureTime;
+  
+  const stopCount = item.stopCount || 0;
+  const stopText = item.stopText || (stopCount === 0 ? 'Direct' : stopCount === 1 ? '1 Stop' : `${stopCount} Stops`);
+  
+  const duration = formatDuration(item.duration);
 
-    return (
-      <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden animate-in fade-in slide-in-from-bottom-2">
-        <div className="flex flex-col md:flex-row p-8 gap-8">
+  return (
+    <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden animate-in fade-in slide-in-from-bottom-2">
+      <div className="flex flex-col p-8">
+        {/* OUTBOUND FLIGHT */}
+        <div className="flex flex-col md:flex-row gap-8">
           <div className="flex-1">
             {/* Airline Info */}
             <div className="flex items-center gap-4 mb-6">
@@ -1102,29 +1146,21 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               <div>
                 <h4 className="text-base font-black text-gray-900">{airlineName}</h4>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                  {item.flightNumber && `Flight ${item.flightNumber}`} {item.cabin && `• ${item.cabin}`}
+                  {item.flightNumber && `Flight ${item.flightNumber}`} • Outbound
                 </p>
               </div>
             </div>
 
             {/* Flight Route */}
             <div className="flex items-center justify-between">
-              {/* Departure */}
               <div className="text-center flex-1">
-                <p className="text-3xl font-black text-gray-900">
-                  {formatTime(departureTime)}
-                </p>
+                <p className="text-3xl font-black text-gray-900">{formatTime(departureTime)}</p>
                 <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Depart</p>
                 <p className="text-sm font-bold text-gray-900 mt-1">{departureAirport}</p>
-                {item.departureCity && (
-                  <p className="text-[9px] font-bold text-gray-400">{item.departureCity}</p>
-                )}
-                <p className="text-[8px] font-bold text-gray-300 mt-2">
-                  {formatDate(departureTime)}
-                </p>
+                <p className="text-[9px] font-bold text-gray-400">{item.departureCity}</p>
+                <p className="text-[8px] font-bold text-gray-300 mt-2">{formatDate(departureTime)}</p>
               </div>
 
-              {/* Flight Path */}
               <div className="flex-1 px-6">
                 <div className="relative">
                   <div className="w-full h-[2px] bg-gray-100"></div>
@@ -1135,74 +1171,112 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   </div>
                 </div>
                 <div className="flex justify-between mt-4">
-                  <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">
-                    {stopText}
-                  </span>
-                  <span className="text-[9px] font-black text-gray-400">
-                    {duration}
-                  </span>
+                  <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">{stopText}</span>
+                  <span className="text-[9px] font-black text-gray-400">{duration}</span>
                 </div>
-                {hasConnection && connectionAirport && (
-                  <p className="text-[8px] font-bold text-gray-300 text-center mt-2">
-                    via {connectionAirport}
-                  </p>
-                )}
               </div>
 
-              {/* Arrival */}
               <div className="text-center flex-1">
-                <p className="text-3xl font-black text-gray-900">
-                  {formatTime(arrivalTime)}
-                </p>
+                <p className="text-3xl font-black text-gray-900">{formatTime(arrivalTime)}</p>
                 <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Arrive</p>
                 <p className="text-sm font-bold text-gray-900 mt-1">{arrivalAirport}</p>
-                {item.arrivalCity && (
-                  <p className="text-[9px] font-bold text-gray-400">{item.arrivalCity}</p>
-                )}
-                <p className="text-[8px] font-bold text-gray-300 mt-2">
-                  {formatDate(arrivalTime)}
-                </p>
+                <p className="text-[9px] font-bold text-gray-400">{item.arrivalCity}</p>
+                <p className="text-[8px] font-bold text-gray-300 mt-2">{formatDate(arrivalTime)}</p>
               </div>
             </div>
-
-            {/* Baggage Info */}
-            {baggageInfo.length > 0 && (
-              <div className="mt-6 pt-6 border-t border-gray-50">
-                <div className="flex items-center gap-4">
-                  {baggageInfo.map((bag: any, idx: number) => (
-                    <span key={idx} className="text-[9px] font-bold text-gray-600 bg-gray-50 px-2 py-1 rounded-full">
-                      {bag.quantity} {bag.type} bag
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Price and CTA */}
-          <div className="w-full md:w-[280px] flex flex-col items-center justify-center text-center border-t md:border-t-0 md:border-l border-gray-100 pt-6 md:pt-0 md:pl-8">
-            <p className="text-3xl font-black text-[#33a8da] mb-2">{displayPrice}</p>
-            
-            <button 
-              onClick={() => {
-                onSelect?.(item);
-              }} 
-              className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-xs tracking-wider shadow-lg hover:shadow-xl"
-            >
-              Select Flight
-            </button>
-
-            {item.payment_requirements?.requires_instant_payment && (
-              <p className="text-[8px] font-bold text-orange-600 mt-2">
-                Instant payment required
-              </p>
-            )}
           </div>
         </div>
-      </div>
-    );
-  };
 
+        {/* RETURN FLIGHT (if round trip) */}
+        {hasReturn && (
+          <>
+            <div className="my-6 border-t border-gray-100 pt-6">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-1 h-6 bg-[#33a8da] rounded-full"></div>
+                <p className="text-[11px] font-black text-gray-900 uppercase tracking-widest">Return Flight</p>
+              </div>
+              
+              <div className="flex flex-col md:flex-row gap-8">
+                <div className="flex-1">
+                  <div className="flex items-center gap-4 mb-6">
+                    {logoUrl ? (
+                      <img 
+                        src={logoUrl} 
+                        className="w-12 h-12 object-contain rounded-lg border border-gray-100 p-1" 
+                        alt={airlineName}
+                      />
+                    ) : (
+                      <div className="w-12 h-12 bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-lg flex items-center justify-center text-white font-black text-sm">
+                        {airlineCode?.substring(0, 2) || airlineName?.substring(0, 2) || 'FL'}
+                      </div>
+                    )}
+                    <div>
+                      <h4 className="text-base font-black text-gray-900">{airlineName}</h4>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                        Flight {returnFlight?.flightNumber} • Return
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="text-center flex-1">
+                      <p className="text-3xl font-black text-gray-900">{formatTime(returnFlight?.departureTime)}</p>
+                      <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Depart</p>
+                      <p className="text-sm font-bold text-gray-900 mt-1">{returnFlight?.departureAirport}</p>
+                      <p className="text-[9px] font-bold text-gray-400">{returnFlight?.departureCity}</p>
+                      <p className="text-[8px] font-bold text-gray-300 mt-2">{formatDate(returnFlight?.departureTime)}</p>
+                    </div>
+
+                    <div className="flex-1 px-6">
+                      <div className="relative">
+                        <div className="w-full h-[2px] bg-gray-100"></div>
+                        <div className="absolute left-1/2 -translate-x-1/2 -top-3 text-[#33a8da] rotate-180">
+                          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="flex justify-between mt-4">
+                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">
+                          {returnFlight?.stopCount === 0 ? 'Direct' : 
+                           returnFlight?.stopCount === 1 ? '1 Stop' : 
+                           returnFlight?.stopCount && returnFlight.stopCount > 1 ? `${returnFlight.stopCount} Stops` : 'Direct'}
+                        </span>
+                        <span className="text-[9px] font-black text-gray-400">{returnFlight?.duration}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-center flex-1">
+                      <p className="text-3xl font-black text-gray-900">{formatTime(returnFlight?.arrivalTime)}</p>
+                      <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Arrive</p>
+                      <p className="text-sm font-bold text-gray-900 mt-1">{returnFlight?.arrivalAirport}</p>
+                      <p className="text-[9px] font-bold text-gray-400">{returnFlight?.arrivalCity}</p>
+                      <p className="text-[8px] font-bold text-gray-300 mt-2">{formatDate(returnFlight?.arrivalTime)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Price and CTA */}
+        <div className="flex justify-end items-center pt-6 border-t border-gray-100">
+          <div className="text-right mr-6">
+            <p className="text-3xl font-black text-[#33a8da]">{item.displayPrice}</p>
+            <p className="text-[9px] font-bold text-gray-400">Total for {item.isRoundTrip ? 'round trip' : 'one way'}</p>
+          </div>
+          <button 
+            onClick={() => onSelect?.(item)} 
+            className="bg-[#33a8da] text-white font-black py-4 px-8 rounded-xl transition hover:bg-[#2c98c7] uppercase text-xs tracking-wider shadow-lg hover:shadow-xl"
+          >
+            Select Flight
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
   const renderCarCard = (item: ExtendedSearchResult) => {
     // Use the API response fields directly
     const start = item.start;
