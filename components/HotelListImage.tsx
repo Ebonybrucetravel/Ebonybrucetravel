@@ -8,19 +8,26 @@ const FALLBACK_HOTEL = 'https://images.unsplash.com/photo-1566073771259-6a850609
 interface HotelListImageProps {
     hotelId: string;
     hotelName?: string;
+    initialSrc?: string;
     fallbackSrc?: string;
     alt: string;
     className?: string;
 }
 
-export function HotelListImage({ 
-    hotelId, 
-    hotelName, 
-    fallbackSrc = FALLBACK_HOTEL, 
-    alt, 
+export function HotelListImage({
+    hotelId,
+    hotelName,
+    initialSrc,
+    fallbackSrc = FALLBACK_HOTEL,
+    alt,
     className = '',
 }: HotelListImageProps) {
-    const [src, setSrc] = useState<string>(() => imageCache.get(hotelId) || fallbackSrc);
+    const [src, setSrc] = useState<string>(() => {
+        const cached = imageCache.get(hotelId);
+        if (cached) return cached;
+        if (initialSrc && !initialSrc.includes('placehold.co')) return initialSrc;
+        return fallbackSrc;
+    });
     const [loaded, setLoaded] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
 
@@ -43,12 +50,20 @@ export function HotelListImage({
                 .getHotelImages(hotelId, { hotelName: hotelName || undefined })
                 .then((res: {
                     data?: {
-                        images?: unknown[];
+                        images?: any[];
                     };
-                    images?: unknown[];
+                    images?: any[];
                 }) => {
                     const list = res?.data?.images ?? res?.images ?? [];
-                    const first = Array.isArray(list) && list.length > 0 ? list[0] : null;
+                    // Filter out placeholders from placehold.co
+                    const filteredList = Array.isArray(list)
+                        ? list.filter((img: any) => {
+                            const url = typeof img === 'string' ? img : img?.url;
+                            return url && !url.includes('placehold.co');
+                        })
+                        : [];
+
+                    const first = filteredList.length > 0 ? filteredList[0] : null;
                     const url: string | undefined = first === null || first === undefined
                         ? undefined
                         : typeof first === 'string'
@@ -71,9 +86,9 @@ export function HotelListImage({
 
     return (
         <div ref={ref} className={className || 'block w-full h-0 pb-[75%] relative'}>
-            <img 
-                src={src} 
-                alt={alt} 
+            <img
+                src={src}
+                alt={alt}
                 className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition duration-500"
             />
         </div>

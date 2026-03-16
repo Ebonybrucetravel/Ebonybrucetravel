@@ -772,6 +772,17 @@ export const getCityCode = (cityName: string): string => {
   return cityName.slice(0, 3).toUpperCase();
 };
 
+/**
+ * Get the correct API prefix for hotel-related endpoints.
+ * Numeric IDs (Hotelbeds) use singular /api/v1/booking/
+ * Other IDs (Amadeus/Alpha) use plural /api/v1/bookings/
+ */
+const getHotelEndpointPrefix = (hotelId?: string): string => {
+  // Consistently use plural /api/v1/bookings for all hotel content endpoints
+  // (details, photos, reviews, validate, book)
+  return "/api/v1/bookings";
+};
+
 // Hotel Search API - Amadeus Endpoint
 export const searchHotelsAmadeus = async (
   searchParams: HotelSearchParams,
@@ -4243,8 +4254,9 @@ export const hotelApi = {
   getHotelDetails: async (hotelId: string) => {
     try {
       console.log(`🏨 Fetching details for hotel: ${hotelId}`);
+      const prefix = getHotelEndpointPrefix(hotelId);
 
-      const response = await request<any>(`/api/v1/hotels/${hotelId}/details`, {
+      const response = await request<any>(`${prefix}/hotels/${hotelId}/details`, {
         method: "GET",
       });
 
@@ -4260,9 +4272,10 @@ export const hotelApi = {
   getHotelPhotos: async (hotelId: string, limit: number = 5) => {
     try {
       console.log(`📸 Fetching photos for hotel: ${hotelId}`);
+      const prefix = getHotelEndpointPrefix(hotelId);
 
       const response = await request<any>(
-        `/api/v1/hotels/${hotelId}/photos?limit=${limit}`,
+        `${prefix}/hotels/${hotelId}/photos?limit=${limit}`,
         {
           method: "GET",
         },
@@ -4287,9 +4300,10 @@ export const hotelApi = {
   getHotelReviews: async (hotelId: string, limit: number = 10) => {
     try {
       console.log(`📝 Fetching reviews for hotel: ${hotelId}`);
+      const prefix = getHotelEndpointPrefix(hotelId);
 
       const response = await request<any>(
-        `/api/v1/hotels/${hotelId}/reviews?limit=${limit}`,
+        `${prefix}/hotels/${hotelId}/reviews?limit=${limit}`,
         {
           method: "GET",
         },
@@ -4335,8 +4349,9 @@ export const hotelApi = {
   ) => {
     try {
       console.log(`✅ Validating hotel booking for: ${hotelId}`);
+      const prefix = getHotelEndpointPrefix(hotelId);
 
-      const response = await request<any>("/api/v1/hotels/validate-booking", {
+      const response = await request<any>(`${prefix}/hotels/validate-booking`, {
         method: "POST",
         body: JSON.stringify({
           hotelId,
@@ -4357,7 +4372,8 @@ export const hotelApi = {
 
   // Hotel booking (generic)
   bookHotel: (hotelId: string, bookingData: any) => {
-    return request<any>(`/api/v1/hotels/${hotelId}/book`, {
+    const prefix = getHotelEndpointPrefix(hotelId);
+    return request<any>(`${prefix}/hotels/${hotelId}/book`, {
       method: "POST",
       body: JSON.stringify(bookingData),
     });
@@ -4365,7 +4381,7 @@ export const hotelApi = {
 
   // Get available hotel amenities
   getAvailableAmenities: () => {
-    return request<string[]>("/api/v1/hotels/amenities", {
+    return request<string[]>("/api/v1/bookings/hotels/amenities", {
       method: "GET",
     }).catch(() => {
       // Return default amenities if API fails
@@ -4385,13 +4401,15 @@ export const hotelApi = {
         "Laundry Service",
         "Pet Friendly",
         "Family Rooms",
+        "Adults Only",
+        "All Inclusive"
       ];
     });
   },
 
-  // Get popular hotel destinations
+  // Get hotel destinations (legacy)
   getPopularDestinations: () => {
-    return request<any[]>("/api/v1/hotels/popular-destinations", {
+    return request<any[]>("/api/v1/bookings/hotels/popular-destinations", {
       method: "GET",
     }).catch(() => {
       // Return default destinations if API fails
@@ -4439,6 +4457,13 @@ export const hotelApi = {
             "https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?auto=format&fit=crop&q=80&w=400",
         },
       ];
+    });
+  },
+
+  // Get image usage stats
+  getUsageStats: () => {
+    return request<any>("/api/v1/bookings/hotels/images/usage-stats", {
+      method: "GET",
     });
   },
 };
