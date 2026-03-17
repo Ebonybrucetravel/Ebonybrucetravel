@@ -275,12 +275,11 @@ const searchFlights = async (params: SearchParams) => {
   }
 
   const departureDate = params.segments[0].date || new Date().toISOString().split('T')[0];
-  const returnDate = params.returnDate; // Get return date from params
+  const returnDate = params.returnDate;
 
   let cabinClass = (params.cabinClass ?? 'economy').toLowerCase();
   if (!['economy', 'premium_economy', 'business', 'first'].includes(cabinClass)) cabinClass = 'economy';
 
-  // Handle passengers correctly - could be number or object
   let passengerCount = 1;
   if (params.passengers) {
     if (typeof params.passengers === 'number') {
@@ -296,7 +295,6 @@ const searchFlights = async (params: SearchParams) => {
   const BASE = config.apiBaseUrl;
 
   try {
-    // Step 1 – Create offer request
     const requestBody: any = {
       origin,
       destination,
@@ -306,7 +304,6 @@ const searchFlights = async (params: SearchParams) => {
       currency: 'GBP'
     };
 
-    // Add return date for round trips
     if (returnDate) {
       requestBody.returnDate = returnDate;
     }
@@ -319,7 +316,6 @@ const searchFlights = async (params: SearchParams) => {
       body: JSON.stringify(requestBody),
     });
 
-    // Log the response status and text for debugging
     console.log('📥 Response status:', offerRes.status);
     const responseText = await offerRes.text();
     console.log('📥 Response text:', responseText);
@@ -345,31 +341,58 @@ const searchFlights = async (params: SearchParams) => {
 
     const offerRequestId = offerData.data.offer_request_id;
 
-    // Step 2 – List offers
+    // ──────────────────────────────────────────────────────────
+    // Paginated fetch of all offers
+    // ──────────────────────────────────────────────────────────
     console.log('📤 Fetching offers for request ID:', offerRequestId);
-    const offersRes = await fetch(`${BASE}/api/v1/bookings/offers?offer_request_id=${offerRequestId}`);
+    let allOffers: any[] = [];
+    let cursor: string | null = null;
+    let hasMore = true;
+    let page = 1;
+    const MAX_PAGES = 10; // safety limit
 
-    if (!offersRes.ok) {
-      const offersText = await offersRes.text();
-      console.error('❌ List offers failed:', offersRes.status, offersText);
-      throw new Error('List offers failed');
+    while (hasMore && page <= MAX_PAGES) {
+      const url = new URL(`${BASE}/api/v1/bookings/offers`);
+      url.searchParams.set('offer_request_id', offerRequestId);
+      if (cursor) {
+        url.searchParams.set('cursor', cursor);
+      }
+
+      console.log(`📤 Fetching offers page ${page}...`);
+      const offersRes = await fetch(url.toString());
+
+      if (!offersRes.ok) {
+        const offersText = await offersRes.text();
+        console.error(`❌ List offers failed (page ${page}):`, offersRes.status, offersText);
+        throw new Error('List offers failed');
+      }
+
+      const offersData = await offersRes.json();
+      console.log(`📥 Page ${page} response:`, offersData);
+
+      // Extract offers – adjust based on your API response structure
+      const pageOffers: any[] = offersData.data?.offers ?? offersData.data ?? offersData.offers ?? [];
+      allOffers = allOffers.concat(pageOffers);
+
+      // Update pagination from meta
+      hasMore = offersData.meta?.hasMore ?? false;
+      cursor = offersData.meta?.nextCursor ?? null;
+
+      page++;
     }
 
-    const offersData = await offersRes.json();
-    console.log('📥 Offers response:', offersData);
+    console.log(`✅ Total offers after pagination: ${allOffers.length}`);
 
-    let offers: any[] = offersData.data?.offers ?? offersData.data ?? offersData.offers ?? [];
-
-    if (offers.length === 0) {
+    if (allOffers.length === 0) {
       console.log('⚠️ No offers found');
       setSearchResults([]);
       return;
     }
 
-    console.log('✅ Received offers:', offers.length);
-    console.log('Sample offer slices count:', offers[0]?.slices?.length);
-
-    // Define interfaces for type safety - UPDATED WITH ALL PROPERTIES
+    // ──────────────────────────────────────────────────────────
+    // Transformation and deduplication (your existing code)
+    // ──────────────────────────────────────────────────────────
+    // Define interfaces (keep as they were)
     interface Airport {
       iata_code?: string;
       iataCode?: string;
@@ -412,7 +435,7 @@ const searchFlights = async (params: SearchParams) => {
       duration?: string;
       departure_time?: string;
       arrival_time?: string;
-      operating_carrier?: Carrier;  // Added this
+      operating_carrier?: Carrier;
     }
     
     interface Offer {
@@ -433,10 +456,10 @@ const searchFlights = async (params: SearchParams) => {
       markup_percentage?: number;
       markup_amount?: string;
       service_fee?: string;
-      base_amount?: string;        // Added
-      base_currency?: string;       // Added
-      tax_amount?: string;          // Added
-      tax_currency?: string;        // Added
+      base_amount?: string;
+      base_currency?: string;
+      tax_amount?: string;
+      tax_currency?: string;
       payment_requirements?: any;
       created_at?: string;
       updated_at?: string;
@@ -444,22 +467,17 @@ const searchFlights = async (params: SearchParams) => {
       conditions?: any;
     }
 
-    // Transform all offers
-    const transformed: SearchResult[] = offers.map((offer: Offer, i: number) => {
+    // Transform all offers - KEEP EVERYTHING, NO GROUPING
+    const transformed: SearchResult[] = allOffers.map((offer: Offer, i: number) => {
       const slices: Slice[] = offer.slices ?? offer.segments ?? [];
-      
-      // Determine if it's round trip (has 2 slices) or one-way (1 slice)
       const isRoundTrip = slices.length > 1;
       
-      // Outbound is always the first slice
       const outboundSlice: Slice = slices[0] ?? {};
       const outboundSegments: Segment[] = outboundSlice.segments ?? [];
       
-      // Outbound: first segment's origin, last segment's destination
       const outboundFirstSegment: Segment = outboundSegments[0] ?? {};
       const outboundLastSegment: Segment = outboundSegments[outboundSegments.length - 1] ?? outboundFirstSegment;
 
-      // Get airline information
       const ownerAirline = offer.owner;
       const operatingCarrier = outboundFirstSegment.operating_carrier || outboundSlice.operating_carrier;
       const airline = ownerAirline || operatingCarrier;
@@ -467,13 +485,11 @@ const searchFlights = async (params: SearchParams) => {
       const airlineCode = airline?.iata_code ?? airline?.iataCode ?? '';
       const airlineLogoUrl = airline?.logo_symbol_url ?? '';
 
-      // Get flight number from outbound first segment - PRIORITIZE marketing_carrier_flight_number
       const outboundFlightNumber = outboundFirstSegment.marketing_carrier_flight_number || 
                                    outboundFirstSegment.flight_number || 
                                    outboundFirstSegment.number ||
                                    `FL${1000 + i}`;
 
-      // Get correct airports for OUTBOUND flight
       const outboundDepartureAirport: string = outboundFirstSegment.origin?.iata_code ?? 
                                        outboundFirstSegment.departure?.iataCode ?? 
                                        outboundSlice.origin?.iata_code ?? 
@@ -484,7 +500,6 @@ const searchFlights = async (params: SearchParams) => {
                                       outboundSlice.destination?.iata_code ?? 
                                       destination;
 
-      // Get city names
       const outboundDepartureCity: string = outboundFirstSegment.origin?.city_name || 
                                     outboundFirstSegment.origin?.city?.name || 
                                     outboundSlice.origin?.city_name || '';
@@ -493,7 +508,6 @@ const searchFlights = async (params: SearchParams) => {
                                   outboundLastSegment.destination?.city?.name || 
                                   outboundSlice.destination?.city_name || '';
 
-      // Get times
       const outboundDepartureTime: string = outboundFirstSegment.departing_at ?? 
                                     outboundFirstSegment.departure?.at ?? 
                                     outboundSlice.departure_time ?? '';
@@ -502,12 +516,10 @@ const searchFlights = async (params: SearchParams) => {
                                   outboundLastSegment.arrival?.at ?? 
                                   outboundSlice.arrival_time ?? '';
 
-      // Price handling
       let totalPrice = parseFloat(offer.total_amount ?? offer.total_price ?? offer.amount ?? offer.price?.total ?? '85');
       let currency = offer.total_currency ?? offer.currency ?? offer.price?.currency ?? 'GBP';
       const sym = currency === 'GBP' ? '£' : currency === 'NGN' ? '₦' : currency === 'EUR' ? '€' : '$';
 
-      // Calculate duration for outbound
       let totalDurMin = 0;
       if (outboundSlice.duration) {
         const match = outboundSlice.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
@@ -518,13 +530,12 @@ const searchFlights = async (params: SearchParams) => {
       const h = Math.floor(totalDurMin / 60);
       const m = totalDurMin % 60;
 
-      // Count stops for outbound
       const outboundStops = Math.max(0, (outboundSegments.length || 1) - 1);
 
-      // Create a unique key for this outbound flight (for deduplication)
-      const flightKey = `${outboundDepartureTime}-${outboundFlightNumber}-${outboundDepartureAirport}-${outboundArrivalAirport}`;
+      // Get actual baggage information from the segment
+      const passengerData = outboundFirstSegment.passengers?.[0] || {};
+      const baggages = passengerData.baggages || [];
 
-      // Create owner object
       const ownerObject = airline ? {
         id: airline.id,
         name: airlineName,
@@ -532,7 +543,6 @@ const searchFlights = async (params: SearchParams) => {
         logo_symbol_url: airlineLogoUrl
       } : undefined;
 
-      // Format time for display
       const formatTime = (timeStr: string): string => {
         try {
           return new Date(timeStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -541,7 +551,6 @@ const searchFlights = async (params: SearchParams) => {
         }
       };
 
-      // Format date for display
       const formatDate = (timeStr: string): string => {
         try {
           return new Date(timeStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
@@ -552,9 +561,6 @@ const searchFlights = async (params: SearchParams) => {
 
       // Create the result object
       const result: any = {
-        // Add the flight key for deduplication
-        flightKey,
-        
         // Flight identification
         id: offer.id ?? `flight-${i}`,
         provider: airlineName,
@@ -609,7 +615,7 @@ const searchFlights = async (params: SearchParams) => {
         stopCount: outboundStops,
         stopText: outboundStops === 0 ? 'Direct' : `${outboundStops} stop${outboundStops > 1 ? 's' : ''}`,
         cabin: cabinClass,
-        baggage: JSON.stringify([{ type: 'checked', quantity: 1 }, { type: 'carry_on', quantity: 1 }]),
+        baggage: baggages,
         displayPrice: `${sym}${totalPrice.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`,
         rawPrice: totalPrice,
 
@@ -623,7 +629,6 @@ const searchFlights = async (params: SearchParams) => {
           const returnFirstSegment = returnSegments[0] ?? {};
           const returnLastSegment = returnSegments[returnSegments.length - 1] ?? returnFirstSegment;
           
-          // Calculate return duration
           let returnDurMin = 0;
           if (returnSlice.duration) {
             const match = returnSlice.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
@@ -665,38 +670,63 @@ const searchFlights = async (params: SearchParams) => {
       return result;
     });
 
-    // DEDUPLICATE - Keep only the cheapest option for each unique flight
-    const flightMap = new Map();
+    // ============ SHOW ALL FLIGHTS - NO GROUPING OR DEDUPLICATION ============
+
+    console.log(`✅ Total offers from API: ${transformed.length}`);
+
+    // Log all airlines to see what's available
+    const airlinesList = [...new Set(transformed.map((f: any) => f.airlineName))];
+    console.log('Airlines available:', airlinesList);
+
+    // Count flights per airline
+    const airlineCounts = airlinesList.reduce((acc: any, airline) => {
+      acc[airline] = transformed.filter((f: any) => f.airlineName === airline).length;
+      return acc;
+    }, {});
+    console.log('Flights per airline:', airlineCounts);
+
+    // Remove only EXACT duplicates (same flight number, same departure time, same airline)
+    // This keeps different airlines and different flight times
+    const uniqueFlights = new Map();
     transformed.forEach((flight: any) => {
-      const key = flight.flightKey;
-      if (!flightMap.has(key) || flight.rawPrice < flightMap.get(key).rawPrice) {
-        flightMap.set(key, flight);
+      // Create a key that identifies a unique flight
+      const key = `${flight.airlineName}-${flight.flightNumber}-${flight.departureTime}`;
+      
+      // Keep the first occurrence
+      if (!uniqueFlights.has(key)) {
+        uniqueFlights.set(key, flight);
+      } else {
+        // If duplicate, keep the cheaper one
+        const existing = uniqueFlights.get(key);
+        if (flight.rawPrice < existing.rawPrice) {
+          uniqueFlights.set(key, flight);
+        }
       }
     });
 
-    const deduplicated = Array.from(flightMap.values());
-    console.log(`✅ Transformed: ${transformed.length} → Deduplicated: ${deduplicated.length}`);
+    // Convert back to array
+    let allFlights = Array.from(uniqueFlights.values());
 
-    // Filter out any invalid results
-    const valid = deduplicated.filter((r: any) => r.price && !r.price.includes('£0') && r.rawPrice > 0);
-    console.log('✅ Final flights:', valid.length);
-    console.log('Sample flight:', {
-      flightNumber: valid[0]?.flightNumber,
-      from: valid[0]?.departureAirport,
-      to: valid[0]?.arrivalAirport,
-      price: valid[0]?.displayPrice,
-      isRoundTrip: valid[0]?.isRoundTrip
-    });
+    // Sort by price (cheapest first)
+    allFlights.sort((a, b) => a.rawPrice - b.rawPrice);
 
-    setSearchResults(valid);
+    console.log(`✅ Showing ${allFlights.length} unique flights`);
+    console.log('Final airlines in results:', [...new Set(allFlights.map((f: any) => f.airlineName))]);
+    console.log('Sample flights:', allFlights.slice(0, 5).map((f: any) => ({
+      airline: f.airlineName,
+      flight: f.flightNumber,
+      time: f.departureTime,
+      price: f.displayPrice
+    })));
+
+    // Update state with ALL flights
+    setSearchResults(allFlights);
     
   } catch (error) {
     console.error('❌ Flight search error:', error);
     setSearchResults([]);
-    // Don't throw here, just return empty results
   }
 };
-
   const selectItem = useCallback((item: SearchResult) => {
     console.log('📦 Item selected with ALL price fields:', {
       id: item.id,
