@@ -394,9 +394,8 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
         setLoadingDetails(true);
         setLoadingStats(true);
 
-        // Fetch everything in parallel
-        // Only fetch usage stats for admins to avoid 401 errors
-        const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+        const role = user?.role?.toUpperCase();
+        const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
 
         const [imagesRes, detailsRes, statsRes] = await Promise.allSettled([
           api.paymentApi.getHotelImages(item.id, { hotelName: item.title }),

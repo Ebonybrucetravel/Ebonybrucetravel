@@ -162,7 +162,7 @@ export interface User {
   country?: string;
   postalCode?: string;
   provider?: "email" | "google" | "facebook";
-  role?: "user" | "admin";
+  role?: "user" | "admin" | "ADMIN" | "SUPER_ADMIN";
   createdAt?: string;
   updatedAt?: string;
   token?: string;
