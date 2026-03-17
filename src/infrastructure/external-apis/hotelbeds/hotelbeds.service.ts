@@ -37,6 +37,10 @@ export class HotelbedsService {
         return crypto.createHash('sha256').update(dataToHash).digest('hex');
     }
 
+    private sleep(ms: number) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
     /**
      * Make an authenticated request to the Hotelbeds API
      */
@@ -48,6 +52,7 @@ export class HotelbedsService {
             params?: Record<string, string>;
             isContentApi?: boolean;
         } = {},
+        retryCount = 0
     ): Promise<any> {
         if (!this.apiKey || !this.apiSecret) {
             throw new HttpException(
@@ -87,6 +92,14 @@ export class HotelbedsService {
             });
 
             if (!response.ok) {
+                if (response.status === 429 && retryCount < 1) {
+                    // Add jitter: wait between 500ms and 1500ms
+                    const jitter = Math.floor(Math.random() * 1000) + 500;
+                    this.logger.warn(`Hotelbeds API rate limit (429) hit on ${endpoint}. Retrying in ${jitter}ms... (Retry ${retryCount + 1})`);
+                    await this.sleep(jitter);
+                    return this.makeRequest(endpoint, options, retryCount + 1);
+                }
+
                 const errorText = await response.text();
                 this.logger.warn(`Hotelbeds API error ${response.status} ${endpoint}: ${errorText}`);
 
@@ -110,6 +123,8 @@ export class HotelbedsService {
                     httpStatus = HttpStatus.BAD_REQUEST;
                 } else if (response.status === 404) {
                     httpStatus = HttpStatus.NOT_FOUND;
+                } else if (response.status === 429) {
+                    httpStatus = HttpStatus.TOO_MANY_REQUESTS;
                 }
 
                 throw new HttpException(
@@ -119,7 +134,9 @@ export class HotelbedsService {
                             ? 'Feature not available'
                             : response.status === 401
                                 ? 'Authentication failed'
-                                : 'API error',
+                                : response.status === 429
+                                    ? 'Rate limit exceeded'
+                                    : 'API error',
                         statusCode: httpStatus,
                         details: errorDetails,
                     },
@@ -157,6 +174,8 @@ export class HotelbedsService {
             paxes?: Array<{ type: 'AD' | 'CH'; age: number }>;
         }>;
         language?: string; // e.g. "ENG"
+        from?: number; // Pagination: start index (1-based)
+        to?: number;   // Pagination: end index (inclusive)
     }): Promise<any> {
         const requestBody: any = {
             stay: {
@@ -175,9 +194,9 @@ export class HotelbedsService {
         }
 
         const queryParams: Record<string, string> = {};
-        if (params.language) {
-            queryParams.language = params.language;
-        }
+        if (params.language) queryParams.language = params.language;
+        if (params.from !== undefined) queryParams.from = params.from.toString();
+        if (params.to !== undefined) queryParams.to = params.to.toString();
 
         return this.makeRequest('/hotels', {
             method: 'POST',

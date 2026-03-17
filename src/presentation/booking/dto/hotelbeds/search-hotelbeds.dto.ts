@@ -75,4 +75,16 @@ export class SearchHotelbedsDto {
     @IsOptional()
     @IsString()
     currency?: string;
+
+    @ApiPropertyOptional({ example: 1, description: 'Page number for pagination (1-based). Default: 1.' })
+    @IsOptional()
+    @IsNumber()
+    @Min(1)
+    page?: number;
+
+    @ApiPropertyOptional({ example: 20, description: 'Number of hotels per page (max 100). Default: 20.' })
+    @IsOptional()
+    @IsNumber()
+    @Min(1)
+    limit?: number;
 }

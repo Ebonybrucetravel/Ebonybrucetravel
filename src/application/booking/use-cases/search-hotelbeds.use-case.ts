@@ -27,7 +27,9 @@ export class SearchHotelbedsUseCase {
             checkOutDate,
             occupancies,
             language = 'ENG',
-            currency = 'GBP', // Currently display-only. Actual rate is in supplier default
+            currency = 'GBP',
+            page = 1,
+            limit = 20,
         } = searchParams;
 
         // Validate that at least one search method is provided
@@ -59,8 +61,15 @@ export class SearchHotelbedsUseCase {
             );
         }
 
+        // Clamp limit: Hotelbeds maximum is 2000, but we cap at 100 for performance
+        const safeLimit = Math.min(limit, 100);
+        const from = (page - 1) * safeLimit + 1;
+        const to = page * safeLimit;
+
         try {
-            this.logger.log(`Searching Hotelbeds availability. CheckIn: ${checkInDate}, Destination: ${destinationCode || 'N/A'}`);
+            this.logger.log(
+                `Searching Hotelbeds availability. CheckIn: ${checkInDate}, Destination: ${destinationCode || 'N/A'}, Page: ${page}, Limit: ${safeLimit}`,
+            );
 
             const response = await this.hotelbedsService.searchHotels({
                 checkInDate,
@@ -71,101 +80,140 @@ export class SearchHotelbedsUseCase {
                     ...occ,
                     paxes: occ.paxes?.map(p => ({
                         type: p.type,
-                        age: p.age ?? (p.type === 'AD' ? 30 : 5) // Fallback for types
-                    }))
+                        age: p.age ?? (p.type === 'AD' ? 30 : 5),
+                    })),
                 })),
                 language,
+                from,
+                to,
             });
 
             if (!response || !response.hotels || !response.hotels.hotels) {
                 return {
                     available: false,
                     hotels: [],
+                    meta: { total: 0, count: 0, page, limit: safeLimit },
                 };
             }
 
-            const markupConfigs = await this.markupRepository.findActiveMarkups();
-            const defaultMarkup = markupConfigs.find((m) => m.productType === ProductType.HOTEL && m.isActive);
-            const supplierMarkup = markupConfigs.find((m) => m.productType === ProductType.HOTEL && (m as any).supplierCode === 'HOTELBEDS');
+            // --- Pre-fetch exchange rate ONCE ---
+            // This avoids hundreds of individual convert() calls (which caused 45s response times).
+            const supplierCurrency = 'EUR';
+            let exchangeRate = 1;
+            if (currency !== supplierCurrency) {
+                try {
+                    exchangeRate = await this.getExchangeRate(supplierCurrency, currency);
+                } catch {
+                    this.logger.warn(`Could not fetch exchange rate ${supplierCurrency}->${currency}. Using 1:1.`);
+                }
+            }
 
+            // --- Markup config ---
+            const markupConfigs = await this.markupRepository.findActiveMarkups();
+            const defaultMarkup = markupConfigs.find(m => m.productType === ProductType.HOTEL && m.isActive);
+            const supplierMarkup = markupConfigs.find(m => m.productType === ProductType.HOTEL && (m as any).supplierCode === 'HOTELBEDS');
             const markupToApply = supplierMarkup || defaultMarkup;
             const markupPercentage = markupToApply ? Number(markupToApply.markupPercentage) : 0;
             const markupFlatFee = markupToApply ? Number(markupToApply.serviceFeeAmount) : 0;
 
-            const enrichedHotels = await Promise.all(
-                response.hotels.hotels.map(async (hotel: any) => {
-                    let content = null;
-                    try {
-                        content = await this.hotelbedsContentService.getHotelDetails(hotel.code.toString(), language);
-                    } catch (err) {
-                        this.logger.warn(`Could not load content/images for Hotelbeds hotel ${hotel.code}`);
-                    }
+            const hotelsToEnrich = response.hotels.hotels;
+            const hotelCodes = hotelsToEnrich.map((h: any) => h.code.toString());
 
-                    // Format Images
-                    const images = content?.image ? content.image.map((img: any) => ({
-                        path: this.hotelbedsContentService.getHotelbedsImageUrl(img.path),
-                        roomCode: img.roomCode,
-                        type: img.imageTypeCode,
-                    })) : [];
+            // --- Bulk-fetch static content (images, descriptions, facilities) ---
+            // Non-blocking: if the Content API fails (e.g. 403 quota), we still return results.
+            let allContent: any[] = new Array(hotelCodes.length).fill(null);
+            try {
+                allContent = await this.hotelbedsContentService.getHotelsDetailsBulk(hotelCodes, language);
+            } catch (err: any) {
+                this.logger.warn(
+                    `Content API fetch failed (search will proceed without images/details): ${err?.message || err}`,
+                );
+            }
 
-                    // Format Rooms & Prices
-                    const enrichedRooms = await Promise.all((hotel.rooms || []).map(async (room: any) => {
-                        const enrichedRates = await Promise.all((room.rates || []).map(async (rate: any) => {
-                            const originalAmount = parseFloat(rate.net);
-                            const originalCurrency = hotel.currency || 'EUR';
+            const conversionBuffer = this.currencyService.getConversionBuffer();
 
-                            // 1. Convert to target currency
-                            const convertedBasePrice = await this.currencyService.convert(
-                                originalAmount,
-                                originalCurrency,
-                                currency // targetCurrency
-                            );
+            const enrichedHotels = hotelsToEnrich.map((hotel: any, index: number) => {
+                const content = allContent[index];
 
-                            // 2. Apply conversion fee/buffer
-                            const conversionDetails = this.currencyService.calculateConversionFee(
-                                convertedBasePrice,
-                                originalCurrency,
-                                currency
-                            );
+                // --- Images (GIATA format) ---
+                // The bulk /hotels endpoint returns them under 'images'
+                const rawImages: any[] = content?.images || content?.image || [];
+                const images = Array.isArray(rawImages)
+                    ? rawImages
+                        .sort((a: any, b: any) => (a.visualOrder ?? 999) - (b.visualOrder ?? 999))
+                        .map((img: any) => ({
+                            path: this.hotelbedsContentService.getHotelbedsImageUrl(img.path),
+                            thumbPath: this.hotelbedsContentService.getHotelbedsImageUrl(img.path, 'small'),
+                            bigPath: this.hotelbedsContentService.getHotelbedsImageUrl(img.path, 'bigger'),
+                            roomCode: img.roomCode || null,
+                            type: img.type?.code || img.imageTypeCode || null,
+                            typeDescription: img.type?.description || null,
+                            isMain: img.visualOrder === 0,
+                            order: img.visualOrder ?? img.order ?? 999,
+                        }))
+                    : [];
 
-                            // 3. Apply Markup to the total with conversion fee
-                            const markupAmount = (conversionDetails.totalWithFee * markupPercentage) / 100;
-                            const finalPrice = conversionDetails.totalWithFee + markupAmount + markupFlatFee;
+                // --- Facilities (GIATA Group 60 = Room, Group 70 = Hotel) ---
+                const allFacilities: any[] = content?.facilities || [];
+                const hotelFacilities = allFacilities.filter((f: any) => f.facilityGroupCode === 70);
+                const roomFacilities = allFacilities.filter(
+                    (f: any) => f.facilityGroupCode === 60 && f.indLogic !== false && f.indYesOrNo !== false,
+                );
+                const amenities = roomFacilities
+                    .map((f: any) => f.description?.content || f.description)
+                    .filter(Boolean);
 
-                            return {
-                                ...rate,
-                                originalNet: rate.net,
-                                originalCurrency: originalCurrency,
-                                baseAmount: this.currencyService.formatAmount(convertedBasePrice, currency),
-                                conversionFee: this.currencyService.formatAmount(conversionDetails.conversionFee, currency),
-                                markupAmount: this.currencyService.formatAmount(markupAmount, currency),
-                                finalAmount: this.currencyService.formatAmount(finalPrice, currency),
-                                currency: currency,
-                            };
-                        }));
+                // --- Rooms & Rates (synchronous price calculation) ---
+                const enrichedRooms = (hotel.rooms || []).map((room: any) => {
+                    const enrichedRates = (room.rates || []).map((rate: any) => {
+                        const originalAmount = parseFloat(rate.net);
+                        const hotelCurrency = hotel.currency || supplierCurrency;
+
+                        // Apply exchange rate
+                        const rateToUse = hotelCurrency === currency ? 1 : exchangeRate;
+                        const convertedBase = originalAmount * rateToUse;
+
+                        // Apply conversion buffer
+                        const conversionFee = currency !== hotelCurrency
+                            ? (convertedBase * conversionBuffer) / 100
+                            : 0;
+                        const totalWithFee = convertedBase + conversionFee;
+
+                        // Apply markup
+                        const markupAmount = (totalWithFee * markupPercentage) / 100;
+                        const finalPrice = totalWithFee + markupAmount + markupFlatFee;
 
                         return {
-                            ...room,
-                            rates: enrichedRates,
+                            ...rate,
+                            originalNet: rate.net,
+                            originalCurrency: hotelCurrency,
+                            baseAmount: convertedBase.toFixed(2),
+                            conversionFee: conversionFee.toFixed(2),
+                            markupAmount: markupAmount.toFixed(2),
+                            finalAmount: finalPrice.toFixed(2),
+                            currency,
                         };
-                    }));
+                    });
 
-                    return {
-                        ...hotel,
-                        content: {
-                            name: content?.name?.content || hotel.name,
-                            description: content?.description?.content || '',
-                            address: content?.address?.content || '',
-                            city: content?.city?.content || '',
-                            phones: content?.phones || [],
-                            facilities: content?.facilities || [],
-                            categoryCode: content?.categoryCode,
-                        },
-                        images,
-                        rooms: enrichedRooms,
-                    };
-                })
-            );
+                    return { ...room, rates: enrichedRates };
+                });
+
+                return {
+                    ...hotel,
+                    content: {
+                        name: content?.name?.content || hotel.name,
+                        description: content?.description?.content || '',
+                        address: content?.address?.content || '',
+                        city: content?.city?.content || '',
+                        phones: content?.phones || [],
+                        facilities: hotelFacilities,
+                        categoryCode: content?.categoryCode,
+                    },
+                    images,
+                    rooms: enrichedRooms,
+                    amenities,
+                };
+            });
 
             return {
                 data: enrichedHotels.map(hotel => ({
@@ -179,13 +227,13 @@ export class SearchHotelbedsUseCase {
                         description: hotel.content.description,
                         phones: hotel.content.phones,
                         facilities: hotel.content.facilities,
-                        amenities: hotel.content.facilities?.map((f: any) => f.description?.content).filter(Boolean) || [],
+                        amenities: hotel.amenities,
                         categoryCode: hotel.categoryCode || hotel.content.categoryCode,
                         categoryName: hotel.categoryName,
                         destinationCode: hotel.destinationCode,
                         destinationName: hotel.destinationName,
                         zoneName: hotel.zoneName,
-                        currency: hotel.currency || 'EUR',
+                        currency: hotel.currency || supplierCurrency,
                     },
                     offers: hotel.rooms.flatMap((room: any) =>
                         room.rates.map((rate: any) => ({
@@ -214,10 +262,14 @@ export class SearchHotelbedsUseCase {
                 meta: {
                     total: response.hotels.total,
                     count: enrichedHotels.length,
+                    page,
+                    limit: safeLimit,
+                    from,
+                    to,
                     checkIn: response.hotels.checkIn,
                     checkOut: response.hotels.checkOut,
                 },
-                currency: currency
+                currency,
             };
 
         } catch (error: any) {
@@ -230,5 +282,14 @@ export class SearchHotelbedsUseCase {
                 HttpStatus.INTERNAL_SERVER_ERROR,
             );
         }
+    }
+
+    /**
+     * Pre-fetch a single exchange rate to avoid repeated API calls.
+     * Internally delegates to CurrencyService which already caches rates.
+     */
+    private async getExchangeRate(from: string, to: string): Promise<number> {
+        // currencyService.convert(1, from, to) returns the rate for 1 unit
+        return this.currencyService.convert(1, from, to);
     }
 }
