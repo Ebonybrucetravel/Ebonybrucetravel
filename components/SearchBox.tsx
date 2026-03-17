@@ -1541,22 +1541,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 </div>
               </div>
 
-              {/* Test Environment Notice */}
-              {hotelProvider === 'hotelbeds' && (
-                <div className="bg-blue-900/40 border border-blue-400/30 rounded-lg p-2 md:p-3 flex items-start gap-2.5 transition-all animate-in fade-in slide-in-from-top-1">
-                  <div className="text-base md:text-lg filter grayscale brightness-200">ℹ️</div>
-                  <div className="flex-1">
-                    <p className="text-[9px] md:text-[10px] font-black text-blue-100 uppercase tracking-widest leading-tight">
-                      Hotelbeds Test Environment
-                    </p>
-                    <p className="text-[8px] md:text-[9px] text-blue-200 mt-0.5 leading-snug font-medium opacity-90">
-                      Inventory is limited to specific areas (use <span className="text-white font-bold px-1 bg-white/10 rounded">PMI</span> for Palma/Mallorca).
-                      A 3+ day lead time ensures active provider availability.
-                    </p>
-                  </div>
-                </div>
-              )}
-
+            
               <div className="flex flex-col lg:flex-row items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px] shadow-lg border border-white/20">
                 <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-[2px]">
                   {/* Hotel Location with Autocomplete */}

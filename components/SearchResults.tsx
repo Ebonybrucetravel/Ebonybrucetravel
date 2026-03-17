@@ -336,6 +336,22 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
   rawPrice?: number;
 
   // ===========================================
+  // RETURN FLIGHT FIELDS (for round trips)
+  // ===========================================
+  isRoundTrip?: boolean;
+  returnFlight?: {
+    departureAirport?: string;
+    arrivalAirport?: string;
+    departureCity?: string;
+    arrivalCity?: string;
+    departureTime?: string;
+    arrivalTime?: string;
+    flightNumber?: string;
+    duration?: string;
+    stopCount?: number;
+  };
+
+  // ===========================================
   // BACKWARD COMPATIBILITY (Keep as is)
   // ===========================================
   realData?: {
@@ -387,8 +403,38 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     });
   }, [results]);
 
-  // Extract flight offers from the response
+  // Check if results are already processed (have computed fields)
+  const areResultsProcessed = useMemo(() => {
+    if (searchType !== 'flights') return false;
+
+    const resultsArray = Array.isArray(results) ? results :
+      (results && typeof results === 'object' && 'data' in results) ? results.data : [];
+
+    if (resultsArray.length === 0) return false;
+
+    const firstItem = resultsArray[0];
+    // Check for fields that indicate the item has been processed
+    const hasProcessedFields = !!(firstItem.departureAirport || firstItem.displayPrice || firstItem.stopCount !== undefined);
+
+    console.log('🔍 Results processed check:', { hasProcessedFields, firstItem });
+
+    return hasProcessedFields;
+  }, [results, searchType]);
+
+  // Extract flight offers from the response - ONLY if not already processed
   const flightOffers = useMemo(() => {
+    // If results are already processed, return them as-is
+    if (areResultsProcessed) {
+      console.log('✅ Results already processed, using as-is');
+      if (Array.isArray(results)) {
+        return results;
+      }
+      if (results && typeof results === 'object' && 'data' in results) {
+        return results.data;
+      }
+    }
+
+    // Otherwise, extract from data structure
     if (results && typeof results === 'object' && 'data' in results && Array.isArray(results.data)) {
       console.log('✅ Using results.data with', results.data.length, 'items');
       return results.data;
@@ -399,22 +445,20 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     }
     console.log('❌ No valid flight offers found');
     return [];
-  }, [results]);
+  }, [results, areResultsProcessed]);
 
   // Debug log for flight offers
   useEffect(() => {
-    if (flightOffers.length > 0) {
+    if (flightOffers.length > 0 && !areResultsProcessed) {
       console.log('📦 First flight offer raw data:', {
         id: flightOffers[0].id,
         hasSlices: !!flightOffers[0].slices,
         slicesLength: flightOffers[0].slices?.length,
         hasItineraries: !!flightOffers[0].flightItineraries,
         itinerariesLength: flightOffers[0].flightItineraries?.length,
-        segmentsFromSlices: flightOffers[0].slices?.[0]?.segments?.length,
-        segmentsFromItineraries: flightOffers[0].flightItineraries?.[0]?.segments?.length
       });
     }
-  }, [flightOffers]);
+  }, [flightOffers, areResultsProcessed]);
 
   // Shared States
   const [priceRange, setPriceRange] = useState<number>(2000000);
@@ -483,7 +527,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     }
   };
 
-  // Format price
   const formatPrice = (amount: string, currencyCode: string): string => {
     const numericAmount = parseFloat(amount);
     if (isNaN(numericAmount)) return 'Price on request';
@@ -536,13 +579,19 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   };
 
 
-  // Process flight offers - USE original_amount (base price) NOT final_amount
+  // Process flight offers - ONLY if not already processed
   const processedFlightOffers = useMemo(() => {
     if (searchType !== 'flights' || flightOffers.length === 0) return [];
 
-    console.log('Processing flight offers:', flightOffers.length);
+    // If results are already processed, return them as-is WITHOUT PROCESSING
+    if (areResultsProcessed) {
+      console.log('✅ Using already processed flight offers, skipping transformation');
+      return flightOffers;
+    }
 
-    return flightOffers.map((offer: ExtendedSearchResult, index) => {
+    console.log('🔄 Processing raw flight offers:', flightOffers.length);
+
+    return flightOffers.map((offer: ExtendedSearchResult) => {
       // Try multiple ways to get segments
       let segments: any[] = [];
       let firstSlice: any = null;
@@ -600,7 +649,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         }
       }
 
-      // CRITICAL: Calculate stops based on number of segments
+      // Calculate stops based on number of segments
       const segmentCount = segments.length;
       const stopCount = segmentCount > 0 ? segmentCount - 1 : 0;
 
@@ -619,28 +668,50 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       let arrivalAirport = '---';
       let arrivalCity = '';
       let arrivalTime = '';
+      let flightNumber = '';
 
       if (firstSegment) {
-        // Try Duffel format
+        // Duffel format
         if (firstSegment.origin) {
           departureAirport = firstSegment.origin.iata_code || departureAirport;
           departureCity = firstSegment.origin.city_name || firstSegment.origin.city?.name || '';
         }
-        // Try Amadeus format
+        // Amadeus format
         if (firstSegment.departure) {
           departureAirport = firstSegment.departure.iataCode || departureAirport;
           departureTime = firstSegment.departure.at || '';
         }
+
+        // Get departure time from either format
         departureTime = firstSegment.departing_at || firstSegment.departure?.at || departureTime;
+
+        // ===== CRITICAL: Get flight number from marketing_carrier_flight_number =====
+        if (firstSegment.marketing_carrier_flight_number) {
+          flightNumber = firstSegment.marketing_carrier_flight_number;
+        }
+        // Fallback to other formats if marketing_carrier_flight_number doesn't exist
+        else if (firstSegment.flight_number) {
+          flightNumber = firstSegment.flight_number;
+        }
+        else if (firstSegment.number) {
+          flightNumber = firstSegment.number;
+        }
+        else {
+          // Try to get from carrier objects
+          const carrier = firstSegment.operating_carrier || firstSegment.marketing_carrier;
+          if (carrier && carrier.flight_number) {
+            flightNumber = carrier.flight_number;
+          }
+        }
       }
 
       if (lastSegment) {
-        // Try Duffel format
+        // Duffel format
         if (lastSegment.destination) {
           arrivalAirport = lastSegment.destination.iata_code || arrivalAirport;
           arrivalCity = lastSegment.destination.city_name || lastSegment.destination.city?.name || '';
         }
-        // Try Amadeus format
+        // Amadeus format
         if (lastSegment.arrival) {
           arrivalAirport = lastSegment.arrival.iataCode || arrivalAirport;
           arrivalTime = lastSegment.arrival.at || '';
@@ -651,23 +722,13 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       // Get duration
       const duration = firstSlice?.duration || '';
 
-      // ===========================================
-      // FIXED: PRICE FROM API - USE original_amount (base price without markup)
-      // ===========================================
+      // PRICE FROM API - USE original_amount (base price without markup)
       let priceAmount = '0';
       let priceCurrency = 'GBP';
 
-      // USE original_amount for base price (without markup)
       if (offer.original_amount) {
         priceAmount = offer.original_amount;
         priceCurrency = offer.original_currency || 'GBP';
-        console.log(`✅ BASE PRICE for ${offer.id}:`, {
-          original_amount: offer.original_amount,
-          currency: offer.original_currency,
-          formatted: formatPrice(offer.original_amount, offer.original_currency || 'GBP')
-        });
-      } else {
-        console.error(`❌ No original_amount found in API response for offer:`, offer.id);
       }
 
       const formattedPrice = formatPrice(priceAmount, priceCurrency);
@@ -684,16 +745,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       }
 
       const baggageString = baggageInfo.length > 0 ? JSON.stringify(baggageInfo) : undefined;
-
-      // Get flight number
-      let flightNumber = '';
-      if (firstSegment?.marketing_carrier_flight_number) {
-        flightNumber = firstSegment.marketing_carrier_flight_number;
-      } else if (firstSegment?.flight_number) {
-        flightNumber = firstSegment.flight_number;
-      } else if (firstSegment?.number) {
-        flightNumber = firstSegment.number;
-      }
 
       // Get cabin class
       let cabin = 'Economy';
@@ -718,44 +769,52 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         stopCount,
         stopText,
         duration,
-        // PRICE FIELDS - USE ORIGINAL AMOUNT (base price without markup)
-        displayPrice: formattedPrice,        // Shows £521.77 in search results
-        rawPrice: parseFloat(priceAmount),    // 521.77 for sorting/filtering
-        price: formattedPrice,                // For backward compatibility
-        // Preserve all API values for booking review
+        displayPrice: formattedPrice,
+        rawPrice: parseFloat(priceAmount),
+        price: formattedPrice,
         original_amount: offer.original_amount,
         original_currency: offer.original_currency,
-        final_amount: offer.final_amount,     // Keep for booking review (£573.95)
+        final_amount: offer.final_amount,
         currency: offer.currency,
         markup_percentage: offer.markup_percentage,
         markup_amount: offer.markup_amount,
-        flightNumber,
+        flightNumber: flightNumber,
         cabin,
         baggage: baggageString,
         title: `${departureAirport} → ${arrivalAirport}`,
         subtitle: airlineName,
         provider: airlineName,
         image: logoUrl,
+
+        // Add these new fields for round trip support
+        isRoundTrip: (offer.slices?.length || 0) > 1,
+        returnFlight: (offer.slices?.length || 0) > 1 ? {
+          departureAirport: offer.slices?.[1]?.segments?.[0]?.origin?.iata_code,
+          arrivalAirport: offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.destination?.iata_code,
+          departureCity: offer.slices?.[1]?.segments?.[0]?.origin?.city_name,
+          arrivalCity: offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.destination?.city_name,
+          departureTime: offer.slices?.[1]?.segments?.[0]?.departing_at,
+          arrivalTime: offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.arriving_at,
+          flightNumber: offer.slices?.[1]?.segments?.[0]?.marketing_carrier_flight_number,
+          duration: offer.slices?.[1]?.duration,
+          stopCount: Math.max(0, (offer.slices?.[1]?.segments?.length || 1) - 1)
+        } : undefined,
       };
 
       return processedOffer;
     });
-  }, [flightOffers, searchType, airlinesMap]);
-
-
-
+  }, [flightOffers, searchType, airlinesMap, areResultsProcessed, formatPrice]);
   // Debug log for processed offers
   useEffect(() => {
-    if (processedFlightOffers.length > 0) {
+    if (processedFlightOffers.length > 0 && !areResultsProcessed) {
       console.log('✅ Processed flight offers:', processedFlightOffers.map(o => ({
         id: o.id,
         stopCount: o.stopCount,
         stopText: o.stopText,
-        price: o.price,
         displayPrice: o.displayPrice
       })));
     }
-  }, [processedFlightOffers]);
+  }, [processedFlightOffers, areResultsProcessed]);
 
   // Combine results
   const allResults = useMemo(() => {
@@ -839,10 +898,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         numericPrice = parseFloat(item.total_amount) || 0;
       }
 
+
       return numericPrice <= priceRange;
     });
 
-    // Rest of your filtering logic remains the same...
     if (searchType === "flights") {
       if (stopsFilter.length > 0) {
         filtered = filtered.filter(item => {
@@ -974,10 +1033,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       if (!item.price) return 'Price on request';
       if (typeof item.price === 'string') return item.price;
       if (typeof item.price === 'number') return `£${item.price.toFixed(2)}`;
-      if (typeof item.price === 'object' && item.price !== null) {
-        // For car rental objects in hotel section (shouldn't happen, but just in case)
-        return 'Price on request';
-      }
       return 'Price on request';
     })();
 
@@ -1030,17 +1085,14 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               >
                 Book Hotel
               </button>
-            </div>
-          </div>
-        </div>
-      </div>
+            </div >
+          </div >
+        </div >
+      </div >
     );
   };
 
 
-  // ===========================================
-  // FLIGHT CARD - USE ONLY PROCESSED VALUES
-  // ===========================================
   const renderFlightCard = (item: ExtendedSearchResult) => {
     const departureAirport = item.departureAirport || '---';
     const arrivalAirport = item.arrivalAirport || '---';
@@ -1050,162 +1102,171 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     const airlineCode = item.airlineCode || '';
     const logoUrl = item.airlineLogo || item.image;
 
-    // Get stop info - from processed fields
+    // Get return flight info if available with safe defaults
+    const returnFlight = item.returnFlight;
+    const hasReturn = !!returnFlight?.departureTime;
+
     const stopCount = item.stopCount || 0;
     const stopText = item.stopText || (stopCount === 0 ? 'Direct' : stopCount === 1 ? '1 Stop' : `${stopCount} Stops`);
 
     const duration = formatDuration(item.duration);
 
-    // ===== USE ONLY THE PROCESSED DISPLAY PRICE =====
-    // This comes DIRECTLY from final_amount in the API
-    const displayPrice = item.displayPrice || 'Price on request';
-
-    console.log(`Rendering flight ${item.id} with API price:`, {
-      final_amount: item.final_amount,
-      currency: item.currency,
-      displayPrice: displayPrice
-    });
-
-    // Parse baggage from JSON string
-    const baggageInfo = parseBaggage(item.baggage);
-
-    // Get connection info for multi-stop flights
-    const segments = item.slices?.[0]?.segments || [];
-    const hasConnection = segments.length > 1;
-    const connectionAirport = hasConnection ? segments[1]?.origin?.iata_code : null;
-
     return (
       <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden animate-in fade-in slide-in-from-bottom-2">
-        <div className="flex flex-col md:flex-row p-8 gap-8">
-          <div className="flex-1">
-            {/* Airline Info */}
-            <div className="flex items-center gap-4 mb-6">
-              {logoUrl ? (
-                <img
-                  src={logoUrl}
-                  className="w-12 h-12 object-contain rounded-lg border border-gray-100 p-1"
-                  alt={airlineName}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2&size=48`;
-                  }}
-                />
-              ) : (
-                <div className="w-12 h-12 bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-lg flex items-center justify-center text-white font-black text-sm">
-                  {airlineCode?.substring(0, 2) || airlineName?.substring(0, 2) || 'FL'}
-                </div>
-              )}
-              <div>
-                <h4 className="text-base font-black text-gray-900">{airlineName}</h4>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                  {item.flightNumber && `Flight ${item.flightNumber}`} {item.cabin && `• ${item.cabin}`}
-                </p>
-              </div>
-            </div>
-
-            {/* Flight Route */}
-            <div className="flex items-center justify-between">
-              {/* Departure */}
-              <div className="text-center flex-1">
-                <p className="text-3xl font-black text-gray-900">
-                  {formatTime(departureTime)}
-                </p>
-                <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Depart</p>
-                <p className="text-sm font-bold text-gray-900 mt-1">{departureAirport}</p>
-                {item.departureCity && (
-                  <p className="text-[9px] font-bold text-gray-400">{item.departureCity}</p>
+        <div className="flex flex-col p-8">
+          {/* OUTBOUND FLIGHT */}
+          <div className="flex flex-col md:flex-row gap-8">
+            <div className="flex-1">
+              {/* Airline Info */}
+              <div className="flex items-center gap-4 mb-6">
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    className="w-12 h-12 object-contain rounded-lg border border-gray-100 p-1"
+                    alt={airlineName}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2&size=48`;
+                    }}
+                  />
+                ) : (
+                  <div className="w-12 h-12 bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-lg flex items-center justify-center text-white font-black text-sm">
+                    {airlineCode?.substring(0, 2) || airlineName?.substring(0, 2) || 'FL'}
+                  </div>
                 )}
-                <p className="text-[8px] font-bold text-gray-300 mt-2">
-                  {formatDate(departureTime)}
-                </p>
+                <div>
+                  <h4 className="text-base font-black text-gray-900">{airlineName}</h4>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                    {item.flightNumber && `Flight ${item.flightNumber}`} • Outbound
+                  </p>
+                </div>
               </div>
 
-              {/* Flight Path */}
-              <div className="flex-1 px-6">
-                <div className="relative">
-                  <div className="w-full h-[2px] bg-gray-100"></div>
-                  <div className="absolute left-1/2 -translate-x-1/2 -top-3 text-[#33a8da]">
-                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
-                    </svg>
+              {/* Flight Route */}
+              <div className="flex items-center justify-between">
+                <div className="text-center flex-1">
+                  <p className="text-3xl font-black text-gray-900">{formatTime(departureTime)}</p>
+                  <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Depart</p>
+                  <p className="text-sm font-bold text-gray-900 mt-1">{departureAirport}</p>
+                  <p className="text-[9px] font-bold text-gray-400">{item.departureCity}</p>
+                  <p className="text-[8px] font-bold text-gray-300 mt-2">{formatDate(departureTime)}</p>
+                </div>
+
+                <div className="flex-1 px-6">
+                  <div className="relative">
+                    <div className="w-full h-[2px] bg-gray-100"></div>
+                    <div className="absolute left-1/2 -translate-x-1/2 -top-3 text-[#33a8da]">
+                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="flex justify-between mt-4">
+                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">{stopText}</span>
+                    <span className="text-[9px] font-black text-gray-400">{duration}</span>
                   </div>
                 </div>
-                <div className="flex justify-between mt-4">
-                  <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">
-                    {stopText}
-                  </span>
-                  <span className="text-[9px] font-black text-gray-400">
-                    {duration}
-                  </span>
-                </div>
-                {hasConnection && connectionAirport && (
-                  <p className="text-[8px] font-bold text-gray-300 text-center mt-2">
-                    via {connectionAirport}
-                  </p>
-                )}
-              </div>
 
-              {/* Arrival */}
-              <div className="text-center flex-1">
-                <p className="text-3xl font-black text-gray-900">
-                  {formatTime(arrivalTime)}
-                </p>
-                <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Arrive</p>
-                <p className="text-sm font-bold text-gray-900 mt-1">{arrivalAirport}</p>
-                {item.arrivalCity && (
+                <div className="text-center flex-1">
+                  <p className="text-3xl font-black text-gray-900">{formatTime(arrivalTime)}</p>
+                  <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Arrive</p>
+                  <p className="text-sm font-bold text-gray-900 mt-1">{arrivalAirport}</p>
                   <p className="text-[9px] font-bold text-gray-400">{item.arrivalCity}</p>
-                )}
-                <p className="text-[8px] font-bold text-gray-300 mt-2">
-                  {formatDate(arrivalTime)}
-                </p>
+                  <p className="text-[8px] font-bold text-gray-300 mt-2">{formatDate(arrivalTime)}</p>
+                </div>
               </div>
             </div>
-
-            {/* Baggage Info */}
-            {baggageInfo.length > 0 && (
-              <div className="mt-6 pt-6 border-t border-gray-50">
-                <div className="flex items-center gap-4">
-                  {baggageInfo.map((bag: any, idx: number) => (
-                    <span key={idx} className="text-[9px] font-bold text-gray-600 bg-gray-50 px-2 py-1 rounded-full">
-                      {bag.quantity} {bag.type} bag
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* Price and CTA */}
-          <div className="w-full md:w-[280px] flex flex-col items-center justify-center text-center border-t md:border-t-0 md:border-l border-gray-100 pt-6 md:pt-0 md:pl-8">
-            <p className="text-3xl font-black text-[#33a8da] mb-2">{displayPrice}</p>
+          {/* RETURN FLIGHT (if round trip) */}
+          {hasReturn && (
+            <>
+              <div className="my-6 border-t border-gray-100 pt-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-1 h-6 bg-[#33a8da] rounded-full"></div>
+                  <p className="text-[11px] font-black text-gray-900 uppercase tracking-widest">Return Flight</p>
+                </div>
 
+                <div className="flex flex-col md:flex-row gap-8">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-4 mb-6">
+                      {logoUrl ? (
+                        <img
+                          src={logoUrl}
+                          className="w-12 h-12 object-contain rounded-lg border border-gray-100 p-1"
+                          alt={airlineName}
+                        />
+                      ) : (
+                        <div className="w-12 h-12 bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-lg flex items-center justify-center text-white font-black text-sm">
+                          {airlineCode?.substring(0, 2) || airlineName?.substring(0, 2) || 'FL'}
+                        </div>
+                      )}
+                      <div>
+                        <h4 className="text-base font-black text-gray-900">{airlineName}</h4>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                          Flight {returnFlight?.flightNumber} • Return
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-center flex-1">
+                        <p className="text-3xl font-black text-gray-900">{formatTime(returnFlight?.departureTime)}</p>
+                        <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Depart</p>
+                        <p className="text-sm font-bold text-gray-900 mt-1">{returnFlight?.departureAirport}</p>
+                        <p className="text-[9px] font-bold text-gray-400">{returnFlight?.departureCity}</p>
+                        <p className="text-[8px] font-bold text-gray-300 mt-2">{formatDate(returnFlight?.departureTime)}</p>
+                      </div>
+
+                      <div className="flex-1 px-6">
+                        <div className="relative">
+                          <div className="w-full h-[2px] bg-gray-100"></div>
+                          <div className="absolute left-1/2 -translate-x-1/2 -top-3 text-[#33a8da] rotate-180">
+                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+                            </svg>
+                          </div>
+                        </div>
+                        <div className="flex justify-between mt-4">
+                          <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">
+                            {returnFlight?.stopCount === 0 ? 'Direct' :
+                              returnFlight?.stopCount === 1 ? '1 Stop' :
+                                returnFlight?.stopCount && returnFlight.stopCount > 1 ? `${returnFlight.stopCount} Stops` : 'Direct'}
+                          </span>
+                          <span className="text-[9px] font-black text-gray-400">{returnFlight?.duration}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-center flex-1">
+                        <p className="text-3xl font-black text-gray-900">{formatTime(returnFlight?.arrivalTime)}</p>
+                        <p className="text-[11px] font-black text-gray-400 uppercase mt-2">Arrive</p>
+                        <p className="text-sm font-bold text-gray-900 mt-1">{returnFlight?.arrivalAirport}</p>
+                        <p className="text-[9px] font-bold text-gray-400">{returnFlight?.arrivalCity}</p>
+                        <p className="text-[8px] font-bold text-gray-300 mt-2">{formatDate(returnFlight?.arrivalTime)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Price and CTA */}
+          <div className="flex justify-end items-center pt-6 border-t border-gray-100">
+            <div className="text-right mr-6">
+              <p className="text-3xl font-black text-[#33a8da]">{item.displayPrice}</p>
+              <p className="text-[9px] font-bold text-gray-400">Total for {item.isRoundTrip ? 'round trip' : 'one way'}</p>
+            </div>
             <button
-              onClick={() => {
-                console.log('Selected flight:', {
-                  id: item.id,
-                  airline: airlineName,
-                  from: departureAirport,
-                  to: arrivalAirport,
-                  price: displayPrice,
-                  stops: stopText
-                });
-                onSelect?.(item);
-              }}
-              className="w-full bg-[#33a8da] text-white font-black py-4 rounded-xl transition hover:bg-[#2c98c7] uppercase text-xs tracking-wider shadow-lg hover:shadow-xl"
+              onClick={() => onSelect?.(item)}
+              className="bg-[#33a8da] text-white font-black py-4 px-8 rounded-xl transition hover:bg-[#2c98c7] uppercase text-xs tracking-wider shadow-lg hover:shadow-xl"
             >
               Select Flight
             </button>
-
-            {item.payment_requirements?.requires_instant_payment && (
-              <p className="text-[8px] font-bold text-orange-600 mt-2">
-                Instant payment required
-              </p>
-            )}
           </div>
         </div>
       </div>
     );
   };
-
   const renderCarCard = (item: ExtendedSearchResult) => {
     // Use the API response fields directly
     const start = item.start;
@@ -1241,13 +1302,13 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       }
       // Fallback to price object if available
       if (item.price && typeof item.price === 'object' && 'total' in item.price) {
-        const price = parseFloat(item.price.total || '0');
+        const price = parseFloat((item.price as any).total || '0');
         return `£${price.toFixed(2)}${duration ? '/day' : ''}`;
       }
       return 'Price on request';
     };
 
-    // ✅ If no location data, don't show the card
+    // If no location data, don't show the card
     if (!start?.locationCode || !end?.locationCode) {
       return null;
     }
@@ -1401,11 +1462,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               </div>
               <button
                 onClick={() => {
-                  console.log('✅ Selected car with API data:', {
-                    id: item.id,
-                    start: item.start,
-                    end: item.end
-                  });
                   onSelect?.(item);
                 }}
                 className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px] shadow-lg hover:shadow-xl"
@@ -1472,18 +1528,12 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               </>
             ))}
 
-            {/* FLIGHT SPECIFIC FILTERS (UPDATED) */}
+            {/* FLIGHT SPECIFIC FILTERS */}
             {searchType === "flights" && (
               <>
                 {renderFilterSection("Stops", (
                   <>
                     {["Direct", "1 Stop", "2+ Stops"].map(stop => {
-                      const count = filteredResults.filter(r => {
-                        const stopCount = r.stopCount || 0;
-                        if (stop === 'Direct') return stopCount === 0;
-                        if (stop === '1 Stop') return stopCount === 1;
-                        return stopCount >= 2;
-                      }).length;
                       return renderCheckbox(stop, stopsFilter.includes(stop), () => toggleFilter(setStopsFilter, stopsFilter, stop));
                     })}
                   </>
@@ -1491,9 +1541,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 {renderFilterSection("Airlines", (
                   <>
                     {uniqueAirlines.map(airline => {
-                      const count = filteredResults.filter(r =>
-                        (r.airlineName || r.provider) === airline
-                      ).length;
                       return renderCheckbox(airline, airlinesFilter.includes(airline), () => toggleFilter(setAirlinesFilter, airlinesFilter, airline));
                     })}
                   </>
