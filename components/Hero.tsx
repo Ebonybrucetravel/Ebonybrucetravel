@@ -6,8 +6,8 @@ import { useLanguage } from "../context/LanguageContext";
 interface HeroProps {
   onSearch: (data: any) => void;
   loading: boolean;
-  activeSearchTab?: "flights" | "hotels" | "cars"; // Changed 'cars-rentals' to 'cars'
-  onTabChange?: (tab: "flights" | "hotels" | "cars") => void; // Changed to 'cars'
+  activeSearchTab?: "flights" | "hotels" | "cars";
+  onTabChange?: (tab: "flights" | "hotels" | "cars") => void;
 }
 
 const Hero: React.FC<HeroProps> = ({
@@ -93,17 +93,9 @@ const Hero: React.FC<HeroProps> = ({
 
   const defaultDates = getDefaultDates();
 
-  // Helper function to check if active tab is a car-related tab
-  const isCarTab = () => {
-    return activeSearchTab === "cars";
-  };
+  const isCarTab = () => activeSearchTab === "cars";
+  const isHotelTab = () => activeSearchTab === "hotels";
 
-  // Helper function to check if active tab is a hotel tab
-  const isHotelTab = () => {
-    return activeSearchTab === "hotels";
-  };
-
-  // Handle quick hotel search for popular destinations
   const handleQuickHotelSearch = (destination: {
     name: string;
     code: string;
@@ -118,21 +110,17 @@ const Hero: React.FC<HeroProps> = ({
       rooms: 1,
       currency: "GBP",
     };
-
     onSearch(searchData);
-
-    // Switch to hotels tab if not already
     if (activeSearchTab !== "hotels" && onTabChange) {
       onTabChange("hotels");
     }
   };
 
-  // Handle quick car rental search for popular locations
   const handleQuickCarSearch = (location: { name: string; code: string }) => {
     const searchData = {
-      type: "cars", // Changed from 'car-rentals' to 'cars'
+      type: "cars",
       pickupLocation: location.name,
-      dropoffLocation: location.name, // Same location for round trip
+      dropoffLocation: location.name,
       pickupLocationCode: location.code,
       dropoffLocationCode: location.code,
       pickupDateTime: defaultDates.pickupDate,
@@ -140,12 +128,9 @@ const Hero: React.FC<HeroProps> = ({
       passengers: 2,
       currency: "GBP",
     };
-
     onSearch(searchData);
-
-    // Switch to cars tab if not already
     if (!isCarTab() && onTabChange) {
-      onTabChange("cars"); // Changed from 'car-rentals' to 'cars'
+      onTabChange("cars");
     }
   };
 
@@ -157,8 +142,6 @@ const Hero: React.FC<HeroProps> = ({
           alt="Ebony Bruce Travels Background"
           className="w-full h-full object-cover"
         />
-
-        {/* Stronger overlay + vignette for depth */}
         <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-black/70" />
       </div>
 
@@ -166,19 +149,17 @@ const Hero: React.FC<HeroProps> = ({
         <div className="text-center mb-6 md:mb-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
           <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-3 md:mb-4 tracking-tight text-white drop-shadow-lg">
             {isHotelTab()
-              ? t("Find Your Perfect Stay")
+              ? t('hero.hotels.title')
               : isCarTab()
-                ? t("Ride in Comfort & Style")
-                : t("Where Global Travel Becomes Easy")}
+              ? t('hero.cars.title')
+              : t('hero.title')}
           </h1>
           <p className="text-base sm:text-lg md:text-xl text-gray-100 max-w-2xl mx-auto font-medium opacity-95 leading-relaxed">
             {isHotelTab()
-              ? t("Discover amazing hotels with the best rates and amenities")
+              ? t('hero.hotels.subtitle')
               : isCarTab()
-                ? t("Book premium vehicles for your journey anywhere")
-                : t(
-                    "Discover flights, hotels, and car rentals at the best prices",
-                  )}
+              ? t('hero.cars.subtitle')
+              : t('hero.subtitle')}
           </p>
         </div>
 
@@ -191,19 +172,18 @@ const Hero: React.FC<HeroProps> = ({
           />
         </div>
 
-        {/* Popular Destinations Section - Shows based on active tab */}
         {(isHotelTab() || isCarTab()) && (
           <div className="mt-4 md:mt-6 animate-in fade-in delay-500 duration-1000">
             <div className="text-center mb-4">
               <h3 className="text-xl md:text-2xl font-bold text-white mb-1 drop-shadow-md">
                 {isHotelTab()
-                  ? t("Popular Hotel Destinations")
-                  : t("Popular Car Rental Locations")}
+                  ? t('hero.popular.hotels.heading')
+                  : t('hero.popular.cars.heading')}
               </h3>
               <p className="text-gray-200 text-sm md:text-base">
                 {isHotelTab()
-                  ? t("Find amazing hotels in these popular cities")
-                  : t("Book cars at these popular locations")}
+                  ? t('hero.popular.hotels.subheading')
+                  : t('hero.popular.cars.subheading')}
               </p>
             </div>
 
@@ -231,7 +211,6 @@ const Hero: React.FC<HeroProps> = ({
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
                     </div>
-
                     <div className="absolute inset-0 flex flex-col items-center justify-end p-3">
                       <span className="text-white font-bold text-sm md:text-base drop-shadow-lg">
                         {item.name}
@@ -240,15 +219,13 @@ const Hero: React.FC<HeroProps> = ({
                         {item.code}
                       </span>
                     </div>
-
-                    {/* Hover overlay with color based on type */}
                     <div
                       className={`absolute inset-0 ${
                         isHotelTab()
                           ? "bg-blue-500/0 group-hover:bg-blue-500/10"
                           : "bg-green-500/0 group-hover:bg-green-500/10"
                       } transition-all duration-300`}
-                    ></div>
+                    />
                   </button>
                 ),
               )}
@@ -262,29 +239,29 @@ const Hero: React.FC<HeroProps> = ({
             <div className="text-center">
               <div className="text-2xl md:text-3xl font-bold mb-1">5000+</div>
               <div className="text-sm text-gray-200">
-                {t("Happy Customers")}
+                {t('stats.customers')}
               </div>
             </div>
 
-            <div className="hidden md:block h-8 w-px bg-white/30"></div>
+            <div className="hidden md:block h-8 w-px bg-white/30" />
 
             <div className="text-center">
               <div className="text-2xl md:text-3xl font-bold mb-1">200+</div>
               <div className="text-sm text-gray-200">
                 {isHotelTab()
-                  ? t("Premium Hotels")
+                  ? t('stats.hotels')
                   : isCarTab()
-                    ? t("Premium Vehicles")
-                    : t("Global Partners")}
+                  ? t('stats.vehicles')
+                  : t('stats.partners')}
               </div>
             </div>
 
-            <div className="hidden md:block h-8 w-px bg-white/30"></div>
+            <div className="hidden md:block h-8 w-px bg-white/30" />
 
             <div className="text-center">
               <div className="text-2xl md:text-3xl font-bold mb-1">24/7</div>
               <div className="text-sm text-gray-200">
-                {t("Customer Support")}
+                {t('stats.support')}
               </div>
             </div>
           </div>

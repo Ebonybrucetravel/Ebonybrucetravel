@@ -34,42 +34,30 @@ const Footer: React.FC<FooterProps> = ({
 
   const categories = [
     {
-      title: t?.("footer.company") || "Company",
+      title: t('footer.company'),
       links: [
-        { label: t?.("About Us") || "About Us", href: "/about" },
-        { label: t?.("Services") || "Services", href: "/services" },
-        { label: t?.("Career") || "Careers", href: "/careers" },
-        { label: t?.("Contact") || "Contact", href: "/contact" },
+        { label: t('footer.aboutUs'), href: "/about" },
+        { label: t('footer.services'), href: "/services" },
+        { label: t('footer.careers'), href: "/careers" },
+        { label: t('footer.contact'), href: "/contact" },
       ],
     },
     {
-      title: t?.("Support") || "Support",
+      title: t('footer.support'),
       links: [
-        {
-          label: t?.("Help Center") || "Help Center",
-          href: "/contact",
-        },
-        {
-          label: t?.("Terms of Service") || "Terms of Service",
-          href: "/terms",
-        },
-        {
-          label: t?.("Privacy Policy") || "Privacy Policy",
-          href: "/privacy",
-        },
-        { label: t?.("Blog") || "Blog", href: "/blog" },
+        { label: t('footer.helpCenter'), href: "/contact" },
+        { label: t('footer.terms'), href: "/terms" },
+        { label: t('footer.privacy'), href: "/privacy" },
+        { label: t('footer.blog'), href: "/blog" },
       ],
     },
     {
-      title: t?.("Discover") || "Discover",
+      title: t('footer.discover'),
       links: [
-        { label: t?.("Flights") || "Flights", href: "/flights" },
-        { label: t?.("Hotels") || "Hotels", href: "/hotels" },
-        { label: t?.("Car Rentals") || "Car Rentals", href: "/cars" },
-        {
-          label: t?.("My Bookings") || "My Bookings",
-          href: "/profile?tab=bookings",
-        },
+        { label: t('nav.flights'), href: "/flights" },
+        { label: t('nav.hotels'), href: "/hotels" },
+        { label: t('nav.cars'), href: "/cars" },
+        { label: t('footer.myBookings'), href: "/profile?tab=bookings" },
       ],
     },
   ];
@@ -101,7 +89,6 @@ const Footer: React.FC<FooterProps> = ({
     },
   ];
 
-  // Function to handle social link clicks
   const handleSocialClick = (e: React.MouseEvent<HTMLAnchorElement>, url: string) => {
     e.preventDefault();
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -132,10 +119,7 @@ const Footer: React.FC<FooterProps> = ({
             </div>
 
             <p className="text-gray-500 leading-relaxed max-w-sm mb-6">
-              {t?.(
-                "Explore the world with a partner you can trust. Book flights, hotels, and cars with confidence",
-              ) ||
-                "Explore the world with a partner you can trust. Book flights, hotels, and cars with confidence."}
+              {t('footer.description')}
             </p>
 
             <div className="flex gap-4 mb-6">
@@ -145,7 +129,7 @@ const Footer: React.FC<FooterProps> = ({
                   href={social.url}
                   onClick={(e) => handleSocialClick(e, social.url)}
                   className={`w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-600 transition-all duration-200 ${social.hoverColor}`}
-                  aria-label={`Follow us on ${social.name}`}
+                  aria-label={`Follow us on ${social.name}`}  // ✅ Fixed: no t() call, simple English
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -197,11 +181,10 @@ const Footer: React.FC<FooterProps> = ({
           <div className="text-center md:text-left order-2 md:order-1">
             <p className="text-gray-400 text-sm mb-1">
               © {new Date().getFullYear()} Ebony Bruce Travels Inc.{" "}
-              {t?.("All rights reserved") || "All rights reserved."}
+              {t('footer.allRightsReserved')}
             </p>
             <p className="text-xs text-gray-400">
-              {t?.("Prices shown are for reference only and may vary") ||
-                "Prices shown are for reference only and may vary."}
+              {t('footer.pricesReference')}
             </p>
           </div>
 

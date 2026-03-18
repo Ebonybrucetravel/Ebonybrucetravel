@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { useLanguage } from "../context/LanguageContext";
 import { useRouter } from "next/navigation";
 
-// Define the hotel type
 interface HotelDisplay {
   id: string;
   name: string;
@@ -23,32 +22,30 @@ interface HotelDisplay {
 }
 
 interface HomesGridProps {
-  hotels?: HotelDisplay[]; // Make it optional
+  hotels?: HotelDisplay[];
   loading?: boolean;
   error?: string | null;
   title?: string;
   subtitle?: string;
 }
 
-const HomesGrid: React.FC<HomesGridProps> = ({ 
-  hotels: propHotels, 
-  loading = false, 
+const HomesGrid: React.FC<HomesGridProps> = ({
+  hotels: propHotels,
+  loading = false,
   error = null,
-  title = "Beautiful Homes & Rooms",
-  subtitle = "Discover comfortable stays around the world"
+  title,
+  subtitle,
 }) => {
-  const { t } = useLanguage();
+  const { t, currency } = useLanguage();
   const router = useRouter();
   const [hotels, setHotels] = useState<HotelDisplay[]>([]);
   const [internalLoading, setInternalLoading] = useState(true);
   const [internalError, setInternalError] = useState<string | null>(null);
 
-  // Force currency to GBP/pounds
-  const currencySymbol = "£";
+  const currencySymbol = currency?.symbol || "£";
   const brandBlue = "#32A6D7";
   const brandBlueLight = "#e6f4fa";
 
-  // Popular destinations with CORRECT IATA codes for hotels
   const popularDestinations = [
     { city: "London", code: "LON", country: "United Kingdom" },
     { city: "Dubai", code: "DXB", country: "UAE" },
@@ -58,13 +55,11 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     { city: "Singapore", code: "SIN", country: "Singapore" }
   ];
 
-  // If hotels are provided as props, use them; otherwise fetch fallback
   useEffect(() => {
     if (propHotels && propHotels.length > 0) {
       setHotels(propHotels);
       setInternalLoading(false);
     } else {
-      // Load fallback hotels when no props provided
       setInternalLoading(true);
       try {
         const fallbackHotels = generateFallbackHotels();
@@ -72,40 +67,12 @@ const HomesGrid: React.FC<HomesGridProps> = ({
         setInternalError(null);
       } catch (err: any) {
         console.error("Error generating fallback hotels:", err);
-        setInternalError(err.message || "Failed to load hotels");
+        setInternalError(err.message || t('homes.errorFallback'));
       } finally {
         setInternalLoading(false);
       }
     }
-  }, [propHotels]);
-
-  // Transform API response to HotelDisplay format
-  const transformApiResponse = (apiData: any): HotelDisplay[] => {
-    if (!apiData?.data?.data) return [];
-    
-    return apiData.data.data.map((item: any) => {
-      const hotel = item.hotel;
-      const offer = item.offers?.[0] || {};
-      const price = offer.price || {};
-      
-      return {
-        id: hotel.hotelId,
-        name: hotel.name,
-        location: `${hotel.cityCode} - ${hotel.name}`,
-        cityName: hotel.cityCode,
-        country: "United Kingdom", // You might want to derive this
-        code: hotel.cityCode,
-        price: parseFloat(price.base || price.total || "0"),
-        discountedPrice: parseFloat(price.total) || undefined,
-        rating: 4.5, // Default rating since API might not provide it
-        reviews: Math.floor(Math.random() * 1000) + 100, // Placeholder
-        image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
-        amenities: offer.room?.description?.text?.split(/\s+/)?.slice(0, 3) || ["WiFi", "TV", "Airport Shuttle"],
-        chainCode: hotel.chainCode,
-        description: offer.room?.description?.text || ""
-      };
-    });
-  };
+  }, [propHotels, t]);
 
   // Generate fallback hotels based on popular destinations
   const generateFallbackHotels = (): HotelDisplay[] => {
@@ -415,62 +382,40 @@ const HomesGrid: React.FC<HomesGridProps> = ({
 
     // Collect hotels from all destinations and flatten
     const allHotels: HotelDisplay[] = [];
-    
-    // Get 2 hotels from each destination for variety (total 12, but we'll take first 6 after shuffle)
+
     popularDestinations.forEach(dest => {
       const destHotels = hotelsByDestination[dest.code] || hotelsByDestination["LON"];
-      // Take first 2 hotels from each destination
       const hotelsToAdd = destHotels.slice(0, 2).map(hotel => ({
         ...hotel,
-        // Ensure each hotel has unique ID with timestamp to avoid React key issues
         id: `${hotel.id}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        // Randomize reviews slightly for realism
         reviews: Math.floor(hotel.reviews * (0.9 + Math.random() * 0.2))
       }));
       allHotels.push(...hotelsToAdd);
     });
 
-    // Shuffle to mix hotels from different destinations
     const shuffled = [...allHotels].sort(() => 0.5 - Math.random());
-    
-    // Return first 6 hotels
-    return shuffled.slice(0, 6);
+    return shuffled.slice(0, 6); // ✅ returns an array of HotelDisplay
   };
 
   const handleHotelClick = (hotel: HotelDisplay) => {
-    // Calculate dates for search (tomorrow for check-in)
     const today = new Date();
     const checkIn = new Date(today);
-    checkIn.setDate(today.getDate() + 1); // Tomorrow
-    
+    checkIn.setDate(today.getDate() + 1);
+
     const checkOut = new Date(checkIn);
-    checkOut.setDate(checkIn.getDate() + 3); // 3 nights
-    
+    checkOut.setDate(checkIn.getDate() + 3);
+
     const checkInDate = checkIn.toISOString().split('T')[0];
     const checkOutDate = checkOut.toISOString().split('T')[0];
-    
-    // Get city name and code
+
     const cityName = hotel.cityName || hotel.location.split(',')[0] || "London";
     const cityCode = hotel.code || "LON";
     const country = hotel.country || "United Kingdom";
-    
-    // Format location
     const formattedLocation = `${cityName}, ${country}`;
-    
-    // Get guest count (default to 2)
+
     const guests = 2;
     const rooms = 1;
-    
-    console.log('🔍 Searching hotels in:', {
-      location: formattedLocation,
-      cityCode,
-      checkInDate,
-      checkOutDate,
-      guests,
-      rooms
-    });
-    
-    // Construct URL with search parameters
+
     const params = new URLSearchParams({
       type: 'hotels',
       location: formattedLocation,
@@ -481,13 +426,11 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       rooms: rooms.toString(),
       currency: 'GBP'
     });
-    
-    // Navigate to search page with hotel parameters
+
     router.push(`/search?${params.toString()}`);
   };
 
   const handleSearchMore = () => {
-    // Only regenerate if not showing search results
     if (!propHotels) {
       setInternalLoading(true);
       setTimeout(() => {
@@ -498,12 +441,14 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     }
   };
 
-  const formatPrice = (price: number) => `£${price.toFixed(2)}`;
+  const formatPrice = (price: number) => `${currencySymbol}${price.toFixed(2)}`;
 
-  // Use props if provided, otherwise use internal state
   const isLoading = propHotels ? loading : internalLoading;
   const hasError = propHotels ? error : internalError;
   const displayHotels = propHotels || hotels;
+
+  const displayTitle = title || t('homes.title');
+  const displaySubtitle = subtitle || t('homes.subtitle');
 
   if (isLoading) {
     return (
@@ -511,14 +456,14 @@ const HomesGrid: React.FC<HomesGridProps> = ({
         <div className="flex justify-between items-end mb-8">
           <div>
             <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
-              {title}
+              {displayTitle}
             </h2>
             <p className="text-gray-500 mt-1 text-sm md:text-base">
-              {subtitle}
+              {displaySubtitle}
             </p>
           </div>
         </div>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="bg-white rounded-3xl overflow-hidden shadow-sm animate-pulse">
@@ -546,14 +491,14 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       <section className="px-4 md:px-8 lg:px-16 pt-0 pb-12">
         <div className="text-center">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
-            {title}
+            {displayTitle}
           </h2>
           <p className="text-red-500 mb-4">{hasError}</p>
           <button
             onClick={handleSearchMore}
             className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
           >
-            Try Again
+            {t('homes.tryAgain')}
           </button>
         </div>
       </section>
@@ -565,14 +510,14 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       <div className="flex justify-between items-end mb-8">
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
-            {title}
+            {displayTitle}
           </h2>
           <p className="text-gray-500 mt-1 text-sm md:text-base">
-            {subtitle}
+            {displaySubtitle}
           </p>
         </div>
         <div className="flex items-center gap-4">
-          {!propHotels && ( // Only show refresh button for fallback hotels
+          {!propHotels && (
             <button
               onClick={handleSearchMore}
               disabled={isLoading}
@@ -585,9 +530,9 @@ const HomesGrid: React.FC<HomesGridProps> = ({
               {isLoading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-[#32A6D7] border-t-transparent rounded-full animate-spin"></div>
-                  <span>Loading...</span>
+                  <span>{t('common.loading')}</span>
                 </>
-              ) : "Refresh"}
+              ) : t('homes.refresh')}
             </button>
           )}
           <button
@@ -595,7 +540,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
             className="font-semibold transition-colors duration-200 flex items-center gap-2 group"
             style={{ color: brandBlue }}
           >
-            {t?.("homes.explore") || "Explore all"}
+            {t('homes.exploreAll')}
             <svg
               className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200"
               fill="none"
@@ -620,7 +565,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
             onClick={() => handleHotelClick(home)}
             className="group cursor-pointer bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-300 hover:-translate-y-1"
           >
-            {/* Image Container */}
             <div className="relative h-64 overflow-hidden">
               <img
                 src={home.image}
@@ -635,13 +579,10 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                 }}
               />
 
-              {/* Favorite Button */}
               <button
                 className="absolute top-4 right-4 p-2.5 bg-white/90 backdrop-blur-sm rounded-full text-gray-600 hover:bg-white hover:text-red-500 transition-all duration-200 shadow-lg hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-2"
-                aria-label="Add to favorites"
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
+                aria-label={t('common.addToFavorites')}
+                onClick={(e) => e.stopPropagation()}
               >
                 <svg
                   className="w-5 h-5"
@@ -658,10 +599,9 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                 </svg>
               </button>
 
-              {/* Discount Badge */}
               {home.discountedPrice && (
                 <div className="absolute top-4 left-4 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold">
-                  Save{" "}
+                  {t('homes.save')}{" "}
                   {Math.round(
                     ((home.price - home.discountedPrice) / home.price) * 100
                   )}
@@ -670,7 +610,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
               )}
             </div>
 
-            {/* Content Container */}
             <div className="p-6">
               <h3
                 className="font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-[#32A6D7] transition-colors duration-200 text-lg"
@@ -701,7 +640,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                 <p className="text-sm text-gray-500">{home.location}</p>
               </div>
 
-              {/* Rating */}
               <div className="flex items-center gap-3 mb-4">
                 <div
                   className="flex items-center px-3 py-1 rounded-full"
@@ -728,11 +666,10 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                   </span>
                 </div>
                 <span className="text-xs text-gray-400">
-                  ({home.reviews.toLocaleString()} reviews)
+                  ({home.reviews.toLocaleString()} {t('homes.reviews')})
                 </span>
               </div>
 
-              {/* Amenities Preview */}
               <div className="flex flex-wrap gap-2 mb-4">
                 {home.amenities.slice(0, 3).map((amenity, idx) => (
                   <span
@@ -744,12 +681,11 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                 ))}
                 {home.amenities.length > 3 && (
                   <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
-                    +{home.amenities.length - 3} more
+                    +{home.amenities.length - 3} {t('homes.more')}
                   </span>
                 )}
               </div>
 
-              {/* Price & Explore Button */}
               <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                 <div>
                   {home.discountedPrice && (
@@ -764,7 +700,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                     {formatPrice(home.discountedPrice || home.price)}
                   </span>
                   <span className="text-xs text-gray-500 ml-1">
-                    /night
+                    {t('homes.perNight')}
                   </span>
                 </div>
 
@@ -784,9 +720,9 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                     e.stopPropagation();
                     handleHotelClick(home);
                   }}
-                  aria-label={`Explore ${home.name}`}
+                  aria-label={`${t('homes.explore')} ${home.name}`}
                 >
-                  Explore
+                  {t('homes.explore')}
                 </button>
               </div>
             </div>

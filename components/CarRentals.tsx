@@ -38,14 +38,13 @@ interface CarDisplay {
 }
 
 const CarRentals: React.FC = () => {
-  const { t } = useLanguage();
+  const { t, currency } = useLanguage();
   const router = useRouter();
   const [cars, setCars] = useState<CarDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Force currency to GBP/pounds
-  const currencySymbol = "£";
+  const currencySymbol = currency?.symbol || "£";
   const brandBlue = "#32A6D7";
   const brandBlueLight = "#e6f4fa";
 
@@ -70,67 +69,53 @@ const CarRentals: React.FC = () => {
   ];
 
   useEffect(() => {
-    // Always use fallback data - no API calls
     setLoading(true);
     try {
-      // Set fallback cars directly
       const fallbackCars = generateFallbackCars();
       setCars(fallbackCars);
       setError(null);
     } catch (err: any) {
       console.error("Error generating fallback cars:", err);
-      setError(err.message || "Failed to load car rentals");
+      setError(err.message || t('cars.errorFallback'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // Generate fallback cars based on popular routes and car images
   const generateFallbackCars = (): CarDisplay[] => {
-    // Calculate dates for fallback
     const today = new Date();
     const pickupDate = new Date(today);
     pickupDate.setDate(today.getDate() + 7);
     pickupDate.setHours(10, 0, 0, 0);
-    
+
     const dropoffDate = new Date(pickupDate);
-    dropoffDate.setHours(pickupDate.getHours() + 6); // 6 hours later
-    
+    dropoffDate.setHours(pickupDate.getHours() + 6);
+
     const pickupDateTime = pickupDate.toISOString();
     const dropoffDateTime = dropoffDate.toISOString();
-    
-    // Generate cars for each route (2 per route to get 12 total, but we'll take first 6)
+
     const allCars: CarDisplay[] = [];
-    
+
     popularRoutes.forEach((route, routeIndex) => {
-      // Add 2 cars per route
       for (let i = 0; i < 2; i++) {
         const carIndex = (routeIndex * 2 + i) % carImages.length;
         const car = carImages[carIndex];
-        
-        // Determine if this is a premium/suv or standard/sedan
+
         const isSUV = car.name.includes("SUV");
         const isSedan = car.name.includes("Sedan");
         const isCrossover = car.name.includes("Crossover");
-        
-        // Set price based on car type
+
         const basePrice = isSUV ? 95 : isSedan ? 75 : isCrossover ? 89 : 85;
         const discountedPrice = isSUV ? 85 : isSedan ? 67 : isCrossover ? 80 : 76;
-        
-        // Set seats and baggage based on car type
+
         const seats = isSUV ? 5 : isSedan ? 4 : isCrossover ? 4 : 5;
         const baggage = isSUV ? "3" : isSedan ? "2" : isCrossover ? "2" : "3";
-        
-        // Set provider based on index
+
         const provider = i % 2 === 0 ? "GroundSpan" : "Sixt Ride";
-        
-        // Generate random rating between 4.2 and 4.9
         const rating = 4.2 + Math.random() * 0.7;
-        
-        // Generate random reviews count
         const reviews = Math.floor(Math.random() * 400) + 100;
-        
-        // Create car display object
+
         allCars.push({
           id: `car-${routeIndex}-${i}-${Date.now()}`,
           name: car.name,
@@ -147,8 +132,8 @@ const CarRentals: React.FC = () => {
           image: car.image,
           amenities: getDefaultAmenitiesForCar(provider),
           seats: seats,
-          baggage: `${baggage} bags`,
-          transmission: "Automatic",
+          baggage: `${baggage} ${t('cars.bags')}`,
+          transmission: t('cars.automatic'),
           pickupLocation: route.from.code,
           dropoffLocation: route.to.code,
           pickupDateTime: pickupDateTime,
@@ -160,11 +145,8 @@ const CarRentals: React.FC = () => {
         });
       }
     });
-    
-    // Shuffle array to mix up cars from different routes
+
     const shuffled = [...allCars].sort(() => 0.5 - Math.random());
-    
-    // Return first 6 cars
     return shuffled.slice(0, 6);
   };
 
@@ -178,7 +160,6 @@ const CarRentals: React.FC = () => {
       "Los Angeles-San Francisco": "383 MI",
       "Paris-Amsterdam": "267 MI"
     };
-    
     const key = `${fromCity}-${toCity}`;
     return distances[key] || "200 MI";
   };
@@ -186,42 +167,35 @@ const CarRentals: React.FC = () => {
   // Helper function to get amenities based on provider
   const getDefaultAmenitiesForCar = (provider: string): string[] => {
     const baseAmenities = [
-      "Air Conditioning",
-      "Professional Driver",
-      "Meet & Greet",
-      "Flight Tracking"
+      t('cars.airConditioning'),
+      t('cars.professionalDriver'),
+      t('cars.meetGreet'),
+      t('cars.flightTracking')
     ];
-    
     if (provider === "GroundSpan") {
-      return [...baseAmenities, "Water Bottles", "Wi-Fi"];
+      return [...baseAmenities, t('cars.waterBottles'), t('cars.wifi')];
     } else {
-      return [...baseAmenities, "Phone Charger", "Music System"];
+      return [...baseAmenities, t('cars.phoneCharger'), t('cars.musicSystem')];
     }
   };
 
   const handleCarClick = (car: CarDisplay) => {
-    // Format dates for search
     const today = new Date();
     const pickupDate = new Date(today);
     pickupDate.setDate(today.getDate() + 7);
     pickupDate.setHours(10, 0, 0, 0);
-    
+
     const dropoffDate = new Date(pickupDate);
     dropoffDate.setHours(pickupDate.getHours() + 6);
-    
+
     const pickupDateStr = pickupDate.toISOString().split('T')[0];
     const dropoffDateStr = dropoffDate.toISOString().split('T')[0];
-    
-    // Format times
     const pickupTime = "10:00";
     const dropoffTime = "16:00";
-    
-    // Get pickup and dropoff locations from the car object
-    // If the car was clicked from the list, it should have these properties
+
     let pickupCity = car.cityName || "London";
-    let dropoffCity = "Paris"; // Default
-    
-    // Try to extract dropoff city from location string
+    let dropoffCity = "Paris";
+
     if (car.location && car.location.includes('→')) {
       const parts = car.location.split('→');
       if (parts.length > 1) {
@@ -229,42 +203,26 @@ const CarRentals: React.FC = () => {
         dropoffCity = parts[1].trim();
       }
     }
-    
-    // Get location codes
+
     const pickupCode = car.pickupLocation || "LHR";
     const dropoffCode = car.dropoffLocation || "CDG";
-    
-    // Format location string for search
     const location = `${pickupCity} to ${dropoffCity}`;
-    
-    console.log('🔍 Navigating to car rental search with:', {
-      location,
-      pickupCode,
-      dropoffCode,
-      pickupDate: pickupDateStr,
-      dropoffDate: dropoffDateStr,
-      pickupTime,
-      dropoffTime,
-      passengers: car.seats || 2
-    });
-    
-    // Navigate to search page with car rental parameters
+
     router.push(
       `/search?type=car-rentals&location=${encodeURIComponent(location)}&pickupCode=${pickupCode}&dropoffCode=${dropoffCode}&pickupDate=${pickupDateStr}&dropoffDate=${dropoffDateStr}&pickupTime=${pickupTime}&dropoffTime=${dropoffTime}&passengers=${car.seats || 2}&currency=GBP`
     );
   };
 
   const handleSearchMore = () => {
-    // Regenerate fallback cars with new random data
     setLoading(true);
     setTimeout(() => {
       const newCars = generateFallbackCars();
       setCars(newCars);
       setLoading(false);
-    }, 500); // Small delay to show loading state
+    }, 500);
   };
 
-  const formatPrice = (price: number) => `£${price.toFixed(2)}`;
+  const formatPrice = (price: number) => `${currencySymbol}${price.toFixed(2)}`;
 
   if (loading) {
     return (
@@ -272,14 +230,14 @@ const CarRentals: React.FC = () => {
         <div className="flex justify-between items-end mb-8 md:mb-10">
           <div>
             <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900">
-              Premium Transfers & Chauffeur Services
+              {t('cars.title')}
             </h2>
             <p className="text-gray-500 mt-2 text-base md:text-lg">
-              Luxury point-to-point transfers with professional drivers
+              {t('cars.subtitle')}
             </p>
           </div>
         </div>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="bg-white rounded-3xl overflow-hidden shadow-sm animate-pulse border border-gray-100">
@@ -304,14 +262,14 @@ const CarRentals: React.FC = () => {
       <section className="px-4 md:px-8 lg:px-16 py-12 bg-white">
         <div className="text-center">
           <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
-            Premium Transfers & Chauffeur Services
+            {t('cars.title')}
           </h2>
           <p className="text-red-500 mb-4">{error}</p>
           <button
             onClick={handleSearchMore}
             className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
           >
-            Try Again
+            {t('cars.tryAgain')}
           </button>
         </div>
       </section>
@@ -323,10 +281,10 @@ const CarRentals: React.FC = () => {
       <div className="flex justify-between items-end mb-8 md:mb-10">
         <div>
           <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900">
-            Premium Transfers & Chauffeur Services
+            {t('cars.title')}
           </h2>
           <p className="text-gray-500 mt-2 text-base md:text-lg">
-            Luxury point-to-point transfers with professional drivers
+            {t('cars.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -342,16 +300,16 @@ const CarRentals: React.FC = () => {
             {loading ? (
               <>
                 <div className="w-4 h-4 border-2 border-[#32A6D7] border-t-transparent rounded-full animate-spin"></div>
-                <span>Loading...</span>
+                <span>{t('common.loading')}</span>
               </>
-            ) : "Refresh"}
+            ) : t('cars.refresh')}
           </button>
           <button
             onClick={() => router.push("/search?type=car-rentals&currency=GBP")}
             className="font-semibold transition-colors duration-200 flex items-center gap-2 group"
             style={{ color: brandBlue }}
           >
-            See More
+            {t('cars.seeMore')}
             <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
@@ -361,30 +319,30 @@ const CarRentals: React.FC = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
         {cars.map((car) => (
-          <div 
+          <div
             key={car.id}
             onClick={() => handleCarClick(car)}
             className="group relative bg-white rounded-3xl overflow-hidden shadow-md hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 border border-gray-100 cursor-pointer"
           >
             {/* Price tag */}
             <div className="absolute top-4 right-4 z-10">
-              <div 
+              <div
                 className="text-white font-bold px-5 py-2 rounded-full text-lg shadow-md flex items-center gap-1"
                 style={{ backgroundColor: brandBlue }}
               >
                 {currencySymbol}{car.discountedPrice || car.price}
-                <span className="text-sm font-normal opacity-90">/trip</span>
+                <span className="text-sm font-normal opacity-90">{t('cars.perTrip')}</span>
               </div>
             </div>
 
             {/* Discount Badge */}
             {car.discountedPrice && (
               <div className="absolute top-4 left-4 z-10 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold">
-                Save {Math.round(((car.price - car.discountedPrice) / car.price) * 100)}%
+                {t('cars.save')} {Math.round(((car.price - car.discountedPrice) / car.price) * 100)}%
               </div>
             )}
 
-            {/* Pure white background image container */}
+            {/* Image container */}
             <div className="h-64 md:h-72 lg:h-80 bg-white flex items-center justify-center p-6 md:p-8 overflow-hidden">
               <img
                 src={car.image}
@@ -403,12 +361,12 @@ const CarRentals: React.FC = () => {
                 <h3 className="text-xl font-bold text-gray-900">{car.name}</h3>
                 <span className="text-xs font-semibold text-gray-500">{car.provider}</span>
               </div>
-              
+
               <p className="text-sm text-gray-500 mb-3">
-                {car.vehicleCategory} • {car.seats} seats • {car.baggage}
+                {car.vehicleCategory} • {car.seats} {t('cars.seats')} • {car.baggage}
                 {car.duration && ` • ${car.duration}`}
               </p>
-              
+
               {/* Route */}
               <div className="flex items-center gap-1 text-xs text-gray-600 mb-3">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -418,7 +376,7 @@ const CarRentals: React.FC = () => {
                 <span className="font-medium">{car.location}</span>
                 {car.distance && <span className="text-gray-400">• {car.distance}</span>}
               </div>
-              
+
               {/* Rating */}
               <div className="flex items-center gap-2 mb-3">
                 <div className="flex items-center px-2 py-1 rounded-full" style={{ backgroundColor: brandBlueLight }}>
@@ -435,7 +393,7 @@ const CarRentals: React.FC = () => {
                   </div>
                   <span className="text-xs font-bold" style={{ color: brandBlue }}>{car.rating.toFixed(1)}</span>
                 </div>
-                <span className="text-xs text-gray-400">({car.reviews} reviews)</span>
+                <span className="text-xs text-gray-400">({car.reviews.toLocaleString()} {t('cars.reviews')})</span>
               </div>
 
               {/* Amenities Preview */}
@@ -473,7 +431,7 @@ const CarRentals: React.FC = () => {
                   handleCarClick(car);
                 }}
               >
-                Book Transfer
+                {t('cars.bookTransfer')}
               </button>
             </div>
           </div>

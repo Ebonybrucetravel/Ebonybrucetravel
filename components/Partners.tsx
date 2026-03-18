@@ -21,11 +21,10 @@ const Partners: React.FC = () => {
       <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-4">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-1">
-            {t?.("Global Partners") || "Global Partners"}
+            {t('partners.title')}
           </h2>
           <p className="text-gray-600 text-sm md:text-base">
-            {t?.("Trusted by the best in travel") ||
-              "Trusted by the best in travel"}
+            {t('partners.subtitle')}
           </p>
         </div>
 

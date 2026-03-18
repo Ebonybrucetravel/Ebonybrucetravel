@@ -667,16 +667,16 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
   const getTravellerSummary = () => {
     const parts = [];
-    if (travellers.adults > 0) parts.push(`${travellers.adults} Adult${travellers.adults > 1 ? 's' : ''}`);
-    if (travellers.children > 0) parts.push(`${travellers.children} Child${travellers.children > 1 ? 'ren' : ''}`);
-    if (travellers.infants > 0) parts.push(`${travellers.infants} Infant${travellers.infants > 1 ? 's' : ''}`);
+    if (travellers.adults > 0) parts.push(`${travellers.adults} ${t('search.adults')}`);
+    if (travellers.children > 0) parts.push(`${travellers.children} ${t('search.children')}`);
+    if (travellers.infants > 0) parts.push(`${travellers.infants} ${t('search.infants')}`);
     const total = travellers.adults + travellers.children + travellers.infants;
-    return `${total} Passenger${total > 1 ? 's' : ''} (${parts.join(', ')})`;
+    return `${total} ${total === 1 ? t('search.passenger') : t('search.passengers')} (${parts.join(', ')})`;
   };
 
   const getHotelGuestSummary = () => {
     const totalGuests = travellers.adults + travellers.children;
-    return `${totalGuests} Guest${totalGuests > 1 ? 's' : ''}, ${rooms} Room${rooms > 1 ? 's' : ''}`;
+    return `${totalGuests} ${totalGuests === 1 ? t('search.guest') : t('search.guests')}, ${rooms} ${rooms === 1 ? t('search.room') : t('search.rooms')}`;
   };
 
   const extractAirportCode = (displayValue: string): string => {
@@ -776,7 +776,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       const dropOffCode = extractLocationCode(carDropOff);
 
       if (!pickUpCode || !dropOffCode || !carPickUpDate || !carDropOffDate) {
-        alert('Please fill in all rental details including locations and dates.');
+        alert(t('search.fillAllRentalDetails') || 'Please fill in all rental details including locations and dates.');
         return;
       }
 
@@ -804,9 +804,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         const fromCode = extractAirportCode(segment.from);
         const toCode = extractAirportCode(segment.to);
 
-        if (!fromCode) errors.push(`Segment ${index + 1}: Invalid departure location`);
-        if (!toCode) errors.push(`Segment ${index + 1}: Invalid arrival location`);
-        if (!segment.date) errors.push(`Segment ${index + 1}: Date is required`);
+        if (!fromCode) errors.push(`${t('search.segmentInvalidDeparture')} ${index + 1}`);
+        if (!toCode) errors.push(`${t('search.segmentInvalidArrival')} ${index + 1}`);
+        if (!segment.date) errors.push(`${t('search.segmentDateRequired')} ${index + 1}`);
 
         return {
           from: fromCode,
@@ -816,18 +816,18 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       });
 
       if (tripType === 'round-trip' && !returnDate) {
-        errors.push('Return date is required for round-trip flights');
+        errors.push(t('search.returnDateRequired') || 'Return date is required for round-trip flights');
       }
 
       if (flightSegments.length === 0) {
-        errors.push('At least one flight segment is required');
+        errors.push(t('search.minOneSegment') || 'At least one flight segment is required');
       }
 
       // Check for duplicate segments
       const segmentKeys = flightSegments.map(s => `${s.from}-${s.to}`);
       const uniqueSegments = new Set(segmentKeys);
       if (uniqueSegments.size !== segmentKeys.length) {
-        errors.push('Duplicate flight segments detected');
+        errors.push(t('search.duplicateSegments') || 'Duplicate flight segments detected');
       }
 
       if (errors.length > 0) {
@@ -863,31 +863,31 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       const errors = [];
 
       if (!hotelLocation) {
-        errors.push('Hotel location is required');
+        errors.push(t('search.hotelLocationRequired') || 'Hotel location is required');
       }
 
       if (!checkInDate) {
-        errors.push('Check-in date is required');
+        errors.push(t('search.checkInRequired') || 'Check-in date is required');
       }
 
       if (!checkOutDate) {
-        errors.push('Check-out date is required');
+        errors.push(t('search.checkOutRequired') || 'Check-out date is required');
       }
 
       if (checkInDate && checkOutDate) {
         const checkIn = new Date(checkInDate);
         const checkOut = new Date(checkOutDate);
         if (checkIn >= checkOut) {
-          errors.push('Check-out date must be after check-in date');
+          errors.push(t('search.checkOutAfterCheckIn') || 'Check-out date must be after check-in date');
         }
       }
 
       if (travellers.adults < 1) {
-        errors.push('At least one adult is required');
+        errors.push(t('search.minOneAdult') || 'At least one adult is required');
       }
 
       if (rooms < 1) {
-        errors.push('At least one room is required');
+        errors.push(t('search.minOneRoom') || 'At least one room is required');
       }
 
       if (errors.length > 0) {
@@ -1025,7 +1025,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       <div className="absolute top-full right-0 mt-2 w-72 md:w-80 bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-50 animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <div><span className="block font-bold text-gray-800 text-sm">Adults</span><span className="text-[10px] text-gray-400 font-bold uppercase">12+</span></div>
+            <div><span className="block font-bold text-gray-800 text-sm">{t('search.adults')}</span><span className="text-[10px] text-gray-400 font-bold uppercase">{t('search.adultsAge')}</span></div>
             <div className="flex items-center gap-3">
               <button type="button" onClick={() => updateTraveller('adults', false)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">-</button>
               <span className="font-bold w-4 text-center text-base">{travellers.adults}</span>
@@ -1033,7 +1033,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             </div>
           </div>
           <div className="flex justify-between items-center">
-            <div><span className="block font-bold text-gray-800 text-sm">Children</span><span className="text-[10px] text-gray-400 font-bold uppercase">2-12</span></div>
+            <div><span className="block font-bold text-gray-800 text-sm">{t('search.children')}</span><span className="text-[10px] text-gray-400 font-bold uppercase">{t('search.childrenAge')}</span></div>
             <div className="flex items-center gap-3">
               <button type="button" onClick={() => updateTraveller('children', false)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">-</button>
               <span className="font-bold w-4 text-center text-base">{travellers.children}</span>
@@ -1041,14 +1041,14 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             </div>
           </div>
           <div className="flex justify-between items-center">
-            <div><span className="block font-bold text-gray-800 text-sm">Infants</span><span className="text-[10px] text-gray-400 font-bold uppercase">Under 2</span></div>
+            <div><span className="block font-bold text-gray-800 text-sm">{t('search.infants')}</span><span className="text-[10px] text-gray-400 font-bold uppercase">{t('search.infantsAge')}</span></div>
             <div className="flex items-center gap-3">
               <button type="button" onClick={() => updateTraveller('infants', false)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">-</button>
               <span className="font-bold w-4 text-center text-base">{travellers.infants}</span>
               <button type="button" onClick={() => updateTraveller('infants', true)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">+</button>
             </div>
           </div>
-          <button type="button" onClick={() => setShowTravellerDropdown(false)} className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors">Done</button>
+          <button type="button" onClick={() => setShowTravellerDropdown(false)} className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors">{t('search.done')}</button>
         </div>
       </div>
     )
@@ -1059,14 +1059,14 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       <div className="absolute top-full right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-50 animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <div><span className="block font-bold text-gray-800 text-sm">Passengers</span></div>
+            <div><span className="block font-bold text-gray-800 text-sm">{t('search.passengers')}</span></div>
             <div className="flex items-center gap-3">
               <button type="button" onClick={() => updateCarTravellers(false)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">-</button>
               <span className="font-bold w-4 text-center text-base">{carTravellers}</span>
               <button type="button" onClick={() => updateCarTravellers(true)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">+</button>
             </div>
           </div>
-          <button type="button" onClick={() => setShowCarTravellerDropdown(false)} className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors">Done</button>
+          <button type="button" onClick={() => setShowCarTravellerDropdown(false)} className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors">{t('search.done')}</button>
         </div>
       </div>
     )
@@ -1077,14 +1077,14 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-50 animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <div><span className="block font-bold text-gray-800 text-sm">Rooms</span></div>
+            <div><span className="block font-bold text-gray-800 text-sm">{t('search.rooms')}</span></div>
             <div className="flex items-center gap-3">
               <button type="button" onClick={() => updateRooms(false)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">-</button>
               <span className="font-bold w-4 text-center text-base">{rooms}</span>
               <button type="button" onClick={() => updateRooms(true)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">+</button>
             </div>
           </div>
-          <button type="button" onClick={() => setShowRoomDropdown(false)} className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors">Done</button>
+          <button type="button" onClick={() => setShowRoomDropdown(false)} className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors">{t('search.done')}</button>
         </div>
       </div>
     )
@@ -1095,17 +1095,17 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       {loadingSuggestions ? (
         <div className="px-4 py-3 text-center text-gray-500">
           <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#33a8da] mx-auto"></div>
-          <p className="text-xs mt-2">Searching airports...</p>
+          <p className="text-xs mt-2">{t('search.loadingAirports')}</p>
         </div>
       ) : suggestions.length === 0 ? (
         <div className="px-4 py-3 text-center text-gray-500 text-sm">
-          No airports found. Try searching by city name or airport code.
+          {t('search.noAirports')}
         </div>
       ) : (
         <>
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
             <div className="text-xs font-bold text-gray-500">
-              {suggestions.length} AIRPORT{suggestions.length !== 1 ? 'S' : ''} FOUND
+              {suggestions.length} {suggestions.length === 1 ? t('search.airport') : t('search.airports')} {t('search.found')}
             </div>
           </div>
           {suggestions.map((airport, idx) => (
@@ -1125,7 +1125,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                   <div className="font-bold text-gray-900 truncate">{airport.city}, {airport.country}</div>
                   <div className="text-xs text-gray-500 truncate">{airport.name}</div>
                   <div className="text-[10px] text-gray-400 mt-0.5 font-bold uppercase">
-                    {airport.type === 'city' ? 'CITY' : 'AIRPORT'}
+                    {airport.type === 'city' ? t('search.cityType') : t('search.airportType')}
                   </div>
                 </div>
               </div>
@@ -1133,7 +1133,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
           ))}
           <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
             <div className="text-xs text-center text-gray-500">
-              Select an airport or type more to search
+              {t('search.selectHint')}
             </div>
           </div>
         </>
@@ -1147,14 +1147,14 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         {loadingHotelSuggestions ? (
           <div className="px-4 py-3 text-center text-gray-500">
             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#33a8da] mx-auto"></div>
-            <p className="text-xs mt-2">Searching destinations...</p>
+            <p className="text-xs mt-2">{t('search.loadingDestinations')}</p>
           </div>
         ) : hotelLocationSuggestions.length === 0 ? (
-          <div className="px-4 py-3 text-center text-gray-500 text-sm">No destinations found. Try a different search.</div>
+          <div className="px-4 py-3 text-center text-gray-500 text-sm">{t('search.noDestinations')}</div>
         ) : (
           <>
             <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
-              <div className="text-xs font-bold text-gray-500">POPULAR DESTINATIONS</div>
+              <div className="text-xs font-bold text-gray-500">{t('search.popularDestinations')}</div>
             </div>
             {hotelLocationSuggestions.map((dest) => (
               <button
@@ -1186,7 +1186,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             {hotelLocationSuggestions.length >= 6 && (
               <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
                 <div className="text-xs text-center text-gray-500">
-                  Type more characters to search all destinations
+                  {t('search.moreHint')}
                 </div>
               </div>
             )}
@@ -1196,7 +1196,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     )
   );
 
-  // Render car location dropdown (UPDATED from first code block)
   const renderCarLocationDropdown = (suggestions: CarLocationSuggestion[], type: 'pickUp' | 'dropOff') => (
     <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-gray-200 max-h-60 overflow-y-auto z-50">
       {suggestions.map((location, idx) => (
@@ -1227,7 +1226,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                   <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
                 </svg>
                 <div className="flex-1 relative">
-                  <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none">From</label>
+                  <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none">{t('search.from')}</label>
                   <input
                     type="text"
                     value={segment.from}
@@ -1241,7 +1240,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                       setShowToDropdown(false);
                     }}
                     className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0 pr-5"
-                    placeholder="City/Code"
+                    placeholder={t('search.fromPlaceholder')}
                   />
                   {segment.from && (
                     <button
@@ -1274,7 +1273,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                   <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
                 </svg>
                 <div className="flex-1 relative">
-                  <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none">To</label>
+                  <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none">{t('search.to')}</label>
                   <input
                     type="text"
                     value={segment.to}
@@ -1288,7 +1287,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                       setShowFromDropdown(false);
                     }}
                     className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0 pr-5"
-                    placeholder="City/Code"
+                    placeholder={t('search.toPlaceholder')}
                   />
                   {segment.to && (
                     <button
@@ -1318,9 +1317,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
               </svg>
               <div className="flex-1 flex gap-2 min-w-0">
                 <div className="flex-1 min-w-0 relative h-auto flex flex-col justify-center">
-                  <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none truncate">Depart</label>
+                  <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none truncate">{t('search.departure')}</label>
                   <span className={`block font-bold text-xs leading-tight truncate ${segment.date ? 'text-gray-900' : 'text-gray-400'}`}>
-                    {segment.date ? new Date(segment.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Select'}
+                    {segment.date ? new Date(segment.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : t('search.selectDate')}
                   </span>
                   <input
                     type="date"
@@ -1333,9 +1332,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 </div>
                 {tripType === 'round-trip' && index === 0 && (
                   <div className="flex-1 min-w-0 border-l border-gray-100 pl-2 relative h-auto flex flex-col justify-center">
-                    <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none truncate">Return</label>
+                    <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0 leading-none truncate">{t('search.return')}</label>
                     <span className={`block font-bold text-xs leading-tight truncate ${returnDate ? 'text-gray-900' : 'text-gray-400'}`}>
-                      {returnDate ? new Date(returnDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Select'}
+                      {returnDate ? new Date(returnDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : t('search.selectDate')}
                     </span>
                     <input
                       type="date"
@@ -1356,7 +1355,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
               </svg>
               <div className="flex-1 min-w-0">
-                <label className="block text-[7px] font-bold text-gray-500 uppercase mb-0 leading-none">Travellers</label>
+                <label className="block text-[7px] font-bold text-gray-500 uppercase mb-0 leading-none">{t('search.travellers')}</label>
                 <span className="block font-bold text-gray-900 text-xs leading-tight truncate">{getTravellerSummary()}</span>
               </div>
               {isFirst && renderTravellerDropdown()}
@@ -1376,14 +1375,15 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             {loading ? (
               <>
                 <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white mr-1.5"></div>
-                <span className="text-xs">Search</span>
+                <span className="text-xs">{t('search.searchBtn')}</span>
               </>
-            ) : 'Search'}
+            ) : t('search.searchBtn')}
           </button>
         )}
       </div>
     );
   };
+
   return (
     <div className="w-full max-w-7xl mx-auto px-2 md:px-4">
       <div className="bg-white rounded-2xl md:rounded-[24px] shadow-2xl overflow-visible">
@@ -1391,9 +1391,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         {/* Navigation Tabs - Optimized for Mobile */}
         <div className="flex items-center gap-4 md:gap-10 px-4 md:px-8 pt-4 md:pt-6 border-b border-gray-100 overflow-x-auto hide-scrollbar">
           {[
-            { id: 'flights' as const, label: 'Flights', icon: <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" /> },
-            { id: 'hotels' as const, label: 'Hotels', icon: <path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" /> },
-            { id: 'cars' as const, label: 'Cars', icon: <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" /> }
+            { id: 'flights' as const, label: t('nav.flights'), icon: <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" /> },
+            { id: 'hotels' as const, label: t('nav.hotels'), icon: <path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" /> },
+            { id: 'cars' as const, label: t('nav.cars'), icon: <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" /> }
           ].map((tab) => (
             <button key={tab.id} type="button" onClick={() => handleLocalTabChange(tab.id)} className={`flex items-center gap-2 pb-3 md:pb-5 transition-all relative shrink-0 ${activeTab === tab.id ? 'text-[#33a8da]' : 'text-gray-400 hover:text-blue-500 font-bold'}`}>
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">{tab.icon}</svg>
@@ -1414,22 +1414,25 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                         {tripType === opt && <div className="w-2.5 h-2.5 bg-[#33a8da] rounded-full" />}
                       </div>
                       <span className={`text-xs md:text-sm font-bold capitalize transition-colors ${tripType === opt ? 'text-gray-900' : 'text-gray-400 group-hover:text-gray-600'}`}>
-                        {opt.replace('-', ' ')}
+                        {opt === 'round-trip' ? t('search.roundTrip') : opt === 'one-way' ? t('search.oneWay') : t('search.multiCity')}
                       </span>
                     </button>
                   ))}
                   <div className="flex items-center gap-2 md:gap-4 border-l border-gray-100 pl-4 h-8">
                     <div className="relative" ref={cabinRef}>
                       <button type="button" onClick={() => setShowCabinDropdown(!showCabinDropdown)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-100 bg-gray-50 text-gray-700 hover:border-gray-300 text-[10px] md:text-xs font-bold">
-                        {cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1).replace('_', ' ')} <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 9l-7 7-7-7" strokeWidth={3} /></svg>
+                        {cabinClass === 'economy' ? t('search.economy') :
+                         cabinClass === 'premium_economy' ? t('search.premiumEconomy') :
+                         cabinClass === 'business' ? t('search.business') :
+                         t('search.first')} <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 9l-7 7-7-7" strokeWidth={3} /></svg>
                       </button>
                       {showCabinDropdown && (
                         <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
                           {[
-                            { label: 'Economy', value: 'economy' },
-                            { label: 'Premium Economy', value: 'premium_economy' },
-                            { label: 'Business', value: 'business' },
-                            { label: 'First Class', value: 'first' }
+                            { label: t('search.economy'), value: 'economy' },
+                            { label: t('search.premiumEconomy'), value: 'premium_economy' },
+                            { label: t('search.business'), value: 'business' },
+                            { label: t('search.first'), value: 'first' }
                           ].map((cls) => (
                             <button
                               key={cls.value}
@@ -1454,29 +1457,34 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] md:text-xs font-bold transition-all ${showFiltersDropdown ? 'border-[#33a8da] bg-blue-50 text-[#33a8da]' : 'border-gray-100 bg-gray-50 text-gray-700 hover:border-gray-300'}`}
                       >
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
-                        Filters
+                        {t('search.filters')}
                       </button>
                       {showFiltersDropdown && (
                         <div className="absolute top-full right-0 lg:left-0 mt-2 w-64 md:w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 p-6 z-50 animate-in fade-in slide-in-from-top-2">
                           <div className="space-y-6">
                             <div>
-                              <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Stops</h4>
+                              <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">{t('search.stops')}</h4>
                               <div className="grid grid-cols-2 gap-2">
-                                {['Any', 'Non-stop', '1 Stop', '2+ Stops'].map((stop) => (
+                                {[
+                                  { label: t('search.any'), value: 'Any' },
+                                  { label: t('search.nonStop'), value: 'Non-stop' },
+                                  { label: t('search.oneStop'), value: '1 Stop' },
+                                  { label: t('search.twoPlusStops'), value: '2+ Stops' }
+                                ].map((stop) => (
                                   <button
-                                    key={stop}
+                                    key={stop.value}
                                     type="button"
-                                    onClick={() => setStopsFilter(stop)}
-                                    className={`py-2 px-3 rounded-lg text-[10px] md:text-xs font-bold border transition-all ${stopsFilter === stop ? 'bg-[#33a8da] text-white border-[#33a8da]' : 'bg-gray-50 text-gray-600 border-gray-100 hover:border-gray-200'}`}
+                                    onClick={() => setStopsFilter(stop.value)}
+                                    className={`py-2 px-3 rounded-lg text-[10px] md:text-xs font-bold border transition-all ${stopsFilter === stop.value ? 'bg-[#33a8da] text-white border-[#33a8da]' : 'bg-gray-50 text-gray-600 border-gray-100 hover:border-gray-200'}`}
                                   >
-                                    {stop}
+                                    {stop.label}
                                   </button>
                                 ))}
                               </div>
                             </div>
                             <div>
                               <div className="flex justify-between items-end mb-3">
-                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Max Price</h4>
+                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('search.maxPrice')}</h4>
                                 <span className="text-xs font-black text-[#33a8da]">{currency.symbol}{maxPrice.toLocaleString()}</span>
                               </div>
                               <input
@@ -1494,7 +1502,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                               onClick={() => setShowFiltersDropdown(false)}
                               className="w-full py-2.5 bg-gray-900 text-white text-[10px] md:text-xs font-bold rounded-xl hover:bg-black transition-colors uppercase tracking-widest"
                             >
-                              Apply
+                              {t('search.apply')}
                             </button>
                           </div>
                         </div>
@@ -1508,7 +1516,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 {tripType === 'multi-city' && segments.length < 4 && (
                   <button type="button" onClick={addSegment} className="flex items-center gap-2 text-[#33a8da] font-bold text-xs bg-blue-50 px-4 py-2 rounded-xl hover:bg-blue-100 transition shadow-sm border border-blue-100">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                    Add Flight
+                    {t('search.addFlight')}
                   </button>
                 )}
               </div>
@@ -1519,11 +1527,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             <div className="space-y-3">
               {/* Provider Selector */}
               <div className="flex items-center gap-3 px-1">
-                <span className="text-[10px] font-black text-white/80 uppercase tracking-widest">Provider:</span>
+                <span className="text-[10px] font-black text-white/80 uppercase tracking-widest">{t('search.provider')}:</span>
                 <div className="flex bg-white/10 p-0.5 rounded-lg border border-white/20">
                   {[
-                    { id: 'hotelbeds', label: 'Hotelbeds', icon: '🌍' },
-                    { id: 'amadeus', label: 'Amadeus', icon: '✈️' }
+                    { id: 'hotelbeds', label: t('search.hotelbeds'), icon: '🌍' },
+                    { id: 'amadeus', label: t('search.amadeus'), icon: '✈️' }
                   ].map((p) => (
                     <button
                       key={p.id}
@@ -1541,7 +1549,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 </div>
               </div>
 
-            
               <div className="flex flex-col lg:flex-row items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px] shadow-lg border border-white/20">
                 <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-[2px]">
                   {/* Hotel Location with Autocomplete */}
@@ -1551,7 +1558,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                         <path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" />
                       </svg>
                       <div className="flex-1">
-                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">Destination</label>
+                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">{t('search.destination')}</label>
                         <input
                           type="text"
                           value={hotelLocation}
@@ -1563,7 +1570,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                             setShowHotelLocationDropdown(true);
                           }}
                           className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0"
-                          placeholder="City/Country"
+                          placeholder={t('search.destinationPlaceholder')}
                         />
                       </div>
                       {hotelLocation && (
@@ -1589,7 +1596,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                     </svg>
                     <div className="flex-1 grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">In</label>
+                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">{t('search.checkIn')}</label>
                         <input
                           type="date"
                           min={today}
@@ -1599,7 +1606,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                         />
                       </div>
                       <div>
-                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">Out</label>
+                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">{t('search.checkOut')}</label>
                         <input
                           type="date"
                           min={checkInDate || today}
@@ -1618,8 +1625,8 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                       </svg>
                       <div onClick={() => setShowTravellerDropdown(!showTravellerDropdown)} className="cursor-pointer">
-                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">Guests</label>
-                        <span className="block font-bold text-gray-900 text-xs">{travellers.adults} Adults, {rooms} Room</span>
+                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">{t('search.guests')}</label>
+                        <span className="block font-bold text-gray-900 text-xs">{getHotelGuestSummary()}</span>
                       </div>
                     </div>
                     <button
@@ -1630,9 +1637,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                       {loading ? (
                         <div className="flex items-center gap-1.5">
                           <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
-                          <span className="text-xs">Search</span>
+                          <span className="text-xs">{t('search.searchBtn')}</span>
                         </div>
-                      ) : 'Search'}
+                      ) : t('search.searchBtn')}
                     </button>
                   </div>
                 </div>
@@ -1649,13 +1656,13 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                     <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" />
                   </svg>
                   <div className="flex-1 relative">
-                    <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PICK-UP</label>
+                    <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">{t('search.pickUp')}</label>
                     <input
                       type="text"
                       value={carPickUp}
                       onChange={(e) => handleCarPickUpChange(e.target.value)}
                       onFocus={() => setShowCarPickUpDropdown(true)}
-                      placeholder="City"
+                      placeholder={t('search.pickupPlaceholder')}
                       className="w-full font-bold text-gray-900 focus:outline-none text-[11px] bg-transparent p-0"
                     />
                   </div>
@@ -1682,13 +1689,13 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                     <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" />
                   </svg>
                   <div className="flex-1">
-                    <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">DROP-OFF</label>
+                    <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">{t('search.dropOff')}</label>
                     <input
                       type="text"
                       value={carDropOff}
                       onChange={(e) => handleCarDropOffChange(e.target.value)}
                       onFocus={() => setShowCarDropOffDropdown(true)}
-                      placeholder="City"
+                      placeholder={t('search.dropoffPlaceholder')}
                       className="w-full font-bold text-gray-900 focus:outline-none text-[11px] bg-transparent p-0"
                     />
                   </div>
@@ -1714,7 +1721,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                   <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div className="flex-1">
-                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PICK TIME</label>
+                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">{t('search.pickTime')}</label>
                   <input
                     type="time"
                     value={carPickUpTime}
@@ -1730,7 +1737,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                   <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 <div className="flex-1">
-                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PICK DATE</label>
+                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">{t('search.pickDate')}</label>
                   <input
                     type="date"
                     min={today}
@@ -1747,7 +1754,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                   <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div className="flex-1">
-                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">DROP TIME</label>
+                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">{t('search.dropTime')}</label>
                   <input
                     type="time"
                     value={carDropOffTime}
@@ -1763,7 +1770,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                   <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 <div className="flex-1">
-                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">DROP DATE</label>
+                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">{t('search.dropDate')}</label>
                   <input
                     type="date"
                     min={carPickUpDate || today}
@@ -1780,7 +1787,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                   <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                 </svg>
                 <div onClick={() => setShowCarTravellerDropdown(!showCarTravellerDropdown)} className="cursor-pointer flex-1">
-                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">PASSENGERS</label>
+                  <label className="block text-[6px] font-bold text-gray-400 uppercase mb-0">{t('search.passengers')}</label>
                   <span className="block font-bold text-gray-900 text-[11px] leading-tight">{carTravellers}</span>
                 </div>
               </div>
@@ -1795,26 +1802,26 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                   {loading ? (
                     <div className="flex items-center gap-1">
                       <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                      <span className="text-[10px]">Search</span>
+                      <span className="text-[10px]">{t('search.searchBtn')}</span>
                     </div>
-                  ) : 'Search'}
+                  ) : t('search.searchBtn')}
                 </button>
               </div>
             </div>
           )}
 
         </form>
-      </div >
+      </div>
 
       {/* Car Traveller Dropdown (moved outside main container) */}
       {
         showCarTravellerDropdown && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm" onClick={() => setShowCarTravellerDropdown(false)}>
             <div className="bg-white p-6 rounded-2xl w-full max-w-xs shadow-2xl" onClick={e => e.stopPropagation()}>
-              <h4 className="font-black text-gray-900 mb-4 uppercase text-xs tracking-widest">Passengers</h4>
+              <h4 className="font-black text-gray-900 mb-4 uppercase text-xs tracking-widest">{t('search.passengers')}</h4>
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm">Passengers</span>
+                  <span className="font-bold text-sm">{t('search.passengers')}</span>
                   <div className="flex items-center gap-3">
                     <button type="button" onClick={() => updateCarTravellers(false)} className="w-8 h-8 rounded-full border border-gray-200">-</button>
                     <span className="font-bold">{carTravellers}</span>
@@ -1822,12 +1829,12 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                   </div>
                 </div>
               </div>
-              <button type="button" onClick={() => setShowCarTravellerDropdown(false)} className="w-full bg-[#33a8da] text-white py-3 rounded-xl font-bold mt-6 text-xs uppercase tracking-widest">Done</button>
+              <button type="button" onClick={() => setShowCarTravellerDropdown(false)} className="w-full bg-[#33a8da] text-white py-3 rounded-xl font-bold mt-6 text-xs uppercase tracking-widest">{t('search.done')}</button>
             </div>
           </div>
         )
       }
-    </div >
+    </div>
   );
 };
 

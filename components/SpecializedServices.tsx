@@ -22,10 +22,10 @@ const SpecializedServices: React.FC<SpecializedServicesProps> = ({
     <section className="text-center pt-0 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-900 mb-4">
-          {t("services.title")}
+          {t('services.title')}
         </h2>
         <p className="text-gray-500 max-w-2xl mx-auto">
-          {t("services.subtitle")}
+          {t('services.subtitle')}
         </p>
       </div>
 
@@ -48,12 +48,10 @@ const SpecializedServices: React.FC<SpecializedServicesProps> = ({
             </svg>
           </div>
           <h3 className="text-xl font-bold text-gray-900 mb-4">
-            Travel Services{" "}
+            {t('services.travelServices')}
           </h3>
           <p className="text-gray-500 text-sm mb-6">
-            We specialize in organizing and managing tours, excursions, and
-            event ticketing. We do not book or manage flight reservations or
-            offer immigration services.
+            {t('services.travelServicesDesc')}
           </p>
 
           <Link
@@ -61,7 +59,7 @@ const SpecializedServices: React.FC<SpecializedServicesProps> = ({
             onClick={(e) => handleServiceClick("Travel Services", e)}
             className="inline-flex items-center text-[#33a8da] font-bold text-sm group-hover:gap-2 transition-all"
           >
-            Learn More
+            {t('services.learnMore')}
             <svg
               className="w-4 h-4 ml-1 transform group-hover:translate-x-1 transition-transform"
               fill="none"
@@ -96,13 +94,10 @@ const SpecializedServices: React.FC<SpecializedServicesProps> = ({
             </svg>
           </div>
           <h3 className="text-xl font-bold text-gray-900 mb-4">
-            DHL Franchised Logistics
+            {t('services.logistics')}
           </h3>
           <p className="text-gray-500 text-sm mb-6">
-            As an authorized DHL franchise partner, we offer courier and
-            international parcel services. This includes handling document and
-            package shipments, offering tracking support, and providing clients
-            with a secure and efficient logistics solution.
+            {t('services.logisticsDesc')}
           </p>
 
           <Link
@@ -110,7 +105,7 @@ const SpecializedServices: React.FC<SpecializedServicesProps> = ({
             onClick={(e) => handleServiceClick("DHL Logistics", e)}
             className="inline-flex items-center text-[#33a8da] font-bold text-sm group-hover:gap-2 transition-all"
           >
-            Learn More
+            {t('services.learnMore')}
             <svg
               className="w-4 h-4 ml-1 transform group-hover:translate-x-1 transition-transform"
               fill="none"
@@ -145,12 +140,10 @@ const SpecializedServices: React.FC<SpecializedServicesProps> = ({
             </svg>
           </div>
           <h3 className="text-xl font-bold text-gray-900 mb-4">
-            Speedy Admission Processing
+            {t('services.admission')}
           </h3>
           <p className="text-gray-500 text-sm mb-6">
-            We offer advisory services for students seeking admission to
-            international educational institutions. This includes academic
-            counseling and course matching.
+            {t('services.admissionDesc')}
           </p>
 
           <Link
@@ -158,7 +151,7 @@ const SpecializedServices: React.FC<SpecializedServicesProps> = ({
             onClick={(e) => handleServiceClick("Admission Processing", e)}
             className="inline-flex items-center text-[#33a8da] font-bold text-sm group-hover:gap-2 transition-all"
           >
-            Learn More
+            {t('services.learnMore')}
             <svg
               className="w-4 h-4 ml-1 transform group-hover:translate-x-1 transition-transform"
               fill="none"
