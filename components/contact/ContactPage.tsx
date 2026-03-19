@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface ContactFormData {
   name: string;
@@ -13,6 +14,7 @@ interface ContactFormData {
 }
 
 export default function ContactPage() {
+  const { t } = useLanguage();
   const [formData, setFormData] = useState<ContactFormData>({
     name: "",
     email: "",
@@ -44,19 +46,18 @@ export default function ContactPage() {
     setErrorMessage("");
 
     try {
-      // Map the form service value to match API expected format
       const serviceMapping: { [key: string]: string } = {
-        travel: "Travel Services",
-        logistics: "Logistics - DHL",
-        education: "Educational Consulting",
-        hotel: "Hotel Reservations",
-        other: "Other",
+        travel: t("contact.form.services.travel"),
+        logistics: t("contact.form.services.logistics"),
+        education: t("contact.form.services.education"),
+        hotel: t("contact.form.services.hotel"),
+        other: t("contact.form.services.other"),
       };
 
       const payload = {
         name: formData.name,
         email: formData.email,
-        phone: formData.phone || "", // Send empty string if not provided
+        phone: formData.phone || "",
         serviceInterestedIn:
           serviceMapping[formData.serviceInterestedIn] ||
           formData.serviceInterestedIn,
@@ -77,10 +78,9 @@ export default function ContactPage() {
       console.log("📦 API Response:", data);
 
       if (!response.ok) {
-        throw new Error(data.message || "Failed to send message");
+        throw new Error(data.message || t("contact.form.error.general"));
       }
 
-      // Success
       setSubmitStatus("success");
       setFormData({
         name: "",
@@ -90,7 +90,6 @@ export default function ContactPage() {
         message: "",
       });
 
-      // Reset success message after 5 seconds
       setTimeout(() => setSubmitStatus(null), 5000);
     } catch (err) {
       console.error("❌ Error sending message:", err);
@@ -98,10 +97,9 @@ export default function ContactPage() {
       setErrorMessage(
         err instanceof Error
           ? err.message
-          : "Failed to send message. Please try again.",
+          : t("contact.form.error.general"),
       );
 
-      // Reset error message after 5 seconds
       setTimeout(() => {
         setSubmitStatus(null);
         setErrorMessage("");
@@ -118,22 +116,21 @@ export default function ContactPage() {
         <div className="absolute inset-0 opacity-10">
           <img
             src="https://images.unsplash.com/photo-1423666639041-f56000c27a9a?auto=format&fit=crop&q=80&w=1200"
-            alt="Contact background"
+            alt={t("contact.banner.alt")}
             className="w-full h-full object-cover"
           />
         </div>
         <div className="relative max-w-7xl mx-auto px-6 text-center">
           <h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-6">
-            Ebony Bruce Travels <span className="text-[#33a8da]">Contact</span>
+            Ebony Bruce Travels <span className="text-[#33a8da]">{t("contact.banner.title")}</span>
           </h1>
           <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-            Get in touch with us for travel, logistics, or educational
-            consulting needs
+            {t("contact.banner.subtitle")}
           </p>
         </div>
       </section>
 
-      {/* Contact Info Cards - Redesigned */}
+      {/* Contact Info Cards */}
       <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* United Kingdom */}
@@ -154,11 +151,11 @@ export default function ContactPage() {
               </svg>
             </div>
             <h3 className="text-2xl font-bold text-[#001f3f] mb-4">
-              United Kingdom
+              {t("contact.offices.uk.name")}
             </h3>
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-gray-500 mb-1">Call Us</p>
+                <p className="text-sm text-gray-500 mb-1">{t("contact.offices.uk.call")}</p>
                 <a
                   href="tel:+441582340807"
                   className="text-xl font-semibold text-[#33a8da] hover:underline"
@@ -167,11 +164,10 @@ export default function ContactPage() {
                 </a>
               </div>
               <div>
-                <p className="text-sm text-gray-500 mb-1">Office Address</p>
+                <p className="text-sm text-gray-500 mb-1">{t("contact.offices.uk.address")}</p>
                 <p className="text-gray-600 leading-relaxed">
-                  1st Floor, Suite 103, 2-6 Alma Street,
-                  <br />
-                  Luton, LU1 2PL, United Kingdom
+                  {t("contact.offices.uk.address1")}<br />
+                  {t("contact.offices.uk.address2")}
                 </p>
               </div>
             </div>
@@ -195,11 +191,11 @@ export default function ContactPage() {
               </svg>
             </div>
             <h3 className="text-2xl font-bold text-[#001f3f] mb-4">
-              Lagos, Nigeria
+              {t("contact.offices.nigeria.name")}
             </h3>
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-gray-500 mb-1">Call Us</p>
+                <p className="text-sm text-gray-500 mb-1">{t("contact.offices.nigeria.call")}</p>
                 <a
                   href="tel:+2348032416206"
                   className="text-xl font-semibold text-[#33a8da] hover:underline"
@@ -208,17 +204,16 @@ export default function ContactPage() {
                 </a>
               </div>
               <div>
-                <p className="text-sm text-gray-500 mb-1">Office Address</p>
+                <p className="text-sm text-gray-500 mb-1">{t("contact.offices.nigeria.address")}</p>
                 <p className="text-gray-600 leading-relaxed">
-                  29 Shipeolu Street, Elediye Bus Stop,
-                  <br />
-                  Along Ikorodu Road, Somolu, Lagos
+                  {t("contact.offices.nigeria.address1")}<br />
+                  {t("contact.offices.nigeria.address2")}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Email - Redesigned minimal */}
+          {/* Email */}
           <div className="group bg-gradient-to-br from-[#001f3f] to-[#002b4f] rounded-3xl shadow-xl p-8 hover:shadow-2xl transition-all duration-500 hover:-translate-y-2">
             <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-white/20 transition-colors duration-300">
               <svg
@@ -235,9 +230,9 @@ export default function ContactPage() {
                 />
               </svg>
             </div>
-            <h3 className="text-2xl font-bold text-white mb-4">Email Us</h3>
+            <h3 className="text-2xl font-bold text-white mb-4">{t("contact.offices.email.title")}</h3>
             <p className="text-blue-100 mb-4">
-              Available 24/7 - We'll respond within 24 hours
+              {t("contact.offices.email.availability")}
             </p>
             <a
               href="mailto:info@ebonybrucetravels.com"
@@ -249,18 +244,17 @@ export default function ContactPage() {
         </div>
       </section>
 
-      {/* UK Map Section - Only UK map shown */}
+      {/* UK Map Section */}
       <section className="py-8 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
         <div className="text-center mb-8">
           <span className="inline-block px-4 py-2 bg-[#33a8da]/10 text-[#33a8da] rounded-full text-sm font-semibold mb-4">
-            Our Location
+            {t("contact.map.label")}
           </span>
           <h2 className="text-3xl md:text-4xl font-bold text-[#001f3f] mb-4">
-            Visit Our UK Office
+            {t("contact.map.title")}
           </h2>
           <p className="text-gray-600 max-w-2xl mx-auto">
-            1st Floor, Suite 103, 2-6 Alma Street, Luton, LU1 2PL, United
-            Kingdom
+            {t("contact.map.address")}
           </p>
         </div>
 
@@ -273,7 +267,7 @@ export default function ContactPage() {
             allowFullScreen
             loading="lazy"
             className="absolute inset-0"
-            title="UK Office Location"
+            title={t("contact.map.title")}
           />
         </div>
 
@@ -304,7 +298,7 @@ export default function ContactPage() {
                 d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
               />
             </svg>
-            Get Directions
+            {t("contact.map.getDirections")}
           </a>
           <a
             href="tel:+441582340807"
@@ -323,7 +317,7 @@ export default function ContactPage() {
                 d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
               />
             </svg>
-            Call UK Office
+            {t("contact.map.callOffice")}
           </a>
         </div>
       </section>
@@ -333,25 +327,25 @@ export default function ContactPage() {
         <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-12 border border-gray-100">
           <div className="text-center mb-8">
             <span className="inline-block px-4 py-2 bg-[#33a8da]/10 text-[#33a8da] rounded-full text-sm font-semibold mb-4">
-              Send a Message
+              {t("contact.form.label")}
             </span>
             <h2 className="text-3xl md:text-4xl font-bold text-[#001f3f] mb-2">
-              We'd Love to Hear From You
+              {t("contact.form.title")}
             </h2>
             <p className="text-gray-600">
-              Fill out the form below and we'll get back to you within 24 hours
+              {t("contact.form.subtitle")}
             </p>
           </div>
 
           {submitStatus === "success" && (
             <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl text-green-700 text-center">
-              Thank you for your message! We'll contact you soon.
+              {t("contact.form.success")}
             </div>
           )}
 
           {submitStatus === "error" && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-center">
-              {errorMessage || "Failed to send message. Please try again."}
+              {errorMessage || t("contact.form.error.general")}
             </div>
           )}
 
@@ -359,7 +353,7 @@ export default function ContactPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Full Name *
+                  {t("contact.form.name")} *
                 </label>
                 <input
                   type="text"
@@ -368,12 +362,12 @@ export default function ContactPage() {
                   onChange={handleChange}
                   required
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#33a8da] focus:border-transparent outline-none transition"
-                  placeholder="John Doe"
+                  placeholder={t("contact.form.namePlaceholder")}
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email *
+                  {t("contact.form.email")} *
                 </label>
                 <input
                   type="email"
@@ -382,7 +376,7 @@ export default function ContactPage() {
                   onChange={handleChange}
                   required
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#33a8da] focus:border-transparent outline-none transition"
-                  placeholder="john@example.com"
+                  placeholder={t("contact.form.emailPlaceholder")}
                 />
               </div>
             </div>
@@ -390,7 +384,7 @@ export default function ContactPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Phone Number
+                  {t("contact.form.phone")}
                 </label>
                 <input
                   type="tel"
@@ -398,12 +392,12 @@ export default function ContactPage() {
                   value={formData.phone}
                   onChange={handleChange}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#33a8da] focus:border-transparent outline-none transition"
-                  placeholder="+44 1582 340807"
+                  placeholder={t("contact.form.phonePlaceholder")}
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Service Interested In *
+                  {t("contact.form.service")} *
                 </label>
                 <select
                   name="serviceInterestedIn"
@@ -412,19 +406,19 @@ export default function ContactPage() {
                   required
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#33a8da] focus:border-transparent outline-none transition"
                 >
-                  <option value="">Select a service</option>
-                  <option value="travel">Travel Services</option>
-                  <option value="logistics">Logistics - DHL</option>
-                  <option value="education">Educational Consulting</option>
-                  <option value="hotel">Hotel Reservations</option>
-                  <option value="other">Other</option>
+                  <option value="">{t("contact.form.selectService")}</option>
+                  <option value="travel">{t("contact.form.services.travel")}</option>
+                  <option value="logistics">{t("contact.form.services.logistics")}</option>
+                  <option value="education">{t("contact.form.services.education")}</option>
+                  <option value="hotel">{t("contact.form.services.hotel")}</option>
+                  <option value="other">{t("contact.form.services.other")}</option>
                 </select>
               </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Message *
+                {t("contact.form.message")} *
               </label>
               <textarea
                 name="message"
@@ -433,7 +427,7 @@ export default function ContactPage() {
                 required
                 rows={5}
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#33a8da] focus:border-transparent outline-none transition resize-none"
-                placeholder="Tell us how we can help you..."
+                placeholder={t("contact.form.messagePlaceholder")}
               />
             </div>
 
@@ -464,10 +458,10 @@ export default function ContactPage() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  Sending...
+                  {t("contact.form.sending")}
                 </span>
               ) : (
-                "Send Message"
+                t("contact.form.send")
               )}
             </button>
           </form>
@@ -479,10 +473,10 @@ export default function ContactPage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <span className="inline-block px-4 py-2 bg-[#33a8da]/10 text-[#33a8da] rounded-full text-sm font-semibold mb-4">
-              Operating Hours
+              {t("contact.hours.label")}
             </span>
             <h2 className="text-3xl md:text-4xl font-bold text-[#001f3f] mb-4">
-              When to Reach Us
+              {t("contact.hours.title")}
             </h2>
           </div>
 
@@ -505,33 +499,40 @@ export default function ContactPage() {
                   </svg>
                 </div>
                 <h3 className="text-2xl font-bold text-[#001f3f]">
-                  Weekly Schedule
+                  {t("contact.hours.schedule")}
                 </h3>
               </div>
 
               <div className="space-y-4 max-w-md mx-auto">
                 <div className="flex justify-between items-center text-lg border-b border-gray-100 pb-3">
                   <span className="text-gray-600 font-medium">
-                    Monday - Friday
+                    {t("contact.hours.weekdays")}
                   </span>
                   <span className="font-bold text-[#001f3f]">
-                    10:00 AM – 8:00 PM
+                    {t("contact.hours.weekdayHours")}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-lg border-b border-gray-100 pb-3">
-                  <span className="text-gray-600 font-medium">Saturday</span>
-                  <span className="font-bold text-[#33a8da]">Closed</span>
+                  <span className="text-gray-600 font-medium">
+                    {t("contact.hours.saturday")}
+                  </span>
+                  <span className="font-bold text-[#33a8da]">
+                    {t("contact.hours.closed")}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center text-lg">
-                  <span className="text-gray-600 font-medium">Sunday</span>
-                  <span className="font-bold text-[#33a8da]">Closed</span>
+                  <span className="text-gray-600 font-medium">
+                    {t("contact.hours.sunday")}
+                  </span>
+                  <span className="font-bold text-[#33a8da]">
+                    {t("contact.hours.closed")}
+                  </span>
                 </div>
               </div>
 
               <div className="mt-8 pt-6 border-t border-gray-100 text-center">
                 <p className="text-gray-500">
-                  For urgent matters, please call our UK office during operating
-                  hours or email us anytime.
+                  {t("contact.hours.note")}
                 </p>
               </div>
             </div>
@@ -543,31 +544,19 @@ export default function ContactPage() {
       <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
         <div className="text-center mb-12">
           <span className="inline-block px-4 py-2 bg-[#33a8da]/10 text-[#33a8da] rounded-full text-sm font-semibold mb-4">
-            Quick Answers
+            {t("contact.faq.label")}
           </span>
           <h2 className="text-3xl md:text-4xl font-bold text-[#001f3f] mb-4">
-            Frequently Asked Questions
+            {t("contact.faq.title")}
           </h2>
         </div>
 
         <div className="space-y-4">
           {[
-            {
-              q: "Do you book flights?",
-              a: "Yes, flights are our specialty! From finding the best deals to managing your seat assignments, we take the stress out of air travel.",
-            },
-            {
-              q: "What DHL services do you offer?",
-              a: "As an authorized DHL franchise partner, we offer courier services, international parcel shipping, document handling, and package tracking services.",
-            },
-            {
-              q: "Do you provide visa assistance?",
-              a: "We do not provide immigration or visa representation services. Our educational consulting focuses on academic counseling and course matching only.",
-            },
-            {
-              q: "What are your operating hours?",
-              a: "We are open Monday to Friday from 10:00 AM to 8:00 PM. We are closed on Saturdays and Sundays, but you can always reach us via email.",
-            },
+            { q: t("contact.faq.q1"), a: t("contact.faq.a1") },
+            { q: t("contact.faq.q2"), a: t("contact.faq.a2") },
+            { q: t("contact.faq.q3"), a: t("contact.faq.a3") },
+            { q: t("contact.faq.q4"), a: t("contact.faq.a4") },
           ].map((faq, index) => (
             <div
               key={index}
@@ -590,10 +579,10 @@ export default function ContactPage() {
 
           <div className="relative">
             <h3 className="text-3xl md:text-4xl font-bold mb-4">
-              Prefer to speak with us directly?
+              {t("contact.cta.title")}
             </h3>
             <p className="text-xl mb-8 opacity-90 max-w-2xl mx-auto">
-              Call our UK office or send us an email. We're here to help
+              {t("contact.cta.subtitle")}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <a
@@ -613,7 +602,7 @@ export default function ContactPage() {
                     d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
                   />
                 </svg>
-                Call UK Office
+                {t("contact.cta.call")}
               </a>
               <a
                 href="mailto:info@ebonybrucetravels.com"
@@ -632,7 +621,7 @@ export default function ContactPage() {
                     d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
                   />
                 </svg>
-                Send Email
+                {t("contact.cta.email")}
               </a>
             </div>
           </div>

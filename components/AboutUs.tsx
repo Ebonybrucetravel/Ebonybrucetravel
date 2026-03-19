@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { useLanguage } from "../context/LanguageContext";
 
 interface AboutUsProps {
   onBack: () => void;
@@ -7,48 +8,48 @@ interface AboutUsProps {
 }
 
 const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
+  const { t } = useLanguage();
+
   const team = [
     {
       name: "Bruce Ayobami Benjamin",
-      title: "Business Support Officer",
+      title: t("about.team.bruceTitle"),
       img: "/images/bruce.png",
     },
     {
       name: "Ojo Afolabi Sunday",
-      title: "Customer Service Associate",
+      title: t("about.team.ojoTitle"),
       img: "/images/Ojo.png",
     },
     {
       name: "ADETUNMBI Yetunde Oluwafunto",
-      title: "Customer Service Associate",
+      title: t("about.team.adeTitle"),
       img: "/images/ade.png",
     },
     {
       name: "James Olabisi Ogundele",
-      title: "Business Operations Manager",
+      title: t("about.team.jamesTitle"),
       img: "/images/James.jpg",
     },
   ];
 
-  // Updated blog posts with correct slugs that match your blog system
   const blogPosts = [
     {
-      slug: "hotel-booking-comfortable-stay", // This matches the slug in your blog system
-      title: "Hotel Booking: Your Comfortable Stay, Every Time",
+      slug: "hotel-booking-comfortable-stay",
+      title: t("about.blogPost1.title"),
       img: "https://plus.unsplash.com/premium_photo-1682089290752-2bd553508b29?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
     },
     {
-      slug: "speedy-admission-processing", // This matches the slug in your blog system
-      title: "Speedy Admission Processing: Your Fast-Track to Studying Abroad",
+      slug: "speedy-admission-processing",
+      title: t("about.blogPost2.title"),
       img: "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
     },
   ];
 
   const handleBlogClick = (slug: string) => {
     if (onNavigateToBlog) {
-      onNavigateToBlog(slug); // This will navigate to /blog/[slug]
+      onNavigateToBlog(slug);
     } else {
-      // Fallback if onNavigateToBlog is not provided
       window.location.href = `/blog/${slug}`;
     }
   };
@@ -70,7 +71,7 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
           >
             <path d="M15 19l-7-7 7-7" />
           </svg>
-          Back to Home
+          {t("about.backToHome")}
         </button>
       </div>
 
@@ -79,7 +80,7 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
         <div className="absolute inset-0 opacity-10">
           <img
             src="https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=1200"
-            alt="About background"
+            alt={t("about.bannerAlt")}
             className="w-full h-full object-cover"
           />
         </div>
@@ -88,12 +89,11 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
             Ebony Bruce Travels
             <span className="text-[#33a8da]">
               <br />
-              About Us
+              {t("about.bannerTitle")}
             </span>
           </h1>
           <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-            Your trusted partner in travel, logistics, and education—connecting
-            dreams across continents since 2014
+            {t("about.bannerSubtitle")}
           </p>
         </div>
       </section>
@@ -108,14 +108,14 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
                 <img
                   src="/images/about.jpg"
                   className="w-full h-full object-cover"
-                  alt="Educational consulting"
+                  alt={t("about.story.imgAlt1")}
                 />
               </div>
               <div className="h-[400px] rounded-xl overflow-hidden shadow-lg relative">
                 <img
                   src="https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&q=80&w=600"
                   className="w-full h-full object-cover"
-                  alt="UK expansion"
+                  alt={t("about.story.imgAlt2")}
                 />
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="bg-white/95 backdrop-blur p-8 rounded-xl shadow-2xl text-center transform translate-y-24">
@@ -123,7 +123,7 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
                       12+
                     </p>
                     <p className="text-sm font-bold text-gray-400 uppercase tracking-widest mt-1">
-                      Years Of Excellence
+                      {t("about.story.yearsOfExcellence")}
                     </p>
                   </div>
                 </div>
@@ -134,7 +134,7 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
                 <img
                   src="https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&q=80&w=600"
                   className="w-full h-full object-cover"
-                  alt="Global team"
+                  alt={t("about.story.imgAlt3")}
                 />
               </div>
             </div>
@@ -142,7 +142,7 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
             {/* Timeline Badge */}
             <div className="absolute -bottom-6 left-4 bg-[#001f3f] text-white px-6 py-3 rounded-xl shadow-xl">
               <p className="text-sm font-bold tracking-wide">
-                Est. 2014 • Nigeria → UK
+                {t("about.story.timeline")}
               </p>
             </div>
           </div>
@@ -151,10 +151,10 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
           <div className="space-y-8">
             <div>
               <h4 className="text-[#33a8da] font-black text-sm uppercase tracking-widest mb-4">
-                Our Journey
+                {t("about.story.ourJourney")}
               </h4>
               <h1 className="text-4xl lg:text-5xl font-black text-[#001f3f] tracking-tighter leading-tight mb-8">
-                Connecting Dreams Across Continents Since 2014
+                {t("about.story.title")}
               </h1>
             </div>
 
@@ -163,43 +163,25 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
                 <span className="text-[#001f3f] font-black">
                   Ebony Bruce Travels Ltd
                 </span>{" "}
-                began in Nigeria in February 2014 as an educational consulting
-                company, helping students achieve their dreams of studying
-                abroad. From day one, we prioritized equipping ourselves with
-                the latest knowledge, actively participating in educational
-                workshops and engaging with representatives from universities
-                and colleges worldwide.
+                {t("about.story.paragraph1")}
               </p>
 
               <div className="bg-gray-50 p-6 rounded-xl border-l-4 border-[#33a8da] my-8">
                 <p className="italic text-gray-700">
-                  "Our commitment to personalized and high-quality service
-                  quickly built a reputation for reliability and trust that
-                  continues to guide us today."
+                  "{t("about.story.quote")}"
                 </p>
               </div>
 
-              <p>
-                As our vision grew, so did our reach. A pivotal moment occurred
-                in September 2021 when our director pursued a Master's degree in
-                the UK to gain expertise in tourism and hospitality. This
-                strategic move led to the company's official registration in the
-                UK in October 2022, marking our transformation into an
-                international brand.
-              </p>
+              <p>{t("about.story.paragraph2")}</p>
 
-              <p>
-                This expansion enables us to diversify our services and better
-                meet the evolving needs of our global clients. Today, we're
-                proud to offer:
-              </p>
+              <p>{t("about.story.paragraph3")}</p>
 
               <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
                 {[
-                  "Travel Services",
-                  "Logistics – DHL Franchised Services ",
-                  "Hotel Reservations",
-                  "Educational Consulting",
+                  t("about.story.service1"),
+                  t("about.story.service2"),
+                  t("about.story.service3"),
+                  t("about.story.service4"),
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-2">
                     <svg
@@ -228,22 +210,14 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
       <section className="bg-gradient-to-br from-[#001f3f] to-[#002b4f] py-24 text-white">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <h2 className="text-3xl md:text-4xl font-black mb-8 tracking-tight">
-            Welcome to Ebony Bruce Travels Limited!
+            {t("about.welcome.title")}
           </h2>
           <div className="w-20 h-1 bg-[#33a8da] mx-auto mb-10"></div>
           <p className="text-xl text-gray-200 leading-relaxed mb-8">
-            At Ebony Bruce Travels, we believe that seamless travel, reliable
-            logistics, and empowering education can spark joy and
-            transformation. We're passionate about helping our clients find
-            peace, connection, and fulfillment through personalized, world-class
-            experiences.
+            {t("about.welcome.paragraph1")}
           </p>
           <p className="text-gray-300 leading-relaxed">
-            Whether you're crafting unforgettable travel experiences,
-            streamlining logistics, guiding students toward their dreams, or
-            keeping our operations running smoothly, you're now a vital part of
-            a company that connects people, ideas, and destinations across the
-            world.
+            {t("about.welcome.paragraph2")}
           </p>
         </div>
       </section>
@@ -260,32 +234,29 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
         <div className="max-w-7xl mx-auto px-6 relative z-10">
           <div className="text-center mb-16">
             <p className="text-[#33a8da] font-bold uppercase tracking-widest text-sm mb-4">
-              Why Choose Us
+              {t("about.whyChooseUs.sectionTitle")}
             </p>
             <h2 className="text-3xl md:text-5xl font-black text-white tracking-tight">
-              Making an Impact Together
+              {t("about.whyChooseUs.title")}
             </h2>
             <p className="text-gray-400 mt-6 max-w-2xl mx-auto">
-              Imagine helping a family plan a cultural tour in the UK, ensuring
-              a critical package reaches its destination on time, or empowering
-              a student to study abroad. These are just some of the meaningful
-              impacts you'll make here.
+              {t("about.whyChooseUs.subtitle")}
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
             {[
               {
-                title: "Travel Experiences",
-                desc: "Crafting unforgettable journeys that create lasting memories for families and individuals exploring the world.",
+                title: t("about.whyChooseUs.item1Title"),
+                desc: t("about.whyChooseUs.item1Desc"),
               },
               {
-                title: "Logistics Excellence",
-                desc: "Ensuring critical packages reach their destinations on time with our DHL franchised services.",
+                title: t("about.whyChooseUs.item2Title"),
+                desc: t("about.whyChooseUs.item2Desc"),
               },
               {
-                title: "Educational Dreams",
-                desc: "Empowering students to achieve their dreams of studying abroad through expert guidance.",
+                title: t("about.whyChooseUs.item3Title"),
+                desc: t("about.whyChooseUs.item3Desc"),
               },
             ].map((item, i) => (
               <div key={i} className="text-center group">
@@ -307,15 +278,13 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
       {/* 5. Team Section */}
       <section className="max-w-7xl mx-auto px-6 py-32 text-center">
         <p className="text-[#33a8da] font-bold uppercase tracking-widest text-sm mb-4">
-          Our Team
+          {t("about.team.sectionTitle")}
         </p>
         <h2 className="text-4xl md:text-5xl font-black text-[#001f3f] tracking-tighter mb-4">
-          Meet Our Global Family
+          {t("about.team.title")}
         </h2>
         <p className="text-gray-500 max-w-2xl mx-auto mb-12">
-          We're absolutely thrilled to have you join our vibrant, global
-          family—a team that's passionate about transforming lives through
-          exceptional service.
+          {t("about.team.subtitle")}
         </p>
         <div className="w-16 h-1 bg-[#33a8da] mx-auto mb-20 rounded-full"></div>
 
@@ -344,14 +313,13 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
       <section className="bg-gray-50/50 py-32">
         <div className="max-w-7xl mx-auto px-6 text-center">
           <p className="text-[#33a8da] font-bold uppercase tracking-widest text-sm mb-4">
-            From The Blog
+            {t("about.blog.sectionTitle")}
           </p>
           <h2 className="text-4xl font-black text-[#001f3f] tracking-tighter mb-4">
-            Our Latest Posts
+            {t("about.blog.title")}
           </h2>
           <p className="text-gray-500 max-w-2xl mx-auto mb-16">
-            Insights and updates from our journey in travel, logistics, and
-            education
+            {t("about.blog.subtitle")}
           </p>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 text-left">
@@ -375,7 +343,7 @@ const AboutUs: React.FC<AboutUsProps> = ({ onBack, onNavigateToBlog }) => {
                     onClick={() => handleBlogClick(post.slug)}
                     className="bg-[#33a8da] text-white font-black px-10 py-4 rounded-xl hover:bg-[#2c98c7] transition active:scale-95 text-sm uppercase tracking-widest shadow-lg"
                   >
-                    Read More
+                    {t("about.blog.readMore")}
                   </button>
                 </div>
               </div>

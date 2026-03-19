@@ -3,6 +3,7 @@
 import React from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useLanguage } from "@/context/LanguageContext";
 import { PageContent } from "@/lib/types";
 
 interface ServicesPageContentProps {
@@ -12,6 +13,8 @@ interface ServicesPageContentProps {
 export default function ServicesPageContent({
   content,
 }: ServicesPageContentProps) {
+  const { t } = useLanguage();
+
   // Split sections into groups based on your content
   const serviceSections = content.sections.slice(1, 4); // 3 core sectors
   const valuesSections = content.sections.slice(8, 13); // 5 core values
@@ -24,17 +27,16 @@ export default function ServicesPageContent({
         <div className="absolute inset-0 opacity-10">
           <img
             src="https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=1200"
-            alt="Services background"
+            alt={t("services.banner.alt")}
             className="w-full h-full object-cover"
           />
         </div>
         <div className="relative max-w-7xl mx-auto px-6 text-center">
           <h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-6">
-            Ebony Bruce Travels <span className="text-[#33a8da]">Services</span>
+            Ebony Bruce Travels <span className="text-[#33a8da]">{t("services.banner.title")}</span>
           </h1>
           <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-            Your trusted partner in travel, logistics, and education—connecting
-            dreams across continents since 2014
+            {t("services.banner.subtitle")}
           </p>
         </div>
       </section>
@@ -46,13 +48,13 @@ export default function ServicesPageContent({
       >
         <div className="text-center mb-16">
           <span className="inline-block px-4 py-2 bg-[#33a8da]/10 text-[#33a8da] rounded-full text-sm font-semibold mb-4">
-            Our Core Sectors
+            {t("services.coreSectors.label")}
           </span>
           <h2 className="text-4xl md:text-5xl font-bold text-[#001f3f] mb-6">
             {content.sections[0].title}
           </h2>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-            Ebony Bruce Travels Operates Across Three Core Sectors
+            {t("services.coreSectors.subtitle")}
           </p>
         </div>
 
@@ -62,7 +64,7 @@ export default function ServicesPageContent({
             <div className="relative h-48 w-full overflow-hidden">
               <Image
                 src="https://images.unsplash.com/photo-1506929562872-bb421503ef21?q=80&w=1968&auto=format&fit=crop"
-                alt="Travel Services"
+                alt={t("services.travel.alt")}
                 fill
                 className="object-cover group-hover:scale-110 transition-transform duration-700"
               />
@@ -73,25 +75,19 @@ export default function ServicesPageContent({
             </div>
             <div className="p-8">
               <h3 className="text-2xl font-bold text-[#001f3f] mb-4">
-                Travel Services
+                {t("services.travel.title")}
               </h3>
               <p className="text-gray-600 leading-relaxed mb-4">
-                We are a specialized flight travel agency focused on
-                professional flight booking and reservation management. We
-                handle the complexities of air travel so you don't have to. From
-                individual itineraries to large-scale ticketing solutions, our
-                mission is to provide efficient, reliable flight services for a
-                global clientele.
+                {t("services.travel.desc1")}
               </p>
               <p className="text-gray-600 leading-relaxed mb-6">
-                Our focus is providing tailored travel experiences and ticketing
-                solutions for both local and international clients.
+                {t("services.travel.desc2")}
               </p>
               <Link
                 href="/services/travel-services"
                 className="inline-flex items-center text-[#33a8da] font-semibold group-hover:gap-2 transition-all"
               >
-                Learn More About Our Travel Services
+                {t("services.travel.learnMore")}
                 <svg
                   className="w-5 h-5 ml-1 transform group-hover:translate-x-1 transition-transform"
                   fill="none"
@@ -114,7 +110,7 @@ export default function ServicesPageContent({
             <div className="relative h-48 w-full overflow-hidden">
               <Image
                 src="https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=2070&auto=format&fit=crop"
-                alt="Logistics Services"
+                alt={t("services.logistics.alt")}
                 fill
                 className="object-cover group-hover:scale-110 transition-transform duration-700"
               />
@@ -125,23 +121,19 @@ export default function ServicesPageContent({
             </div>
             <div className="p-8">
               <h3 className="text-2xl font-bold text-[#001f3f] mb-4">
-                DHL Franchised Logistics
+                {t("services.logistics.title")}
               </h3>
               <p className="text-gray-600 leading-relaxed mb-4">
-                As an authorized DHL franchise partner, we offer courier and
-                international parcel services. This includes handling document
-                and package shipments, offering tracking support, and providing
-                clients with a secure and efficient logistics solution.
+                {t("services.logistics.desc1")}
               </p>
               <p className="text-gray-600 leading-relaxed mb-6">
-                Including Hotel Reservations: We provide reliable hotel booking
-                support for travelers, both domestic and international.
+                {t("services.logistics.desc2")}
               </p>
               <Link
                 href="/services/dhl-logistics"
                 className="inline-flex items-center text-[#33a8da] font-semibold group-hover:gap-2 transition-all"
               >
-                Learn More About DHL Services
+                {t("services.logistics.learnMore")}
                 <svg
                   className="w-5 h-5 ml-1 transform group-hover:translate-x-1 transition-transform"
                   fill="none"
@@ -164,7 +156,7 @@ export default function ServicesPageContent({
             <div className="relative h-48 w-full overflow-hidden">
               <Image
                 src="https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?q=80&w=2070&auto=format&fit=crop"
-                alt="Educational Consulting"
+                alt={t("services.admission.alt")}
                 fill
                 className="object-cover group-hover:scale-110 transition-transform duration-700"
               />
@@ -175,21 +167,19 @@ export default function ServicesPageContent({
             </div>
             <div className="p-8">
               <h3 className="text-2xl font-bold text-[#001f3f] mb-4">
-                Speedy Admission Processing
+                {t("services.admission.title")}
               </h3>
               <p className="text-gray-600 leading-relaxed mb-4">
-                We offer advisory services for students seeking admission to
-                international educational institutions. This includes academic
-                counseling and course matching.
+                {t("services.admission.desc1")}
               </p>
               <p className="text-gray-600 leading-relaxed mb-6">
-                We do not provide immigration or visa representation services.
+                {t("services.admission.desc2")}
               </p>
               <Link
                 href="/services/admission-processing"
                 className="inline-flex items-center text-[#33a8da] font-semibold group-hover:gap-2 transition-all"
               >
-                Learn More About Admissions
+                {t("services.admission.learnMore")}
                 <svg
                   className="w-5 h-5 ml-1 transform group-hover:translate-x-1 transition-transform"
                   fill="none"
@@ -213,20 +203,17 @@ export default function ServicesPageContent({
       <section className="py-16 bg-[#F8FAFC]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <span className="inline-block px-4 py-2 bg-[#33a8da]/10 text-[#33a8da] rounded-full text-sm font-semibold mb-4">
-            Our Mission
+            {t("services.mission.label")}
           </span>
           <h2 className="text-3xl md:text-4xl font-bold text-[#001f3f] mb-6">
-            {content.sections[7]?.title || "Our Mission"}
+            {content.sections[7]?.title || t("services.mission.title")}
           </h2>
           <p className="text-lg text-gray-700 leading-relaxed mb-8">
-            {content.sections[7]?.body ||
-              "At Ebony Bruce Travels, our mission is to deliver unparalleled quality service and customer satisfaction across travel, education and logistics leveraging our portfolio and DHL franchise status to provide seamless, integrated solutions."}
+            {content.sections[7]?.body || t("services.mission.body")}
           </p>
           <div className="bg-[#33a8da] text-white p-6 rounded-2xl">
             <p className="text-xl italic">
-              "We focus on solutions that are customer-centric, reliable, and
-              innovative. We don't just meet expectations – we go the extra mile
-              to exceed them, every time."
+              {t("services.mission.quote")}
             </p>
           </div>
         </div>
@@ -237,7 +224,7 @@ export default function ServicesPageContent({
         <div className="absolute inset-0">
           <Image
             src="https://images.unsplash.com/photo-1552664730-d307ca884978?q=80&w=2070&auto=format&fit=crop"
-            alt="Team working together"
+            alt={t("services.values.alt")}
             fill
             className="object-cover"
           />
@@ -247,14 +234,13 @@ export default function ServicesPageContent({
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <span className="inline-block px-4 py-2 bg-white/20 rounded-full text-white font-semibold mb-4 backdrop-blur-sm">
-              Our Foundation
+              {t("services.values.foundation")}
             </span>
             <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
-              Our Core Values
+              {t("services.values.title")}
             </h2>
             <p className="text-xl text-gray-200 max-w-3xl mx-auto leading-relaxed">
-              Our core values are the foundation of everything we do at Ebony
-              Bruce Travels.
+              {t("services.values.subtitle")}
             </p>
           </div>
 
@@ -262,28 +248,28 @@ export default function ServicesPageContent({
             {[
               {
                 icon: "⚡",
-                title: "Integrity",
-                desc: "We build trust through honesty and transparency, ensuring every interaction is fair and clear.",
+                title: t("services.values.integrity.title"),
+                desc: t("services.values.integrity.desc"),
               },
               {
                 icon: "⭐",
-                title: "Excellence",
-                desc: "We deliver services of the highest quality, always striving for perfection.",
+                title: t("services.values.excellence.title"),
+                desc: t("services.values.excellence.desc"),
               },
               {
                 icon: "❤️",
-                title: "Customer Satisfaction",
-                desc: "Our clients come first. We listen, serve, and support to make their experience exceptional.",
+                title: t("services.values.customerSatisfaction.title"),
+                desc: t("services.values.customerSatisfaction.desc"),
               },
               {
                 icon: "💡",
-                title: "Innovation",
-                desc: "We embrace change and seek smarter, better ways to serve our clients.",
+                title: t("services.values.innovation.title"),
+                desc: t("services.values.innovation.desc"),
               },
               {
                 icon: "🤝",
-                title: "Teamwork",
-                desc: "We grow and win together, collaborating across departments to achieve our goals.",
+                title: t("services.values.teamwork.title"),
+                desc: t("services.values.teamwork.desc"),
               },
             ].map((value, index) => (
               <div
@@ -305,13 +291,13 @@ export default function ServicesPageContent({
       <section className="py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="text-center mb-16">
           <span className="inline-block px-4 py-2 bg-[#33a8da]/10 text-[#33a8da] rounded-full text-sm font-semibold mb-4">
-            Why Us
+            {t("services.whyUs.label")}
           </span>
           <h2 className="text-4xl md:text-5xl font-bold text-[#001f3f] mb-6">
-            Why Choose Ebony Bruce?
+            {t("services.whyUs.title")}
           </h2>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-            Experience the Ebony Bruce Travels difference
+            {t("services.whyUs.subtitle")}
           </p>
         </div>
 
@@ -319,22 +305,22 @@ export default function ServicesPageContent({
           {[
             {
               icon: "🌍",
-              title: "Global Reach",
-              body: "Access to worldwide destinations and international logistics networks through our DHL partnership.",
+              title: t("services.whyUs.globalReach.title"),
+              body: t("services.whyUs.globalReach.body"),
               image:
                 "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop",
             },
             {
               icon: "🤝",
-              title: "Personalized Service",
-              body: "Tailored solutions that meet your specific needs in travel, logistics, and education.",
+              title: t("services.whyUs.personalizedService.title"),
+              body: t("services.whyUs.personalizedService.body"),
               image:
                 "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?q=80&w=2070&auto=format&fit=crop",
             },
             {
               icon: "✓",
-              title: "Trusted Partner",
-              body: "Authorized DHL franchise with years of experience in delivering excellence.",
+              title: t("services.whyUs.trustedPartner.title"),
+              body: t("services.whyUs.trustedPartner.body"),
               image:
                 "https://images.unsplash.com/photo-1560179707-f14e90ef3623?q=80&w=2073&auto=format&fit=crop",
             },
@@ -371,7 +357,7 @@ export default function ServicesPageContent({
         <div className="absolute inset-0">
           <Image
             src="https://images.unsplash.com/photo-1497215728101-856f4ea42174?q=80&w=2070&auto=format&fit=crop"
-            alt="Office background"
+            alt={t("services.stats.alt")}
             fill
             className="object-cover"
           />
@@ -381,10 +367,10 @@ export default function ServicesPageContent({
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {[
-              { number: "1000+", label: "Happy Clients" },
-              { number: "50+", label: "Countries" },
-              { number: "100+", label: "Partners" },
-              { number: "24/7", label: "Support" },
+              { number: "1000+", label: t("stats.customers") },
+              { number: "50+", label: t("services.stats.countries") },
+              { number: "100+", label: t("stats.partners") },
+              { number: "24/7", label: t("stats.support") },
             ].map((stat, index) => (
               <div key={index} className="text-center">
                 <div className="text-4xl md:text-5xl font-bold text-white mb-2">
@@ -403,7 +389,7 @@ export default function ServicesPageContent({
           <div className="absolute inset-0">
             <Image
               src="https://images.unsplash.com/photo-1469474968028-56623f02e42e?q=80&w=2074&auto=format&fit=crop"
-              alt="Beautiful destination"
+              alt={t("services.cta.alt")}
               fill
               className="object-cover"
             />
@@ -416,11 +402,10 @@ export default function ServicesPageContent({
 
             <div className="relative">
               <h3 className="text-4xl md:text-5xl font-bold mb-6">
-                Ready to Start Your Journey?
+                {t("services.cta.title")}
               </h3>
               <p className="text-xl mb-10 opacity-90 max-w-2xl mx-auto leading-relaxed">
-                Let us help you with travel, logistics, or educational
-                consulting needs.
+                {t("services.cta.subtitle")}
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -428,7 +413,7 @@ export default function ServicesPageContent({
                   href="/contact"
                   className="inline-flex items-center justify-center px-10 py-5 bg-white text-[#001f3f] font-semibold rounded-full hover:bg-gray-100 transform hover:scale-105 transition-all duration-300 shadow-xl text-lg"
                 >
-                  Contact Us Today
+                  {t("services.cta.contact")}
                   <svg
                     className="w-5 h-5 ml-2"
                     fill="none"
@@ -448,7 +433,7 @@ export default function ServicesPageContent({
                   href="/book"
                   className="inline-flex items-center justify-center px-10 py-5 border-2 border-white text-white font-semibold rounded-full hover:bg-white hover:text-[#001f3f] transform hover:scale-105 transition-all duration-300 shadow-xl text-lg"
                 >
-                  Make a Booking
+                  {t("services.cta.book")}
                 </Link>
               </div>
             </div>
