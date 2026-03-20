@@ -136,13 +136,18 @@ const Hero: React.FC<HeroProps> = ({
 
   return (
     <section className="relative min-h-[450px] md:min-h-[650px] flex items-center justify-center overflow-hidden py-4 md:py-6">
-      <div className="absolute inset-0 z-0">
-        <img
-          src="/images/bg.jpg"
-          alt="Ebony Bruce Travels Background"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-black/70" />
+      {/* Bright blue and white gradient background */}
+      <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#33a8da] via-[#4bb5e3] to-[#6bc2ed]">
+        <div className="absolute inset-0 bg-white/10"></div>
+        {/* Decorative wave pattern */}
+        <svg
+          className="absolute bottom-0 left-0 w-full h-32 md:h-48 text-white/5"
+          preserveAspectRatio="none"
+          viewBox="0 0 1440 320"
+          fill="currentColor"
+        >
+          <path d="M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,122.7C672,117,768,139,864,154.7C960,171,1056,181,1152,170.7C1248,160,1344,128,1392,112L1440,96L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z" />
+        </svg>
       </div>
 
       <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -154,7 +159,7 @@ const Hero: React.FC<HeroProps> = ({
               ? t('hero.cars.title')
               : t('hero.title')}
           </h1>
-          <p className="text-base sm:text-lg md:text-xl text-gray-100 max-w-2xl mx-auto font-medium opacity-95 leading-relaxed">
+          <p className="text-base sm:text-lg md:text-xl text-white max-w-2xl mx-auto font-medium opacity-95 leading-relaxed">
             {isHotelTab()
               ? t('hero.hotels.subtitle')
               : isCarTab()
@@ -180,7 +185,7 @@ const Hero: React.FC<HeroProps> = ({
                   ? t('hero.popular.hotels.heading')
                   : t('hero.popular.cars.heading')}
               </h3>
-              <p className="text-gray-200 text-sm md:text-base">
+              <p className="text-white/90 text-sm md:text-base">
                 {isHotelTab()
                   ? t('hero.popular.hotels.subheading')
                   : t('hero.popular.cars.subheading')}
@@ -197,7 +202,7 @@ const Hero: React.FC<HeroProps> = ({
                         ? handleQuickHotelSearch(item)
                         : handleQuickCarSearch(item)
                     }
-                    className="group relative overflow-hidden rounded-xl w-28 h-28 md:w-32 md:h-32 flex-shrink-0 animate-in fade-in slide-in-from-bottom-4"
+                    className="group relative overflow-hidden rounded-xl w-28 h-28 md:w-32 md:h-32 flex-shrink-0 animate-in fade-in slide-in-from-bottom-4 shadow-lg hover:shadow-xl transition-shadow"
                     style={{
                       animationDelay: `${index * 100}ms`,
                       animationDuration: "500ms",
@@ -215,15 +220,15 @@ const Hero: React.FC<HeroProps> = ({
                       <span className="text-white font-bold text-sm md:text-base drop-shadow-lg">
                         {item.name}
                       </span>
-                      <span className="text-gray-200 text-xs mt-1 bg-black/30 px-2 py-0.5 rounded-full">
+                      <span className="text-white/80 text-xs mt-1 bg-black/30 px-2 py-0.5 rounded-full">
                         {item.code}
                       </span>
                     </div>
                     <div
                       className={`absolute inset-0 ${
                         isHotelTab()
-                          ? "bg-blue-500/0 group-hover:bg-blue-500/10"
-                          : "bg-green-500/0 group-hover:bg-green-500/10"
+                          ? "bg-white/0 group-hover:bg-white/20"
+                          : "bg-white/0 group-hover:bg-white/20"
                       } transition-all duration-300`}
                     />
                   </button>
@@ -238,7 +243,7 @@ const Hero: React.FC<HeroProps> = ({
           <div className="flex flex-col md:flex-row items-center justify-center gap-8 text-white">
             <div className="text-center">
               <div className="text-2xl md:text-3xl font-bold mb-1">5000+</div>
-              <div className="text-sm text-gray-200">
+              <div className="text-sm text-white/90">
                 {t('stats.customers')}
               </div>
             </div>
@@ -247,7 +252,7 @@ const Hero: React.FC<HeroProps> = ({
 
             <div className="text-center">
               <div className="text-2xl md:text-3xl font-bold mb-1">200+</div>
-              <div className="text-sm text-gray-200">
+              <div className="text-sm text-white/90">
                 {isHotelTab()
                   ? t('stats.hotels')
                   : isCarTab()
@@ -260,7 +265,7 @@ const Hero: React.FC<HeroProps> = ({
 
             <div className="text-center">
               <div className="text-2xl md:text-3xl font-bold mb-1">24/7</div>
-              <div className="text-sm text-gray-200">
+              <div className="text-sm text-white/90">
                 {t('stats.support')}
               </div>
             </div>

@@ -16,7 +16,8 @@ export default function SearchPage() {
     airlines,
     isLoadingAirlines,
     searchError,
-    searchCompleted
+    searchCompleted,
+    search // Add this from your context if available
   } = useSearch();
 
   // Debug only - remove in production
@@ -49,6 +50,47 @@ export default function SearchPage() {
   const handleClear = () => {
     clearSearch();
     router.push('/');
+  };
+
+  // Handle new search from the compact search box
+  const handleNewSearch = async (searchData: any) => {
+    console.log('🔄 New search from compact box:', searchData);
+    
+    // If your context has a search function, use it
+    if (typeof search === 'function') {
+      await search(searchData);
+    } else {
+      // Otherwise, you need to implement the search here
+      // This would typically call your API and update the context
+      console.warn('Search function not available in context');
+      
+      // Alternative: navigate to home page with search params
+      const params = new URLSearchParams();
+      params.set('type', searchData.type);
+      
+      if (searchData.type === 'flights') {
+        params.set('tripType', searchData.tripType);
+        params.set('segments', JSON.stringify(searchData.segments));
+        if (searchData.returnDate) params.set('returnDate', searchData.returnDate);
+        params.set('passengers', JSON.stringify(searchData.passengers));
+        if (searchData.cabinClass) params.set('cabinClass', searchData.cabinClass);
+      } else if (searchData.type === 'hotels') {
+        params.set('location', searchData.location);
+        if (searchData.cityCode) params.set('cityCode', searchData.cityCode);
+        params.set('checkInDate', searchData.checkInDate);
+        params.set('checkOutDate', searchData.checkOutDate);
+        params.set('travellers', JSON.stringify(searchData.travellers));
+        params.set('rooms', searchData.rooms.toString());
+      } else if (searchData.type === 'car-rentals') {
+        params.set('pickupLocationCode', searchData.pickupLocationCode);
+        params.set('dropoffLocationCode', searchData.dropoffLocationCode);
+        params.set('pickupDateTime', searchData.pickupDateTime);
+        params.set('dropoffDateTime', searchData.dropoffDateTime);
+        params.set('passengers', searchData.passengers.toString());
+      }
+      
+      router.push(`/?${params.toString()}`);
+    }
   };
 
   // Show loading state
@@ -119,6 +161,7 @@ export default function SearchPage() {
       onSelect={handleSelect}
       isLoading={isSearching || isLoadingAirlines}
       airlines={airlines}
+      onNewSearch={handleNewSearch}  // ← ADD THIS LINE
     />
   );
 }

@@ -4,6 +4,7 @@ import { useLanguage } from "../context/LanguageContext";
 import type { SearchResult as BaseSearchResult } from "../lib/types";
 import { type Airline, createAirlinesMap } from "../lib/duffel-airlines";
 import { HotelListImage } from "./HotelListImage";
+import CompactSearchBox from "./CompactSearchBox";
 
 // Define baggage type
 interface Baggage {
@@ -12,15 +13,7 @@ interface Baggage {
 }
 
 interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
-  // ===========================================
-  // HOTEL FIELDS (UNTOUCHED)
-  // ===========================================
   amenities?: string[];
-
-  // ===========================================
-  // CAR RENTAL FIELDS - COMPLETE WITH ALL PRICE FIELDS
-  // ===========================================
-  // Price can now be either string (for flights/hotels) or object (for car rentals)
   price?: string | number | {
     total?: string;
     base?: string;
@@ -28,14 +21,10 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
     original_total?: string;
     original_currency?: string;
   };
-
-  // Price fields from car rental API
   final_price?: string;
   original_price?: string;
-  car_original_currency?: string;  // Renamed to avoid duplicate
+  car_original_currency?: string;
   base_price?: string;
-
-  // API response fields
   start?: {
     locationCode?: string;
     dateTime?: string;
@@ -115,8 +104,6 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
       text?: string;
     }>;
   }>;
-
-  // Existing fields below
   stops?: string;
   vehicleCode?: string;
   vehicleCategory?: string;
@@ -136,25 +123,17 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
   conversionNote?: string;
   duration?: string;
   isRefundable?: boolean;
-
-  // ===========================================
-  // FLIGHT FIELDS (keep as is)
-  // ===========================================
   airlineCode?: string;
   offer_request_id?: string;
   offer_id?: string;
-
-  // Price fields
   total_amount?: string;
   total_currency?: string;
   base_amount?: string;
   base_currency?: string;
   tax_amount?: string;
   tax_currency?: string;
-
-  // Conversion and markup fields
   original_amount?: string;
-  original_currency?: string;  // This is for flights
+  original_currency?: string;
   conversion_fee?: string;
   conversion_fee_percentage?: number;
   price_after_conversion?: string;
@@ -162,8 +141,6 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
   markup_amount?: string;
   final_amount?: string;
   currency?: string;
-
-  // Owner/Airline information
   owner?: {
     id?: string;
     name?: string;
@@ -172,8 +149,6 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
     logo_lockup_url?: string;
     conditions_of_carriage_url?: string;
   };
-
-  // Slices (journey segments) - Duffel format
   slices?: Array<{
     duration?: string;
     segments: Array<{
@@ -217,8 +192,6 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
       }>;
     }>;
   }>;
-
-  // Itineraries - Amadeus format (using a different name to avoid conflict)
   flightItineraries?: Array<{
     duration?: string;
     segments: Array<{
@@ -240,8 +213,6 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
       };
     }>;
   }>;
-
-  // Price object - Amadeus format (using a different name to avoid conflict)
   priceDetails?: {
     total?: string;
     currency?: string;
@@ -252,8 +223,6 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
     }>;
     grandTotal?: string;
   };
-
-  // Traveler pricing
   traveler_pricings?: Array<{
     traveler_id?: string;
     fare_option?: string;
@@ -274,34 +243,20 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
       };
     }>;
   }>;
-
-  // Payment requirements
   payment_requirements?: {
     requires_instant_payment: boolean;
     price_guarantee_expires_at?: string | null;
     payment_required_by?: string;
   };
-
-  // Timestamps
   created_at?: string;
   updated_at?: string;
   expires_at?: string;
-
-  // Emissions data
   total_emissions_kg?: string;
-
-  // Status flags
   live_mode?: boolean;
   partial?: boolean;
-
-  // Supported document types
   supported_passenger_identity_document_types?: string[];
   passenger_identity_documents_required?: boolean;
-
-  // Loyalty programmes
   supported_loyalty_programmes?: string[];
-
-  // Conditions
   conditions?: {
     refund_before_departure?: {
       allowed: boolean;
@@ -314,10 +269,6 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
       penalty_currency?: string | null;
     };
   };
-
-  // ===========================================
-  // COMPUTED FIELDS (Added during processing)
-  // ===========================================
   departureAirport?: string;
   arrivalAirport?: string;
   departureCity?: string;
@@ -331,13 +282,8 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
   flightNumber?: string;
   cabin?: string;
   baggage?: string;
-
   displayPrice?: string;
   rawPrice?: number;
-
-  // ===========================================
-  // RETURN FLIGHT FIELDS (for round trips)
-  // ===========================================
   isRoundTrip?: boolean;
   returnFlight?: {
     departureAirport?: string;
@@ -350,10 +296,6 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
     duration?: string;
     stopCount?: number;
   };
-
-  // ===========================================
-  // BACKWARD COMPATIBILITY (Keep as is)
-  // ===========================================
   realData?: {
     vehicle?: {
       imageURL?: string;
@@ -368,7 +310,6 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
     slices?: Array<any>;
     [key: string]: any;
   };
-
   type?: "flights" | "hotels" | "car-rentals";
 }
 
@@ -379,6 +320,7 @@ interface SearchResultsProps {
   onSelect?: (item: ExtendedSearchResult) => void;
   isLoading?: boolean;
   airlines?: Airline[];
+  onNewSearch?: (searchData: any) => void;
 }
 
 const SearchResults: React.FC<SearchResultsProps> = ({
@@ -388,9 +330,15 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   onSelect,
   isLoading = false,
   airlines = [],
+  onNewSearch,
 }) => {
-  const { currency } = useLanguage();
+  const { currency, t } = useLanguage();
   const searchType = (searchParams?.type || "flights").toLowerCase() as "flights" | "hotels" | "car-rentals";
+  
+  // Map searchType to compact search box tab type (car-rentals -> cars)
+  const compactTab = searchType === 'car-rentals' ? 'cars' : searchType;
+  
+  const [isSearchBoxLoading, setIsSearchBoxLoading] = useState(false);
 
   // Debug log to see what we're receiving
   useEffect(() => {
@@ -399,9 +347,21 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       isArray: Array.isArray(results),
       hasData: results && typeof results === 'object' && 'data' in results,
       dataLength: results && typeof results === 'object' && 'data' in results && Array.isArray(results.data) ? results.data.length : 0,
-      arrayLength: Array.isArray(results) ? results.length : 0
+      arrayLength: Array.isArray(results) ? results.length : 0,
+      searchType,
+      compactTab
     });
-  }, [results]);
+  }, [results, searchType]);
+
+  // Handle new search from the CompactSearchBox
+  const handleNewSearch = (searchData: any) => {
+    console.log('🔄 New search from compact box:', searchData);
+    setIsSearchBoxLoading(true);
+    if (onNewSearch) {
+      onNewSearch(searchData);
+    }
+    setTimeout(() => setIsSearchBoxLoading(false), 500);
+  };
 
   // Check if results are already processed (have computed fields)
   const areResultsProcessed = useMemo(() => {
@@ -413,7 +373,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     if (resultsArray.length === 0) return false;
 
     const firstItem = resultsArray[0];
-    // Check for fields that indicate the item has been processed
     const hasProcessedFields = !!(firstItem.departureAirport || firstItem.displayPrice || firstItem.stopCount !== undefined);
 
     console.log('🔍 Results processed check:', { hasProcessedFields, firstItem });
@@ -423,7 +382,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
   // Extract flight offers from the response - ONLY if not already processed
   const flightOffers = useMemo(() => {
-    // If results are already processed, return them as-is
     if (areResultsProcessed) {
       console.log('✅ Results already processed, using as-is');
       if (Array.isArray(results)) {
@@ -434,7 +392,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       }
     }
 
-    // Otherwise, extract from data structure
     if (results && typeof results === 'object' && 'data' in results && Array.isArray(results.data)) {
       console.log('✅ Using results.data with', results.data.length, 'items');
       return results.data;
@@ -470,15 +427,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const [stopsFilter, setStopsFilter] = useState<string[]>([]);
   const [airlinesFilter, setAirlinesFilter] = useState<string[]>([]);
 
-  // ===========================================
-  // HOTEL FILTERS (UNTOUCHED)
-  // ===========================================
+  // Hotel Filters
   const [starRatings, setStarRatings] = useState<number[]>([]);
   const [amenitiesFilter, setAmenitiesFilter] = useState<string[]>([]);
 
-  // ===========================================
-  // CAR RENTAL FILTERS (UNTOUCHED)
-  // ===========================================
+  // Car Rental Filters
   const [carTypeFilter, setCarTypeFilter] = useState<string[]>([]);
   const [transmissionFilter, setTransmissionFilter] = useState<string[]>([]);
   const [seatCapacityFilter, setSeatCapacityFilter] = useState<number[]>([]);
@@ -487,29 +440,21 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   // Create airlines map from props
   const airlinesMap = useMemo(() => createAirlinesMap(airlines), [airlines]);
 
-  // ===========================================
-  // HELPER FUNCTIONS
-  // ===========================================
-
-  // Format duration from ISO 8601
+  // Helper Functions
   const formatDuration = (duration?: string): string => {
     if (!duration) return '';
 
-    // Handle durations like "PT14H45M" or "P1DT3H5M"
     let totalHours = 0;
     let totalMinutes = 0;
 
-    // Extract days if present (format: P1DT3H5M)
     const daysMatch = duration.match(/P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?/);
     if (daysMatch) {
       const days = parseInt(daysMatch[1]) || 0;
       const hours = parseInt(daysMatch[2]) || 0;
       const minutes = parseInt(daysMatch[3]) || 0;
-
       totalHours = (days * 24) + hours;
       totalMinutes = minutes;
     } else {
-      // Try simple format: PT14H45M
       const hours = duration.match(/(\d+)H/);
       const minutes = duration.match(/(\d+)M/);
       totalHours = hours ? parseInt(hours[1]) : 0;
@@ -517,14 +462,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     }
 
     if (totalHours === 0 && totalMinutes === 0) return '';
-
-    if (totalHours > 0 && totalMinutes > 0) {
-      return `${totalHours}h ${totalMinutes}m`;
-    } else if (totalHours > 0) {
-      return `${totalHours}h`;
-    } else {
-      return `${totalMinutes}m`;
-    }
+    if (totalHours > 0 && totalMinutes > 0) return `${totalHours}h ${totalMinutes}m`;
+    if (totalHours > 0) return `${totalHours}h`;
+    return `${totalMinutes}m`;
   };
 
   const formatPrice = (amount: string, currencyCode: string): string => {
@@ -539,12 +479,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         maximumFractionDigits: 2,
       }).format(numericAmount);
     } catch (e) {
-      // Fallback if currency code is invalid
       return `${currencyCode} ${numericAmount.toFixed(2)}`;
     }
   };
 
-  // Format time
   const formatTime = (dateTimeStr?: string): string => {
     if (!dateTimeStr) return '--:--';
     try {
@@ -556,7 +494,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     }
   };
 
-  // Format date
   const formatDate = (dateTimeStr?: string): string => {
     if (!dateTimeStr) return '';
     try {
@@ -568,22 +505,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     }
   };
 
-  // Helper to parse baggage JSON
-  const parseBaggage = (baggageStr?: string): Array<{ type: string; quantity: number }> => {
-    if (!baggageStr) return [];
-    try {
-      return JSON.parse(baggageStr);
-    } catch {
-      return [];
-    }
-  };
-
-
-  // Process flight offers - ONLY if not already processed
+  // Process flight offers
   const processedFlightOffers = useMemo(() => {
     if (searchType !== 'flights' || flightOffers.length === 0) return [];
 
-    // If results are already processed, return them as-is WITHOUT PROCESSING
     if (areResultsProcessed) {
       console.log('✅ Using already processed flight offers, skipping transformation');
       return flightOffers;
@@ -592,24 +517,18 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     console.log('🔄 Processing raw flight offers:', flightOffers.length);
 
     return flightOffers.map((offer: ExtendedSearchResult) => {
-      // Try multiple ways to get segments
       let segments: any[] = [];
       let firstSlice: any = null;
       let firstSegment: any = null;
       let lastSegment: any = null;
 
-      // Method 1: Check if offer has slices (standard Duffel format)
       if (offer.slices && offer.slices.length > 0) {
         firstSlice = offer.slices[0];
         segments = firstSlice?.segments || [];
-      }
-      // Method 2: Check if offer has flightItineraries (Amadeus format)
-      else if (offer.flightItineraries && offer.flightItineraries.length > 0) {
+      } else if (offer.flightItineraries && offer.flightItineraries.length > 0) {
         firstSlice = offer.flightItineraries[0];
         segments = firstSlice?.segments || [];
-      }
-      // Method 3: Check if offer has realData with slices
-      else if (offer.realData?.slices && offer.realData.slices.length > 0) {
+      } else if (offer.realData?.slices && offer.realData.slices.length > 0) {
         firstSlice = offer.realData.slices[0];
         segments = firstSlice?.segments || [];
       }
@@ -619,19 +538,16 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         lastSegment = segments[segments.length - 1];
       }
 
-      // Get carrier information
       let airlineCode = '';
       let airlineName = 'Unknown Airline';
       let logoUrl = '';
 
-      // Try to get from offer.owner first
       if (offer.owner) {
         airlineCode = offer.owner.iata_code || '';
         airlineName = offer.owner.name || 'Unknown Airline';
         logoUrl = offer.owner.logo_symbol_url || '';
       }
 
-      // Try to get from first segment
       if (firstSegment) {
         const carrier = firstSegment.operating_carrier || firstSegment.marketing_carrier;
         if (carrier) {
@@ -641,7 +557,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         }
       }
 
-      // Try to get from airlinesMap if we have airlineCode
       if (!logoUrl && airlineCode) {
         const airlineFromMap = airlinesMap.get(airlineCode);
         if (airlineFromMap) {
@@ -649,19 +564,13 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         }
       }
 
-      // Calculate stops based on number of segments
       const segmentCount = segments.length;
       const stopCount = segmentCount > 0 ? segmentCount - 1 : 0;
 
-      // Determine stop text
       let stopText = 'Direct';
-      if (stopCount === 1) {
-        stopText = '1 Stop';
-      } else if (stopCount > 1) {
-        stopText = `${stopCount} Stops`;
-      }
+      if (stopCount === 1) stopText = '1 Stop';
+      else if (stopCount > 1) stopText = `${stopCount} Stops`;
 
-      // Get departure and arrival information
       let departureAirport = '---';
       let departureCity = '';
       let departureTime = '';
@@ -671,47 +580,30 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       let flightNumber = '';
 
       if (firstSegment) {
-        // Duffel format
         if (firstSegment.origin) {
           departureAirport = firstSegment.origin.iata_code || departureAirport;
           departureCity = firstSegment.origin.city_name || firstSegment.origin.city?.name || '';
         }
-        // Amadeus format
         if (firstSegment.departure) {
           departureAirport = firstSegment.departure.iataCode || departureAirport;
           departureTime = firstSegment.departure.at || '';
         }
-
-        // Get departure time from either format
         departureTime = firstSegment.departing_at || firstSegment.departure?.at || departureTime;
 
-        // ===== CRITICAL: Get flight number from marketing_carrier_flight_number =====
         if (firstSegment.marketing_carrier_flight_number) {
           flightNumber = firstSegment.marketing_carrier_flight_number;
-        }
-        // Fallback to other formats if marketing_carrier_flight_number doesn't exist
-        else if (firstSegment.flight_number) {
+        } else if (firstSegment.flight_number) {
           flightNumber = firstSegment.flight_number;
-        }
-        else if (firstSegment.number) {
+        } else if (firstSegment.number) {
           flightNumber = firstSegment.number;
-        }
-        else {
-          // Try to get from carrier objects
-          const carrier = firstSegment.operating_carrier || firstSegment.marketing_carrier;
-          if (carrier && carrier.flight_number) {
-            flightNumber = carrier.flight_number;
-          }
         }
       }
 
       if (lastSegment) {
-        // Duffel format
         if (lastSegment.destination) {
           arrivalAirport = lastSegment.destination.iata_code || arrivalAirport;
           arrivalCity = lastSegment.destination.city_name || lastSegment.destination.city?.name || '';
         }
-        // Amadeus format
         if (lastSegment.arrival) {
           arrivalAirport = lastSegment.arrival.iataCode || arrivalAirport;
           arrivalTime = lastSegment.arrival.at || '';
@@ -719,10 +611,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         arrivalTime = lastSegment.arriving_at || lastSegment.arrival?.at || arrivalTime;
       }
 
-      // Get duration
       const duration = firstSlice?.duration || '';
 
-      // PRICE FROM API - USE original_amount (base price without markup)
       let priceAmount = '0';
       let priceCurrency = 'GBP';
 
@@ -733,7 +623,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
       const formattedPrice = formatPrice(priceAmount, priceCurrency);
 
-      // Get baggage information
       let baggageInfo: any[] = [];
       if (firstSegment?.passengers?.[0]?.baggages) {
         baggageInfo = firstSegment.passengers[0].baggages;
@@ -746,7 +635,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
       const baggageString = baggageInfo.length > 0 ? JSON.stringify(baggageInfo) : undefined;
 
-      // Get cabin class
       let cabin = 'Economy';
       if (firstSegment?.passengers?.[0]?.cabin_class_marketing_name) {
         cabin = firstSegment.passengers[0].cabin_class_marketing_name;
@@ -785,8 +673,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         subtitle: airlineName,
         provider: airlineName,
         image: logoUrl,
-
-        // Add these new fields for round trip support
         isRoundTrip: (offer.slices?.length || 0) > 1,
         returnFlight: (offer.slices?.length || 0) > 1 ? {
           departureAirport: offer.slices?.[1]?.segments?.[0]?.origin?.iata_code,
@@ -804,6 +690,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       return processedOffer;
     });
   }, [flightOffers, searchType, airlinesMap, areResultsProcessed, formatPrice]);
+
   // Debug log for processed offers
   useEffect(() => {
     if (processedFlightOffers.length > 0 && !areResultsProcessed) {
@@ -836,9 +723,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return [];
   }, [results, searchType, processedFlightOffers]);
 
-  // ===========================================
-  // CAR RENTAL EXTRACTIONS (UNTOUCHED)
-  // ===========================================
+  // Unique values for filters
   const uniqueCarTypes = useMemo(() => {
     const types = allResults
       .filter(r => r.type === 'car-rentals')
@@ -863,7 +748,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return Array.from(new Set(providers));
   }, [allResults]);
 
-  // Get unique airlines for filtering
   const uniqueAirlines = useMemo(() => {
     if (searchType !== 'flights') return [];
     return Array.from(new Set(
@@ -874,30 +758,27 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     ));
   }, [allResults, searchType]);
 
+  // Filter and sort results
   const filteredResults = useMemo(() => {
     let filtered = [...allResults];
 
-    // Basic Price Filter - FIXED to handle both string and number
     filtered = filtered.filter((item) => {
       let numericPrice = 0;
 
       if (item.rawPrice) {
         numericPrice = item.rawPrice;
       } else if (item.price) {
-        // Handle both string, number, and object types
         if (typeof item.price === 'string') {
           numericPrice = parseFloat(item.price.replace(/[^\d.]/g, '')) || 0;
         } else if (typeof item.price === 'number') {
           numericPrice = item.price;
         } else if (typeof item.price === 'object' && item.price !== null) {
-          // Handle price object from car rentals
           const priceObj = item.price as any;
           numericPrice = parseFloat(priceObj.total || priceObj.base || '0');
         }
       } else if (item.total_amount) {
         numericPrice = parseFloat(item.total_amount) || 0;
       }
-
 
       return numericPrice <= priceRange;
     });
@@ -916,24 +797,14 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           return airlinesFilter.includes(airlineName);
         });
       }
-    }
-
-    // ===========================================
-    // HOTEL FILTERING (UNTOUCHED)
-    // ===========================================
-    else if (searchType === "hotels") {
+    } else if (searchType === "hotels") {
       if (starRatings.length > 0) {
         filtered = filtered.filter(item => starRatings.includes(Math.floor(item.rating || 0)));
       }
       if (amenitiesFilter.length > 0) {
         filtered = filtered.filter(item => amenitiesFilter.every(a => item.amenities?.includes(a)));
       }
-    }
-
-    // ===========================================
-    // CAR RENTAL FILTERING (UNTOUCHED)
-    // ===========================================
-    else if (searchType === "car-rentals") {
+    } else if (searchType === "car-rentals") {
       if (carTypeFilter.length > 0) {
         filtered = filtered.filter(item =>
           item.vehicleCode && carTypeFilter.includes(item.vehicleCode)
@@ -956,7 +827,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       }
     }
 
-    // Sorting (UPDATED for flights)
     if (sortBy === "price") {
       filtered.sort((a, b) => {
         const getPrice = (item: ExtendedSearchResult): number => {
@@ -969,10 +839,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           }
           return 0;
         };
-
-        const pA = getPrice(a);
-        const pB = getPrice(b);
-        return pA - pB;
+        return getPrice(a) - getPrice(b);
       });
     } else if (sortBy === "rating") {
       filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
@@ -1022,13 +889,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     </label>
   );
 
-  // ===========================================
-  // HOTEL CARD (UNTOUCHED) - FIXED
-  // ===========================================
+  // Render Hotel Card
   const renderHotelCard = (item: ExtendedSearchResult) => {
     const starRating = Math.floor(item.rating || 4);
 
-    // Format price safely for display
     const displayPrice = (() => {
       if (!item.price) return 'Price on request';
       if (typeof item.price === 'string') return item.price;
@@ -1085,14 +949,14 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               >
                 Book Hotel
               </button>
-            </div >
-          </div >
-        </div >
-      </div >
+            </div>
+          </div>
+        </div>
+      </div>
     );
   };
 
-
+  // Render Flight Card
   const renderFlightCard = (item: ExtendedSearchResult) => {
     const departureAirport = item.departureAirport || '---';
     const arrivalAirport = item.arrivalAirport || '---';
@@ -1101,14 +965,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     const airlineName = item.airlineName || item.provider || 'Unknown Airline';
     const airlineCode = item.airlineCode || '';
     const logoUrl = item.airlineLogo || item.image;
-
-    // Get return flight info if available with safe defaults
     const returnFlight = item.returnFlight;
     const hasReturn = !!returnFlight?.departureTime;
-
     const stopCount = item.stopCount || 0;
     const stopText = item.stopText || (stopCount === 0 ? 'Direct' : stopCount === 1 ? '1 Stop' : `${stopCount} Stops`);
-
     const duration = formatDuration(item.duration);
 
     return (
@@ -1117,7 +977,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           {/* OUTBOUND FLIGHT */}
           <div className="flex flex-col md:flex-row gap-8">
             <div className="flex-1">
-              {/* Airline Info */}
               <div className="flex items-center gap-4 mb-6">
                 {logoUrl ? (
                   <img
@@ -1141,7 +1000,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 </div>
               </div>
 
-              {/* Flight Route */}
               <div className="flex items-center justify-between">
                 <div className="text-center flex-1">
                   <p className="text-3xl font-black text-gray-900">{formatTime(departureTime)}</p>
@@ -1177,7 +1035,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             </div>
           </div>
 
-          {/* RETURN FLIGHT (if round trip) */}
+          {/* RETURN FLIGHT */}
           {hasReturn && (
             <>
               <div className="my-6 border-t border-gray-100 pt-6">
@@ -1267,40 +1125,28 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       </div>
     );
   };
+
+  // Render Car Card
   const renderCarCard = (item: ExtendedSearchResult) => {
-    // Use the API response fields directly
     const start = item.start;
     const end = item.end;
     const vehicle = item.vehicle || {};
     const serviceProvider = item.serviceProvider || item.partnerInfo?.serviceProvider || {};
-
-    // Format duration from API
     const duration = formatDuration(item.duration);
-
-    // Handle distance - using the API object format
     const isLongDistance = (() => {
       if (!item.distance) return false;
       return item.distance.unit === 'MI';
     })();
-
-    // Get baggage count
     const baggageCount = vehicle.baggages?.reduce((total: number, bag: any) =>
       total + (bag.count || 0), 0) || 0;
-
-    // Get seat count
     const seats = vehicle.seats?.[0]?.count || 0;
-
-    // Get image URL - directly from API
     const carImageUrl = vehicle.imageURL || item.image || serviceProvider.logoUrl;
 
-    // Format price for display
     const formatDisplayPrice = () => {
-      // Use final_price in GBP for display
       if (item.final_price) {
         const price = parseFloat(item.final_price);
         return `£${price.toFixed(2)}${duration ? '/day' : ''}`;
       }
-      // Fallback to price object if available
       if (item.price && typeof item.price === 'object' && 'total' in item.price) {
         const price = parseFloat((item.price as any).total || '0');
         return `£${price.toFixed(2)}${duration ? '/day' : ''}`;
@@ -1308,7 +1154,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       return 'Price on request';
     };
 
-    // If no location data, don't show the card
     if (!start?.locationCode || !end?.locationCode) {
       return null;
     }
@@ -1316,7 +1161,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return (
       <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
         <div className="flex flex-col md:flex-row">
-          {/* Image Section */}
           <div className="w-full md:w-[320px] h-56 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-8 relative">
             {carImageUrl ? (
               <img
@@ -1324,7 +1168,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 className="max-w-full max-h-full object-contain group-hover:scale-105 transition duration-300"
                 alt={vehicle.description || item.title || 'Car'}
                 onError={(e) => {
-                  // Only hide on error, don't show fallback
                   (e.target as HTMLImageElement).style.display = 'none';
                 }}
               />
@@ -1334,7 +1177,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               </div>
             )}
 
-            {/* Provider Logo (if different from main image) */}
             {serviceProvider.logoUrl && serviceProvider.logoUrl !== carImageUrl && (
               <div className="absolute top-4 left-4 bg-white rounded-lg p-2 shadow-md">
                 <img
@@ -1348,13 +1190,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               </div>
             )}
 
-            {/* Vehicle Code Badge */}
             <div className="absolute top-4 right-4 bg-[#33a8da]/90 backdrop-blur-sm text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider">
               {vehicle.code || vehicle.category || 'CAR'}
             </div>
           </div>
 
-          {/* Details Section */}
           <div className="flex-1 p-8">
             <div className="flex justify-between items-start mb-4">
               <div>
@@ -1367,7 +1207,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               </div>
             </div>
 
-            {/* Features Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               {seats > 0 && (
                 <div className="flex items-center gap-2">
@@ -1403,7 +1242,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               )}
             </div>
 
-            {/* Location Info - Using API start/end - NO FALLBACKS */}
             <div className="bg-gray-50 rounded-xl p-4 mb-6">
               <div className="flex items-center justify-between text-[10px]">
                 <div>
@@ -1435,7 +1273,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 </div>
               </div>
 
-              {/* Distance Display */}
               {item.distance && (
                 <div className="mt-3 pt-3 border-t border-gray-200">
                   <p className="text-[9px] font-bold text-gray-400 uppercase">
@@ -1445,7 +1282,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               )}
             </div>
 
-            {/* Price and CTA */}
             <div className="flex items-end justify-between pt-4 border-t border-gray-100">
               <div>
                 <p className="text-2xl font-black text-[#33a8da]">
@@ -1461,9 +1297,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 </p>
               </div>
               <button
-                onClick={() => {
-                  onSelect?.(item);
-                }}
+                onClick={() => onSelect?.(item)}
                 className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px] shadow-lg hover:shadow-xl"
               >
                 {isLongDistance ? 'Book Transfer' : 'Rent Now'}
@@ -1475,17 +1309,33 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
 
+  // Loading state
   if (isLoading) {
     return (
-      <div className="bg-[#f8fbfe] -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-10">
-        <div className="max-w-7xl mx-auto flex justify-center items-center min-h-[400px]">
+      <div className="bg-[#f8fbfe] min-h-screen">
+        {/* Compact Search Box at top (not sticky) */}
+        <div className="bg-[#f8fbfe] pt-4 pb-2 border-b border-gray-100">
+          <div className="max-w-7xl mx-auto px-4">
+            <CompactSearchBox
+              onSearch={handleNewSearch}
+              loading={isSearchBoxLoading}
+              activeTab={compactTab}
+              initialParams={searchParams}
+            />
+          </div>
+        </div>
+        <div className="flex justify-center items-center min-h-[400px]">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#33a8da] mb-6"></div>
             <h3 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-2">
-              {searchType === 'flights' ? 'Searching for flights...' : 'Searching...'}
+              {searchType === 'flights' ? 'Searching for flights...' : 
+               searchType === 'hotels' ? 'Searching for hotels...' : 
+               'Searching for car rentals...'}
             </h3>
             <p className="text-sm text-gray-500 font-medium">
-              {searchType === 'flights' ? 'Finding the best flight options for you' : 'Finding the best options for you'}
+              {searchType === 'flights' ? 'Finding the best flight options for you' : 
+               searchType === 'hotels' ? 'Finding the best hotel options for you' : 
+               'Finding the best car rental options for you'}
             </p>
           </div>
         </div>
@@ -1493,178 +1343,194 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   }
 
+  // Main render with compact SearchBox (not sticky)
   return (
-    <div className="bg-[#f8fbfe] -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-10">
-      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-10">
-        {/* Filters Sidebar */}
-        <aside className="w-full lg:w-[300px] shrink-0 space-y-6">
-          <div className="bg-white rounded-[24px] p-8 shadow-sm border border-gray-100">
-            <div className="flex justify-between items-center mb-8">
-              <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest">Filters</h4>
-              <button
-                onClick={clearAllFilters}
-                className="text-[9px] font-black text-[#33a8da] uppercase tracking-widest hover:underline"
-              >
-                Clear all
-              </button>
+    <div className="bg-[#f8fbfe] min-h-screen">
+      {/* Compact Search Box at top (not sticky - will scroll with page) */}
+      <div className="bg-[#f8fbfe] pt-4 pb-2 border-b border-gray-100">
+        <div className="max-w-7xl mx-auto px-4">
+          <CompactSearchBox
+            onSearch={handleNewSearch}
+            loading={isSearchBoxLoading}
+            activeTab={compactTab}
+            initialParams={searchParams}
+          />
+        </div>
+      </div>
+
+      {/* Results Content */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="flex flex-col lg:flex-row gap-10">
+          {/* Filters Sidebar */}
+          <aside className="w-full lg:w-[300px] shrink-0 space-y-6">
+            <div className="bg-white rounded-[24px] p-8 shadow-sm border border-gray-100">
+              <div className="flex justify-between items-center mb-8">
+                <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-widest">Filters</h4>
+                <button
+                  onClick={clearAllFilters}
+                  className="text-[9px] font-black text-[#33a8da] uppercase tracking-widest hover:underline"
+                >
+                  Clear all
+                </button>
+              </div>
+
+              {/* Price Range - Common */}
+              {renderFilterSection("Price Range", (
+                <>
+                  <input
+                    type="range"
+                    min="0"
+                    max="2000000"
+                    step="50000"
+                    value={priceRange}
+                    onChange={(e) => setPriceRange(parseInt(e.target.value))}
+                    className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-[#33a8da] cursor-pointer"
+                  />
+                  <div className="flex justify-between mt-4">
+                    <span className="text-[10px] font-bold text-gray-400">{currency.symbol}0</span>
+                    <span className="text-[10px] font-black text-[#33a8da] uppercase">{currency.symbol}{priceRange.toLocaleString()}</span>
+                  </div>
+                </>
+              ))}
+
+              {/* FLIGHT SPECIFIC FILTERS */}
+              {searchType === "flights" && (
+                <>
+                  {renderFilterSection("Stops", (
+                    <>
+                      {["Direct", "1 Stop", "2+ Stops"].map(stop => {
+                        return renderCheckbox(stop, stopsFilter.includes(stop), () => toggleFilter(setStopsFilter, stopsFilter, stop));
+                      })}
+                    </>
+                  ))}
+                  {renderFilterSection("Airlines", (
+                    <>
+                      {uniqueAirlines.map(airline => {
+                        return renderCheckbox(airline, airlinesFilter.includes(airline), () => toggleFilter(setAirlinesFilter, airlinesFilter, airline));
+                      })}
+                    </>
+                  ))}
+                </>
+              )}
+
+              {/* HOTEL SPECIFIC FILTERS */}
+              {searchType === "hotels" && (
+                <>
+                  {renderFilterSection("Star Rating", (
+                    <>
+                      {[5, 4, 3].map(stars =>
+                        renderCheckbox(`${stars} Stars`, starRatings.includes(stars), () => toggleFilter(setStarRatings, starRatings, stars))
+                      )}
+                    </>
+                  ))}
+                  {renderFilterSection("Amenities", (
+                    <>
+                      {["Free Wi-Fi", "Swimming Pool", "Spa", "Fitness center"].map(amenity =>
+                        renderCheckbox(amenity, amenitiesFilter.includes(amenity), () => toggleFilter(setAmenitiesFilter, amenitiesFilter, amenity))
+                      )}
+                    </>
+                  ))}
+                </>
+              )}
+
+              {/* CAR SPECIFIC FILTERS */}
+              {searchType === "car-rentals" && (
+                <>
+                  {renderFilterSection("Vehicle Type", (
+                    <>
+                      {uniqueCarTypes.map(type =>
+                        renderCheckbox(type, carTypeFilter.includes(type), () => toggleFilter(setCarTypeFilter, carTypeFilter, type))
+                      )}
+                    </>
+                  ))}
+
+                  {renderFilterSection("Seat Capacity", (
+                    <>
+                      {uniqueSeatCapacities.map(seats =>
+                        renderCheckbox(`${seats} Seats`, seatCapacityFilter.includes(seats), () => toggleFilter(setSeatCapacityFilter, seatCapacityFilter, seats))
+                      )}
+                    </>
+                  ))}
+
+                  {renderFilterSection("Transmission", (
+                    <>
+                      {["Automatic", "Manual"].map(trans =>
+                        renderCheckbox(trans, transmissionFilter.includes(trans), () => toggleFilter(setTransmissionFilter, transmissionFilter, trans))
+                      )}
+                    </>
+                  ))}
+
+                  {renderFilterSection("Provider", (
+                    <>
+                      {uniqueProviders.map(provider =>
+                        renderCheckbox(provider, providerFilter.includes(provider), () => toggleFilter(setProviderFilter, providerFilter, provider))
+                      )}
+                    </>
+                  ))}
+                </>
+              )}
+            </div>
+          </aside>
+
+          {/* Results Section */}
+          <div className="flex-1 space-y-6">
+            <div className="flex items-center justify-between mb-4 px-2">
+              <h3 className="font-black text-gray-900 uppercase text-xs tracking-widest">
+                {filteredResults.length} {filteredResults.length === 1 ?
+                  (searchType === 'flights' ? 'flight' :
+                    searchType === 'hotels' ? 'hotel' :
+                      'option') :
+                  (searchType === 'flights' ? 'flights' :
+                    searchType === 'hotels' ? 'hotels' :
+                      'options')} found
+              </h3>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sort by:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="bg-transparent border-none text-[10px] font-black uppercase text-[#33a8da] focus:ring-0 cursor-pointer"
+                >
+                  <option value="match">{searchType === 'flights' ? 'Departure Time' : 'Best Match'}</option>
+                  <option value="price">Lowest Price</option>
+                  {searchType !== 'flights' && <option value="rating">Top Rated</option>}
+                </select>
+              </div>
             </div>
 
-            {/* Price Range - Common */}
-            {renderFilterSection("Price Range", (
-              <>
-                <input
-                  type="range"
-                  min="0"
-                  max="2000000"
-                  step="50000"
-                  value={priceRange}
-                  onChange={(e) => setPriceRange(parseInt(e.target.value))}
-                  className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-[#33a8da] cursor-pointer"
-                />
-                <div className="flex justify-between mt-4">
-                  <span className="text-[10px] font-bold text-gray-400">{currency.symbol}0</span>
-                  <span className="text-[10px] font-black text-[#33a8da] uppercase">{currency.symbol}{priceRange.toLocaleString()}</span>
+            <div className="space-y-4">
+              {filteredResults.length > 0 ? (
+                filteredResults.slice(0, visibleCount).map(item => {
+                  if (item.type === 'car-rentals') return renderCarCard(item);
+                  if (item.type === 'hotels') return renderHotelCard(item);
+                  return renderFlightCard(item);
+                })
+              ) : (
+                <div className="bg-white rounded-[32px] p-20 text-center border-2 border-dashed border-gray-100">
+                  <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-black text-gray-900 uppercase">No matching results</h3>
+                  <p className="text-sm text-gray-400 font-bold mt-2 uppercase tracking-widest">
+                    Try adjusting your filters to find more options.
+                  </p>
                 </div>
-              </>
-            ))}
-
-            {/* FLIGHT SPECIFIC FILTERS */}
-            {searchType === "flights" && (
-              <>
-                {renderFilterSection("Stops", (
-                  <>
-                    {["Direct", "1 Stop", "2+ Stops"].map(stop => {
-                      return renderCheckbox(stop, stopsFilter.includes(stop), () => toggleFilter(setStopsFilter, stopsFilter, stop));
-                    })}
-                  </>
-                ))}
-                {renderFilterSection("Airlines", (
-                  <>
-                    {uniqueAirlines.map(airline => {
-                      return renderCheckbox(airline, airlinesFilter.includes(airline), () => toggleFilter(setAirlinesFilter, airlinesFilter, airline));
-                    })}
-                  </>
-                ))}
-              </>
-            )}
-
-            {/* HOTEL SPECIFIC FILTERS (UNTOUCHED) */}
-            {searchType === "hotels" && (
-              <>
-                {renderFilterSection("Star Rating", (
-                  <>
-                    {[5, 4, 3].map(stars =>
-                      renderCheckbox(`${stars} Stars`, starRatings.includes(stars), () => toggleFilter(setStarRatings, starRatings, stars))
-                    )}
-                  </>
-                ))}
-                {renderFilterSection("Amenities", (
-                  <>
-                    {["Free Wi-Fi", "Swimming Pool", "Spa", "Fitness center"].map(amenity =>
-                      renderCheckbox(amenity, amenitiesFilter.includes(amenity), () => toggleFilter(setAmenitiesFilter, amenitiesFilter, amenity))
-                    )}
-                  </>
-                ))}
-              </>
-            )}
-
-            {/* CAR SPECIFIC FILTERS (UNTOUCHED) */}
-            {searchType === "car-rentals" && (
-              <>
-                {renderFilterSection("Vehicle Type", (
-                  <>
-                    {uniqueCarTypes.map(type =>
-                      renderCheckbox(type, carTypeFilter.includes(type), () => toggleFilter(setCarTypeFilter, carTypeFilter, type))
-                    )}
-                  </>
-                ))}
-
-                {renderFilterSection("Seat Capacity", (
-                  <>
-                    {uniqueSeatCapacities.map(seats =>
-                      renderCheckbox(`${seats} Seats`, seatCapacityFilter.includes(seats), () => toggleFilter(setSeatCapacityFilter, seatCapacityFilter, seats))
-                    )}
-                  </>
-                ))}
-
-                {renderFilterSection("Transmission", (
-                  <>
-                    {["Automatic", "Manual"].map(trans =>
-                      renderCheckbox(trans, transmissionFilter.includes(trans), () => toggleFilter(setTransmissionFilter, transmissionFilter, trans))
-                    )}
-                  </>
-                ))}
-
-                {renderFilterSection("Provider", (
-                  <>
-                    {uniqueProviders.map(provider =>
-                      renderCheckbox(provider, providerFilter.includes(provider), () => toggleFilter(setProviderFilter, providerFilter, provider))
-                    )}
-                  </>
-                ))}
-              </>
-            )}
-          </div>
-        </aside>
-
-        {/* Results Section */}
-        <div className="flex-1 space-y-6">
-          <div className="flex items-center justify-between mb-4 px-2">
-            <h3 className="font-black text-gray-900 uppercase text-xs tracking-widest">
-              {filteredResults.length} {filteredResults.length === 1 ?
-                (searchType === 'flights' ? 'flight' :
-                  searchType === 'hotels' ? 'hotel' :
-                    'option') :
-                (searchType === 'flights' ? 'flights' :
-                  searchType === 'hotels' ? 'hotels' :
-                    'options')} found
-            </h3>
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sort by:</span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
-                className="bg-transparent border-none text-[10px] font-black uppercase text-[#33a8da] focus:ring-0 cursor-pointer"
-              >
-                <option value="match">{searchType === 'flights' ? 'Departure Time' : 'Best Match'}</option>
-                <option value="price">Lowest Price</option>
-                {searchType !== 'flights' && <option value="rating">Top Rated</option>}
-              </select>
+              )}
             </div>
-          </div>
 
-          <div className="space-y-4">
-            {filteredResults.length > 0 ? (
-              filteredResults.slice(0, visibleCount).map(item => {
-                if (item.type === 'car-rentals') return renderCarCard(item);
-                if (item.type === 'hotels') return renderHotelCard(item);
-                return renderFlightCard(item);
-              })
-            ) : (
-              <div className="bg-white rounded-[32px] p-20 text-center border-2 border-dashed border-gray-100">
-                <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-black text-gray-900 uppercase">No matching results</h3>
-                <p className="text-sm text-gray-400 font-bold mt-2 uppercase tracking-widest">
-                  Try adjusting your filters to find more options.
-                </p>
+            {filteredResults.length > visibleCount && (
+              <div className="pt-10 flex justify-center">
+                <button
+                  onClick={() => setVisibleCount(p => p + 6)}
+                  className="px-16 py-4 bg-[#33a8da] text-white font-black rounded-2xl shadow-xl hover:bg-[#2c98c7] transition uppercase text-xs"
+                >
+                  Show More
+                </button>
               </div>
             )}
           </div>
-
-          {filteredResults.length > visibleCount && (
-            <div className="pt-10 flex justify-center">
-              <button
-                onClick={() => setVisibleCount(p => p + 6)}
-                className="px-16 py-4 bg-[#33a8da] text-white font-black rounded-2xl shadow-xl hover:bg-[#2c98c7] transition uppercase text-xs"
-              >
-                Show More
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>
