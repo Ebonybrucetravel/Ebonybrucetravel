@@ -229,7 +229,7 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
 
   if (loading) {
     return (
-      <section className="px-4 md:px-8 lg:px-16 py-12 bg-white">
+      <section className="px-4 md:px-8 lg:px-16 py-12">
         <div className="flex justify-between items-end mb-8 md:mb-10">
           <div>
             <h2 className="text-xl md:text-2xl font-bold text-gray-900">
@@ -262,7 +262,7 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
 
   if (error) {
     return (
-      <section className="px-4 md:px-8 lg:px-16 py-12 bg-white">
+      <section className="px-4 md:px-8 lg:px-16 py-12">
         <div className="text-center">
           <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-4">
             {t('cars.title')}
@@ -280,7 +280,7 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
   }
 
   return (
-    <section className="px-4 md:px-8 lg:px-16 py-12 bg-white -mb-4">
+    <section className="px-4 md:px-8 lg:px-16 py-12 -mb-4">
       <div className="flex justify-between items-end mb-6 md:mb-8">
         <div>
           <h2 className="text-xl md:text-2xl font-bold text-gray-900">
