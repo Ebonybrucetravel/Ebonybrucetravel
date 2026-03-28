@@ -232,10 +232,10 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
       <section className="px-4 md:px-8 lg:px-16 py-12 bg-white">
         <div className="flex justify-between items-end mb-8 md:mb-10">
           <div>
-            <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900">
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900">
               {t('cars.title')}
             </h2>
-            <p className="text-gray-500 mt-2 text-base md:text-lg">
+            <p className="text-gray-500 mt-1 text-sm md:text-base">
               {t('cars.subtitle')}
             </p>
           </div>
@@ -264,7 +264,7 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
     return (
       <section className="px-4 md:px-8 lg:px-16 py-12 bg-white">
         <div className="text-center">
-          <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-4">
             {t('cars.title')}
           </h2>
           <p className="text-red-500 mb-4">{error}</p>
@@ -281,12 +281,12 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
 
   return (
     <section className="px-4 md:px-8 lg:px-16 py-12 bg-white -mb-4">
-      <div className="flex justify-between items-end mb-8 md:mb-10">
+      <div className="flex justify-between items-end mb-6 md:mb-8">
         <div>
-          <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900">
             {t('cars.title')}
           </h2>
-          <p className="text-gray-500 mt-2 text-base md:text-lg">
+          <p className="text-gray-500 mt-1 text-sm md:text-base">
             {t('cars.subtitle')}
           </p>
         </div>
