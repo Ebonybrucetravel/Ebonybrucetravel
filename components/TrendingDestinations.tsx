@@ -62,12 +62,12 @@ const TrendingDestinations: React.FC<TrendingDestinationsProps> = ({
   };
 
   return (
-    <section className="px-4 md:px-8 lg:px-16 pt-0 pb-8">
-      <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
+    <section className="px-4 md:px-8 lg:px-16 pt-8 pb-0 -mb-3">
+      <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-3">
         {t('trending.title')}
       </h2>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-5">
         {destinations.map((destination) => (
           <div
             key={destination.id}
@@ -79,7 +79,7 @@ const TrendingDestinations: React.FC<TrendingDestinationsProps> = ({
               })
             }
           >
-            <div className="relative h-70 overflow-hidden">
+            <div className="relative h-56 overflow-hidden">
               <img
                 src={destination.image}
                 alt={`${destination.city}, ${t(destination.countryKey)}`}
@@ -87,17 +87,17 @@ const TrendingDestinations: React.FC<TrendingDestinationsProps> = ({
                 loading="lazy"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-              <div className="absolute bottom-4 left-4 text-white">
-                <h3 className="text-xl font-bold">{destination.city}</h3>
-                <p className="text-sm opacity-90">{t(destination.countryKey)}</p>
+              <div className="absolute bottom-3 left-3 text-white">
+                <h3 className="text-lg font-bold">{destination.city}</h3>
+                <p className="text-xs opacity-90">{t(destination.countryKey)}</p>
               </div>
             </div>
 
-            <div className="p-4">
-              <div className="flex justify-between items-center text-sm text-gray-600">
+            <div className="p-3">
+              <div className="flex justify-between items-center text-xs text-gray-600">
                 <div className="flex items-center gap-1">
                   <svg
-                    className="w-4 h-4"
+                    className="w-3.5 h-3.5"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -113,7 +113,7 @@ const TrendingDestinations: React.FC<TrendingDestinationsProps> = ({
                 </div>
                 <div className="flex items-center gap-1">
                   <svg
-                    className="w-4 h-4"
+                    className="w-3.5 h-3.5"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -130,7 +130,7 @@ const TrendingDestinations: React.FC<TrendingDestinationsProps> = ({
               </div>
 
               <button
-                className="mt-3 w-full py-2 text-sm font-semibold rounded-lg transition-all duration-300"
+                className="mt-2 w-full py-1.5 text-xs font-semibold rounded-lg transition-all duration-300"
                 style={{
                   backgroundColor: brandBlue,
                   color: "white",

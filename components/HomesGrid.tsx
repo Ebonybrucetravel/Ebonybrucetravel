@@ -27,6 +27,7 @@ interface HomesGridProps {
   error?: string | null;
   title?: string;
   subtitle?: string;
+  onSearch?: (data: any) => void;
 }
 
 const HomesGrid: React.FC<HomesGridProps> = ({
@@ -35,6 +36,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
   error = null,
   title,
   subtitle,
+  onSearch,
 }) => {
   const { t, currency } = useLanguage();
   const router = useRouter();
@@ -74,9 +76,30 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     }
   }, [propHotels, t]);
 
-  // Generate fallback hotels based on popular destinations
+  // Generate fallback hotels with unique real images - 12 UNIQUE images
   const generateFallbackHotels = (): HotelDisplay[] => {
-    // Luxury hotels database by destination
+    // 12 UNIQUE real hotel images - each used only once
+    const uniqueHotelImages: Record<string, string> = {
+      "The Ritz London": "/images/The Ritz London.png",
+      "The Savoy": "/images/The Savoy.jpg",
+      "Claridge's": "images/Claridge's.webp",
+      "Burj Al Arab Jumeirah": "/images/Burj Al Arab Jumeirah.jpg",
+      "Atlantis The Palm": "/images/Atlantis The Palm.jpg",
+      "Address Boulevard": "/images/Address Boulevard.avif",
+      "The Plaza Hotel": "/images/The Plaza Hotel.webp",
+      "The Ritz-Carlton": "/images/The Ritz-Carlton.avif",
+      "The Peninsula": "/images/The Peninsula.webp",
+      "Park Hyatt Tokyo": "/images/Park Hyatt Tokyo.jpg",
+      "Aman Tokyo": "/images/Aman Tokyo.jpg",
+      "The Imperial Hotel": "/images/The Imperial Hotel.jpg",
+      "Hotel Plaza Athénée": "/images/Hotel Plaza Athénée.jpg",
+      "Le Meurice": "/images/Le Meurice.jpg",
+      "Ritz Paris": "/images/Ritz Paris.webp",
+      "Marina Bay Sands": "/images/Marina Bay Sands.jpg",
+      "Raffles Singapore": "/images/Raffles Singapore.webp",
+      "The Fullerton Hotel": "/images/The Fullerton Hotel.jpg",
+    };
+
     const hotelsByDestination: Record<string, HotelDisplay[]> = {
       "LON": [
         {
@@ -90,7 +113,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 720,
           rating: 4.9,
           reviews: 1250,
-          image: "https://images.unsplash.com/photo-1551632436-cbf8dd35adfa?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["The Ritz London"],
           amenities: ["Spa", "Michelin Restaurant", "Afternoon Tea", "Concierge", "Butler Service"],
           chainCode: "RL",
           description: "Iconic 5-star hotel in Piccadilly with stunning views"
@@ -106,7 +129,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 660,
           rating: 4.8,
           reviews: 2100,
-          image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["The Savoy"],
           amenities: ["River View", "Luxury Spa", "Fine Dining", "Theatre", "Afternoon Tea"],
           chainCode: "FAIRMONT",
           description: "Historic hotel on the Strand with river views"
@@ -122,7 +145,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 820,
           rating: 4.9,
           reviews: 980,
-          image: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["Claridge's"],
           amenities: ["Art Deco", "Michelin Star", "Spa", "Butler Service", "Afternoon Tea"],
           chainCode: "MAYBOURNE",
           description: "Legendary Art Deco hotel in Mayfair"
@@ -140,7 +163,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 1050,
           rating: 5.0,
           reviews: 2340,
-          image: "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["Burj Al Arab Jumeirah"],
           amenities: ["Private Beach", "Helicopter Pad", "Underwater Restaurant", "Butler Service", "Infinity Pool"],
           chainCode: "JUMEIRAH",
           description: "World's only 7-star hotel on its own island"
@@ -156,7 +179,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 550,
           rating: 4.8,
           reviews: 4560,
-          image: "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["Atlantis The Palm"],
           amenities: ["Aquaventure", "Dolphin Bay", "Private Beach", "Kids Club", "Water Park"],
           chainCode: "ATLANTIS",
           description: "Iconic resort on Palm Jumeirah with underwater suites"
@@ -172,7 +195,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 420,
           rating: 4.7,
           reviews: 1870,
-          image: "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["Address Boulevard"],
           amenities: ["Pool", "Spa", "Burj Khalifa View", "Fine Dining", "Shopping Mall Access"],
           chainCode: "ADDRESS",
           description: "Luxury hotel connected to Dubai Mall"
@@ -190,7 +213,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 820,
           rating: 4.8,
           reviews: 3150,
-          image: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["The Plaza Hotel"],
           amenities: ["Central Park View", "Luxury Spa", "Fine Dining", "Historic Landmark", "Afternoon Tea"],
           chainCode: "FAIRMONT",
           description: "Legendary hotel facing Central Park"
@@ -206,7 +229,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 720,
           rating: 4.7,
           reviews: 1890,
-          image: "https://images.unsplash.com/photo-1618773928121-c32242e63f39?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["The Ritz-Carlton"],
           amenities: ["Central Park View", "Spa", "Michelin Restaurant", "Butler Service", "Fitness Center"],
           chainCode: "RC",
           description: "Luxury in the heart of Manhattan"
@@ -222,7 +245,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 780,
           rating: 4.8,
           reviews: 1430,
-          image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["The Peninsula"],
           amenities: ["Rooftop Terrace", "Spa", "Michelin Star", "Business Center", "Chauffeur Service"],
           chainCode: "PENINSULA",
           description: "Elegant hotel on Fifth Avenue"
@@ -240,7 +263,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 590,
           rating: 4.8,
           reviews: 1870,
-          image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["Park Hyatt Tokyo"],
           amenities: ["Mountain Views", "Japanese Garden", "Michelin Star", "Zen Spa", "Sky Bar"],
           chainCode: "HY",
           description: "Luxury hotel in Shinjuku featured in Lost in Translation"
@@ -256,7 +279,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 850,
           rating: 4.9,
           reviews: 920,
-          image: "https://images.unsplash.com/photo-1606402179428-a57976d71fa4?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["Aman Tokyo"],
           amenities: ["Skyline Views", "Traditional Onsen", "Tea House", "Zen Garden", "Spa"],
           chainCode: "AMAN",
           description: "Serene luxury in Otemachi with traditional Japanese elements"
@@ -272,7 +295,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 460,
           rating: 4.6,
           reviews: 3240,
-          image: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["The Imperial Hotel"],
           amenities: ["Historic", "Japanese Garden", "Multiple Restaurants", "Spa", "Shopping Arcade"],
           chainCode: "IH",
           description: "Historic hotel near the Imperial Palace"
@@ -290,7 +313,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 950,
           rating: 4.9,
           reviews: 1420,
-          image: "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["Hotel Plaza Athénée"],
           amenities: ["Eiffel Tower View", "Dior Spa", "Michelin Dining", "Fashion District", "Courtyard"],
           chainCode: "DORCHESTER",
           description: "Palace hotel on Avenue Montaigne"
@@ -306,7 +329,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 780,
           rating: 4.8,
           reviews: 1150,
-          image: "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["Le Meurice"],
           amenities: ["Tuileries View", "Art Deco Spa", "Michelin Star", "Palace Hotel", "Afternoon Tea"],
           chainCode: "DORCHESTER",
           description: "Historic palace hotel with art-inspired decor"
@@ -322,7 +345,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 1050,
           rating: 5.0,
           reviews: 890,
-          image: "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["Ritz Paris"],
           amenities: ["Michelin Dining", "Spa", "Jardins", "Bar Hemingway", "Luxury Suites"],
           chainCode: "RITZ",
           description: "Legendary Place Vendôme palace hotel"
@@ -340,7 +363,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 680,
           rating: 4.8,
           reviews: 4250,
-          image: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["Marina Bay Sands"],
           amenities: ["Infinity Pool", "SkyPark", "Casino", "Luxury Shopping", "Observation Deck"],
           chainCode: "MBS",
           description: "Iconic resort with infinity pool overlooking the city"
@@ -356,7 +379,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 750,
           rating: 4.9,
           reviews: 1870,
-          image: "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["Raffles Singapore"],
           amenities: ["Colonial Heritage", "Singapore Sling", "Butler Service", "Courtyard", "Luxury Spa"],
           chainCode: "ACCOR",
           description: "Historic luxury hotel where the Singapore Sling was invented"
@@ -372,7 +395,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           discountedPrice: 520,
           rating: 4.7,
           reviews: 2980,
-          image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600",
+          image: uniqueHotelImages["The Fullerton Hotel"],
           amenities: ["Heritage Building", "River View", "Pool", "Spa", "Multiple Restaurants"],
           chainCode: "FULLERTON",
           description: "Historic building at the mouth of the Singapore River"
@@ -380,7 +403,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       ]
     };
 
-    // Collect hotels from all destinations and flatten
+    // Collect hotels from all destinations
     const allHotels: HotelDisplay[] = [];
 
     popularDestinations.forEach(dest => {
@@ -394,10 +417,10 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     });
 
     const shuffled = [...allHotels].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, 6); // ✅ returns an array of HotelDisplay
+    return shuffled.slice(0, 6);
   };
 
-  const handleHotelClick = (hotel: HotelDisplay) => {
+  const handleHotelClick = async (hotel: HotelDisplay) => {
     const today = new Date();
     const checkIn = new Date(today);
     checkIn.setDate(today.getDate() + 1);
@@ -416,18 +439,34 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     const guests = 2;
     const rooms = 1;
 
-    const params = new URLSearchParams({
+    const searchData = {
       type: 'hotels',
       location: formattedLocation,
       cityCode: cityCode,
-      checkIn: checkInDate,
-      checkOut: checkOutDate,
-      guests: guests.toString(),
-      rooms: rooms.toString(),
+      checkInDate,
+      checkOutDate,
+      travellers: { adults: guests, children: 0 },
+      rooms,
       currency: 'GBP'
-    });
+    };
 
-    router.push(`/search?${params.toString()}`);
+    // If onSearch prop is provided, use it
+    if (onSearch) {
+      await onSearch(searchData);
+    } else {
+      // Otherwise, use URL params for direct navigation
+      const params = new URLSearchParams({
+        type: 'hotels',
+        location: formattedLocation,
+        cityCode: cityCode,
+        checkIn: checkInDate,
+        checkOut: checkOutDate,
+        guests: guests.toString(),
+        rooms: rooms.toString(),
+        currency: 'GBP'
+      });
+      router.push(`/search?${params.toString()}`);
+    }
   };
 
   const handleSearchMore = () => {
@@ -452,10 +491,10 @@ const HomesGrid: React.FC<HomesGridProps> = ({
 
   if (isLoading) {
     return (
-      <section className="px-4 md:px-8 lg:px-16 pt-0 pb-12">
+      <section className="px-4 md:px-8 lg:px-16 pt-8 pb-0 -mb-4">
         <div className="flex justify-between items-end mb-8">
           <div>
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900">
               {displayTitle}
             </h2>
             <p className="text-gray-500 mt-1 text-sm md:text-base">
@@ -488,9 +527,9 @@ const HomesGrid: React.FC<HomesGridProps> = ({
 
   if (hasError) {
     return (
-      <section className="px-4 md:px-8 lg:px-16 pt-0 pb-12">
+      <section className="px-4 md:px-8 lg:px-16 pt-8 pb-0 -mb-4">
         <div className="text-center">
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-4">
             {displayTitle}
           </h2>
           <p className="text-red-500 mb-4">{hasError}</p>
@@ -506,10 +545,10 @@ const HomesGrid: React.FC<HomesGridProps> = ({
   }
 
   return (
-    <section className="px-4 md:px-8 lg:px-16 pt-0 pb-12">
+    <section className="px-4 md:px-8 lg:px-16 pt-8 pb-0 -mb-4">
       <div className="flex justify-between items-end mb-8">
         <div>
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900">
             {displayTitle}
           </h2>
           <p className="text-gray-500 mt-1 text-sm md:text-base">

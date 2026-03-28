@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
 import Hero from '@/components/Hero';
@@ -19,6 +19,9 @@ interface HomeContentProps {
 export default function HomeContent({ activeTab }: HomeContentProps) {
   const router = useRouter();
   const { search, isSearching } = useSearch();
+  const [isHotelSearching, setIsHotelSearching] = useState(false);
+  const [isCarSearching, setIsCarSearching] = useState(false);
+  const [isTrendingSearching, setIsTrendingSearching] = useState(false);
 
   const handleSearch = async (params: SearchParams) => {
     await search(params);
@@ -29,11 +32,86 @@ export default function HomeContent({ activeTab }: HomeContentProps) {
     router.push(`/${tab}`);
   };
 
+  // Handler for hotel card clicks with loading state
+  const handleHotelSearch = async (searchData: any) => {
+    console.log('🏨 Hotel search triggered from card:', searchData);
+    setIsHotelSearching(true);
+    try {
+      await search({
+        type: 'hotels',
+        location: searchData.location,
+        cityCode: searchData.cityCode,
+        checkInDate: searchData.checkInDate,
+        checkOutDate: searchData.checkOutDate,
+        travellers: searchData.travellers,
+        rooms: searchData.rooms,
+        currency: searchData.currency
+      });
+      router.push('/search');
+    } catch (error) {
+      console.error('Hotel search failed:', error);
+    } finally {
+      setIsHotelSearching(false);
+    }
+  };
+
+  // Handler for car card clicks with loading state
+  const handleCarSearch = async (carData: any) => {
+    console.log('🚗 Car search triggered from card:', carData);
+    setIsCarSearching(true);
+    
+    try {
+      const today = new Date();
+      const pickupDate = new Date(today);
+      pickupDate.setDate(today.getDate() + 7);
+      pickupDate.setHours(10, 0, 0, 0);
+      
+      const dropoffDate = new Date(pickupDate);
+      dropoffDate.setHours(pickupDate.getHours() + 6);
+
+      const searchData: SearchParams = {
+        type: 'car-rentals',
+        pickupLocationCode: carData.pickupLocationCode || carData.pickupCode,
+        dropoffLocationCode: carData.dropoffLocationCode || carData.dropoffCode,
+        pickupDateTime: pickupDate.toISOString(),
+        dropoffDateTime: dropoffDate.toISOString(),
+        passengers: 2,
+        currency: 'GBP'
+      };
+      
+      console.log('🚗 Sending car search data to API:', searchData);
+      await search(searchData);
+      router.push('/search');
+    } catch (error) {
+      console.error('Car search failed:', error);
+    } finally {
+      setIsCarSearching(false);
+    }
+  };
+
+  // Handler for trending destinations with loading state
+  const handleTrendingSearch = async (city: any) => {
+    console.log('📍 Trending destination search triggered:', city);
+    setIsTrendingSearching(true);
+    try {
+      await handleSearch({
+        type: 'flights',
+        segments: [{ from: 'LOS', to: city.code || 'ABV', date: new Date().toISOString().split('T')[0] }],
+        passengers: { adults: 1, children: 0, infants: 0 },
+        cabinClass: 'economy',
+      } as SearchParams);
+    } catch (error) {
+      console.error('Trending destination search failed:', error);
+    } finally {
+      setIsTrendingSearching(false);
+    }
+  };
+
   return (
     <>
       <Hero
         onSearch={handleSearch}
-        loading={isSearching}
+        loading={isSearching || isHotelSearching || isCarSearching || isTrendingSearching}
         activeSearchTab={activeTab}
         onTabChange={handleTabChange}
       />
@@ -41,28 +119,34 @@ export default function HomeContent({ activeTab }: HomeContentProps) {
         <Partners />
         <ExclusiveOffers onTypeClick={handleTabChange} />
         <TrendingDestinations
-          onCityClick={(city) =>
-            handleSearch({
-              type: 'flights',
-              segments: [{ from: 'LOS', to: city.code || 'ABV', date: new Date().toISOString().split('T')[0] }],
-              passengers: 1,
-              cabinClass: 'economy',
-            } as SearchParams)
-          }
+          onCityClick={handleTrendingSearch}
         />
-        <HomesGrid />
-        <CarRentals />
+        <HomesGrid onSearch={handleHotelSearch} />
+        <CarRentals onSearch={handleCarSearch} />
         <SpecializedServices onServiceClick={(s) => {
-  // Map the service names to your actual paths
-  const pathMap: Record<string, string> = {
-    'Travel Services': '/services/travel-services',
-    'DHL Logistics': '/services/dhl-logistics',
-    'Admission Processing': '/services/admission-processing'
-  };
-  router.push(pathMap[s] || '/services');
-}} />
+          const pathMap: Record<string, string> = {
+            'Travel Services': '/services/travel-services',
+            'DHL Logistics': '/services/dhl-logistics',
+            'Admission Processing': '/services/admission-processing'
+          };
+          router.push(pathMap[s] || '/services');
+        }} />
       </div>
+
+      {/* Global Loading Overlay for better UX */}
+      {(isHotelSearching || isCarSearching || isTrendingSearching) && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white rounded-2xl p-8 shadow-2xl flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-300">
+            <div className="w-16 h-16 border-4 border-[#33a8da] border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-gray-700 font-semibold text-lg">
+              {isHotelSearching && 'Searching for hotels...'}
+              {isCarSearching && 'Searching for cars...'}
+              {isTrendingSearching && 'Finding best flights...'}
+            </p>
+            <p className="text-gray-400 text-sm">Please wait while we find the best options for you</p>
+          </div>
+        </div>
+      )}
     </>
   );
 }
-

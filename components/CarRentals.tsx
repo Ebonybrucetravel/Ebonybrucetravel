@@ -3,8 +3,6 @@
 import React, { useState, useEffect } from "react";
 import { useLanguage } from "../context/LanguageContext";
 import { useRouter } from "next/navigation";
-import { carApi, formatCarRentalSearchParams, searchAndTransformCarRentals } from "../lib/api";
-import type { SearchResult } from "../lib/types";
 
 // Define the car rental type
 interface CarDisplay {
@@ -37,7 +35,11 @@ interface CarDisplay {
   location?: string;
 }
 
-const CarRentals: React.FC = () => {
+interface CarRentalsProps {
+  onSearch?: (data: any) => void;
+}
+
+const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
   const { t, currency } = useLanguage();
   const router = useRouter();
   const [cars, setCars] = useState<CarDisplay[]>([]);
@@ -48,24 +50,21 @@ const CarRentals: React.FC = () => {
   const brandBlue = "#32A6D7";
   const brandBlueLight = "#e6f4fa";
 
-  // Your original car images
+  // Real car images from Unsplash
   const carImages = [
-    { id: '1', name: 'Black SUV', image: 'https://thumbs.dreamstime.com/b/black-generic-suv-car-off-road-crossover-glossy-surface-white-background-front-view-isolated-path-black-generic-suv-123338690.jpg' },
-    { id: '2', name: 'Orange Sedan', image: 'https://thumbs.dreamstime.com/b/car-front-view-white-isolated-background-clean-facing-forward-bright-perfect-transportation-related-design-promotion-381494208.jpg' },
-    { id: '3', name: 'White SUV', image: 'https://png.pngtree.com/background/20250121/original/pngtree-premium-white-suv-car-for-the-whole-family-isolated-on-a-picture-image_13334725.jpg' },
-    { id: '4', name: 'Blue SUV', image: 'https://thumbs.dreamstime.com/b/modern-blue-car-crossover-long-trips-back-view-d-render-modern-blue-car-crossover-long-trips-back-view-d-render-130333143.jpg' },
-    { id: '5', name: 'Red Crossover', image: 'https://thumbs.dreamstime.com/b/red-suv-car-isolated-white-background-d-render-red-suv-car-isolated-106663738.jpg' },
-    { id: '6', name: 'Black SUV', image: 'https://thumbs.dreamstime.com/b/black-suv-white-background-32768354.jpg' },
+    { id: '1', name: 'Mercedes-Benz S-Class', image: 'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?auto=format&fit=crop&q=80&w=800' },
+    { id: '2', name: 'BMW 7 Series', image: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&q=80&w=800' },
+    { id: '3', name: 'Audi A8', image: 'https://images.unsplash.com/photo-1603584173870-7f23fdae1b7a?auto=format&fit=crop&q=80&w=800' },
+    { id: '4', name: 'Range Rover Velar', image: 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?auto=format&fit=crop&q=80&w=800' },
+    { id: '5', name: 'Porsche Cayenne', image: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=800' },
+    { id: '6', name: 'Tesla Model S', image: 'https://images.unsplash.com/photo-1617788138017-80ad2915138d?auto=format&fit=crop&q=80&w=800' },
   ];
 
   // Popular routes (different pickup and dropoff locations)
   const popularRoutes = [
     { from: { city: "London", code: "LHR", country: "United Kingdom" }, to: { city: "Paris", code: "CDG", country: "France" } },
-    { from: { city: "New York", code: "JFK", country: "USA" }, to: { city: "Los Angeles", code: "LAX", country: "USA" } },
     { from: { city: "Dubai", code: "DXB", country: "UAE" }, to: { city: "Abu Dhabi", code: "AUH", country: "UAE" } },
-    { from: { city: "Manchester", code: "MAN", country: "United Kingdom" }, to: { city: "London", code: "LHR", country: "United Kingdom" } },
-    { from: { city: "Los Angeles", code: "LAX", country: "USA" }, to: { city: "San Francisco", code: "SFO", country: "USA" } },
-    { from: { city: "Paris", code: "CDG", country: "France" }, to: { city: "Amsterdam", code: "AMS", country: "Netherlands" } }
+    { from: { city: "New York", code: "JFK", country: "USA" }, to: { city: "Los Angeles", code: "LAX", country: "USA" } }
   ];
 
   useEffect(() => {
@@ -98,67 +97,61 @@ const CarRentals: React.FC = () => {
     const allCars: CarDisplay[] = [];
 
     popularRoutes.forEach((route, routeIndex) => {
-      for (let i = 0; i < 2; i++) {
-        const carIndex = (routeIndex * 2 + i) % carImages.length;
-        const car = carImages[carIndex];
+      const car = carImages[routeIndex % carImages.length];
+      
+      // Determine car type based on name
+      const isLuxury = car.name.includes('Mercedes') || car.name.includes('BMW') || car.name.includes('Audi');
+      const isSUV = car.name.includes('Range') || car.name.includes('Porsche');
+      const isElectric = car.name.includes('Tesla');
+      
+      const basePrice = isLuxury ? 120 : isSUV ? 140 : isElectric ? 110 : 95;
+      const discountedPrice = isLuxury ? 99 : isSUV ? 115 : isElectric ? 89 : 79;
+      
+      const seats = isSUV ? 5 : isElectric ? 5 : 4;
+      const baggage = isSUV ? "3" : isElectric ? "2" : "2";
+      
+      const provider = routeIndex % 2 === 0 ? "GroundSpan" : "Sixt Ride";
+      const rating = 4.7 + Math.random() * 0.3;
+      const reviews = Math.floor(Math.random() * 400) + 200;
 
-        const isSUV = car.name.includes("SUV");
-        const isSedan = car.name.includes("Sedan");
-        const isCrossover = car.name.includes("Crossover");
-
-        const basePrice = isSUV ? 95 : isSedan ? 75 : isCrossover ? 89 : 85;
-        const discountedPrice = isSUV ? 85 : isSedan ? 67 : isCrossover ? 80 : 76;
-
-        const seats = isSUV ? 5 : isSedan ? 4 : isCrossover ? 4 : 5;
-        const baggage = isSUV ? "3" : isSedan ? "2" : isCrossover ? "2" : "3";
-
-        const provider = i % 2 === 0 ? "GroundSpan" : "Sixt Ride";
-        const rating = 4.2 + Math.random() * 0.7;
-        const reviews = Math.floor(Math.random() * 400) + 100;
-
-        allCars.push({
-          id: `car-${routeIndex}-${i}-${Date.now()}`,
-          name: car.name,
-          provider: provider,
-          vehicleCategory: isSUV ? "SUV" : isSedan ? "Sedan" : isCrossover ? "Crossover" : "Standard",
-          vehicleDescription: car.name,
-          location: `${route.from.city} → ${route.to.city}`,
-          cityName: route.from.city,
-          locationCode: route.from.code,
-          price: basePrice,
-          discountedPrice: discountedPrice,
-          rating: parseFloat(rating.toFixed(1)),
-          reviews: reviews,
-          image: car.image,
-          amenities: getDefaultAmenitiesForCar(provider),
-          seats: seats,
-          baggage: `${baggage} ${t('cars.bags')}`,
-          transmission: t('cars.automatic'),
-          pickupLocation: route.from.code,
-          dropoffLocation: route.to.code,
-          pickupDateTime: pickupDateTime,
-          dropoffDateTime: dropoffDateTime,
-          duration: "6 hours",
-          distance: getDistanceForRoute(route.from.city, route.to.city),
-          isRefundable: true,
-          description: `Premium ${car.name} transfer from ${route.from.city} to ${route.to.city}`
-        });
-      }
+      allCars.push({
+        id: `car-${routeIndex}-${Date.now()}`,
+        name: car.name,
+        provider: provider,
+        vehicleCategory: isLuxury ? "Luxury Sedan" : isSUV ? "Luxury SUV" : isElectric ? "Electric" : "Premium",
+        vehicleDescription: car.name,
+        location: `${route.from.city} → ${route.to.city}`,
+        cityName: route.from.city,
+        locationCode: route.from.code,
+        price: basePrice,
+        discountedPrice: discountedPrice,
+        rating: parseFloat(rating.toFixed(1)),
+        reviews: reviews,
+        image: car.image,
+        amenities: getDefaultAmenitiesForCar(provider),
+        seats: seats,
+        baggage: `${baggage} ${t('cars.bags')}`,
+        transmission: t('cars.automatic'),
+        pickupLocation: route.from.code,
+        dropoffLocation: route.to.code,
+        pickupDateTime: pickupDateTime,
+        dropoffDateTime: dropoffDateTime,
+        duration: "6 hours",
+        distance: getDistanceForRoute(route.from.city, route.to.city),
+        isRefundable: true,
+        description: `Premium ${car.name} transfer from ${route.from.city} to ${route.to.city}`
+      });
     });
 
-    const shuffled = [...allCars].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, 6);
+    return allCars;
   };
 
   // Helper function to get distance between cities (mock data)
   const getDistanceForRoute = (fromCity: string, toCity: string): string => {
     const distances: {[key: string]: string} = {
       "London-Paris": "294 MI",
-      "New York-Los Angeles": "2,789 MI",
       "Dubai-Abu Dhabi": "82 MI",
-      "Manchester-London": "209 MI",
-      "Los Angeles-San Francisco": "383 MI",
-      "Paris-Amsterdam": "267 MI"
+      "New York-Los Angeles": "2,789 MI"
     };
     const key = `${fromCity}-${toCity}`;
     return distances[key] || "200 MI";
@@ -206,11 +199,21 @@ const CarRentals: React.FC = () => {
 
     const pickupCode = car.pickupLocation || "LHR";
     const dropoffCode = car.dropoffLocation || "CDG";
-    const location = `${pickupCity} to ${dropoffCity}`;
 
-    router.push(
-      `/search?type=car-rentals&location=${encodeURIComponent(location)}&pickupCode=${pickupCode}&dropoffCode=${dropoffCode}&pickupDate=${pickupDateStr}&dropoffDate=${dropoffDateStr}&pickupTime=${pickupTime}&dropoffTime=${dropoffTime}&passengers=${car.seats || 2}&currency=GBP`
-    );
+    // Use onSearch prop if provided
+    if (onSearch) {
+      // Pass the data with the exact property names that SearchBox expects
+      onSearch({
+        pickupLocationCode: pickupCode,      // ✅ Correct parameter name
+        dropoffLocationCode: dropoffCode,    // ✅ Correct parameter name
+      });
+    } else {
+      // Fallback to direct navigation
+      const location = `${pickupCity} to ${dropoffCity}`;
+      router.push(
+        `/search?type=car-rentals&location=${encodeURIComponent(location)}&pickupCode=${pickupCode}&dropoffCode=${dropoffCode}&pickupDate=${pickupDateStr}&dropoffDate=${dropoffDateStr}&pickupTime=${pickupTime}&dropoffTime=${dropoffTime}&passengers=${car.seats || 2}&currency=GBP`
+      );
+    }
   };
 
   const handleSearchMore = () => {
@@ -239,7 +242,7 @@ const CarRentals: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
+          {[1, 2, 3].map((i) => (
             <div key={i} className="bg-white rounded-3xl overflow-hidden shadow-sm animate-pulse border border-gray-100">
               <div className="h-64 md:h-72 lg:h-80 bg-gray-200"></div>
               <div className="p-5">
@@ -277,7 +280,7 @@ const CarRentals: React.FC = () => {
   }
 
   return (
-    <section className="px-4 md:px-8 lg:px-16 py-12 bg-white">
+    <section className="px-4 md:px-8 lg:px-16 py-12 bg-white -mb-4">
       <div className="flex justify-between items-end mb-8 md:mb-10">
         <div>
           <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900">
@@ -317,7 +320,7 @@ const CarRentals: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
         {cars.map((car) => (
           <div
             key={car.id}
@@ -342,12 +345,12 @@ const CarRentals: React.FC = () => {
               </div>
             )}
 
-            {/* Image container */}
-            <div className="h-64 md:h-72 lg:h-80 bg-white flex items-center justify-center p-6 md:p-8 overflow-hidden">
+            {/* Image container - full cover without padding */}
+            <div className="h-64 md:h-72 lg:h-80 bg-gradient-to-br from-gray-900 to-gray-700 overflow-hidden">
               <img
                 src={car.image}
                 alt={car.name}
-                className="w-full h-full object-contain object-center group-hover:scale-105 transition-transform duration-500"
+                className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
                 loading="lazy"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = carImages[0].image;

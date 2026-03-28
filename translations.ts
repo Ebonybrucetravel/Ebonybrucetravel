@@ -181,7 +181,9 @@ export const translations = {
       subtitle: 'We offer more than just bookings.',
       travelServices: 'Travel Services',
       tours: 'Curated Tours',
-      travelServicesDesc: 'We specialize in organizing and managing tours, excursions, and event ticketing. We do not book or manage flight reservations or offer immigration services.',
+      logistics: 'DHL Franchised Logistics',
+      admission: 'Speedy Admission Processing',
+      travelServicesDesc: 'We specialize in organizing and managing tours, excursions, and event ticketing.',
       logisticsDesc: 'As an authorized DHL franchise partner, we offer courier and international parcel services. This includes handling document and package shipments, offering tracking support, and providing clients with a secure and efficient logistics solution.',
       admissionDesc: 'We offer advisory services for students seeking admission to international educational institutions. This includes academic counseling and course matching.',
       learnMore: 'Learn More',
@@ -201,14 +203,14 @@ export const translations = {
         desc2: 'Our focus is providing tailored travel experiences and ticketing solutions for both local and international clients.',
         learnMore: 'Learn More About Our Travel Services',
       },
-      logistics: {
+      logisticsDetail: {
         alt: 'Logistics Services',
         title: 'DHL Franchised Logistics',
         desc1: 'As an authorized DHL franchise partner, we offer courier and international parcel services. This includes handling document and package shipments, offering tracking support, and providing clients with a secure and efficient logistics solution.',
         desc2: 'Including Hotel Reservations: We provide reliable hotel booking support for travelers, both domestic and international.',
         learnMore: 'Learn More About DHL Services',
       },
-      admission: {
+      admissionDetail: {
         alt: 'Educational Consulting',
         title: 'Speedy Admission Processing',
         desc1: 'We offer advisory services for students seeking admission to international educational institutions. This includes academic counseling and course matching.',
@@ -600,7 +602,7 @@ export const translations = {
       hotels: 'Hôtels',
       cars: 'Voitures',
       signIn: 'Connexion',
-      register: 'S\'inscrire',
+      register: "S'inscrire",
     },
     hero: {
       title: 'Où le Voyage Mondial Devient Facile',
@@ -774,6 +776,8 @@ export const translations = {
       subtitle: 'Nous offrons plus que de simples réservations.',
       travelServices: 'Services de voyage',
       tours: 'Tours Curatés',
+      logistics: 'Logistique DHL Franchisée',
+      admission: 'Traitement Accéléré des Admissions',
       travelServicesDesc: 'Nous sommes spécialisés dans l’organisation et la gestion de circuits, excursions et billetterie d’événements. Nous ne réservons ni ne gérons les réservations de vols et n’offrons pas de services d’immigration.',
       logisticsDesc: 'En tant que partenaire franchisé DHL agréé, nous proposons des services de messagerie et d’envoi de colis internationaux. Cela inclut la gestion des envois de documents et de colis, le suivi et une solution logistique sécurisée et efficace.',
       admissionDesc: 'Nous offrons des services de conseil aux étudiants souhaitant être admis dans des établissements d’enseignement internationaux. Cela comprend un accompagnement académique et une aide au choix de cursus.',
@@ -794,14 +798,14 @@ export const translations = {
         desc2: 'Notre objectif est de fournir des expériences de voyage sur mesure et des solutions de billetterie pour les clients locaux et internationaux.',
         learnMore: 'En savoir plus sur nos services de voyage',
       },
-      logistics: {
+      logisticsDetail: {
         alt: 'Services Logistiques',
         title: 'Logistique DHL Franchisée',
         desc1: 'En tant que partenaire franchisé DHL agréé, nous proposons des services de messagerie et d’envoi de colis internationaux. Cela inclut la gestion des envois de documents et de colis, le suivi et une solution logistique sécurisée et efficace.',
         desc2: 'Incluant les réservations d’hôtel : nous fournissons un support fiable de réservation d’hôtel pour les voyageurs, nationaux et internationaux.',
         learnMore: 'En savoir plus sur les services DHL',
       },
-      admission: {
+      admissionDetail: {
         alt: 'Conseil en Éducation',
         title: 'Traitement Accéléré des Admissions',
         desc1: 'Nous offrons des services de conseil aux étudiants souhaitant être admis dans des établissements d’enseignement internationaux. Cela comprend un accompagnement académique et une aide au choix de cursus.',
@@ -872,7 +876,7 @@ export const translations = {
     newsletter: {
       title: 'RESTEZ INFORMÉ DES OFFRES',
       subtitle: 'REJOIGNEZ 50 000+ VOYAGEURS',
-      subscribe: 'S\'abonner',
+      subscribe: "S'abonner",
       emailPlaceholder: 'Votre adresse e-mail',
     },
     footer: {
@@ -940,7 +944,7 @@ export const translations = {
         label: 'Notre emplacement',
         title: 'Visitez notre bureau au Royaume-Uni',
         address: '1er étage, Suite 103, 2-6 Alma Street, Luton, LU1 2PL, Royaume-Uni',
-        getDirections: 'Obtenir l\'itinéraire',
+        getDirections: "Obtenir l'itinéraire",
         callOffice: 'Appeler le bureau UK',
       },
       form: {
@@ -1367,6 +1371,8 @@ export const translations = {
       subtitle: 'Ofrecemos más que solo reservas.',
       travelServices: 'Servicios de viaje',
       tours: 'Tours Curados',
+      logistics: 'Logística Franquiciada DHL',
+      admission: 'Procesamiento Acelerado de Admisiones',
       travelServicesDesc: 'Estamos especializados en organizar y gestionar tours, excursiones y venta de entradas para eventos. No reservamos ni gestionamos vuelos ni ofrecemos servicios de inmigración.',
       logisticsDesc: 'Como socio franquiciado autorizado de DHL, ofrecemos servicios de mensajería y envío internacional de paquetes. Esto incluye la gestión de envíos de documentos y paquetes, soporte de seguimiento y una solución logística segura y eficiente.',
       admissionDesc: 'Ofrecemos servicios de asesoramiento para estudiantes que buscan admisión en instituciones educativas internacionales. Esto incluye orientación académica y ayuda para elegir cursos.',
@@ -1387,14 +1393,14 @@ export const translations = {
         desc2: 'Nuestro objetivo es ofrecer experiencias de viaje personalizadas y soluciones de emisión de billetes para clientes locales e internacionales.',
         learnMore: 'Más información sobre nuestros servicios de viaje',
       },
-      logistics: {
+      logisticsDetail: {
         alt: 'Servicios Logísticos',
         title: 'Logística Franquiciada DHL',
         desc1: 'Como socio franquiciado autorizado de DHL, ofrecemos servicios de mensajería y envío internacional de paquetes. Esto incluye la gestión de envíos de documentos y paquetes, soporte de seguimiento y una solución logística segura y eficiente.',
         desc2: 'Incluyendo reservas de hotel: proporcionamos soporte fiable de reserva de hotel para viajeros nacionales e internacionales.',
         learnMore: 'Más información sobre los servicios DHL',
       },
-      admission: {
+      admissionDetail: {
         alt: 'Consultoría Educativa',
         title: 'Procesamiento Acelerado de Admisiones',
         desc1: 'Ofrecemos servicios de asesoramiento para estudiantes que buscan admisión en instituciones educativas internacionales. Esto incluye orientación académica y ayuda para elegir cursos.',
@@ -1960,6 +1966,8 @@ export const translations = {
       subtitle: 'Wir bieten mehr als nur Buchungen.',
       travelServices: 'Reisedienstleistungen',
       tours: 'Kuratierte Touren',
+      logistics: 'DHL Franchise-Logistik',
+      admission: 'Schnelle Zulassungsbearbeitung',
       travelServicesDesc: 'Wir sind spezialisiert auf die Organisation und Verwaltung von Touren, Ausflügen und Event-Ticketing. Wir buchen oder verwalten keine Flugreservierungen und bieten keine Einwanderungsdienste an.',
       logisticsDesc: 'Als autorisierter DHL-Franchise-Partner bieten wir Kurier- und internationale Paketdienste an. Dazu gehören die Abwicklung von Dokumenten- und Paketsendungen, Tracking-Support und eine sichere, effiziente Logistiklösung.',
       admissionDesc: 'Wir bieten Beratungsdienste für Studierende an, die eine Zulassung zu internationalen Bildungseinrichtungen anstreben. Dazu gehören akademische Beratung und Kursauswahl.',
@@ -1980,14 +1988,14 @@ export const translations = {
         desc2: 'Unser Fokus liegt auf maßgeschneiderten Reiseerlebnissen und Ticketing-Lösungen für lokale und internationale Kunden.',
         learnMore: 'Erfahren Sie mehr über unsere Reisedienstleistungen',
       },
-      logistics: {
+      logisticsDetail: {
         alt: 'Logistikdienstleistungen',
         title: 'DHL Franchise-Logistik',
         desc1: 'Als autorisierter DHL-Franchise-Partner bieten wir Kurier- und internationale Paketdienste an. Dazu gehören die Abwicklung von Dokumenten- und Paketsendungen, Tracking-Support und eine sichere, effiziente Logistiklösung.',
         desc2: 'Einschließlich Hotelreservierungen: Wir bieten zuverlässige Hotelbuchungsunterstützung für Reisende, sowohl inländische als auch internationale.',
         learnMore: 'Erfahren Sie mehr über DHL-Dienste',
       },
-      admission: {
+      admissionDetail: {
         alt: 'Bildungsberatung',
         title: 'Schnelle Zulassungsbearbeitung',
         desc1: 'Wir bieten Beratungsdienste für Studierende an, die eine Zulassung zu internationalen Bildungseinrichtungen anstreben. Dazu gehören akademische Beratung und Kursauswahl.',
@@ -2553,6 +2561,8 @@ export const translations = {
       subtitle: '我们提供的不仅仅是预订。',
       travelServices: '旅行服务',
       tours: '精选旅游',
+      logistics: 'DHL 加盟物流',
+      admission: '快速入学处理',
       travelServicesDesc: '我们专注于组织和管理旅游、观光和活动票务。我们不预订或管理航班预订，也不提供移民服务。',
       logisticsDesc: '作为DHL授权加盟合作伙伴，我们提供快递和国际包裹服务。包括文件和包裹运输、追踪支持，以及安全高效的物流解决方案。',
       admissionDesc: '我们为寻求国际教育机构录取的学生提供咨询服务。包括学术咨询和课程匹配。',
@@ -2573,14 +2583,14 @@ export const translations = {
         desc2: '我们的重点是为本地和国际客户提供量身定制的旅行体验和票务解决方案。',
         learnMore: '了解更多关于我们的旅行服务',
       },
-      logistics: {
+      logisticsDetail: {
         alt: '物流服务',
         title: 'DHL 加盟物流',
         desc1: '作为DHL授权加盟合作伙伴，我们提供快递和国际包裹服务。包括文件和包裹运输、追踪支持，以及安全高效的物流解决方案。',
         desc2: '包括酒店预订：我们为国内外旅客提供可靠的酒店预订支持。',
         learnMore: '了解更多关于 DHL 服务',
       },
-      admission: {
+      admissionDetail: {
         alt: '教育咨询',
         title: '快速入学处理',
         desc1: '我们为寻求国际教育机构录取的学生提供咨询服务。包括学术咨询和课程匹配。',

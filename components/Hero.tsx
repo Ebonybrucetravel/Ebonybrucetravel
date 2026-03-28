@@ -135,13 +135,13 @@ const Hero: React.FC<HeroProps> = ({
   };
 
   return (
-    <section className="relative min-h-[400px] md:min-h-[550px] flex items-center justify-center overflow-hidden py-3 md:py-4">
+    <section className="relative min-h-[320px] md:min-h-[450px] flex items-center justify-center overflow-hidden py-2 md:py-3 -mb-6">
       {/* Bright blue and white gradient background */}
       <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#33a8da] via-[#4bb5e3] to-[#6bc2ed]">
         <div className="absolute inset-0 bg-white/10"></div>
         {/* Decorative wave pattern */}
         <svg
-          className="absolute bottom-0 left-0 w-full h-24 md:h-32 text-white/5"
+          className="absolute bottom-0 left-0 w-full h-20 md:h-24 text-white/5"
           preserveAspectRatio="none"
           viewBox="0 0 1440 320"
           fill="currentColor"
@@ -151,15 +151,15 @@ const Hero: React.FC<HeroProps> = ({
       </div>
 
       <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-4 md:mb-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-2 md:mb-3 tracking-tight text-white drop-shadow-lg">
+        <div className="text-center mb-2 md:mb-3 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold mb-1 md:mb-2 tracking-tight text-white drop-shadow-lg">
             {isHotelTab()
               ? t('hero.hotels.title')
               : isCarTab()
               ? t('hero.cars.title')
               : t('hero.title')}
           </h1>
-          <p className="text-sm sm:text-base md:text-lg text-white max-w-2xl mx-auto font-medium opacity-95 leading-relaxed">
+          <p className="text-xs sm:text-sm md:text-base text-white max-w-2xl mx-auto font-medium opacity-95 leading-relaxed">
             {isHotelTab()
               ? t('hero.hotels.subtitle')
               : isCarTab()
@@ -168,7 +168,7 @@ const Hero: React.FC<HeroProps> = ({
           </p>
         </div>
 
-        <div className="relative z-20 animate-in fade-in zoom-in-95 delay-300 duration-700 mb-1 md:mb-2">
+        <div className="relative z-20 animate-in fade-in zoom-in-95 delay-300 duration-700 mb-0 md:mb-0">
           <SearchBox
             onSearch={onSearch}
             loading={loading}
@@ -178,21 +178,21 @@ const Hero: React.FC<HeroProps> = ({
         </div>
 
         {(isHotelTab() || isCarTab()) && (
-          <div className="mt-3 md:mt-4 animate-in fade-in delay-500 duration-1000">
-            <div className="text-center mb-3">
-              <h3 className="text-lg md:text-xl font-bold text-white mb-0.5 drop-shadow-md">
+          <div className="mt-2 md:mt-3 animate-in fade-in delay-500 duration-1000">
+            <div className="text-center mb-2">
+              <h3 className="text-base md:text-lg font-bold text-white mb-0 drop-shadow-md">
                 {isHotelTab()
                   ? t('hero.popular.hotels.heading')
                   : t('hero.popular.cars.heading')}
               </h3>
-              <p className="text-white/85 text-xs sm:text-sm">
+              <p className="text-white/85 text-[11px] sm:text-xs">
                 {isHotelTab()
                   ? t('hero.popular.hotels.subheading')
                   : t('hero.popular.cars.subheading')}
               </p>
             </div>
 
-            <div className="flex flex-wrap justify-center gap-3 md:gap-4">
+            <div className="flex flex-wrap justify-center gap-2 md:gap-3">
               {(isHotelTab() ? hotelDestinations : carRentalLocations).map(
                 (item, index) => (
                   <button
@@ -202,7 +202,7 @@ const Hero: React.FC<HeroProps> = ({
                         ? handleQuickHotelSearch(item)
                         : handleQuickCarSearch(item)
                     }
-                    className="group relative overflow-hidden rounded-xl w-24 h-24 md:w-28 md:h-28 flex-shrink-0 animate-in fade-in slide-in-from-bottom-4 shadow-lg hover:shadow-xl transition-shadow"
+                    className="group relative overflow-hidden rounded-lg w-20 h-20 md:w-24 md:h-24 flex-shrink-0 animate-in fade-in slide-in-from-bottom-4 shadow-md hover:shadow-lg transition-shadow"
                     style={{
                       animationDelay: `${index * 100}ms`,
                       animationDuration: "500ms",
@@ -216,11 +216,11 @@ const Hero: React.FC<HeroProps> = ({
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
                     </div>
-                    <div className="absolute inset-0 flex flex-col items-center justify-end p-2.5">
-                      <span className="text-white font-bold text-xs sm:text-sm drop-shadow-lg">
+                    <div className="absolute inset-0 flex flex-col items-center justify-end p-2">
+                      <span className="text-white font-bold text-[10px] sm:text-xs drop-shadow-lg">
                         {item.name}
                       </span>
-                      <span className="text-white/80 text-[10px] mt-0.5 bg-black/30 px-1.5 py-0.5 rounded-full">
+                      <span className="text-white/80 text-[9px] mt-0.5 bg-black/30 px-1 py-0.5 rounded-full">
                         {item.code}
                       </span>
                     </div>
