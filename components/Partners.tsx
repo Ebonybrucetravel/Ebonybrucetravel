@@ -14,6 +14,7 @@ const Partners: React.FC = () => {
       logo: "/logos/interior-third-applyboard-logo.jpg.png",
     },
     { name: "Nanta", logo: "/logos/nanta.png" },
+    { name: "Ncaa", logo: "/logos/Ncaa.png", isWider: true },
   ];
 
   return (
@@ -35,7 +36,11 @@ const Partners: React.FC = () => {
               <img
                 src={partner.logo}
                 alt={`${partner.name} logo`}
-                className="h-14 md:h-20 w-auto object-contain transition-transform duration-300 hover:scale-110"
+                className={`object-contain transition-transform duration-300 hover:scale-110 ${
+                  partner.isWider 
+                    ? "h-10 md:h-14 w-auto" 
+                    : "h-14 md:h-20 w-auto"
+                }`}
                 style={{ maxWidth: 'none' }}
               />
             </div>

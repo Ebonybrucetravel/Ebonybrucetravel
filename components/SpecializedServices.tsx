@@ -94,7 +94,7 @@ const SpecializedServices: React.FC<SpecializedServicesProps> = ({
             </svg>
           </div>
           <h3 className="text-xl font-bold text-gray-900 mb-4">
-            {t('services.logistics')}
+            {t('services.logistics') || "DHL Franchised Logistics"}
           </h3>
           <p className="text-gray-500 text-sm mb-6">
             {t('services.logisticsDesc')}
@@ -140,7 +140,7 @@ const SpecializedServices: React.FC<SpecializedServicesProps> = ({
             </svg>
           </div>
           <h3 className="text-xl font-bold text-gray-900 mb-4">
-            {t('services.admission')}
+            {t('services.admission') || "Speedy Admission Processing"}
           </h3>
           <p className="text-gray-500 text-sm mb-6">
             {t('services.admissionDesc')}

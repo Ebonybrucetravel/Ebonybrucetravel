@@ -93,7 +93,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const [stopsFilter, setStopsFilter] = useState('Any');
   const [maxPrice, setMaxPrice] = useState(2000);
   const [segments, setSegments] = useState<Segment[]>([
-    { from: 'LHR - London, United Kingdom', to: 'CDG - Paris, France', date: '' }
+    { from: '', to: '', date: '' } // Empty instead of default LHR to CDG
   ]);
   const [returnDate, setReturnDate] = useState('');
   const [showFromDropdown, setShowFromDropdown] = useState(false);
@@ -562,6 +562,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Set default dates - but leave flight fields empty
   useEffect(() => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -571,12 +572,15 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     nextWeek.setDate(nextWeek.getDate() + 4);
     const nextWeekStr = nextWeek.toISOString().split('T')[0];
 
+    // Only set dates if segments are empty or no date set
     setSegments(prev => {
       const newSegments = [...prev];
-      newSegments[0].date = tomorrowStr;
+      if (!newSegments[0].date) {
+        newSegments[0].date = tomorrowStr;
+      }
       return newSegments;
     });
-    setReturnDate(nextWeekStr);
+    if (!returnDate) setReturnDate(nextWeekStr);
     setCheckInDate(tomorrowStr);
     setCheckOutDate(nextWeekStr);
     setCarPickUpDate(tomorrowStr);
