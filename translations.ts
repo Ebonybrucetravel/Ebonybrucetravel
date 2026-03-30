@@ -207,14 +207,13 @@ export const translations = {
         alt: 'Logistics Services',
         title: 'DHL Franchised Logistics',
         desc1: 'As an authorized DHL franchise partner, we offer courier and international parcel services. This includes handling document and package shipments, offering tracking support, and providing clients with a secure and efficient logistics solution.',
-        desc2: 'Including Hotel Reservations: We provide reliable hotel booking support for travelers, both domestic and international.',
         learnMore: 'Learn More About DHL Services',
       },
       admissionDetail: {
         alt: 'Educational Consulting',
         title: 'Speedy Admission Processing',
         desc1: 'We offer advisory services for students seeking admission to international educational institutions. This includes academic counseling and course matching.',
-        desc2: 'We do not provide immigration or visa representation services.',
+       
         learnMore: 'Learn More About Admissions',
       },
       mission: {
@@ -802,7 +801,7 @@ export const translations = {
         alt: 'Services Logistiques',
         title: 'Logistique DHL Franchisée',
         desc1: 'En tant que partenaire franchisé DHL agréé, nous proposons des services de messagerie et d’envoi de colis internationaux. Cela inclut la gestion des envois de documents et de colis, le suivi et une solution logistique sécurisée et efficace.',
-        desc2: 'Incluant les réservations d’hôtel : nous fournissons un support fiable de réservation d’hôtel pour les voyageurs, nationaux et internationaux.',
+       
         learnMore: 'En savoir plus sur les services DHL',
       },
       admissionDetail: {
@@ -1397,7 +1396,7 @@ export const translations = {
         alt: 'Servicios Logísticos',
         title: 'Logística Franquiciada DHL',
         desc1: 'Como socio franquiciado autorizado de DHL, ofrecemos servicios de mensajería y envío internacional de paquetes. Esto incluye la gestión de envíos de documentos y paquetes, soporte de seguimiento y una solución logística segura y eficiente.',
-        desc2: 'Incluyendo reservas de hotel: proporcionamos soporte fiable de reserva de hotel para viajeros nacionales e internacionales.',
+      
         learnMore: 'Más información sobre los servicios DHL',
       },
       admissionDetail: {
@@ -1992,7 +1991,7 @@ export const translations = {
         alt: 'Logistikdienstleistungen',
         title: 'DHL Franchise-Logistik',
         desc1: 'Als autorisierter DHL-Franchise-Partner bieten wir Kurier- und internationale Paketdienste an. Dazu gehören die Abwicklung von Dokumenten- und Paketsendungen, Tracking-Support und eine sichere, effiziente Logistiklösung.',
-        desc2: 'Einschließlich Hotelreservierungen: Wir bieten zuverlässige Hotelbuchungsunterstützung für Reisende, sowohl inländische als auch internationale.',
+        
         learnMore: 'Erfahren Sie mehr über DHL-Dienste',
       },
       admissionDetail: {
@@ -2587,7 +2586,7 @@ export const translations = {
         alt: '物流服务',
         title: 'DHL 加盟物流',
         desc1: '作为DHL授权加盟合作伙伴，我们提供快递和国际包裹服务。包括文件和包裹运输、追踪支持，以及安全高效的物流解决方案。',
-        desc2: '包括酒店预订：我们为国内外旅客提供可靠的酒店预订支持。',
+       
         learnMore: '了解更多关于 DHL 服务',
       },
       admissionDetail: {

@@ -30,6 +30,37 @@ export default function ServiceDetailPage({ service }: ServiceDetailPageProps) {
     return t(`serviceDetail.${service}.${key}`);
   };
 
+  // Helper to get features array length dynamically
+  const getFeaturesCount = () => {
+    const features = t(`serviceDetail.${service}.features`);
+    if (Array.isArray(features)) {
+      return features.length;
+    }
+    // Fallback: check for common feature counts
+    switch (service) {
+      case "travel":
+        return 6;
+      case "dhl":
+        return 5; // DHL has 5 features
+      case "admissions":
+        return 6;
+      default:
+        return 6;
+    }
+  };
+
+  // Helper to get benefits array length dynamically
+  const getBenefitsCount = () => {
+    const benefits = t(`serviceDetail.${service}.benefits`);
+    if (Array.isArray(benefits)) {
+      return benefits.length;
+    }
+    return 5; // Default fallback
+  };
+
+  const featuresCount = getFeaturesCount();
+  const benefitsCount = getBenefitsCount();
+
   return (
     <main className="min-h-screen bg-white">
       {/* Banner Section */}
@@ -37,9 +68,12 @@ export default function ServiceDetailPage({ service }: ServiceDetailPageProps) {
         <Image
           src={(() => {
             switch (service) {
-              case "travel": return "https://images.unsplash.com/photo-1506929562872-bb421503ef21?q=80&w=1968&auto=format&fit=crop";
-              case "dhl": return "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=2070&auto=format&fit=crop";
-              case "admissions": return "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?q=80&w=2070&auto=format&fit=crop";
+              case "travel":
+                return "https://images.unsplash.com/photo-1506929562872-bb421503ef21?q=80&w=1968&auto=format&fit=crop";
+              case "dhl":
+                return "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=2070&auto=format&fit=crop";
+              case "admissions":
+                return "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?q=80&w=2070&auto=format&fit=crop";
             }
           })()}
           alt={getServiceKey("title")}
@@ -132,7 +166,7 @@ export default function ServiceDetailPage({ service }: ServiceDetailPageProps) {
         </div>
       </section>
 
-      {/* Features Grid */}
+      {/* Features Grid - Dynamically render based on actual features count */}
       <section className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="text-center mb-16">
           <span className="inline-block px-4 py-2 bg-[#33a8da]/10 text-[#33a8da] rounded-full text-sm font-semibold mb-4">
@@ -144,22 +178,33 @@ export default function ServiceDetailPage({ service }: ServiceDetailPageProps) {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 justify-items-center">
-          {[0, 1, 2, 3, 4, 5].map((index) => (
-            <div
-              key={index}
-              className="group bg-white rounded-3xl p-8 shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 border border-gray-100 w-full max-w-md"
-            >
-              <div className="text-5xl mb-4 transform group-hover:scale-110 transition-transform duration-300">
-                {getServiceKey(`features.${index}.icon`)}
+          {Array.from({ length: featuresCount }).map((_, index) => {
+            const icon = getServiceKey(`features.${index}.icon`);
+            const title = getServiceKey(`features.${index}.title`);
+            const description = getServiceKey(`features.${index}.description`);
+            
+            // Skip rendering if the feature doesn't exist (empty string)
+            if (!title || title === `serviceDetail.${service}.features.${index}.title`) {
+              return null;
+            }
+            
+            return (
+              <div
+                key={index}
+                className="group bg-white rounded-3xl p-8 shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 border border-gray-100 w-full max-w-md"
+              >
+                <div className="text-5xl mb-4 transform group-hover:scale-110 transition-transform duration-300">
+                  {icon}
+                </div>
+                <h3 className="text-2xl font-bold text-[#001f3f] mb-3 group-hover:text-[#33a8da] transition-colors">
+                  {title}
+                </h3>
+                <p className="text-gray-600 leading-relaxed">
+                  {description}
+                </p>
               </div>
-              <h3 className="text-2xl font-bold text-[#001f3f] mb-3 group-hover:text-[#33a8da] transition-colors">
-                {getServiceKey(`features.${index}.title`)}
-              </h3>
-              <p className="text-gray-600 leading-relaxed">
-                {getServiceKey(`features.${index}.description`)}
-              </p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -212,7 +257,7 @@ export default function ServiceDetailPage({ service }: ServiceDetailPageProps) {
         </div>
       </section>
 
-      {/* Benefits Section */}
+      {/* Benefits Section - Dynamically render based on actual benefits count */}
       <section className="py-20 bg-gradient-to-br from-[#001f3f] to-[#002b4f] text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
@@ -225,31 +270,40 @@ export default function ServiceDetailPage({ service }: ServiceDetailPageProps) {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-            {[0, 1, 2, 3, 4].map((index) => (
-              <div
-                key={index}
-                className="flex items-start gap-4 bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20"
-              >
-                <div className="w-8 h-8 bg-[#33a8da] rounded-full flex items-center justify-center flex-shrink-0 mt-1">
-                  <svg
-                    className="w-4 h-4 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={3}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
+            {Array.from({ length: benefitsCount }).map((_, index) => {
+              const benefit = getServiceKey(`benefits.${index}`);
+              
+              // Skip rendering if the benefit doesn't exist
+              if (!benefit || benefit === `serviceDetail.${service}.benefits.${index}`) {
+                return null;
+              }
+              
+              return (
+                <div
+                  key={index}
+                  className="flex items-start gap-4 bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20"
+                >
+                  <div className="w-8 h-8 bg-[#33a8da] rounded-full flex items-center justify-center flex-shrink-0 mt-1">
+                    <svg
+                      className="w-4 h-4 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={3}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  </div>
+                  <p className="text-lg text-gray-100">
+                    {benefit}
+                  </p>
                 </div>
-                <p className="text-lg text-gray-100">
-                  {getServiceKey(`benefits.${index}`)}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>

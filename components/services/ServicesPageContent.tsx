@@ -105,12 +105,12 @@ export default function ServicesPageContent({
             </div>
           </div>
 
-          {/* Logistics - DHL */}
+          {/* Logistics - DHL - FIXED: Changed from services.logistics.* to services.logisticsDetail.* */}
           <div className="group relative bg-white rounded-3xl shadow-xl overflow-hidden hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-2">
             <div className="relative h-48 w-full overflow-hidden">
               <Image
                 src="https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=2070&auto=format&fit=crop"
-                alt={t("services.logistics.alt")}
+                alt={t("services.logisticsDetail.alt")}
                 fill
                 className="object-cover group-hover:scale-110 transition-transform duration-700"
               />
@@ -121,19 +121,19 @@ export default function ServicesPageContent({
             </div>
             <div className="p-8">
               <h3 className="text-2xl font-bold text-[#001f3f] mb-4">
-                {t("services.logistics.title")}
+                {t("services.logisticsDetail.title")}
               </h3>
               <p className="text-gray-600 leading-relaxed mb-4">
-                {t("services.logistics.desc1")}
+                {t("services.logisticsDetail.desc1")}
               </p>
               <p className="text-gray-600 leading-relaxed mb-6">
-                {t("services.logistics.desc2")}
+               
               </p>
               <Link
                 href="/services/dhl-logistics"
                 className="inline-flex items-center text-[#33a8da] font-semibold group-hover:gap-2 transition-all"
               >
-                {t("services.logistics.learnMore")}
+                {t("services.logisticsDetail.learnMore")}
                 <svg
                   className="w-5 h-5 ml-1 transform group-hover:translate-x-1 transition-transform"
                   fill="none"
@@ -151,12 +151,12 @@ export default function ServicesPageContent({
             </div>
           </div>
 
-          {/* Educational Consulting */}
+          {/* Educational Consulting - FIXED: Changed from services.admission.* to services.admissionDetail.* */}
           <div className="group relative bg-white rounded-3xl shadow-xl overflow-hidden hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-2">
             <div className="relative h-48 w-full overflow-hidden">
               <Image
                 src="https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?q=80&w=2070&auto=format&fit=crop"
-                alt={t("services.admission.alt")}
+                alt={t("services.admissionDetail.alt")}
                 fill
                 className="object-cover group-hover:scale-110 transition-transform duration-700"
               />
@@ -167,19 +167,19 @@ export default function ServicesPageContent({
             </div>
             <div className="p-8">
               <h3 className="text-2xl font-bold text-[#001f3f] mb-4">
-                {t("services.admission.title")}
+                {t("services.admissionDetail.title")}
               </h3>
               <p className="text-gray-600 leading-relaxed mb-4">
-                {t("services.admission.desc1")}
+                {t("services.admissionDetail.desc1")}
               </p>
               <p className="text-gray-600 leading-relaxed mb-6">
-                {t("services.admission.desc2")}
+             
               </p>
               <Link
                 href="/services/admission-processing"
                 className="inline-flex items-center text-[#33a8da] font-semibold group-hover:gap-2 transition-all"
               >
-                {t("services.admission.learnMore")}
+                {t("services.admissionDetail.learnMore")}
                 <svg
                   className="w-5 h-5 ml-1 transform group-hover:translate-x-1 transition-transform"
                   fill="none"
@@ -367,9 +367,9 @@ export default function ServicesPageContent({
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {[
-              { number: "1000+", label: t("stats.customers") },
+              { number: "500+", label: t("stats.customers") },
               { number: "50+", label: t("services.stats.countries") },
-              { number: "100+", label: t("stats.partners") },
+              { number: "50+", label: t("stats.partners") },
               { number: "24/7", label: t("stats.support") },
             ].map((stat, index) => (
               <div key={index} className="text-center">
