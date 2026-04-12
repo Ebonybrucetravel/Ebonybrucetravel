@@ -320,6 +320,7 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
   provider: string;  // <-- CHANGE THIS - remove optional (?)
   // Wakanow specific fields
   isWakanow?: boolean;
+  isWakanowDomestic?: boolean; 
   selectData?: string;
   legs?: Array<{
     number: string;
@@ -716,6 +717,7 @@ const processedFlightOffers = useMemo(() => {
           id: `${outboundFlight.Airline}-${outboundFlight.Name}-${Date.now()}-${Math.random()}`,
           type: 'flights',
           isWakanow: true,
+          isWakanowDomestic: true,
           selectData: selectData,
           provider: 'wakanow',
           
@@ -1656,168 +1658,181 @@ const processedFlightOffers = useMemo(() => {
     );
   };
 
-  // Flight Card Component - supports both Duffel and Wakanow
-  const renderFlightCard = (flight: ExtendedSearchResult) => {
-    const isRefundable = flight.conditions?.refund_before_departure?.allowed;
-    const baggageText = getBaggageText(flight);
-    const hasReturn = flight.isRoundTrip && flight.returnFlight?.departureTime;
+ // Flight Card Component - supports both Duffel and Wakanow
+const renderFlightCard = (flight: ExtendedSearchResult) => {
+  const isRefundable = flight.conditions?.refund_before_departure?.allowed;
+  const baggageText = getBaggageText(flight);
+  const hasReturn = flight.isRoundTrip && flight.returnFlight?.departureTime;
 
-    return (
-      <div 
-        key={flight.id} 
-        className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 mb-6 overflow-hidden border border-gray-200 cursor-pointer"
-        onClick={() => onSelect?.(flight)}
-      >
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
-            <div className="flex items-center gap-4">
-              {flight.airlineLogo ? (
-                <img
-                  src={flight.airlineLogo}
-                  className="w-12 h-12 object-contain"
-                  alt={flight.airlineName}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${(flight.airlineName || 'Airline').substring(0, 2)}&background=33a8da&color=fff&length=2&size=48`;
-                  }}
-                />
-              ) : (
-                <div className="w-12 h-12 bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-xl flex items-center justify-center text-white font-bold text-lg">
-                  {(flight.airlineName || 'AI').substring(0, 2)}
-                </div>
-              )}
-              <div>
-                <h4 className="font-bold text-gray-900 text-lg">{flight.airlineName}</h4>
-                {flight.isWakanow && (
-                  <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full mt-1 inline-block">
-                    Domestic Flight
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-2xl font-bold text-gray-900">{flight.displayPrice}</div>
-              <button 
-                className="mt-2 bg-[#33a8da] text-white font-semibold px-5 py-1.5 rounded-lg text-sm hover:bg-[#2c98c7] transition"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelect?.(flight);
+  // Determine flight type for badge
+  const isWakanowDomestic = flight.isWakanow && (flight as any).isWakanowDomestic === true;
+  const isWakanowInternational = flight.isWakanow && (flight as any).isWakanowDomestic === false;
+  const isDuffelFlight = !flight.isWakanow;
+
+  return (
+    <div 
+      key={flight.id} 
+      className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 mb-6 overflow-hidden border border-gray-200 cursor-pointer"
+      onClick={() => onSelect?.(flight)}
+    >
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-4">
+            {flight.airlineLogo ? (
+              <img
+                src={flight.airlineLogo}
+                className="w-12 h-12 object-contain"
+                alt={flight.airlineName}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${(flight.airlineName || 'Airline').substring(0, 2)}&background=33a8da&color=fff&length=2&size=48`;
                 }}
-              >
-                Book Now
-              </button>
+              />
+            ) : (
+              <div className="w-12 h-12 bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-xl flex items-center justify-center text-white font-bold text-lg">
+                {(flight.airlineName || 'AI').substring(0, 2)}
+              </div>
+            )}
+            <div>
+              <h4 className="font-bold text-gray-900 text-lg">{flight.airlineName}</h4>
+              {/* Updated Badge Section */}
+              {/* Domestic Flight Badge - ONLY for Wakanow domestic flights */}
+              {isWakanowDomestic && (
+                <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full mt-1 inline-block">
+                  Domestic Flight
+                </span>
+              )}
+              {/* International Flight Badge - for Duffel OR Wakanow international flights */}
+              {(isDuffelFlight || isWakanowInternational) && (
+                <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mt-1 inline-block">
+                  International Flight
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-2xl font-bold text-gray-900">{flight.displayPrice}</div>
+            <button 
+              className="mt-2 bg-[#33a8da] text-white font-semibold px-5 py-1.5 rounded-lg text-sm hover:bg-[#2c98c7] transition"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect?.(flight);
+              }}
+            >
+              Book Now
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-gray-50 rounded-xl p-5 transition hover:bg-gray-100">
+            <p className="text-sm text-gray-500 mb-4">
+              Depart {formatTime(flight.departureTime)} · {flight.airlineName}
+            </p>
+            <div className="flex items-center justify-between">
+              <div className="text-left">
+                <p className="text-2xl font-bold text-gray-900">{formatTime(flight.departureTime)}</p>
+                <p className="text-sm font-medium text-gray-700 mt-2">{flight.departureAirport}</p>
+                <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.departureTime)}</p>
+              </div>
+              
+              <div className="flex-1 mx-6">
+                <div className="relative">
+                  <div className="w-full h-[1px] bg-gray-300"></div>
+                  <div className="absolute left-1/2 -translate-x-1/2 -top-3 bg-gray-50 px-2">
+                    <svg className="w-5 h-5 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="text-center mt-3">
+                  <p className="text-sm font-medium text-gray-600">{flight.duration}</p>
+                  <p className="text-xs text-gray-400 mt-1">{flight.stopText}</p>
+                </div>
+              </div>
+              
+              <div className="text-right">
+                <p className="text-2xl font-bold text-gray-900">{formatTime(flight.arrivalTime)}</p>
+                <p className="text-sm font-medium text-gray-700 mt-2">{flight.arrivalAirport}</p>
+                <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.arrivalTime)}</p>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {hasReturn && flight.returnFlight && (
             <div className="bg-gray-50 rounded-xl p-5 transition hover:bg-gray-100">
               <p className="text-sm text-gray-500 mb-4">
-                Depart {formatTime(flight.departureTime)} · {flight.airlineName}
+                Return {formatTime(flight.returnFlight.departureTime)} · {flight.airlineName}
               </p>
               <div className="flex items-center justify-between">
                 <div className="text-left">
-                  <p className="text-2xl font-bold text-gray-900">{formatTime(flight.departureTime)}</p>
-                  <p className="text-sm font-medium text-gray-700 mt-2">{flight.departureAirport}</p>
-                  <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.departureTime)}</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatTime(flight.returnFlight.departureTime)}</p>
+                  <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.departureAirport}</p>
+                  <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.returnFlight.departureTime)}</p>
                 </div>
                 
                 <div className="flex-1 mx-6">
                   <div className="relative">
                     <div className="w-full h-[1px] bg-gray-300"></div>
                     <div className="absolute left-1/2 -translate-x-1/2 -top-3 bg-gray-50 px-2">
-                      <svg className="w-5 h-5 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 text-[#33a8da] rotate-180" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
                       </svg>
                     </div>
                   </div>
                   <div className="text-center mt-3">
-                    <p className="text-sm font-medium text-gray-600">{flight.duration}</p>
-                    <p className="text-xs text-gray-400 mt-1">{flight.stopText}</p>
+                    <p className="text-sm font-medium text-gray-600">{flight.returnFlight.duration}</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {flight.returnFlight.stopCount === 0 ? 'Non stop' : 
+                       flight.returnFlight.stopCount === 1 ? '1 Stop' : `${flight.returnFlight.stopCount} Stops`}
+                    </p>
                   </div>
                 </div>
                 
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-gray-900">{formatTime(flight.arrivalTime)}</p>
-                  <p className="text-sm font-medium text-gray-700 mt-2">{flight.arrivalAirport}</p>
-                  <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.arrivalTime)}</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatTime(flight.returnFlight.arrivalTime)}</p>
+                  <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.arrivalAirport}</p>
+                  <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.returnFlight.arrivalTime)}</p>
                 </div>
               </div>
             </div>
+          )}
+        </div>
 
-            {hasReturn && flight.returnFlight && (
-              <div className="bg-gray-50 rounded-xl p-5 transition hover:bg-gray-100">
-                <p className="text-sm text-gray-500 mb-4">
-                  Return {formatTime(flight.returnFlight.departureTime)} · {flight.airlineName}
-                </p>
-                <div className="flex items-center justify-between">
-                  <div className="text-left">
-                    <p className="text-2xl font-bold text-gray-900">{formatTime(flight.returnFlight.departureTime)}</p>
-                    <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.departureAirport}</p>
-                    <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.returnFlight.departureTime)}</p>
-                  </div>
-                  
-                  <div className="flex-1 mx-6">
-                    <div className="relative">
-                      <div className="w-full h-[1px] bg-gray-300"></div>
-                      <div className="absolute left-1/2 -translate-x-1/2 -top-3 bg-gray-50 px-2">
-                        <svg className="w-5 h-5 text-[#33a8da] rotate-180" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
-                        </svg>
-                      </div>
-                    </div>
-                    <div className="text-center mt-3">
-                      <p className="text-sm font-medium text-gray-600">{flight.returnFlight.duration}</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {flight.returnFlight.stopCount === 0 ? 'Non stop' : 
-                         flight.returnFlight.stopCount === 1 ? '1 Stop' : `${flight.returnFlight.stopCount} Stops`}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-gray-900">{formatTime(flight.returnFlight.arrivalTime)}</p>
-                    <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.arrivalAirport}</p>
-                    <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.returnFlight.arrivalTime)}</p>
-                  </div>
-                </div>
+        <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            {baggageText && (
+              <div className="flex items-center gap-1">
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeWidth={1.5} />
+                </svg>
+                <span className="text-sm text-gray-500">{baggageText}</span>
+              </div>
+            )}
+            {flight.cabin && (
+              <div className="flex items-center gap-1">
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeWidth={1.5} />
+                </svg>
+                <span className="text-sm text-gray-500">{flight.cabin}</span>
+              </div>
+            )}
+            {!isRefundable && (
+              <div className="flex items-center gap-1">
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" strokeWidth={1.5} />
+                </svg>
+                <span className="text-sm text-gray-500">Non Refundable</span>
               </div>
             )}
           </div>
-
-          <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              {baggageText && (
-                <div className="flex items-center gap-1">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeWidth={1.5} />
-                  </svg>
-                  <span className="text-sm text-gray-500">{baggageText}</span>
-                </div>
-              )}
-              {flight.cabin && (
-                <div className="flex items-center gap-1">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeWidth={1.5} />
-                  </svg>
-                  <span className="text-sm text-gray-500">{flight.cabin}</span>
-                </div>
-              )}
-              {!isRefundable && (
-                <div className="flex items-center gap-1">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" strokeWidth={1.5} />
-                  </svg>
-                  <span className="text-sm text-gray-500">Non Refundable</span>
-                </div>
-              )}
-            </div>
-            <button className="text-[#33a8da] text-sm font-medium hover:underline">
-              View Flight Details
-            </button>
-          </div>
+          <button className="text-[#33a8da] text-sm font-medium hover:underline">
+            View Flight Details
+          </button>
         </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   // Right Sidebar Ads Component - Only for flights
   const renderRightSidebarAds = () => (
