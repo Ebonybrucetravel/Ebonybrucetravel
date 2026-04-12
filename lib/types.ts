@@ -524,3 +524,234 @@ export interface HBXQuoteResponse {
     }>;
   };
 }
+// ============ WAKANOW (DOMESTIC FLIGHTS) TYPES ============
+
+export interface WakanowAirport {
+  AirportCode: string;
+  AirportName: string;
+  CityCountry: string;
+  City: string;
+  Country: string;
+}
+
+export interface WakanowFlightLeg {
+  FlightLegNumber: string;
+  DepartureCode: string;
+  DepartureName: string;
+  DestinationCode: string;
+  DestinationName: string;
+  StartTime: string;
+  EndTime: string;
+  Duration: string;
+  IsStop: boolean;
+  LayerOrder?: string | null;
+  LayerDuration?: string;
+  BookingClass: string;
+  CabinClass: string;
+  CabinClassName: string;
+  OperatingCarrier: string;
+  OperatingCarrierName: string;
+  MarketingCarrier: string;
+  FlightNumber: string;
+  Aircraft: string;
+  FareType: string;
+  FarebasisCode: string;
+}
+
+export interface WakanowRawFlight {
+  Name: string;
+  Airline: string;
+  AirlineName: string;
+  DepartureCode: string;
+  DepartureName: string;
+  DepartureTime: string;
+  ArrivalName: string;
+  ArrivalCode: string;
+  ArrivalTime: string;
+  Stops: number;
+  StopTime: string;
+  TripDuration: string;
+  StopCity: string | null;
+  FlightLegs: WakanowFlightLeg[];
+  AirlineLogoUrl: string;
+  FreeBaggage: {
+    BagCount: number;
+    Weight: number;
+    WeightUnit: string | null;
+  };
+  Price: {
+    Amount: number;
+    CurrencyCode: string;
+  };
+  MarketingCarrier: string;
+  Adults: number;
+  Children: number;
+  Infants: number;
+  PriceDetails: Array<{
+    BaseFare: { Amount: number; CurrencyCode: string };
+    Tax: { Amount: number; CurrencyCode: string };
+    PassengerType: string;
+  }>;
+  FareRules: string[];
+  PenaltyRules: string[] | null;
+  IsRefundable: boolean;
+  IncludePaySmallSmall: boolean;
+  DownPaymentDetailInPercentage: number;
+  PaySmallSmallLockDownPrice: number;
+  ConnectionCode: string;
+}
+
+export interface WakanowSearchResponse {
+  FlightCombination: {
+    FlightModels: WakanowRawFlight[];
+  };
+  SelectData: string;
+}
+
+export interface WakanowSelectResponse {
+  FlightSummaryModel: {
+    FlightCombination: {
+      FlightModels: WakanowRawFlight[];
+    };
+    Price: {
+      Amount: number;
+      CurrencyCode: string;
+    };
+    BookingId?: string;
+  };
+  IsPriceMatched: boolean;
+  HasResult: boolean;
+  SelectData: string;
+  ProductTermsAndConditions?: {
+    TermsAndConditions: string[];
+  };
+}
+
+export interface WakanowPassenger {
+  PassengerType: 'Adult' | 'Child' | 'Infant';
+  FirstName: string;
+  MiddleName?: string;
+  LastName: string;
+  DateOfBirth: string;
+  PhoneNumber: string;
+  PassportNumber: string;
+  ExpiryDate: string;
+  PassportIssuingAuthority: string;
+  PassportIssueCountryCode?: string;
+  Gender: 'Male' | 'Female';
+  Title: 'Mr' | 'Mrs' | 'Miss' | 'Ms' | 'Dr' | 'Prof';
+  Email: string;
+  Address: string;
+  Country: string;
+  CountryCode: string;
+  City: string;
+  PostalCode: string;
+}
+
+export interface WakanowBookingRequest {
+  PassengerDetails: WakanowPassenger[];
+  BookingId: string;
+  TargetCurrency: string;
+  BookingData: string;
+}
+
+export interface WakanowBookingResponse {
+  BookingId: string;
+  CustomerId: string;
+  ProductType: string;
+  TargetCurrency: string;
+  FlightBookingResult?: {
+    PnReferenceNumber: string;
+    PnDate: string;
+    FlightSummaryModel: any;
+    PnStatus?: string;
+    TicketStatus?: string;
+  };
+}
+
+export interface WakanowTicketResponse {
+  BookingId: string;
+  CustomerId: string;
+  ProductType: string;
+  FlightBookingSummary: {
+    PnReferenceNumber: string;
+    PnDate: string;
+    FlightSummaryModel: any;
+    PnStatus: string;
+    TicketStatus: string;
+  };
+  WalletBalance: {
+    Balance: number;
+    Currency: string;
+  };
+  BookingStatusDetails: {
+    PnrStatus: string;
+    TicketingStatus: string;
+    PaymentStatus: string;
+    BookingStatus: string;
+    Message: string;
+  };
+}
+
+// Domestic flight search params (simplified for your app)
+export interface DomesticFlightSearchParams {
+  from: string;
+  to: string;
+  departureDate: Date;
+  returnDate?: Date;
+  adults: number;
+  children: number;
+  infants: number;
+  cabinClass?: 'economy' | 'premium_economy' | 'business' | 'first';
+  targetCurrency?: string;
+}
+
+// Normalized flight output (matches your existing SearchResult structure)
+// FIXED: Remove the incorrect extension and use a mapped type instead
+export interface WakanowNormalizedFlight {
+  id: string;
+  provider: 'wakanow';
+  productType: 'FLIGHT_DOMESTIC';
+  title: string;
+  subtitle: string;
+  price: string;
+  totalPrice?: string;
+  time?: string;
+  duration?: string;
+  stops: string;  // Changed from number to string to match SearchResult
+  stopCount?: number;  // Keep numeric version for filtering
+  stopText: string;
+  rating?: number;
+  image?: string;
+  amenities?: string[];
+  features?: string[];
+  type: "flights";
+  isRefundable?: boolean;
+  realData?: any;
+  baggage?: string;
+  aircraft?: string;
+  layoverDetails?: string;
+  imageUrl?: string;
+  airlineCode: string;
+  airlineName?: string;
+  airlineLogo?: string;
+  flightNumber?: string;
+  cabin?: string;
+  departureAirport?: string;
+  arrivalAirport?: string;
+  departureCity?: string;
+  arrivalCity?: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  legs: WakanowFlightLeg[];
+  selectData?: string;
+  original_amount?: string;
+  original_currency?: string;
+  markup_percentage?: number;
+  markup_amount?: string;
+  service_fee?: string;
+  final_amount?: string;
+  currency?: string;
+  rawPrice?: number;
+  displayPrice?: string;
+}

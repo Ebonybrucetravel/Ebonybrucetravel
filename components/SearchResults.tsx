@@ -316,6 +316,27 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
     [key: string]: any;
   };
   type?: "flights" | "hotels" | "car-rentals";
+  // Make provider required to match base SearchResult
+  provider: string;  // <-- CHANGE THIS - remove optional (?)
+  // Wakanow specific fields
+  isWakanow?: boolean;
+  selectData?: string;
+  legs?: Array<{
+    number: string;
+    from: string;
+    fromName: string;
+    to: string;
+    toName: string;
+    departureTime: string;
+    arrivalTime: string;
+    duration: string;
+    airline: string;
+    flightNumber: string;
+    cabinClass: string;
+    bookingClass: string;
+  }>;
+  fareRules?: string[];
+  penaltyRules?: string[] | null;
 }
 
 interface SearchResultsProps {
@@ -451,6 +472,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
     if (resultsArray.length === 0) return false;
 
+    // If it's a Wakanow response (has FlightCombination), it's NOT processed yet
+    if (resultsArray[0] && 'FlightCombination' in resultsArray[0]) {
+      return false;
+    }
+
     const firstItem = resultsArray[0];
     const hasProcessedFields = !!(firstItem.departureAirport || firstItem.displayPrice || firstItem.stopCount !== undefined);
 
@@ -458,6 +484,12 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   }, [results, searchType]);
 
   const flightOffers = useMemo(() => {
+    // Check for Wakanow response format (array with FlightCombination property)
+    if (Array.isArray(results) && results.length > 0 && 'FlightCombination' in results[0]) {
+      console.log('✅ Detected Wakanow response format with', results.length, 'combinations');
+      return results;
+    }
+    
     if (areResultsProcessed) {
       if (Array.isArray(results)) {
         return results;
@@ -582,15 +614,211 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     }
   };
 
-  // Process flight offers
-  const processedFlightOffers = useMemo(() => {
-    if (searchType !== 'flights' || flightOffers.length === 0) return [];
+// Process flight offers - supports Wakanow (domestic) and Duffel (international)
+const processedFlightOffers = useMemo(() => {
+  if (searchType !== 'flights') return [];
+  
+  // Check if this is a Wakanow response
+  const isWakanowResponse = Array.isArray(flightOffers) && 
+    flightOffers.length > 0 && 
+    'FlightCombination' in flightOffers[0];
 
-    if (areResultsProcessed) {
-      return flightOffers;
+    if (isWakanowResponse) {
+      console.log('🛫 Processing Wakanow flights, count:', flightOffers.length);
+      
+      const processedWakanowFlights: ExtendedSearchResult[] = [];
+      
+      for (const combination of flightOffers as any[]) {
+        const flightCombination = combination.FlightCombination;
+        const selectData = combination.SelectData;
+        const flightModels = flightCombination?.FlightModels || [];
+        
+        if (flightModels.length === 0) continue;
+        
+        const outboundFlight = flightModels[0];
+        const returnFlight = flightModels[1];
+        const outboundLeg = outboundFlight.FlightLegs?.[0];
+        
+        // CRITICAL: Log the raw data
+        console.log('✈️ RAW Wakanow outbound flight:', {
+          DepartureCode: outboundFlight.DepartureCode,
+          ArrivalCode: outboundFlight.ArrivalCode,
+          DepartureName: outboundFlight.DepartureName,
+          ArrivalName: outboundFlight.ArrivalName,
+        });
+        
+        // Extract price
+        let priceAmount = '0';
+        let priceCurrency = 'NGN';
+        
+        if (flightCombination.Price) {
+          priceAmount = flightCombination.Price.Amount?.toString() || '0';
+          priceCurrency = flightCombination.Price.CurrencyCode || 'NGN';
+        }
+        
+        const numericPrice = parseFloat(priceAmount);
+        const formattedPrice = new Intl.NumberFormat('en-NG', {
+          style: 'currency',
+          currency: priceCurrency,
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(numericPrice);
+        
+        // Get airline logo
+        let airlineLogo = outboundFlight.AirlineLogoUrl || '';
+        if (!airlineLogo && outboundFlight.Airline) {
+          airlineLogo = `https://images.wakanow.com/Images/flight-logos/${outboundFlight.Airline}.gif`;
+        }
+        
+        // Format duration
+        let durationDisplay = outboundFlight.TripDuration || '';
+        if (durationDisplay) {
+          const parts = durationDisplay.split(':');
+          if (parts.length === 3) {
+            const hours = parseInt(parts[0]);
+            const minutes = parseInt(parts[1]);
+            if (hours > 0 && minutes > 0) durationDisplay = `${hours}h ${minutes}m`;
+            else if (hours > 0) durationDisplay = `${hours}h`;
+            else if (minutes > 0) durationDisplay = `${minutes}m`;
+          }
+        }
+        
+        // Format return duration
+        let returnDurationDisplay = '';
+        if (returnFlight?.TripDuration) {
+          const parts = returnFlight.TripDuration.split(':');
+          if (parts.length === 3) {
+            const hours = parseInt(parts[0]);
+            const minutes = parseInt(parts[1]);
+            if (hours > 0 && minutes > 0) returnDurationDisplay = `${hours}h ${minutes}m`;
+            else if (hours > 0) returnDurationDisplay = `${hours}h`;
+            else if (minutes > 0) returnDurationDisplay = `${minutes}m`;
+          }
+        }
+        
+        // Get baggage text
+        let baggageText = '';
+        if (outboundFlight.FreeBaggage) {
+          if (outboundFlight.FreeBaggage.BagCount > 0) {
+            baggageText = `${outboundFlight.FreeBaggage.BagCount} checked bag${outboundFlight.FreeBaggage.BagCount > 1 ? 's' : ''}`;
+          } else if (outboundFlight.FreeBaggage.Weight > 0) {
+            baggageText = `${outboundFlight.FreeBaggage.Weight} ${outboundFlight.FreeBaggage.WeightUnit || 'kg'} baggage`;
+          }
+        }
+        
+        // CRITICAL: Store the correct airport codes
+        const departureAirportCode = outboundFlight.DepartureCode || '';
+        const arrivalAirportCode = outboundFlight.ArrivalCode || '';
+        
+        console.log('✅ Setting airports:', { departureAirportCode, arrivalAirportCode });
+        
+        const processedOffer: ExtendedSearchResult = {
+          id: `${outboundFlight.Airline}-${outboundFlight.Name}-${Date.now()}-${Math.random()}`,
+          type: 'flights',
+          isWakanow: true,
+          selectData: selectData,
+          provider: 'wakanow',
+          
+          // Flight details
+          airlineCode: outboundFlight.Airline || '',
+          airlineName: outboundFlight.AirlineName || outboundFlight.Airline || 'Unknown Airline',
+          airlineLogo: airlineLogo,
+          flightNumber: outboundFlight.Name || '',
+          
+          // CRITICAL: Use the variables we just defined
+          departureAirport: departureAirportCode,
+          departureCity: outboundFlight.DepartureName || '',
+          departureTime: outboundFlight.DepartureTime || '',
+          
+          arrivalAirport: arrivalAirportCode,
+          arrivalCity: outboundFlight.ArrivalName || '',
+          arrivalTime: outboundFlight.ArrivalTime || '',
+          
+          // Flight metadata
+          duration: durationDisplay,
+          stopCount: outboundFlight.Stops || 0,
+          stopText: outboundFlight.Stops === 0 ? 'Non stop' : 
+                    outboundFlight.Stops === 1 ? '1 Stop' : `${outboundFlight.Stops} Stops`,
+          
+          // Price
+          displayPrice: formattedPrice,
+          rawPrice: numericPrice,
+          price: formattedPrice,
+          original_amount: priceAmount,
+          original_currency: priceCurrency,
+          final_amount: priceAmount,
+          currency: priceCurrency,
+          
+          // Cabin class
+          cabin: outboundLeg?.CabinClassName || 'Economy',
+          
+          // Baggage
+          baggage: baggageText,
+          
+          // Title and subtitle - use the correct codes
+          title: `${departureAirportCode} → ${arrivalAirportCode}`,
+          subtitle: outboundFlight.AirlineName || 'Domestic Flight',
+          image: airlineLogo,
+          
+          // Return flight info
+          isRoundTrip: !!returnFlight,
+          returnFlight: returnFlight ? {
+            departureAirport: returnFlight.DepartureCode || '',
+            arrivalAirport: returnFlight.ArrivalCode || '',
+            departureCity: returnFlight.DepartureName || '',
+            arrivalCity: returnFlight.ArrivalName || '',
+            departureTime: returnFlight.DepartureTime || '',
+            arrivalTime: returnFlight.ArrivalTime || '',
+            flightNumber: returnFlight.Name || '',
+            duration: returnDurationDisplay,
+            stopCount: returnFlight.Stops || 0,
+            timeOfDay: getTimeOfDay(returnFlight.DepartureTime),
+            arrivalTimeOfDay: getArrivalTimeOfDay(returnFlight.ArrivalTime)
+          } : undefined,
+          
+          // Time of day
+          outboundTimeOfDay: getTimeOfDay(outboundFlight.DepartureTime),
+          outboundArrivalTimeOfDay: getArrivalTimeOfDay(outboundFlight.ArrivalTime),
+          
+          // Fare rules
+          fareRules: flightCombination.FareRules || [],
+          penaltyRules: flightCombination.PenaltyRules || null,
+          isRefundable: flightCombination.IsRefundable || false,
+          
+          // Legs data
+          legs: outboundFlight.FlightLegs?.map((leg: any) => ({
+            number: leg.FlightLegNumber || '',
+            from: leg.DepartureCode || '',
+            fromName: leg.DepartureName || '',
+            to: leg.DestinationCode || '',
+            toName: leg.DestinationName || '',
+            departureTime: leg.StartTime || '',
+            arrivalTime: leg.EndTime || '',
+            duration: leg.Duration || '',
+            airline: leg.OperatingCarrierName || '',
+            flightNumber: leg.FlightNumber || '',
+            cabinClass: leg.CabinClassName || '',
+            bookingClass: leg.BookingClass || '',
+          })) || [],
+        };
+        
+        processedWakanowFlights.push(processedOffer);
+      }
+      
+      return processedWakanowFlights;
     }
 
-    return flightOffers.map((offer: ExtendedSearchResult) => {
+  
+
+
+    
+    // If already processed, return as is (for Duffel flights)
+    if (areResultsProcessed) {
+      return flightOffers as ExtendedSearchResult[];
+    }
+    
+    // Process Duffel/International flights (existing code)
+    return (flightOffers as ExtendedSearchResult[]).map((offer: ExtendedSearchResult) => {
       let segments: any[] = [];
       let firstSlice: any = null;
       let firstSegment: any = null;
@@ -773,7 +1001,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
       return processedOffer;
     });
-  }, [flightOffers, searchType, airlinesMap, areResultsProcessed]);
+  }, [searchType, flightOffers, areResultsProcessed, airlinesMap]);
 
   // Get stop counts and cheapest prices for outbound
   const outboundStopStats = useMemo(() => {
@@ -880,7 +1108,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return counts;
   }, [processedFlightOffers]);
 
-  // Get airline list for filters
+  // Get airline list for filters (includes Wakanow airlines)
   const airlineList = useMemo(() => {
     const airlinesMap = new Map<string, number>();
     processedFlightOffers.forEach(flight => {
@@ -1047,7 +1275,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return searchParams?.destination || (processedFlightOffers[0]?.arrivalCity) || 'London';
   }, [searchParams, processedFlightOffers]);
 
-  // Extract hotel and car results
+  // Extract hotel and car results (unchanged - keep as is)
   const hotelAndCarResults = useMemo(() => {
     if (searchType === 'flights') return [];
     
@@ -1066,11 +1294,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return [];
   }, [results, searchType]);
 
-  // Filter hotel and car results
+  // Filter hotel and car results (unchanged - keep as is)
   const filteredHotelAndCarResults = useMemo(() => {
     let filtered = [...hotelAndCarResults];
 
-    // Price filter
     filtered = filtered.filter((item) => {
       let numericPrice = 0;
       if (item.rawPrice) {
@@ -1117,7 +1344,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       }
     }
 
-    // Sort
     if (sortBy === "price") {
       filtered.sort((a, b) => {
         const getPrice = (item: ExtendedSearchResult): number => {
@@ -1135,7 +1361,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return filtered;
   }, [hotelAndCarResults, searchType, priceRange, sortBy, starRatings, amenitiesFilter, carTypeFilter, transmissionFilter, seatCapacityFilter, providerFilter]);
 
-  // Unique values for filters
+  // Unique values for filters (unchanged)
   const uniqueCarTypes = useMemo(() => {
     const types = hotelAndCarResults
       .filter(r => r.type === 'car-rentals')
@@ -1194,7 +1420,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     </label>
   );
 
-  // Render Hotel Card
+  // Render Hotel Card (unchanged)
   const renderHotelCard = (item: ExtendedSearchResult) => {
     const starRating = Math.floor(item.rating || 4);
     const displayPrice = (() => {
@@ -1260,7 +1486,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
 
-  // Render Car Card
+  // Render Car Card (unchanged)
   const renderCarCard = (item: ExtendedSearchResult) => {
     const start = item.start;
     const end = item.end;
@@ -1430,8 +1656,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
 
-  // Flight Card Component
-  const renderWakanowFlightCard = (flight: ExtendedSearchResult) => {
+  // Flight Card Component - supports both Duffel and Wakanow
+  const renderFlightCard = (flight: ExtendedSearchResult) => {
     const isRefundable = flight.conditions?.refund_before_departure?.allowed;
     const baggageText = getBaggageText(flight);
     const hasReturn = flight.isRoundTrip && flight.returnFlight?.departureTime;
@@ -1461,6 +1687,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               )}
               <div>
                 <h4 className="font-bold text-gray-900 text-lg">{flight.airlineName}</h4>
+                {flight.isWakanow && (
+                  <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full mt-1 inline-block">
+                    Domestic Flight
+                  </span>
+                )}
               </div>
             </div>
             <div className="text-right">
@@ -2179,7 +2410,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 </div>
 
                 {filteredAndSortedFlights.length > 0 ? (
-                  filteredAndSortedFlights.map(flight => renderWakanowFlightCard(flight))
+                  filteredAndSortedFlights.map(flight => renderFlightCard(flight))
                 ) : (
                   <div className="bg-white rounded-2xl p-12 text-center border border-gray-200">
                     <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2196,7 +2427,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           </>
         )}
 
-        {/* Hotels View */}
+        {/* Hotels View - Unchanged */}
         {searchType === 'hotels' && (
           <div className="flex flex-col lg:flex-row gap-10">
             <aside className="w-full lg:w-[300px] shrink-0 space-y-6">
@@ -2254,7 +2485,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           </div>
         )}
 
-        {/* Car Rentals View */}
+        {/* Car Rentals View - Unchanged */}
         {searchType === 'car-rentals' && (
           <div className="flex flex-col lg:flex-row gap-10">
             <aside className="w-full lg:w-[300px] shrink-0 space-y-6">

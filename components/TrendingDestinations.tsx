@@ -1,27 +1,72 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useLanguage } from "../context/LanguageContext";
 
 interface TrendingDestinationsProps {
-  onCityClick?: (city: { code: string; name: string }) => void;
+  onCityClick?: (city: { code: string; name: string; from?: { code: string; name: string } }) => void;
+  defaultDeparture?: { code: string; name: string };
 }
 
 const TrendingDestinations: React.FC<TrendingDestinationsProps> = ({
   onCityClick,
+  defaultDeparture,
 }) => {
-  const { t } = useLanguage();
+  const { t, currency } = useLanguage();
   const brandBlue = "#32A6D7";
+  const [dynamicDeparture, setDynamicDeparture] = useState<{ code: string; name: string }>({ code: "LHR", name: "London" });
 
-  // Destinations with country keys instead of hardcoded country names
+  // Function to get departure based on currency
+  const getDepartureByCurrency = (currencyCode: string): { code: string; name: string } => {
+    switch (currencyCode) {
+      case 'GBP':
+        return { code: 'LHR', name: 'London' };
+      case 'EUR':
+        return { code: 'CDG', name: 'Paris' };
+      case 'NGN':
+        return { code: 'LOS', name: 'Lagos' };
+      case 'USD':
+        return { code: 'JFK', name: 'New York' };
+      case 'AED':
+        return { code: 'DXB', name: 'Dubai' };
+      case 'SGD':
+        return { code: 'SIN', name: 'Singapore' };
+      case 'JPY':
+        return { code: 'HND', name: 'Tokyo' };
+      case 'AUD':
+        return { code: 'SYD', name: 'Sydney' };
+      case 'CAD':
+        return { code: 'YYZ', name: 'Toronto' };
+      case 'CHF':
+        return { code: 'ZRH', name: 'Zurich' };
+      case 'ZAR':
+        return { code: 'JNB', name: 'Johannesburg' };
+      default:
+        return { code: 'LHR', name: 'London' };
+    }
+  };
+
+  // Set dynamic departure based on detected currency
+  useEffect(() => {
+    if (currency?.code) {
+      const departure = getDepartureByCurrency(currency.code);
+      setDynamicDeparture(departure);
+      console.log(`[Trending Destinations] Dynamic departure set to: ${departure.code} - ${departure.name} (based on currency: ${currency.code})`);
+    }
+  }, [currency]);
+
+  // Use the passed defaultDeparture prop if provided, otherwise use the dynamic one
+  const finalDeparture = defaultDeparture || dynamicDeparture;
+
+  // Destinations with unique airport codes for search
   const destinations = [
     {
       id: "1",
       city: "London",
       countryKey: "countries.uk",
-      code: "LHR",
+      code: "LHR", // London Heathrow
       image:
-        "https://images.unsplash.com/photo-1534800891164-a1d96b5114e7?q=80&w=759&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1534800891164-a1d96b5114e7?q=80&w=759&auto=format&fit=crop",
       flights: "245",
       hotels: "850",
     },
@@ -29,9 +74,9 @@ const TrendingDestinations: React.FC<TrendingDestinationsProps> = ({
       id: "2",
       city: "Dubai",
       countryKey: "countries.uae",
-      code: "DXB",
+      code: "DXB", // Dubai International
       image:
-        "https://images.unsplash.com/photo-1609873983635-2ab84282942a?q=80&w=1937&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1609873983635-2ab84282942a?q=80&w=1937&auto=format&fit=crop",
       flights: "289",
       hotels: "620",
     },
@@ -39,26 +84,31 @@ const TrendingDestinations: React.FC<TrendingDestinationsProps> = ({
       id: "3",
       city: "New York",
       countryKey: "countries.usa",
-      code: "JFK",
+      code: "JFK", // John F. Kennedy International
       image:
-        "https://images.unsplash.com/photo-1500916434205-0c77489c6cf7?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1500916434205-0c77489c6cf7?q=80&w=687&auto=format&fit=crop",
       flights: "425",
       hotels: "1200",
     },
     {
       id: "4",
-      city: "Tokyo",
-      countryKey: "countries.japan",
-      code: "HND",
+      city: "Paris",
+      countryKey: "countries.france",
+      code: "CDG", // Charles de Gaulle Airport
       image:
-        "https://images.unsplash.com/photo-1601995066045-f22e15a70c66?q=80&w=735&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D?auto=format&fit=crop&q=80&w=800",
-      flights: "312",
-      hotels: "750",
+        "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=2073&auto=format&fit=crop",
+      flights: "356",
+      hotels: "890",
     },
   ];
 
   const handleCityClick = (city: { code: string; name: string }) => {
-    if (onCityClick) onCityClick(city);
+    if (onCityClick) {
+      onCityClick({
+        ...city,
+        from: finalDeparture
+      });
+    }
   };
 
   return (

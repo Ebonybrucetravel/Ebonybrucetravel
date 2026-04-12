@@ -93,7 +93,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const [stopsFilter, setStopsFilter] = useState('Any');
   const [maxPrice, setMaxPrice] = useState(2000);
   const [segments, setSegments] = useState<Segment[]>([
-    { from: '', to: '', date: '' } // Empty instead of default LHR to CDG
+    { from: '', to: '', date: '' }
   ]);
   const [returnDate, setReturnDate] = useState('');
   const [showFromDropdown, setShowFromDropdown] = useState(false);
@@ -108,12 +108,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const [loadingHotelSuggestions, setLoadingHotelSuggestions] = useState(false);
   const [hotelProvider, setHotelProvider] = useState<'amadeus' | 'hotelbeds'>('hotelbeds');
 
-  // Set default dates with lead time for better search success
   const defaultDates = (() => {
     const d1 = new Date();
-    d1.setDate(d1.getDate() + 4); // 4 days lead for safety
+    d1.setDate(d1.getDate() + 4);
     const d2 = new Date(d1);
-    d2.setDate(d2.getDate() + 3); // 3 days stay
+    d2.setDate(d2.getDate() + 3);
     return {
       in: d1.toISOString().split('T')[0],
       out: d2.toISOString().split('T')[0]
@@ -159,10 +158,8 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const getCityCode = (location: string): string => {
     if (!location) return 'LOS';
 
-    // If we have a stored city code from dropdown selection, use it
     if (selectedHotelCityCode) return selectedHotelCityCode;
 
-    // City-name-to-code lookup (case-insensitive)
     const cityNameMap: Record<string, string> = {
       'lagos': 'LOS',
       'london': 'LON',
@@ -186,20 +183,17 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       'frankfurt': 'FRA',
     };
 
-    // Try matching city name from the typed text
     const lowerLoc = location.toLowerCase().trim();
     for (const [cityName, code] of Object.entries(cityNameMap)) {
       if (lowerLoc.includes(cityName)) return code;
     }
 
-    // Also check against popularHotelDestinations
     const matchedDest = popularHotelDestinations.find(d =>
       lowerLoc.includes(d.city.toLowerCase()) ||
       lowerLoc.includes(d.name.toLowerCase())
     );
     if (matchedDest) return matchedDest.cityCode;
 
-    // Airport code extraction fallbacks
     const airportToCityMap: Record<string, string> = {
       'LHR': 'LON', 'LGW': 'LON', 'STN': 'LON', 'LTN': 'LON',
       'JFK': 'NYC', 'EWR': 'NYC', 'LGA': 'NYC',
@@ -499,7 +493,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
     setSegments(newSegments);
 
-    // Clear suggestions to avoid duplicates
     if (type === 'from') {
       setFromSuggestions([]);
     } else {
@@ -562,7 +555,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Set default dates - but leave flight fields empty
   useEffect(() => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -572,7 +564,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     nextWeek.setDate(nextWeek.getDate() + 4);
     const nextWeekStr = nextWeek.toISOString().split('T')[0];
 
-    // Only set dates if segments are empty or no date set
     setSegments(prev => {
       const newSegments = [...prev];
       if (!newSegments[0].date) {
@@ -686,47 +677,34 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const extractAirportCode = (displayValue: string): string => {
     if (!displayValue) return '';
 
-    console.log('Extracting code from:', displayValue);
-
-    // If it's already just a 3-letter code, return it uppercase
     if (/^[A-Z]{3}$/.test(displayValue.trim())) {
       return displayValue.trim();
     }
 
-    // Pattern 1: "LOS - Lagos, Nigeria" or "LHR - Heathrow Airport, London"
     const pattern1 = displayValue.match(/([A-Z]{3})\s*-\s*/);
     if (pattern1) {
-      console.log('Pattern 1 match:', pattern1[1]);
       return pattern1[1];
     }
 
-    // Pattern 2: Extract from parentheses like "Lagos (LOS)"
     const pattern2 = displayValue.match(/\(([A-Z]{3})\)/);
     if (pattern2) {
-      console.log('Pattern 2 match:', pattern2[1]);
       return pattern2[1];
     }
 
-    // Pattern 3: Find any 3 uppercase letters at the beginning
     const pattern3 = displayValue.match(/^([A-Z]{3})/);
     if (pattern3) {
-      console.log('Pattern 3 match:', pattern3[1]);
       return pattern3[1];
     }
 
-    // Try to match from airports list by searching the entire string
     const lowerValue = displayValue.toLowerCase();
     const matchedAirport = airports.find(airport => {
-      // Check if airport code is in the string
       if (lowerValue.includes(airport.code.toLowerCase())) {
         return true;
       }
-      // Check if city name is in the string
       if (airport.city.toLowerCase().includes(lowerValue) ||
         lowerValue.includes(airport.city.toLowerCase())) {
         return true;
       }
-      // Check if airport name contains the search
       if (airport.name.toLowerCase().includes(lowerValue)) {
         return true;
       }
@@ -734,30 +712,23 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     });
 
     if (matchedAirport) {
-      console.log('Matched from airports list:', matchedAirport.code);
       return matchedAirport.code;
     }
 
-    // Try popular airports as fallback
     const popularMatch = popularAirports.find(airport =>
       airport.city.toLowerCase().includes(lowerValue) ||
       lowerValue.includes(airport.city.toLowerCase())
     );
 
     if (popularMatch) {
-      console.log('Matched from popular airports:', popularMatch.code);
       return popularMatch.code;
     }
 
-    // Last resort: extract any 3 consecutive uppercase letters
     const anyCode = displayValue.match(/\b([A-Z]{3})\b/);
     if (anyCode) {
-      console.log('Extracted any 3 uppercase letters:', anyCode[1]);
       return anyCode[1];
     }
 
-    // If all else fails, return empty string
-    console.log('No airport code found');
     return '';
   };
 
@@ -774,8 +745,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     e.preventDefault();
 
     if (activeTab === 'cars') {
-      console.log('🚗 Car rental search - Starting...');
-
       const pickUpCode = extractLocationCode(carPickUp);
       const dropOffCode = extractLocationCode(carDropOff);
 
@@ -800,9 +769,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         currency: 'GBP'
       });
     } else if (activeTab === 'flights') {
-      console.log('✈️ Flight search - Starting...');
-
-      // Extract airport codes and validate
       const errors = [];
       const flightSegments = segments.map((segment, index) => {
         const fromCode = extractAirportCode(segment.from);
@@ -827,19 +793,12 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         errors.push(t('search.minOneSegment') || 'At least one flight segment is required');
       }
 
-      // Check for duplicate segments
-      const segmentKeys = flightSegments.map(s => `${s.from}-${s.to}`);
-      const uniqueSegments = new Set(segmentKeys);
-      if (uniqueSegments.size !== segmentKeys.length) {
-        errors.push(t('search.duplicateSegments') || 'Duplicate flight segments detected');
-      }
-
       if (errors.length > 0) {
         alert(errors.join('\n'));
         return;
       }
 
-      // Create flight search payload
+      // Create flight search payload in the format expected by SearchContext
       const data = {
         type: 'flights',
         tripType,
@@ -858,12 +817,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
       console.log('📦 FINAL Flight Payload:', JSON.stringify(data, null, 2));
 
-      // Send to API
+      // Send to API - SearchContext will decide whether to use Wakanow or Duffel
       onSearch(data);
     } else if (activeTab === 'hotels') {
-      console.log('🏨 Hotel search - Starting...');
-
-      // Validate hotel search
       const errors = [];
 
       if (!hotelLocation) {
@@ -899,7 +855,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         return;
       }
 
-      // Create hotel search payload
       const data = {
         type: 'hotels',
         location: hotelLocation,
@@ -915,14 +870,10 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         provider: hotelProvider
       };
 
-      console.log('📦 FINAL Hotel Payload:', JSON.stringify(data, null, 2));
-
-      // Send to API
       onSearch(data);
     }
   };
 
-  // Updated useEffect to use searchParams and handleSubmit dependency
   useEffect(() => {
     const type = searchParams.get('type');
 
@@ -950,9 +901,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
       }, 300);
 
       return () => clearTimeout(timer);
-    }
-
-    else if (type === 'car-rentals') {
+    } else if (type === 'car-rentals') {
       setActiveTab('cars');
 
       const location = searchParams.get('location');
@@ -1012,7 +961,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
       return () => clearTimeout(timer);
     }
-  }, [searchParams, handleSubmit]);
+  }, [searchParams]);
 
   const triggerPicker = (e: React.MouseEvent<HTMLInputElement>) => {
     try {
@@ -1221,9 +1170,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     return (
       <div key={index} className="bg-[#33a8da] rounded-xl p-[2px] flex flex-col lg:flex-row items-stretch gap-[2px] mb-2 shadow-sm animate-in slide-in-from-left duration-200">
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-[2px]">
-          {/* From / To Section with Autocomplete */}
           <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-[2px]">
-            {/* From Input with Autocomplete */}
             <div className="relative" ref={index === activeSegmentIndex ? fromRef : null}>
               <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 relative rounded-t-lg sm:rounded-l-lg sm:rounded-tr-none min-h-[72px]">
                 <svg className="w-4 h-4 text-[#33a8da] self-center" fill="currentColor" viewBox="0 0 24 24">
@@ -1270,7 +1217,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
               {showFromDropdown && activeSegmentIndex === index && renderAirportDropdown(fromSuggestions, 'from', index)}
             </div>
 
-            {/* To Input with Autocomplete */}
             <div className="relative" ref={index === activeSegmentIndex ? toRef : null}>
               <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 border-t sm:border-t-0 sm:border-l border-gray-100 rounded-b-lg sm:rounded-r-lg sm:rounded-bl-none min-h-[72px]">
                 <svg className="w-4 h-4 text-[#33a8da] rotate-180 shrink-0 self-center" fill="currentColor" viewBox="0 0 24 24">
@@ -1313,7 +1259,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             </div>
           </div>
 
-          {/* Dates / Travellers Section */}
           <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-[2px]">
             <div className={`p-2.5 md:p-3 flex items-center gap-2 relative cursor-pointer group hover:bg-gray-50 transition border-t sm:border-t-0 lg:border-l border-gray-100 min-h-[72px] ${isRangeSelected ? 'bg-blue-50/50' : 'bg-white'}`}>
               <svg className="w-4 h-4 text-gray-600 flex-shrink-0 self-center" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -1391,8 +1336,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   return (
     <div className="w-full max-w-7xl mx-auto px-2 md:px-4">
       <div className="bg-white rounded-2xl md:rounded-[24px] shadow-2xl overflow-visible">
-
-        {/* Navigation Tabs - Optimized for Mobile */}
         <div className="flex items-center gap-4 md:gap-10 px-4 md:px-8 pt-4 md:pt-6 border-b border-gray-100 overflow-x-auto hide-scrollbar">
           {[
             { id: 'flights' as const, label: t('nav.flights'), icon: <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" /> },
@@ -1529,7 +1472,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
           {activeTab === 'hotels' && (
             <div className="space-y-3">
-              {/* Provider Selector */}
               <div className="flex items-center gap-3 px-1">
                 <span className="text-[10px] font-black text-white/80 uppercase tracking-widest">{t('search.provider')}:</span>
                 <div className="flex bg-white/10 p-0.5 rounded-lg border border-white/20">
@@ -1555,7 +1497,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
               <div className="flex flex-col lg:flex-row items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px] shadow-lg border border-white/20">
                 <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-[2px]">
-                  {/* Hotel Location with Autocomplete */}
                   <div className="md:col-span-4 relative" ref={hotelLocationRef}>
                     <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 md:rounded-l-lg min-h-[72px]">
                       <svg className="w-4 h-4 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
@@ -1593,7 +1534,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                     {showHotelLocationDropdown && renderHotelLocationDropdown()}
                   </div>
 
-                  {/* Check-in Date */}
                   <div className="md:col-span-4 bg-white p-2.5 md:p-3 flex items-center gap-2 relative border-t md:border-t-0 md:border-l border-gray-100 min-h-[72px]">
                     <svg className="w-4 h-4 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -1622,7 +1562,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                     </div>
                   </div>
 
-                  {/* Guests & Search Button */}
                   <div className="md:col-span-4 bg-white p-2.5 md:p-3 flex items-center justify-between md:rounded-r-lg border-t md:border-t-0 md:border-l border-gray-100 min-h-[72px]">
                     <div className="flex items-center gap-2 flex-1">
                       <svg className="w-4 h-4 text-gray-700 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
@@ -1653,7 +1592,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
           {activeTab === 'cars' && (
             <div className="flex flex-wrap items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px] relative">
-              {/* Pick-up Location - 2 columns */}
               <div className="flex-1 lg:flex-2 relative">
                 <div className="bg-white p-2 md:p-2.5 flex items-center gap-1.5 rounded-t-lg lg:rounded-l-lg lg:rounded-tr-none min-h-[68px]">
                   <svg className="w-3.5 h-3.5 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
@@ -1686,7 +1624,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 {showCarPickUpDropdown && renderCarLocationDropdown(carPickUpSuggestions, 'pickUp')}
               </div>
 
-              {/* Drop-off Location - 2 columns */}
               <div className="flex-1 lg:flex-2 relative">
                 <div className="bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
                   <svg className="w-3.5 h-3.5 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
@@ -1719,7 +1656,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 {showCarDropOffDropdown && renderCarLocationDropdown(carDropOffSuggestions, 'dropOff')}
               </div>
 
-              {/* Pick-up Time - 1.5 columns */}
               <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
                 <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1735,7 +1671,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 </div>
               </div>
 
-              {/* Pick-up Date - 1.5 columns */}
               <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
                 <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -1752,7 +1687,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 </div>
               </div>
 
-              {/* Drop-off Time - 1.5 columns */}
               <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
                 <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1768,7 +1702,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 </div>
               </div>
 
-              {/* Drop-off Date - 1.5 columns */}
               <div className="flex-1 lg:flex-1.5 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
                 <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -1785,7 +1718,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 </div>
               </div>
 
-              {/* Passengers - 1 column */}
               <div className="flex-1 lg:flex-1 bg-white p-2 md:p-2.5 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
                 <svg className="w-3.5 h-3.5 text-gray-700 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
@@ -1796,7 +1728,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
                 </div>
               </div>
 
-              {/* Search Button - 1 column */}
               <div className="flex-1 lg:flex-1 bg-white p-2 md:p-2.5 flex items-center justify-center md:rounded-r-lg border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[68px]">
                 <button
                   type="submit"
@@ -1813,31 +1744,27 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
               </div>
             </div>
           )}
-
         </form>
       </div>
 
-      {/* Car Traveller Dropdown (moved outside main container) */}
-      {
-        showCarTravellerDropdown && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm" onClick={() => setShowCarTravellerDropdown(false)}>
-            <div className="bg-white p-6 rounded-2xl w-full max-w-xs shadow-2xl" onClick={e => e.stopPropagation()}>
-              <h4 className="font-black text-gray-900 mb-4 uppercase text-xs tracking-widest">{t('search.passengers')}</h4>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm">{t('search.passengers')}</span>
-                  <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => updateCarTravellers(false)} className="w-8 h-8 rounded-full border border-gray-200">-</button>
-                    <span className="font-bold">{carTravellers}</span>
-                    <button type="button" onClick={() => updateCarTravellers(true)} className="w-8 h-8 rounded-full border border-gray-200">+</button>
-                  </div>
+      {showCarTravellerDropdown && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm" onClick={() => setShowCarTravellerDropdown(false)}>
+          <div className="bg-white p-6 rounded-2xl w-full max-w-xs shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h4 className="font-black text-gray-900 mb-4 uppercase text-xs tracking-widest">{t('search.passengers')}</h4>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-sm">{t('search.passengers')}</span>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => updateCarTravellers(false)} className="w-8 h-8 rounded-full border border-gray-200">-</button>
+                  <span className="font-bold">{carTravellers}</span>
+                  <button type="button" onClick={() => updateCarTravellers(true)} className="w-8 h-8 rounded-full border border-gray-200">+</button>
                 </div>
               </div>
-              <button type="button" onClick={() => setShowCarTravellerDropdown(false)} className="w-full bg-[#33a8da] text-white py-3 rounded-xl font-bold mt-6 text-xs uppercase tracking-widest">{t('search.done')}</button>
             </div>
+            <button type="button" onClick={() => setShowCarTravellerDropdown(false)} className="w-full bg-[#33a8da] text-white py-3 rounded-xl font-bold mt-6 text-xs uppercase tracking-widest">{t('search.done')}</button>
           </div>
-        )
-      }
+        </div>
+      )}
     </div>
   );
 };

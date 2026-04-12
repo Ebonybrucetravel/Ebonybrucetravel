@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
 import { formatPrice } from '@/lib/utils';
@@ -19,78 +19,234 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     window.scrollTo(0, 0);
   }, []);
 
-  // Debug log
-  useEffect(() => {
-    console.log('🎯 FlightDetails received item:', item);
-    console.log('🎯 Item slices:', item.slices);
-    console.log('🎯 Number of slices:', item.slices?.length);
+  // ✅ TRANSFORM WAKANOW FLIGHTS IMMEDIATELY using useMemo
+  const transformedItem = useMemo(() => {
+    // Only transform Wakanow flights
+    if (item && (item as any).isWakanow) {
+      console.log('🔄 FlightDetails: Transforming Wakanow flight immediately');
+      
+      const wakanowItem = item as any;
+      
+      // Determine if round trip - check multiple sources
+      const hasReturnLegs = wakanowItem.returnLegs && wakanowItem.returnLegs.length > 0;
+      const hasReturnFlight = wakanowItem.returnFlight && wakanowItem.returnFlight.departureTime;
+      const isRoundTrip = wakanowItem.isRoundTrip === true || hasReturnLegs || hasReturnFlight;
+      
+      const slices = [];
+      
+      // Outbound slice
+      const outboundLegs = wakanowItem.outboundLegs || wakanowItem.legs;
+      if (outboundLegs && outboundLegs.length > 0) {
+        const outboundSegments = outboundLegs.map((leg: any) => ({
+          departing_at: leg.departureTime,
+          arriving_at: leg.arrivalTime,
+          duration: leg.duration,
+          origin: {
+            iata_code: leg.from,
+            name: leg.fromName,
+            city: { name: leg.fromName?.split('(')[0]?.trim() || leg.fromName }
+          },
+          destination: {
+            iata_code: leg.to,
+            name: leg.toName,
+            city: { name: leg.toName?.split('(')[0]?.trim() || leg.toName }
+          },
+          operating_carrier: {
+            name: leg.airline || wakanowItem.airlineName,
+            iata_code: wakanowItem.airlineCode
+          },
+          marketing_carrier_flight_number: leg.flightNumber || wakanowItem.flightNumber,
+          passengers: [{
+            cabin_class_marketing_name: wakanowItem.cabin || 'Economy'
+          }]
+        }));
+        
+        slices.push({
+          duration: `PT${wakanowItem.duration?.replace('h', 'H').replace('m', 'M') || '1H15M'}`,
+          segments: outboundSegments
+        });
+      }
+      
+      // Return slice
+      if (isRoundTrip && wakanowItem.returnLegs && wakanowItem.returnLegs.length > 0) {
+        const returnSegments = wakanowItem.returnLegs.map((leg: any) => ({
+          departing_at: leg.departureTime,
+          arriving_at: leg.arrivalTime,
+          duration: leg.duration,
+          origin: {
+            iata_code: leg.from,
+            name: leg.fromName,
+            city: { name: leg.fromName?.split('(')[0]?.trim() || leg.fromName }
+          },
+          destination: {
+            iata_code: leg.to,
+            name: leg.toName,
+            city: { name: leg.toName?.split('(')[0]?.trim() || leg.toName }
+          },
+          operating_carrier: {
+            name: leg.airline || wakanowItem.airlineName,
+            iata_code: wakanowItem.airlineCode
+          },
+          marketing_carrier_flight_number: leg.flightNumber || wakanowItem.flightNumber,
+          passengers: [{
+            cabin_class_marketing_name: wakanowItem.cabin || 'Economy'
+          }]
+        }));
+        
+        // Calculate return duration
+        let returnTotalMinutes = 0;
+        wakanowItem.returnLegs.forEach((leg: any) => {
+          const dur = leg.duration || '';
+          if (dur.includes(':')) {
+            const parts = dur.split(':');
+            if (parts.length === 3) {
+              returnTotalMinutes += parseInt(parts[0]) * 60 + parseInt(parts[1]);
+            }
+          }
+        });
+        const returnHours = Math.floor(returnTotalMinutes / 60);
+        const returnMinutes = returnTotalMinutes % 60;
+        const returnDuration = `PT${returnHours}H${returnMinutes}M`;
+        
+        slices.push({
+          duration: returnDuration,
+          segments: returnSegments
+        });
+      } 
+      else if (isRoundTrip && wakanowItem.returnFlight && wakanowItem.returnFlight.departureTime) {
+        const returnSegments = [{
+          departing_at: wakanowItem.returnFlight.departureTime,
+          arriving_at: wakanowItem.returnFlight.arrivalTime,
+          duration: wakanowItem.returnFlight.duration || '1h 15m',
+          origin: {
+            iata_code: wakanowItem.returnFlight.departureAirport,
+            name: wakanowItem.returnFlight.departureCity,
+            city: { name: wakanowItem.returnFlight.departureCity?.split('(')[0]?.trim() || wakanowItem.returnFlight.departureCity }
+          },
+          destination: {
+            iata_code: wakanowItem.returnFlight.arrivalAirport,
+            name: wakanowItem.returnFlight.arrivalCity,
+            city: { name: wakanowItem.returnFlight.arrivalCity?.split('(')[0]?.trim() || wakanowItem.returnFlight.arrivalCity }
+          },
+          operating_carrier: {
+            name: wakanowItem.airlineName,
+            iata_code: wakanowItem.airlineCode
+          },
+          marketing_carrier_flight_number: wakanowItem.returnFlight.flightNumber || wakanowItem.flightNumber,
+          passengers: [{
+            cabin_class_marketing_name: wakanowItem.cabin || 'Economy'
+          }]
+        }];
+        
+        slices.push({
+          duration: `PT${wakanowItem.returnFlight.duration?.replace('h', 'H').replace('m', 'M') || '1H15M'}`,
+          segments: returnSegments
+        });
+      }
+      
+      // Create transformed object with all properties
+      const transformed = {
+        ...item,
+        slices: slices,
+        isRoundTrip: slices.length > 1,
+        conditions: {
+          refund_before_departure: {
+            allowed: wakanowItem.isRefundable || false
+          }
+        },
+        owner: !(item as any).owner ? {
+          name: wakanowItem.airlineName,
+          iata_code: wakanowItem.airlineCode,
+          logo_symbol_url: wakanowItem.airlineLogo
+        } : (item as any).owner
+      };
+      
+      console.log('✅ Transformed item:', {
+        sliceCount: slices.length,
+        isRoundTrip: slices.length > 1
+      });
+      
+      return transformed;
+    }
+    
+    return item;
   }, [item]);
 
+  // Debug log transformed item
+  useEffect(() => {
+    console.log('🎯 FlightDetails using transformed item:', {
+      isWakanow: transformedItem?.isWakanow,
+      sliceCount: transformedItem?.slices?.length,
+      isRoundTrip: transformedItem?.slices?.length > 1,
+      hasReturnLegs: !!(transformedItem as any)?.returnLegs
+    });
+  }, [transformedItem]);
+  
   // Handle booking with complete data preservation
   const handleBookClick = () => {
     console.log('📚 Creating booking from flight with price fields:', {
-      original_amount: item.original_amount,
-      markup_amount: item.markup_amount,
-      service_fee: item.service_fee,
-      final_amount: item.final_amount,
-      currency: item.currency
+      original_amount: transformedItem.original_amount,
+      markup_amount: transformedItem.markup_amount,
+      service_fee: transformedItem.service_fee,
+      final_amount: transformedItem.final_amount,
+      currency: transformedItem.currency
     });
 
     // Create a COMPLETE booking object with ALL flight details including price fields
     const completeBooking = {
-      // Spread all item properties first
-      ...item,
+      // Spread all transformedItem properties first
+      ...transformedItem,
       
       // Ensure ID is set
-      id: item.id || `flight-${Date.now()}`,
+      id: transformedItem.id || `flight-${Date.now()}`,
       
       // Set booking-specific fields
       type: 'flight',
       status: 'Confirmed',
-      date: item.departureTime || new Date().toISOString(),
+      date: transformedItem.departureTime || new Date().toISOString(),
       
       // Explicitly include ALL price fields at the top level
-      original_amount: item.original_amount,
-      markup_amount: item.markup_amount,
-      service_fee: item.service_fee,
-      final_amount: item.final_amount,
-      currency: item.currency || 'GBP',
+      original_amount: transformedItem.original_amount,
+      markup_amount: transformedItem.markup_amount,
+      service_fee: transformedItem.service_fee,
+      final_amount: transformedItem.final_amount,
+      currency: transformedItem.currency || 'GBP',
       
       // Explicitly include ALL flight fields to ensure they're captured
-      departureAirport: item.departureAirport,
-      arrivalAirport: item.arrivalAirport,
-      departureCity: item.departureCity,
-      arrivalCity: item.arrivalCity,
-      departureTime: item.departureTime,
-      arrivalTime: item.arrivalTime,
-      airlineName: item.airlineName,
-      airlineCode: item.airlineCode,
-      airlineLogo: item.airlineLogo,
-      flightNumber: item.flightNumber,
-      stopCount: item.stopCount,
-      stopText: item.stopText,
-      cabin: item.cabin,
-      baggage: item.baggage,
-      displayPrice: item.displayPrice || item.price,
-      price: item.price,
-      duration: item.duration,
+      departureAirport: transformedItem.departureAirport,
+      arrivalAirport: transformedItem.arrivalAirport,
+      departureCity: transformedItem.departureCity,
+      arrivalCity: transformedItem.arrivalCity,
+      departureTime: transformedItem.departureTime,
+      arrivalTime: transformedItem.arrivalTime,
+      airlineName: transformedItem.airlineName,
+      airlineCode: transformedItem.airlineCode,
+      airlineLogo: transformedItem.airlineLogo,
+      flightNumber: transformedItem.flightNumber,
+      stopCount: transformedItem.stopCount,
+      stopText: transformedItem.stopText,
+      cabin: transformedItem.cabin,
+      baggage: transformedItem.baggage,
+      displayPrice: transformedItem.displayPrice || transformedItem.price,
+      price: transformedItem.price,
+      duration: transformedItem.duration,
       
       // For backward compatibility
-      title: item.title || `${item.departureAirport} → ${item.arrivalAirport}`,
-      provider: item.airlineName || item.provider,
-      subtitle: item.subtitle || `${item.airlineName} ${item.flightNumber}`,
+      title: transformedItem.title || `${transformedItem.departureAirport} → ${transformedItem.arrivalAirport}`,
+      provider: transformedItem.airlineName || transformedItem.provider,
+      subtitle: transformedItem.subtitle || `${transformedItem.airlineName} ${transformedItem.flightNumber}`,
       
       // Icon background
       iconBg: 'text-[#33a8da]',
       
       // Include slices for segment details if available
-      slices: item.slices,
+      slices: transformedItem.slices,
       
       // Include realData if available
-      realData: item.realData,
+      realData: transformedItem.realData,
       
       // Include owner if available
-      owner: item.owner,
+      owner: transformedItem.owner,
     };
 
     console.log('💾 Saving complete booking with price fields:', {
@@ -197,9 +353,9 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
 
   // Parse baggage
   let baggageInfo: any[] = [];
-  if (item.baggage) {
+  if (transformedItem.baggage) {
     try {
-      baggageInfo = JSON.parse(item.baggage);
+      baggageInfo = JSON.parse(transformedItem.baggage);
     } catch {
       baggageInfo = [];
     }
@@ -209,15 +365,15 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
   const carryOnBaggage = baggageInfo.find((b: any) => b.type === 'carry_on') || { quantity: 0 };
 
   // Get refund policy
-  const isRefundable = item.conditions?.refund_before_departure?.allowed || false;
+  const isRefundable = transformedItem.conditions?.refund_before_departure?.allowed || false;
 
   // Check if this is a round trip (has multiple slices)
-  const isRoundTrip = item.slices && item.slices.length > 1;
-  const outboundSlice = item.slices?.[0];
-  const returnSlice = item.slices?.[1];
+  const isRoundTrip = transformedItem.slices && transformedItem.slices.length > 1;
+  const outboundSlice = transformedItem.slices?.[0];
+  const returnSlice = transformedItem.slices?.[1];
 
-  // Use transformed fields if available (from context/SearchResults)
-  if (item.departureAirport && item.arrivalAirport && item.departureTime) {
+  // Use transformed fields if available
+  if (transformedItem.departureAirport && transformedItem.arrivalAirport && transformedItem.departureTime) {
     return (
       <div className="bg-[#f8fbfe] min-h-screen py-12">
         <div className="max-w-6xl mx-auto px-4">
@@ -234,32 +390,32 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
                 <div className="flex items-center gap-6">
                   <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center p-3 border border-gray-100">
-                    {item.airlineLogo ? (
+                    {transformedItem.airlineLogo ? (
                       <img 
-                        src={item.airlineLogo} 
+                        src={transformedItem.airlineLogo} 
                         className="max-w-full max-h-full object-contain" 
-                        alt={item.airlineName || item.provider}
+                        alt={transformedItem.airlineName || transformedItem.provider}
                         onError={(e) => {
-                          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${item.airlineCode || item.airlineName || item.provider}&background=33a8da&color=fff&bold=true&size=64`;
+                          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${transformedItem.airlineCode || transformedItem.airlineName || transformedItem.provider}&background=33a8da&color=fff&bold=true&size=64`;
                         }}
                       />
                     ) : (
                       <div className="w-full h-full bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-xl flex items-center justify-center text-white font-black text-sm">
-                        {item.airlineCode?.substring(0, 2) || item.airlineName?.substring(0, 2) || item.provider?.substring(0, 2) || 'FL'}
+                        {transformedItem.airlineCode?.substring(0, 2) || transformedItem.airlineName?.substring(0, 2) || transformedItem.provider?.substring(0, 2) || 'FL'}
                       </div>
                     )}
                   </div>
                   <div>
-                    <h1 className="text-2xl font-black text-gray-900 tracking-tight">{item.airlineName || item.provider}</h1>
+                    <h1 className="text-2xl font-black text-gray-900 tracking-tight">{transformedItem.airlineName || transformedItem.provider}</h1>
                     <div className="flex items-center gap-2 mt-1">
-                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{item.flightNumber}</p>
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{transformedItem.flightNumber}</p>
                       <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{item.stopText}</p>
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{transformedItem.stopText}</p>
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-3xl font-black text-[#33a8da] tracking-tighter">{item.displayPrice || item.price}</p>
+                  <p className="text-3xl font-black text-[#33a8da] tracking-tighter">{transformedItem.displayPrice || transformedItem.price}</p>
                   <p className="text-[10px] font-bold text-gray-400 uppercase">Per Passenger</p>
                 </div>
               </div>
@@ -275,20 +431,20 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                     <div>
                       <div className="flex items-center gap-2 text-sm">
                         <span className="font-black text-gray-900">
-                          {outboundSlice.origin?.iata_code || item.departureAirport}
+                          {outboundSlice.origin?.iata_code || transformedItem.departureAirport}
                         </span>
                         <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path d="M14 5l7 7m0 0l-7 7m7-7H3" />
                         </svg>
                         <span className="font-black text-gray-900">
-                          {outboundSlice.destination?.iata_code || item.arrivalAirport}
+                          {outboundSlice.destination?.iata_code || transformedItem.arrivalAirport}
                         </span>
                       </div>
                       <p className="text-xs font-bold text-gray-500 mt-1">
                         {formatTime(outboundSlice.segments?.[0]?.departing_at)} - {formatTime(outboundSlice.segments?.[outboundSlice.segments.length - 1]?.arriving_at)}
                       </p>
                       <p className="text-[10px] text-gray-400 mt-0.5">
-                        Flight • {outboundSlice.segments?.[0]?.operating_carrier?.name || item.airlineName} • {calculateDuration(outboundSlice.duration)}
+                        Flight • {outboundSlice.segments?.[0]?.operating_carrier?.name || transformedItem.airlineName} • {calculateDuration(outboundSlice.duration)}
                       </p>
                       {(outboundSlice.segments?.length || 1) > 1 && (
                         <p className="text-[9px] font-bold text-amber-600 mt-1">
@@ -306,20 +462,20 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                     <div>
                       <div className="flex items-center gap-2 text-sm">
                         <span className="font-black text-gray-900">
-                          {returnSlice.origin?.iata_code || item.arrivalAirport}
+                          {returnSlice.origin?.iata_code || transformedItem.arrivalAirport}
                         </span>
                         <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path d="M14 5l7 7m0 0l-7 7m7-7H3" />
                         </svg>
                         <span className="font-black text-gray-900">
-                          {returnSlice.destination?.iata_code || item.departureAirport}
+                          {returnSlice.destination?.iata_code || transformedItem.departureAirport}
                         </span>
                       </div>
                       <p className="text-xs font-bold text-gray-500 mt-1">
                         {formatTime(returnSlice.segments?.[0]?.departing_at)} - {formatTime(returnSlice.segments?.[returnSlice.segments.length - 1]?.arriving_at)}
                       </p>
                       <p className="text-[10px] text-gray-400 mt-0.5">
-                        Flight • {returnSlice.segments?.[0]?.operating_carrier?.name || item.airlineName} • {calculateDuration(returnSlice.duration)}
+                        Flight • {returnSlice.segments?.[0]?.operating_carrier?.name || transformedItem.airlineName} • {calculateDuration(returnSlice.duration)}
                       </p>
                       {(returnSlice.segments?.length || 1) > 1 && (
                         <p className="text-[9px] font-bold text-amber-600 mt-1">
@@ -337,21 +493,21 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                   </div>
                   <div>
                     <div className="flex items-center gap-2 text-sm">
-                      <span className="font-black text-gray-900">{item.departureAirport}</span>
+                      <span className="font-black text-gray-900">{transformedItem.departureAirport}</span>
                       <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path d="M14 5l7 7m0 0l-7 7m7-7H3" />
                       </svg>
-                      <span className="font-black text-gray-900">{item.arrivalAirport}</span>
+                      <span className="font-black text-gray-900">{transformedItem.arrivalAirport}</span>
                     </div>
                     <p className="text-xs font-bold text-gray-500 mt-1">
-                      {formatTime(item.departureTime)} - {formatTime(item.arrivalTime)}
+                      {formatTime(transformedItem.departureTime)} - {formatTime(transformedItem.arrivalTime)}
                     </p>
                     <p className="text-[10px] text-gray-400 mt-0.5">
-                      Flight • {item.airlineName} • {calculateDuration(item.duration)}
+                      Flight • {transformedItem.airlineName} • {calculateDuration(transformedItem.duration)}
                     </p>
-                    {(item.stopCount || 0) > 0 && (
+                    {(transformedItem.stopCount || 0) > 0 && (
                       <p className="text-[9px] font-bold text-amber-600 mt-1">
-                        {item.stopCount} stop{item.stopCount > 1 ? 's' : ''}
+                        {transformedItem.stopCount} stop{transformedItem.stopCount > 1 ? 's' : ''}
                       </p>
                     )}
                   </div>
@@ -368,7 +524,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Outbound Journey</h3>
                       <p className="text-xs font-bold text-gray-600">
-                        {formatDate(outboundSlice?.segments?.[0]?.departing_at || item.departureTime)}
+                        {formatDate(outboundSlice?.segments?.[0]?.departing_at || transformedItem.departureTime)}
                       </p>
                     </div>
                     
@@ -515,7 +671,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                 <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100">
                   <span className="text-xl mb-3 block">💺</span>
                   <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Cabin</p>
-                  <p className="text-xs font-bold text-gray-900 capitalize">{item.cabin || 'Economy'}</p>
+                  <p className="text-xs font-bold text-gray-900 capitalize">{transformedItem.cabin || 'Economy'}</p>
                 </div>
                 <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100">
                   <span className="text-xl mb-3 block">💳</span>
@@ -535,7 +691,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                     </svg>
                   </div>
                   <p className="text-sm font-bold text-gray-600">
-                    {isRoundTrip ? 'Round trip' : 'One-way'} • {(item.stopCount || 0) === 0 ? 'Direct flight' : `${item.stopCount} stop${item.stopCount > 1 ? 's' : ''}`} • Seats confirmed for immediate booking.
+                    {isRoundTrip ? 'Round trip' : 'One-way'} • {(transformedItem.stopCount || 0) === 0 ? 'Direct flight' : `${transformedItem.stopCount} stop${transformedItem.stopCount > 1 ? 's' : ''}`} • Seats confirmed for immediate booking.
                   </p>
                 </div>
                 <button 
