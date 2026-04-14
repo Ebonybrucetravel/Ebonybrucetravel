@@ -31,6 +31,11 @@ import { CreateGuestCarRentalBookingUseCase } from './use-cases/create-guest-car
 import { CancelCarRentalBookingUseCase } from './use-cases/cancel-car-rental-booking.use-case';
 import { RequestHotelCancellationUseCase } from './use-cases/request-hotel-cancellation.use-case';
 import { ProcessCancellationRequestUseCase } from './use-cases/process-cancellation-request.use-case';
+import { SearchWakanowFlightsUseCase } from './use-cases/search-wakanow-flights.use-case';
+import { SelectWakanowFlightUseCase } from './use-cases/select-wakanow-flight.use-case';
+import { BookWakanowFlightUseCase } from './use-cases/book-wakanow-flight.use-case';
+import { BookWakanowFlightGuestUseCase } from './use-cases/book-wakanow-flight-guest.use-case';
+import { TicketWakanowFlightUseCase } from './use-cases/ticket-wakanow-flight.use-case';
 import { BookingModule } from '@domains/booking/booking.module';
 import { PaymentModule } from '@domains/payment/payment.module';
 import { MarkupModule } from '@domains/markup/markup.module';
@@ -90,6 +95,11 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     CancelCarRentalBookingUseCase,
     RequestHotelCancellationUseCase,
     ProcessCancellationRequestUseCase,
+    SearchWakanowFlightsUseCase,
+    SelectWakanowFlightUseCase,
+    BookWakanowFlightUseCase,
+    BookWakanowFlightGuestUseCase,
+    TicketWakanowFlightUseCase,
   ],
   exports: [
     CreateBookingUseCase,
@@ -124,6 +134,11 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     CancelCarRentalBookingUseCase,
     RequestHotelCancellationUseCase,
     ProcessCancellationRequestUseCase,
+    SearchWakanowFlightsUseCase,
+    SelectWakanowFlightUseCase,
+    BookWakanowFlightUseCase,
+    BookWakanowFlightGuestUseCase,
+    TicketWakanowFlightUseCase,
   ],
 })
 export class BookingApplicationModule { }

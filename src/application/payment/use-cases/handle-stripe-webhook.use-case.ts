@@ -7,6 +7,7 @@ import { CreateDuffelOrderUseCase } from '@application/booking/use-cases/create-
 import { CreateAmadeusHotelBookingUseCase } from '@application/booking/use-cases/create-amadeus-hotel-booking.use-case';
 import { CreateCarRentalBookingUseCase } from '@application/booking/use-cases/create-car-rental-booking.use-case';
 import { CreateHotelbedsBookingUseCase } from '@application/booking/use-cases/create-hotelbeds-booking.use-case';
+import { TicketWakanowFlightUseCase } from '@application/booking/use-cases/ticket-wakanow-flight.use-case';
 import { ResendService } from '@infrastructure/email/resend.service';
 import { Provider } from '@prisma/client';
 import Stripe from 'stripe';
@@ -24,6 +25,7 @@ export class HandleStripeWebhookUseCase {
     private readonly createAmadeusHotelBookingUseCase: CreateAmadeusHotelBookingUseCase,
     private readonly createCarRentalBookingUseCase: CreateCarRentalBookingUseCase,
     private readonly createHotelbedsBookingUseCase: CreateHotelbedsBookingUseCase,
+    private readonly ticketWakanowFlightUseCase: TicketWakanowFlightUseCase,
     private readonly resendService: ResendService,
   ) { }
 
@@ -60,8 +62,6 @@ export class HandleStripeWebhookUseCase {
       return;
     }
 
-    // CRITICAL: Verify payment intent status with Stripe before processing
-    // This prevents marking bookings as successful when payment hasn't actually been processed
     try {
       const verifiedPaymentIntent = await this.stripeService.retrievePaymentIntent(paymentIntent.id);
 
@@ -70,24 +70,21 @@ export class HandleStripeWebhookUseCase {
           `Payment intent ${paymentIntent.id} status is ${verifiedPaymentIntent.status}, not 'succeeded'. ` +
           `Not processing booking ${bookingId}. This may be a test mode simulation.`,
         );
-        return; // Don't process if payment hasn't actually succeeded
+        return;
       }
 
-      // Additional validation: ensure payment was actually charged
       if (verifiedPaymentIntent.amount_received === 0) {
         this.logger.warn(
           `Payment intent ${paymentIntent.id} has amount_received = 0. Not processing booking ${bookingId}.`,
         );
-        return; // Don't process if no payment was actually received
+        return;
       }
     } catch (error) {
-      // CRITICAL: If we can't verify with Stripe, DO NOT process the booking
-      // This prevents false positives and ensures we only mark bookings as successful when payment is verified
       this.logger.error(
         `CRITICAL: Could not verify payment intent ${paymentIntent.id} with Stripe: ${error instanceof Error ? error.message : 'Unknown error'
         }. Booking ${bookingId} will NOT be marked as successful for security reasons.`,
       );
-      return; // DO NOT process if we can't verify - this is a security requirement
+      return;
     }
 
     const chargeId =
@@ -96,7 +93,6 @@ export class HandleStripeWebhookUseCase {
         : (paymentIntent.latest_charge as any)?.id ?? null;
 
     try {
-      // Check for idempotency: if already completed, don't process again
       const existingBooking = await this.prisma.booking.findUnique({
         where: { id: bookingId },
         select: { paymentStatus: true },
@@ -109,7 +105,6 @@ export class HandleStripeWebhookUseCase {
         return;
       }
 
-      // First, update booking payment status and store Stripe charge ID for dispute evidence
       const booking = await this.prisma.booking.update({
         where: { id: bookingId },
         include: {
@@ -139,7 +134,6 @@ export class HandleStripeWebhookUseCase {
 
       this.logger.log(`Booking ${bookingId} payment confirmed`);
 
-      // Mark voucher as used if one was applied
       if (booking.voucherId) {
         this.voucherService
           .markVoucherAsUsed(booking.voucherId, bookingId)
@@ -148,12 +142,9 @@ export class HandleStripeWebhookUseCase {
           })
           .catch((error) => {
             this.logger.error(`Failed to mark voucher as used for booking ${bookingId}: `, error);
-            // Don't throw - voucher marking failure shouldn't break the webhook
           });
       }
 
-      // Award loyalty points for the completed booking
-      // Process asynchronously to avoid blocking webhook response
       this.loyaltyService
         .earnPointsFromBooking(
           booking.userId,
@@ -171,16 +162,17 @@ export class HandleStripeWebhookUseCase {
         })
         .catch((error) => {
           this.logger.error(`Failed to award loyalty points for booking ${bookingId}: `, error);
-          // Don't throw - loyalty failure shouldn't break the webhook
         });
 
       const isDuffelFlight =
         booking.provider === Provider.DUFFEL &&
         (booking.productType === 'FLIGHT_INTERNATIONAL' || booking.productType === 'FLIGHT_DOMESTIC');
 
-      // Send booking confirmation and payment receipt emails
-      // For Duffel flights: send only AFTER the Duffel order is created successfully (see below)
-      if (!isDuffelFlight) {
+      const isWakanowFlight =
+        booking.provider === Provider.WAKANOW &&
+        (booking.productType === 'FLIGHT_INTERNATIONAL' || booking.productType === 'FLIGHT_DOMESTIC');
+
+      if (!isDuffelFlight && !isWakanowFlight) {
         this.sendBookingEmails(booking, paymentIntent)
           .then(() =>
             this.prisma.booking.update({
@@ -193,14 +185,12 @@ export class HandleStripeWebhookUseCase {
           });
       }
 
-      // If this is a Duffel flight booking, create the Duffel order first; send confirmation email only on success
       if (isDuffelFlight) {
         try {
           this.logger.log(`Creating Duffel order for booking ${bookingId}...`);
           const { orderId } = await this.createDuffelOrderUseCase.execute(bookingId);
           this.logger.log(`Successfully created Duffel order ${orderId} for booking ${bookingId}`);
 
-          // Only send "booking confirmed" email when the flight order was actually created
           const updatedBooking = await this.prisma.booking.findUnique({
             where: { id: bookingId },
             include: { user: { select: { id: true, email: true, name: true } } },
@@ -213,21 +203,17 @@ export class HandleStripeWebhookUseCase {
             });
           }
         } catch (error) {
-          // Log error but don't fail the webhook - payment is already confirmed
           this.logger.error(
             `Failed to create Duffel order for booking ${bookingId}.Payment confirmed but order creation failed.Initiating automatic refund.`,
             error,
           );
 
-          // Initiate automatic refund — payment collected but flight not deliverable
           if (booking.stripeChargeId || chargeId) {
             try {
               this.logger.log(`Initiating automatic Stripe refund for failed booking ${bookingId}...`);
-              // StripeService.createRefund takes paymentIntentId, but since a charge is part of a payment intent, 
-              // we pass the paymentIntent.id directly instead of the chargeId. Both exist for this booking.
               await this.stripeService.createRefund({ paymentIntentId: paymentIntent.id });
 
-              const refundStatusUpdated = await this.prisma.booking.update({
+              await this.prisma.booking.update({
                 where: { id: bookingId },
                 data: { refundStatus: 'PROCESSING', paymentStatus: 'REFUNDED' }
               });
@@ -237,7 +223,6 @@ export class HandleStripeWebhookUseCase {
             }
           }
 
-          // Send failure notification email
           if (booking.user?.email) {
             this.resendService.sendBookingFailureEmail({
               to: booking.user.email,
@@ -249,29 +234,87 @@ export class HandleStripeWebhookUseCase {
               failureReason: `Flight booking failed with provider: ${error instanceof Error ? error.message : 'Unknown provider error'}. We have automatically initiated a full refund back to your payment method.`,
             }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
           }
-
-          // Booking status and providerData are already updated to FAILED by CreateDuffelOrderUseCase
         }
       }
 
-      // If this is an Amadeus hotel booking, create the Amadeus order
-      // Process asynchronously to avoid blocking webhook response
+      if (isWakanowFlight) {
+        try {
+          this.logger.log(`Automatically ticketing Wakanow flight for booking ${bookingId}...`);
+          
+          const pnrNumber = typeof booking.providerData === 'object' && booking.providerData !== null 
+            ? (booking.providerData as any).pnr 
+            : null;
+            
+          const wakanowBookingId = typeof booking.providerData === 'object' && booking.providerData !== null 
+            ? (booking.providerData as any).bookingId 
+            : null;
+            
+          if (!pnrNumber || !wakanowBookingId) {
+            throw new Error('PNR or Wakanow BookingId missing in booking providerData. Cannot issue ticket.');
+          }
+
+          await this.ticketWakanowFlightUseCase.execute({ bookingId: wakanowBookingId, pnrNumber }, bookingId);
+          this.logger.log(`Successfully ticketed Wakanow flight for booking ${bookingId}`);
+
+          const updatedBooking = await this.prisma.booking.findUnique({
+            where: { id: bookingId },
+            include: { user: { select: { id: true, email: true, name: true } } },
+          });
+          if (updatedBooking) {
+            await this.sendBookingEmails(updatedBooking, paymentIntent);
+            await this.prisma.booking.update({
+              where: { id: bookingId },
+              data: { confirmationEmailSentAt: new Date() },
+            });
+          }
+        } catch (error) {
+          this.logger.error(
+            `Failed to ticket Wakanow flight for booking ${bookingId}. Payment confirmed but ticketing failed. Initiating automatic refund.`,
+            error,
+          );
+
+          if (booking.stripeChargeId || chargeId) {
+            try {
+              this.logger.log(`Initiating automatic Stripe refund for failed Wakanow booking ${bookingId}...`);
+              await this.stripeService.createRefund({ paymentIntentId: paymentIntent.id });
+
+              await this.prisma.booking.update({
+                where: { id: bookingId },
+                data: { refundStatus: 'PROCESSING', paymentStatus: 'REFUNDED' }
+              });
+              this.logger.log(`Automatic refund initiated for Wakanow booking ${bookingId}`);
+            } catch (refundError) {
+              this.logger.error(`Failed to initiate automatic refund for Wakanow booking ${bookingId}: `, refundError);
+            }
+          }
+
+          if (booking.user?.email) {
+            this.resendService.sendBookingFailureEmail({
+              to: booking.user.email,
+              customerName: booking.user.name || 'Valued Customer',
+              bookingReference: booking.reference || booking.id,
+              productType: booking.productType,
+              amount: Number(booking.totalAmount),
+              currency: booking.currency,
+              failureReason: `Flight ticketing failed with provider: ${error instanceof Error ? error.message : 'Unknown provider error'}. We have automatically initiated a full refund back to your payment method.`,
+            }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
+          }
+        }
+      }
+
       if (booking.provider === Provider.AMADEUS && booking.productType === 'HOTEL') {
         this.logger.log(`Processing Amadeus hotel order creation for booking ${bookingId} asynchronously...`);
-        // Don't await - process in background to respond quickly to Stripe
         this.createAmadeusHotelBookingUseCase
           .createAmadeusBookingAfterPayment(bookingId)
           .then(({ orderId }) => {
             this.logger.log(`Successfully created Amadeus hotel order ${orderId} for booking ${bookingId}`);
           })
           .catch((error) => {
-            // Log error but don't fail the webhook - payment is already confirmed
             this.logger.error(
               `Failed to create Amadeus hotel order for booking ${bookingId}.Payment confirmed but order creation failed: `,
               error,
             );
 
-            // Send failure notification email
             if (booking.user?.email) {
               this.resendService.sendBookingFailureEmail({
                 to: booking.user.email,
@@ -284,7 +327,6 @@ export class HandleStripeWebhookUseCase {
               }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
             }
 
-            // Build sanitized Amadeus error details (safe for storage/display)
             let amadeusError: any = {
               message: error instanceof Error ? error.message : 'Unknown error',
             };
@@ -311,11 +353,9 @@ export class HandleStripeWebhookUseCase {
                   }
                 }
               } catch {
-                // If parsing fails, keep the basic error message only
               }
             }
 
-            // Update booking to indicate order creation failed with sanitized error info
             this.prisma.booking
               .update({
                 where: { id: bookingId },
@@ -334,7 +374,6 @@ export class HandleStripeWebhookUseCase {
           });
       }
 
-      // If this is a Hotelbeds hotel booking, create the Hotelbeds order
       if (booking.provider === Provider.HOTELBEDS && booking.productType === 'HOTEL') {
         this.logger.log(`Processing Hotelbeds hotel order creation for booking ${bookingId} asynchronously...`);
         this.createHotelbedsBookingUseCase
@@ -348,7 +387,6 @@ export class HandleStripeWebhookUseCase {
               error,
             );
 
-            // Automatic refund for Hotelbeds failure (matching Duffel pattern)
             if (booking.stripeChargeId || chargeId) {
               this.stripeService.createRefund({ paymentIntentId: paymentIntent.id })
                 .then(() => {
@@ -374,11 +412,8 @@ export class HandleStripeWebhookUseCase {
           });
       }
 
-      // If this is a car rental booking, create the Amadeus transfer order
-      // Process asynchronously to avoid blocking webhook response
       if (booking.provider === Provider.AMADEUS && booking.productType === 'CAR_RENTAL') {
         this.logger.log(`Processing Amadeus transfer order creation for car rental booking ${bookingId} asynchronously...`);
-        // Don't await - process in background to respond quickly to Stripe
         this.createCarRentalBookingUseCase
           .createAmadeusOrderAfterPayment(bookingId)
           .then(({ orderId }) => {
@@ -392,7 +427,6 @@ export class HandleStripeWebhookUseCase {
               error,
             );
 
-            // Send failure notification email
             if (booking.user?.email) {
               this.resendService.sendBookingFailureEmail({
                 to: booking.user.email,
@@ -491,7 +525,6 @@ export class HandleStripeWebhookUseCase {
     }
 
     try {
-      // Find booking by payment reference
       const booking = await this.prisma.booking.findFirst({
         where: { paymentReference: paymentIntentId },
       });
@@ -517,7 +550,6 @@ export class HandleStripeWebhookUseCase {
 
       this.logger.log(`Booking ${booking.id} refunded`);
 
-      // Send refund email to customer
       try {
         const user = await this.prisma.user.findUnique({
           where: { id: booking.userId },
@@ -535,7 +567,6 @@ export class HandleStripeWebhookUseCase {
           });
         }
       } catch (emailError) {
-        // Don't fail refund if email fails
         this.logger.error(`Failed to send refund email: `, emailError);
       }
     } catch (error) {
@@ -543,9 +574,6 @@ export class HandleStripeWebhookUseCase {
     }
   }
 
-  /**
-   * Send booking confirmation and payment receipt emails
-   */
   private async sendBookingEmails(booking: any, paymentIntent: Stripe.PaymentIntent): Promise<void> {
     try {
       const user = booking.user;
@@ -557,7 +585,6 @@ export class HandleStripeWebhookUseCase {
       const bookingData = booking.bookingData as any;
       const passengerInfo = booking.passengerInfo as any;
 
-      // Extract booking details based on product type
       const bookingDetails: any = {};
       if (booking.productType === 'HOTEL') {
         bookingDetails.hotelName = bookingData.hotelName || bookingData.hotel?.name || 'Hotel';
@@ -579,7 +606,6 @@ export class HandleStripeWebhookUseCase {
         bookingDetails.dropoffDateTime = bookingData.dropoffDateTime || bookingData.dropoff_date_time;
       }
 
-      // Send booking confirmation email (with cancellation/no-show for hotels per BOOKING_OPERATIONS_AND_RISK)
       await this.resendService.sendBookingConfirmationEmail({
         to: user.email,
         customerName: user.name || passengerInfo?.firstName || 'Valued Customer',
@@ -604,7 +630,6 @@ export class HandleStripeWebhookUseCase {
             : undefined,
       });
 
-      // Send payment receipt email
       await this.resendService.sendPaymentReceiptEmail({
         to: user.email,
         customerName: user.name || passengerInfo?.firstName || 'Valued Customer',
@@ -621,7 +646,6 @@ export class HandleStripeWebhookUseCase {
       this.logger.log(`Booking confirmation and receipt emails sent for booking ${booking.id}`);
     } catch (error) {
       this.logger.error(`Failed to send booking emails: `, error);
-      // Don't throw - email failure shouldn't break the webhook
     }
   }
 }

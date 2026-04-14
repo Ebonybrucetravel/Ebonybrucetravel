@@ -137,6 +137,18 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   DATABASE_SSL_REJECT_UNAUTHORIZED?: string; // Set to 'false' to allow self-signed certs (e.g. Supabase from Railway)
+
+  @IsString()
+  @IsOptional()
+  WAKANOW_SERVICE_URL?: string;
+
+  @IsString()
+  @IsOptional()
+  WAKANOW_USERNAME?: string;
+
+  @IsString()
+  @IsOptional()
+  WAKANOW_PASSWORD?: string;
 }
 
 export function validate(config: Record<string, unknown>) {

@@ -1,49 +1,31 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-/**
- * Currency conversion service
- * Uses exchangerate-api.com v6 API
- * Free tier: 1,500 requests/month (without API key)
- * With API key: Higher limits and better rate updates
- * Alternative: fixer.io, openexchangerates.org
- */
 @Injectable()
 export class CurrencyService {
   private readonly logger = new Logger(CurrencyService.name);
   private readonly apiKey: string | undefined;
   private readonly baseUrl: string;
   private readonly cache: Map<string, { rate: number; timestamp: number }> = new Map();
-  private readonly cacheTTL = 60 * 60 * 1000; // 1 hour cache
+  private readonly cacheTTL = 60 * 60 * 1000;
 
-  // Supported currencies - includes all currencies from frontend dropdown
-  // Frontend shows: NGN, USD, EUR, GBP, JPY, CNY
-  // Additional African currencies: GHS, KES, ZAR
-  // Can be easily extended - exchangerate-api.com supports 160+ currencies
   private readonly supportedCurrencies = [
-    'GBP', // British Pound (default)
-    'USD', // US Dollar
-    'EUR', // Euro
-    'NGN', // Nigerian Naira
-    'JPY', // Japanese Yen
-    'CNY', // Chinese Yuan
-    'GHS', // Ghanaian Cedi
-    'KES', // Kenyan Shilling
-    'ZAR', // South African Rand
+    'GBP',
+    'USD',
+    'EUR',
+    'NGN',
+    'JPY',
+    'CNY',
+    'GHS',
+    'KES',
+    'ZAR',
   ];
 
-  // Currency conversion buffer to protect against rate fluctuations
-  // Applied as a percentage increase to converted amounts
-  // Default: 2.5% (configurable via CURRENCY_CONVERSION_BUFFER env var)
   private readonly conversionBuffer: number;
 
   constructor(private readonly configService: ConfigService) {
-    // exchangerate-api.com v6 API key (optional - works without key on free tier)
     this.apiKey = this.configService.get<string>('EXCHANGE_RATE_API_KEY');
     
-    // Set base URL based on whether API key is provided
-    // v6 API format: https://v6.exchangerate-api.com/v6/{apiKey}/latest/USD
-    // v4 API format: https://api.exchangerate-api.com/v4/latest/USD (no key needed)
     if (this.apiKey) {
       this.baseUrl = `https://v6.exchangerate-api.com/v6/${this.apiKey}`;
       this.logger.log('Using exchangerate-api.com v6 API with API key');
@@ -52,8 +34,6 @@ export class CurrencyService {
       this.logger.log('Using exchangerate-api.com v4 API (free tier, no API key)');
     }
 
-    // Get conversion buffer from environment (default: 2.5%)
-    // This protects against exchange rate fluctuations between display and payment
     const bufferEnv = this.configService.get<string>('CURRENCY_CONVERSION_BUFFER');
     this.conversionBuffer = bufferEnv ? parseFloat(bufferEnv) : 2.5;
 
@@ -68,13 +48,6 @@ export class CurrencyService {
     );
   }
 
-  /**
-   * Convert amount from one currency to another (pure conversion, no buffer)
-   * @param amount Amount to convert
-   * @param fromCurrency Source currency (ISO 4217 code)
-   * @param toCurrency Target currency (ISO 4217 code)
-   * @returns Converted amount at current exchange rate
-   */
   async convert(
     amount: number,
     fromCurrency: string,
@@ -84,7 +57,6 @@ export class CurrencyService {
       return amount;
     }
 
-    // Validate currencies
     if (!this.isSupportedCurrency(fromCurrency) || !this.isSupportedCurrency(toCurrency)) {
       this.logger.warn(
         `Unsupported currency conversion: ${fromCurrency} to ${toCurrency}. Returning original amount.`,
@@ -97,19 +69,10 @@ export class CurrencyService {
       return amount * exchangeRate;
     } catch (error) {
       this.logger.error(`Failed to convert ${amount} ${fromCurrency} to ${toCurrency}:`, error);
-      // Return original amount on error (graceful degradation)
       return amount;
     }
   }
 
-  /**
-   * Calculate currency conversion fee/buffer as a separate line item
-   * This protects against rate fluctuations and ensures payment success
-   * @param convertedAmount The amount after base currency conversion
-   * @param fromCurrency Source currency (ISO 4217 code)
-   * @param toCurrency Target currency (ISO 4217 code)
-   * @returns Object with base converted amount and conversion fee
-   */
   calculateConversionFee(
     convertedAmount: number,
     fromCurrency: string,
@@ -119,7 +82,6 @@ export class CurrencyService {
     conversionFee: number;
     totalWithFee: number;
   } {
-    // No fee if same currency
     if (fromCurrency === toCurrency || this.conversionBuffer <= 0) {
       return {
         baseAmount: convertedAmount,
@@ -128,8 +90,6 @@ export class CurrencyService {
       };
     }
 
-    // Calculate conversion fee as percentage of converted amount
-    // This protects against rate fluctuations between display and payment
     const conversionFee = (convertedAmount * this.conversionBuffer) / 100;
     const totalWithFee = convertedAmount + conversionFee;
 
@@ -140,34 +100,37 @@ export class CurrencyService {
     };
   }
 
-  /**
-   * Get exchange rate between two currencies
-   * Uses caching to reduce API calls
-   */
+  private async fetchWithRetry(url: string, retries = 3, backoff = 1000): Promise<Response> {
+    try {
+      return await fetch(url, { headers: { Connection: 'close' } });
+    } catch (error: any) {
+      if (retries > 0) {
+        this.logger.warn(`Currency fetch dropped (retrying in ${backoff}ms): ${error.message || String(error)}`);
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+        return this.fetchWithRetry(url, retries - 1, backoff * 2);
+      }
+      throw error;
+    }
+  }
+
   private async getExchangeRate(fromCurrency: string, toCurrency: string): Promise<number> {
     const cacheKey = `${fromCurrency}_${toCurrency}`;
     const cached = this.cache.get(cacheKey);
 
-    // Return cached rate if still valid
     if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
       return cached.rate;
     }
 
     try {
-      // exchangerate-api.com free tier: base currency is USD
-      // To convert from USD to any currency: GET /latest/USD
-      // To convert between non-USD currencies: convert via USD
       let rate: number;
 
       if (fromCurrency === 'USD') {
-        // Direct conversion from USD
-        const response = await fetch(`${this.baseUrl}/latest/USD`);
+        const response = await this.fetchWithRetry(`${this.baseUrl}/latest/USD`);
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error(`Exchange rate API error: ${response.status} - ${errorText}`);
         }
         const data = await response.json();
-        // v4 API uses 'conversion_rates', v6 API uses 'rates'
         const rates = data.conversion_rates || data.rates;
         if (!data || !rates) {
           this.logger.error(`Invalid API response structure:`, JSON.stringify(data).substring(0, 200));
@@ -178,13 +141,11 @@ export class CurrencyService {
           throw new Error(`Exchange rate not found for ${toCurrency}`);
         }
       } else if (toCurrency === 'USD') {
-        // Convert to USD (inverse)
-        const response = await fetch(`${this.baseUrl}/latest/USD`);
+        const response = await this.fetchWithRetry(`${this.baseUrl}/latest/USD`);
         if (!response.ok) {
           throw new Error(`Exchange rate API error: ${response.status}`);
         }
         const data = await response.json();
-        // v4 API uses 'conversion_rates', v6 API uses 'rates'
         const rates = data.conversion_rates || data.rates;
         if (!data || !rates) {
           throw new Error(`Invalid API response structure: rates not found`);
@@ -193,15 +154,13 @@ export class CurrencyService {
         if (!fromRate) {
           throw new Error(`Exchange rate not found for ${fromCurrency}`);
         }
-        rate = 1 / fromRate; // Inverse conversion
+        rate = 1 / fromRate;
       } else {
-        // Convert between two non-USD currencies via USD
-        const response = await fetch(`${this.baseUrl}/latest/USD`);
+        const response = await this.fetchWithRetry(`${this.baseUrl}/latest/USD`);
         if (!response.ok) {
           throw new Error(`Exchange rate API error: ${response.status}`);
         }
         const data = await response.json();
-        // v4 API uses 'conversion_rates', v6 API uses 'rates'
         const rates = data.conversion_rates || data.rates;
         if (!data || !rates) {
           throw new Error(`Invalid API response structure: rates not found`);
@@ -211,10 +170,9 @@ export class CurrencyService {
         if (!fromRate || !toRate) {
           throw new Error(`Exchange rate not found for ${fromCurrency} or ${toCurrency}`);
         }
-        rate = toRate / fromRate; // Convert via USD
+        rate = toRate / fromRate;
       }
 
-      // Cache the rate
       this.cache.set(cacheKey, { rate, timestamp: Date.now() });
       this.logger.debug(`Exchange rate ${fromCurrency} to ${toCurrency}: ${rate}`);
 
@@ -225,30 +183,18 @@ export class CurrencyService {
     }
   }
 
-  /**
-   * Check if currency is supported
-   */
   isSupportedCurrency(currency: string): boolean {
     return this.supportedCurrencies.includes(currency.toUpperCase());
   }
 
-  /**
-   * Get list of supported currencies
-   */
   getSupportedCurrencies(): string[] {
     return [...this.supportedCurrencies];
   }
 
-  /**
-   * Get the current conversion buffer percentage
-   */
   getConversionBuffer(): number {
     return this.conversionBuffer;
   }
 
-  /**
-   * Get conversion details for transparency
-   */
   getConversionDetails(
     amount: number,
     fromCurrency: string,
@@ -263,12 +209,10 @@ export class CurrencyService {
     totalWithFee: number;
     targetCurrency: string;
   } {
-    // This is a synchronous method that returns structure
-    // Actual conversion should use async convert() method
     return {
       originalAmount: amount,
       originalCurrency: fromCurrency,
-      exchangeRate: 0, // Will be calculated in async convert()
+      exchangeRate: 0,
       convertedAmount: 0,
       conversionFeePercentage: fromCurrency === toCurrency ? 0 : this.conversionBuffer,
       conversionFee: 0,
@@ -277,16 +221,10 @@ export class CurrencyService {
     };
   }
 
-  /**
-   * Format currency amount with proper decimal places
-   * JPY uses 0 decimal places, others use 2
-   */
   formatAmount(amount: number, currency: string): string {
-    // JPY (Japanese Yen) uses 0 decimal places
     if (currency.toUpperCase() === 'JPY') {
       return Math.round(amount).toString();
     }
-    // Most other currencies use 2 decimal places
     return amount.toFixed(2);
   }
 }

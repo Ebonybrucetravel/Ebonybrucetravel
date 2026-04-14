@@ -183,6 +183,7 @@ enum Provider {
   BOOKING_COM
   AMADEUS
   HOTELBEDS
+  WAKANOW
 }
 
 enum BookingStatus {

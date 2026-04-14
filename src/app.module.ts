@@ -41,6 +41,7 @@ import { PaymentController } from './presentation/payment/payment.controller';
 import { MarkupController } from './presentation/markup/markup.controller';
 import { DashboardController } from './presentation/dashboard/dashboard.controller';
 import { BookingHotelbedsController } from './presentation/booking/booking-hotelbeds.controller';
+import { BookingWakanowController } from './presentation/booking/booking-wakanow.controller';
 
 @Module({
   imports: [
@@ -88,7 +89,7 @@ import { BookingHotelbedsController } from './presentation/booking/booking-hotel
     HealthModule,
     ContactModule,
   ],
-  controllers: [BookingController, PaymentController, MarkupController, DashboardController, BookingHotelbedsController],
+  controllers: [BookingController, PaymentController, MarkupController, DashboardController, BookingHotelbedsController, BookingWakanowController],
   providers: [
     {
       provide: APP_FILTER,
