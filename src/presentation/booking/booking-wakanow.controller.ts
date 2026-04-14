@@ -210,16 +210,36 @@ export class BookingWakanowController {
   @Get('airports')
   @ApiOperation({
     summary: 'Get Wakanow airport list (no authentication required)',
-    description: 'Returns all airports available in the Wakanow system. Results are cached in memory.',
+    description:
+      'Returns airports from the Wakanow system. Use ?query= to filter by airport code, name, city, or country. ' +
+      'Results are cached in memory. Without a query, returns the first 100 results.',
   })
   @ApiResponse({ status: 200, description: 'Airport list retrieved' })
-  async getAirports() {
+  async getAirports(
+    @Query('query') query?: string,
+    @Query('limit') limit?: string,
+  ) {
     try {
-      const airports = await this.wakanowService.getAirports();
+      const all = await this.wakanowService.getAirports();
+      let results = all;
+      if (query && query.trim().length > 0) {
+        const q = query.trim().toLowerCase();
+        results = all.filter(
+          (a) =>
+            a.AirportCode?.toLowerCase().includes(q) ||
+            a.AirportName?.toLowerCase().includes(q) ||
+            a.City?.toLowerCase().includes(q) ||
+            a.CityCountry?.toLowerCase().includes(q) ||
+            a.Country?.toLowerCase().includes(q),
+        );
+      } else {
+        const cap = limit ? parseInt(limit, 10) : 100;
+        results = all.slice(0, Number.isFinite(cap) && cap > 0 ? cap : 100);
+      }
       return {
         success: true,
-        data: airports,
-        total: airports.length,
+        data: results,
+        total: results.length,
         message: 'Airports retrieved successfully',
       };
     } catch (error: any) {
