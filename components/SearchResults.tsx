@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useLanguage } from "../context/LanguageContext";
 import type { SearchResult as BaseSearchResult } from "../lib/types";
 import { type Airline, createAirlinesMap } from "../lib/duffel-airlines";
@@ -316,9 +316,7 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
     [key: string]: any;
   };
   type?: "flights" | "hotels" | "car-rentals";
-  // Make provider required to match base SearchResult
-  provider: string;  // <-- CHANGE THIS - remove optional (?)
-  // Wakanow specific fields
+  provider: string;
   isWakanow?: boolean;
   isWakanowDomestic?: boolean; 
   selectData?: string;
@@ -338,6 +336,9 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
   }>;
   fareRules?: string[];
   penaltyRules?: string[] | null;
+  // Store original price info for conversion
+  originalPriceAmount?: number;
+  originalPriceCurrency?: string;
 }
 
 interface SearchResultsProps {
@@ -399,7 +400,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   onNewSearch,
 }) => {
   const router = useRouter();
-  const { currency, t } = useLanguage();
+  const { currency, formatPrice: formatPriceWithCurrency, isLoadingRates } = useLanguage();
   const searchType = (searchParams?.type || "flights").toLowerCase() as "flights" | "hotels" | "car-rentals";
   
   const compactTab = searchType === 'car-rentals' ? 'cars' : searchType;
@@ -429,6 +430,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const [transmissionFilter, setTransmissionFilter] = useState<string[]>([]);
   const [seatCapacityFilter, setSeatCapacityFilter] = useState<number[]>([]);
   const [providerFilter, setProviderFilter] = useState<string[]>([]);
+
+  // Store converted prices
+  const [flightPrices, setFlightPrices] = useState<Record<string, string>>({});
+  const [hotelCarPrices, setHotelCarPrices] = useState<Record<string, string>>({});
+  const [processedFlights, setProcessedFlights] = useState<ExtendedSearchResult[]>([]);
 
   // Helper function to handle ad click navigation
   const handleAdClick = (ad: typeof advertisements[0]) => {
@@ -511,7 +517,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
   const airlinesMap = useMemo(() => createAirlinesMap(airlines), [airlines]);
 
-  // Helper Functions
+  // Helper Functions with Currency Support
   const formatDuration = (duration?: string): string => {
     if (!duration) return '';
 
@@ -536,22 +542,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     if (totalHours > 0 && totalMinutes > 0) return `${totalHours}h ${totalMinutes}m`;
     if (totalHours > 0) return `${totalHours}h`;
     return `${totalMinutes}m`;
-  };
-
-  const formatPrice = (amount: string, currencyCode: string): string => {
-    const numericAmount = parseFloat(amount);
-    if (isNaN(numericAmount)) return 'Price on request';
-
-    try {
-      return new Intl.NumberFormat('en-GB', {
-        style: 'currency',
-        currency: currencyCode,
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(numericAmount);
-    } catch (e) {
-      return `${currencyCode} ${numericAmount.toFixed(0)}`;
-    }
   };
 
   const formatTime = (dateTimeStr?: string): string => {
@@ -615,395 +605,427 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     }
   };
 
-// Process flight offers - supports Wakanow (domestic) and Duffel (international)
-const processedFlightOffers = useMemo(() => {
-  if (searchType !== 'flights') return [];
-  
-  // Check if this is a Wakanow response
-  const isWakanowResponse = Array.isArray(flightOffers) && 
-    flightOffers.length > 0 && 
-    'FlightCombination' in flightOffers[0];
+  // Process flight offers - supports Wakanow (domestic) and Duffel (international)
+  useEffect(() => {
+    const processFlights = async () => {
+      if (searchType !== 'flights') return;
+      
+      const processed: ExtendedSearchResult[] = [];
+      
+      // Check if this is a Wakanow response
+      const isWakanowResponse = Array.isArray(flightOffers) && 
+        flightOffers.length > 0 && 
+        'FlightCombination' in flightOffers[0];
 
-    if (isWakanowResponse) {
-      console.log('🛫 Processing Wakanow flights, count:', flightOffers.length);
-      
-      const processedWakanowFlights: ExtendedSearchResult[] = [];
-      
-      for (const combination of flightOffers as any[]) {
-        const flightCombination = combination.FlightCombination;
-        const selectData = combination.SelectData;
-        const flightModels = flightCombination?.FlightModels || [];
+      if (isWakanowResponse) {
+        console.log('🛫 Processing Wakanow flights, count:', flightOffers.length);
         
-        if (flightModels.length === 0) continue;
-        
-        const outboundFlight = flightModels[0];
-        const returnFlight = flightModels[1];
-        const outboundLeg = outboundFlight.FlightLegs?.[0];
-        
-        // CRITICAL: Log the raw data
-        console.log('✈️ RAW Wakanow outbound flight:', {
-          DepartureCode: outboundFlight.DepartureCode,
-          ArrivalCode: outboundFlight.ArrivalCode,
-          DepartureName: outboundFlight.DepartureName,
-          ArrivalName: outboundFlight.ArrivalName,
-        });
-        
-        // Extract price
-        let priceAmount = '0';
-        let priceCurrency = 'NGN';
-        
-        if (flightCombination.Price) {
-          priceAmount = flightCombination.Price.Amount?.toString() || '0';
-          priceCurrency = flightCombination.Price.CurrencyCode || 'NGN';
-        }
-        
-        const numericPrice = parseFloat(priceAmount);
-        const formattedPrice = new Intl.NumberFormat('en-NG', {
-          style: 'currency',
-          currency: priceCurrency,
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 0,
-        }).format(numericPrice);
-        
-        // Get airline logo
-        let airlineLogo = outboundFlight.AirlineLogoUrl || '';
-        if (!airlineLogo && outboundFlight.Airline) {
-          airlineLogo = `https://images.wakanow.com/Images/flight-logos/${outboundFlight.Airline}.gif`;
-        }
-        
-        // Format duration
-        let durationDisplay = outboundFlight.TripDuration || '';
-        if (durationDisplay) {
-          const parts = durationDisplay.split(':');
-          if (parts.length === 3) {
-            const hours = parseInt(parts[0]);
-            const minutes = parseInt(parts[1]);
-            if (hours > 0 && minutes > 0) durationDisplay = `${hours}h ${minutes}m`;
-            else if (hours > 0) durationDisplay = `${hours}h`;
-            else if (minutes > 0) durationDisplay = `${minutes}m`;
+        for (const combination of flightOffers as any[]) {
+          const flightCombination = combination.FlightCombination;
+          const selectData = combination.SelectData;
+          const flightModels = flightCombination?.FlightModels || [];
+          
+          if (flightModels.length === 0) continue;
+          
+          const outboundFlight = flightModels[0];
+          const returnFlight = flightModels[1];
+          const outboundLeg = outboundFlight.FlightLegs?.[0];
+          
+          // Extract price
+          let priceAmount = 0;
+          let priceCurrency = 'NGN';
+          
+          if (flightCombination.Price) {
+            priceAmount = parseFloat(flightCombination.Price.Amount || '0');
+            priceCurrency = flightCombination.Price.CurrencyCode || 'NGN';
           }
-        }
-        
-        // Format return duration
-        let returnDurationDisplay = '';
-        if (returnFlight?.TripDuration) {
-          const parts = returnFlight.TripDuration.split(':');
-          if (parts.length === 3) {
-            const hours = parseInt(parts[0]);
-            const minutes = parseInt(parts[1]);
-            if (hours > 0 && minutes > 0) returnDurationDisplay = `${hours}h ${minutes}m`;
-            else if (hours > 0) returnDurationDisplay = `${hours}h`;
-            else if (minutes > 0) returnDurationDisplay = `${minutes}m`;
+          
+          // Get airline logo
+          let airlineLogo = outboundFlight.AirlineLogoUrl || '';
+          if (!airlineLogo && outboundFlight.Airline) {
+            airlineLogo = `https://images.wakanow.com/Images/flight-logos/${outboundFlight.Airline}.gif`;
           }
-        }
-        
-        // Get baggage text
-        let baggageText = '';
-        if (outboundFlight.FreeBaggage) {
-          if (outboundFlight.FreeBaggage.BagCount > 0) {
-            baggageText = `${outboundFlight.FreeBaggage.BagCount} checked bag${outboundFlight.FreeBaggage.BagCount > 1 ? 's' : ''}`;
-          } else if (outboundFlight.FreeBaggage.Weight > 0) {
-            baggageText = `${outboundFlight.FreeBaggage.Weight} ${outboundFlight.FreeBaggage.WeightUnit || 'kg'} baggage`;
+          
+          // Format duration
+          let durationDisplay = outboundFlight.TripDuration || '';
+          if (durationDisplay) {
+            const parts = durationDisplay.split(':');
+            if (parts.length === 3) {
+              const hours = parseInt(parts[0]);
+              const minutes = parseInt(parts[1]);
+              if (hours > 0 && minutes > 0) durationDisplay = `${hours}h ${minutes}m`;
+              else if (hours > 0) durationDisplay = `${hours}h`;
+              else if (minutes > 0) durationDisplay = `${minutes}m`;
+            }
           }
+          
+          // Format return duration
+          let returnDurationDisplay = '';
+          if (returnFlight?.TripDuration) {
+            const parts = returnFlight.TripDuration.split(':');
+            if (parts.length === 3) {
+              const hours = parseInt(parts[0]);
+              const minutes = parseInt(parts[1]);
+              if (hours > 0 && minutes > 0) returnDurationDisplay = `${hours}h ${minutes}m`;
+              else if (hours > 0) returnDurationDisplay = `${hours}h`;
+              else if (minutes > 0) returnDurationDisplay = `${minutes}m`;
+            }
+          }
+          
+          // Get baggage text
+          let baggageText = '';
+          if (outboundFlight.FreeBaggage) {
+            if (outboundFlight.FreeBaggage.BagCount > 0) {
+              baggageText = `${outboundFlight.FreeBaggage.BagCount} checked bag${outboundFlight.FreeBaggage.BagCount > 1 ? 's' : ''}`;
+            } else if (outboundFlight.FreeBaggage.Weight > 0) {
+              baggageText = `${outboundFlight.FreeBaggage.Weight} ${outboundFlight.FreeBaggage.WeightUnit || 'kg'} baggage`;
+            }
+          }
+          
+          const processedOffer: ExtendedSearchResult = {
+            id: `${outboundFlight.Airline}-${outboundFlight.Name}-${Date.now()}-${Math.random()}`,
+            type: 'flights',
+            isWakanow: true,
+            isWakanowDomestic: true,
+            selectData: selectData,
+            provider: 'wakanow',
+            
+            // Flight details
+            airlineCode: outboundFlight.Airline || '',
+            airlineName: outboundFlight.AirlineName || outboundFlight.Airline || 'Unknown Airline',
+            airlineLogo: airlineLogo,
+            flightNumber: outboundFlight.Name || '',
+            
+            // Airport codes
+            departureAirport: outboundFlight.DepartureCode || '',
+            departureCity: outboundFlight.DepartureName || '',
+            departureTime: outboundFlight.DepartureTime || '',
+            
+            arrivalAirport: outboundFlight.ArrivalCode || '',
+            arrivalCity: outboundFlight.ArrivalName || '',
+            arrivalTime: outboundFlight.ArrivalTime || '',
+            
+            // Flight metadata
+            duration: durationDisplay,
+            stopCount: outboundFlight.Stops || 0,
+            stopText: outboundFlight.Stops === 0 ? 'Non stop' : 
+                      outboundFlight.Stops === 1 ? '1 Stop' : `${outboundFlight.Stops} Stops`,
+            
+            // Store original price info for conversion
+            originalPriceAmount: priceAmount,
+            originalPriceCurrency: priceCurrency,
+            displayPrice: '',
+            rawPrice: priceAmount,
+            price: '',
+            original_amount: priceAmount.toString(),
+            original_currency: priceCurrency,
+            final_amount: priceAmount.toString(),
+            currency: priceCurrency,
+            
+            // Cabin class
+            cabin: outboundLeg?.CabinClassName || 'Economy',
+            
+            // Baggage
+            baggage: baggageText,
+            
+            // Title and subtitle
+            title: `${outboundFlight.DepartureCode || ''} → ${outboundFlight.ArrivalCode || ''}`,
+            subtitle: outboundFlight.AirlineName || 'Domestic Flight',
+            image: airlineLogo,
+            
+            // Return flight info
+            isRoundTrip: !!returnFlight,
+            returnFlight: returnFlight ? {
+              departureAirport: returnFlight.DepartureCode || '',
+              arrivalAirport: returnFlight.ArrivalCode || '',
+              departureCity: returnFlight.DepartureName || '',
+              arrivalCity: returnFlight.ArrivalName || '',
+              departureTime: returnFlight.DepartureTime || '',
+              arrivalTime: returnFlight.ArrivalTime || '',
+              flightNumber: returnFlight.Name || '',
+              duration: returnDurationDisplay,
+              stopCount: returnFlight.Stops || 0,
+              timeOfDay: getTimeOfDay(returnFlight.DepartureTime),
+              arrivalTimeOfDay: getArrivalTimeOfDay(returnFlight.ArrivalTime)
+            } : undefined,
+            
+            // Time of day
+            outboundTimeOfDay: getTimeOfDay(outboundFlight.DepartureTime),
+            outboundArrivalTimeOfDay: getArrivalTimeOfDay(outboundFlight.ArrivalTime),
+            
+            // Fare rules
+            fareRules: flightCombination.FareRules || [],
+            penaltyRules: flightCombination.PenaltyRules || null,
+            isRefundable: flightCombination.IsRefundable || false,
+            
+            // Legs data
+            legs: outboundFlight.FlightLegs?.map((leg: any) => ({
+              number: leg.FlightLegNumber || '',
+              from: leg.DepartureCode || '',
+              fromName: leg.DepartureName || '',
+              to: leg.DestinationCode || '',
+              toName: leg.DestinationName || '',
+              departureTime: leg.StartTime || '',
+              arrivalTime: leg.EndTime || '',
+              duration: leg.Duration || '',
+              airline: leg.OperatingCarrierName || '',
+              flightNumber: leg.FlightNumber || '',
+              cabinClass: leg.CabinClassName || '',
+              bookingClass: leg.BookingClass || '',
+            })) || [],
+          };
+          
+          processed.push(processedOffer);
         }
-        
-        // CRITICAL: Store the correct airport codes
-        const departureAirportCode = outboundFlight.DepartureCode || '';
-        const arrivalAirportCode = outboundFlight.ArrivalCode || '';
-        
-        console.log('✅ Setting airports:', { departureAirportCode, arrivalAirportCode });
-        
-        const processedOffer: ExtendedSearchResult = {
-          id: `${outboundFlight.Airline}-${outboundFlight.Name}-${Date.now()}-${Math.random()}`,
-          type: 'flights',
-          isWakanow: true,
-          isWakanowDomestic: true,
-          selectData: selectData,
-          provider: 'wakanow',
+      } else if (areResultsProcessed) {
+        // Already processed flights (Duffel)
+        for (const offer of (flightOffers as ExtendedSearchResult[])) {
+          let priceAmount = 0;
+          let priceCurrency = 'GBP';
           
-          // Flight details
-          airlineCode: outboundFlight.Airline || '',
-          airlineName: outboundFlight.AirlineName || outboundFlight.Airline || 'Unknown Airline',
-          airlineLogo: airlineLogo,
-          flightNumber: outboundFlight.Name || '',
+          if (offer.original_amount) {
+            priceAmount = parseFloat(offer.original_amount);
+            priceCurrency = offer.original_currency || 'GBP';
+          } else if (offer.total_amount) {
+            priceAmount = parseFloat(offer.total_amount);
+            priceCurrency = offer.total_currency || 'GBP';
+          } else if (offer.final_amount) {
+            priceAmount = parseFloat(offer.final_amount);
+            priceCurrency = offer.currency || 'GBP';
+          }
           
-          // CRITICAL: Use the variables we just defined
-          departureAirport: departureAirportCode,
-          departureCity: outboundFlight.DepartureName || '',
-          departureTime: outboundFlight.DepartureTime || '',
-          
-          arrivalAirport: arrivalAirportCode,
-          arrivalCity: outboundFlight.ArrivalName || '',
-          arrivalTime: outboundFlight.ArrivalTime || '',
-          
-          // Flight metadata
-          duration: durationDisplay,
-          stopCount: outboundFlight.Stops || 0,
-          stopText: outboundFlight.Stops === 0 ? 'Non stop' : 
-                    outboundFlight.Stops === 1 ? '1 Stop' : `${outboundFlight.Stops} Stops`,
-          
-          // Price
-          displayPrice: formattedPrice,
-          rawPrice: numericPrice,
-          price: formattedPrice,
-          original_amount: priceAmount,
-          original_currency: priceCurrency,
-          final_amount: priceAmount,
-          currency: priceCurrency,
-          
-          // Cabin class
-          cabin: outboundLeg?.CabinClassName || 'Economy',
-          
-          // Baggage
-          baggage: baggageText,
-          
-          // Title and subtitle - use the correct codes
-          title: `${departureAirportCode} → ${arrivalAirportCode}`,
-          subtitle: outboundFlight.AirlineName || 'Domestic Flight',
-          image: airlineLogo,
-          
-          // Return flight info
-          isRoundTrip: !!returnFlight,
-          returnFlight: returnFlight ? {
-            departureAirport: returnFlight.DepartureCode || '',
-            arrivalAirport: returnFlight.ArrivalCode || '',
-            departureCity: returnFlight.DepartureName || '',
-            arrivalCity: returnFlight.ArrivalName || '',
-            departureTime: returnFlight.DepartureTime || '',
-            arrivalTime: returnFlight.ArrivalTime || '',
-            flightNumber: returnFlight.Name || '',
-            duration: returnDurationDisplay,
-            stopCount: returnFlight.Stops || 0,
-            timeOfDay: getTimeOfDay(returnFlight.DepartureTime),
-            arrivalTimeOfDay: getArrivalTimeOfDay(returnFlight.ArrivalTime)
-          } : undefined,
-          
-          // Time of day
-          outboundTimeOfDay: getTimeOfDay(outboundFlight.DepartureTime),
-          outboundArrivalTimeOfDay: getArrivalTimeOfDay(outboundFlight.ArrivalTime),
-          
-          // Fare rules
-          fareRules: flightCombination.FareRules || [],
-          penaltyRules: flightCombination.PenaltyRules || null,
-          isRefundable: flightCombination.IsRefundable || false,
-          
-          // Legs data
-          legs: outboundFlight.FlightLegs?.map((leg: any) => ({
-            number: leg.FlightLegNumber || '',
-            from: leg.DepartureCode || '',
-            fromName: leg.DepartureName || '',
-            to: leg.DestinationCode || '',
-            toName: leg.DestinationName || '',
-            departureTime: leg.StartTime || '',
-            arrivalTime: leg.EndTime || '',
-            duration: leg.Duration || '',
-            airline: leg.OperatingCarrierName || '',
-            flightNumber: leg.FlightNumber || '',
-            cabinClass: leg.CabinClassName || '',
-            bookingClass: leg.BookingClass || '',
-          })) || [],
-        };
-        
-        processedWakanowFlights.push(processedOffer);
+          processed.push({
+            ...offer,
+            originalPriceAmount: priceAmount,
+            originalPriceCurrency: priceCurrency,
+            displayPrice: '',
+          });
+        }
+      } else {
+        // Process Duffel/International flights
+        for (const offer of (flightOffers as ExtendedSearchResult[])) {
+          let segments: any[] = [];
+          let firstSlice: any = null;
+          let firstSegment: any = null;
+          let lastSegment: any = null;
+
+          if (offer.slices && offer.slices.length > 0) {
+            firstSlice = offer.slices[0];
+            segments = firstSlice?.segments || [];
+          } else if (offer.flightItineraries && offer.flightItineraries.length > 0) {
+            firstSlice = offer.flightItineraries[0];
+            segments = firstSlice?.segments || [];
+          } else if (offer.realData?.slices && offer.realData.slices.length > 0) {
+            firstSlice = offer.realData.slices[0];
+            segments = firstSlice?.segments || [];
+          }
+
+          if (segments.length > 0) {
+            firstSegment = segments[0];
+            lastSegment = segments[segments.length - 1];
+          }
+
+          let airlineCode = '';
+          let airlineName = 'Unknown Airline';
+          let logoUrl = '';
+
+          if (offer.owner) {
+            airlineCode = offer.owner.iata_code || '';
+            airlineName = offer.owner.name || 'Unknown Airline';
+            logoUrl = offer.owner.logo_symbol_url || '';
+          }
+
+          if (firstSegment) {
+            const carrier = firstSegment.operating_carrier || firstSegment.marketing_carrier;
+            if (carrier) {
+              airlineCode = carrier.iata_code || carrier.carrierCode || airlineCode;
+              airlineName = carrier.name || airlineName;
+              logoUrl = carrier.logo_symbol_url || logoUrl;
+            }
+          }
+
+          if (!logoUrl && airlineCode) {
+            const airlineFromMap = airlinesMap.get(airlineCode);
+            if (airlineFromMap) {
+              logoUrl = airlineFromMap.logo_symbol_url || '';
+            }
+          }
+
+          const segmentCount = segments.length;
+          const stopCount = segmentCount > 0 ? segmentCount - 1 : 0;
+
+          let stopText = 'Non stop';
+          if (stopCount === 1) stopText = '1 Stop';
+          else if (stopCount > 1) stopText = `${stopCount} Stops`;
+
+          let departureAirport = '---';
+          let departureCity = '';
+          let departureTime = '';
+          let arrivalAirport = '---';
+          let arrivalCity = '';
+          let arrivalTime = '';
+          let flightNumber = '';
+
+          if (firstSegment) {
+            if (firstSegment.origin) {
+              departureAirport = firstSegment.origin.iata_code || departureAirport;
+              departureCity = firstSegment.origin.city_name || firstSegment.origin.city?.name || '';
+            }
+            if (firstSegment.departure) {
+              departureAirport = firstSegment.departure.iataCode || departureAirport;
+              departureTime = firstSegment.departure.at || '';
+            }
+            departureTime = firstSegment.departing_at || firstSegment.departure?.at || departureTime;
+
+            if (firstSegment.marketing_carrier_flight_number) {
+              flightNumber = firstSegment.marketing_carrier_flight_number;
+            } else if (firstSegment.flight_number) {
+              flightNumber = firstSegment.flight_number;
+            } else if (firstSegment.number) {
+              flightNumber = firstSegment.number;
+            }
+          }
+
+          if (lastSegment) {
+            if (lastSegment.destination) {
+              arrivalAirport = lastSegment.destination.iata_code || arrivalAirport;
+              arrivalCity = lastSegment.destination.city_name || lastSegment.destination.city?.name || '';
+            }
+            if (lastSegment.arrival) {
+              arrivalAirport = lastSegment.arrival.iataCode || arrivalAirport;
+              arrivalTime = lastSegment.arrival.at || '';
+            }
+            arrivalTime = lastSegment.arriving_at || lastSegment.arrival?.at || arrivalTime;
+          }
+
+          const duration = firstSlice?.duration || '';
+
+          let priceAmount = 0;
+          let priceCurrency = 'GBP';
+
+          if (offer.original_amount) {
+            priceAmount = parseFloat(offer.original_amount);
+            priceCurrency = offer.original_currency || 'GBP';
+          } else if (offer.total_amount) {
+            priceAmount = parseFloat(offer.total_amount);
+            priceCurrency = offer.total_currency || 'GBP';
+          } else if (offer.final_amount) {
+            priceAmount = parseFloat(offer.final_amount);
+            priceCurrency = offer.currency || 'GBP';
+          }
+
+          let baggageInfo: any[] = [];
+          if (firstSegment?.passengers?.[0]?.baggages) {
+            baggageInfo = firstSegment.passengers[0].baggages;
+          } else if (offer.traveler_pricings?.[0]?.fare_details_by_segment?.[0]?.included_checked_bags) {
+            const bags = offer.traveler_pricings[0].fare_details_by_segment[0].included_checked_bags;
+            if (bags?.quantity) {
+              baggageInfo = [{ type: 'checked', quantity: bags.quantity }];
+            }
+          }
+
+          const baggageString = baggageInfo.length > 0 ? JSON.stringify(baggageInfo) : undefined;
+
+          let cabin = 'Economy';
+          if (firstSegment?.passengers?.[0]?.cabin_class_marketing_name) {
+            cabin = firstSegment.passengers[0].cabin_class_marketing_name;
+          } else if (offer.traveler_pricings?.[0]?.fare_details_by_segment?.[0]?.cabin) {
+            cabin = offer.traveler_pricings[0].fare_details_by_segment[0].cabin;
+          }
+
+          processed.push({
+            ...offer,
+            type: 'flights',
+            departureAirport,
+            arrivalAirport,
+            departureCity,
+            arrivalCity,
+            departureTime,
+            arrivalTime,
+            airlineCode,
+            airlineName,
+            airlineLogo: logoUrl,
+            stopCount,
+            stopText,
+            duration,
+            displayPrice: '',
+            rawPrice: priceAmount,
+            price: '',
+            original_amount: offer.original_amount || priceAmount.toString(),
+            original_currency: offer.original_currency || priceCurrency,
+            final_amount: offer.final_amount,
+            currency: priceCurrency,
+            originalPriceAmount: priceAmount,
+            originalPriceCurrency: priceCurrency,
+            markup_percentage: offer.markup_percentage,
+            markup_amount: offer.markup_amount,
+            flightNumber: flightNumber,
+            cabin,
+            baggage: baggageString,
+            title: `${departureAirport} → ${arrivalAirport}`,
+            subtitle: airlineName,
+            provider: airlineName,
+            image: logoUrl,
+            isRoundTrip: (offer.slices?.length || 0) > 1,
+            outboundTimeOfDay: getTimeOfDay(departureTime),
+            outboundArrivalTimeOfDay: getArrivalTimeOfDay(arrivalTime),
+            returnFlight: (offer.slices?.length || 0) > 1 ? {
+              departureAirport: offer.slices?.[1]?.segments?.[0]?.origin?.iata_code,
+              arrivalAirport: offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.destination?.iata_code,
+              departureCity: offer.slices?.[1]?.segments?.[0]?.origin?.city_name,
+              arrivalCity: offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.destination?.city_name,
+              departureTime: offer.slices?.[1]?.segments?.[0]?.departing_at,
+              arrivalTime: offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.arriving_at,
+              flightNumber: offer.slices?.[1]?.segments?.[0]?.marketing_carrier_flight_number,
+              duration: offer.slices?.[1]?.duration,
+              stopCount: Math.max(0, (offer.slices?.[1]?.segments?.length || 1) - 1),
+              timeOfDay: getTimeOfDay(offer.slices?.[1]?.segments?.[0]?.departing_at),
+              arrivalTimeOfDay: getArrivalTimeOfDay(offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.arriving_at)
+            } : undefined,
+          });
+        }
       }
       
-      return processedWakanowFlights;
-    }
-
-  
-
-
+      setProcessedFlights(processed);
+    };
     
-    // If already processed, return as is (for Duffel flights)
-    if (areResultsProcessed) {
-      return flightOffers as ExtendedSearchResult[];
-    }
-    
-    // Process Duffel/International flights (existing code)
-    return (flightOffers as ExtendedSearchResult[]).map((offer: ExtendedSearchResult) => {
-      let segments: any[] = [];
-      let firstSlice: any = null;
-      let firstSegment: any = null;
-      let lastSegment: any = null;
-
-      if (offer.slices && offer.slices.length > 0) {
-        firstSlice = offer.slices[0];
-        segments = firstSlice?.segments || [];
-      } else if (offer.flightItineraries && offer.flightItineraries.length > 0) {
-        firstSlice = offer.flightItineraries[0];
-        segments = firstSlice?.segments || [];
-      } else if (offer.realData?.slices && offer.realData.slices.length > 0) {
-        firstSlice = offer.realData.slices[0];
-        segments = firstSlice?.segments || [];
-      }
-
-      if (segments.length > 0) {
-        firstSegment = segments[0];
-        lastSegment = segments[segments.length - 1];
-      }
-
-      let airlineCode = '';
-      let airlineName = 'Unknown Airline';
-      let logoUrl = '';
-
-      if (offer.owner) {
-        airlineCode = offer.owner.iata_code || '';
-        airlineName = offer.owner.name || 'Unknown Airline';
-        logoUrl = offer.owner.logo_symbol_url || '';
-      }
-
-      if (firstSegment) {
-        const carrier = firstSegment.operating_carrier || firstSegment.marketing_carrier;
-        if (carrier) {
-          airlineCode = carrier.iata_code || carrier.carrierCode || airlineCode;
-          airlineName = carrier.name || airlineName;
-          logoUrl = carrier.logo_symbol_url || logoUrl;
-        }
-      }
-
-      if (!logoUrl && airlineCode) {
-        const airlineFromMap = airlinesMap.get(airlineCode);
-        if (airlineFromMap) {
-          logoUrl = airlineFromMap.logo_symbol_url || '';
-        }
-      }
-
-      const segmentCount = segments.length;
-      const stopCount = segmentCount > 0 ? segmentCount - 1 : 0;
-
-      let stopText = 'Non stop';
-      if (stopCount === 1) stopText = '1 Stop';
-      else if (stopCount > 1) stopText = `${stopCount} Stops`;
-
-      let departureAirport = '---';
-      let departureCity = '';
-      let departureTime = '';
-      let arrivalAirport = '---';
-      let arrivalCity = '';
-      let arrivalTime = '';
-      let flightNumber = '';
-
-      if (firstSegment) {
-        if (firstSegment.origin) {
-          departureAirport = firstSegment.origin.iata_code || departureAirport;
-          departureCity = firstSegment.origin.city_name || firstSegment.origin.city?.name || '';
-        }
-        if (firstSegment.departure) {
-          departureAirport = firstSegment.departure.iataCode || departureAirport;
-          departureTime = firstSegment.departure.at || '';
-        }
-        departureTime = firstSegment.departing_at || firstSegment.departure?.at || departureTime;
-
-        if (firstSegment.marketing_carrier_flight_number) {
-          flightNumber = firstSegment.marketing_carrier_flight_number;
-        } else if (firstSegment.flight_number) {
-          flightNumber = firstSegment.flight_number;
-        } else if (firstSegment.number) {
-          flightNumber = firstSegment.number;
-        }
-      }
-
-      if (lastSegment) {
-        if (lastSegment.destination) {
-          arrivalAirport = lastSegment.destination.iata_code || arrivalAirport;
-          arrivalCity = lastSegment.destination.city_name || lastSegment.destination.city?.name || '';
-        }
-        if (lastSegment.arrival) {
-          arrivalAirport = lastSegment.arrival.iataCode || arrivalAirport;
-          arrivalTime = lastSegment.arrival.at || '';
-        }
-        arrivalTime = lastSegment.arriving_at || lastSegment.arrival?.at || arrivalTime;
-      }
-
-      const duration = firstSlice?.duration || '';
-
-      let priceAmount = '0';
-      let priceCurrency = 'NGN';
-
-      if (offer.original_amount) {
-        priceAmount = offer.original_amount;
-        priceCurrency = offer.original_currency || 'NGN';
-      } else if (offer.total_amount) {
-        priceAmount = offer.total_amount;
-        priceCurrency = offer.total_currency || 'NGN';
-      } else if (offer.final_amount) {
-        priceAmount = offer.final_amount;
-        priceCurrency = offer.currency || 'NGN';
-      }
-
-      const formattedPrice = formatPrice(priceAmount, priceCurrency);
-
-      let baggageInfo: any[] = [];
-      if (firstSegment?.passengers?.[0]?.baggages) {
-        baggageInfo = firstSegment.passengers[0].baggages;
-      } else if (offer.traveler_pricings?.[0]?.fare_details_by_segment?.[0]?.included_checked_bags) {
-        const bags = offer.traveler_pricings[0].fare_details_by_segment[0].included_checked_bags;
-        if (bags?.quantity) {
-          baggageInfo = [{ type: 'checked', quantity: bags.quantity }];
-        }
-      }
-
-      const baggageString = baggageInfo.length > 0 ? JSON.stringify(baggageInfo) : undefined;
-
-      let cabin = 'Economy';
-      if (firstSegment?.passengers?.[0]?.cabin_class_marketing_name) {
-        cabin = firstSegment.passengers[0].cabin_class_marketing_name;
-      } else if (offer.traveler_pricings?.[0]?.fare_details_by_segment?.[0]?.cabin) {
-        cabin = offer.traveler_pricings[0].fare_details_by_segment[0].cabin;
-      }
-
-      const processedOffer: ExtendedSearchResult = {
-        ...offer,
-        type: 'flights',
-        departureAirport,
-        arrivalAirport,
-        departureCity,
-        arrivalCity,
-        departureTime,
-        arrivalTime,
-        airlineCode,
-        airlineName,
-        airlineLogo: logoUrl,
-        stopCount,
-        stopText,
-        duration,
-        displayPrice: formattedPrice,
-        rawPrice: parseFloat(priceAmount),
-        price: formattedPrice,
-        original_amount: offer.original_amount,
-        original_currency: offer.original_currency,
-        final_amount: offer.final_amount,
-        currency: offer.currency,
-        markup_percentage: offer.markup_percentage,
-        markup_amount: offer.markup_amount,
-        flightNumber: flightNumber,
-        cabin,
-        baggage: baggageString,
-        title: `${departureAirport} → ${arrivalAirport}`,
-        subtitle: airlineName,
-        provider: airlineName,
-        image: logoUrl,
-        isRoundTrip: (offer.slices?.length || 0) > 1,
-        outboundTimeOfDay: getTimeOfDay(departureTime),
-        outboundArrivalTimeOfDay: getArrivalTimeOfDay(arrivalTime),
-        returnFlight: (offer.slices?.length || 0) > 1 ? {
-          departureAirport: offer.slices?.[1]?.segments?.[0]?.origin?.iata_code,
-          arrivalAirport: offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.destination?.iata_code,
-          departureCity: offer.slices?.[1]?.segments?.[0]?.origin?.city_name,
-          arrivalCity: offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.destination?.city_name,
-          departureTime: offer.slices?.[1]?.segments?.[0]?.departing_at,
-          arrivalTime: offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.arriving_at,
-          flightNumber: offer.slices?.[1]?.segments?.[0]?.marketing_carrier_flight_number,
-          duration: offer.slices?.[1]?.duration,
-          stopCount: Math.max(0, (offer.slices?.[1]?.segments?.length || 1) - 1),
-          timeOfDay: getTimeOfDay(offer.slices?.[1]?.segments?.[0]?.departing_at),
-          arrivalTimeOfDay: getArrivalTimeOfDay(offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.arriving_at)
-        } : undefined,
-      };
-
-      return processedOffer;
-    });
+    processFlights();
   }, [searchType, flightOffers, areResultsProcessed, airlinesMap]);
+
+  // Convert flight prices when currency changes
+  useEffect(() => {
+    const convertFlightPrices = async () => {
+      if (!formatPriceWithCurrency || processedFlights.length === 0) return;
+      
+      const newPrices: Record<string, string> = {};
+      
+      for (const flight of processedFlights) {
+        if (flight.originalPriceAmount && flight.originalPriceCurrency) {
+          try {
+            const converted = await formatPriceWithCurrency(
+              flight.originalPriceAmount, 
+              flight.originalPriceCurrency
+            );
+            newPrices[flight.id] = converted;
+          } catch (error) {
+            console.error('Failed to convert flight price:', error);
+            newPrices[flight.id] = `${currency.symbol} ${flight.originalPriceAmount.toFixed(0)}`;
+          }
+        } else if (flight.rawPrice) {
+          try {
+            const converted = await formatPriceWithCurrency(flight.rawPrice, 'GBP');
+            newPrices[flight.id] = converted;
+          } catch (error) {
+            newPrices[flight.id] = `${currency.symbol} ${flight.rawPrice.toFixed(0)}`;
+          }
+        }
+      }
+      
+      setFlightPrices(newPrices);
+    };
+    
+    convertFlightPrices();
+  }, [processedFlights, currency.code, formatPriceWithCurrency]);
 
   // Get stop counts and cheapest prices for outbound
   const outboundStopStats = useMemo(() => {
@@ -1013,7 +1035,7 @@ const processedFlightOffers = useMemo(() => {
       '1+ Stops': { count: 0, cheapestPrice: Infinity, cheapestFlight: null as ExtendedSearchResult | null },
     };
     
-    processedFlightOffers.forEach(flight => {
+    processedFlights.forEach(flight => {
       const stopCount = flight.stopCount || 0;
       let category = '';
       if (stopCount === 0) category = 'Non stop';
@@ -1022,7 +1044,7 @@ const processedFlightOffers = useMemo(() => {
       
       stops[category as keyof typeof stops].count++;
       
-      const price = flight.rawPrice || Infinity;
+      const price = flight.originalPriceAmount || flight.rawPrice || Infinity;
       if (price < stops[category as keyof typeof stops].cheapestPrice) {
         stops[category as keyof typeof stops].cheapestPrice = price;
         stops[category as keyof typeof stops].cheapestFlight = flight;
@@ -1030,7 +1052,7 @@ const processedFlightOffers = useMemo(() => {
     });
     
     return stops;
-  }, [processedFlightOffers]);
+  }, [processedFlights]);
 
   // Get stop counts and cheapest prices for return
   const returnStopStats = useMemo(() => {
@@ -1040,7 +1062,7 @@ const processedFlightOffers = useMemo(() => {
       '1+ Stops': { count: 0, cheapestPrice: Infinity, cheapestFlight: null as ExtendedSearchResult | null },
     };
     
-    processedFlightOffers.forEach(flight => {
+    processedFlights.forEach(flight => {
       if (flight.returnFlight) {
         const stopCount = flight.returnFlight.stopCount || 0;
         let category = '';
@@ -1050,7 +1072,7 @@ const processedFlightOffers = useMemo(() => {
         
         stops[category as keyof typeof stops].count++;
         
-        const price = flight.rawPrice || Infinity;
+        const price = flight.originalPriceAmount || flight.rawPrice || Infinity;
         if (price < stops[category as keyof typeof stops].cheapestPrice) {
           stops[category as keyof typeof stops].cheapestPrice = price;
           stops[category as keyof typeof stops].cheapestFlight = flight;
@@ -1059,34 +1081,34 @@ const processedFlightOffers = useMemo(() => {
     });
     
     return stops;
-  }, [processedFlightOffers]);
+  }, [processedFlights]);
 
   // Get time counts
   const outboundDepartureTimeCounts = useMemo(() => {
     const counts = { morning: 0, afternoon: 0, evening: 0 };
-    processedFlightOffers.forEach(flight => {
+    processedFlights.forEach(flight => {
       const timeOfDay = flight.outboundTimeOfDay || getTimeOfDay(flight.departureTime);
       if (timeOfDay === 'morning') counts.morning++;
       else if (timeOfDay === 'afternoon') counts.afternoon++;
       else if (timeOfDay === 'evening') counts.evening++;
     });
     return counts;
-  }, [processedFlightOffers]);
+  }, [processedFlights]);
 
   const outboundArrivalTimeCounts = useMemo(() => {
     const counts = { morning: 0, afternoon: 0, evening: 0 };
-    processedFlightOffers.forEach(flight => {
+    processedFlights.forEach(flight => {
       const timeOfDay = flight.outboundArrivalTimeOfDay || getArrivalTimeOfDay(flight.arrivalTime);
       if (timeOfDay === 'morning') counts.morning++;
       else if (timeOfDay === 'afternoon') counts.afternoon++;
       else if (timeOfDay === 'evening') counts.evening++;
     });
     return counts;
-  }, [processedFlightOffers]);
+  }, [processedFlights]);
 
   const returnDepartureTimeCounts = useMemo(() => {
     const counts = { morning: 0, afternoon: 0, evening: 0 };
-    processedFlightOffers.forEach(flight => {
+    processedFlights.forEach(flight => {
       if (flight.returnFlight) {
         const timeOfDay = flight.returnFlight.timeOfDay || getTimeOfDay(flight.returnFlight.departureTime);
         if (timeOfDay === 'morning') counts.morning++;
@@ -1095,11 +1117,11 @@ const processedFlightOffers = useMemo(() => {
       }
     });
     return counts;
-  }, [processedFlightOffers]);
+  }, [processedFlights]);
 
   const returnArrivalTimeCounts = useMemo(() => {
     const counts = { morning: 0, afternoon: 0, evening: 0 };
-    processedFlightOffers.forEach(flight => {
+    processedFlights.forEach(flight => {
       if (flight.returnFlight) {
         const timeOfDay = flight.returnFlight.arrivalTimeOfDay || getArrivalTimeOfDay(flight.returnFlight.arrivalTime);
         if (timeOfDay === 'morning') counts.morning++;
@@ -1108,21 +1130,21 @@ const processedFlightOffers = useMemo(() => {
       }
     });
     return counts;
-  }, [processedFlightOffers]);
+  }, [processedFlights]);
 
   // Get airline list for filters (includes Wakanow airlines)
   const airlineList = useMemo(() => {
     const airlinesMap = new Map<string, number>();
-    processedFlightOffers.forEach(flight => {
+    processedFlights.forEach(flight => {
       const airlineName = flight.airlineName || 'Unknown';
       airlinesMap.set(airlineName, (airlinesMap.get(airlineName) || 0) + 1);
     });
     return Array.from(airlinesMap.entries()).map(([name, count]) => ({ name, count }));
-  }, [processedFlightOffers]);
+  }, [processedFlights]);
 
   // Filter and sort flights
   const filteredAndSortedFlights = useMemo(() => {
-    let filtered = processedFlightOffers;
+    let filtered = processedFlights;
 
     if (selectedAirlineFilters.size > 0) {
       filtered = filtered.filter(flight => 
@@ -1171,7 +1193,7 @@ const processedFlightOffers = useMemo(() => {
     }
 
     if (sortOption === 'cheapest') {
-      filtered.sort((a, b) => (a.rawPrice || 0) - (b.rawPrice || 0));
+      filtered.sort((a, b) => (a.originalPriceAmount || a.rawPrice || 0) - (b.originalPriceAmount || b.rawPrice || 0));
     } else if (sortOption === 'fastest') {
       filtered.sort((a, b) => {
         const durationA = parseInt(a.duration?.replace(/[^0-9]/g, '') || '0');
@@ -1183,13 +1205,13 @@ const processedFlightOffers = useMemo(() => {
     }
 
     return filtered;
-  }, [processedFlightOffers, selectedAirlineFilters, selectedStopFilter, selectedOutboundDepartureTimeFilter, selectedOutboundArrivalTimeFilter, selectedReturnDepartureTimeFilter, selectedReturnArrivalTimeFilter, sortOption]);
+  }, [processedFlights, selectedAirlineFilters, selectedStopFilter, selectedOutboundDepartureTimeFilter, selectedOutboundArrivalTimeFilter, selectedReturnDepartureTimeFilter, selectedReturnArrivalTimeFilter, sortOption]);
 
   // Get cheapest and fastest flights
   const cheapestFlight = useMemo(() => {
     if (filteredAndSortedFlights.length === 0) return null;
     return filteredAndSortedFlights.reduce((min, flight) => 
-      (flight.rawPrice || Infinity) < (min.rawPrice || Infinity) ? flight : min
+      (flight.originalPriceAmount || flight.rawPrice || Infinity) < (min.originalPriceAmount || min.rawPrice || Infinity) ? flight : min
     );
   }, [filteredAndSortedFlights]);
 
@@ -1242,8 +1264,8 @@ const processedFlightOffers = useMemo(() => {
       return `${origin} to ${destination}`;
     }
     
-    if (processedFlightOffers.length > 0) {
-      const firstFlight = processedFlightOffers[0];
+    if (processedFlights.length > 0) {
+      const firstFlight = processedFlights[0];
       if (firstFlight.departureCity && firstFlight.arrivalCity) {
         const originCity = firstFlight.departureCity;
         const destinationCity = firstFlight.arrivalCity;
@@ -1266,53 +1288,101 @@ const processedFlightOffers = useMemo(() => {
     }
     
     return 'Flights';
-  }, [searchParams, processedFlightOffers]);
+  }, [searchParams, processedFlights]);
 
   // Get origin and destination for display
   const origin = useMemo(() => {
-    return searchParams?.origin || (processedFlightOffers[0]?.departureCity) || 'Lagos';
-  }, [searchParams, processedFlightOffers]);
+    return searchParams?.origin || (processedFlights[0]?.departureCity) || 'Lagos';
+  }, [searchParams, processedFlights]);
 
   const destination = useMemo(() => {
-    return searchParams?.destination || (processedFlightOffers[0]?.arrivalCity) || 'London';
-  }, [searchParams, processedFlightOffers]);
+    return searchParams?.destination || (processedFlights[0]?.arrivalCity) || 'London';
+  }, [searchParams, processedFlights]);
 
-  // Extract hotel and car results (unchanged - keep as is)
+  // Extract hotel and car results with price conversion
   const hotelAndCarResults = useMemo(() => {
     if (searchType === 'flights') return [];
     
+    let items: ExtendedSearchResult[] = [];
     if (Array.isArray(results)) {
-      return results.map(r => ({
+      items = results.map(r => ({
         ...r,
         type: r.type || searchType
       }));
     }
     if (results && typeof results === 'object' && 'data' in results) {
-      return results.data.map(r => ({
+      items = results.data.map(r => ({
         ...r,
         type: r.type || searchType
       }));
     }
-    return [];
+    
+    // Store original price info for each item
+    return items.map(item => {
+      let originalPrice = 0;
+      let originalCurrency = 'GBP';
+      
+      if (item.original_amount) {
+        originalPrice = parseFloat(item.original_amount);
+        originalCurrency = item.original_currency || 'GBP';
+      } else if (item.total_amount) {
+        originalPrice = parseFloat(item.total_amount);
+        originalCurrency = item.total_currency || 'GBP';
+      } else if (item.price) {
+        if (typeof item.price === 'string') {
+          originalPrice = parseFloat(item.price.replace(/[^\d.]/g, '')) || 0;
+        } else if (typeof item.price === 'number') {
+          originalPrice = item.price;
+        } else if (typeof item.price === 'object' && item.price.total) {
+          originalPrice = parseFloat(item.price.total);
+          originalCurrency = item.price.currency || 'GBP';
+        }
+      }
+      
+      return {
+        ...item,
+        originalPriceAmount: originalPrice,
+        originalPriceCurrency: originalCurrency,
+      };
+    });
   }, [results, searchType]);
 
-  // Filter hotel and car results (unchanged - keep as is)
+  // Convert hotel and car prices
+  useEffect(() => {
+    const convertHotelCarPrices = async () => {
+      if (!formatPriceWithCurrency || hotelAndCarResults.length === 0) return;
+      
+      const newPrices: Record<string, string> = {};
+      
+      for (const item of hotelAndCarResults) {
+        if (item.originalPriceAmount && item.originalPriceAmount > 0) {
+          try {
+            const converted = await formatPriceWithCurrency(
+              item.originalPriceAmount,
+              item.originalPriceCurrency || 'GBP'
+            );
+            newPrices[item.id] = converted;
+          } catch (error) {
+            console.error('Failed to convert hotel/car price:', error);
+            newPrices[item.id] = `${currency.symbol} ${item.originalPriceAmount.toFixed(0)}`;
+          }
+        } else {
+          newPrices[item.id] = 'Price on request';
+        }
+      }
+      
+      setHotelCarPrices(newPrices);
+    };
+    
+    convertHotelCarPrices();
+  }, [hotelAndCarResults, currency.code, formatPriceWithCurrency]);
+
+  // Filter hotel and car results
   const filteredHotelAndCarResults = useMemo(() => {
     let filtered = [...hotelAndCarResults];
 
     filtered = filtered.filter((item) => {
-      let numericPrice = 0;
-      if (item.rawPrice) {
-        numericPrice = item.rawPrice;
-      } else if (item.price) {
-        if (typeof item.price === 'string') {
-          numericPrice = parseFloat(item.price.replace(/[^\d.]/g, '')) || 0;
-        } else if (typeof item.price === 'number') {
-          numericPrice = item.price;
-        }
-      } else if (item.total_amount) {
-        numericPrice = parseFloat(item.total_amount) || 0;
-      }
+      const numericPrice = item.originalPriceAmount || 0;
       return numericPrice <= priceRange;
     });
 
@@ -1347,15 +1417,7 @@ const processedFlightOffers = useMemo(() => {
     }
 
     if (sortBy === "price") {
-      filtered.sort((a, b) => {
-        const getPrice = (item: ExtendedSearchResult): number => {
-          if (item.rawPrice) return item.rawPrice;
-          if (typeof item.price === 'string') return parseFloat(item.price.replace(/[^\d.]/g, '') || '0');
-          if (typeof item.price === 'number') return item.price;
-          return 0;
-        };
-        return getPrice(a) - getPrice(b);
-      });
+      filtered.sort((a, b) => (a.originalPriceAmount || 0) - (b.originalPriceAmount || 0));
     } else if (sortBy === "rating") {
       filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     }
@@ -1363,7 +1425,7 @@ const processedFlightOffers = useMemo(() => {
     return filtered;
   }, [hotelAndCarResults, searchType, priceRange, sortBy, starRatings, amenitiesFilter, carTypeFilter, transmissionFilter, seatCapacityFilter, providerFilter]);
 
-  // Unique values for filters (unchanged)
+  // Unique values for filters
   const uniqueCarTypes = useMemo(() => {
     const types = hotelAndCarResults
       .filter(r => r.type === 'car-rentals')
@@ -1422,15 +1484,10 @@ const processedFlightOffers = useMemo(() => {
     </label>
   );
 
-  // Render Hotel Card (unchanged)
+  // Render Hotel Card
   const renderHotelCard = (item: ExtendedSearchResult) => {
     const starRating = Math.floor(item.rating || 4);
-    const displayPrice = (() => {
-      if (!item.price) return 'Price on request';
-      if (typeof item.price === 'string') return item.price;
-      if (typeof item.price === 'number') return `£${item.price.toFixed(2)}`;
-      return 'Price on request';
-    })();
+    const displayPrice = hotelCarPrices[item.id] || 'Price on request';
 
     return (
       <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
@@ -1474,6 +1531,9 @@ const processedFlightOffers = useMemo(() => {
             <div className="flex items-end justify-between pt-6 border-t border-gray-50">
               <div>
                 <p className="text-2xl font-black text-[#33a8da]">{displayPrice}</p>
+                {isLoadingRates && (
+                  <p className="text-[9px] text-gray-400 mt-1">Converting...</p>
+                )}
               </div>
               <button
                 onClick={() => onSelect?.(item)}
@@ -1488,7 +1548,7 @@ const processedFlightOffers = useMemo(() => {
     );
   };
 
-  // Render Car Card (unchanged)
+  // Render Car Card
   const renderCarCard = (item: ExtendedSearchResult) => {
     const start = item.start;
     const end = item.end;
@@ -1503,18 +1563,7 @@ const processedFlightOffers = useMemo(() => {
       total + (bag.count || 0), 0) || 0;
     const seats = vehicle.seats?.[0]?.count || 0;
     const carImageUrl = vehicle.imageURL || item.image || serviceProvider.logoUrl;
-
-    const formatDisplayPrice = () => {
-      if (item.final_price) {
-        const price = parseFloat(item.final_price);
-        return `£${price.toFixed(2)}${duration ? '/day' : ''}`;
-      }
-      if (item.price && typeof item.price === 'object' && 'total' in item.price) {
-        const price = parseFloat((item.price as any).total || '0');
-        return `£${price.toFixed(2)}${duration ? '/day' : ''}`;
-      }
-      return 'Price on request';
-    };
+    const displayPrice = hotelCarPrices[item.id] || 'Price on request';
 
     if (!start?.locationCode || !end?.locationCode) {
       return null;
@@ -1639,8 +1688,11 @@ const processedFlightOffers = useMemo(() => {
             <div className="flex items-end justify-between pt-4 border-t border-gray-100">
               <div>
                 <p className="text-2xl font-black text-[#33a8da]">
-                  {formatDisplayPrice()}
+                  {displayPrice}
                 </p>
+                {isLoadingRates && (
+                  <p className="text-[9px] text-gray-400 mt-1">Converting...</p>
+                )}
                 <p className="text-[9px] font-bold text-gray-400 mt-1">
                   {isLongDistance ? 'Total for transfer' : 'Total for duration'}
                 </p>
@@ -1658,181 +1710,183 @@ const processedFlightOffers = useMemo(() => {
     );
   };
 
- // Flight Card Component - supports both Duffel and Wakanow
-const renderFlightCard = (flight: ExtendedSearchResult) => {
-  const isRefundable = flight.conditions?.refund_before_departure?.allowed;
-  const baggageText = getBaggageText(flight);
-  const hasReturn = flight.isRoundTrip && flight.returnFlight?.departureTime;
+  // Flight Card Component - supports both Duffel and Wakanow
+  const renderFlightCard = (flight: ExtendedSearchResult) => {
+    const isRefundable = flight.conditions?.refund_before_departure?.allowed;
+    const baggageText = getBaggageText(flight);
+    const hasReturn = flight.isRoundTrip && flight.returnFlight?.departureTime;
+    const displayPrice = flightPrices[flight.id] || 'Loading...';
 
-  // Determine flight type for badge
-  const isWakanowDomestic = flight.isWakanow && (flight as any).isWakanowDomestic === true;
-  const isWakanowInternational = flight.isWakanow && (flight as any).isWakanowDomestic === false;
-  const isDuffelFlight = !flight.isWakanow;
+    // Determine flight type for badge
+    const isWakanowDomestic = flight.isWakanow && (flight as any).isWakanowDomestic === true;
+    const isWakanowInternational = flight.isWakanow && (flight as any).isWakanowDomestic === false;
+    const isDuffelFlight = !flight.isWakanow;
 
-  return (
-    <div 
-      key={flight.id} 
-      className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 mb-6 overflow-hidden border border-gray-200 cursor-pointer"
-      onClick={() => onSelect?.(flight)}
-    >
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
-          <div className="flex items-center gap-4">
-            {flight.airlineLogo ? (
-              <img
-                src={flight.airlineLogo}
-                className="w-12 h-12 object-contain"
-                alt={flight.airlineName}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${(flight.airlineName || 'Airline').substring(0, 2)}&background=33a8da&color=fff&length=2&size=48`;
+    return (
+      <div 
+        key={flight.id} 
+        className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 mb-6 overflow-hidden border border-gray-200 cursor-pointer"
+        onClick={() => onSelect?.(flight)}
+      >
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
+            <div className="flex items-center gap-4">
+              {flight.airlineLogo ? (
+                <img
+                  src={flight.airlineLogo}
+                  className="w-12 h-12 object-contain"
+                  alt={flight.airlineName}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${(flight.airlineName || 'Airline').substring(0, 2)}&background=33a8da&color=fff&length=2&size=48`;
+                  }}
+                />
+              ) : (
+                <div className="w-12 h-12 bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-xl flex items-center justify-center text-white font-bold text-lg">
+                  {(flight.airlineName || 'AI').substring(0, 2)}
+                </div>
+              )}
+              <div>
+                <h4 className="font-bold text-gray-900 text-lg">{flight.airlineName}</h4>
+                {/* Badge Section */}
+                {isWakanowDomestic && (
+                  <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full mt-1 inline-block">
+                    Domestic Flight
+                  </span>
+                )}
+                {(isDuffelFlight || isWakanowInternational) && (
+                  <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mt-1 inline-block">
+                    International Flight
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-gray-900">{displayPrice}</div>
+              {isLoadingRates && (
+                <p className="text-[9px] text-gray-400 mt-1">Converting...</p>
+              )}
+              <button 
+                className="mt-2 bg-[#33a8da] text-white font-semibold px-5 py-1.5 rounded-lg text-sm hover:bg-[#2c98c7] transition"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect?.(flight);
                 }}
-              />
-            ) : (
-              <div className="w-12 h-12 bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-xl flex items-center justify-center text-white font-bold text-lg">
-                {(flight.airlineName || 'AI').substring(0, 2)}
-              </div>
-            )}
-            <div>
-              <h4 className="font-bold text-gray-900 text-lg">{flight.airlineName}</h4>
-              {/* Updated Badge Section */}
-              {/* Domestic Flight Badge - ONLY for Wakanow domestic flights */}
-              {isWakanowDomestic && (
-                <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full mt-1 inline-block">
-                  Domestic Flight
-                </span>
-              )}
-              {/* International Flight Badge - for Duffel OR Wakanow international flights */}
-              {(isDuffelFlight || isWakanowInternational) && (
-                <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mt-1 inline-block">
-                  International Flight
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-gray-900">{flight.displayPrice}</div>
-            <button 
-              className="mt-2 bg-[#33a8da] text-white font-semibold px-5 py-1.5 rounded-lg text-sm hover:bg-[#2c98c7] transition"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect?.(flight);
-              }}
-            >
-              Book Now
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-gray-50 rounded-xl p-5 transition hover:bg-gray-100">
-            <p className="text-sm text-gray-500 mb-4">
-              Depart {formatTime(flight.departureTime)} · {flight.airlineName}
-            </p>
-            <div className="flex items-center justify-between">
-              <div className="text-left">
-                <p className="text-2xl font-bold text-gray-900">{formatTime(flight.departureTime)}</p>
-                <p className="text-sm font-medium text-gray-700 mt-2">{flight.departureAirport}</p>
-                <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.departureTime)}</p>
-              </div>
-              
-              <div className="flex-1 mx-6">
-                <div className="relative">
-                  <div className="w-full h-[1px] bg-gray-300"></div>
-                  <div className="absolute left-1/2 -translate-x-1/2 -top-3 bg-gray-50 px-2">
-                    <svg className="w-5 h-5 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
-                    </svg>
-                  </div>
-                </div>
-                <div className="text-center mt-3">
-                  <p className="text-sm font-medium text-gray-600">{flight.duration}</p>
-                  <p className="text-xs text-gray-400 mt-1">{flight.stopText}</p>
-                </div>
-              </div>
-              
-              <div className="text-right">
-                <p className="text-2xl font-bold text-gray-900">{formatTime(flight.arrivalTime)}</p>
-                <p className="text-sm font-medium text-gray-700 mt-2">{flight.arrivalAirport}</p>
-                <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.arrivalTime)}</p>
-              </div>
+              >
+                Book Now
+              </button>
             </div>
           </div>
 
-          {hasReturn && flight.returnFlight && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-gray-50 rounded-xl p-5 transition hover:bg-gray-100">
               <p className="text-sm text-gray-500 mb-4">
-                Return {formatTime(flight.returnFlight.departureTime)} · {flight.airlineName}
+                Depart {formatTime(flight.departureTime)} · {flight.airlineName}
               </p>
               <div className="flex items-center justify-between">
                 <div className="text-left">
-                  <p className="text-2xl font-bold text-gray-900">{formatTime(flight.returnFlight.departureTime)}</p>
-                  <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.departureAirport}</p>
-                  <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.returnFlight.departureTime)}</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatTime(flight.departureTime)}</p>
+                  <p className="text-sm font-medium text-gray-700 mt-2">{flight.departureAirport}</p>
+                  <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.departureTime)}</p>
                 </div>
                 
                 <div className="flex-1 mx-6">
                   <div className="relative">
                     <div className="w-full h-[1px] bg-gray-300"></div>
                     <div className="absolute left-1/2 -translate-x-1/2 -top-3 bg-gray-50 px-2">
-                      <svg className="w-5 h-5 text-[#33a8da] rotate-180" fill="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
                       </svg>
                     </div>
                   </div>
                   <div className="text-center mt-3">
-                    <p className="text-sm font-medium text-gray-600">{flight.returnFlight.duration}</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {flight.returnFlight.stopCount === 0 ? 'Non stop' : 
-                       flight.returnFlight.stopCount === 1 ? '1 Stop' : `${flight.returnFlight.stopCount} Stops`}
-                    </p>
+                    <p className="text-sm font-medium text-gray-600">{flight.duration}</p>
+                    <p className="text-xs text-gray-400 mt-1">{flight.stopText}</p>
                   </div>
                 </div>
                 
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-gray-900">{formatTime(flight.returnFlight.arrivalTime)}</p>
-                  <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.arrivalAirport}</p>
-                  <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.returnFlight.arrivalTime)}</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatTime(flight.arrivalTime)}</p>
+                  <p className="text-sm font-medium text-gray-700 mt-2">{flight.arrivalAirport}</p>
+                  <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.arrivalTime)}</p>
                 </div>
               </div>
             </div>
-          )}
-        </div>
 
-        <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            {baggageText && (
-              <div className="flex items-center gap-1">
-                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeWidth={1.5} />
-                </svg>
-                <span className="text-sm text-gray-500">{baggageText}</span>
-              </div>
-            )}
-            {flight.cabin && (
-              <div className="flex items-center gap-1">
-                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeWidth={1.5} />
-                </svg>
-                <span className="text-sm text-gray-500">{flight.cabin}</span>
-              </div>
-            )}
-            {!isRefundable && (
-              <div className="flex items-center gap-1">
-                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" strokeWidth={1.5} />
-                </svg>
-                <span className="text-sm text-gray-500">Non Refundable</span>
+            {hasReturn && flight.returnFlight && (
+              <div className="bg-gray-50 rounded-xl p-5 transition hover:bg-gray-100">
+                <p className="text-sm text-gray-500 mb-4">
+                  Return {formatTime(flight.returnFlight.departureTime)} · {flight.airlineName}
+                </p>
+                <div className="flex items-center justify-between">
+                  <div className="text-left">
+                    <p className="text-2xl font-bold text-gray-900">{formatTime(flight.returnFlight.departureTime)}</p>
+                    <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.departureAirport}</p>
+                    <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.returnFlight.departureTime)}</p>
+                  </div>
+                  
+                  <div className="flex-1 mx-6">
+                    <div className="relative">
+                      <div className="w-full h-[1px] bg-gray-300"></div>
+                      <div className="absolute left-1/2 -translate-x-1/2 -top-3 bg-gray-50 px-2">
+                        <svg className="w-5 h-5 text-[#33a8da] rotate-180" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+                        </svg>
+                      </div>
+                    </div>
+                    <div className="text-center mt-3">
+                      <p className="text-sm font-medium text-gray-600">{flight.returnFlight.duration}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {flight.returnFlight.stopCount === 0 ? 'Non stop' : 
+                         flight.returnFlight.stopCount === 1 ? '1 Stop' : `${flight.returnFlight.stopCount} Stops`}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-gray-900">{formatTime(flight.returnFlight.arrivalTime)}</p>
+                    <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.arrivalAirport}</p>
+                    <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.returnFlight.arrivalTime)}</p>
+                  </div>
+                </div>
               </div>
             )}
           </div>
-          <button className="text-[#33a8da] text-sm font-medium hover:underline">
-            View Flight Details
-          </button>
+
+          <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              {baggageText && (
+                <div className="flex items-center gap-1">
+                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeWidth={1.5} />
+                  </svg>
+                  <span className="text-sm text-gray-500">{baggageText}</span>
+                </div>
+              )}
+              {flight.cabin && (
+                <div className="flex items-center gap-1">
+                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeWidth={1.5} />
+                  </svg>
+                  <span className="text-sm text-gray-500">{flight.cabin}</span>
+                </div>
+              )}
+              {!isRefundable && (
+                <div className="flex items-center gap-1">
+                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" strokeWidth={1.5} />
+                  </svg>
+                  <span className="text-sm text-gray-500">Non Refundable</span>
+                </div>
+              )}
+            </div>
+            <button className="text-[#33a8da] text-sm font-medium hover:underline">
+              View Flight Details
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
   // Right Sidebar Ads Component - Only for flights
   const renderRightSidebarAds = () => (
@@ -1913,286 +1967,315 @@ const renderFlightCard = (flight: ExtendedSearchResult) => {
   );
 
   // Filter Sidebar for Flights
-  const renderFlightFilters = () => (
-    <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 sticky top-24">
-      {/* Airlines Section */}
-      <div className="mb-8">
-        <h3 className="font-bold text-gray-900 mb-4 text-base">Airlines</h3>
-        <div className="space-y-3 max-h-[300px] overflow-y-auto">
-          {airlineList.map(airline => (
-            <label key={airline.name} className="flex items-center justify-between cursor-pointer group">
-              <div className="flex items-center gap-3">
-                <input 
-                  type="checkbox" 
-                  checked={selectedAirlineFilters.has(airline.name)}
-                  onChange={() => toggleAirlineFilter(airline.name)}
-                  className="rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-                />
-                <span className="text-sm text-gray-700 group-hover:text-gray-900">{airline.name}</span>
-              </div>
-              <span className="text-xs text-gray-400">{airline.count}</span>
-            </label>
-          ))}
-        </div>
-      </div>
+  const renderFlightFilters = () => {
+    // Helper to get cheapest price display for a category
+    const getCheapestPriceDisplay = (stopCategory: string) => {
+      const stats = outboundStopStats[stopCategory as keyof typeof outboundStopStats];
+      if (stats.cheapestFlight && stats.cheapestFlight.id) {
+        const price = flightPrices[stats.cheapestFlight.id];
+        return price || '--';
+      }
+      return '--';
+    };
 
-      {/* Onward Journey Section */}
-      <div className="mb-8">
-        <h3 className="font-bold text-gray-900 mb-4 text-base">Onward Journey</h3>
-        
-        <div className="mb-6">
-          <h4 className="font-medium text-gray-700 mb-3 text-sm">Stops from {origin}</h4>
-          <div className="space-y-3">
-            <label className="flex items-center justify-between cursor-pointer">
-              <div className="flex items-center gap-2">
-                <input 
-                  type="radio" 
-                  name="stopFilter"
-                  checked={selectedStopFilter === 'Non stop'}
-                  onChange={() => setSelectedStopFilter('Non stop')}
-                  className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-                />
-                <span className="text-sm text-gray-700">Non stop ({outboundStopStats['Non stop'].count})</span>
-              </div>
-              <span className="text-sm font-semibold text-gray-900">
-                {outboundStopStats['Non stop'].cheapestFlight?.displayPrice || 
-                 (outboundStopStats['Non stop'].cheapestPrice !== Infinity ? formatPrice(outboundStopStats['Non stop'].cheapestPrice.toString(), 'NGN') : '--')}
-              </span>
-            </label>
-            <label className="flex items-center justify-between cursor-pointer">
-              <div className="flex items-center gap-2">
-                <input 
-                  type="radio" 
-                  name="stopFilter"
-                  checked={selectedStopFilter === '1 Stop'}
-                  onChange={() => setSelectedStopFilter('1 Stop')}
-                  className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-                />
-                <span className="text-sm text-gray-700">1 Stop ({outboundStopStats['1 Stop'].count})</span>
-              </div>
-              <span className="text-sm font-semibold text-gray-900">
-                {outboundStopStats['1 Stop'].cheapestFlight?.displayPrice || 
-                 (outboundStopStats['1 Stop'].cheapestPrice !== Infinity ? formatPrice(outboundStopStats['1 Stop'].cheapestPrice.toString(), 'NGN') : '--')}
-              </span>
-            </label>
-            <label className="flex items-center justify-between cursor-pointer">
-              <div className="flex items-center gap-2">
-                <input 
-                  type="radio" 
-                  name="stopFilter"
-                  checked={selectedStopFilter === '1+ Stops'}
-                  onChange={() => setSelectedStopFilter('1+ Stops')}
-                  className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-                />
-                <span className="text-sm text-gray-700">1+ Stops ({outboundStopStats['1+ Stops'].count})</span>
-              </div>
-              <span className="text-sm font-semibold text-gray-900">
-                {outboundStopStats['1+ Stops'].cheapestFlight?.displayPrice || 
-                 (outboundStopStats['1+ Stops'].cheapestPrice !== Infinity ? formatPrice(outboundStopStats['1+ Stops'].cheapestPrice.toString(), 'NGN') : '--')}
-              </span>
-            </label>
+    const getReturnCheapestPriceDisplay = (stopCategory: string) => {
+      const stats = returnStopStats[stopCategory as keyof typeof returnStopStats];
+      if (stats.cheapestFlight && stats.cheapestFlight.id) {
+        const price = flightPrices[stats.cheapestFlight.id];
+        return price || '--';
+      }
+      return '--';
+    };
+
+    return (
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 sticky top-24">
+        {/* Currency Info */}
+        <div className="mb-6 pb-4 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-500">Your Currency</span>
+            <span className="text-sm font-bold text-[#33a8da]">{currency.code} ({currency.symbol})</span>
+          </div>
+          {isLoadingRates && (
+            <div className="mt-2 flex items-center gap-2">
+              <div className="w-3 h-3 border-2 border-gray-300 border-t-[#33a8da] rounded-full animate-spin"></div>
+              <span className="text-[10px] text-gray-400">Updating rates...</span>
+            </div>
+          )}
+        </div>
+
+        {/* Airlines Section */}
+        <div className="mb-8">
+          <h3 className="font-bold text-gray-900 mb-4 text-base">Airlines</h3>
+          <div className="space-y-3 max-h-[300px] overflow-y-auto">
+            {airlineList.map(airline => (
+              <label key={airline.name} className="flex items-center justify-between cursor-pointer group">
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="checkbox" 
+                    checked={selectedAirlineFilters.has(airline.name)}
+                    onChange={() => toggleAirlineFilter(airline.name)}
+                    className="rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                  />
+                  <span className="text-sm text-gray-700 group-hover:text-gray-900">{airline.name}</span>
+                </div>
+                <span className="text-xs text-gray-400">{airline.count}</span>
+              </label>
+            ))}
           </div>
         </div>
 
-        <div className="mb-6">
-          <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Departure From {origin}</p>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="radio" 
-                name="outboundDepartureTimeFilter"
-                checked={selectedOutboundDepartureTimeFilter === 'morning'}
-                onChange={() => setSelectedOutboundDepartureTimeFilter('morning')}
-                className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-              />
-              <span className="text-sm text-gray-700">Morning (12:00AM - 11:59AM) ({outboundDepartureTimeCounts.morning})</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="radio" 
-                name="outboundDepartureTimeFilter"
-                checked={selectedOutboundDepartureTimeFilter === 'afternoon'}
-                onChange={() => setSelectedOutboundDepartureTimeFilter('afternoon')}
-                className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-              />
-              <span className="text-sm text-gray-700">Afternoon (12:00PM - 5:59PM) ({outboundDepartureTimeCounts.afternoon})</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="radio" 
-                name="outboundDepartureTimeFilter"
-                checked={selectedOutboundDepartureTimeFilter === 'evening'}
-                onChange={() => setSelectedOutboundDepartureTimeFilter('evening')}
-                className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-              />
-              <span className="text-sm text-gray-700">Evening (6:00PM - 11:59PM) ({outboundDepartureTimeCounts.evening})</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Arrival at {destination}</p>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="radio" 
-                name="outboundArrivalTimeFilter"
-                checked={selectedOutboundArrivalTimeFilter === 'morning'}
-                onChange={() => setSelectedOutboundArrivalTimeFilter('morning')}
-                className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-              />
-              <span className="text-sm text-gray-700">Morning (12:00AM - 11:59AM) ({outboundArrivalTimeCounts.morning})</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="radio" 
-                name="outboundArrivalTimeFilter"
-                checked={selectedOutboundArrivalTimeFilter === 'afternoon'}
-                onChange={() => setSelectedOutboundArrivalTimeFilter('afternoon')}
-                className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-              />
-              <span className="text-sm text-gray-700">Afternoon (12:00PM - 5:59PM) ({outboundArrivalTimeCounts.afternoon})</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="radio" 
-                name="outboundArrivalTimeFilter"
-                checked={selectedOutboundArrivalTimeFilter === 'evening'}
-                onChange={() => setSelectedOutboundArrivalTimeFilter('evening')}
-                className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-              />
-              <span className="text-sm text-gray-700">Evening (6:00PM - 11:59PM) ({outboundArrivalTimeCounts.evening})</span>
-            </label>
-          </div>
-        </div>
-      </div>
-
-      {/* Return Journey Section */}
-      {processedFlightOffers.some(flight => flight.isRoundTrip) && (
-        <div className="pt-6 border-t border-gray-100">
-          <h3 className="font-bold text-gray-900 mb-4 text-base">Return Journey</h3>
+        {/* Onward Journey Section */}
+        <div className="mb-8">
+          <h3 className="font-bold text-gray-900 mb-4 text-base">Onward Journey</h3>
           
           <div className="mb-6">
-            <h4 className="font-medium text-gray-700 mb-3 text-sm">Stops from {destination}</h4>
+            <h4 className="font-medium text-gray-700 mb-3 text-sm">Stops from {origin}</h4>
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-700">Non stop ({returnStopStats['Non stop'].count})</span>
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="radio" 
+                    name="stopFilter"
+                    checked={selectedStopFilter === 'Non stop'}
+                    onChange={() => setSelectedStopFilter('Non stop')}
+                    className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                  />
+                  <span className="text-sm text-gray-700">Non stop ({outboundStopStats['Non stop'].count})</span>
+                </div>
                 <span className="text-sm font-semibold text-gray-900">
-                  {returnStopStats['Non stop'].cheapestFlight?.displayPrice || 
-                   (returnStopStats['Non stop'].cheapestPrice !== Infinity ? formatPrice(returnStopStats['Non stop'].cheapestPrice.toString(), 'NGN') : '--')}
+                  {getCheapestPriceDisplay('Non stop')}
                 </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-700">1 Stop ({returnStopStats['1 Stop'].count})</span>
-                <span className="text-sm font-semibold text-gray-900">
-                  {returnStopStats['1 Stop'].cheapestFlight?.displayPrice || 
-                   (returnStopStats['1 Stop'].cheapestPrice !== Infinity ? formatPrice(returnStopStats['1 Stop'].cheapestPrice.toString(), 'NGN') : '--')}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-700">1+ Stops ({returnStopStats['1+ Stops'].count})</span>
-                <span className="text-sm font-semibold text-gray-900">
-                  {returnStopStats['1+ Stops'].cheapestFlight?.displayPrice || 
-                   (returnStopStats['1+ Stops'].cheapestPrice !== Infinity ? formatPrice(returnStopStats['1+ Stops'].cheapestPrice.toString(), 'NGN') : '--')}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Departure From {destination}</p>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
-                  name="returnDepartureTimeFilter"
-                  checked={selectedReturnDepartureTimeFilter === 'morning'}
-                  onChange={() => setSelectedReturnDepartureTimeFilter('morning')}
-                  className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-                />
-                <span className="text-sm text-gray-700">Morning (12:00AM - 11:59AM) ({returnDepartureTimeCounts.morning})</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
-                  name="returnDepartureTimeFilter"
-                  checked={selectedReturnDepartureTimeFilter === 'afternoon'}
-                  onChange={() => setSelectedReturnDepartureTimeFilter('afternoon')}
-                  className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-                />
-                <span className="text-sm text-gray-700">Afternoon (12:00PM - 5:59PM) ({returnDepartureTimeCounts.afternoon})</span>
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="radio" 
+                    name="stopFilter"
+                    checked={selectedStopFilter === '1 Stop'}
+                    onChange={() => setSelectedStopFilter('1 Stop')}
+                    className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                  />
+                  <span className="text-sm text-gray-700">1 Stop ({outboundStopStats['1 Stop'].count})</span>
+                </div>
+                <span className="text-sm font-semibold text-gray-900">
+                  {getCheapestPriceDisplay('1 Stop')}
+                </span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
-                  name="returnDepartureTimeFilter"
-                  checked={selectedReturnDepartureTimeFilter === 'evening'}
-                  onChange={() => setSelectedReturnDepartureTimeFilter('evening')}
-                  className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-                />
-                <span className="text-sm text-gray-700">Evening (6:00PM - 11:59PM) ({returnDepartureTimeCounts.evening})</span>
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="radio" 
+                    name="stopFilter"
+                    checked={selectedStopFilter === '1+ Stops'}
+                    onChange={() => setSelectedStopFilter('1+ Stops')}
+                    className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                  />
+                  <span className="text-sm text-gray-700">1+ Stops ({outboundStopStats['1+ Stops'].count})</span>
+                </div>
+                <span className="text-sm font-semibold text-gray-900">
+                  {getCheapestPriceDisplay('1+ Stops')}
+                </span>
               </label>
             </div>
           </div>
 
           <div className="mb-6">
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Arrival at {origin}</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Departure From {origin}</p>
             <div className="space-y-2">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input 
                   type="radio" 
-                  name="returnArrivalTimeFilter"
-                  checked={selectedReturnArrivalTimeFilter === 'morning'}
-                  onChange={() => setSelectedReturnArrivalTimeFilter('morning')}
+                  name="outboundDepartureTimeFilter"
+                  checked={selectedOutboundDepartureTimeFilter === 'morning'}
+                  onChange={() => setSelectedOutboundDepartureTimeFilter('morning')}
                   className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
                 />
-                <span className="text-sm text-gray-700">Morning (12:00AM - 11:59AM) ({returnArrivalTimeCounts.morning})</span>
+                <span className="text-sm text-gray-700">Morning (12:00AM - 11:59AM) ({outboundDepartureTimeCounts.morning})</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input 
                   type="radio" 
-                  name="returnArrivalTimeFilter"
-                  checked={selectedReturnArrivalTimeFilter === 'afternoon'}
-                  onChange={() => setSelectedReturnArrivalTimeFilter('afternoon')}
+                  name="outboundDepartureTimeFilter"
+                  checked={selectedOutboundDepartureTimeFilter === 'afternoon'}
+                  onChange={() => setSelectedOutboundDepartureTimeFilter('afternoon')}
                   className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
                 />
-                <span className="text-sm text-gray-700">Afternoon (12:00PM - 5:59PM) ({returnArrivalTimeCounts.afternoon})</span>
+                <span className="text-sm text-gray-700">Afternoon (12:00PM - 5:59PM) ({outboundDepartureTimeCounts.afternoon})</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input 
                   type="radio" 
-                  name="returnArrivalTimeFilter"
-                  checked={selectedReturnArrivalTimeFilter === 'evening'}
-                  onChange={() => setSelectedReturnArrivalTimeFilter('evening')}
+                  name="outboundDepartureTimeFilter"
+                  checked={selectedOutboundDepartureTimeFilter === 'evening'}
+                  onChange={() => setSelectedOutboundDepartureTimeFilter('evening')}
                   className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
                 />
-                <span className="text-sm text-gray-700">Evening (6:00PM - 11:59PM) ({returnArrivalTimeCounts.evening})</span>
+                <span className="text-sm text-gray-700">Evening (6:00PM - 11:59PM) ({outboundDepartureTimeCounts.evening})</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Arrival at {destination}</p>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="radio" 
+                  name="outboundArrivalTimeFilter"
+                  checked={selectedOutboundArrivalTimeFilter === 'morning'}
+                  onChange={() => setSelectedOutboundArrivalTimeFilter('morning')}
+                  className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                />
+                <span className="text-sm text-gray-700">Morning (12:00AM - 11:59AM) ({outboundArrivalTimeCounts.morning})</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="radio" 
+                  name="outboundArrivalTimeFilter"
+                  checked={selectedOutboundArrivalTimeFilter === 'afternoon'}
+                  onChange={() => setSelectedOutboundArrivalTimeFilter('afternoon')}
+                  className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                />
+                <span className="text-sm text-gray-700">Afternoon (12:00PM - 5:59PM) ({outboundArrivalTimeCounts.afternoon})</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="radio" 
+                  name="outboundArrivalTimeFilter"
+                  checked={selectedOutboundArrivalTimeFilter === 'evening'}
+                  onChange={() => setSelectedOutboundArrivalTimeFilter('evening')}
+                  className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                />
+                <span className="text-sm text-gray-700">Evening (6:00PM - 11:59PM) ({outboundArrivalTimeCounts.evening})</span>
               </label>
             </div>
           </div>
         </div>
-      )}
 
-      {/* Clear Filters Button */}
-      {(selectedAirlineFilters.size > 0 || selectedStopFilter !== 'all' || 
-        selectedOutboundDepartureTimeFilter !== 'all' || selectedOutboundArrivalTimeFilter !== 'all' ||
-        selectedReturnDepartureTimeFilter !== 'all' || selectedReturnArrivalTimeFilter !== 'all') && (
-        <button
-          onClick={() => {
-            setSelectedAirlineFilters(new Set());
-            setSelectedStopFilter('all');
-            setSelectedOutboundDepartureTimeFilter('all');
-            setSelectedOutboundArrivalTimeFilter('all');
-            setSelectedReturnDepartureTimeFilter('all');
-            setSelectedReturnArrivalTimeFilter('all');
-          }}
-          className="mt-8 w-full text-center text-sm text-[#33a8da] font-medium hover:underline"
-        >
-          Clear all filters
-        </button>
-      )}
-    </div>
-  );
+        {/* Return Journey Section */}
+        {processedFlights.some(flight => flight.isRoundTrip) && (
+          <div className="pt-6 border-t border-gray-100">
+            <h3 className="font-bold text-gray-900 mb-4 text-base">Return Journey</h3>
+            
+            <div className="mb-6">
+              <h4 className="font-medium text-gray-700 mb-3 text-sm">Stops from {destination}</h4>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700">Non stop ({returnStopStats['Non stop'].count})</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {getReturnCheapestPriceDisplay('Non stop')}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700">1 Stop ({returnStopStats['1 Stop'].count})</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {getReturnCheapestPriceDisplay('1 Stop')}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700">1+ Stops ({returnStopStats['1+ Stops'].count})</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {getReturnCheapestPriceDisplay('1+ Stops')}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Departure From {destination}</p>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="returnDepartureTimeFilter"
+                    checked={selectedReturnDepartureTimeFilter === 'morning'}
+                    onChange={() => setSelectedReturnDepartureTimeFilter('morning')}
+                    className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                  />
+                  <span className="text-sm text-gray-700">Morning (12:00AM - 11:59AM) ({returnDepartureTimeCounts.morning})</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="returnDepartureTimeFilter"
+                    checked={selectedReturnDepartureTimeFilter === 'afternoon'}
+                    onChange={() => setSelectedReturnDepartureTimeFilter('afternoon')}
+                    className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                  />
+                  <span className="text-sm text-gray-700">Afternoon (12:00PM - 5:59PM) ({returnDepartureTimeCounts.afternoon})</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="returnDepartureTimeFilter"
+                    checked={selectedReturnDepartureTimeFilter === 'evening'}
+                    onChange={() => setSelectedReturnDepartureTimeFilter('evening')}
+                    className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                  />
+                  <span className="text-sm text-gray-700">Evening (6:00PM - 11:59PM) ({returnDepartureTimeCounts.evening})</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Arrival at {origin}</p>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="returnArrivalTimeFilter"
+                    checked={selectedReturnArrivalTimeFilter === 'morning'}
+                    onChange={() => setSelectedReturnArrivalTimeFilter('morning')}
+                    className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                  />
+                  <span className="text-sm text-gray-700">Morning (12:00AM - 11:59AM) ({returnArrivalTimeCounts.morning})</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="returnArrivalTimeFilter"
+                    checked={selectedReturnArrivalTimeFilter === 'afternoon'}
+                    onChange={() => setSelectedReturnArrivalTimeFilter('afternoon')}
+                    className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                  />
+                  <span className="text-sm text-gray-700">Afternoon (12:00PM - 5:59PM) ({returnArrivalTimeCounts.afternoon})</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="returnArrivalTimeFilter"
+                    checked={selectedReturnArrivalTimeFilter === 'evening'}
+                    onChange={() => setSelectedReturnArrivalTimeFilter('evening')}
+                    className="rounded-full border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+                  />
+                  <span className="text-sm text-gray-700">Evening (6:00PM - 11:59PM) ({returnArrivalTimeCounts.evening})</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Clear Filters Button */}
+        {(selectedAirlineFilters.size > 0 || selectedStopFilter !== 'all' || 
+          selectedOutboundDepartureTimeFilter !== 'all' || selectedOutboundArrivalTimeFilter !== 'all' ||
+          selectedReturnDepartureTimeFilter !== 'all' || selectedReturnArrivalTimeFilter !== 'all') && (
+          <button
+            onClick={() => {
+              setSelectedAirlineFilters(new Set());
+              setSelectedStopFilter('all');
+              setSelectedOutboundDepartureTimeFilter('all');
+              setSelectedOutboundArrivalTimeFilter('all');
+              setSelectedReturnDepartureTimeFilter('all');
+              setSelectedReturnArrivalTimeFilter('all');
+            }}
+            className="mt-8 w-full text-center text-sm text-[#33a8da] font-medium hover:underline"
+          >
+            Clear all filters
+          </button>
+        )}
+      </div>
+    );
+  };
 
   // Hotel and Car Filter Sidebar
   const renderHotelCarFilters = () => (
@@ -2207,7 +2290,7 @@ const renderFlightCard = (flight: ExtendedSearchResult) => {
         </button>
       </div>
 
-      {/* Price Range */}
+      {/* Price Range with Currency */}
       {renderFilterSection("Price Range", (
         <>
           <input
@@ -2355,7 +2438,7 @@ const renderFlightCard = (flight: ExtendedSearchResult) => {
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-gray-600">Cheapest Fare:</span>
                       <span className="font-bold text-[#33a8da]">
-                        {cheapestFlight?.displayPrice || '--'}
+                        {cheapestFlight && flightPrices[cheapestFlight.id] ? flightPrices[cheapestFlight.id] : '--'}
                       </span>
                     </div>
                     {fastestFlight && (
@@ -2442,7 +2525,7 @@ const renderFlightCard = (flight: ExtendedSearchResult) => {
           </>
         )}
 
-        {/* Hotels View - Unchanged */}
+        {/* Hotels View */}
         {searchType === 'hotels' && (
           <div className="flex flex-col lg:flex-row gap-10">
             <aside className="w-full lg:w-[300px] shrink-0 space-y-6">
@@ -2500,7 +2583,7 @@ const renderFlightCard = (flight: ExtendedSearchResult) => {
           </div>
         )}
 
-        {/* Car Rentals View - Unchanged */}
+        {/* Car Rentals View */}
         {searchType === 'car-rentals' && (
           <div className="flex flex-col lg:flex-row gap-10">
             <aside className="w-full lg:w-[300px] shrink-0 space-y-6">

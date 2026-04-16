@@ -6,6 +6,7 @@ import { extractAirportCode } from '@/lib/utils';
 import type { SearchParams, SearchResult } from '@/lib/types';
 import type { Airline } from '@/lib/duffel-airlines';
 import api from '@/lib/api';
+import { useLanguage } from '@/context/LanguageContext';
 
 // ─── Mock fallback data (only used when API fails) ─────────────────────────────
 const MOCK: Record<string, SearchResult[]> = {
@@ -29,13 +30,10 @@ interface SearchContextType {
   search: (params: SearchParams) => Promise<void>;
   selectItem: (item: SearchResult) => void;
   clearSearch: () => void;
-  /** Save current selection to sessionStorage so it survives login redirect; call before redirecting to login from review. */
   persistSelectionForReturn: () => void;
-  // Airlines data
   airlines: Airline[];
   isLoadingAirlines: boolean;
   fetchAirlines: () => Promise<void>;
-  // New states for better UX
   searchError: string | null;
   searchCompleted: boolean;
 }
@@ -51,12 +49,12 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchCompleted, setSearchCompleted] = useState(false);
-
-  // Airlines state
   const [airlines, setAirlines] = useState<Airline[]>([]);
   const [isLoadingAirlines, setIsLoadingAirlines] = useState(false);
 
-  // Restore selection after login redirect so user doesn't see "No Booking to Review"
+  // Get currency and conversion functions from LanguageContext
+  const { currency, convertPrice, formatPrice, isLoadingRates } = useLanguage();
+
   useEffect(() => {
     try {
       const raw = typeof window !== 'undefined' ? sessionStorage.getItem(BOOKING_REVIEW_SELECTION_KEY) : null;
@@ -70,33 +68,17 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Fetch airlines when needed (for flight searches)
   const fetchAirlines = useCallback(async () => {
-    // Don't fetch if we already have airlines
-    if (airlines.length > 0) return;
+    console.log('⚠️ Airlines endpoint not available - skipping');
+    return;
+  }, []);
 
-    setIsLoadingAirlines(true);
-    try {
-      const response = await fetch('/api/v1/airlines');
-      if (response.ok) {
-        const data = await response.json();
-        setAirlines(data.data || []);
-      }
-    } catch (error) {
-      console.error('Error fetching airlines:', error);
-    } finally {
-      setIsLoadingAirlines(false);
-    }
-  }, [airlines.length]);
-
-  // Automatically fetch airlines when searching for flights
   useEffect(() => {
     if (searchParams?.type === 'flights') {
       fetchAirlines();
     }
   }, [searchParams?.type, fetchAirlines]);
 
-  // ── Unified search across all product types ───────
   const search = useCallback(async (params: SearchParams) => {
     console.log('🔍 Search called with params:', params);
     setSearchParams(params);
@@ -116,7 +98,6 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error('Search error:', err);
       setSearchError('Failed to load results. Please try again.');
-      // Only use mock data on error
       const mockKey = params.type === 'cars' ? 'car-rentals' : params.type;
       setSearchResults(MOCK[mockKey] ?? []);
     } finally {
@@ -127,32 +108,22 @@ export function SearchProvider({ children }: { children: ReactNode }) {
 
   const searchCars = async (params: SearchParams) => {
     try {
-      // ✅ Validate that we have all required parameters
       if (!params.pickupLocationCode || !params.dropoffLocationCode ||
         !params.pickupDateTime || !params.dropoffDateTime) {
-        console.error('❌ Missing required car rental parameters:', {
-          pickupLocationCode: params.pickupLocationCode,
-          dropoffLocationCode: params.dropoffLocationCode,
-          pickupDateTime: params.pickupDateTime,
-          dropoffDateTime: params.dropoffDateTime
-        });
+        console.error('❌ Missing required car rental parameters');
         setSearchResults([]);
         setSearchError('Missing location or date information. Please try again.');
         return;
       }
 
-      // ✅ Extract passenger count correctly
-      let passengerCount = 2; // Default
-
+      let passengerCount = 2;
       if (params.passengers) {
         if (typeof params.passengers === 'number') {
           passengerCount = params.passengers;
         } else if (typeof params.passengers === 'object') {
-          // For flights with adults/children/infants, sum them up
           passengerCount = (params.passengers.adults || 0) +
             (params.passengers.children || 0) +
             (params.passengers.infants || 0);
-          // Ensure at least 1 passenger
           passengerCount = Math.max(1, passengerCount);
         }
       }
@@ -166,26 +137,15 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         currency: 'GBP',
       };
 
-      console.log('🚗 Searching car rentals with EXACT params from form:', carParams);
-
       const response = await api.carApi.searchCarRentals(carParams);
 
       if (response.success && response.data?.data) {
-        // Calculate requested duration for logging
-        const requestedPickup = new Date(params.pickupDateTime);
-        const requestedDropoff = new Date(params.dropoffDateTime);
-        const requestedDays = Math.ceil((requestedDropoff.getTime() - requestedPickup.getTime()) / (1000 * 60 * 60 * 24));
-
-        console.log('📅 Requested duration:', requestedDays, 'days');
-
-        // Process each offer to determine if it's a transfer or multi-day rental
         const processedResults = response.data.data.map((item: any) => {
           const startDate = new Date(item.start?.dateTime);
           const endDate = new Date(item.end?.dateTime);
           const hoursDiff = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
           const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 
-          // Determine the type
           let rentalType = 'transfer';
           let displayType = 'Transfer';
 
@@ -204,13 +164,12 @@ export function SearchProvider({ children }: { children: ReactNode }) {
             displayType,
             rentalDays: daysDiff,
             rentalHours: hoursDiff,
-            requestedDays,
+            requestedDays: daysDiff,
             isMultiDay: daysDiff >= 1,
             isTransfer: daysDiff < 1
           };
         });
 
-        console.log(`✅ Found ${processedResults.length} total offers`);
         setSearchResults(processedResults);
       } else {
         setSearchResults([]);
@@ -222,7 +181,6 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // ── Hotel search ──────────────────────────────────
   const searchHotels = async (params: SearchParams) => {
     try {
       const searchParamsTravellers = (params.travellers as any);
@@ -251,12 +209,104 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Helper function to transform Wakanow results with domestic flag
-  const transformWakanowResults = (normalizedFlights: any[], selectData: string, returnDate?: string, cabinClass: string = 'economy', targetCurrency: string = 'GBP', isDomesticRoute: boolean = false) => {
-    return normalizedFlights.map((flight, idx) => {
-      const sym = targetCurrency === 'GBP' ? '£' : targetCurrency === 'NGN' ? '₦' : '$';
+  const formatDateForWakanow = (dateStr: string): string => {
+    const date = new Date(dateStr);
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${month}/${day}/${year}`;
+  };
+
+  const transformWakanowOffers = async (offers: any[], returnDate?: string, cabinClass: string = 'economy', targetCurrency: string = 'GBP', isDomesticRoute: boolean = false): Promise<SearchResult[]> => {
+    if (!offers || offers.length === 0) return [];
+    
+    const results: SearchResult[] = [];
+    
+    for (const offer of offers) {
+      // Debug log
+      console.log('💰 Raw Wakanow offer:', {
+        id: offer.id,
+        total_amount: offer.total_amount,
+        total_currency: offer.total_currency,
+        final_amount: offer.final_amount,
+        currency: offer.currency,
+        original_amount: offer.original_amount,
+        original_currency: offer.original_currency,
+      });
       
-      let durationDisplay = flight.duration;
+      const slices = offer.slices || [];
+      const outboundSlice = slices[0];
+      const returnSlice = slices.length > 1 ? slices[1] : null;
+      
+      if (!outboundSlice) continue;
+      
+      const outboundSegments = outboundSlice.segments || [];
+      const firstOutboundSegment = outboundSegments[0] || {};
+      const lastOutboundSegment = outboundSegments[outboundSegments.length - 1] || firstOutboundSegment;
+      
+      const outboundDepartureTime = outboundSlice.departure_time || firstOutboundSegment.start_time || '';
+      const outboundArrivalTime = outboundSlice.arrival_time || lastOutboundSegment.end_time || '';
+      
+      const outboundOrigin = outboundSlice.origin?.iata_code || outboundSlice.origin || firstOutboundSegment.departure_code || '';
+      const outboundDestination = outboundSlice.destination?.iata_code || outboundSlice.destination || lastOutboundSegment.destination_code || '';
+      
+      const outboundDuration = outboundSlice.duration || '';
+      const outboundStopCount = outboundSlice.stops !== undefined ? outboundSlice.stops : (outboundSegments.length - 1);
+      
+      const airline = outboundSlice.airline || offer.airline || {};
+      const airlineName = airline.name || offer.marketing_carrier_name || '';
+      const airlineCode = airline.code || offer.marketing_carrier || '';
+      const airlineLogo = airline.logo_url || `https://images.wakanow.com/Images/flight-logos/${airlineCode}.gif`;
+      
+      // ========== PRICE EXTRACTION WITH REAL-TIME CONVERSION ==========
+      let priceAmount = 0;
+      let priceCurrency = isDomesticRoute ? 'NGN' : currency.code;
+      
+      if (isDomesticRoute) {
+        // Domestic flights - use NGN as is
+        priceAmount = parseFloat(offer.original_amount || offer.total_amount || '0');
+        priceCurrency = 'NGN';
+        console.log(`🏠 Domestic flight: ${airlineName} - ${priceCurrency} ${priceAmount}`);
+      } else {
+        // International flights - get original amount and convert to user's currency
+        let originalAmount = 0;
+        let originalCurrency = 'NGN';
+        
+        // Get original amount from offer (Wakanow returns in NGN)
+        if (offer.total_amount) {
+          originalAmount = parseFloat(offer.total_amount);
+          originalCurrency = offer.total_currency || 'NGN';
+        } else if (offer.final_amount) {
+          originalAmount = parseFloat(offer.final_amount);
+          originalCurrency = offer.currency || 'NGN';
+        } else if (offer.original_amount) {
+          originalAmount = parseFloat(offer.original_amount);
+          originalCurrency = offer.original_currency || 'NGN';
+        } else if (offer.price) {
+          originalAmount = parseFloat(offer.price);
+          originalCurrency = 'NGN';
+        }
+        
+        if (originalAmount > 0) {
+          // Use the LanguageContext's convertPrice function for real-time conversion
+          priceAmount = await convertPrice(originalAmount, originalCurrency);
+          priceCurrency = currency.code;
+          console.log(`💱 Converted ${originalCurrency} ${originalAmount.toFixed(2)} → ${currency.code} ${priceAmount.toFixed(2)}`);
+        } else {
+          console.warn('⚠️ No valid price found, using fallback:', offer.id);
+          priceAmount = 500;
+          priceCurrency = currency.code;
+        }
+      }
+      
+      // Ensure price is valid
+      if (priceAmount === 0 || isNaN(priceAmount)) {
+        console.warn('⚠️ Invalid price after processing, using fallback:', offer.id);
+        priceAmount = isDomesticRoute ? 50000 : 500;
+        priceCurrency = isDomesticRoute ? 'NGN' : currency.code;
+      }
+      
+      let durationDisplay = outboundDuration;
       if (durationDisplay && durationDisplay.includes(':')) {
         const parts = durationDisplay.split(':');
         if (parts.length === 3) {
@@ -268,27 +318,24 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         }
       }
       
-      // Get return flight details if available
+      // Format the price using LanguageContext's formatPrice
+      const formattedPrice = await formatPrice(priceAmount, priceCurrency);
+      const sym = currency.symbol;
+      
+      console.log(`💰 Final price for ${airlineName}: ${formattedPrice} (${priceCurrency})`);
+      
       let returnFlightData = null;
-      if (flight.returnFlightDetails) {
-        returnFlightData = {
-          departureAirport: flight.returnFlightDetails.departure.code,
-          arrivalAirport: flight.returnFlightDetails.arrival.code,
-          departureCity: flight.returnFlightDetails.departure.name,
-          arrivalCity: flight.returnFlightDetails.arrival.name,
-          departureTime: flight.returnFlightDetails.departure.time,
-          arrivalTime: flight.returnFlightDetails.arrival.time,
-          flightNumber: flight.returnFlightDetails.flightNumber,
-          duration: flight.returnFlightDetails.duration,
-          stopCount: flight.returnFlightDetails.stops,
-          stopText: flight.returnFlightDetails.stops === 0 ? 'Direct' : 
-                    flight.returnFlightDetails.stops === 1 ? '1 Stop' : `${flight.returnFlightDetails.stops} Stops`,
-        };
-      } else if (flight.returnLegs && flight.returnLegs.length > 0) {
-        const firstReturnLeg = flight.returnLegs[0];
-        const lastReturnLeg = flight.returnLegs[flight.returnLegs.length - 1];
+      
+      if (returnSlice) {
+        const returnSegments = returnSlice.segments || [];
+        const firstReturnSegment = returnSegments[0] || {};
+        const lastReturnSegment = returnSegments[returnSegments.length - 1] || firstReturnSegment;
         
-        let returnDurationDisplay = firstReturnLeg.duration || '';
+        const returnFlightNumber = firstReturnSegment.flight_number || '';
+        const returnAirline = returnSlice.airline || {};
+        const returnAirlineName = returnAirline.name || offer.marketing_carrier_name || airlineName;
+        
+        let returnDurationDisplay = returnSlice.duration || '';
         if (returnDurationDisplay && returnDurationDisplay.includes(':')) {
           const parts = returnDurationDisplay.split(':');
           if (parts.length === 3) {
@@ -301,153 +348,118 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         }
         
         returnFlightData = {
-          departureAirport: firstReturnLeg.from || '',
-          arrivalAirport: lastReturnLeg.to || '',
-          departureCity: firstReturnLeg.fromName || '',
-          arrivalCity: lastReturnLeg.toName || '',
-          departureTime: firstReturnLeg.departureTime || '',
-          arrivalTime: lastReturnLeg.arrivalTime || '',
-          flightNumber: firstReturnLeg.flightNumber || '',
+          departureAirport: returnSlice.origin?.iata_code || returnSlice.origin || '',
+          arrivalAirport: returnSlice.destination?.iata_code || returnSlice.destination || '',
+          departureCity: returnSlice.origin?.name || '',
+          arrivalCity: returnSlice.destination?.name || '',
+          departureTime: returnSlice.departure_time || firstReturnSegment.start_time || '',
+          arrivalTime: returnSlice.arrival_time || lastReturnSegment.end_time || '',
+          flightNumber: returnFlightNumber,
+          airlineName: returnAirlineName,
           duration: returnDurationDisplay,
-          stopCount: (flight.returnLegs.length || 1) - 1,
-          stopText: (flight.returnLegs.length || 1) - 1 === 0 ? 'Direct' : 
-                    (flight.returnLegs.length || 1) - 1 === 1 ? '1 Stop' : `${(flight.returnLegs.length || 1) - 1} Stops`,
+          stopCount: returnSlice.stops !== undefined ? returnSlice.stops : (returnSegments.length - 1),
+          stopText: (returnSlice.stops !== undefined ? returnSlice.stops : (returnSegments.length - 1)) === 0 ? 'Direct' : 
+                    (returnSlice.stops !== undefined ? returnSlice.stops : (returnSegments.length - 1)) === 1 ? '1 Stop' : `${returnSlice.stops !== undefined ? returnSlice.stops : (returnSegments.length - 1)} Stops`,
         };
       }
       
-      // Get outbound leg details
-      let arrivalAirportCode = flight.arrival.code;
-      let arrivalAirportName = flight.arrival.name;
-      let outboundDuration = durationDisplay;
-      let outboundStopCount = flight.stops;
+      const freeBaggage = outboundSlice.free_baggage || {};
+      const baggageCount = freeBaggage.BagCount || 0;
+      const baggageWeight = freeBaggage.Weight || 0;
+      const baggageUnit = freeBaggage.WeightUnit || 'kg';
       
-      if (flight.outboundLegs && flight.outboundLegs.length > 0) {
-        const lastOutboundLeg = flight.outboundLegs[flight.outboundLegs.length - 1];
-        arrivalAirportCode = lastOutboundLeg.to || flight.arrival.code;
-        arrivalAirportName = lastOutboundLeg.toName || flight.arrival.name;
-        
-        let totalMinutes = 0;
-        flight.outboundLegs.forEach((leg: any) => {
-          const dur = leg.duration || '';
-          if (dur.includes(':')) {
-            const parts = dur.split(':');
-            if (parts.length === 3) {
-              totalMinutes += parseInt(parts[0]) * 60 + parseInt(parts[1]);
-            }
-          }
-        });
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-        outboundDuration = `${hours}h ${minutes}m`;
-        outboundStopCount = (flight.outboundLegs.length || 1) - 1;
-      }
+      const formattedTime = outboundDepartureTime ? new Date(outboundDepartureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--';
       
-      // Calculate price
-      let priceAmount = flight.price.amount;
-      let priceCurrency = flight.price.currency;
-      
-      if (targetCurrency === 'GBP' && priceCurrency === 'NGN') {
-        priceAmount = Math.round(priceAmount / 2500);
-        priceCurrency = 'GBP';
-      }
-      
-      const formattedPrice = priceAmount.toLocaleString('en-GB', { maximumFractionDigits: 0 });
-      
-      return {
-        id: flight.id,
+      results.push({
+        id: offer.id || `wakanow-${results.length}`,
         provider: 'wakanow',
-        title: `${flight.airline} ${flight.flightNumber}`,
-        subtitle: `${flight.departure.code} → ${arrivalAirportCode}`,
-        price: targetCurrency === 'GBP' ? `£${formattedPrice}` : `₦${formattedPrice}`,
-        totalPrice: targetCurrency === 'GBP' ? `£${formattedPrice}` : `₦${formattedPrice}`,
-        time: new Date(flight.departure.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-        duration: outboundDuration,
+        title: `${airlineName} ${firstOutboundSegment.flight_number || ''}`.trim() || 'Flight',
+        subtitle: `${outboundOrigin} → ${outboundDestination}`,
+        price: formattedPrice,
+        totalPrice: formattedPrice,
+        time: formattedTime,
+        duration: durationDisplay || '--:--',
         type: 'flights' as const,
-        image: flight.airlineLogo || `https://ui-avatars.com/api/?name=${flight.airlineCode || flight.airline}&background=33a8da&color=fff&length=2`,
-        isRefundable: flight.isRefundable,
-        baggage: `${flight.baggage.count} bag${flight.baggage.count !== 1 ? 's' : ''}${flight.baggage.weight ? ` (${flight.baggage.weight}${flight.baggage.unit || 'kg'})` : ''}`,
-        airlineCode: flight.airlineCode,
-        flightNumber: flight.flightNumber,
-        departureAirport: flight.departure.code,
-        arrivalAirport: arrivalAirportCode,
-        departureCity: flight.departure.name,
-        arrivalCity: arrivalAirportName,
-        departureTime: flight.departure.time,
-        arrivalTime: flight.arrival.time,
-        airlineName: flight.airline,
-        airlineLogo: flight.airlineLogo,
+        image: airlineLogo,
+        isRefundable: offer.is_refundable || false,
+        baggage: `${baggageCount} bag${baggageCount !== 1 ? 's' : ''}${baggageWeight ? ` (${baggageWeight}${baggageUnit})` : ''}`,
+        airlineCode: airlineCode,
+        flightNumber: firstOutboundSegment.flight_number || '',
+        departureAirport: outboundOrigin,
+        arrivalAirport: outboundDestination,
+        departureCity: outboundSlice.origin?.name || '',
+        arrivalCity: outboundSlice.destination?.name || '',
+        departureTime: outboundDepartureTime,
+        arrivalTime: outboundArrivalTime,
+        airlineName: airlineName || 'Airline',
+        airlineLogo: airlineLogo,
         stopCount: outboundStopCount,
         stopText: outboundStopCount === 0 ? 'Direct' : outboundStopCount === 1 ? '1 Stop' : `${outboundStopCount} Stops`,
         cabin: cabinClass,
-        displayPrice: targetCurrency === 'GBP' ? `£${formattedPrice}` : `₦${formattedPrice}`,
+        displayPrice: formattedPrice,
         rawPrice: priceAmount,
-        original_amount: flight.price.amount.toString(),
-        original_currency: flight.price.currency,
-        final_amount: priceAmount.toString(),
+        original_amount: offer.original_amount,
+        original_currency: offer.original_currency,
+        final_amount: offer.final_amount,
         currency: priceCurrency,
-        isRoundTrip: !!returnDate && !!returnFlightData,
+        isRoundTrip: !!returnSlice,
         rating: 4,
         amenities: ['Seat Selection', 'Cabin Baggage'],
         features: [
           outboundStopCount === 0 ? 'Direct' : `${outboundStopCount} stop${outboundStopCount > 1 ? 's' : ''}`,
-          outboundDuration,
+          durationDisplay || '--:--',
           cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1)
         ],
         isWakanow: true,
         isWakanowDomestic: isDomesticRoute,
-        selectData: selectData,
-        legs: flight.legs,
-        outboundLegs: flight.outboundLegs,
-        returnLegs: flight.returnLegs,
+        selectData: offer.select_data || '',
+        slices: slices,
         returnFlight: returnFlightData,
-        fareRules: flight.fareRules,
-        penaltyRules: flight.penaltyRules,
-      };
-    });
+        fareRules: offer.fare_rules || [],
+        penaltyRules: offer.penalty_rules || null,
+        connection_code: offer.connection_code,
+      });
+    }
+    
+    return results;
   };
 
-  // ── Flight search (Wakanow for domestic, both for international) ──
   const searchFlights = async (params: SearchParams) => {
     if (!params.segments?.[0]?.from || !params.segments?.[0]?.to) {
       setSearchResults([]);
       return;
     }
-
+  
     const origin = extractAirportCode(params.segments[0].from);
     const destination = extractAirportCode(params.segments[0].to);
     if (!origin || !destination) {
       setSearchResults([]);
       return;
     }
-
+  
     const departureDate = params.segments[0].date || new Date().toISOString().split('T')[0];
     const returnDate = params.returnDate;
-
+  
     let cabinClass = (params.cabinClass ?? 'economy').toLowerCase();
     if (!['economy', 'premium_economy', 'business', 'first'].includes(cabinClass)) cabinClass = 'economy';
-
-    let passengerCount = 1;
+  
     let adults = 1, children = 0, infants = 0;
     if (params.passengers) {
       if (typeof params.passengers === 'number') {
-        passengerCount = params.passengers;
         adults = params.passengers;
       } else if (typeof params.passengers === 'object') {
         adults = params.passengers.adults || 0;
         children = params.passengers.children || 0;
         infants = params.passengers.infants || 0;
-        passengerCount = adults + children + infants;
       }
     }
-    passengerCount = Math.max(1, Math.min(9, passengerCount));
-
-    // Check if this is a domestic Nigerian route
+  
     const nigerianAirports = ['LOS', 'ABV', 'PHC', 'KAN', 'ENU', 'QOW', 'BNI', 'JOS', 'KAD', 'YOL'];
     const isDomestic = nigerianAirports.includes(origin) && nigerianAirports.includes(destination);
     
     const BASE = config.apiBaseUrl;
-
-    // For DOMESTIC routes: Use ONLY Wakanow
+  
+    // DOMESTIC flights - Fast, uses Wakanow only
     if (isDomestic && params.tripType !== 'multi-city') {
       console.log('🇳🇬 Domestic flight detected - Using Wakanow API only');
       try {
@@ -456,17 +468,18 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         const wakanowParams = {
           from: origin,
           to: destination,
-          departureDate: new Date(departureDate),
-          returnDate: returnDate ? new Date(returnDate) : undefined,
+          departureDate: formatDateForWakanow(departureDate),
+          returnDate: returnDate ? formatDateForWakanow(returnDate) : undefined,
           adults,
           children,
           infants,
           cabinClass: cabinClass as 'economy' | 'premium_economy' | 'business' | 'first',
-          targetCurrency: params.currency || 'NGN'
+          targetCurrency: 'NGN'
         };
         
         const result = await wakanowService.searchDomesticFlights(wakanowParams);
-        const transformedResults = transformWakanowResults(result.normalizedFlights, result.selectData, returnDate, cabinClass, 'NGN', true);
+        const offers = result.offers || result.normalizedFlights || [];
+        const transformedResults = await transformWakanowOffers(offers, returnDate, cabinClass, 'NGN', true);
         
         console.log('✅ Wakanow domestic results:', transformedResults.length);
         setSearchResults(transformedResults);
@@ -478,264 +491,162 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         return;
       }
     }
-
-    // For INTERNATIONAL routes: Fetch from BOTH Wakanow AND Duffel
+  
+    // INTERNATIONAL flights - Parallel fetching with enhanced deduplication
     console.log('🌍 International flight detected - Fetching from both Wakanow and Duffel');
     
-    let wakanowResults: SearchResult[] = [];
-    let duffelResults: SearchResult[] = [];
-    let wakanowError = null;
-    let duffelError = null;
-
-    // 1. Fetch from Wakanow (international) - use GBP currency, NOT domestic
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    
     try {
-      console.log('🌍 Fetching from Wakanow for international route...');
-      const { wakanowService } = await import('@/lib/wakanow.service');
-      const wakanowParams = {
-        from: origin,
-        to: destination,
-        departureDate: new Date(departureDate),
-        returnDate: returnDate ? new Date(returnDate) : undefined,
-        adults,
-        children,
-        infants,
-        cabinClass: cabinClass as 'economy' | 'premium_economy' | 'business' | 'first',
-        targetCurrency: 'GBP'
-      };
-      const wakanowResult = await wakanowService.searchDomesticFlights(wakanowParams);
-      wakanowResults = transformWakanowResults(wakanowResult.normalizedFlights, wakanowResult.selectData, returnDate, cabinClass, 'GBP', false);
-      console.log(`✅ Wakanow returned ${wakanowResults.length} international flights`);
-    } catch (error) {
-      console.error('❌ Wakanow international search failed:', error);
-      wakanowError = error;
-    }
-
-    // 2. Fetch from Duffel (existing API - UNCHANGED)
-    try {
-      console.log('🌍 Fetching from Duffel for international route...');
-      const requestBody: any = {
-        origin,
-        destination,
-        departureDate,
-        passengers: passengerCount,
-        cabinClass,
-        currency: 'GBP'
-      };
-      if (returnDate) requestBody.returnDate = returnDate;
-
-      console.log('📤 Sending flight search request:', JSON.stringify(requestBody, null, 2));
-
-      const offerRes = await fetch(`${BASE}/api/v1/bookings/search/flights`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
-
-      console.log('📥 Response status:', offerRes.status);
-      const responseText = await offerRes.text();
-      console.log('📥 Response text:', responseText);
-
-      if (!offerRes.ok) {
-        console.error('❌ Offer request failed with status:', offerRes.status);
-        console.error('❌ Response body:', responseText);
-        throw new Error(`Offer request failed: ${offerRes.status} ${responseText}`);
-      }
-
-      let offerData;
-      try {
-        offerData = JSON.parse(responseText);
-      } catch (e) {
-        console.error('❌ Failed to parse response as JSON:', responseText);
-        throw new Error('Invalid JSON response from server');
-      }
-
-      if (!offerData.success || !offerData.data?.offer_request_id) {
-        console.error('❌ Invalid response structure:', offerData);
-        throw new Error('No offer request ID in response');
-      }
-
-      const offerRequestId = offerData.data.offer_request_id;
-
-      // Paginated fetch of all offers
-      console.log('📤 Fetching offers for request ID:', offerRequestId);
-      let allOffers: any[] = [];
-      let cursor: string | null = null;
-      let hasMore = true;
-      let page = 1;
-      const MAX_PAGES = 10;
-
-      while (hasMore && page <= MAX_PAGES) {
-        const url = new URL(`${BASE}/api/v1/bookings/offers`);
-        url.searchParams.set('offer_request_id', offerRequestId);
-        if (cursor) {
-          url.searchParams.set('cursor', cursor);
-        }
-
-        console.log(`📤 Fetching offers page ${page}...`);
-        const offersRes = await fetch(url.toString());
-
-        if (!offersRes.ok) {
-          const offersText = await offersRes.text();
-          console.error(`❌ List offers failed (page ${page}):`, offersRes.status, offersText);
-          throw new Error('List offers failed');
-        }
-
-        const offersData = await offersRes.json();
-        console.log(`📥 Page ${page} response:`, offersData);
-
-        const pageOffers: any[] = offersData.data?.offers ?? offersData.data ?? offersData.offers ?? [];
-        allOffers = allOffers.concat(pageOffers);
-
-        hasMore = offersData.meta?.hasMore ?? false;
-        cursor = offersData.meta?.nextCursor ?? null;
-
-        page++;
-      }
-
-      console.log(`✅ Total offers after pagination: ${allOffers.length}`);
-
-      if (allOffers.length === 0) {
-        console.log('⚠️ No offers found from Duffel');
-      } else {
-        // Transform all offers
-        duffelResults = allOffers.map((offer: any, i: number) => {
-          const slices = offer.slices ?? offer.segments ?? [];
-          const isRoundTrip = slices.length > 1;
-          
-          const outboundSlice = slices[0] ?? {};
-          const outboundSegments = outboundSlice.segments ?? [];
-          
-          const outboundFirstSegment = outboundSegments[0] ?? {};
-          const outboundLastSegment = outboundSegments[outboundSegments.length - 1] ?? outboundFirstSegment;
-
-          const ownerAirline = offer.owner;
-          const operatingCarrier = outboundFirstSegment.operating_carrier || outboundSlice.operating_carrier;
-          const airline = ownerAirline || operatingCarrier;
-          const airlineName = airline?.name ?? 'Unknown Airline';
-          const airlineCode = airline?.iata_code ?? airline?.iataCode ?? '';
-          const airlineLogoUrl = airline?.logo_symbol_url ?? '';
-
-          const outboundFlightNumber = outboundFirstSegment.marketing_carrier_flight_number || 
-                                       outboundFirstSegment.flight_number || 
-                                       outboundFirstSegment.number ||
-                                       `FL${1000 + i}`;
-
-          const outboundDepartureAirport = outboundFirstSegment.origin?.iata_code ?? 
-                                          outboundFirstSegment.departure?.iataCode ?? 
-                                          outboundSlice.origin?.iata_code ?? 
-                                          origin;
-          
-          const outboundArrivalAirport = outboundLastSegment.destination?.iata_code ?? 
-                                        outboundLastSegment.arrival?.iataCode ?? 
-                                        outboundSlice.destination?.iata_code ?? 
-                                        destination;
-
-          const outboundDepartureCity = outboundFirstSegment.origin?.city_name || 
-                                      outboundFirstSegment.origin?.city?.name || 
-                                      outboundSlice.origin?.city_name || '';
-          
-          const outboundArrivalCity = outboundLastSegment.destination?.city_name || 
-                                    outboundLastSegment.destination?.city?.name || 
-                                    outboundSlice.destination?.city_name || '';
-
-          const outboundDepartureTime = outboundFirstSegment.departing_at ?? 
-                                      outboundFirstSegment.departure?.at ?? 
-                                      outboundSlice.departure_time ?? '';
-          
-          const outboundArrivalTime = outboundLastSegment.arriving_at ?? 
-                                    outboundLastSegment.arrival?.at ?? 
-                                    outboundSlice.arrival_time ?? '';
-
-          let totalPrice = parseFloat(offer.total_amount ?? offer.total_price ?? offer.amount ?? offer.price?.total ?? '85');
-          let currency = offer.total_currency ?? offer.currency ?? offer.price?.currency ?? 'GBP';
-          const sym = currency === 'GBP' ? '£' : currency === 'NGN' ? '₦' : currency === 'EUR' ? '€' : '$';
-
-          let totalDurMin = 0;
-          if (outboundSlice.duration) {
-            const match = outboundSlice.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
-            const hours = match?.[1] ? parseInt(match[1]) : 0;
-            const minutes = match?.[2] ? parseInt(match[2]) : 0;
-            totalDurMin = hours * 60 + minutes;
-          }
-          const h = Math.floor(totalDurMin / 60);
-          const m = totalDurMin % 60;
-
-          const outboundStops = Math.max(0, (outboundSegments.length || 1) - 1);
-
-          const passengerData = outboundFirstSegment.passengers?.[0] || {};
-          const baggages = passengerData.baggages || [];
-
-          const ownerObject = airline ? {
-            id: airline.id,
-            name: airlineName,
-            iata_code: airlineCode,
-            logo_symbol_url: airlineLogoUrl
-          } : undefined;
-
-          const formatTime = (timeStr: string): string => {
-            try {
-              return new Date(timeStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-            } catch {
-              return '--:--';
-            }
+      const [wakanowPromise, duffelPromise] = await Promise.allSettled([
+        // Wakanow international - using user's preferred currency
+        (async () => {
+          const { wakanowService } = await import('@/lib/wakanow.service');
+          const wakanowParams = {
+            from: origin,
+            to: destination,
+            departureDate: formatDateForWakanow(departureDate),
+            returnDate: returnDate ? formatDateForWakanow(returnDate) : undefined,
+            adults,
+            children,
+            infants,
+            cabinClass: cabinClass as 'economy' | 'premium_economy' | 'business' | 'first',
+            targetCurrency: currency.code // Use user's preferred currency from LanguageContext
           };
-
-          return {
-            id: offer.id ?? `flight-${i}`,
-            provider: 'duffel',
-            title: `${airlineName} ${outboundFlightNumber}`,
-            subtitle: `${outboundDepartureAirport} → ${outboundArrivalAirport}`,
-            price: `${sym}${totalPrice.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`,
-            totalPrice: `${sym}${totalPrice.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`,
-            time: formatTime(outboundDepartureTime),
-            duration: `${h}h ${String(m).padStart(2, '0')}m`,
-            rating: 4 + Math.random(),
-            image: airlineLogoUrl || `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2`,
-            amenities: ['Seat Selection', 'Cabin Baggage'],
-            features: [
-              outboundStops === 0 ? 'Direct' : `${outboundStops} stop${outboundStops > 1 ? 's' : ''}`,
-              `${h}h ${m}m`,
-              cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1)
-            ],
-            type: 'flights' as const,
-            owner: ownerObject,
-            airlineCode,
-            final_amount: offer.final_amount,
-            currency: offer.currency,
-            original_amount: offer.original_amount,
-            original_currency: offer.original_currency,
-            conversion_fee: offer.conversion_fee,
-            markup_percentage: offer.markup_percentage,
-            markup_amount: offer.markup_amount,
-            service_fee: offer.service_fee,
-            base_amount: offer.base_amount,
-            base_currency: offer.base_currency,
-            tax_amount: offer.tax_amount,
-            tax_currency: offer.tax_currency,
-            total_amount: offer.total_amount,
-            total_currency: offer.total_currency,
-            slices: slices,
-            departureAirport: outboundDepartureAirport,
-            arrivalAirport: outboundArrivalAirport,
-            departureCity: outboundDepartureCity,
-            arrivalCity: outboundArrivalCity,
-            departureTime: outboundDepartureTime,
-            arrivalTime: outboundArrivalTime,
-            airlineName,
-            airlineLogo: airlineLogoUrl,
-            flightNumber: outboundFlightNumber,
-            stopCount: outboundStops,
-            stopText: outboundStops === 0 ? 'Direct' : `${outboundStops} stop${outboundStops > 1 ? 's' : ''}`,
-            cabin: cabinClass,
-            baggage: baggages,
-            displayPrice: `${sym}${totalPrice.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`,
-            rawPrice: totalPrice,
-            isRoundTrip,
-            returnFlight: isRoundTrip && slices[1] ? (() => {
-              const returnSlice = slices[1];
-              const returnSegments = returnSlice.segments ?? [];
-              const returnFirstSegment = returnSegments[0] ?? {};
-              const returnLastSegment = returnSegments[returnSegments.length - 1] ?? returnFirstSegment;
+          const result = await wakanowService.searchDomesticFlights(wakanowParams);
+          const offers = result.offers || result.normalizedFlights || [];
+          return await transformWakanowOffers(offers, returnDate, cabinClass, currency.code, false);
+        })(),
+        
+        // Duffel international
+        (async () => {
+          const requestBody: any = {
+            origin,
+            destination,
+            departureDate,
+            passengers: adults + children + infants,
+            cabinClass,
+            currency: currency.code // Use user's preferred currency
+          };
+          if (returnDate) requestBody.returnDate = returnDate;
+          
+          const offerRes = await fetch(`${BASE}/api/v1/bookings/search/flights`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal
+          });
+          
+          if (!offerRes.ok) throw new Error(`Offer request failed: ${offerRes.status}`);
+          
+          const offerData = await offerRes.json();
+          if (!offerData.success || !offerData.data?.offer_request_id) {
+            throw new Error('No offer request ID in response');
+          }
+          
+          const offerRequestId = offerData.data.offer_request_id;
+          
+          let allOffers: any[] = [];
+          let cursor: string | null = null;
+          let hasMore = true;
+          let page = 1;
+          const MAX_PAGES = 5;
+          
+          while (hasMore && page <= MAX_PAGES) {
+            const url = new URL(`${BASE}/api/v1/bookings/offers`);
+            url.searchParams.set('offer_request_id', offerRequestId);
+            if (cursor) url.searchParams.set('cursor', cursor);
+            
+            const offersRes = await fetch(url.toString(), { signal: controller.signal });
+            if (!offersRes.ok) throw new Error('List offers failed');
+            
+            const offersData = await offersRes.json();
+            const pageOffers: any[] = offersData.data?.offers ?? offersData.data ?? offersData.offers ?? [];
+            allOffers = allOffers.concat(pageOffers);
+            
+            hasMore = offersData.meta?.hasMore ?? false;
+            cursor = offersData.meta?.nextCursor ?? null;
+            page++;
+          }
+          
+          // Transform Duffel offers
+          return allOffers.map((offer: any, i: number) => {
+            const slices = offer.slices || [];
+            const outboundSlice = slices[0] || {};
+            const returnSlice = slices.length > 1 ? slices[1] : null;
+            
+            const outboundSegments = outboundSlice.segments || [];
+            const firstOutboundSegment = outboundSegments[0] || {};
+            const lastOutboundSegment = outboundSegments[outboundSegments.length - 1] || firstOutboundSegment;
+            
+            const ownerAirline = offer.owner || {};
+            const operatingCarrier = firstOutboundSegment.operating_carrier || outboundSlice.operating_carrier || {};
+            const airline = ownerAirline.id ? ownerAirline : operatingCarrier;
+            const airlineName = airline.name || ownerAirline.name || operatingCarrier.name || 'Unknown Airline';
+            const airlineCode = airline.iata_code || airline.iataCode || operatingCarrier.iata_code || '';
+            const airlineLogo = airline.logo_symbol_url || airline.logo_url || '';
+            
+            const flightNumber = firstOutboundSegment.marketing_carrier_flight_number || 
+                                 firstOutboundSegment.flight_number || 
+                                 firstOutboundSegment.number || '';
+            
+            const outboundDepartureAirport = firstOutboundSegment.origin?.iata_code || 
+                                             firstOutboundSegment.departure?.iataCode || 
+                                             outboundSlice.origin?.iata_code || 
+                                             origin;
+            const outboundArrivalAirport = lastOutboundSegment.destination?.iata_code || 
+                                           lastOutboundSegment.arrival?.iataCode || 
+                                           outboundSlice.destination?.iata_code || 
+                                           destination;
+            
+            const outboundDepartureTime = firstOutboundSegment.departing_at || 
+                                          firstOutboundSegment.departure?.at || 
+                                          outboundSlice.departure_time || '';
+            const outboundArrivalTime = lastOutboundSegment.arriving_at || 
+                                        lastOutboundSegment.arrival?.at || 
+                                        outboundSlice.arrival_time || '';
+            
+            let totalDurMin = 0;
+            if (outboundSlice.duration) {
+              const match = outboundSlice.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
+              const hours = match?.[1] ? parseInt(match[1]) : 0;
+              const minutes = match?.[2] ? parseInt(match[2]) : 0;
+              totalDurMin = hours * 60 + minutes;
+            }
+            const h = Math.floor(totalDurMin / 60);
+            const m = totalDurMin % 60;
+            const durationDisplay = `${h}h ${String(m).padStart(2, '0')}m`;
+            
+            let totalPrice = parseFloat(offer.total_amount || offer.total_price || offer.amount || offer.price?.total || '0');
+            let currencyCode = offer.total_currency || offer.currency || offer.price?.currency || 'GBP';
+            const sym = currency.symbol;
+            
+            const outboundStops = Math.max(0, (outboundSegments.length || 1) - 1);
+            
+            const formatTimeFn = (timeStr: string): string => {
+              if (!timeStr) return '--:--';
+              try {
+                return new Date(timeStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+              } catch {
+                return '--:--';
+              }
+            };
+            
+            let returnFlightData = null;
+            
+            if (returnSlice) {
+              const returnSegments = returnSlice.segments || [];
+              const firstReturnSegment = returnSegments[0] || {};
+              const lastReturnSegment = returnSegments[returnSegments.length - 1] || firstReturnSegment;
+              
+              const returnFlightNumber = firstReturnSegment.marketing_carrier_flight_number || 
+                                         firstReturnSegment.flight_number || 
+                                         firstReturnSegment.number || '';
+              
+              const returnOperatingCarrier = firstReturnSegment.operating_carrier || returnSlice.operating_carrier || {};
+              const returnAirlineName = returnOperatingCarrier.name || airlineName;
+              const returnAirlineCode = returnOperatingCarrier.iata_code || airlineCode;
               
               let returnDurMin = 0;
               if (returnSlice.duration) {
@@ -747,185 +658,202 @@ export function SearchProvider({ children }: { children: ReactNode }) {
               const returnH = Math.floor(returnDurMin / 60);
               const returnM = returnDurMin % 60;
               
-              return {
-                departureAirport: returnFirstSegment.origin?.iata_code ?? returnFirstSegment.departure?.iataCode,
-                arrivalAirport: returnLastSegment.destination?.iata_code ?? returnLastSegment.arrival?.iataCode,
-                departureCity: returnFirstSegment.origin?.city_name || returnFirstSegment.origin?.city?.name,
-                arrivalCity: returnLastSegment.destination?.city_name || returnLastSegment.destination?.city?.name,
-                departureTime: returnFirstSegment.departing_at ?? returnFirstSegment.departure?.at,
-                arrivalTime: returnLastSegment.arriving_at ?? returnLastSegment.arrival?.at,
-                flightNumber: returnFirstSegment.marketing_carrier_flight_number || returnFirstSegment.flight_number,
+              returnFlightData = {
+                departureAirport: firstReturnSegment.origin?.iata_code || firstReturnSegment.departure?.iataCode || '',
+                arrivalAirport: lastReturnSegment.destination?.iata_code || lastReturnSegment.arrival?.iataCode || '',
+                departureCity: firstReturnSegment.origin?.city_name || firstReturnSegment.origin?.city?.name || '',
+                arrivalCity: lastReturnSegment.destination?.city_name || lastReturnSegment.destination?.city?.name || '',
+                departureTime: firstReturnSegment.departing_at || firstReturnSegment.departure?.at || '',
+                arrivalTime: lastReturnSegment.arriving_at || lastReturnSegment.arrival?.at || '',
+                flightNumber: returnFlightNumber,
+                airlineName: returnAirlineName,
+                airlineCode: returnAirlineCode,
                 duration: returnSlice.duration,
                 durationFormatted: `${returnH}h ${String(returnM).padStart(2, '0')}m`,
-                stopCount: Math.max(0, (returnSegments.length || 1) - 1)
+                stopCount: Math.max(0, (returnSegments.length || 1) - 1),
+                stopText: Math.max(0, (returnSegments.length || 1) - 1) === 0 ? 'Direct' : 
+                          Math.max(0, (returnSegments.length || 1) - 1) === 1 ? '1 Stop' : `${Math.max(0, (returnSegments.length || 1) - 1)} Stops`,
               };
-            })() : null,
-            formatTime,
-            offer_request_id: offerRequestId,
-            offer_id: offer.id,
-            payment_requirements: offer.payment_requirements,
-            created_at: offer.created_at,
-            updated_at: offer.updated_at,
-            expires_at: offer.expires_at,
-            conditions: offer.conditions,
-          };
-        });
-        
-        console.log(`✅ Duffel returned ${duffelResults.length} international flights`);
+            }
+            
+            return {
+              id: offer.id ?? `duffel-${i}`,
+              provider: 'duffel',
+              title: `${airlineName} ${flightNumber}`.trim() || 'Flight',
+              subtitle: `${outboundDepartureAirport} → ${outboundArrivalAirport}`,
+              price: `${sym}${totalPrice.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`,
+              totalPrice: `${sym}${totalPrice.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`,
+              time: formatTimeFn(outboundDepartureTime),
+              duration: durationDisplay,
+              type: 'flights' as const,
+              image: airlineLogo || `https://ui-avatars.com/api/?name=${airlineCode || airlineName}&background=33a8da&color=fff&length=2`,
+              isRefundable: false,
+              baggage: 'Check airline policy',
+              airlineCode: airlineCode,
+              flightNumber: flightNumber,
+              departureAirport: outboundDepartureAirport,
+              arrivalAirport: outboundArrivalAirport,
+              departureCity: firstOutboundSegment.origin?.city_name || outboundSlice.origin?.city_name || '',
+              arrivalCity: lastOutboundSegment.destination?.city_name || outboundSlice.destination?.city_name || '',
+              departureTime: outboundDepartureTime,
+              arrivalTime: outboundArrivalTime,
+              airlineName: airlineName,
+              airlineLogo: airlineLogo,
+              stopCount: outboundStops,
+              stopText: outboundStops === 0 ? 'Direct' : outboundStops === 1 ? '1 Stop' : `${outboundStops} Stops`,
+              cabin: cabinClass,
+              displayPrice: `${sym}${totalPrice.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`,
+              rawPrice: totalPrice,
+              original_amount: offer.original_amount,
+              original_currency: offer.original_currency,
+              final_amount: offer.final_amount,
+              currency: currencyCode,
+              isRoundTrip: !!returnSlice,
+              rating: 4,
+              amenities: ['Seat Selection', 'Cabin Baggage'],
+              features: [
+                outboundStops === 0 ? 'Direct' : `${outboundStops} stop${outboundStops > 1 ? 's' : ''}`,
+                durationDisplay,
+                cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1)
+              ],
+              isWakanow: false,
+              isWakanowDomestic: false,
+              selectData: offer.id,
+              slices: slices,
+              returnFlight: returnFlightData,
+              fareRules: [],
+              penaltyRules: null,
+              connection_code: '',
+              offer_request_id: offerRequestId,
+              offer_id: offer.id,
+              _normalizedAirline: airlineName.toLowerCase().trim(),
+              _normalizedDepartureTime: outboundDepartureTime,
+              _normalizedArrivalAirport: outboundArrivalAirport,
+            };
+          });
+        })()
+      ]);
+      
+      clearTimeout(timeoutId);
+      
+      let wakanowResults: SearchResult[] = [];
+      let duffelResults: SearchResult[] = [];
+      
+      if (wakanowPromise.status === 'fulfilled') {
+        wakanowResults = wakanowPromise.value;
+        console.log(`✅ Wakanow returned ${wakanowResults.length} international flights`);
+      } else {
+        console.error('❌ Wakanow international search failed:', wakanowPromise.reason);
       }
-    } catch (error) {
-      console.error('❌ Duffel search failed:', error);
-      duffelError = error;
+      
+      if (duffelPromise.status === 'fulfilled') {
+        duffelResults = duffelPromise.value;
+        console.log(`✅ Duffel returned ${duffelResults.length} international flights`);
+      } else {
+        console.error('❌ Duffel search failed:', duffelPromise.reason);
+      }
+      
+      // Deduplication logic
+      console.log(`📊 Before deduplication: Wakanow=${wakanowResults.length}, Duffel=${duffelResults.length}, Total=${wakanowResults.length + duffelResults.length}`);
+      
+      const combinedResults = [...wakanowResults, ...duffelResults];
+      const uniqueResults = new Map();
+      
+      const normalizeString = (str?: string) => (str || '').toUpperCase().trim();
+      
+      const getDateTimeKey = (timeStr?: string): string => {
+        if (!timeStr) return '';
+        try {
+          const date = new Date(timeStr);
+          return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:${date.getMinutes()}`;
+        } catch {
+          return '';
+        }
+      };
+      
+      const getAirlineKey = (flight: any): string => {
+        const airline = normalizeString(flight.airlineName || flight.airline || '');
+        const airlineMap: Record<string, string> = {
+          'ROYAL AIR MAROC': 'AT',
+          'EGYPTAIR': 'MS',
+          'BRITISH AIRWAYS': 'BA',
+          'KENYA AIRWAYS': 'KQ',
+          'EMIRATES AIRLINES': 'EK',
+          'RWANDAIR': 'WB',
+          'QATAR AIRWAYS': 'QR',
+          'ETHIOPIAN AIRLINES': 'ET',
+          'KLM ROYAL DUTCH AIRLINES': 'KL',
+          'AIR FRANCE': 'AF',
+          'VIRGIN ATLANTIC': 'VS',
+          'TURKISH AIRLINES': 'TK',
+          'AIR PEACE': 'P4',
+        };
+        return airlineMap[airline] || airline;
+      };
+      
+      for (const flight of combinedResults) {
+        const flightAny = flight as any;
+        if (!flightAny.departureAirport || !flightAny.arrivalAirport) continue;
+        
+        const departureAirport = normalizeString(flightAny.departureAirport);
+        const arrivalAirport = normalizeString(flightAny.arrivalAirport);
+        const departureTimeKey = getDateTimeKey(flightAny.departureTime);
+        const airlineKey = getAirlineKey(flightAny);
+        
+        let key = `${airlineKey}-${departureAirport}-${arrivalAirport}-${departureTimeKey}`;
+        
+        if (flightAny.returnFlight) {
+          const returnTimeKey = getDateTimeKey(flightAny.returnFlight.departureTime);
+          key = `${key}-${returnTimeKey}`;
+        }
+        
+        if (!uniqueResults.has(key)) {
+          uniqueResults.set(key, flight);
+        } else {
+          const existing = uniqueResults.get(key);
+          const existingProvider = (existing as any).provider;
+          const currentProvider = flightAny.provider;
+          
+          if (currentProvider === 'wakanow' && existingProvider === 'duffel') {
+            console.log(`🔄 Replacing Duffel with Wakanow`);
+            uniqueResults.set(key, flight);
+          } else if (currentProvider === existingProvider) {
+            const existingPrice = (existing as any).rawPrice || Infinity;
+            const currentPrice = flightAny.rawPrice || Infinity;
+            if (currentPrice < existingPrice) {
+              console.log(`🔄 Replacing with cheaper ${currentProvider} flight`);
+              uniqueResults.set(key, flight);
+            }
+          }
+        }
+      }
+      
+      const finalResults = Array.from(uniqueResults.values());
+      finalResults.sort((a, b) => ((a as any).rawPrice || Infinity) - ((b as any).rawPrice || Infinity));
+      
+      console.log(`✅ After deduplication: ${finalResults.length} unique international flights`);
+      
+      if (finalResults.length === 0 && wakanowPromise.status === 'rejected' && duffelPromise.status === 'rejected') {
+        setSearchError('No flights found from any provider. Please try again.');
+        setSearchResults([]);
+      } else {
+        setSearchResults(finalResults);
+      }
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        console.error('❌ International flight search timed out');
+        setSearchError('Search is taking too long. Please try again.');
+      } else {
+        console.error('❌ International flight search failed:', error);
+        setSearchError('Failed to search international flights. Please try again.');
+      }
+      setSearchResults([]);
     }
-
-       // 3. Enhanced deduplication for combined results
-       console.log(`📊 Before deduplication: Wakanow=${wakanowResults.length}, Duffel=${duffelResults.length}, Total=${wakanowResults.length + duffelResults.length}`);
-    
-       const combinedResults = [...wakanowResults, ...duffelResults];
-       const uniqueResults = new Map();
-       
-       // Helper function to get cabin priority
-       const getCabinPriority = (cabin?: string): number => {
-         const cabinMap: Record<string, number> = {
-           'first': 4,
-           'business': 3,
-           'premium_economy': 2,
-           'economy': 1
-         };
-         return cabinMap[cabin?.toLowerCase() || 'economy'] || 1;
-       };
-       
-       // Helper function to check if times are close (within 2 hours)
-       const isTimeClose = (time1?: string, time2?: string): boolean => {
-         if (!time1 || !time2) return false;
-         try {
-           const t1 = new Date(time1).getTime();
-           const t2 = new Date(time2).getTime();
-           const diffMinutes = Math.abs(t1 - t2) / (1000 * 60);
-           return diffMinutes <= 120; // Within 2 hours
-         } catch {
-           return false;
-         }
-       };
-       
-       for (const flight of combinedResults) {
-         // Cast to any to access extended properties
-         const flightAny = flight as any;
-         
-         // Normalize strings for comparison
-         const normalizeString = (str?: string) => (str || '').toUpperCase().trim();
-         
-         const airlineCode = normalizeString(flightAny.airlineCode);
-         const flightNumber = normalizeString(flightAny.flightNumber);
-         const departureTime = flightAny.departureTime || '';
-         const arrivalTime = flightAny.arrivalTime || '';
-         const departureAirport = normalizeString(flightAny.departureAirport);
-         const arrivalAirport = normalizeString(flightAny.arrivalAirport);
-         
-         // Create multiple keys for different matching strategies
-         // Primary key: Airline + Flight Number + Departure Time + Arrival Airport
-         const primaryKey = `${airlineCode}-${flightNumber}-${departureTime}-${arrivalAirport}`;
-         
-         // Secondary key: Airline + Departure/Arrival airports + close departure time
-         let secondaryKey = null;
-         for (const [existingKey, existingFlight] of uniqueResults.entries()) {
-           const existingAny = existingFlight as any;
-           const existingDepartureTime = existingAny.departureTime || '';
-           const existingArrivalAirport = normalizeString(existingAny.arrivalAirport);
-           const existingAirlineCode = normalizeString(existingAny.airlineCode);
-           
-           // Check if this might be the same flight with different flight numbers
-           if (existingAirlineCode === airlineCode &&
-               existingArrivalAirport === arrivalAirport &&
-               isTimeClose(existingDepartureTime, departureTime)) {
-             secondaryKey = existingKey;
-             break;
-           }
-         }
-         
-         // Use primary key or secondary key if found
-         let key = primaryKey;
-         let foundDuplicate = uniqueResults.has(primaryKey);
-         
-         if (!foundDuplicate && secondaryKey && uniqueResults.has(secondaryKey)) {
-           key = secondaryKey;
-           foundDuplicate = true;
-         }
-         
-         if (!foundDuplicate) {
-           // New unique flight
-           uniqueResults.set(key, flight);
-         } else {
-           // Duplicate found - keep the better option
-           const existing = uniqueResults.get(key);
-           const existingAny = existing as any;
-           const existingPrice = existingAny.rawPrice || Infinity;
-           const currentPrice = flightAny.rawPrice || Infinity;
-           
-           const existingCabinPriority = getCabinPriority(existingAny.cabin);
-           const currentCabinPriority = getCabinPriority(flightAny.cabin);
-           
-           const existingStops = existingAny.stopCount || 0;
-           const currentStops = flightAny.stopCount || 0;
-           
-           let shouldReplace = false;
-           let reason = '';
-           
-           if (currentPrice < existingPrice - 10) {
-             shouldReplace = true;
-             reason = `cheaper price (${existingAny.displayPrice} → ${flightAny.displayPrice})`;
-           } else if (Math.abs(currentPrice - existingPrice) <= 10 && currentCabinPriority > existingCabinPriority) {
-             shouldReplace = true;
-             reason = `better cabin (${existingAny.cabin} → ${flightAny.cabin})`;
-           } else if (Math.abs(currentPrice - existingPrice) <= 10 && 
-                      currentCabinPriority === existingCabinPriority && 
-                      currentStops < existingStops) {
-             shouldReplace = true;
-             reason = `fewer stops (${existingStops} → ${currentStops})`;
-           }
-           
-           if (shouldReplace) {
-             console.log(`🔄 Replacing duplicate flight: ${reason}`);
-             uniqueResults.set(key, flight);
-           } else {
-             const keptProvider = existingAny.provider;
-             const duplicateProvider = flightAny.provider;
-             console.log(`📌 Keeping ${keptProvider} flight, discarding ${duplicateProvider} duplicate`);
-           }
-         }
-       }
-       
-       const finalResults = Array.from(uniqueResults.values());
-       finalResults.sort((a, b) => {
-         const aAny = a as any;
-         const bAny = b as any;
-         return (aAny.rawPrice || Infinity) - (bAny.rawPrice || Infinity);
-       });
-       
-       console.log(`✅ After enhanced deduplication: ${finalResults.length} unique international flights`);
-       console.log(`📊 Final breakdown by provider:`, {
-         wakanow: finalResults.filter(f => (f as any).isWakanow).length,
-         duffel: finalResults.filter(f => !(f as any).isWakanow).length
-       });
-       
-       if (finalResults.length === 0 && wakanowError && duffelError) {
-         setSearchError('No flights found from any provider. Please try again.');
-         setSearchResults([]);
-       } else {
-         setSearchResults(finalResults);
-       }
   };
 
   const selectItem = useCallback((item: SearchResult) => {
-    console.log('📦 Item selected:', {
-      id: item.id,
-      provider: item.provider,
-      isWakanow: (item as any).isWakanow,
-      isWakanowDomestic: (item as any).isWakanowDomestic,
-      original_amount: (item as any).original_amount,
-      final_amount: (item as any).final_amount,
-      hasReturnFlight: !!(item as any).returnFlight
-    });
+    console.log('📦 Item selected:', item);
     setSelectedItem(item);
   }, []);
 
@@ -948,6 +876,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       sessionStorage.removeItem(BOOKING_REVIEW_SELECTION_KEY);
     }
   }, [selectedItem, searchParams]);
+
 
   return (
     <SearchContext.Provider

@@ -94,6 +94,10 @@ export interface SearchResult {
   final_amount?: string;
   currency?: string;
 
+  // ✅ DISPLAY FIELDS (added for Wakanow/Duffel transformation)
+  displayPrice?: string;
+  rawPrice?: number;
+
   // ✅ CUSTOM CALCULATED FIELDS (FOR BOOKING PREVIEW)
   calculatedBasePrice?: number;
   calculatedMarkup?: number;
@@ -102,7 +106,7 @@ export interface SearchResult {
   selectedRoom?: any;
   roomPrice?: number;
 
-  // ✅ BOOKING DATA - Add this!
+  // ✅ BOOKING DATA
   bookingData?: {
     roomType?: string;
     guests?: number;
@@ -111,7 +115,7 @@ export interface SearchResult {
     [key: string]: any;
   };
 
-  // ✅ FLIGHT SPECIFIC FIELDS
+  // ✅ FLIGHT SPECIFIC FIELDS (Wakanow & Duffel)
   departureAirport?: string;
   arrivalAirport?: string;
   departureCity?: string;
@@ -125,6 +129,27 @@ export interface SearchResult {
   flightNumber?: string;
   cabin?: string;
   slices?: any[];
+  
+  // ✅ Wakanow specific fields
+  isWakanow?: boolean;
+  isWakanowDomestic?: boolean;
+  selectData?: string;
+  legs?: any[];
+  outboundLegs?: any[];
+  returnLegs?: any[];
+  returnFlight?: any;
+  fareRules?: string[];
+  penaltyRules?: string[] | null;
+  connection_code?: string;
+  
+  // ✅ Duffel specific fields
+  offer_request_id?: string;
+  offer_id?: string;
+  conditions?: any;
+  payment_requirements?: any;
+  created_at?: string;
+  updated_at?: string;
+  expires_at?: string;
 
   // ✅ HOTEL SPECIFIC FIELDS
   checkInDate?: string;
@@ -144,6 +169,10 @@ export interface SearchResult {
   seats?: number;
   transmission?: string;
   fuelType?: string;
+  
+  // ✅ Round trip fields
+  isRoundTrip?: boolean;
+  returnFlightData?: any;
 }
 
 export interface User {
@@ -524,6 +553,7 @@ export interface HBXQuoteResponse {
     }>;
   };
 }
+
 // ============ WAKANOW (DOMESTIC FLIGHTS) TYPES ============
 
 export interface WakanowAirport {
@@ -707,7 +737,6 @@ export interface DomesticFlightSearchParams {
 }
 
 // Normalized flight output (matches your existing SearchResult structure)
-// FIXED: Remove the incorrect extension and use a mapped type instead
 export interface WakanowNormalizedFlight {
   id: string;
   provider: 'wakanow';
@@ -718,8 +747,8 @@ export interface WakanowNormalizedFlight {
   totalPrice?: string;
   time?: string;
   duration?: string;
-  stops: string;  // Changed from number to string to match SearchResult
-  stopCount?: number;  // Keep numeric version for filtering
+  stops: string;
+  stopCount?: number;
   stopText: string;
   rating?: number;
   image?: string;

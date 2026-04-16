@@ -66,8 +66,8 @@ class UnifiedFlightService {
       const result = await wakanowService.searchDomesticFlights({
         from: params.from,
         to: params.to,
-        departureDate: params.departureDate,
-        returnDate: params.returnDate,
+        departureDate: params.departureDate.toISOString().split('T')[0], // Convert Date to YYYY-MM-DD
+        returnDate: params.returnDate?.toISOString().split('T')[0], // Convert Date to YYYY-MM-DD if exists
         adults: params.passengers.adults,
         children: params.passengers.children,
         infants: params.passengers.infants,

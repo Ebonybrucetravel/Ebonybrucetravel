@@ -1,5 +1,5 @@
 // lib/wakanow.service.ts
-// Business logic wrapper for Wakanow API
+// Business logic wrapper for Wakanow API - UPDATED FOR BACKEND ROUTING
 
 import {
   searchWakanowFlights,
@@ -17,8 +17,8 @@ import {
 export interface DomesticFlightSearchParams {
   from: string;
   to: string;
-  departureDate: Date;
-  returnDate?: Date;
+  departureDate: string;
+  returnDate?: string;
   adults: number;
   children: number;
   infants: number;
@@ -78,14 +78,13 @@ export interface NormalizedFlight {
   isOutbound?: boolean;
   isReturn?: boolean;
   returnFlight?: NormalizedFlightLeg;
-  returnFlightDetails?: NormalizedFlight; // For complete return flight object
+  returnFlightDetails?: NormalizedFlight;
   combinationPrice?: number;
   outboundLegs?: NormalizedFlightLeg[];
   returnLegs?: NormalizedFlightLeg[];
   selectData?: string;
 }
 
-// ADD THESE MISSING INTERFACES
 export interface FlightDetailsResult {
   flight: WakanowFlight;
   price: { amount: number; currency: string };
@@ -103,13 +102,29 @@ export interface BookingConfirmationResult {
   bookingStatus: WakanowTicketResponse['BookingStatusDetails'];
 }
 
+export interface WakanowSearchResult {
+  flights: WakanowFlight[];
+  selectData: string;
+  normalizedFlights: NormalizedFlight[];
+  offers: any[]; // Raw offers from backend
+}
+
 export class WakanowService {
   
-  async searchDomesticFlights(params: DomesticFlightSearchParams): Promise<{
-    flights: WakanowFlight[];
-    selectData: string;
-    normalizedFlights: NormalizedFlight[];
-  }> {
+  async checkBackendHealth(): Promise<boolean> {
+    try {
+      await getWakanowAirports();
+      console.log('✅ Backend connection successful');
+      return true;
+    } catch (error) {
+      console.error('❌ Backend connection failed:', error);
+      return false;
+    }
+  }
+
+  async searchDomesticFlights(params: DomesticFlightSearchParams): Promise<WakanowSearchResult> {
+    console.log('🔍 Searching flights via backend...', params);
+    
     const ticketClassMap = {
       economy: 'Y',
       premium_economy: 'W',
@@ -131,7 +146,7 @@ export class WakanowService {
         {
           Departure: params.from.toUpperCase(),
           Destination: params.to.toUpperCase(),
-          DepartureDate: this.formatDate(params.departureDate),
+          DepartureDate: params.departureDate,
         },
       ],
     };
@@ -140,104 +155,36 @@ export class WakanowService {
       searchParams.Itineraries.push({
         Departure: params.to.toUpperCase(),
         Destination: params.from.toUpperCase(),
-        DepartureDate: this.formatDate(params.returnDate),
+        DepartureDate: params.returnDate,
       });
     }
 
     const result = await searchWakanowFlights(searchParams);
     
-    console.log('Raw Wakanow API response type:', Array.isArray(result) ? 'Array' : typeof result);
+    console.log('📦 Backend response received:', {
+      hasOffers: !!(result.offers),
+      offersLength: result.offers?.length || 0,
+      hasSelectData: !!result.selectData
+    });
     
-    // Handle different possible response structures
-    const normalizedFlights: NormalizedFlight[] = [];
-    let selectData = '';
+    // Extract the offers array from the response
+    const offers = result.offers || [];
+    const selectData = result.selectData || '';
     
-    // The response is an array of combinations (each with outbound + return flights)
-    if (Array.isArray(result)) {
-      console.log('Response is an array with length:', result.length);
-      
-      for (const combination of result) {
-        const flightCombination = combination.FlightCombination;
-        const combinationSelectData = combination.SelectData;
-        const flightModels = flightCombination?.FlightModels || [];
-        const combinationPrice = flightCombination?.Price?.Amount || 0;
-        const combinationCurrency = flightCombination?.Price?.CurrencyCode || 'NGN';
-        
-        if (flightModels.length === 0) continue;
-        
-        // First flight in combination is outbound
-        const outboundFlight = flightModels[0];
-        // Second flight (if exists) is return
-        const returnFlight = flightModels[1];
-        
-        // Normalize outbound flight with its price from the combination
-        if (outboundFlight) {
-          const normalizedOutbound = this.normalizeFlight(outboundFlight);
-          normalizedOutbound.price = {
-            amount: combinationPrice,
-            currency: combinationCurrency,
-          };
-          normalizedOutbound.isOutbound = true;
-          normalizedOutbound.combinationPrice = combinationPrice;
-          normalizedOutbound.selectData = combinationSelectData;
-          normalizedOutbound.outboundLegs = normalizedOutbound.legs;
-          
-          // Add return flight details if it exists
-          if (returnFlight) {
-            const normalizedReturn = this.normalizeFlight(returnFlight);
-            normalizedOutbound.isReturn = true;
-            normalizedOutbound.returnFlightDetails = normalizedReturn;
-            normalizedOutbound.returnLegs = normalizedReturn.legs;
-            // Update departure/arrival to show round trip info
-            normalizedOutbound.departure = {
-              code: outboundFlight.DepartureCode || '',
-              name: outboundFlight.DepartureName || '',
-              time: outboundFlight.DepartureTime || '',
-            };
-            normalizedOutbound.arrival = {
-              code: returnFlight.ArrivalCode || '',
-              name: returnFlight.ArrivalName || '',
-              time: returnFlight.ArrivalTime || '',
-            };
-            // Update duration to show total trip duration
-            normalizedOutbound.duration = this.calculateTotalDuration(outboundFlight, returnFlight);
-          }
-          
-          normalizedFlights.push(normalizedOutbound);
-        }
-        
-        if (combinationSelectData && !selectData) selectData = combinationSelectData;
-      }
-    }
+    console.log(`✅ Returning ${offers.length} raw offers to SearchContext`);
     
-    console.log('Extracted flight combinations count:', normalizedFlights.length);
-    
-    // Remove duplicates based on outbound flight number + departure time + return flight number
-    const uniqueFlights = new Map();
-    for (const flight of normalizedFlights) {
-      const returnKey = flight.returnFlightDetails?.flightNumber || 'none';
-      const key = `${flight.airlineCode}-${flight.flightNumber}-${flight.departure.time}-${returnKey}`;
-      if (!uniqueFlights.has(key)) {
-        uniqueFlights.set(key, flight);
-      }
-    }
-    
-    const uniqueNormalizedFlights = Array.from(uniqueFlights.values());
-    console.log('Unique flight combinations count:', uniqueNormalizedFlights.length);
-    
-    if (uniqueNormalizedFlights[0]) {
-      console.log('First normalized flight price:', uniqueNormalizedFlights[0].price);
-      console.log('Is return flight:', uniqueNormalizedFlights[0].isReturn);
-    }
-    
+    // Return raw offers for SearchContext to transform
     return {
       flights: [],
       selectData: selectData,
-      normalizedFlights: uniqueNormalizedFlights,
+      normalizedFlights: [],
+      offers: offers,
     };
   }
 
   async getFlightDetails(selectData: string, targetCurrency: string = 'NGN'): Promise<FlightDetailsResult> {
+    console.log('📋 Getting flight details via backend...');
+    
     const result = await selectWakanowFlight(selectData, targetCurrency);
     
     let flight: WakanowFlight;
@@ -297,7 +244,10 @@ export class WakanowService {
       postalCode: string;
     }>;
     targetCurrency?: string;
+    authToken?: string;
   }): Promise<WakanowBookingResponse> {
+    
+    console.log('📝 Creating booking via backend...', { bookingId: params.bookingId });
     
     const passengerDetails: WakanowPassenger[] = params.passengers.map(p => ({
       PassengerType: p.type === 'adult' ? 'Adult' : p.type === 'child' ? 'Child' : 'Infant',
@@ -324,10 +274,12 @@ export class WakanowService {
       BookingId: params.bookingId,
       TargetCurrency: params.targetCurrency || 'NGN',
       BookingData: params.selectData,
-    });
+    }, params.authToken);
   }
 
   async confirmTicket(bookingId: string, pnrNumber: string): Promise<BookingConfirmationResult> {
+    console.log('🎫 Confirming ticket via backend...', { bookingId, pnrNumber });
+    
     const result = await ticketWakanowPNR(bookingId, pnrNumber);
     
     return {
@@ -341,130 +293,14 @@ export class WakanowService {
   }
 
   async getAirports() {
+    console.log('🛫 Fetching airports via backend...');
     return await getWakanowAirports();
   }
 
-  private calculateTotalDuration(outboundFlight: WakanowFlight, returnFlight: WakanowFlight): string {
-    try {
-      // Parse outbound flight times
-      const outboundStart = new Date(outboundFlight.DepartureTime);
-      const outboundEnd = new Date(outboundFlight.ArrivalTime);
-      const outboundDuration = (outboundEnd.getTime() - outboundStart.getTime()) / (1000 * 60);
-      
-      // Parse return flight times
-      const returnStart = new Date(returnFlight.DepartureTime);
-      const returnEnd = new Date(returnFlight.ArrivalTime);
-      const returnDuration = (returnEnd.getTime() - returnStart.getTime()) / (1000 * 60);
-      
-      // Calculate days between flights
-      const daysBetween = Math.floor((returnStart.getTime() - outboundEnd.getTime()) / (1000 * 60 * 60 * 24));
-      
-      const totalMinutes = outboundDuration + returnDuration;
-      const hours = Math.floor(totalMinutes / 60);
-      const minutes = Math.floor(totalMinutes % 60);
-      
-      let durationString = `${hours}h ${minutes}m flying time`;
-      if (daysBetween > 0) {
-        durationString += ` (${daysBetween} day${daysBetween > 1 ? 's' : ''} between flights)`;
-      }
-      
-      return durationString;
-    } catch (error) {
-      return outboundFlight.TripDuration || '';
-    }
-  }
-
-  normalizeFlight(flight: WakanowFlight): NormalizedFlight {
-    // Get airline logo
-    let airlineLogo = flight.AirlineLogoUrl || '';
-    if (!airlineLogo && flight.Airline) {
-      airlineLogo = `https://images.wakanow.com/Images/flight-logos/${flight.Airline}.gif`;
-    }
-  
-    // Format duration - convert HH:MM:SS to readable format
-    let durationDisplay = flight.TripDuration || '';
-    if (durationDisplay) {
-      const parts = durationDisplay.split(':');
-      if (parts.length === 3) {
-        const hours = parseInt(parts[0]);
-        const minutes = parseInt(parts[1]);
-        if (hours > 0 && minutes > 0) durationDisplay = `${hours}h ${minutes}m`;
-        else if (hours > 0) durationDisplay = `${hours}h`;
-        else if (minutes > 0) durationDisplay = `${minutes}m`;
-      }
-    }
-  
-    // Handle missing or undefined properties
-    const legs = flight.FlightLegs && Array.isArray(flight.FlightLegs) 
-      ? flight.FlightLegs.map(leg => ({
-          number: leg.FlightLegNumber || '',
-          from: leg.DepartureCode || '',
-          fromName: leg.DepartureName || '',
-          to: leg.DestinationCode || '',
-          toName: leg.DestinationName || '',
-          departureTime: leg.StartTime || '',
-          arrivalTime: leg.EndTime || '',
-          duration: leg.Duration || '',
-          airline: leg.OperatingCarrierName || '',
-          flightNumber: leg.FlightNumber || '',
-          cabinClass: leg.CabinClassName || '',
-          bookingClass: leg.BookingClass || '',
-        }))
-      : [];
-  
-    // Generate a unique ID
-    const uniqueId = `${flight.Airline || 'UN'}-${flight.Name || 'FLT'}-${flight.DepartureTime || Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-  
-    return {
-      id: uniqueId,
-      provider: 'wakanow',
-      productType: 'FLIGHT_DOMESTIC',
-      airline: flight.AirlineName || flight.Airline || 'Unknown Airline',
-      airlineCode: flight.Airline || '',
-      airlineLogo: airlineLogo,
-      flightNumber: flight.Name || '',
-      departure: {
-        code: flight.DepartureCode || '',
-        name: flight.DepartureName || '',
-        time: flight.DepartureTime || '',
-      },
-      arrival: {
-        code: flight.ArrivalCode || '',
-        name: flight.ArrivalName || '',
-        time: flight.ArrivalTime || '',
-      },
-      duration: durationDisplay,
-      stops: flight.Stops || 0,
-      stopCity: flight.StopCity || null,
-      price: {
-        amount: flight.Price?.Amount || 0,
-        currency: flight.Price?.CurrencyCode || 'NGN',
-      },
-      baggage: {
-        count: flight.FreeBaggage?.BagCount || 0,
-        weight: flight.FreeBaggage?.Weight || 0,
-        unit: flight.FreeBaggage?.WeightUnit || null,
-      },
-      isRefundable: flight.IsRefundable || false,
-      fareRules: flight.FareRules || [],
-      penaltyRules: flight.PenaltyRules || null,
-      legs: legs,
-      // Add these optional properties with default values
-      isOutbound: false,
-      isReturn: false,
-      outboundLegs: legs,
-      returnLegs: undefined,
-      returnFlightDetails: undefined,
-      selectData: undefined,
-      combinationPrice: undefined,
-    };
-  }
-
-  private formatDate(date: Date): string {
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const year = date.getFullYear();
-    return `${month}/${day}/${year}`;
+  async getWalletBalance(authToken?: string) {
+    console.log('💰 Getting wallet balance via backend...');
+    const { getWakanowWalletBalance } = await import('./wakanow-api');
+    return await getWakanowWalletBalance(authToken);
   }
 }
 

@@ -40,7 +40,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   onFetchImages,
   onFetchSuggestions
 }) => {
-  const { currency } = useLanguage();
+  const { currency, convertPrice, formatPrice, isLoadingRates } = useLanguage();
   const { isLoggedIn, user } = useAuth();
   const router = useRouter();
 
@@ -60,6 +60,12 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   });
   const [loadingImages, setLoadingImages] = useState(false);
   const [imageError, setImageError] = useState(false);
+  
+  // State for converted price
+  const [convertedPrice, setConvertedPrice] = useState<string>('');
+  const [isConverting, setIsConverting] = useState(false);
+  const [originalPriceAmount, setOriginalPriceAmount] = useState<number>(0);
+  const [originalPriceCurrency, setOriginalPriceCurrency] = useState<string>('GBP');
 
   // Wishlist/Saved Items States
   const [isSaved, setIsSaved] = useState(false);
@@ -82,7 +88,90 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const [loadingStats, setLoadingStats] = useState(false);
   const [statsError, setStatsError] = useState(false);
 
+  // Helper function to extract original price from item
+  const extractOriginalPrice = useCallback(() => {
+    if (!item) return { amount: 0, currency: 'GBP' };
+    
+    // Check for stored original price info
+    if ((item as any).originalPriceAmount && (item as any).originalPriceCurrency) {
+      return {
+        amount: (item as any).originalPriceAmount,
+        currency: (item as any).originalPriceCurrency
+      };
+    }
+    
+    // Try to extract from price string
+    let amount = 0;
+    let currencyCode = 'GBP';
+    
+    if (item.price) {
+      // Check for currency symbol in price string
+      const priceStr = String(item.price);
+      if (priceStr.includes('£')) currencyCode = 'GBP';
+      else if (priceStr.includes('$')) currencyCode = 'USD';
+      else if (priceStr.includes('€')) currencyCode = 'EUR';
+      else if (priceStr.includes('₦')) currencyCode = 'NGN';
+      
+      // Extract numeric value
+      const match = priceStr.match(/[\d,.]+/);
+      if (match) {
+        amount = parseFloat(match[0].replace(/,/g, ''));
+      }
+    }
+    
+    // Check for original amount fields
+    if ((item as any).original_amount) {
+      amount = parseFloat((item as any).original_amount);
+      currencyCode = (item as any).original_currency || currencyCode;
+    }
+    
+    if ((item as any).original_price) {
+      amount = parseFloat((item as any).original_price);
+      currencyCode = (item as any).original_currency || currencyCode;
+    }
+    
+    return { amount, currency: currencyCode };
+  }, [item]);
 
+  // Convert price when component loads or currency changes
+  useEffect(() => {
+    const convertHotelPrice = async () => {
+      if (!item) return;
+      
+      setIsConverting(true);
+      try {
+        const { amount: originalAmount, currency: originalCurrency } = extractOriginalPrice();
+        
+        setOriginalPriceAmount(originalAmount);
+        setOriginalPriceCurrency(originalCurrency);
+        
+        let finalDisplayPrice = '';
+        
+        if (originalAmount > 0) {
+          if (originalCurrency !== currency.code) {
+            // Convert to user's currency
+            const converted = await convertPrice(originalAmount, originalCurrency);
+            finalDisplayPrice = await formatPrice(converted);
+            console.log(`💰 HotelDetails - Converted ${originalCurrency} ${originalAmount} → ${currency.code} ${converted.toFixed(2)}`);
+          } else {
+            // Just format in original currency
+            finalDisplayPrice = await formatPrice(originalAmount, originalCurrency);
+          }
+        } else {
+          finalDisplayPrice = item.price || 'Price on request';
+        }
+        
+        setConvertedPrice(finalDisplayPrice);
+      } catch (error) {
+        console.error('Failed to convert hotel price:', error);
+        setConvertedPrice(item.price || 'Price on request');
+      } finally {
+        setIsConverting(false);
+      }
+    };
+    
+    convertHotelPrice();
+  }, [item, currency.code, convertPrice, formatPrice, extractOriginalPrice]);
 
   // Check if item is saved when component loads
   useEffect(() => {
@@ -90,7 +179,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
       checkIfSaved();
     }
   }, [isLoggedIn, item?.id]);
-
 
   // Check if current hotel is in wishlist
   const checkIfSaved = async () => {
@@ -154,17 +242,16 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     }
   };
 
-  // Save hotel to wishlist with notes - SIMPLIFIED for API
+  // Save hotel to wishlist with notes
   const handleSaveWithNotes = async () => {
     if (!item) return;
 
     try {
       setIsSaving(true);
 
-      const priceMatch = item.price?.match(/[\d,.]+/);
-      const pricePerNight = priceMatch ? parseFloat(priceMatch[0].replace(/,/g, '')) : 0;
+      // Use converted price amount for saving
+      const pricePerNight = originalPriceAmount || 0;
 
-      // Format the request according to API expectations - only required fields
       const saveData: {
         productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
         title: string;
@@ -175,7 +262,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
         productType: 'HOTEL',
         title: item.title,
         price: pricePerNight,
-        currency: 'GBP',
+        currency: originalPriceCurrency,
         notes: saveNotes
       };
 
@@ -206,6 +293,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
       setIsSaving(false);
     }
   };
+
   // Format date function
   const formatDisplayDate = (dateStr?: string) => {
     if (!dateStr) return null;
@@ -223,74 +311,34 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
 
   // Extract real dates from searchParams or item
   const getCheckInDate = () => {
-    // Try from searchParams first
-    if (searchParams?.checkInDate) {
-      return formatDisplayDate(searchParams.checkInDate);
-    }
-    // Try from item.realData
-    if (item?.realData?.checkInDate) {
-      return formatDisplayDate(item.realData.checkInDate);
-    }
-    // Try from item.bookingData
-    if ((item as any)?.bookingData?.checkInDate) {
-      return formatDisplayDate((item as any).bookingData.checkInDate);
-    }
+    if (searchParams?.checkInDate) return formatDisplayDate(searchParams.checkInDate);
+    if (item?.realData?.checkInDate) return formatDisplayDate(item.realData.checkInDate);
+    if ((item as any)?.bookingData?.checkInDate) return formatDisplayDate((item as any).bookingData.checkInDate);
     return null;
   };
 
   const getCheckOutDate = () => {
-    // Try from searchParams first
-    if (searchParams?.checkOutDate) {
-      return formatDisplayDate(searchParams.checkOutDate);
-    }
-    // Try from item.realData
-    if (item?.realData?.checkOutDate) {
-      return formatDisplayDate(item.realData.checkOutDate);
-    }
-    // Try from item.bookingData
-    if ((item as any)?.bookingData?.checkOutDate) {
-      return formatDisplayDate((item as any).bookingData.checkOutDate);
-    }
+    if (searchParams?.checkOutDate) return formatDisplayDate(searchParams.checkOutDate);
+    if (item?.realData?.checkOutDate) return formatDisplayDate(item.realData.checkOutDate);
+    if ((item as any)?.bookingData?.checkOutDate) return formatDisplayDate((item as any).bookingData.checkOutDate);
     return null;
   };
 
   // Get guests count
   const getGuestsCount = () => {
-    // Try from searchParams
-    if (searchParams?.guests) {
-      return `${searchParams.guests} Adults`;
-    }
-    if (searchParams?.adults) {
-      return `${searchParams.adults} Adults`;
-    }
-    // Try from item.realData
-    if (item?.realData?.guests) {
-      return `${item.realData.guests} Adults`;
-    }
-    // Try from item
-    if ((item as any)?.guests) {
-      return `${(item as any).guests} Adults`;
-    }
+    if (searchParams?.guests) return `${searchParams.guests} Adults`;
+    if (searchParams?.adults) return `${searchParams.adults} Adults`;
+    if (item?.realData?.guests) return `${item.realData.guests} Adults`;
+    if ((item as any)?.guests) return `${(item as any).guests} Adults`;
     return '2 Adults';
   };
 
   // Get rooms count
   const getRoomsCount = () => {
-    // Try from searchParams
-    if (searchParams?.rooms) {
-      return `${searchParams.rooms} Room${searchParams.rooms > 1 ? 's' : ''}`;
-    }
-    if (searchParams?.roomQuantity) {
-      return `${searchParams.roomQuantity} Room${searchParams.roomQuantity > 1 ? 's' : ''}`;
-    }
-    // Try from item.realData
-    if (item?.realData?.rooms) {
-      return `${item.realData.rooms} Room${item.realData.rooms > 1 ? 's' : ''}`;
-    }
-    // Try from item
-    if ((item as any)?.rooms) {
-      return `${(item as any).rooms} Room${(item as any).rooms > 1 ? 's' : ''}`;
-    }
+    if (searchParams?.rooms) return `${searchParams.rooms} Room${searchParams.rooms > 1 ? 's' : ''}`;
+    if (searchParams?.roomQuantity) return `${searchParams.roomQuantity} Room${searchParams.roomQuantity > 1 ? 's' : ''}`;
+    if (item?.realData?.rooms) return `${item.realData.rooms} Room${item.realData.rooms > 1 ? 's' : ''}`;
+    if ((item as any)?.rooms) return `${(item as any).rooms} Room${(item as any).rooms > 1 ? 's' : ''}`;
     return '1 Room';
   };
 
@@ -342,15 +390,11 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
 
     try {
       setLoadingSuggestions(true);
-
-      // If onFetchSuggestions prop is provided, use it
       if (onFetchSuggestions) {
         const data = await onFetchSuggestions(query);
         setSuggestions(Array.isArray(data) ? data : []);
         return data;
       }
-
-      // Default to empty for now if no endpoint
       setSuggestions([]);
       return [];
     } catch (error) {
@@ -406,8 +450,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
         // Handle images
         if (imagesRes.status === 'fulfilled' && imagesRes.value.success && imagesRes.value.data?.images) {
           const fetchedImages = imagesRes.value.data.images;
-
-          // Filter out placeholders if we have real images
           const filteredImages = fetchedImages.filter((img: any) => {
             const url = typeof img === 'string' ? img : img.url;
             return url && !url.includes('placehold.co') && !url.includes('dummyimage.com');
@@ -422,32 +464,25 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
               type: 'api'
             })));
           } else {
-            console.log('⚠️ No real images found in API response, keeping initial/fallback images');
-            // If we have an initial image from search result, it's better than nothing
             if (hotelImages.length === 0) {
               setHotelImages(getFallbackImages());
             }
           }
         } else {
-          console.error('❌ Failed to fetch images or empty response');
           if (hotelImages.length === 0) {
             setHotelImages(getFallbackImages());
           }
           setImageError(true);
         }
 
-        // Handle details - be more robust with response structure and 404s
+        // Handle details
         if (detailsRes.status === 'fulfilled') {
           const resValue = detailsRes.value;
           if (resValue?.success) {
             setFullDetails(resValue.data || resValue);
           } else if (resValue && typeof resValue === 'object' && !resValue.statusCode) {
-            // Some endpoints return the object directly, check it's not an error response
             setFullDetails(resValue);
           }
-        } else {
-          console.log('ℹ️ Hotel details unavailable via API, falling back to search result data');
-          // fullDetails remains null, UI will use item data as fallback
         }
 
         // Handle usage stats
@@ -483,7 +518,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
         setSuggestions([]);
       }
     }, 500);
-
     return () => clearTimeout(debounceTimer);
   }, [searchQuery]);
 
@@ -558,7 +592,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     const roomType = realData.roomType || item?.features?.[0] || 'Standard Room';
     const bedType = realData.bedType || 'King/Queen Bed';
     const guests = realData.guests || 2;
-    const price = item?.price || '£0';
 
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -599,7 +632,10 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
 
             <div className="text-right space-y-2">
               <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Starting from</div>
-              <div className="text-4xl font-black text-gray-900">{price}</div>
+              <div className="text-4xl font-black text-gray-900">{convertedPrice || item.price}</div>
+              {isLoadingRates && (
+                <div className="text-[9px] text-gray-400 mt-1">Converting...</div>
+              )}
               <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Includes taxes & fees</div>
             </div>
           </div>
@@ -708,7 +744,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     </div>
   );
 
-
   const renderActiveContent = () => {
     switch (activeTab) {
       case 'Overview': return renderOverview();
@@ -720,7 +755,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     }
   };
 
-  if (loadingImages || loadingDetails) {
+  if (loadingImages || loadingDetails || (isConverting && !convertedPrice)) {
     return (
       <div className="bg-[#f8fbfe] min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -935,7 +970,10 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
               <div className="flex justify-between items-end mb-8">
                 <div>
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Starting from</p>
-                  <p className="text-4xl font-black text-gray-900 tracking-tighter">{item.price}</p>
+                  <p className="text-4xl font-black text-gray-900 tracking-tighter">{convertedPrice || item.price}</p>
+                  {isLoadingRates && (
+                    <p className="text-[9px] text-gray-400 mt-1">Converting...</p>
+                  )}
                 </div>
               </div>
 

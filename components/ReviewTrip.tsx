@@ -77,7 +77,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   productType: propProductType,
   createdBooking,
 }) => {
-  const { currency } = useLanguage();
+  const { currency, convertPrice, formatPrice: formatPriceWithCurrency, isLoadingRates } = useLanguage();
 
   if (!item) {
     return (
@@ -236,7 +236,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
   const hotelDetails = getHotelDetails();
 
-  // Price calculation for Amadeus hotels
+  // Price calculation with currency conversion
   let basePrice = 0;
   let taxes = 0;
   let conversionFee = 0;
@@ -246,6 +246,15 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   let displayTaxes = '';
   let displayConversionFee = '';
   let displayTotalDue = '';
+
+  // Helper to format price with the user's currency
+  const formatUserPrice = (amount: number, fromCurrency?: string): string => {
+    if (fromCurrency && fromCurrency !== currency.code) {
+      // This would need async conversion - for now use the existing formatPrice
+      return formatPrice(amount, currency.code);
+    }
+    return formatPrice(amount, currency.code);
+  };
 
   if (createdBooking) {
     // Use created booking values
@@ -278,7 +287,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
     displayTotalDue = formatPrice(totalDue, offerCurrency);
   } else if (isHBXHotel && hbxQuote) {
-    // Hotelbeds hotel price calculation (updated for Amadeus-compatible server schema)
+    // Hotelbeds hotel price calculation
     const quoteData = hbxQuote?.data?.data || hbxQuote?.data;
     const firstOffer = quoteData?.offers?.[0];
 
@@ -483,6 +492,22 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
   const bookingReference = createdBooking?.reference;
 
+  // Show loading state while rates are being fetched
+  if (isLoadingRates && !createdBooking) {
+    return (
+      <div className="bg-[#f8fbfe] min-h-screen py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-center">
+              <div className="w-10 h-10 border-4 border-blue-50 border-t-[#33a8da] rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-gray-500">Loading exchange rates...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-[#f8fbfe] min-h-screen py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -496,6 +521,16 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         <h1 className="text-3xl font-bold text-gray-900 mb-8">
           {createdBooking ? 'Complete your payment' : 'Complete your booking'}
         </h1>
+
+        {/* Currency Info Banner */}
+        <div className="mb-6 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+          <p className="text-xs text-blue-700 flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Prices displayed in {currency.code} ({currency.symbol}) using live exchange rates
+          </p>
+        </div>
 
         {/* Booking Reference */}
         {bookingReference && (
@@ -720,7 +755,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
               )}
             </div>
 
-            {/* Trip Summary Section - Enhanced for Amadeus Hotels */}
+            {/* Trip Summary Section */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Trip summary</h2>
               <div className="flex items-start gap-4">
@@ -752,7 +787,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                     </div>
                   )}
 
-                  {/* HBX Hotel Details (NEW) */}
+                  {/* HBX Hotel Details */}
                   {isHBXHotel && hbxHotelDetails && (
                     <div className="mt-3 space-y-2">
                       <div className="flex items-center gap-2 text-xs">
@@ -778,7 +813,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                     </p>
                   )}
 
-                  {/* Dates for HBX Hotels (NEW) */}
+                  {/* Dates for HBX Hotels */}
                   {isHBXHotel && hbxHotelDetails && (
                     <p className="text-xs text-gray-500 mt-2">
                       📅 {new Date(hbxHotelDetails.checkIn).toLocaleDateString()} - {new Date(hbxHotelDetails.checkOut).toLocaleDateString()}
@@ -788,7 +823,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                 </div>
               </div>
 
-              {/* Cancellation Policy - Enhanced for Amadeus/HBX Hotels */}
+              {/* Cancellation Policy */}
               {isHotel && (
                 <div className="mt-6 pt-6 border-t border-gray-100">
                   <h3 className="text-md font-semibold text-gray-900 mb-3">Cancellation Policy</h3>
@@ -836,10 +871,15 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
             </div>
           </div>
 
-          {/* Price Sidebar - Enhanced for Amadeus Hotels */}
+          {/* Price Sidebar */}
           <aside className="w-full lg:w-[380px]">
             <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-24 border border-gray-100">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Price details</h3>
+
+              {/* Currency Display Info */}
+              <div className="mb-4 text-xs text-gray-500 flex items-center gap-1">
+                <span>💰 All prices in {currency.code} ({currency.symbol})</span>
+              </div>
 
               <div className="space-y-3 mb-6">
                 {/* Fare Breakdown */}

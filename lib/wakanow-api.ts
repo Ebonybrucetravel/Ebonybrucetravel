@@ -1,5 +1,5 @@
 // lib/wakanow-api.ts
-// Wakanow API client for domestic flights
+// Wakanow API client - NOW ROUTING THROUGH YOUR BACKEND
 
 import { config } from './config';
 
@@ -111,14 +111,22 @@ export interface WakanowFlight {
   ConnectionCode: string;
 }
 
-// Flexible response types to handle different API response structures
+// ✅ FIXED: Updated to handle your backend's response format
 export interface WakanowSearchResponse {
+  // Your backend's format (from the logs)
+  provider?: string;
+  offers?: any[];  // Array of flight offers
+  total_offers?: number;
+  selectData?: string;
+  // Original Wakanow formats (kept for compatibility)
   FlightCombination?: {
     FlightModels: WakanowFlight[];
+    Price?: { Amount: number; CurrencyCode: string };
   };
   FlightModels?: WakanowFlight[];
   SelectData?: string;
   data?: {
+    offers?: any[];
     FlightModels?: WakanowFlight[];
     SelectData?: string;
   };
@@ -258,149 +266,217 @@ export interface WakanowWalletBalanceResponse {
   Message: string | null;
 }
 
-// ============ Token Management ============
+// ============ BACKEND CONFIGURATION ============
+// ✅ NOW USING YOUR BACKEND ENDPOINTS INSTEAD OF DIRECT WAKANOW CALLS
 
-let cachedToken: string | null = null;
-let tokenExpiryTime: number | null = null;
+const BACKEND_BASE_URL = 'https://ebony-bruce-production.up.railway.app/api/v1/bookings/wakanow';
 
-async function getWakanowToken(): Promise<string> {
-  if (cachedToken && tokenExpiryTime && Date.now() < tokenExpiryTime - 5 * 60 * 1000) {
-    return cachedToken;
-  }
-
-  const response = await fetch(`${config.wakanow.baseUrl}/token`, {
-    method: 'POST',
-    headers: {
-      'accept': 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      grant_type: 'password',
-      username: config.wakanow.username,
-      password: config.wakanow.password,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Wakanow token fetch failed: ${response.status}`);
-  }
-
-  const data: WakanowTokenResponse = await response.json();
-  cachedToken = data.access_token;
-  tokenExpiryTime = Date.now() + data.expires_in * 1000;
-  
-  return cachedToken;
-}
-
-async function wakanowFetch<T>(
+// Helper function to call your backend
+async function backendFetch<T>(
   endpoint: string,
-  options?: { method?: string; body?: object }
+  options?: { method?: string; body?: object; authToken?: string }
 ): Promise<T> {
-  const token = await getWakanowToken();
-  
-  const response = await fetch(`${config.wakanow.baseUrl}${endpoint}`, {
-    method: options?.method ?? 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add auth token if provided (for authenticated user endpoints)
+  if (options?.authToken) {
+    headers['Authorization'] = `Bearer ${options.authToken}`;
+  }
+
+  const response = await fetch(`${BACKEND_BASE_URL}${endpoint}`, {
+    method: options?.method ?? 'POST',
+    headers,
     body: options?.body ? JSON.stringify(options.body) : undefined,
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    let errorMessage = `Wakanow API error: ${response.status}`;
+    let errorMessage = `Backend API error: ${response.status}`;
     try {
-      const errorJson = JSON.parse(errorText);
-      errorMessage = errorJson.Message || errorJson.error || errorMessage;
+      const errorData = await response.json();
+      errorMessage = errorData.message || errorData.error || errorMessage;
     } catch {
-      errorMessage = errorText || errorMessage;
+      // Use default error message
     }
     throw new Error(errorMessage);
   }
 
-  return response.json();
+  const data = await response.json();
+  
+  // Extract the actual data from your backend response format
+  // Your backend returns { success: true, data: {...} } or just the data directly
+  if (data && typeof data === 'object' && 'success' in data && 'data' in data) {
+    return data.data as T;
+  }
+  
+  return data as T;
 }
 
-// ============ Public API Functions ============
+// ============ Public API Functions (Updated to use your backend) ============
 
-// Cache for airports
+// Cache for airports (still cached locally)
 let cachedAirports: WakanowAirport[] | null = null;
 
 export async function getWakanowAirports(): Promise<WakanowAirport[]> {
   if (cachedAirports) return cachedAirports;
   
-  const token = await getWakanowToken();
-  const response = await fetch(`${config.wakanow.baseUrl}/api/flight/airports`, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch airports');
+  try {
+    // ✅ Call your backend endpoint instead of Wakanow directly
+    const response = await backendFetch<any>('/airports', {
+      method: 'GET'
+    });
+    
+    // Handle different response formats
+    let airports: WakanowAirport[] = [];
+    
+    if (Array.isArray(response)) {
+      airports = response;
+    } else if (response && Array.isArray(response.airports)) {
+      airports = response.airports;
+    } else if (response && response.data && Array.isArray(response.data)) {
+      airports = response.data;
+    } else {
+      // If no airports found, use fallback
+      throw new Error('No airports data in response');
+    }
+    
+    cachedAirports = airports;
+    return cachedAirports;
+  } catch (error) {
+    console.error('Failed to fetch airports from backend, using fallback:', error);
+    
+    // Fallback mock airports
+    cachedAirports = [
+      { AirportCode: 'LOS', AirportName: 'Murtala Muhammed International Airport', CityCountry: 'Lagos, Nigeria', City: 'Lagos', Country: 'Nigeria' },
+      { AirportCode: 'ABV', AirportName: 'Nnamdi Azikiwe International Airport', CityCountry: 'Abuja, Nigeria', City: 'Abuja', Country: 'Nigeria' },
+      { AirportCode: 'PHC', AirportName: 'Port Harcourt International Airport', CityCountry: 'Port Harcourt, Nigeria', City: 'Port Harcourt', Country: 'Nigeria' },
+      { AirportCode: 'KAN', AirportName: 'Mallam Aminu Kano International Airport', CityCountry: 'Kano, Nigeria', City: 'Kano', Country: 'Nigeria' },
+      { AirportCode: 'ENU', AirportName: 'Akanu Ibiam International Airport', CityCountry: 'Enugu, Nigeria', City: 'Enugu', Country: 'Nigeria' },
+      { AirportCode: 'QOW', AirportName: 'Sam Mbakwe Airport', CityCountry: 'Owerri, Nigeria', City: 'Owerri', Country: 'Nigeria' },
+      { AirportCode: 'BNI', AirportName: 'Benin Airport', CityCountry: 'Benin, Nigeria', City: 'Benin', Country: 'Nigeria' },
+      { AirportCode: 'JOS', AirportName: 'Yakubu Gowon Airport', CityCountry: 'Jos, Nigeria', City: 'Jos', Country: 'Nigeria' },
+      { AirportCode: 'KAD', AirportName: 'Kaduna Airport', CityCountry: 'Kaduna, Nigeria', City: 'Kaduna', Country: 'Nigeria' },
+      { AirportCode: 'YOL', AirportName: 'Yola Airport', CityCountry: 'Yola, Nigeria', City: 'Yola', Country: 'Nigeria' },
+    ];
+    
+    return cachedAirports;
   }
-  
-  const compressedData = await response.text();
-  
-  // Mock airports for Nigerian domestic flights
-  cachedAirports = [
-    { AirportCode: 'LOS', AirportName: 'Murtala Muhammed International Airport', CityCountry: 'Lagos, Nigeria', City: 'Lagos', Country: 'Nigeria' },
-    { AirportCode: 'ABV', AirportName: 'Nnamdi Azikiwe International Airport', CityCountry: 'Abuja, Nigeria', City: 'Abuja', Country: 'Nigeria' },
-    { AirportCode: 'PHC', AirportName: 'Port Harcourt International Airport', CityCountry: 'Port Harcourt, Nigeria', City: 'Port Harcourt', Country: 'Nigeria' },
-    { AirportCode: 'KAN', AirportName: 'Mallam Aminu Kano International Airport', CityCountry: 'Kano, Nigeria', City: 'Kano', Country: 'Nigeria' },
-    { AirportCode: 'ENU', AirportName: 'Akanu Ibiam International Airport', CityCountry: 'Enugu, Nigeria', City: 'Enugu', Country: 'Nigeria' },
-    { AirportCode: 'QOW', AirportName: 'Sam Mbakwe Airport', CityCountry: 'Owerri, Nigeria', City: 'Owerri', Country: 'Nigeria' },
-    { AirportCode: 'BNI', AirportName: 'Benin Airport', CityCountry: 'Benin, Nigeria', City: 'Benin', Country: 'Nigeria' },
-    { AirportCode: 'JOS', AirportName: 'Yakubu Gowon Airport', CityCountry: 'Jos, Nigeria', City: 'Jos', Country: 'Nigeria' },
-    { AirportCode: 'KAD', AirportName: 'Kaduna Airport', CityCountry: 'Kaduna, Nigeria', City: 'Kaduna', Country: 'Nigeria' },
-    { AirportCode: 'YOL', AirportName: 'Yola Airport', CityCountry: 'Yola, Nigeria', City: 'Yola', Country: 'Nigeria' },
-  ];
-  
-  return cachedAirports;
 }
 
 export async function searchWakanowFlights(params: WakanowFlightSearchParams): Promise<WakanowSearchResponse> {
-  console.log('Wakanow search request:', params);
-  const result = await wakanowFetch<WakanowSearchResponse>('/api/flight/search', {
+  console.log('Search flights via backend:', params);
+  
+  // ✅ Convert params to match your backend's expected format
+  const backendParams = {
+    flightSearchType: params.FlightSearchType === 'Oneway' ? 'Oneway' : 
+                      params.FlightSearchType === 'Return' ? 'Return' : 'Multicity',
+    adults: params.Adults,
+    children: params.Children,
+    infants: params.Infants,
+    ticketClass: params.Ticketclass,
+    targetCurrency: params.TargetCurrency,
+    currency: 'GBP', // Default as per your backend example
+    itineraries: params.Itineraries.map(itin => ({
+      Departure: itin.Departure,
+      Destination: itin.Destination,
+      DepartureDate: itin.DepartureDate
+    }))
+  };
+  
+  const result = await backendFetch<WakanowSearchResponse>('/search', {
     method: 'POST',
-    body: params,
+    body: backendParams,
   });
-  console.log('Wakanow search response:', result);
+  
+  console.log('Search response from backend:', result);
   return result;
 }
 
 export async function selectWakanowFlight(selectData: string, targetCurrency: string = 'NGN'): Promise<WakanowSelectResponse> {
-  console.log('Wakanow select request:', { SelectData: selectData, TargetCurrency: targetCurrency });
-  const result = await wakanowFetch<WakanowSelectResponse>('/api/flight/select', {
+  console.log('Select flight via backend');
+  
+  // ✅ Call your backend select endpoint
+  const result = await backendFetch<WakanowSelectResponse>('/select', {
     method: 'POST',
-    body: { SelectData: selectData, TargetCurrency: targetCurrency },
+    body: {
+      selectData: selectData,
+      targetCurrency: targetCurrency
+    },
   });
-  console.log('Wakanow select response:', result);
+  
+  console.log('Select response from backend:', result);
   return result;
 }
 
-export async function bookWakanowFlight(bookingData: WakanowBookingRequest): Promise<WakanowBookingResponse> {
-  console.log('Wakanow book request:', bookingData);
-  const result = await wakanowFetch<WakanowBookingResponse>('/api/flight/book', {
+export async function bookWakanowFlight(bookingData: WakanowBookingRequest, authToken?: string): Promise<WakanowBookingResponse> {
+  console.log('Book flight via backend:', { bookingId: bookingData.BookingId });
+  
+  // ✅ Convert to your backend's guest booking format
+  const passengers = bookingData.PassengerDetails.map(passenger => ({
+    passengerType: passenger.PassengerType,
+    firstName: passenger.FirstName,
+    lastName: passenger.LastName,
+    dateOfBirth: passenger.DateOfBirth,
+    phoneNumber: passenger.PhoneNumber,
+    email: passenger.Email,
+    gender: passenger.Gender,
+    title: passenger.Title,
+    address: passenger.Address,
+    country: passenger.Country,
+    countryCode: passenger.CountryCode,
+    city: passenger.City,
+    postalCode: passenger.PostalCode
+  }));
+  
+  // Use guest booking endpoint (as shown in your backend examples)
+  const result = await backendFetch<WakanowBookingResponse>('/book/guest', {
     method: 'POST',
-    body: bookingData,
+    body: {
+      bookingId: bookingData.BookingId,
+      selectData: bookingData.BookingData,
+      passengers: passengers
+    },
+    authToken: authToken
   });
-  console.log('Wakanow book response:', result);
+  
+  console.log('Book response from backend:', result);
   return result;
 }
 
 export async function ticketWakanowPNR(bookingId: string, pnrNumber: string): Promise<WakanowTicketResponse> {
-  console.log('Wakanow ticket request:', { BookingId: bookingId, PnrNumber: pnrNumber });
-  const result = await wakanowFetch<WakanowTicketResponse>('/api/flight/ticketpnr', {
+  console.log('Get ticket via backend:', { bookingId, pnrNumber });
+  
+  // ✅ Call your backend ticket endpoint
+  const result = await backendFetch<WakanowTicketResponse>('/ticket', {
     method: 'POST',
-    body: { BookingId: bookingId, PnrNumber: pnrNumber },
+    body: {
+      bookingId: bookingId,
+      pnrNumber: pnrNumber
+    },
   });
-  console.log('Wakanow ticket response:', result);
+  
+  console.log('Ticket response from backend:', result);
   return result;
 }
 
-export async function getWakanowWalletBalance(): Promise<{ Balance: number; Currency: string }> {
-  const response = await wakanowFetch<WakanowWalletBalanceResponse>('/api/payment/walletbalance');
-  return response.Result;
+export async function getWakanowWalletBalance(authToken?: string): Promise<{ Balance: number; Currency: string }> {
+  console.log('Get wallet balance via backend');
+  
+  // ✅ Call your backend wallet endpoint
+  const result = await backendFetch<{ balance: number; currency: string }>('/wallet-balance', {
+    method: 'GET',
+    authToken: authToken
+  });
+  
+  // Convert to the expected format
+  return {
+    Balance: result.balance || 0,
+    Currency: result.currency || 'NGN'
+  };
+}
+
+// ============ Optional: Clear cache function ============
+export function clearWakanowCache() {
+  cachedAirports = null;
 }

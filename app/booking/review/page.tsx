@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSearch } from "@/context/SearchContext";
 import { useAuth } from "@/context/AuthContext";
 import { useBooking } from "@/hooks/useBooking";
+import { useLanguage } from "@/context/LanguageContext";
 import { config } from "@/lib/config";
 import ReviewTrip from "@/components/ReviewTrip";
 import PaymentModal from "@/components/payment/PaymentModal";
@@ -28,6 +29,10 @@ interface ExtendedSearchResult extends SearchResult {
   markup_amount?: string;
   service_fee?: string;
   currency?: string;
+  
+  // Original price info for conversion
+  originalPriceAmount?: number;
+  originalPriceCurrency?: string;
 
   realData?: {
     offerId?: string;
@@ -54,6 +59,7 @@ export default function BookingReviewPage() {
   const { selectedItem, searchParams, persistSelectionForReturn } = useSearch();
   const { isLoggedIn, user } = useAuth();
   const { createBooking, createAmadeusHotelBooking, createHotelbedsBooking, isCreating } = useBooking();
+  const { currency, convertPrice, formatPrice, isLoadingRates } = useLanguage();
   const isMerchantPaymentModel = config.paymentModel === "merchant";
 
   const [booking, setBooking] = useState<Booking | null>(null);
@@ -65,10 +71,11 @@ export default function BookingReviewPage() {
     string | undefined
   >(undefined);
 
-  // ✅ State for enhanced item with calculated taxes
+  // ✅ State for enhanced item with calculated taxes and converted prices
   const [enhancedItem, setEnhancedItem] = useState<ExtendedSearchResult | null>(
     null,
   );
+  const [isConverting, setIsConverting] = useState(false);
 
   const redirectToLogin = () => {
     persistSelectionForReturn();
@@ -117,84 +124,240 @@ export default function BookingReviewPage() {
     };
   };
 
-  // In BookingReviewPage.tsx, update the useEffect that creates enhancedItem
+  // ✅ Get original price and currency from item - FIXED FOR HOTELS
+  const getOriginalPriceInfo = (item: ExtendedSearchResult): { amount: number; currency: string } => {
+    const productType = getProductType(item);
+    
+    // Check if we already have stored original price info
+    if (item.originalPriceAmount && item.originalPriceCurrency) {
+      return {
+        amount: item.originalPriceAmount,
+        currency: item.originalPriceCurrency
+      };
+    }
+    
+    // For flights
+    if (productType === "flight") {
+      // Check for Wakanow flights
+      if ((item as any).isWakanow) {
+        if ((item as any).isWakanowDomestic) {
+          return {
+            amount: parseFloat(item.original_amount || item.total_amount || "0"),
+            currency: item.original_currency || item.currency || "NGN"
+          };
+        } else {
+          return {
+            amount: parseFloat(item.original_amount || item.total_amount || "0"),
+            currency: item.original_currency || "NGN"
+          };
+        }
+      }
+      
+      // Duffel flights - original is in GBP
+      return {
+        amount: item.rawPrice || parseFloat(item.original_amount || "0"),
+        currency: item.original_currency || item.currency || "GBP"
+      };
+    }
+    
+    // For hotels - FIXED: Extract price from various possible locations
+    if (productType === "hotel") {
+      let amount = 0;
+      let currencyCode = "GBP";
+      
+      // Check for price in realData (common for Amadeus hotels)
+      if (item.realData) {
+        if (item.realData.finalPrice) {
+          amount = item.realData.finalPrice;
+          currencyCode = item.realData.currency || currencyCode;
+        } else if (item.realData.price) {
+          amount = item.realData.price;
+          currencyCode = item.realData.currency || currencyCode;
+        }
+      }
+      
+      // Check for original_price field
+      if (amount === 0 && item.original_price) {
+        amount = parseFloat(item.original_price);
+        currencyCode = item.original_currency || currencyCode;
+      }
+      
+      // Check for base_price field
+      if (amount === 0 && item.base_price) {
+        amount = parseFloat(item.base_price);
+        currencyCode = item.original_currency || currencyCode;
+      }
+      
+      // Check for price string (e.g., "£145/night")
+      if (amount === 0 && item.price) {
+        const priceStr = String(item.price);
+        
+        // Detect currency from symbol
+        if (priceStr.includes('£')) currencyCode = 'GBP';
+        else if (priceStr.includes('$')) currencyCode = 'USD';
+        else if (priceStr.includes('€')) currencyCode = 'EUR';
+        else if (priceStr.includes('₦')) currencyCode = 'NGN';
+        
+        // Extract numeric value
+        const match = priceStr.match(/[\d,.]+/);
+        if (match) {
+          amount = parseFloat(match[0].replace(/,/g, ''));
+        }
+      }
+      
+      // Check for total_amount (sometimes used)
+      if (amount === 0 && item.total_amount) {
+        amount = parseFloat(item.total_amount);
+        currencyCode = item.total_currency || currencyCode;
+      }
+      
+      // Check for final_price
+      if (amount === 0 && item.final_price) {
+        amount = parseFloat(item.final_price);
+        currencyCode = item.original_currency || currencyCode;
+      }
+      
+      console.log(`🏨 Hotel original price: ${currencyCode} ${amount}`);
+      return { amount, currency: currencyCode };
+    }
+    
+    // For car rentals
+    if (productType === "car") {
+      let amount = 0;
+      let currencyCode = "GBP";
+      
+      if (item.original_price) {
+        amount = parseFloat(item.original_price);
+        currencyCode = item.original_currency || currencyCode;
+      } else if (item.price) {
+        const priceStr = String(item.price);
+        if (priceStr.includes('£')) currencyCode = 'GBP';
+        else if (priceStr.includes('$')) currencyCode = 'USD';
+        else if (priceStr.includes('€')) currencyCode = 'EUR';
+        
+        const match = priceStr.match(/[\d,.]+/);
+        if (match) {
+          amount = parseFloat(match[0].replace(/,/g, ''));
+        }
+      }
+      
+      return { amount, currency: currencyCode };
+    }
+    
+    return { amount: 0, currency: "GBP" };
+  };
 
+  // ✅ Update enhanced item with currency conversion for ALL product types
   useEffect(() => {
-    if (selectedItem) {
-      const item = selectedItem as ExtendedSearchResult;
+    const processItem = async () => {
+      if (!selectedItem) return;
+      
+      setIsConverting(true);
+      let item = selectedItem as ExtendedSearchResult;
       const productType = getProductType(item);
-      const priceFields = getPriceFields(item);
-
-      // Safely extract price value
-      const priceValue = extractPriceValue(item.price);
-
-      // ✅ CRITICAL: Get base price from the correct field
-      let basePrice = 0;
-
-      // For car rentals and hotels
-      if (productType === "car" || productType === "hotel") {
-        // Try original_price first, then base_price
-        basePrice = parseFloat(item.original_price || item.base_price || "0");
-        console.log(`💰 ${productType} - Using original_price/base_price:`, {
+      
+      try {
+        // Get original price info
+        const { amount: originalAmount, currency: originalCurrency } = getOriginalPriceInfo(item);
+        
+        let convertedAmount = originalAmount;
+        let convertedCurrency = originalCurrency;
+        let convertedPriceDisplay = '';
+        
+        console.log(`💰 Processing ${productType} - Original: ${originalCurrency} ${originalAmount}, User currency: ${currency.code}`);
+        
+        // Convert if original currency is different from user's currency and we have a valid amount
+        if (originalCurrency !== currency.code && originalAmount > 0) {
+          // Convert using real-time rates from LanguageContext
+          convertedAmount = await convertPrice(originalAmount, originalCurrency);
+          convertedPriceDisplay = await formatPrice(convertedAmount);
+          convertedCurrency = currency.code;
+          
+          console.log(`💰 BookingReviewPage - Converted ${productType}: ${originalCurrency} ${originalAmount.toFixed(2)} → ${convertedCurrency} ${convertedAmount.toFixed(2)}`);
+        } else if (originalAmount > 0) {
+          // Just format the price in original currency
+          convertedPriceDisplay = await formatPrice(originalAmount, originalCurrency);
+          console.log(`💰 BookingReviewPage - Formatted ${productType}: ${originalCurrency} ${originalAmount.toFixed(2)} → ${convertedPriceDisplay}`);
+        } else {
+          // Fallback to original price string
+          convertedPriceDisplay = item.price || 'Price on request';
+          console.log(`💰 BookingReviewPage - Using original price string: ${convertedPriceDisplay}`);
+        }
+        
+        // Update the item with converted price
+        const updatedItem = {
+          ...item,
+          price: convertedPriceDisplay,
+          displayPrice: convertedPriceDisplay,
+          totalPrice: convertedPriceDisplay,
+          currency: convertedCurrency,
+          rawPrice: convertedAmount,
+          originalPriceAmount: originalAmount,
+          originalPriceCurrency: originalCurrency,
+        };
+        
+        // Get base price (use converted amount if available)
+        let basePrice = convertedAmount > 0 ? convertedAmount : originalAmount;
+        
+        // Get markup and service fee (these are usually in the original currency)
+        const markupAmount = parseFloat(item.markup_amount || "0");
+        const serviceFee = parseFloat(item.service_fee || "0");
+        
+        // Convert markup and service fee if needed
+        let convertedMarkup = markupAmount;
+        let convertedServiceFee = serviceFee;
+        if (originalCurrency !== currency.code && originalAmount > 0 && (markupAmount > 0 || serviceFee > 0)) {
+          if (markupAmount > 0) convertedMarkup = await convertPrice(markupAmount, originalCurrency);
+          if (serviceFee > 0) convertedServiceFee = await convertPrice(serviceFee, originalCurrency);
+        }
+        
+        const taxes = convertedMarkup + convertedServiceFee;
+        
+        // Get final amount
+        let finalAmount = convertedAmount + taxes;
+        
+        console.log(`💰 REVIEW PAGE - ${productType} final breakdown:`, {
+          originalAmount,
+          originalCurrency,
+          convertedAmount,
+          convertedCurrency,
+          markupAmount: convertedMarkup,
+          serviceFee: convertedServiceFee,
+          taxes,
+          finalAmount,
+          displayPrice: convertedPriceDisplay
+        });
+        
+        // Create enhanced item with calculated values
+        const enhanced = {
+          ...updatedItem,
+          original_amount: item.original_amount,
           original_price: item.original_price,
           base_price: item.base_price,
-          parsed: basePrice,
-        });
-      } else {
-        // For flights
-        basePrice = parseFloat(item.original_amount || "0") || priceValue;
+          markup_amount: item.markup_amount,
+          service_fee: item.service_fee,
+          final_amount: item.final_amount,
+          final_price: item.final_price,
+          currency: convertedCurrency,
+          calculatedBasePrice: basePrice,
+          calculatedMarkup: convertedMarkup,
+          calculatedServiceFee: convertedServiceFee,
+          calculatedTaxes: taxes,
+          calculatedTotal: finalAmount,
+        };
+        
+        setEnhancedItem(enhanced);
+      } catch (error) {
+        console.error('Failed to convert price:', error);
+        // Fallback to original item
+        setEnhancedItem(item);
+      } finally {
+        setIsConverting(false);
       }
-
-      // Get markup and service fee
-      const markupAmount = parseFloat(item.markup_amount || "0");
-      const serviceFee = parseFloat(item.service_fee || "0");
-
-      // Calculate taxes (markup + service fee)
-      const taxes = markupAmount + serviceFee;
-
-      // Get final amount
-      let finalAmount = 0;
-      if (productType === "car" || productType === "hotel") {
-        finalAmount = parseFloat(item.final_price || "0");
-      } else {
-        finalAmount = parseFloat(item.final_amount || "0");
-      }
-
-      // If final amount is not available, calculate it
-      if (!finalAmount && basePrice > 0) {
-        finalAmount = basePrice + taxes;
-      }
-
-      console.log(`💰 REVIEW PAGE - ${productType} final breakdown:`, {
-        basePrice,
-        markupAmount,
-        serviceFee,
-        taxes,
-        finalAmount,
-      });
-
-      // Create enhanced item with calculated values
-      const enhanced = {
-        ...item,
-        // Preserve original API fields
-        original_amount: item.original_amount,
-        original_price: item.original_price,
-        base_price: item.base_price,
-        markup_amount: item.markup_amount,
-        service_fee: item.service_fee,
-        final_amount: item.final_amount,
-        final_price: item.final_price,
-        // Add calculated fields for ReviewTrip
-        calculatedBasePrice: basePrice,
-        calculatedMarkup: markupAmount,
-        calculatedServiceFee: serviceFee,
-        calculatedTaxes: taxes,
-        calculatedTotal: finalAmount,
-      };
-
-      setEnhancedItem(enhanced);
-    }
-  }, [selectedItem]);
+    };
+    
+    processItem();
+  }, [selectedItem, currency, convertPrice, formatPrice]);
 
   if (!selectedItem) {
     return (
@@ -215,11 +378,22 @@ export default function BookingReviewPage() {
     );
   }
 
+  // Show loading while converting prices
+  if ((isLoadingRates || isConverting) && !enhancedItem) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-blue-50 border-t-[#33a8da] rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-500">Loading prices in {currency.code}...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Cast selectedItem to ExtendedSearchResult to access pricing fields
-  const extendedItem = selectedItem as ExtendedSearchResult;
+  const extendedItem = (enhancedItem || selectedItem) as ExtendedSearchResult;
   const useAmadeusFlow = isAmadeusHotel(extendedItem);
   const productType = getProductType(extendedItem);
-
 
   const handleProceedToPayment = async (
     passengerInfo: PassengerInfo,
@@ -321,15 +495,17 @@ export default function BookingReviewPage() {
     }
 
     try {
-      const priceFields = getPriceFields(extendedItem);
-      const priceValue = extractPriceValue(extendedItem.price);
-      const basePrice = parseFloat(priceFields.original || priceFields.base || "0") || priceValue;
-      const markupAmount = parseFloat(extendedItem.markup_amount || "0");
-      const serviceFee = parseFloat(extendedItem.service_fee || "0");
-      const combinedTaxes = markupAmount + serviceFee;
-      const finalAmount = parseFloat(priceFields.final || "0") || basePrice + combinedTaxes;
+      // Use the calculated values from enhancedItem
+      const basePrice = extendedItem.calculatedBasePrice || 0;
+      const combinedTaxes = extendedItem.calculatedTaxes || 0;
+      const finalAmount = extendedItem.calculatedTotal || basePrice + combinedTaxes;
 
-      console.log(`💰 ${productType} booking creation:`, { basePrice, combinedTaxes, finalAmount });
+      console.log(`💰 ${productType} booking creation:`, { 
+        basePrice, 
+        combinedTaxes, 
+        finalAmount,
+        currency: currency.code 
+      });
 
       const newBooking = await createBooking(
         extendedItem,
