@@ -91,14 +91,18 @@ export interface SearchResult {
   markup_percentage?: number;
   markup_amount?: string;
   service_fee?: string;
+  conversion_fee?: string;
+  conversion_fee_percentage?: number;
+  taxes?: string;
+  service_fee_percentage?: number;
   final_amount?: string;
   currency?: string;
 
-  // ✅ DISPLAY FIELDS (added for Wakanow/Duffel transformation)
+  // ✅ DISPLAY FIELDS
   displayPrice?: string;
   rawPrice?: number;
 
-  // ✅ CUSTOM CALCULATED FIELDS (FOR BOOKING PREVIEW)
+  // ✅ CUSTOM CALCULATED FIELDS
   calculatedBasePrice?: number;
   calculatedMarkup?: number;
   calculatedTaxes?: number;
@@ -115,7 +119,7 @@ export interface SearchResult {
     [key: string]: any;
   };
 
-  // ✅ FLIGHT SPECIFIC FIELDS (Wakanow & Duffel)
+  // ✅ FLIGHT SPECIFIC FIELDS
   departureAirport?: string;
   arrivalAirport?: string;
   departureCity?: string;
@@ -169,6 +173,11 @@ export interface SearchResult {
   seats?: number;
   transmission?: string;
   fuelType?: string;
+  
+  // ✅ NORMALIZED FIELDS FOR DEDUPLICATION
+  _normalizedAirline?: string;
+  _normalizedDepartureTime?: string;
+  _normalizedArrivalAirport?: string;
   
   // ✅ Round trip fields
   isRoundTrip?: boolean;
@@ -338,6 +347,7 @@ export interface Booking {
     markup_amount?: string;
     service_fee?: string;
     final_amount?: string;
+    conversion_fee?: string;
     taxes?: number;
 
     [key: string]: any;
@@ -779,6 +789,10 @@ export interface WakanowNormalizedFlight {
   markup_percentage?: number;
   markup_amount?: string;
   service_fee?: string;
+  conversion_fee?: string;
+  conversion_fee_percentage?: number;
+  taxes?: string;
+  service_fee_percentage?: number;
   final_amount?: string;
   currency?: string;
   rawPrice?: number;

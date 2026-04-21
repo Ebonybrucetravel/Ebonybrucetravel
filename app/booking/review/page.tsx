@@ -14,26 +14,27 @@ import type { Booking, PassengerInfo, SearchResult } from "@/lib/types";
 
 // Extend the SearchResult type to include pricing fields
 interface ExtendedSearchResult extends SearchResult {
-  // Flight fields
   final_amount?: string;
   original_amount?: string;
-
-  // Car rental & Hotel fields
   final_price?: string;
   original_price?: string;
   base_price?: string;
-
-  // Common fields
   original_currency?: string;
   markup_percentage?: number;
   markup_amount?: string;
   service_fee?: string;
+  service_fee_percentage?: number;
+  conversion_fee?: string;
+  conversion_fee_percentage?: number;
+  taxes?: string;
   currency?: string;
-  
-  // Original price info for conversion
   originalPriceAmount?: number;
   originalPriceCurrency?: string;
-
+  calculatedBasePrice?: number;
+  calculatedMarkup?: number;
+  calculatedServiceFee?: number;
+  calculatedTaxes?: number;
+  calculatedTotal?: number;
   realData?: {
     offerId?: string;
     finalPrice?: number;
@@ -65,16 +66,9 @@ export default function BookingReviewPage() {
   const [booking, setBooking] = useState<Booking | null>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [showAmadeusPayment, setShowAmadeusPayment] = useState(false);
-  const [pendingPassengerInfo, setPendingPassengerInfo] =
-    useState<PassengerInfo | null>(null);
-  const [appliedVoucherCode, setAppliedVoucherCode] = useState<
-    string | undefined
-  >(undefined);
-
-  // ✅ State for enhanced item with calculated taxes and converted prices
-  const [enhancedItem, setEnhancedItem] = useState<ExtendedSearchResult | null>(
-    null,
-  );
+  const [pendingPassengerInfo, setPendingPassengerInfo] = useState<PassengerInfo | null>(null);
+  const [appliedVoucherCode, setAppliedVoucherCode] = useState<string | undefined>(undefined);
+  const [enhancedItem, setEnhancedItem] = useState<ExtendedSearchResult | null>(null);
   const [isConverting, setIsConverting] = useState(false);
 
   const redirectToLogin = () => {
@@ -83,273 +77,101 @@ export default function BookingReviewPage() {
     router.push("/login");
   };
 
-  // ✅ Helper function to safely extract price value
-  const extractPriceValue = (price: any): number => {
-    if (!price) return 0;
-    if (typeof price === "number") return price;
-    if (typeof price === "string") {
-      return parseFloat(price.replace(/[^\d.]/g, "")) || 0;
-    }
-    return 0;
-  };
-
-  // ✅ Determine product type
-  const getProductType = (
-    item: ExtendedSearchResult,
-  ): "flight" | "hotel" | "car" => {
+  const getProductType = (item: ExtendedSearchResult): "flight" | "hotel" | "car" => {
     const type = item.type?.toLowerCase() || "";
     if (type.includes("hotel")) return "hotel";
     if (type.includes("car")) return "car";
     return "flight";
   };
 
-  // ✅ Get price fields based on product type
-  const getPriceFields = (item: ExtendedSearchResult) => {
-    const productType = getProductType(item);
-
-    // For flights
-    if (productType === "flight") {
-      return {
-        original: item.original_amount,
-        final: item.final_amount,
-        base: item.original_amount,
-      };
-    }
-
-    // For hotels and car rentals
-    return {
-      original: item.original_price,
-      final: item.final_price,
-      base: item.base_price || item.original_price,
-    };
-  };
-
-  // ✅ Get original price and currency from item - FIXED FOR HOTELS
-  const getOriginalPriceInfo = (item: ExtendedSearchResult): { amount: number; currency: string } => {
-    const productType = getProductType(item);
-    
-    // Check if we already have stored original price info
-    if (item.originalPriceAmount && item.originalPriceCurrency) {
-      return {
-        amount: item.originalPriceAmount,
-        currency: item.originalPriceCurrency
-      };
-    }
-    
-    // For flights
-    if (productType === "flight") {
-      // Check for Wakanow flights
-      if ((item as any).isWakanow) {
-        if ((item as any).isWakanowDomestic) {
-          return {
-            amount: parseFloat(item.original_amount || item.total_amount || "0"),
-            currency: item.original_currency || item.currency || "NGN"
-          };
-        } else {
-          return {
-            amount: parseFloat(item.original_amount || item.total_amount || "0"),
-            currency: item.original_currency || "NGN"
-          };
-        }
-      }
-      
-      // Duffel flights - original is in GBP
-      return {
-        amount: item.rawPrice || parseFloat(item.original_amount || "0"),
-        currency: item.original_currency || item.currency || "GBP"
-      };
-    }
-    
-    // For hotels - FIXED: Extract price from various possible locations
-    if (productType === "hotel") {
-      let amount = 0;
-      let currencyCode = "GBP";
-      
-      // Check for price in realData (common for Amadeus hotels)
-      if (item.realData) {
-        if (item.realData.finalPrice) {
-          amount = item.realData.finalPrice;
-          currencyCode = item.realData.currency || currencyCode;
-        } else if (item.realData.price) {
-          amount = item.realData.price;
-          currencyCode = item.realData.currency || currencyCode;
-        }
-      }
-      
-      // Check for original_price field
-      if (amount === 0 && item.original_price) {
-        amount = parseFloat(item.original_price);
-        currencyCode = item.original_currency || currencyCode;
-      }
-      
-      // Check for base_price field
-      if (amount === 0 && item.base_price) {
-        amount = parseFloat(item.base_price);
-        currencyCode = item.original_currency || currencyCode;
-      }
-      
-      // Check for price string (e.g., "£145/night")
-      if (amount === 0 && item.price) {
-        const priceStr = String(item.price);
-        
-        // Detect currency from symbol
-        if (priceStr.includes('£')) currencyCode = 'GBP';
-        else if (priceStr.includes('$')) currencyCode = 'USD';
-        else if (priceStr.includes('€')) currencyCode = 'EUR';
-        else if (priceStr.includes('₦')) currencyCode = 'NGN';
-        
-        // Extract numeric value
-        const match = priceStr.match(/[\d,.]+/);
-        if (match) {
-          amount = parseFloat(match[0].replace(/,/g, ''));
-        }
-      }
-      
-      // Check for total_amount (sometimes used)
-      if (amount === 0 && item.total_amount) {
-        amount = parseFloat(item.total_amount);
-        currencyCode = item.total_currency || currencyCode;
-      }
-      
-      // Check for final_price
-      if (amount === 0 && item.final_price) {
-        amount = parseFloat(item.final_price);
-        currencyCode = item.original_currency || currencyCode;
-      }
-      
-      console.log(`🏨 Hotel original price: ${currencyCode} ${amount}`);
-      return { amount, currency: currencyCode };
-    }
-    
-    // For car rentals
-    if (productType === "car") {
-      let amount = 0;
-      let currencyCode = "GBP";
-      
-      if (item.original_price) {
-        amount = parseFloat(item.original_price);
-        currencyCode = item.original_currency || currencyCode;
-      } else if (item.price) {
-        const priceStr = String(item.price);
-        if (priceStr.includes('£')) currencyCode = 'GBP';
-        else if (priceStr.includes('$')) currencyCode = 'USD';
-        else if (priceStr.includes('€')) currencyCode = 'EUR';
-        
-        const match = priceStr.match(/[\d,.]+/);
-        if (match) {
-          amount = parseFloat(match[0].replace(/,/g, ''));
-        }
-      }
-      
-      return { amount, currency: currencyCode };
-    }
-    
-    return { amount: 0, currency: "GBP" };
-  };
-
-  // ✅ Update enhanced item with currency conversion for ALL product types
+  // Update enhanced item - Convert ALL prices to user's currency
   useEffect(() => {
     const processItem = async () => {
       if (!selectedItem) return;
       
       setIsConverting(true);
-      let item = selectedItem as ExtendedSearchResult;
-      const productType = getProductType(item);
+      const item = selectedItem as ExtendedSearchResult;
       
       try {
-        // Get original price info
-        const { amount: originalAmount, currency: originalCurrency } = getOriginalPriceInfo(item);
+        // Get the original values (in original currency - NGN for flights)
+        const originalAmountNGN = parseFloat(item.original_amount || "0");
+        const serviceFeeNGN = parseFloat(item.service_fee || "0");
+        const finalAmountNGN = parseFloat(item.final_amount || "0");
+        const originalCurrency = item.original_currency || "NGN";
         
-        let convertedAmount = originalAmount;
-        let convertedCurrency = originalCurrency;
-        let convertedPriceDisplay = '';
-        
-        console.log(`💰 Processing ${productType} - Original: ${originalCurrency} ${originalAmount}, User currency: ${currency.code}`);
-        
-        // Convert if original currency is different from user's currency and we have a valid amount
-        if (originalCurrency !== currency.code && originalAmount > 0) {
-          // Convert using real-time rates from LanguageContext
-          convertedAmount = await convertPrice(originalAmount, originalCurrency);
-          convertedPriceDisplay = await formatPrice(convertedAmount);
-          convertedCurrency = currency.code;
-          
-          console.log(`💰 BookingReviewPage - Converted ${productType}: ${originalCurrency} ${originalAmount.toFixed(2)} → ${convertedCurrency} ${convertedAmount.toFixed(2)}`);
-        } else if (originalAmount > 0) {
-          // Just format the price in original currency
-          convertedPriceDisplay = await formatPrice(originalAmount, originalCurrency);
-          console.log(`💰 BookingReviewPage - Formatted ${productType}: ${originalCurrency} ${originalAmount.toFixed(2)} → ${convertedPriceDisplay}`);
-        } else {
-          // Fallback to original price string
-          convertedPriceDisplay = item.price || 'Price on request';
-          console.log(`💰 BookingReviewPage - Using original price string: ${convertedPriceDisplay}`);
-        }
-        
-        // Update the item with converted price
-        const updatedItem = {
-          ...item,
-          price: convertedPriceDisplay,
-          displayPrice: convertedPriceDisplay,
-          totalPrice: convertedPriceDisplay,
-          currency: convertedCurrency,
-          rawPrice: convertedAmount,
-          originalPriceAmount: originalAmount,
-          originalPriceCurrency: originalCurrency,
-        };
-        
-        // Get base price (use converted amount if available)
-        let basePrice = convertedAmount > 0 ? convertedAmount : originalAmount;
-        
-        // Get markup and service fee (these are usually in the original currency)
-        const markupAmount = parseFloat(item.markup_amount || "0");
-        const serviceFee = parseFloat(item.service_fee || "0");
-        
-        // Convert markup and service fee if needed
-        let convertedMarkup = markupAmount;
-        let convertedServiceFee = serviceFee;
-        if (originalCurrency !== currency.code && originalAmount > 0 && (markupAmount > 0 || serviceFee > 0)) {
-          if (markupAmount > 0) convertedMarkup = await convertPrice(markupAmount, originalCurrency);
-          if (serviceFee > 0) convertedServiceFee = await convertPrice(serviceFee, originalCurrency);
-        }
-        
-        const taxes = convertedMarkup + convertedServiceFee;
-        
-        // Get final amount
-        let finalAmount = convertedAmount + taxes;
-        
-        console.log(`💰 REVIEW PAGE - ${productType} final breakdown:`, {
-          originalAmount,
-          originalCurrency,
-          convertedAmount,
-          convertedCurrency,
-          markupAmount: convertedMarkup,
-          serviceFee: convertedServiceFee,
-          taxes,
-          finalAmount,
-          displayPrice: convertedPriceDisplay
+        console.log(`💰 Original values (${originalCurrency}):`, {
+          originalAmount: originalAmountNGN,
+          serviceFee: serviceFeeNGN,
+          finalAmount: finalAmountNGN
         });
         
-        // Create enhanced item with calculated values
-        const enhanced = {
-          ...updatedItem,
-          original_amount: item.original_amount,
-          original_price: item.original_price,
-          base_price: item.base_price,
-          markup_amount: item.markup_amount,
-          service_fee: item.service_fee,
-          final_amount: item.final_amount,
-          final_price: item.final_price,
-          currency: convertedCurrency,
-          calculatedBasePrice: basePrice,
-          calculatedMarkup: convertedMarkup,
+        // Convert ALL values to user's selected currency using LanguageContext
+        let convertedOriginalAmount = originalAmountNGN;
+        let convertedServiceFee = serviceFeeNGN;
+        let convertedFinalAmount = finalAmountNGN;
+        let displayCurrency = originalCurrency;
+        
+        if (originalCurrency !== currency.code && originalAmountNGN > 0) {
+          // Convert using LanguageContext's convertPrice (uses header exchange rates)
+          convertedOriginalAmount = await convertPrice(originalAmountNGN, originalCurrency);
+          convertedServiceFee = await convertPrice(serviceFeeNGN, originalCurrency);
+          convertedFinalAmount = await convertPrice(finalAmountNGN, originalCurrency);
+          displayCurrency = currency.code;
+          
+          console.log(`💰 Converted to ${displayCurrency}:`, {
+            convertedOriginalAmount,
+            convertedServiceFee,
+            convertedFinalAmount,
+            rate: convertedFinalAmount / finalAmountNGN
+          });
+        }
+        
+        // Format the display prices
+        const formattedOriginalPrice = await formatPrice(convertedOriginalAmount, displayCurrency);
+        const formattedFinalPrice = await formatPrice(convertedFinalAmount, displayCurrency);
+        
+        console.log(`💰 BookingReviewPage - Final converted values:`, {
+          originalAmount: `${displayCurrency} ${convertedOriginalAmount}`,
+          serviceFee: `${displayCurrency} ${convertedServiceFee}`,
+          finalAmount: `${displayCurrency} ${convertedFinalAmount}`,
+          displayCurrency,
+          formattedOriginalPrice,
+          formattedFinalPrice
+        });
+        
+        // Create updated item with ALL converted values
+        const updatedItem: ExtendedSearchResult = {
+          ...item,
+          // Display fields (what user sees on review page)
+          price: formattedFinalPrice,
+          displayPrice: formattedFinalPrice,
+          totalPrice: formattedFinalPrice,
+          currency: displayCurrency,
+          rawPrice: convertedFinalAmount,
+          
+          // ✅ CRITICAL: Convert original_amount to user's currency for Base Fare display
+          original_amount: convertedOriginalAmount.toString(),
+          original_currency: displayCurrency,
+          
+          // Convert service fee fields
+          service_fee: convertedServiceFee.toString(),
+          final_amount: convertedFinalAmount.toString(),
+          
+          // Keep original values for reference
+          originalPriceAmount: originalAmountNGN,
+          originalPriceCurrency: originalCurrency,
+          
+          // Calculated values
+          calculatedBasePrice: convertedOriginalAmount,
+          calculatedMarkup: parseFloat(item.markup_amount || "0"),
           calculatedServiceFee: convertedServiceFee,
-          calculatedTaxes: taxes,
-          calculatedTotal: finalAmount,
+          calculatedTaxes: parseFloat(item.taxes || "0"),
+          calculatedTotal: convertedFinalAmount,
         };
         
-        setEnhancedItem(enhanced);
+        setEnhancedItem(updatedItem);
       } catch (error) {
-        console.error('Failed to convert price:', error);
-        // Fallback to original item
+        console.error('Failed to process item:', error);
         setEnhancedItem(item);
       } finally {
         setIsConverting(false);
@@ -362,23 +184,15 @@ export default function BookingReviewPage() {
   if (!selectedItem) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-20 text-center">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">
-          No booking to review
-        </h1>
-        <p className="text-gray-600 mb-8">
-          Please select an item from search to continue.
-        </p>
-        <button
-          onClick={() => router.push("/search")}
-          className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg"
-        >
+        <h1 className="text-3xl font-bold text-gray-900 mb-4">No booking to review</h1>
+        <p className="text-gray-600 mb-8">Please select an item from search to continue.</p>
+        <button onClick={() => router.push("/search")} className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg">
           Back to search
         </button>
       </div>
     );
   }
 
-  // Show loading while converting prices
   if ((isLoadingRates || isConverting) && !enhancedItem) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -390,7 +204,6 @@ export default function BookingReviewPage() {
     );
   }
 
-  // Cast selectedItem to ExtendedSearchResult to access pricing fields
   const extendedItem = (enhancedItem || selectedItem) as ExtendedSearchResult;
   const useAmadeusFlow = isAmadeusHotel(extendedItem);
   const productType = getProductType(extendedItem);
@@ -402,8 +215,7 @@ export default function BookingReviewPage() {
   ) => {
     const isGuest = !isLoggedIn;
 
-    const isFlight =
-      extendedItem?.type?.toLowerCase().includes("flight") ||
+    const isFlight = extendedItem?.type?.toLowerCase().includes("flight") ||
       extendedItem?.type?.toLowerCase().includes("duffel");
 
     if (isFlight) {
@@ -438,27 +250,19 @@ export default function BookingReviewPage() {
     if (useAmadeusFlow && isMerchantPaymentModel) {
       try {
         console.log("📝 Creating Amadeus hotel booking...");
-        const markupAmount = parseFloat(extendedItem.markup_amount || "0");
-        const serviceFee = parseFloat(extendedItem.service_fee || "0");
-        const combinedTaxes = markupAmount + serviceFee;
-
         const newBooking = await createAmadeusHotelBooking(
           extendedItem,
           passengerInfo,
           undefined,
           isGuest,
         );
-
         console.log("✅ Booking created:", newBooking);
         setBooking(newBooking);
         setAppliedVoucherCode(voucherCode);
         setShowPayment(true);
       } catch (err: any) {
         console.error("❌ Booking creation failed:", err);
-        toast.error(
-          err?.message ??
-          "We couldn’t create your booking. Please check your details and try again.",
-        );
+        toast.error(err?.message ?? "We couldn't create your booking. Please try again.");
       }
       return;
     }
@@ -486,23 +290,20 @@ export default function BookingReviewPage() {
         setShowPayment(true);
       } catch (err: any) {
         console.error("❌ Hotelbeds booking failed:", err);
-        toast.error(
-          err?.message ??
-          "We couldn’t create your Hotelbeds booking. Please try again.",
-        );
+        toast.error(err?.message ?? "We couldn't create your Hotelbeds booking. Please try again.");
       }
       return;
     }
 
     try {
-      // Use the calculated values from enhancedItem
-      const basePrice = extendedItem.calculatedBasePrice || 0;
-      const combinedTaxes = extendedItem.calculatedTaxes || 0;
-      const finalAmount = extendedItem.calculatedTotal || basePrice + combinedTaxes;
+      // Use the converted values
+      const basePrice = extendedItem.calculatedBasePrice || parseFloat(extendedItem.original_amount || "0");
+      const serviceFee = extendedItem.calculatedServiceFee || parseFloat(extendedItem.service_fee || "0");
+      const finalAmount = extendedItem.calculatedTotal || parseFloat(extendedItem.final_amount || "0");
 
       console.log(`💰 ${productType} booking creation:`, { 
         basePrice, 
-        combinedTaxes, 
+        serviceFee, 
         finalAmount,
         currency: currency.code 
       });
@@ -513,7 +314,7 @@ export default function BookingReviewPage() {
         passengerInfo,
         isGuest,
         {
-          taxes: combinedTaxes,
+          taxes: serviceFee,
           basePrice: basePrice,
           finalAmount: finalAmount,
         },
@@ -525,7 +326,7 @@ export default function BookingReviewPage() {
       setShowPayment(true);
     } catch (err: any) {
       console.error("❌ Booking creation failed:", err);
-      toast.error(err.message ?? "We couldn’t create your booking. Please try again.");
+      toast.error(err.message ?? "We couldn't create your booking. Please try again.");
     }
   };
 

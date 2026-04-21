@@ -1,13 +1,13 @@
 'use client';
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
 import { translations } from '../translations';
+import { fetchExchangeRates, convertCurrencyLive, formatPriceWithCurrency, SUPPORTED_CURRENCIES } from '../lib/currency-service';
 
 type LanguageCode = 'EN' | 'FR' | 'ES' | 'DE' | 'ZH';
 
 interface CurrencyInfo {
     code: string;
     symbol: string;
-    rate?: number;
 }
 
 interface LanguageContextType {
@@ -20,16 +20,14 @@ interface LanguageContextType {
     formatPrice: (amount: number, fromCurrency?: string) => Promise<string>;
     isLoadingRates: boolean;
     refreshRates: () => Promise<void>;
+    ratesError: string | null;
+    usingLiveRates: boolean;
 }
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
-const EXCHANGE_RATE_API_KEY = '3e81e0869142e650fa67416f0bbe3017';
-
-const geoMap: Record<string, {
-    lang: LanguageCode;
-    currency: { code: string; symbol: string };
-}> = {
+// Country to language/currency mapping
+const geoMap: Record<string, { lang: LanguageCode; currency: { code: string; symbol: string } }> = {
     'NG': { lang: 'EN', currency: { code: 'NGN', symbol: '₦' } },
     'GB': { lang: 'EN', currency: { code: 'GBP', symbol: '£' } },
     'US': { lang: 'EN', currency: { code: 'USD', symbol: '$' } },
@@ -42,17 +40,6 @@ const geoMap: Record<string, {
     'JP': { lang: 'EN', currency: { code: 'JPY', symbol: '¥' } },
     'ZA': { lang: 'EN', currency: { code: 'ZAR', symbol: 'R' } },
     'KE': { lang: 'EN', currency: { code: 'KES', symbol: 'KSh' } },
-};
-
-let cachedRates: Record<string, number> = {};
-let lastFetchTime = 0;
-const CACHE_DURATION = 3600000;
-
-const FALLBACK_RATES: Record<string, Record<string, number>> = {
-    'GBP': { 'NGN': 1900, 'USD': 1.25, 'EUR': 1.17, 'CAD': 1.35, 'AUD': 1.50, 'JPY': 150, 'CNY': 9.0, 'ZAR': 18.5, 'KES': 160 },
-    'NGN': { 'GBP': 0.00053, 'USD': 0.00066, 'EUR': 0.00062, 'CAD': 0.00071, 'AUD': 0.00079, 'JPY': 0.079, 'CNY': 0.0047, 'ZAR': 0.0097, 'KES': 0.084 },
-    'USD': { 'GBP': 0.80, 'NGN': 1520, 'EUR': 0.94, 'CAD': 1.08, 'AUD': 1.20, 'JPY': 120, 'CNY': 7.2, 'ZAR': 14.8, 'KES': 128 },
-    'EUR': { 'GBP': 0.85, 'NGN': 1610, 'USD': 1.06, 'CAD': 1.15, 'AUD': 1.28, 'JPY': 128, 'CNY': 7.7, 'ZAR': 15.8, 'KES': 136 },
 };
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -73,7 +60,8 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     const [currency, setCurrencyState] = useState<CurrencyInfo>({ code: 'GBP', symbol: '£' });
     const [hasInitialized, setHasInitialized] = useState(false);
     const [isLoadingRates, setIsLoadingRates] = useState(false);
-    const [exchangeRates, setExchangeRates] = useState<Record<string, number>>(FALLBACK_RATES['GBP']);
+    const [ratesError, setRatesError] = useState<string | null>(null);
+    const [usingLiveRates, setUsingLiveRates] = useState(true);
     const hasInitializedRef = useRef(false);
 
     const setLanguage = (lang: LanguageCode) => {
@@ -87,82 +75,44 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
         refreshRates();
     };
 
-    const fetchLiveRates = useCallback(async (baseCurrency: string): Promise<Record<string, number>> => {
-        if (Object.keys(cachedRates).length > 0 && (Date.now() - lastFetchTime) < CACHE_DURATION) {
-            console.log(`📊 Using cached exchange rates (base: ${baseCurrency})`);
-            return cachedRates;
-        }
-
-        const apis = [
-            {
-                name: 'exchangerate.host (with key)',
-                url: `https://api.exchangerate.host/live?access_key=${EXCHANGE_RATE_API_KEY}&source=${baseCurrency}&currencies=USD,NGN,EUR,CAD,AUD,JPY,CNY,ZAR,KES`
-            },
-            {
-                name: 'exchangerate.host (no key)',
-                url: `https://api.exchangerate.host/latest?base=${baseCurrency}`
-            },
-            {
-                name: 'Frankfurter API',
-                url: `https://api.frankfurter.app/latest?from=${baseCurrency}`
+    const fetchLiveRates = useCallback(async (baseCurrency: string) => {
+        try {
+            // Use the currency-service.ts to fetch rates (no client-side cache here - let service handle it)
+            const ratesData = await fetchExchangeRates(baseCurrency);
+            
+            if (ratesData && ratesData.rates) {
+                setRatesError(null);
+                setUsingLiveRates(true);
+                
+                console.log(`✅ Exchange rates from currency-service: 1 ${baseCurrency} =`, {
+                    NGN: ratesData.rates.NGN || 'N/A',
+                    USD: ratesData.rates.USD || 'N/A',
+                    EUR: ratesData.rates.EUR || 'N/A',
+                });
+                
+                return ratesData.rates;
             }
-        ];
-
-        for (const api of apis) {
-            try {
-                console.log(`🌍 Trying ${api.name} for ${baseCurrency}...`);
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000);
-                const response = await fetch(api.url, { signal: controller.signal });
-                clearTimeout(timeoutId);
-                
-                if (!response.ok) {
-                    console.log(`${api.name} returned ${response.status}, trying next...`);
-                    continue;
-                }
-                
-                const data = await response.json();
-                let rates: Record<string, number> = {};
-                
-                if (data.rates) {
-                    rates = data.rates;
-                } else if (data.quotes) {
-                    for (const [key, value] of Object.entries(data.quotes)) {
-                        if (key.startsWith(baseCurrency)) {
-                            const currencyCode = key.substring(3);
-                            rates[currencyCode] = value as number;
-                        }
-                    }
-                }
-                
-                if (Object.keys(rates).length > 0) {
-                    if (!rates['NGN'] && baseCurrency === 'GBP') rates['NGN'] = 1900;
-                    if (!rates['NGN'] && baseCurrency === 'USD') rates['NGN'] = 1520;
-                    if (!rates['NGN'] && baseCurrency === 'EUR') rates['NGN'] = 1610;
-                    
-                    cachedRates = rates;
-                    lastFetchTime = Date.now();
-                    
-                    console.log(`✅ Exchange rates updated via ${api.name}`);
-                    return rates;
-                }
-            } catch (err) {
-                console.log(`${api.name} failed:`, err);
-                continue;
-            }
+            
+            throw new Error('Failed to fetch rates from currency-service');
+        } catch (error) {
+            console.error('Failed to fetch exchange rates:', error);
+            setUsingLiveRates(false);
+            setRatesError(`Unable to fetch live exchange rates: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            throw error; // Re-throw - no fallbacks
         }
-        
-        console.warn('⚠️ All APIs failed, using fallback rates');
-        return FALLBACK_RATES[baseCurrency] || FALLBACK_RATES['GBP'];
     }, []);
 
     const refreshRates = useCallback(async () => {
         setIsLoadingRates(true);
+        setRatesError(null);
+        
         try {
-            const rates = await fetchLiveRates(currency.code);
-            setExchangeRates(rates);
+            // This will throw if fails - no fallback
+            await fetchLiveRates(currency.code);
+            console.log('✅ Rates refreshed successfully');
         } catch (error) {
             console.error('Failed to refresh rates:', error);
+            // Don't set empty rates - keep previous rates or let components handle the error
         } finally {
             setIsLoadingRates(false);
         }
@@ -173,75 +123,55 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
         if (amount === 0 || isNaN(amount)) return 0;
         
         try {
-            let rates = exchangeRates;
-            if (Object.keys(rates).length === 0) {
-                rates = await fetchLiveRates(fromCurrency);
-            }
-            
-            if (rates[currency.code]) {
-                return amount * rates[currency.code];
-            }
-            
-            if (FALLBACK_RATES[fromCurrency] && FALLBACK_RATES[fromCurrency][currency.code]) {
-                return amount * FALLBACK_RATES[fromCurrency][currency.code];
-            }
-            
-            return amount;
+            // This will throw if rates aren't available
+            const { convertedAmount } = await convertCurrencyLive(amount, fromCurrency, currency.code);
+            return convertedAmount;
         } catch (error) {
             console.error('Currency conversion failed:', error);
-            return amount;
+            throw new Error(`Unable to convert currency: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-    }, [currency.code, exchangeRates, fetchLiveRates]);
+    }, [currency.code]);
 
     const formatPrice = useCallback(async (amount: number, fromCurrency?: string): Promise<string> => {
-        let finalAmount = amount;
-        if (fromCurrency && fromCurrency !== currency.code) {
-            finalAmount = await convertPrice(amount, fromCurrency);
-        }
-        
-        const symbol = CURRENCY_SYMBOLS[currency.code] || currency.symbol;
-        
-        let formattedAmount: string;
-        if (currency.code === 'JPY') {
-            formattedAmount = Math.round(finalAmount).toLocaleString();
-        } else if (currency.code === 'NGN') {
-            if (finalAmount >= 1000) {
-                formattedAmount = Math.round(finalAmount).toLocaleString();
-            } else {
-                formattedAmount = finalAmount.toFixed(2);
+        try {
+            let finalAmount = amount;
+            let displayCurrency = currency.code;
+            
+            if (fromCurrency && fromCurrency !== currency.code) {
+                finalAmount = await convertPrice(amount, fromCurrency);
+                displayCurrency = currency.code;
             }
-        } else if (finalAmount >= 100) {
-            formattedAmount = Math.round(finalAmount).toLocaleString();
-        } else {
-            formattedAmount = finalAmount.toFixed(2);
+            
+            // This will throw if formatting fails
+            return formatPriceWithCurrency(finalAmount, displayCurrency);
+        } catch (error) {
+            console.error('Price formatting failed:', error);
+            // Return a simple fallback format instead of throwing
+            const symbol = CURRENCY_SYMBOLS[currency.code] || currency.code;
+            return `${symbol}${amount.toFixed(2)}`;
         }
-        
-        return `${symbol}${formattedAmount}`;
     }, [currency, convertPrice]);
 
-    // Location detection function
-    const detectLocation = useCallback(async (): Promise<{ country: string; currency: string; symbol: string } | null> => {
-        // List of CORS-friendly IP APIs to try in order
+    // Location detection
+    const detectLocation = useCallback(async (): Promise<{ country: string } | null> => {
         const apis = [
-            {
-                name: 'ipwho.is',
-                url: 'https://ipwho.is/',
-                parse: (data: any) => ({ country: data.country_code, currency: data.currency_code, symbol: data.currency_symbol })
-            },
             {
                 name: 'ipapi.co',
                 url: 'https://ipapi.co/json/',
-                parse: (data: any) => ({ country: data.country_code, currency: data.currency_code, symbol: data.currency_symbol })
+                timeout: 5000,
+                parse: (data: any) => ({ country: data.country_code })
+            },
+            {
+                name: 'ipwho.is',
+                url: 'https://ipwho.is/',
+                timeout: 5000,
+                parse: (data: any) => ({ country: data.country_code })
             },
             {
                 name: 'ip-api.com',
                 url: 'https://ip-api.com/json/',
-                parse: (data: any) => ({ country: data.countryCode, currency: '', symbol: '' })
-            },
-            {
-                name: 'geoplugin.net',
-                url: 'http://www.geoplugin.net/json.gp',
-                parse: (data: any) => ({ country: data.geoplugin_countryCode, currency: '', symbol: '' })
+                timeout: 5000,
+                parse: (data: any) => ({ country: data.countryCode })
             }
         ];
 
@@ -249,16 +179,14 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
             try {
                 console.log(`📍 Trying location detection via ${api.name}...`);
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                const timeoutId = setTimeout(() => controller.abort(), api.timeout);
                 const response = await fetch(api.url, { signal: controller.signal });
                 clearTimeout(timeoutId);
                 
                 if (!response.ok) continue;
-                
                 const data = await response.json();
                 const result = api.parse(data);
-                
-                if (result.country) {
+                if (result && result.country) {
                     console.log(`✅ Location detected via ${api.name}: ${result.country}`);
                     return result;
                 }
@@ -267,7 +195,6 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
                 continue;
             }
         }
-        
         return null;
     }, []);
 
@@ -280,41 +207,64 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
             const savedCurr = localStorage.getItem('eb_pref_curr');
             
             if (savedLang && savedCurr) {
-                const parsedCurr = JSON.parse(savedCurr);
-                setLanguageState(savedLang);
-                setCurrencyState({ code: parsedCurr.code, symbol: parsedCurr.symbol });
-                setHasInitialized(true);
-                await refreshRates();
-                return;
+                try {
+                    const parsedCurr = JSON.parse(savedCurr);
+                    setLanguageState(savedLang);
+                    setCurrencyState({ code: parsedCurr.code, symbol: parsedCurr.symbol });
+                    setHasInitialized(true);
+                    
+                    // Try to fetch rates, but don't block UI if it fails
+                    try {
+                        await refreshRates();
+                    } catch (error) {
+                        console.error('Initial rate fetch failed:', error);
+                        setRatesError('Unable to load exchange rates. Please check your connection.');
+                    }
+                    return;
+                } catch (e) {
+                    console.error('Failed to parse saved currency:', e);
+                }
             }
             
-            // Try to detect location
-            const location = await detectLocation();
+            // Try location detection
+            let location = null;
+            try {
+                location = await detectLocation();
+            } catch (err) {
+                console.error('Location detection error:', err);
+            }
             
-            if (location && location.country && geoMap[location.country]) {
+            if (location?.country && geoMap[location.country]) {
                 const detected = geoMap[location.country];
                 setLanguageState(detected.lang);
-                setCurrencyState({ code: detected.currency.code, symbol: detected.currency.symbol });
+                setCurrencyState(detected.currency);
                 console.log(`[Geo-Detection] Setting locale to ${location.country}: ${detected.lang}/${detected.currency.code}`);
-            } else if (location && location.country) {
-                // Country found but not in geoMap - use defaults based on region
-                setLanguageState('EN');
-                setCurrencyState({ code: 'USD', symbol: '$' });
-                console.log(`[Geo-Detection] Country ${location.country} not in map, using USD`);
             } else {
-                // Fallback to GBP
-                console.log('[Geo-Detection] No location detected, using defaults (GBP)');
                 setLanguageState('EN');
                 setCurrencyState({ code: 'GBP', symbol: '£' });
+                console.log('[Geo-Detection] No location detected, using defaults (GBP)');
             }
             
             setHasInitialized(true);
-            await refreshRates();
+            
+            // Try to fetch initial rates
+            try {
+                await refreshRates();
+            } catch (error) {
+                console.error('Initial rate fetch failed:', error);
+                setRatesError('Unable to load exchange rates. Please check your connection.');
+            }
         };
         
         initSettings();
         
-        const interval = setInterval(refreshRates, CACHE_DURATION);
+        // Refresh rates every 5 minutes
+        const interval = setInterval(() => {
+            refreshRates().catch(error => {
+                console.error('Scheduled rate refresh failed:', error);
+            });
+        }, 300000); // 5 minutes
+        
         return () => clearInterval(interval);
     }, [refreshRates, detectLocation]);
 
@@ -323,28 +273,27 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
         let value: any = translations[language];
         if (!value) return key;
         for (const k of keys) {
-            if (value && value[k] !== undefined) {
-                value = value[k];
-            } else {
-                return key;
-            }
+            if (value && value[k] !== undefined) value = value[k];
+            else return key;
         }
         return typeof value === 'string' ? value : key;
     };
 
     return (
         <LanguageContext.Provider value={{ 
-            language, 
-            setLanguage, 
-            currency, 
-            setCurrency, 
-            t,
-            convertPrice,
-            formatPrice,
-            isLoadingRates,
-            refreshRates,
+            language, setLanguage, currency, setCurrency, t,
+            convertPrice, formatPrice, isLoadingRates, refreshRates, ratesError, usingLiveRates
         }}>
-            {hasInitialized ? children : (
+            {hasInitialized ? (
+                <>
+                    {ratesError && (
+                        <div className="fixed top-16 left-0 right-0 z-50 bg-red-50 border-b border-red-200 py-2 px-4 text-center">
+                            <p className="text-sm text-red-800">⚠️ {ratesError}</p>
+                        </div>
+                    )}
+                    {children}
+                </>
+            ) : (
                 <div className="fixed inset-0 bg-white z-[999] flex items-center justify-center">
                     <div className="w-10 h-10 border-4 border-blue-50 border-t-[#33a8da] rounded-full animate-spin"></div>
                 </div>
@@ -355,8 +304,6 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
 
 export const useLanguage = () => {
     const context = useContext(LanguageContext);
-    if (context === undefined) {
-        throw new Error('useLanguage must be used within a LanguageProvider');
-    }
+    if (context === undefined) throw new Error('useLanguage must be used within a LanguageProvider');
     return context;
 };

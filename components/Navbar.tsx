@@ -137,6 +137,7 @@ const Navbar: React.FC<NavbarProps> = ({
   const [isCurrencyOpen, setIsCurrencyOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
   const langRef = useRef<HTMLDivElement>(null);
   const currencyRef = useRef<HTMLDivElement>(null);
@@ -262,7 +263,7 @@ const Navbar: React.FC<NavbarProps> = ({
     <nav className="bg-white border-b border-gray-100 sticky top-0 z-50 shadow-sm transition-all duration-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-20 gap-4">
-          {/* Logo Section */}
+          {/* Logo Section - FIXED */}
           <button
             type="button"
             className="flex items-center gap-2 cursor-pointer group bg-transparent border-none p-0 m-0 focus:outline-none h-20"
@@ -274,13 +275,40 @@ const Navbar: React.FC<NavbarProps> = ({
               }
             }}
           >
-            <Image
-              src="/images/logo1.png"
-              alt="Ebony Bruce Travels Logo"
-              width={120}
-              height={50}
-              className="object-contain"
-            />
+            {!logoError ? (
+              <div className="relative w-[120px] h-[50px]">
+                <Image
+                  src="/images/logo1.png"
+                  alt="Ebony Bruce Travels Logo"
+                  fill
+                  className="object-contain"
+                  onError={() => setLogoError(true)}
+                  priority
+                  unoptimized={false}
+                />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 bg-gradient-to-br from-[#32A6D7] to-[#2c95c2] rounded-full flex items-center justify-center">
+                  <svg
+                    className="w-6 h-6 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <span className="text-xl font-bold text-[#32A6D7] tracking-tight hidden sm:inline-block">
+                  Ebony Bruce Travels
+                </span>
+              </div>
+            )}
           </button>
 
           {/* Desktop Navigation */}
@@ -326,7 +354,6 @@ const Navbar: React.FC<NavbarProps> = ({
                   aria-label="Select language"
                   aria-expanded={isLangOpen}
                 >
-                  {/* Use regular img tag for external images */}
                   <img
                     src={selectedLang.flag}
                     className="w-5 h-3.5 rounded shadow-sm"
@@ -364,7 +391,6 @@ const Navbar: React.FC<NavbarProps> = ({
                           }`}
                         >
                           <div className="flex items-center gap-3">
-                            {/* Use regular img tag for external images */}
                             <img
                               src={lang.flag}
                               className="w-6 h-4 rounded"
@@ -410,7 +436,6 @@ const Navbar: React.FC<NavbarProps> = ({
                   aria-label="Select currency"
                   aria-expanded={isCurrencyOpen}
                 >
-                  {/* Use regular img tag for external images */}
                   <img
                     src={selectedCurrency.flag}
                     className="w-5 h-3.5 rounded shadow-sm"
@@ -448,7 +473,6 @@ const Navbar: React.FC<NavbarProps> = ({
                           }`}
                         >
                           <div className="flex items-center gap-3">
-                            {/* Use regular img tag for external images */}
                             <img
                               src={curr.flag}
                               className="w-6 h-4 rounded"
