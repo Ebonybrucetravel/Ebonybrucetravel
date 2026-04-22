@@ -83,11 +83,31 @@ export default function BookingSuccessPage() {
           console.log('👤 Guest user fetching by reference:', bookingRef);
           setIsGuest(true);
           
-          const storedEmail = localStorage.getItem('guestEmail') || 
-                             sessionStorage.getItem('guestEmail');
+          // Try to fetch without email first
+          try {
+            console.log('Attempting to fetch booking without email...');
+            const response = await api.publicRequest(
+              `/api/v1/bookings/public/by-reference/${encodeURIComponent(bookingRef)}`,
+              { method: 'GET' }
+            );
+            const bookingData = response?.data ?? response ?? null;
+            if (bookingData) {
+              setBooking(bookingData);
+              const fetchedEmail = bookingData.passengerInfo?.email;
+              if (fetchedEmail) {
+                setEmail(fetchedEmail);
+                localStorage.setItem('guestEmail', fetchedEmail);
+              }
+              setLoading(false);
+              return;
+            }
+          } catch (err) {
+            console.log('Fetch without email failed, trying with email');
+          }
+          
+          const storedEmail = localStorage.getItem('guestEmail') || sessionStorage.getItem('guestEmail');
           const urlEmail = emailParam;
           
-          // If we have email from URL or storage, use it
           if (urlEmail) {
             setEmail(urlEmail);
             localStorage.setItem('guestEmail', urlEmail);
@@ -96,7 +116,6 @@ export default function BookingSuccessPage() {
             setEmail(storedEmail);
             await fetchGuestBooking(bookingRef, storedEmail);
           } else {
-            // No email found - show email form
             setShowEmailForm(true);
             setLoading(false);
           }
@@ -121,11 +140,10 @@ export default function BookingSuccessPage() {
 
   const fetchGuestBooking = async (ref: string, emailAddress: string) => {
     setLoading(true);
+    setError(null);
     
     try {
-      // Must use email with the request
       const url = `/api/v1/bookings/public/by-reference/${encodeURIComponent(ref)}?email=${encodeURIComponent(emailAddress)}`;
-      
       console.log('Fetching guest booking with email:', url);
       
       const response = await api.publicRequest(url, { method: 'GET' });
@@ -136,7 +154,9 @@ export default function BookingSuccessPage() {
       }
       
       setBooking(bookingData);
-      console.log('Guest booking fetched:', bookingData);
+      setEmail(emailAddress);
+      localStorage.setItem('guestEmail', emailAddress);
+      console.log('Guest booking fetched successfully:', bookingData);
       
     } catch (err: any) {
       console.error('Failed to fetch guest booking:', err);
@@ -178,11 +198,35 @@ export default function BookingSuccessPage() {
     }
   };
 
-  const handleEmailSubmit = (e: React.FormEvent) => {
+  const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (email && bookingRef) {
-      localStorage.setItem('guestEmail', email);
-      fetchGuestBooking(bookingRef, email);
+      setLoading(true);
+      setShowEmailForm(false);
+      setError(null);
+      
+      try {
+        localStorage.setItem('guestEmail', email);
+        const url = `/api/v1/bookings/public/by-reference/${encodeURIComponent(bookingRef)}?email=${encodeURIComponent(email)}`;
+        console.log('Submitting email form:', url);
+        
+        const response = await api.publicRequest(url, { method: 'GET' });
+        const bookingData = response?.data ?? response ?? null;
+        
+        if (!bookingData) {
+          throw new Error('No booking data found');
+        }
+        
+        setBooking(bookingData);
+        console.log('Booking fetched after email submit:', bookingData);
+        
+      } catch (err: any) {
+        console.error('Failed to fetch booking:', err);
+        setError('Unable to load booking. Please check your reference and email.');
+        setShowEmailForm(true);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -1489,8 +1533,8 @@ export default function BookingSuccessPage() {
 
   const isWakanow = booking?.provider === 'WAKANOW' || booking?.bookingData?.provider === 'WAKANOW';
 
-  // Email form for guest bookings (only shown when no email is provided)
-  if (showEmailForm) {
+  // Email form for guest bookings (only shown when no email is provided and no booking)
+  if (showEmailForm && !booking) {
     return (
       <div className="max-w-md mx-auto px-4 py-16">
         <div className="bg-white rounded-xl shadow p-8 border border-gray-100">
@@ -1612,46 +1656,46 @@ export default function BookingSuccessPage() {
     <div className="max-w-3xl mx-auto px-4 py-16">
       {/* Guest banner - encouraging sign up (not blocking content) */}
       {isGuest && (
-  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 mb-6">
-    <div className="flex items-center justify-between flex-wrap gap-4">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-          <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900">Enjoying your booking experience?</p>
+                <p className="text-sm text-gray-600">Create a free account to earn loyalty points, manage your bookings, and get exclusive deals!</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => {
+                  const params = new URLSearchParams();
+                  if (email) params.set('email', email);
+                  if (bookingRef) params.set('bookingRef', bookingRef);
+                  router.push(`/register?${params.toString()}`);
+                }}
+                className="px-4 py-2 bg-[#33a8da] text-white font-medium rounded-lg hover:bg-[#2c98c7] transition text-sm"
+              >
+                Sign Up Free
+              </button>
+              <button 
+                onClick={() => {
+                  const params = new URLSearchParams();
+                  if (email) params.set('email', email);
+                  if (bookingRef) params.set('bookingRef', bookingRef);
+                  router.push(`/login?${params.toString()}`);
+                }}
+                className="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 border border-gray-300 transition text-sm"
+              >
+                Login
+              </button>
+            </div>
+          </div>
         </div>
-        <div>
-          <p className="font-semibold text-gray-900">Enjoying your booking experience?</p>
-          <p className="text-sm text-gray-600">Create a free account to earn loyalty points, manage your bookings, and get exclusive deals!</p>
-        </div>
-      </div>
-      <div className="flex gap-3">
-        <button 
-          onClick={() => {
-            const params = new URLSearchParams();
-            if (email) params.set('email', email);
-            if (bookingRef) params.set('bookingRef', bookingRef);
-            router.push(`/register?${params.toString()}`);
-          }}
-          className="px-4 py-2 bg-[#33a8da] text-white font-medium rounded-lg hover:bg-[#2c98c7] transition text-sm"
-        >
-          Sign Up Free
-        </button>
-        <button 
-          onClick={() => {
-            const params = new URLSearchParams();
-            if (email) params.set('email', email);
-            if (bookingRef) params.set('bookingRef', bookingRef);
-            router.push(`/login?${params.toString()}`);
-          }}
-          className="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 border border-gray-300 transition text-sm"
-        >
-          Login
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
       {/* Authenticated welcome banner */}
       {!isGuest && (
@@ -1937,16 +1981,16 @@ export default function BookingSuccessPage() {
         ) : (
           <>
             <button 
-  onClick={() => {
-    const params = new URLSearchParams();
-    if (email) params.set('email', email);
-    if (bookingRef) params.set('bookingRef', bookingRef);
-    router.push(`/register?${params.toString()}`);
-  }} 
-  className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
->
-  Create Free Account
-</button>
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (email) params.set('email', email);
+                if (bookingRef) params.set('bookingRef', bookingRef);
+                router.push(`/register?${params.toString()}`);
+              }} 
+              className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
+            >
+              Create Free Account
+            </button>
             
             <button 
               onClick={() => {
