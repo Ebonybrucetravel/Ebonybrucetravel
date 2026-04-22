@@ -313,6 +313,9 @@ export interface Booking {
   };
   formattedDiscountedTotal?: string;
 
+  // ✅ WAKANOW SPECIFIC FIELDS
+  pnrNumber?: string;  // ADDED: PNR number for Wakanow ticket issuance
+
   bookingData: {
     // Flight fields
     origin?: string;
@@ -349,6 +352,10 @@ export interface Booking {
     final_amount?: string;
     conversion_fee?: string;
     taxes?: number;
+
+    // ✅ WAKANOW BOOKING DATA FIELDS
+    pnrNumber?: string;  // ADDED: Can also be in bookingData
+    provider?: string;
 
     [key: string]: any;
   };

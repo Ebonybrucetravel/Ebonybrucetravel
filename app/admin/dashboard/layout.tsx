@@ -106,6 +106,15 @@ export default function AdminDashboardLayout({
       ]
     },
     {
+      category: 'Wakanow Admin',  // Added Wakanow section
+      items: [
+        { href: '/admin/dashboard/wakanow', label: 'Wakanow Dashboard', icon: '🌍', gradient: 'from-indigo-500 to-purple-500' },
+        { href: '/admin/dashboard/wakanow/tickets', label: 'Issue Tickets', icon: '🎫', gradient: 'from-blue-500 to-indigo-500' },
+        { href: '/admin/dashboard/wakanow/wallet', label: 'Wallet Balance', icon: '💰', gradient: 'from-green-500 to-emerald-500' },
+        { href: '/admin/dashboard/wakanow/bookings', label: 'Wakanow Bookings', icon: '📋', gradient: 'from-cyan-500 to-blue-500' },
+      ]
+    },
+    {
       category: 'Account',
       items: [
         { href: '/admin/dashboard/profile', label: 'Profile', icon: '👤', gradient: 'from-blue-500 to-cyan-500' },
@@ -174,7 +183,6 @@ export default function AdminDashboardLayout({
         </div>
       </header>
 
-      {/* Rest of your layout remains exactly the same... */}
       <div className="flex flex-1">
         {/* Desktop Navigation */}
         <aside className="hidden md:block w-72 bg-white/80 backdrop-blur-xl border-r border-gray-200/50 h-[calc(100vh-73px)] sticky top-[73px] overflow-y-auto">
@@ -310,34 +318,34 @@ export default function AdminDashboardLayout({
                           </Link>
                         );
                       })}
-                </div>
-              </div>
-            ))}
+                    </div>
+                  </div>
+                ))}
 
-            <div className="pt-6 mt-6 border-t border-gray-100">
-              <button 
-                onClick={handleLogout}
-                className="relative w-full rounded-xl transition-all duration-300"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-pink-500 opacity-100 rounded-xl" />
-                <div className="relative flex items-center gap-3 px-4 py-3 text-white">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  <span className="font-medium text-sm">Sign Out</span>
+                <div className="pt-6 mt-6 border-t border-gray-100">
+                  <button 
+                    onClick={handleLogout}
+                    className="relative w-full rounded-xl transition-all duration-300"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-pink-500 opacity-100 rounded-xl" />
+                    <div className="relative flex items-center gap-3 px-4 py-3 text-white">
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                      <span className="font-medium text-sm">Sign Out</span>
+                    </div>
+                  </button>
                 </div>
-              </button>
-            </div>
-          </nav>
-        </aside>
-      </>
-    )}
+              </nav>
+            </aside>
+          </>
+        )}
 
-    {/* Main Content */}
-    <main className="flex-1 overflow-y-auto">
-      {children}
-    </main>
-  </div>
-</div>
-);
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
 }

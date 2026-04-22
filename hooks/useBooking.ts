@@ -29,6 +29,17 @@ interface ExtendedSearchResult {
   markup_percentage?: number;
   markup_amount?: string;
   currency?: string;
+  origin?: string;
+  destination?: string;
+  departureAirport?: string;
+  arrivalAirport?: string;
+  departureCity?: string;
+  arrivalCity?: string;
+  isDomestic?: boolean;
+  productTypeOverride?: string;
+  offerId?: string;
+  selectData?: string;
+  isWakanow?: boolean;
   realData?: {
     offerId?: string;
     finalPrice?: number;
@@ -45,6 +56,41 @@ interface ExtendedSearchResult {
   };
   [key: string]: any;
 }
+
+// Helper function to extract airport code from string like "LHR (London)" or just "LHR"
+const extractAirportCode = (str: string | undefined): string => {
+  if (!str) return "";
+  const match = str.match(/([A-Z]{3})/);
+  return match?.[1] || str.substring(0, 3).toUpperCase();
+};
+
+// Helper function to check if flight is domestic Nigerian
+const isDomesticNigerianFlight = (origin: string, destination: string): boolean => {
+  if (!origin || !destination) return false;
+  const nigerianAirports = ['LOS', 'ABV', 'PHC', 'KAN', 'ENU', 'QOW', 'BNI', 'JOS', 'KAD', 'YOL'];
+  return nigerianAirports.includes(origin.toUpperCase()) && nigerianAirports.includes(destination.toUpperCase());
+};
+
+// ✅ Helper function to check if this is a Wakanow offer
+const isWakanowOffer = (item: ExtendedSearchResult): boolean => {
+  // Check by provider
+  if (item.provider === 'WAKANOW') return true;
+  if (item.isWakanow === true) return true;
+  
+  // Check by ID patterns (Wakanow offers have IDs like "wakanow-46")
+  const id = item.id || item.offerId || item.realData?.offerId || '';
+  if (id.toString().toLowerCase().includes('wakanow')) return true;
+  
+  // Check by selectData (Wakanow flights have selectData from search)
+  if (item.selectData) return true;
+  
+  // Check by title/airline (Nigerian domestic airlines)
+  const title = (item.title || '').toLowerCase();
+  const nigerianAirlines = ['air peace', 'valuejet', 'arik air', 'dana air', 'green africa', 'ibom air', 'united nigeria', 'overland'];
+  if (nigerianAirlines.some(airline => title.includes(airline))) return true;
+  
+  return false;
+};
 
 export function useBooking() {
   const [isCreating, setIsCreating] = useState(false);
@@ -63,11 +109,62 @@ export function useBooking() {
       setIsCreating(true);
       setError(null);
       try {
-        const { productType, provider } = getProductMeta(item.type || "");
+        // ✅ Check if this is a Wakanow offer FIRST (before airport detection)
+        const wakanowDetected = isWakanowOffer(item);
+        
+        // ✅ Extract origin and destination from multiple sources
+        const originRaw = item.origin || 
+                         item.departureAirport || 
+                         item.departureCity ||
+                         item.realData?.origin ||
+                         searchParams?.segments?.[0]?.from;
+                         
+        const destinationRaw = item.destination || 
+                              item.arrivalAirport || 
+                              item.arrivalCity ||
+                              item.realData?.destination ||
+                              searchParams?.segments?.[0]?.to;
+        
+        const originCode = extractAirportCode(originRaw);
+        const destinationCode = extractAirportCode(destinationRaw);
+        
+        // ✅ Check if this is a domestic Nigerian flight by airports
+        const isDomesticByAirports = originCode && destinationCode && isDomesticNigerianFlight(originCode, destinationCode);
+        
+        // ✅ FORCE domestic for Wakanow offers OR domestic airport routes
+        const isDomestic = item.isDomestic || 
+                          item.productTypeOverride === 'FLIGHT_DOMESTIC' ||
+                          wakanowDetected ||
+                          isDomesticByAirports;
+        
+        // ✅ Force correct product type and provider
+        let productType: string;
+        let provider: string;
+        
+        if (isDomestic) {
+          productType = "FLIGHT_DOMESTIC";
+          provider = "WAKANOW";
+          console.log("🇳🇬 WAKANOW DOMESTIC flight detected:", { 
+            originCode, 
+            destinationCode, 
+            wakanowDetected,
+            isDomesticByAirports,
+            itemId: item.id,
+            itemProvider: item.provider,
+            itemTitle: item.title?.substring(0, 50)
+          });
+        } else {
+          // ✅ Keep existing logic for international flights (Duffel)
+          const meta = getProductMeta(item.type || "");
+          productType = meta.productType;
+          provider = meta.provider || item.provider || "DUFFEL";
+          console.log("🌍 International flight - using DUFFEL provider", { productType, provider });
+        }
+        
         const offerCurrency = (
           item.realData?.currency ??
           item.currency ??
-          "GBP"
+          "NGN"
         ).toUpperCase();
 
         // Get base price (original amount before markup)
@@ -84,8 +181,8 @@ export function useBooking() {
 
         // Calculate taxes by adding markup and service fee together
         const markupAmount = parseFloat(item.markup_amount || "0");
-        const serviceFee = parseFloat(item.service_charge || "0");
-        const taxes = markupAmount + serviceFee; // ✅ MARKUP + SERVICE FEE = TAXES
+        const serviceFee = parseFloat((item as any).service_charge || "0");
+        const taxes = markupAmount + serviceFee;
 
         // Final amount = basePrice + taxes
         const finalAmount = basePrice + taxes;
@@ -94,16 +191,19 @@ export function useBooking() {
           basePrice,
           markupAmount,
           serviceFee,
-          taxes, // This is markup + service fee combined
+          taxes,
           finalAmount,
-          original_amount: item.original_amount,
-          final_amount: item.final_amount,
-          markup_percentage: item.markup_percentage,
+          isDomestic,
+          wakanowDetected,
+          provider,
+          productType,
+          originCode,
+          destinationCode
         });
 
         const body: Record<string, any> = {
           productType,
-          provider: provider || item.provider || "Unknown",
+          provider: provider,
           currency: offerCurrency,
           basePrice: basePrice,
           passengerInfo: {
@@ -128,14 +228,17 @@ export function useBooking() {
             dateOfBirth: passenger.dateOfBirth,
           };
 
+          // ✅ Use originCode and destinationCode with fallbacks
+          const finalOrigin = originCode || "LOS";
+          const finalDestination = destinationCode || "ABV";
+          
+          // ✅ For Wakanow, use selectData as the offerId if available
+          const offerId = item.selectData || item.realData?.offerId || item.offerId || item.id;
+
           body.bookingData = {
-            offerId: item.realData?.offerId ?? item.id,
-            origin: searchParams?.segments?.[0]?.from
-              ? extractCode(searchParams.segments[0].from)
-              : "LHR",
-            destination: searchParams?.segments?.[0]?.to
-              ? extractCode(searchParams.segments[0].to)
-              : "CDG",
+            offerId: offerId,
+            origin: finalOrigin,
+            destination: finalDestination,
             departureDate: searchParams?.segments?.[0]?.date ?? today(),
             ...(item.realData?.airline && { airline: item.realData.airline }),
             ...(item.realData?.flightNumber && {
@@ -147,11 +250,15 @@ export function useBooking() {
             basePrice: basePrice,
             markup_amount: markupAmount,
             service_fee: serviceFee,
-            taxes: taxes, // This is the combined amount
+            taxes: taxes,
             totalAmount: finalAmount,
             original_amount: item.original_amount,
             final_amount: item.final_amount,
             markup_percentage: item.markup_percentage,
+            // ✅ Add flags for backend
+            is_domestic: isDomestic,
+            is_wakanow: wakanowDetected,
+            ...(item.selectData && { select_data: item.selectData }),
           };
         } else if (productType === "HOTEL") {
           body.bookingData = {
@@ -163,11 +270,10 @@ export function useBooking() {
             guests: searchParams?.adults ?? 1,
             rooms: searchParams?.rooms ?? 1,
             location: item.subtitle ?? searchParams?.location ?? "Lagos",
-            // Include pricing breakdown
             basePrice: basePrice,
             markup_amount: markupAmount,
             service_fee: serviceFee,
-            taxes: taxes, // This is the combined amount
+            taxes: taxes,
             totalAmount: finalAmount,
             original_amount: item.original_amount,
             final_amount: item.final_amount,
@@ -197,11 +303,10 @@ export function useBooking() {
             dropoffDateTime: dropoffDt,
             vehicleType:
               item.realData?.vehicleType ?? item.title ?? "Standard Car",
-            // Include pricing breakdown
             basePrice: basePrice,
             markup_amount: markupAmount,
             service_fee: serviceFee,
-            taxes: taxes, // This is the combined amount
+            taxes: taxes,
             totalAmount: finalAmount,
             original_amount: item.original_amount,
             final_amount: item.final_amount,
@@ -209,17 +314,7 @@ export function useBooking() {
           };
         }
 
-        // Log the request body for debugging
-        console.log("📤 Sending booking request with taxes breakdown:", {
-          basePrice,
-          markupAmount,
-          serviceFee,
-          taxes: taxes, // This is markup + service fee
-          finalAmount,
-        });
-
-        // Log the request body for debugging
-        console.log("Sending booking request:", JSON.stringify(body, null, 2));
+        console.log("📤 Sending booking request:", JSON.stringify(body, null, 2));
 
         const endpoint = isGuest
           ? "/api/v1/bookings/guest"
@@ -242,12 +337,10 @@ export function useBooking() {
           body: JSON.stringify(body),
         });
 
-        // Try to parse the response even if it's not ok
         let data: any;
         try {
           data = await res.json();
         } catch (e) {
-          // If response is not JSON, get text
           const text = await res.text();
           console.error("Non-JSON response:", text);
           throw new Error(
@@ -259,7 +352,6 @@ export function useBooking() {
           const msg = data.message ?? data.error ?? "Booking creation failed";
           console.error("Booking creation failed:", data);
 
-          // Check for specific error messages
           if (typeof msg === "string") {
             if (msg.includes("No active markup configuration found")) {
               const friendly =
@@ -373,7 +465,6 @@ export function useBooking() {
         const offerId = item.realData?.offerId ?? item.id;
         if (!offerId) throw new Error("Missing offer ID");
 
-        // Format payment info if card is provided
         const paymentInfo = card
           ? {
             cardNumber: card.cardNumber.replace(/\s+/g, ""),
@@ -385,10 +476,9 @@ export function useBooking() {
           }
           : undefined;
 
-        // Calculate price breakdown for Amadeus hotel
         const basePrice = item.realData?.price || 0;
         const markupAmount = parseFloat(item.markup_amount || "0");
-        const taxes = markupAmount; // Combine markup as taxes
+        const taxes = markupAmount;
 
         const response = await api.createAmadeusHotelBooking(
           offerId,
@@ -397,7 +487,7 @@ export function useBooking() {
             basePrice,
             taxes,
             totalAmount: basePrice + taxes,
-          }, // hotelData with price breakdown
+          },
           {
             firstName: passenger.firstName,
             lastName: passenger.lastName,
@@ -405,14 +495,13 @@ export function useBooking() {
             phone: passenger.phone,
           },
           paymentInfo,
-          isGuest, // Tells API to use guest endpoint
+          isGuest,
         );
 
         if (!response.success) {
           throw new Error(response.message || "Booking failed");
         }
 
-        // Extract booking from response
         const raw =
           response.data?.booking ??
           response.booking ??
@@ -423,7 +512,6 @@ export function useBooking() {
           throw new Error("Invalid response from server - missing booking ID");
         }
 
-        // ✅ FIX: Store taxes in bookingData instead of at the top level
         const booking: Booking = {
           id: raw.id,
           reference: raw.reference,
@@ -435,7 +523,6 @@ export function useBooking() {
           totalAmount: basePrice + taxes,
           currency:
             raw.currency || (item.realData?.currency ?? "GBP").toUpperCase(),
-          // Store taxes in bookingData
           bookingData: {
             ...raw,
             taxes: taxes,
@@ -454,7 +541,6 @@ export function useBooking() {
         };
 
         console.log("✅ Booking created successfully:", booking);
-
         setBooking(booking);
         return booking;
       } catch (err: any) {
@@ -516,7 +602,6 @@ export function useBooking() {
           throw new Error(friendly);
         }
 
-        // Check if the error is about missing flight fields
         if (typeof msg === "string" && msg.includes("dateOfBirth")) {
           throw new Error(
             "Date of birth is required for flight bookings. Please fill in all required fields.",
@@ -610,8 +695,6 @@ export function useBooking() {
         const rateKey = item.realData?.rateKey;
         if (!rateKey) throw new Error("Missing rate key for Hotelbeds booking");
 
-        // Prepare guest list for HBX backend wrapper
-        // Map from passenger.guests if available, otherwise fallback to the primary passenger
         let guests = [];
 
         if (passenger.guests && passenger.guests.length > 0) {
@@ -619,10 +702,9 @@ export function useBooking() {
             title: (g.name?.title || passenger.title || "MR").toUpperCase(),
             firstName: g.name?.firstName || passenger.firstName,
             lastName: g.name?.lastName || passenger.lastName,
-            roomIdx: g.travelerId || 1, // roomIdx is usually 1-based, mapping from travelerId or default to 1
+            roomIdx: g.travelerId || 1,
           }));
         } else {
-          // Fallback to primary passenger if no guests array provided
           guests = [
             {
               title: (passenger.title || "MR").toUpperCase(),
@@ -647,7 +729,6 @@ export function useBooking() {
           throw new Error(response.message || "Hotelbeds booking failed");
         }
 
-        // Transform HBX response to our internal Booking type
         const booking: Booking = {
           id: response.bookingId,
           reference: response.bookingId,
@@ -697,11 +778,6 @@ export function useBooking() {
     pollBookingStatus,
     reset,
   };
-}
-
-function extractCode(s: string) {
-  const m = s.match(/\(([A-Z]{3})\)/);
-  return m?.[1] ?? s.substring(0, 3).toUpperCase();
 }
 
 const today = () => new Date().toISOString().split("T")[0];

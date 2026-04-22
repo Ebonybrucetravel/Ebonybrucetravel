@@ -30,6 +30,12 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isMobileMenuOpen, onClose }
       { href: '/admin/dashboard/coupons', label: 'Coupons', icon: '🏷️', gradient: 'from-purple-500 to-pink-500' },
       { href: '/admin/dashboard/cancellations', label: 'Cancellations', icon: '❌', gradient: 'from-red-500 to-pink-500' },
     ],
+    wakanow: [
+      { href: '/admin/dashboard/wakanow', label: 'Wakanow Dashboard', icon: '🌍', gradient: 'from-indigo-500 to-purple-500' },
+      { href: '/admin/dashboard/wakanow/tickets', label: 'Issue Tickets', icon: '🎫', gradient: 'from-blue-500 to-indigo-500' },
+      { href: '/admin/dashboard/wakanow/wallet', label: 'Wallet Balance', icon: '💰', gradient: 'from-green-500 to-emerald-500' },
+      { href: '/admin/dashboard/wakanow/bookings', label: 'Wakanow Bookings', icon: '📋', gradient: 'from-cyan-500 to-blue-500' },
+    ],
     account: [
       { href: '/admin/dashboard/profile', label: 'Profile', icon: '👤', gradient: 'from-blue-500 to-cyan-500' },
       { href: '/admin/dashboard/security', label: 'Security', icon: '🛡️', gradient: 'from-purple-500 to-pink-500' },
@@ -145,6 +151,36 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isMobileMenuOpen, onClose }
             </div>
           </div>
 
+          {/* Wakanow Section */}
+          <div className="pt-2 border-t border-gray-100">
+            <p className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <span>🌍</span> Wakanow Admin
+            </p>
+            <div className="space-y-1">
+              {navItems.wakanow.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
+                  className={`relative block w-full group overflow-hidden rounded-xl transition-all duration-300 ${
+                    isActive(item.href) ? 'shadow-lg' : 'hover:shadow-md'
+                  }`}
+                >
+                  {isActive(item.href) && (
+                    <div className={`absolute inset-0 bg-gradient-to-r ${item.gradient} opacity-100`} />
+                  )}
+                  <div className={`absolute inset-0 bg-gradient-to-r ${item.gradient} opacity-0 group-hover:opacity-10 transition-opacity`} />
+                  <div className={`relative flex items-center gap-3 px-4 py-3 ${
+                    isActive(item.href) ? 'text-white' : 'text-gray-600'
+                  }`}>
+                    <span className="text-lg">{item.icon}</span>
+                    <span className="font-medium text-sm">{item.label}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+
           {/* Account Section */}
           <div className="pt-2 border-t border-gray-100">
             <p className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
@@ -180,6 +216,8 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isMobileMenuOpen, onClose }
             <button 
               onClick={() => {
                 // Handle logout
+                localStorage.removeItem('adminToken');
+                window.location.href = '/admin/login';
                 onClose();
               }} 
               className="relative w-full group overflow-hidden rounded-xl transition-all duration-300 hover:shadow-lg"

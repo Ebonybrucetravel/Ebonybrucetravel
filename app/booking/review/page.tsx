@@ -42,6 +42,7 @@ interface ExtendedSearchResult extends SearchResult {
     currency?: string;
     [key: string]: any;
   };
+  isDomestic?: boolean;
   [key: string]: any;
 }
 
@@ -54,6 +55,12 @@ function isAmadeusHotel(item: ExtendedSearchResult): boolean {
     typeof item.realData?.price === "number";
   return hasOffer && hasPrice;
 }
+
+// Helper function to check if flight is domestic
+const isDomesticFlight = (origin: string, destination: string): boolean => {
+  const nigerianAirports = ['LOS', 'ABV', 'PHC', 'KAN', 'ENU', 'QOW', 'BNI', 'JOS', 'KAD', 'YOL'];
+  return nigerianAirports.includes(origin?.toUpperCase()) && nigerianAirports.includes(destination?.toUpperCase());
+};
 
 export default function BookingReviewPage() {
   const router = useRouter();
@@ -181,33 +188,6 @@ export default function BookingReviewPage() {
     processItem();
   }, [selectedItem, currency, convertPrice, formatPrice]);
 
-  if (!selectedItem) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-20 text-center">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">No booking to review</h1>
-        <p className="text-gray-600 mb-8">Please select an item from search to continue.</p>
-        <button onClick={() => router.push("/search")} className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg">
-          Back to search
-        </button>
-      </div>
-    );
-  }
-
-  if ((isLoadingRates || isConverting) && !enhancedItem) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="w-10 h-10 border-4 border-blue-50 border-t-[#33a8da] rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-500">Loading prices in {currency.code}...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const extendedItem = (enhancedItem || selectedItem) as ExtendedSearchResult;
-  const useAmadeusFlow = isAmadeusHotel(extendedItem);
-  const productType = getProductType(extendedItem);
-
   const handleProceedToPayment = async (
     passengerInfo: PassengerInfo,
     voucherCode?: string,
@@ -216,7 +196,8 @@ export default function BookingReviewPage() {
     const isGuest = !isLoggedIn;
 
     const isFlight = extendedItem?.type?.toLowerCase().includes("flight") ||
-      extendedItem?.type?.toLowerCase().includes("duffel");
+      extendedItem?.type?.toLowerCase().includes("duffel") ||
+      extendedItem?.type?.toLowerCase().includes("wakanow");
 
     if (isFlight) {
       if (!passengerInfo.dateOfBirth) {
@@ -296,6 +277,13 @@ export default function BookingReviewPage() {
     }
 
     try {
+      // ✅ FIX: Detect domestic flights and override provider
+      const origin = extendedItem.origin || extendedItem.departureAirport || extendedItem.bookingData?.origin;
+      const destination = extendedItem.destination || extendedItem.arrivalAirport || extendedItem.bookingData?.destination;
+      
+      // Check if this is a domestic Nigerian flight
+      const isDomestic = origin && destination && isDomesticFlight(origin, destination);
+      
       // Use the converted values
       const basePrice = extendedItem.calculatedBasePrice || parseFloat(extendedItem.original_amount || "0");
       const serviceFee = extendedItem.calculatedServiceFee || parseFloat(extendedItem.service_fee || "0");
@@ -305,11 +293,27 @@ export default function BookingReviewPage() {
         basePrice, 
         serviceFee, 
         finalAmount,
-        currency: currency.code 
+        currency: currency.code,
+        origin,
+        destination,
+        isDomestic,
+        originalProvider: extendedItem.provider,
+        willUseProvider: isDomestic ? 'WAKANOW' : (extendedItem.provider || 'DUFFEL')
       });
 
+      // ✅ Create a modified item with corrected provider and product type
+      const correctedItem = {
+        ...extendedItem,
+        provider: isDomestic ? 'WAKANOW' : (extendedItem.provider || 'DUFFEL'),
+        isDomestic: isDomestic,
+        originalProvider: extendedItem.provider,
+        // ✅ Add product type override
+        productTypeOverride: isDomestic ? 'FLIGHT_DOMESTIC' : 'FLIGHT_INTERNATIONAL',
+      };
+
+      // ✅ Pass only the expected pricing properties (no isDomestic here)
       const newBooking = await createBooking(
-        extendedItem,
+        correctedItem,
         searchParams,
         passengerInfo,
         isGuest,
@@ -336,6 +340,33 @@ export default function BookingReviewPage() {
     setPendingPassengerInfo(null);
     router.push(`/booking/success?id=${confirmed.id}&ref=${confirmed.reference}`);
   };
+
+  if (!selectedItem) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-20 text-center">
+        <h1 className="text-3xl font-bold text-gray-900 mb-4">No booking to review</h1>
+        <p className="text-gray-600 mb-8">Please select an item from search to continue.</p>
+        <button onClick={() => router.push("/search")} className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg">
+          Back to search
+        </button>
+      </div>
+    );
+  }
+
+  if ((isLoadingRates || isConverting) && !enhancedItem) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-blue-50 border-t-[#33a8da] rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-500">Loading prices in {currency.code}...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const extendedItem = (enhancedItem || selectedItem) as ExtendedSearchResult;
+  const useAmadeusFlow = isAmadeusHotel(extendedItem);
+  const productType = getProductType(extendedItem);
 
   return (
     <>

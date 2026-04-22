@@ -1,3 +1,5 @@
+// lib/api-admin.ts
+
 /**
  * Admin API – centralized client for all admin endpoints.
  * Base: /api/v1/admin (except dashboard: /api/v1/dashboard)
@@ -61,7 +63,7 @@ async function adminFetch<T>(
   }
 }
 
-
+// ─── Dashboard ─────────────────────────────────────────────────────────────
 export async function getDashboardStats(params?: {
   startDate?: string;
   endDate?: string;
@@ -196,11 +198,9 @@ export async function createBooking(body: {
   });
 }
 
-
 export async function getBooking(id: string) {
   return adminFetch<any>(`/api/v1/admin/bookings/${id}`);
 }
-
 
 export async function updateBookingStatus(id: string, status: string) {
   return adminFetch<any>(`/api/v1/admin/bookings/${id}/status`, {
@@ -209,7 +209,6 @@ export async function updateBookingStatus(id: string, status: string) {
   });
 }
 
-
 export async function cancelBooking(id: string, reason?: string) {
   return adminFetch<any>(`/api/v1/admin/bookings/${id}/cancel`, {
     method: 'POST',
@@ -217,14 +216,12 @@ export async function cancelBooking(id: string, reason?: string) {
   });
 }
 
-
 export async function processRefund(id: string, data: { refundAmount: number; refundStatus: string }) {
   return adminFetch<any>(`/api/v1/admin/bookings/${id}/refund`, {
     method: 'POST',
     body: data,
   });
 }
-
 
 export async function sendBookingEmail(id: string, type: 'confirmation' | 'reminder' | 'cancellation') {
   return adminFetch<any>(`/api/v1/admin/bookings/${id}/email`, {
@@ -280,8 +277,6 @@ export async function exportBookingsCsv(params?: {
     throw new Error(`API export failed with status ${res.status}`);
 
   } catch (error) {
-
-
     const bookingsResponse = await listBookings(params);
     if (!bookingsResponse.success) throw new Error('Failed to fetch bookings');
 
@@ -291,9 +286,7 @@ export async function exportBookingsCsv(params?: {
       throw new Error('No bookings to export');
     }
 
-
     const headers = ['ID', 'Reference', 'Type', 'Customer', 'Amount', 'Currency', 'Status', 'Date'];
-
 
     const csvRows = [
       headers.join(','),
@@ -308,7 +301,6 @@ export async function exportBookingsCsv(params?: {
           b.status || '',
           b.createdAt ? new Date(b.createdAt).toLocaleDateString() : ''
         ].map(value => {
-
           const stringValue = value?.toString() || '';
           const escaped = stringValue.replace(/"/g, '""');
           return escaped.includes(',') || escaped.includes('\n') || escaped.includes('"')
@@ -319,11 +311,7 @@ export async function exportBookingsCsv(params?: {
     ];
 
     const csvContent = csvRows.join('\n');
-
-
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-
-
     const downloadUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = downloadUrl;
@@ -331,17 +319,116 @@ export async function exportBookingsCsv(params?: {
     document.body.appendChild(a);
     a.click();
 
-
     setTimeout(() => {
       document.body.removeChild(a);
       URL.revokeObjectURL(downloadUrl);
     }, 100);
-
   }
 }
 
 export async function getBookingDisputeEvidence(bookingId: string) {
   return adminFetch<any>(`/api/v1/admin/bookings/${bookingId}/dispute-evidence`);
+}
+
+// ─── WAKANOW ADMIN ENDPOINTS ───────────────────────────────────────────────
+
+/**
+ * Issue a ticket for a Wakanow booking
+ * @param bookingId - The booking ID from your system
+ * @param pnrNumber - The PNR number from the book response
+ */
+export async function issueWakanowTicket(bookingId: string, pnrNumber: string) {
+  // Get token from localStorage
+  const token = localStorage.getItem('adminToken');
+  
+  if (!token) {
+    console.error('No admin token found');
+    throw new Error('Authentication required. Please login again.');
+  }
+  
+  const url = `${BASE}/api/v1/bookings/wakanow/ticket`;
+  
+  console.log('Issuing ticket to URL:', url);
+  console.log('With token:', token.substring(0, 20) + '...');
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ bookingId, pnrNumber }),
+    });
+
+    const data = await response.json();
+    console.log('Response status:', response.status);
+    console.log('Response data:', data);
+
+    if (!response.ok) {
+      console.error('Wakanow API Error:', { status: response.status, data });
+      throw new Error(data.message || data.error || `Failed to issue ticket: ${response.status}`);
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Issue ticket error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get Wakanow wallet balance
+ */
+export async function getWakanowWalletBalance() {
+  // Get token from localStorage
+  const token = localStorage.getItem('adminToken');
+  
+  if (!token) {
+    console.error('No admin token found');
+    throw new Error('Authentication required. Please login again.');
+  }
+  
+  const url = `${BASE}/api/v1/bookings/wakanow/wallet-balance`;
+  
+  console.log('Fetching wallet balance from URL:', url);
+  console.log('With token:', token.substring(0, 20) + '...');
+  
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    const data = await response.json();
+    console.log('Response status:', response.status);
+    console.log('Response data:', data);
+
+    if (!response.ok) {
+      console.error('Wakanow API Error:', { status: response.status, data });
+      
+      // Handle specific error cases
+      if (response.status === 401) {
+        throw new Error('Unauthorized. Please logout and login again.');
+      }
+      if (response.status === 403) {
+        throw new Error('Access denied. You don\'t have permission to access this resource.');
+      }
+      if (response.status === 404) {
+        throw new Error('Wakanow wallet endpoint not found. Please check the API configuration.');
+      }
+      
+      throw new Error(data.message || data.error || `Failed to fetch wallet balance: ${response.status}`);
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Fetch wallet balance error:', error);
+    throw error;
+  }
 }
 
 // ─── Audit logs (SUPER_ADMIN only) ─────────────────────────────────────────
@@ -457,7 +544,6 @@ export async function processCancellationRequest(
     body,
   });
 }
-
 
 // ─── Markups ─────────────────────────────────────────────────────────────
 export async function listMarkups() {

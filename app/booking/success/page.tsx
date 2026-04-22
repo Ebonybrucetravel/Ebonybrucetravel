@@ -7,6 +7,7 @@ import { formatPrice } from '@/lib/utils';
 import type { Booking as BookingType } from '@/lib/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { ticketWakanowPNR } from '@/lib/wakanow-api'; // ADDED: Import Wakanow ticket function
 
 export default function BookingSuccessPage() {
   const router = useRouter();
@@ -21,6 +22,11 @@ export default function BookingSuccessPage() {
   const [email, setEmail] = useState('');
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
+  
+  // ADDED: Wakanow ticket issuance state
+  const [showTicketForm, setShowTicketForm] = useState(false);
+  const [pnrNumber, setPnrNumber] = useState('');
+  const [issuingTicket, setIssuingTicket] = useState(false);
 
   useEffect(() => {
     const id = params.get("id");
@@ -193,6 +199,303 @@ export default function BookingSuccessPage() {
       fetchGuestBooking(bookingRef, email);
     }
   };
+
+ // ADDED: Wakanow ticket issuance handler - COMPLETE FIX
+const handleIssueWakanowTicket = async () => {
+  if (!pnrNumber) {
+    alert('Please enter PNR number');
+    return;
+  }
+  
+  if (!booking) {
+    alert('Booking not found');
+    return;
+  }
+  
+  // ✅ Check if booking.id exists
+  const bookingId = booking.id;
+  if (!bookingId) {
+    alert('Booking ID not found. Please refresh the page and try again.');
+    return;
+  }
+  
+  try {
+    setIssuingTicket(true);
+    console.log('Issuing ticket for booking:', bookingId, 'PNR:', pnrNumber);
+    
+    const response = await ticketWakanowPNR(bookingId, pnrNumber);
+    console.log('Ticket response:', response);
+    
+    if (response.success !== false) {
+      alert('Ticket issued successfully!');
+      setShowTicketForm(false);
+      setPnrNumber('');
+      
+      // Refresh booking data
+      if (bookingId) {
+        await fetchAuthBooking(bookingId);
+      } else if (bookingRef && email) {
+        await fetchGuestBooking(bookingRef, email);
+      }
+    } else {
+      alert(response.message || response.error || 'Failed to issue ticket');
+    }
+  } catch (error: any) {
+    console.error('Issue ticket error:', error);
+    alert(error.message || 'Failed to issue ticket. Please check the PNR number and try again.');
+  } finally {
+    setIssuingTicket(false);
+  }
+};
+
+  // ADDED: Wakanow PDF download function
+  const downloadWakanowPDF = () => {
+    if (!booking) return;
+    
+    const doc = new jsPDF();
+    let yPos = 20;
+    
+    // Helper function to add section
+    const addSection = (title: string, y: number) => {
+      doc.setFontSize(14);
+      doc.setTextColor(51, 168, 222);
+      doc.text(title, 20, y);
+      return y + 8;
+    };
+
+    const addField = (label: string, value: string, y: number, isImportant: boolean = false) => {
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(label, 25, y);
+      doc.setFontSize(11);
+      doc.setTextColor(isImportant ? 51 : 0, isImportant ? 168 : 0, isImportant ? 222 : 0);
+      doc.text(value, 25, y + 5);
+      return y + 12;
+    };
+
+    // Header
+    doc.setFontSize(22);
+    doc.setTextColor(51, 168, 222);
+    doc.text('Ebony Bruce Travels', 105, yPos, { align: 'center' });
+    yPos += 10;
+    
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    doc.text('WAKANOW FLIGHT CONFIRMATION', 105, yPos, { align: 'center' });
+    yPos += 15;
+
+    // Booking Reference Section
+    doc.setDrawColor(51, 168, 222);
+    doc.setLineWidth(0.5);
+    doc.line(20, yPos, 190, yPos);
+    yPos += 5;
+    
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`Booking Reference: ${booking.reference}`, 20, yPos);
+    yPos += 7;
+    doc.text(`Status: ${booking.status}`, 20, yPos);
+    yPos += 7;
+    doc.text(`Booked On: ${formatDate(booking.createdAt)}`, 20, yPos);
+    yPos += 15;
+
+    // Wakanow Specific Section
+    yPos = addSection('WAKANOW BOOKING DETAILS', yPos);
+    
+    const bookingData = booking?.bookingData || {};
+    const pnr = booking.pnrNumber || bookingData.pnrNumber || 'Will be issued soon';
+    const airline = bookingData.airline || 'Wakanow Partner Airline';
+    const flightNumber = bookingData.flightNumber || bookingData.offerId || 'N/A';
+    const origin = bookingData.origin || 'N/A';
+    const destination = bookingData.destination || 'N/A';
+    const departureDate = bookingData.departureDate || '';
+    const cabinClass = bookingData.cabinClass || 'Economy';
+    
+    yPos = addField('PNR Number', pnr, yPos, true);
+    yPos = addField('Airline', airline, yPos, true);
+    yPos = addField('Flight Number', flightNumber, yPos, true);
+    yPos = addField('From', `${origin} - ${getAirportName(origin)}`, yPos);
+    yPos = addField('To', `${destination} - ${getAirportName(destination)}`, yPos);
+    yPos = addField('Departure Date', formatDate(departureDate), yPos);
+    yPos = addField('Cabin Class', cabinClass, yPos);
+    yPos += 5;
+
+    // Passenger Information
+    yPos = addSection('PASSENGER INFORMATION', yPos);
+    
+    const passengerInfo = booking?.passengerInfo || {};
+    
+    yPos = addField('Lead Passenger', `${passengerInfo.title || ''} ${passengerInfo.firstName || ''} ${passengerInfo.lastName || ''}`.trim(), yPos, true);
+    yPos = addField('Email', passengerInfo.email || 'N/A', yPos);
+    yPos = addField('Phone', passengerInfo.phone || 'N/A', yPos);
+    yPos += 5;
+
+    // Price Breakdown
+    yPos = addSection('PRICE BREAKDOWN', yPos);
+    
+    const basePrice = booking.basePrice || 0;
+    const markupAmount = booking.markupAmount || 0;
+    const serviceFee = booking.serviceFee || 0;
+    const totalAmount = booking.totalAmount || 0;
+    const currency = booking.currency || 'USD';
+    
+    yPos = addField('Base Fare', formatPrice(basePrice, currency), yPos);
+    yPos = addField('Markup', formatPrice(markupAmount, currency), yPos);
+    yPos = addField('Service Fee', formatPrice(serviceFee, currency), yPos);
+    doc.setFontSize(12);
+    doc.setTextColor(51, 168, 222);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`TOTAL: ${formatPrice(totalAmount, currency)}`, 25, yPos + 5);
+    yPos += 15;
+
+    // Footer
+    doc.setFontSize(10);
+    doc.setTextColor(150, 150, 150);
+    doc.text('Thank you for choosing Ebony Bruce Travels!', 105, doc.internal.pageSize.height - 20, { align: 'center' });
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 105, doc.internal.pageSize.height - 15, { align: 'center' });
+    
+    doc.save(`wakanow-booking-${booking.reference}.pdf`);
+  };
+
+// ADDED: Wakanow details render function - FIXED
+const renderWakanowDetails = () => {
+  const bookingData = booking?.bookingData || {};
+  const isWakanow = booking?.provider === 'WAKANOW' || bookingData?.provider === 'WAKANOW';
+  const hasTicket = !!(booking?.pnrNumber || bookingData?.pnrNumber);
+  
+  if (!isWakanow) return null;
+  
+  return (
+    <div className="space-y-6">
+      {/* Wakanow Header */}
+      <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white p-4 rounded-lg">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm opacity-90">Powered by</p>
+            <p className="font-bold text-xl">Wakanow</p>
+          </div>
+          <div className="text-3xl">🌍</div>
+        </div>
+      </div>
+      
+      {/* Flight Details */}
+      <div className="flex items-center justify-between border-b border-gray-200 pb-4">
+        <div>
+          <p className="text-sm text-gray-500">Airline</p>
+          <p className="font-semibold text-lg">{bookingData.airline || 'Wakanow Partner'}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-sm text-gray-500">Flight Number</p>
+          <p className="font-semibold text-lg">{bookingData.flightNumber || bookingData.offerId || 'N/A'}</p>
+        </div>
+      </div>
+
+     {/* Flight route */}
+<div className="flex items-center justify-between">
+  <div className="text-center flex-1">
+    <div className="bg-blue-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
+      <span className="text-2xl font-bold text-blue-600">{bookingData.origin || 'N/A'}</span>
+    </div>
+    <p className="font-bold text-xl">{bookingData.origin || 'N/A'}</p>
+    <p className="text-sm text-gray-500">Departure</p>
+    <p className="font-medium mt-1">
+      {bookingData.departureDate ? formatDate(bookingData.departureDate) : 'Date TBD'}
+    </p>
+  </div>
+
+  <div className="flex-1 px-4">
+    <div className="relative">
+      <div className="border-t-2 border-gray-300 border-dashed absolute w-full top-1/2"></div>
+      <div className="flex justify-center">
+        <svg className="w-8 h-8 text-gray-400 bg-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+        </svg>
+      </div>
+    </div>
+    <p className="text-center text-sm text-gray-500 mt-2">Wakanow Flight</p>
+  </div>
+
+  <div className="text-center flex-1">
+    <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
+      <span className="text-2xl font-bold text-green-600">{bookingData.destination || 'N/A'}</span>
+    </div>
+    <p className="font-bold text-xl">{bookingData.destination || 'N/A'}</p>
+    <p className="text-sm text-gray-500">Arrival</p>
+    <p className="font-medium mt-1">
+      {bookingData.departureDate ? formatDate(bookingData.departureDate) : 'Date TBD'}
+    </p>
+  </div>
+</div>
+
+      {/* PNR Information */}
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-sm text-gray-500">PNR Number</p>
+            <p className="font-mono font-bold text-lg">
+              {(booking?.pnrNumber || bookingData?.pnrNumber) || 'Not issued yet'}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Cabin Class</p>
+            <p className="font-medium capitalize">{bookingData.cabinClass || 'Economy'}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Ticket Issuance Button (if no ticket yet) */}
+      {!hasTicket && !isGuest && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div className="flex-1">
+              <p className="font-medium text-yellow-800 mb-2">Ticket Not Issued Yet</p>
+              <p className="text-sm text-yellow-700 mb-3">
+                This Wakanow booking needs a ticket to be issued. Please enter the PNR number to complete the process.
+              </p>
+              
+              {!showTicketForm ? (
+                <button
+                  onClick={() => setShowTicketForm(true)}
+                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 text-sm"
+                >
+                  Issue Ticket
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={pnrNumber}
+                    onChange={(e) => setPnrNumber(e.target.value.toUpperCase())}
+                    placeholder="Enter PNR Number"
+                    className="w-full px-4 py-2 border rounded-lg text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleIssueWakanowTicket}
+                      disabled={issuingTicket}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {issuingTicket ? 'Issuing...' : 'Confirm Issue'}
+                    </button>
+                    <button
+                      onClick={() => setShowTicketForm(false)}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
   // PDF Download Function for Flights - COMPREHENSIVE
   const downloadFlightPDF = () => {
@@ -1322,6 +1625,9 @@ export default function BookingSuccessPage() {
       .replace(/\b\w/g, (l) => l.toUpperCase());
   };
 
+  // ADDED: Check if booking is Wakanow
+  const isWakanow = booking?.provider === 'WAKANOW' || booking?.bookingData?.provider === 'WAKANOW';
+
   // Email form for guest bookings
   if (showEmailForm) {
     return (
@@ -1566,7 +1872,7 @@ export default function BookingSuccessPage() {
         <div className="text-center mb-4">
           <div className="inline-block bg-blue-50 px-4 py-2 rounded-full mb-4">
             <span className="text-sm font-medium text-blue-700">
-              {productType?.replace(/_/g, ' ') || 'Booking'}
+              {isWakanow ? 'WAKANOW FLIGHT' : (productType?.replace(/_/g, ' ') || 'Booking')}
             </span>
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Booking Reference: {booking.reference}</h2>
@@ -1611,6 +1917,14 @@ export default function BookingSuccessPage() {
                 <p className="font-medium truncate">{email}</p>
               </div>
             )}
+
+            {/* ADDED: Show PNR if available for Wakanow */}
+            {isWakanow && booking.pnrNumber && (
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-500">PNR Number</p>
+                <p className="font-mono font-bold text-sm">{booking.pnrNumber}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1621,9 +1935,11 @@ export default function BookingSuccessPage() {
           {/* Product-specific full details */}
           <div className="bg-white rounded-xl shadow p-6 border border-gray-100">
             <h3 className="text-xl font-bold mb-4">Trip Details</h3>
-            {productType?.includes('FLIGHT') && renderFlightDetails()}
-            {productType?.includes('HOTEL') && renderHotelDetails()}
-            {productType?.includes('CAR') && renderCarRentalDetails()}
+            {/* ADDED: Wakanow details render */}
+            {isWakanow && renderWakanowDetails()}
+            {!isWakanow && productType?.includes('FLIGHT') && renderFlightDetails()}
+            {!isWakanow && productType?.includes('HOTEL') && renderHotelDetails()}
+            {!isWakanow && productType?.includes('CAR') && renderCarRentalDetails()}
           </div>
 
           {/* Price breakdown (if not already shown in product details) */}
@@ -1678,6 +1994,10 @@ export default function BookingSuccessPage() {
               <Detail label="Payment Reference" value={booking.paymentReference || 'N/A'} />
               {booking.providerBookingId && (
                 <Detail label="Provider Reference" value={booking.providerBookingId} />
+              )}
+              {/* ADDED: Show PNR for Wakanow */}
+              {isWakanow && booking.pnrNumber && (
+                <Detail label="PNR Number" value={booking.pnrNumber} highlight />
               )}
             </div>
           </div>
@@ -1761,15 +2081,27 @@ export default function BookingSuccessPage() {
               View My Bookings
             </button>
             
-            {/* PDF Download Button for Authenticated Users */}
+            {/* PDF Download Button for Authenticated Users - UPDATED for Wakanow */}
             <button 
-              onClick={productType?.includes('FLIGHT') ? downloadFlightPDF : productType?.includes('HOTEL') ? downloadHotelPDF : downloadCarPDF}
+              onClick={() => {
+                if (isWakanow) {
+                  downloadWakanowPDF();
+                } else if (productType?.includes('FLIGHT')) {
+                  downloadFlightPDF();
+                } else if (productType?.includes('HOTEL')) {
+                  downloadHotelPDF();
+                } else if (productType?.includes('CAR')) {
+                  downloadCarPDF();
+                } else {
+                  downloadFlightPDF();
+                }
+              }}
               className="px-6 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              Download {productType?.includes('FLIGHT') ? 'Flight' : productType?.includes('HOTEL') ? 'Hotel' : 'Car Rental'} Report
+              Download {isWakanow ? 'Wakanow' : (productType?.includes('FLIGHT') ? 'Flight' : productType?.includes('HOTEL') ? 'Hotel' : 'Car Rental')} Report
             </button>
           </>
         ) : (
@@ -1781,9 +2113,21 @@ export default function BookingSuccessPage() {
               Create Account to View Full Details
             </button>
             
-            {/* Optional: Allow guests to download basic summary */}
+            {/* Optional: Allow guests to download basic summary - UPDATED for Wakanow */}
             <button 
-              onClick={productType?.includes('FLIGHT') ? downloadFlightPDF : productType?.includes('HOTEL') ? downloadHotelPDF : downloadCarPDF}
+              onClick={() => {
+                if (isWakanow) {
+                  downloadWakanowPDF();
+                } else if (productType?.includes('FLIGHT')) {
+                  downloadFlightPDF();
+                } else if (productType?.includes('HOTEL')) {
+                  downloadHotelPDF();
+                } else if (productType?.includes('CAR')) {
+                  downloadCarPDF();
+                } else {
+                  downloadFlightPDF();
+                }
+              }}
               className="px-6 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
