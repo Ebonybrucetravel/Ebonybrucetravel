@@ -64,32 +64,39 @@ const extractAirportCode = (str: string | undefined): string => {
   return match?.[1] || str.substring(0, 3).toUpperCase();
 };
 
-// Helper function to check if flight is domestic Nigerian
+// Helper function to check if flight is domestic (same country - Nigeria)
 const isDomesticNigerianFlight = (origin: string, destination: string): boolean => {
   if (!origin || !destination) return false;
   const nigerianAirports = ['LOS', 'ABV', 'PHC', 'KAN', 'ENU', 'QOW', 'BNI', 'JOS', 'KAD', 'YOL'];
-  return nigerianAirports.includes(origin.toUpperCase()) && nigerianAirports.includes(destination.toUpperCase());
+  const isDomestic = nigerianAirports.includes(origin.toUpperCase()) && nigerianAirports.includes(destination.toUpperCase());
+  console.log(`✈️ Route check: ${origin} → ${destination}, isDomestic: ${isDomestic}`);
+  return isDomestic;
 };
 
-// ✅ Helper function to check if this is a Wakanow offer
-const isWakanowOffer = (item: ExtendedSearchResult): boolean => {
-  // Check by provider
-  if (item.provider === 'WAKANOW') return true;
-  if (item.isWakanow === true) return true;
+// ✅ Helper function to check the actual provider from the item
+const getActualProvider = (item: ExtendedSearchResult): string => {
+  // First, check if the item has an explicit provider
+  if (item.provider === 'WAKANOW') return 'WAKANOW';
+  if (item.provider === 'DUFFEL') return 'DUFFEL';
+  if (item.isWakanow === true) return 'WAKANOW';
   
-  // Check by ID patterns (Wakanow offers have IDs like "wakanow-46")
+  // Check by ID patterns
   const id = item.id || item.offerId || item.realData?.offerId || '';
-  if (id.toString().toLowerCase().includes('wakanow')) return true;
+  if (id.toString().toLowerCase().includes('wakanow')) return 'WAKANOW';
   
-  // Check by selectData (Wakanow flights have selectData from search)
-  if (item.selectData) return true;
+  // Check by Duffel ID pattern (off_...)
+  if (id.toString().startsWith('off_')) return 'DUFFEL';
   
-  // Check by title/airline (Nigerian domestic airlines)
-  const title = (item.title || '').toLowerCase();
-  const nigerianAirlines = ['air peace', 'valuejet', 'arik air', 'dana air', 'green africa', 'ibom air', 'united nigeria', 'overland'];
-  if (nigerianAirlines.some(airline => title.includes(airline))) return true;
+  // Check by selectData (could be either)
+  if (item.selectData) {
+    // If selectData is a Duffel offer ID (starts with off_), it's Duffel
+    if (item.selectData.startsWith('off_')) return 'DUFFEL';
+    // Otherwise assume it could be Wakanow
+    return 'WAKANOW';
+  }
   
-  return false;
+  // Default to DUFFEL for international
+  return 'DUFFEL';
 };
 
 export function useBooking() {
@@ -109,9 +116,6 @@ export function useBooking() {
       setIsCreating(true);
       setError(null);
       try {
-        // ✅ Check if this is a Wakanow offer FIRST (before airport detection)
-        const wakanowDetected = isWakanowOffer(item);
-        
         // ✅ Extract origin and destination from multiple sources
         const originRaw = item.origin || 
                          item.departureAirport || 
@@ -128,37 +132,40 @@ export function useBooking() {
         const originCode = extractAirportCode(originRaw);
         const destinationCode = extractAirportCode(destinationRaw);
         
-        // ✅ Check if this is a domestic Nigerian flight by airports
-        const isDomesticByAirports = originCode && destinationCode && isDomesticNigerianFlight(originCode, destinationCode);
+        // ✅ Check if this is a domestic Nigerian flight
+        const isDomestic = !!(originCode && destinationCode && isDomesticNigerianFlight(originCode, destinationCode));
         
-        // ✅ FORCE domestic for Wakanow offers OR domestic airport routes
-        const isDomestic = item.isDomestic || 
-                          item.productTypeOverride === 'FLIGHT_DOMESTIC' ||
-                          wakanowDetected ||
-                          isDomesticByAirports;
-        
-        // ✅ Force correct product type and provider
+        // ✅ Get the actual provider from the item (preserve what was selected)
+        let provider = getActualProvider(item);
         let productType: string;
-        let provider: string;
         
+        // ✅ For domestic flights, force WAKANOW and FLIGHT_DOMESTIC
         if (isDomestic) {
           productType = "FLIGHT_DOMESTIC";
           provider = "WAKANOW";
-          console.log("🇳🇬 WAKANOW DOMESTIC flight detected:", { 
+          console.log("🏠 DOMESTIC FLIGHT - Forcing WAKANOW", { 
             originCode, 
-            destinationCode, 
-            wakanowDetected,
-            isDomesticByAirports,
-            itemId: item.id,
-            itemProvider: item.provider,
-            itemTitle: item.title?.substring(0, 50)
+            destinationCode,
+            productType,
+            provider
           });
         } else {
-          // ✅ Keep existing logic for international flights (Duffel)
-          const meta = getProductMeta(item.type || "");
-          productType = meta.productType;
-          provider = meta.provider || item.provider || "DUFFEL";
-          console.log("🌍 International flight - using DUFFEL provider", { productType, provider });
+          // ✅ For international flights, preserve the original provider from the selected item
+          productType = "FLIGHT_INTERNATIONAL";
+          
+          // If provider is still not determined, use Duffel as default
+          if (!provider || provider === 'Unknown') {
+            provider = "DUFFEL";
+          }
+          
+          console.log("🌍 INTERNATIONAL FLIGHT - Using original provider", { 
+            originCode, 
+            destinationCode,
+            productType,
+            provider,
+            originalItemProvider: item.provider,
+            itemId: item.id
+          });
         }
         
         const offerCurrency = (
@@ -194,7 +201,6 @@ export function useBooking() {
           taxes,
           finalAmount,
           isDomestic,
-          wakanowDetected,
           provider,
           productType,
           originCode,
@@ -228,11 +234,11 @@ export function useBooking() {
             dateOfBirth: passenger.dateOfBirth,
           };
 
-          // ✅ Use originCode and destinationCode with fallbacks
+          // Use originCode and destinationCode with fallbacks
           const finalOrigin = originCode || "LOS";
           const finalDestination = destinationCode || "ABV";
           
-          // ✅ For Wakanow, use selectData as the offerId if available
+          // Use selectData or offerId based on provider
           const offerId = item.selectData || item.realData?.offerId || item.offerId || item.id;
 
           body.bookingData = {
@@ -255,10 +261,10 @@ export function useBooking() {
             original_amount: item.original_amount,
             final_amount: item.final_amount,
             markup_percentage: item.markup_percentage,
-            // ✅ Add flags for backend
+            // Add flags for backend
             is_domestic: isDomestic,
-            is_wakanow: wakanowDetected,
-            ...(item.selectData && { select_data: item.selectData }),
+            is_wakanow: provider === 'WAKANOW',
+            select_data: item.selectData,
           };
         } else if (productType === "HOTEL") {
           body.bookingData = {
@@ -390,6 +396,10 @@ export function useBooking() {
     },
     [BASE],
   );
+
+  // ✅ ALL OTHER FUNCTIONS REMAIN EXACTLY THE SAME
+  // (createPaymentIntent, createAmadeusHotelBooking, chargeMarginAmadeusHotel, 
+  // pollBookingStatus, reset, createHotelbedsBooking)
 
   const createPaymentIntent = useCallback(
     async (
