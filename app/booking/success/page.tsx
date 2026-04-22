@@ -7,7 +7,7 @@ import { formatPrice } from '@/lib/utils';
 import type { Booking as BookingType } from '@/lib/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { ticketWakanowPNR } from '@/lib/wakanow-api'; // ADDED: Import Wakanow ticket function
+import { ticketWakanowPNR } from '@/lib/wakanow-api';
 
 export default function BookingSuccessPage() {
   const router = useRouter();
@@ -23,7 +23,7 @@ export default function BookingSuccessPage() {
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
   
-  // ADDED: Wakanow ticket issuance state
+  // Wakanow ticket issuance state
   const [showTicketForm, setShowTicketForm] = useState(false);
   const [pnrNumber, setPnrNumber] = useState('');
   const [issuingTicket, setIssuingTicket] = useState(false);
@@ -31,7 +31,7 @@ export default function BookingSuccessPage() {
   useEffect(() => {
     const id = params.get("id");
     const ref = params.get("ref");
-    const email = params.get("email"); // critical for guest public fetch
+    const email = params.get("email");
 
     if (!id && !ref) {
       setLoading(false);
@@ -41,14 +41,13 @@ export default function BookingSuccessPage() {
 
     const fetchBooking = async () => {
       try {
-        // Check if user is authenticated FIRST
         const token = api.getStoredAuthToken();
         const isAuthenticated = !!token;
         
         console.log('Auth status:', { isAuthenticated, token: !!token });
         console.log('URL params:', { bookingId, bookingRef, emailParam });
 
-        // CASE 1: Authenticated user with ID - this should be tried FIRST
+        // CASE 1: Authenticated user with ID
         if (isAuthenticated && bookingId) {
           console.log('📱 Authenticated user fetching by ID:', bookingId);
           setIsGuest(false);
@@ -56,14 +55,12 @@ export default function BookingSuccessPage() {
           return;
         }
         
-        // CASE 2: Authenticated user with reference (but no ID) - still authenticated
+        // CASE 2: Authenticated user with reference
         if (isAuthenticated && bookingRef) {
           console.log('📱 Authenticated user fetching by reference:', bookingRef);
           setIsGuest(false);
-          // Even authenticated users might use reference, but we can still use auth endpoint
-          // or public endpoint - let's try auth endpoint first
           try {
-            const response = await api.bookingApi.getBookingById(bookingRef); // Try as ID first
+            const response = await api.bookingApi.getBookingById(bookingRef);
             const bookingData = response?.data ?? response ?? null;
             if (bookingData) {
               setBooking(bookingData);
@@ -71,7 +68,6 @@ export default function BookingSuccessPage() {
               return;
             }
           } catch {
-            // If that fails, fall back to public endpoint for reference lookup
             if (emailParam) {
               await fetchGuestBooking(bookingRef, emailParam);
             } else {
@@ -82,33 +78,34 @@ export default function BookingSuccessPage() {
           return;
         }
         
-        
+        // CASE 3: Guest user with reference
         if (bookingRef) {
           console.log('👤 Guest user fetching by reference:', bookingRef);
           setIsGuest(true);
           
-     
           const storedEmail = localStorage.getItem('guestEmail') || 
                              sessionStorage.getItem('guestEmail');
+          const urlEmail = emailParam;
           
-          if (storedEmail) {
+          // If we have email from URL or storage, use it
+          if (urlEmail) {
+            setEmail(urlEmail);
+            localStorage.setItem('guestEmail', urlEmail);
+            await fetchGuestBooking(bookingRef, urlEmail);
+          } else if (storedEmail) {
             setEmail(storedEmail);
             await fetchGuestBooking(bookingRef, storedEmail);
-          } else if (emailParam) {
-            setEmail(emailParam);
-            await fetchGuestBooking(bookingRef, emailParam);
           } else {
-            // No email found, show email form
+            // No email found - show email form
             setShowEmailForm(true);
             setLoading(false);
           }
           return;
         }
         
-        // CASE 4: Fallback - try ID without authentication (shouldn't happen often)
+        // CASE 4: Fallback
         if (bookingId) {
           console.log('⚠️ Attempting to fetch by ID without auth');
-          // Try public endpoint if available, otherwise show error
           setError('Please sign in to view this booking');
           setLoading(false);
         }
@@ -126,14 +123,12 @@ export default function BookingSuccessPage() {
     setLoading(true);
     
     try {
-      console.log('Fetching guest booking:', { ref, email: emailAddress });
+      // Must use email with the request
+      const url = `/api/v1/bookings/public/by-reference/${encodeURIComponent(ref)}?email=${encodeURIComponent(emailAddress)}`;
       
-      // Use the public endpoint directly
-      const response = await api.publicRequest(
-        `/api/v1/bookings/public/by-reference/${encodeURIComponent(ref)}?email=${encodeURIComponent(emailAddress)}`,
-        { method: 'GET' }
-      );
+      console.log('Fetching guest booking with email:', url);
       
+      const response = await api.publicRequest(url, { method: 'GET' });
       const bookingData = response?.data ?? response ?? null;
       
       if (!bookingData) {
@@ -145,16 +140,8 @@ export default function BookingSuccessPage() {
       
     } catch (err: any) {
       console.error('Failed to fetch guest booking:', err);
-      
-      // Handle specific error cases
-      if (err.status === 404) {
-        setError('Booking not found. Please check your reference and email.');
-      } else if (err.message?.includes('email')) {
-        setError('Email is required to view this booking');
-        setShowEmailForm(true);
-      } else {
-        setError(err.message || 'Unable to load booking details');
-      }
+      setError('Unable to load booking. Please check your reference and email.');
+      setShowEmailForm(true);
     } finally {
       setLoading(false);
     }
@@ -194,68 +181,60 @@ export default function BookingSuccessPage() {
   const handleEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (email && bookingRef) {
-      // Store email for future use
       localStorage.setItem('guestEmail', email);
       fetchGuestBooking(bookingRef, email);
     }
   };
 
- // ADDED: Wakanow ticket issuance handler - COMPLETE FIX
-const handleIssueWakanowTicket = async () => {
-  if (!pnrNumber) {
-    alert('Please enter PNR number');
-    return;
-  }
-  
-  if (!booking) {
-    alert('Booking not found');
-    return;
-  }
-  
-  // ✅ Check if booking.id exists
-  const bookingId = booking.id;
-  if (!bookingId) {
-    alert('Booking ID not found. Please refresh the page and try again.');
-    return;
-  }
-  
-  try {
-    setIssuingTicket(true);
-    console.log('Issuing ticket for booking:', bookingId, 'PNR:', pnrNumber);
-    
-    const response = await ticketWakanowPNR(bookingId, pnrNumber);
-    console.log('Ticket response:', response);
-    
-    if (response.success !== false) {
-      alert('Ticket issued successfully!');
-      setShowTicketForm(false);
-      setPnrNumber('');
-      
-      // Refresh booking data
-      if (bookingId) {
-        await fetchAuthBooking(bookingId);
-      } else if (bookingRef && email) {
-        await fetchGuestBooking(bookingRef, email);
-      }
-    } else {
-      alert(response.message || response.error || 'Failed to issue ticket');
+  const handleIssueWakanowTicket = async () => {
+    if (!pnrNumber) {
+      alert('Please enter PNR number');
+      return;
     }
-  } catch (error: any) {
-    console.error('Issue ticket error:', error);
-    alert(error.message || 'Failed to issue ticket. Please check the PNR number and try again.');
-  } finally {
-    setIssuingTicket(false);
-  }
-};
+    
+    if (!booking) {
+      alert('Booking not found');
+      return;
+    }
+    
+    const bookingId = booking.id;
+    if (!bookingId) {
+      alert('Booking ID not found. Please refresh the page and try again.');
+      return;
+    }
+    
+    try {
+      setIssuingTicket(true);
+      console.log('Issuing ticket for booking:', bookingId, 'PNR:', pnrNumber);
+      
+      const response = await ticketWakanowPNR(bookingId, pnrNumber);
+      console.log('Ticket response:', response);
+      
+      if (response.success !== false) {
+        alert('Ticket issued successfully!');
+        setShowTicketForm(false);
+        setPnrNumber('');
+        
+        if (bookingId) {
+          await fetchAuthBooking(bookingId);
+        }
+      } else {
+        alert(response.message || response.error || 'Failed to issue ticket');
+      }
+    } catch (error: any) {
+      console.error('Issue ticket error:', error);
+      alert(error.message || 'Failed to issue ticket. Please check the PNR number and try again.');
+    } finally {
+      setIssuingTicket(false);
+    }
+  };
 
-  // ADDED: Wakanow PDF download function
   const downloadWakanowPDF = () => {
     if (!booking) return;
     
     const doc = new jsPDF();
     let yPos = 20;
     
-    // Helper function to add section
     const addSection = (title: string, y: number) => {
       doc.setFontSize(14);
       doc.setTextColor(51, 168, 222);
@@ -273,7 +252,6 @@ const handleIssueWakanowTicket = async () => {
       return y + 12;
     };
 
-    // Header
     doc.setFontSize(22);
     doc.setTextColor(51, 168, 222);
     doc.text('Ebony Bruce Travels', 105, yPos, { align: 'center' });
@@ -284,7 +262,6 @@ const handleIssueWakanowTicket = async () => {
     doc.text('WAKANOW FLIGHT CONFIRMATION', 105, yPos, { align: 'center' });
     yPos += 15;
 
-    // Booking Reference Section
     doc.setDrawColor(51, 168, 222);
     doc.setLineWidth(0.5);
     doc.line(20, yPos, 190, yPos);
@@ -299,7 +276,6 @@ const handleIssueWakanowTicket = async () => {
     doc.text(`Booked On: ${formatDate(booking.createdAt)}`, 20, yPos);
     yPos += 15;
 
-    // Wakanow Specific Section
     yPos = addSection('WAKANOW BOOKING DETAILS', yPos);
     
     const bookingData = booking?.bookingData || {};
@@ -320,7 +296,6 @@ const handleIssueWakanowTicket = async () => {
     yPos = addField('Cabin Class', cabinClass, yPos);
     yPos += 5;
 
-    // Passenger Information
     yPos = addSection('PASSENGER INFORMATION', yPos);
     
     const passengerInfo = booking?.passengerInfo || {};
@@ -330,7 +305,6 @@ const handleIssueWakanowTicket = async () => {
     yPos = addField('Phone', passengerInfo.phone || 'N/A', yPos);
     yPos += 5;
 
-    // Price Breakdown
     yPos = addSection('PRICE BREAKDOWN', yPos);
     
     const basePrice = booking.basePrice || 0;
@@ -348,7 +322,6 @@ const handleIssueWakanowTicket = async () => {
     doc.text(`TOTAL: ${formatPrice(totalAmount, currency)}`, 25, yPos + 5);
     yPos += 15;
 
-    // Footer
     doc.setFontSize(10);
     doc.setTextColor(150, 150, 150);
     doc.text('Thank you for choosing Ebony Bruce Travels!', 105, doc.internal.pageSize.height - 20, { align: 'center' });
@@ -357,154 +330,146 @@ const handleIssueWakanowTicket = async () => {
     doc.save(`wakanow-booking-${booking.reference}.pdf`);
   };
 
-// ADDED: Wakanow details render function - FIXED
-const renderWakanowDetails = () => {
-  const bookingData = booking?.bookingData || {};
-  const isWakanow = booking?.provider === 'WAKANOW' || bookingData?.provider === 'WAKANOW';
-  const hasTicket = !!(booking?.pnrNumber || bookingData?.pnrNumber);
-  
-  if (!isWakanow) return null;
-  
-  return (
-    <div className="space-y-6">
-      {/* Wakanow Header */}
-      <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white p-4 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm opacity-90">Powered by</p>
-            <p className="font-bold text-xl">Wakanow</p>
+  const renderWakanowDetails = () => {
+    const bookingData = booking?.bookingData || {};
+    const isWakanow = booking?.provider === 'WAKANOW' || bookingData?.provider === 'WAKANOW';
+    const hasTicket = !!(booking?.pnrNumber || bookingData?.pnrNumber);
+    
+    if (!isWakanow) return null;
+    
+    return (
+      <div className="space-y-6">
+        <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white p-4 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm opacity-90">Powered by</p>
+              <p className="font-bold text-xl">Wakanow</p>
+            </div>
+            <div className="text-3xl">🌍</div>
           </div>
-          <div className="text-3xl">🌍</div>
         </div>
-      </div>
-      
-      {/* Flight Details */}
-      <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-        <div>
-          <p className="text-sm text-gray-500">Airline</p>
-          <p className="font-semibold text-lg">{bookingData.airline || 'Wakanow Partner'}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-sm text-gray-500">Flight Number</p>
-          <p className="font-semibold text-lg">{bookingData.flightNumber || bookingData.offerId || 'N/A'}</p>
-        </div>
-      </div>
-
-     {/* Flight route */}
-<div className="flex items-center justify-between">
-  <div className="text-center flex-1">
-    <div className="bg-blue-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
-      <span className="text-2xl font-bold text-blue-600">{bookingData.origin || 'N/A'}</span>
-    </div>
-    <p className="font-bold text-xl">{bookingData.origin || 'N/A'}</p>
-    <p className="text-sm text-gray-500">Departure</p>
-    <p className="font-medium mt-1">
-      {bookingData.departureDate ? formatDate(bookingData.departureDate) : 'Date TBD'}
-    </p>
-  </div>
-
-  <div className="flex-1 px-4">
-    <div className="relative">
-      <div className="border-t-2 border-gray-300 border-dashed absolute w-full top-1/2"></div>
-      <div className="flex justify-center">
-        <svg className="w-8 h-8 text-gray-400 bg-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-        </svg>
-      </div>
-    </div>
-    <p className="text-center text-sm text-gray-500 mt-2">Wakanow Flight</p>
-  </div>
-
-  <div className="text-center flex-1">
-    <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
-      <span className="text-2xl font-bold text-green-600">{bookingData.destination || 'N/A'}</span>
-    </div>
-    <p className="font-bold text-xl">{bookingData.destination || 'N/A'}</p>
-    <p className="text-sm text-gray-500">Arrival</p>
-    <p className="font-medium mt-1">
-      {bookingData.departureDate ? formatDate(bookingData.departureDate) : 'Date TBD'}
-    </p>
-  </div>
-</div>
-
-      {/* PNR Information */}
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <div className="grid grid-cols-2 gap-4">
+        
+        <div className="flex items-center justify-between border-b border-gray-200 pb-4">
           <div>
-            <p className="text-sm text-gray-500">PNR Number</p>
-            <p className="font-mono font-bold text-lg">
-              {(booking?.pnrNumber || bookingData?.pnrNumber) || 'Not issued yet'}
+            <p className="text-sm text-gray-500">Airline</p>
+            <p className="font-semibold text-lg">{bookingData.airline || 'Wakanow Partner'}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-gray-500">Flight Number</p>
+            <p className="font-semibold text-lg">{bookingData.flightNumber || bookingData.offerId || 'N/A'}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="text-center flex-1">
+            <div className="bg-blue-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
+              <span className="text-2xl font-bold text-blue-600">{bookingData.origin || 'N/A'}</span>
+            </div>
+            <p className="font-bold text-xl">{bookingData.origin || 'N/A'}</p>
+            <p className="text-sm text-gray-500">Departure</p>
+            <p className="font-medium mt-1">
+              {bookingData.departureDate ? formatDate(bookingData.departureDate) : 'Date TBD'}
             </p>
           </div>
-          <div>
-            <p className="text-sm text-gray-500">Cabin Class</p>
-            <p className="font-medium capitalize">{bookingData.cabinClass || 'Economy'}</p>
+
+          <div className="flex-1 px-4">
+            <div className="relative">
+              <div className="border-t-2 border-gray-300 border-dashed absolute w-full top-1/2"></div>
+              <div className="flex justify-center">
+                <svg className="w-8 h-8 text-gray-400 bg-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </div>
+            </div>
+            <p className="text-center text-sm text-gray-500 mt-2">Wakanow Flight</p>
+          </div>
+
+          <div className="text-center flex-1">
+            <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
+              <span className="text-2xl font-bold text-green-600">{bookingData.destination || 'N/A'}</span>
+            </div>
+            <p className="font-bold text-xl">{bookingData.destination || 'N/A'}</p>
+            <p className="text-sm text-gray-500">Arrival</p>
+            <p className="font-medium mt-1">
+              {bookingData.departureDate ? formatDate(bookingData.departureDate) : 'Date TBD'}
+            </p>
           </div>
         </div>
-      </div>
 
-      {/* Ticket Issuance Button (if no ticket yet) */}
-      {!hasTicket && !isGuest && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex items-start">
-            <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <div className="flex-1">
-              <p className="font-medium text-yellow-800 mb-2">Ticket Not Issued Yet</p>
-              <p className="text-sm text-yellow-700 mb-3">
-                This Wakanow booking needs a ticket to be issued. Please enter the PNR number to complete the process.
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-gray-500">PNR Number</p>
+              <p className="font-mono font-bold text-lg">
+                {(booking?.pnrNumber || bookingData?.pnrNumber) || 'Not issued yet'}
               </p>
-              
-              {!showTicketForm ? (
-                <button
-                  onClick={() => setShowTicketForm(true)}
-                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 text-sm"
-                >
-                  Issue Ticket
-                </button>
-              ) : (
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    value={pnrNumber}
-                    onChange={(e) => setPnrNumber(e.target.value.toUpperCase())}
-                    placeholder="Enter PNR Number"
-                    className="w-full px-4 py-2 border rounded-lg text-sm"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleIssueWakanowTicket}
-                      disabled={issuingTicket}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
-                    >
-                      {issuingTicket ? 'Issuing...' : 'Confirm Issue'}
-                    </button>
-                    <button
-                      onClick={() => setShowTicketForm(false)}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Cabin Class</p>
+              <p className="font-medium capitalize">{bookingData.cabinClass || 'Economy'}</p>
             </div>
           </div>
         </div>
-      )}
-    </div>
-  );
-};
 
-  // PDF Download Function for Flights - COMPREHENSIVE
+        {!hasTicket && !isGuest && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div className="flex-1">
+                <p className="font-medium text-yellow-800 mb-2">Ticket Not Issued Yet</p>
+                <p className="text-sm text-yellow-700 mb-3">
+                  This Wakanow booking needs a ticket to be issued. Please enter the PNR number to complete the process.
+                </p>
+                
+                {!showTicketForm ? (
+                  <button
+                    onClick={() => setShowTicketForm(true)}
+                    className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 text-sm"
+                  >
+                    Issue Ticket
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={pnrNumber}
+                      onChange={(e) => setPnrNumber(e.target.value.toUpperCase())}
+                      placeholder="Enter PNR Number"
+                      className="w-full px-4 py-2 border rounded-lg text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleIssueWakanowTicket}
+                        disabled={issuingTicket}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
+                      >
+                        {issuingTicket ? 'Issuing...' : 'Confirm Issue'}
+                      </button>
+                      <button
+                        onClick={() => setShowTicketForm(false)}
+                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const downloadFlightPDF = () => {
     if (!booking) return;
     
     const doc = new jsPDF();
     let yPos = 20;
     
-    // Helper function to add section
     const addSection = (title: string, y: number) => {
       doc.setFontSize(14);
       doc.setTextColor(51, 168, 222);
@@ -512,7 +477,6 @@ const renderWakanowDetails = () => {
       return y + 8;
     };
 
-    // Helper function to add field
     const addField = (label: string, value: string, y: number, isImportant: boolean = false) => {
       doc.setFontSize(10);
       doc.setTextColor(100, 100, 100);
@@ -523,7 +487,6 @@ const renderWakanowDetails = () => {
       return y + 12;
     };
 
-    // Header
     doc.setFontSize(22);
     doc.setTextColor(51, 168, 222);
     doc.text('Ebony Bruce Travels', 105, yPos, { align: 'center' });
@@ -534,7 +497,6 @@ const renderWakanowDetails = () => {
     doc.text('FLIGHT BOOKING CONFIRMATION', 105, yPos, { align: 'center' });
     yPos += 15;
 
-    // Booking Reference Section
     doc.setDrawColor(51, 168, 222);
     doc.setLineWidth(0.5);
     doc.line(20, yPos, 190, yPos);
@@ -549,7 +511,6 @@ const renderWakanowDetails = () => {
     doc.text(`Booked On: ${formatDate(booking.createdAt)}`, 20, yPos);
     yPos += 15;
 
-    // Flight Details Section
     yPos = addSection('FLIGHT DETAILS', yPos);
     
     const bookingData = booking?.bookingData || {};
@@ -567,7 +528,6 @@ const renderWakanowDetails = () => {
     yPos = addField('Departure Date', formatDate(departureDate), yPos);
     yPos = addField('Cabin Class', cabinClass, yPos);
     
-    // Add flight times (estimated)
     const formatFlightTime = (date: string, hoursToAdd: number) => {
       if (!date) return 'N/A';
       try {
@@ -584,7 +544,6 @@ const renderWakanowDetails = () => {
     yPos = addField('Duration', '2h 00m (estimated)', yPos);
     yPos += 5;
 
-    // Passenger Information
     yPos = addSection('PASSENGER INFORMATION', yPos);
     
     const passengerInfo = booking?.passengerInfo || {};
@@ -600,13 +559,11 @@ const renderWakanowDetails = () => {
     if (passengers.infants > 0) yPos = addField('Infants', passengers.infants.toString(), yPos);
     yPos += 5;
 
-    // Baggage Information
     yPos = addSection('BAGGAGE ALLOWANCE', yPos);
     yPos = addField('Checked Baggage', '1 x 23kg per passenger', yPos);
     yPos = addField('Cabin Baggage', '1 x 7kg per passenger', yPos);
     yPos += 5;
 
-    // Price Breakdown
     yPos = addSection('PRICE BREAKDOWN', yPos);
     
     const basePrice = booking.basePrice || 0;
@@ -624,7 +581,6 @@ const renderWakanowDetails = () => {
     doc.text(`TOTAL: ${formatPrice(totalAmount, currency)}`, 25, yPos + 5);
     yPos += 15;
 
-    // Important Information
     yPos = addSection('IMPORTANT INFORMATION', yPos);
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);
@@ -639,7 +595,6 @@ const renderWakanowDetails = () => {
     doc.text('• Flight times are estimates and subject to change', 25, yPos);
     yPos += 10;
 
-    // Footer
     doc.setFontSize(10);
     doc.setTextColor(150, 150, 150);
     doc.text('Thank you for choosing Ebony Bruce Travels!', 105, doc.internal.pageSize.height - 20, { align: 'center' });
@@ -648,14 +603,12 @@ const renderWakanowDetails = () => {
     doc.save(`flight-booking-${booking.reference}.pdf`);
   };
 
-  // PDF Download Function for Hotels - COMPREHENSIVE
   const downloadHotelPDF = () => {
     if (!booking) return;
     
     const doc = new jsPDF();
     let yPos = 20;
     
-    // Helper function to add section
     const addSection = (title: string, y: number) => {
       doc.setFontSize(14);
       doc.setTextColor(51, 168, 222);
@@ -663,7 +616,6 @@ const renderWakanowDetails = () => {
       return y + 8;
     };
 
-    // Helper function to add field
     const addField = (label: string, value: string, y: number, isImportant: boolean = false) => {
       doc.setFontSize(10);
       doc.setTextColor(100, 100, 100);
@@ -674,7 +626,6 @@ const renderWakanowDetails = () => {
       return y + 12;
     };
 
-    // Header
     doc.setFontSize(22);
     doc.setTextColor(51, 168, 222);
     doc.text('Ebony Bruce Travels', 105, yPos, { align: 'center' });
@@ -685,7 +636,6 @@ const renderWakanowDetails = () => {
     doc.text('HOTEL BOOKING CONFIRMATION', 105, yPos, { align: 'center' });
     yPos += 15;
 
-    // Booking Reference Section
     doc.setDrawColor(51, 168, 222);
     doc.setLineWidth(0.5);
     doc.line(20, yPos, 190, yPos);
@@ -700,7 +650,6 @@ const renderWakanowDetails = () => {
     doc.text(`Booked On: ${formatDate(booking.createdAt)}`, 20, yPos);
     yPos += 15;
 
-    // Hotel Details Section
     yPos = addSection('HOTEL DETAILS', yPos);
     
     const providerData = booking?.providerData as any;
@@ -730,7 +679,6 @@ const renderWakanowDetails = () => {
     yPos = addField('Guests', `${adults} Adult(s)`, yPos);
     yPos += 5;
 
-    // Guest Information
     yPos = addSection('GUEST INFORMATION', yPos);
     
     const passengerInfo = booking?.passengerInfo || {};
@@ -745,7 +693,6 @@ const renderWakanowDetails = () => {
     }
     yPos += 5;
 
-    // Price Breakdown
     yPos = addSection('PRICE BREAKDOWN', yPos);
     
     const basePrice = booking.basePrice || 0;
@@ -765,7 +712,6 @@ const renderWakanowDetails = () => {
     doc.text(`TOTAL: ${formatPrice(totalAmount, currency)}`, 25, yPos + 5);
     yPos += 15;
 
-    // Cancellation Policy
     const cancellations = hotelOffer?.policies?.cancellations || [];
     const cancellationDeadline = cancellations[0]?.deadline;
     const cancellationAmount = cancellations[0]?.amount;
@@ -781,7 +727,6 @@ const renderWakanowDetails = () => {
       yPos += 5;
     }
 
-    // Hotel Policies
     yPos = addSection('HOTEL POLICIES', yPos);
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);
@@ -796,7 +741,6 @@ const renderWakanowDetails = () => {
     doc.text('• Credit card required for incidentals', 25, yPos);
     yPos += 10;
 
-    // Footer
     doc.setFontSize(10);
     doc.setTextColor(150, 150, 150);
     doc.text('Thank you for choosing Ebony Bruce Travels!', 105, doc.internal.pageSize.height - 20, { align: 'center' });
@@ -805,14 +749,12 @@ const renderWakanowDetails = () => {
     doc.save(`hotel-booking-${booking.reference}.pdf`);
   };
 
-  // PDF Download Function for Car Rentals - COMPREHENSIVE
   const downloadCarPDF = () => {
     if (!booking) return;
     
     const doc = new jsPDF();
     let yPos = 20;
     
-    // Helper function to add section
     const addSection = (title: string, y: number) => {
       doc.setFontSize(14);
       doc.setTextColor(51, 168, 222);
@@ -820,7 +762,6 @@ const renderWakanowDetails = () => {
       return y + 8;
     };
 
-    // Helper function to add field
     const addField = (label: string, value: string, y: number, isImportant: boolean = false) => {
       doc.setFontSize(10);
       doc.setTextColor(100, 100, 100);
@@ -831,7 +772,6 @@ const renderWakanowDetails = () => {
       return y + 12;
     };
 
-    // Header
     doc.setFontSize(22);
     doc.setTextColor(51, 168, 222);
     doc.text('Ebony Bruce Travels', 105, yPos, { align: 'center' });
@@ -842,7 +782,6 @@ const renderWakanowDetails = () => {
     doc.text('CAR RENTAL CONFIRMATION', 105, yPos, { align: 'center' });
     yPos += 15;
 
-    // Booking Reference Section
     doc.setDrawColor(51, 168, 222);
     doc.setLineWidth(0.5);
     doc.line(20, yPos, 190, yPos);
@@ -857,7 +796,6 @@ const renderWakanowDetails = () => {
     doc.text(`Booked On: ${formatDate(booking.createdAt)}`, 20, yPos);
     yPos += 15;
 
-    // Vehicle Details Section
     yPos = addSection('VEHICLE DETAILS', yPos);
     
     const bookingData = booking?.bookingData || {};
@@ -869,7 +807,6 @@ const renderWakanowDetails = () => {
     const dropoffDateTime = bookingData.dropoffDateTime || '';
     const rentalDays = calculateRentalDays(pickupDateTime, dropoffDateTime);
     
-    // Vehicle category based on type
     const getVehicleCategory = (type: string) => {
       if (type.includes('VAN')) return 'Van';
       if (type.includes('SUV')) return 'SUV';
@@ -888,7 +825,6 @@ const renderWakanowDetails = () => {
     yPos = addField('Offer ID', offerId, yPos);
     yPos += 5;
 
-    // Rental Period
     yPos = addSection('RENTAL PERIOD', yPos);
     
     yPos = addField('Pick-up Location', `${pickupLocationCode} - ${getAirportName(pickupLocationCode)}`, yPos, true);
@@ -900,7 +836,6 @@ const renderWakanowDetails = () => {
     yPos = addField('Rental Duration', `${rentalDays} day(s)`, yPos);
     yPos += 5;
 
-    // Driver Information
     yPos = addSection('DRIVER INFORMATION', yPos);
     
     const passengerInfo = booking?.passengerInfo || {};
@@ -911,7 +846,6 @@ const renderWakanowDetails = () => {
     yPos = addField('Driver License', 'Required at pick-up', yPos);
     yPos += 5;
 
-    // Price Breakdown
     yPos = addSection('PRICE BREAKDOWN', yPos);
     
     const basePrice = booking.basePrice || 0;
@@ -931,7 +865,6 @@ const renderWakanowDetails = () => {
     doc.text(`TOTAL: ${formatPrice(totalAmount, currency)}`, 25, yPos + 5);
     yPos += 15;
 
-    // Included/Excluded
     yPos = addSection('INCLUDED IN RENTAL', yPos);
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);
@@ -948,7 +881,6 @@ const renderWakanowDetails = () => {
     doc.text('• 24/7 Roadside Assistance', 25, yPos);
     yPos += 10;
 
-    // Important Information
     yPos = addSection('IMPORTANT INFORMATION', yPos);
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);
@@ -965,7 +897,6 @@ const renderWakanowDetails = () => {
     doc.text('• Cross-border travel may be restricted', 25, yPos);
     yPos += 10;
 
-    // Footer
     doc.setFontSize(10);
     doc.setTextColor(150, 150, 150);
     doc.text('Thank you for choosing Ebony Bruce Travels!', 105, doc.internal.pageSize.height - 20, { align: 'center' });
@@ -974,7 +905,6 @@ const renderWakanowDetails = () => {
     doc.save(`car-rental-${booking.reference}.pdf`);
   };
 
-  // Helper function to format date
   const formatDate = (dateString: string) => {
     if (!dateString) return 'N/A';
     try {
@@ -989,7 +919,6 @@ const renderWakanowDetails = () => {
     }
   };
 
-  // Helper function to format time
   const formatTime = (dateString: string) => {
     if (!dateString) return 'N/A';
     try {
@@ -1002,7 +931,6 @@ const renderWakanowDetails = () => {
     }
   };
 
-  // Helper function to get airport name
   const getAirportName = (code: string) => {
     const airports: Record<string, string> = {
       'LOS': 'Murtala Muhammed International Airport',
@@ -1019,14 +947,6 @@ const renderWakanowDetails = () => {
     return airports[code] || code;
   };
 
-  // Helper function to format duration
-  const formatDuration = (minutes: number) => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}h ${mins}m`;
-  };
-
-  // Calculate nights for hotel
   const calculateNights = (checkIn: string, checkOut: string) => {
     if (!checkIn || !checkOut) return 1;
     try {
@@ -1040,7 +960,6 @@ const renderWakanowDetails = () => {
     }
   };
 
-  // Calculate rental days for car
   const calculateRentalDays = (pickup: string, dropoff: string) => {
     if (!pickup || !dropoff) return 1;
     try {
@@ -1054,12 +973,9 @@ const renderWakanowDetails = () => {
     }
   };
 
-  // Render flight details for authenticated users
   const renderFlightDetails = () => {
-    // Get data from various possible locations
     const bookingData = booking?.bookingData || {};
     
-    // Extract flight information
     const airline = bookingData.airline || 'N/A';
     const flightNumber = bookingData.flightNumber || 'N/A';
     const origin = bookingData.origin || 'N/A';
@@ -1070,7 +986,6 @@ const renderWakanowDetails = () => {
       ? bookingData.passengers 
       : { adults: bookingData.passengers || 1, children: 0, infants: 0 };
     
-    // Format departure time (since we only have date, we'll assume a time or show just date)
     const formatDepartureTime = () => {
       if (!departureDate) return 'N/A';
       try {
@@ -1085,7 +1000,6 @@ const renderWakanowDetails = () => {
       }
     };
 
-    // Estimate arrival time (default +2 hours)
     const getEstimatedArrival = () => {
       if (!departureDate) return 'N/A';
       try {
@@ -1103,7 +1017,6 @@ const renderWakanowDetails = () => {
 
     return (
       <div className="space-y-6">
-        {/* Flight header */}
         <div className="flex items-center justify-between border-b border-gray-200 pb-4">
           <div>
             <p className="text-sm text-gray-500">Airline</p>
@@ -1115,9 +1028,7 @@ const renderWakanowDetails = () => {
           </div>
         </div>
 
-        {/* Flight route */}
         <div className="flex items-center justify-between">
-          {/* Departure */}
           <div className="text-center flex-1">
             <div className="bg-blue-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
               <span className="text-2xl font-bold text-blue-600">{origin}</span>
@@ -1128,7 +1039,6 @@ const renderWakanowDetails = () => {
             <p className="text-lg font-semibold text-blue-600">{formatDepartureTime()}</p>
           </div>
 
-          {/* Flight path line */}
           <div className="flex-1 px-4">
             <div className="relative">
               <div className="border-t-2 border-gray-300 border-dashed absolute w-full top-1/2"></div>
@@ -1141,7 +1051,6 @@ const renderWakanowDetails = () => {
             <p className="text-center text-sm text-gray-500 mt-2">Direct Flight</p>
           </div>
 
-          {/* Arrival */}
           <div className="text-center flex-1">
             <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
               <span className="text-2xl font-bold text-green-600">{destination}</span>
@@ -1153,7 +1062,6 @@ const renderWakanowDetails = () => {
           </div>
         </div>
 
-        {/* Flight details grid */}
         <div className="grid grid-cols-2 gap-4 mt-6 bg-gray-50 p-4 rounded-lg">
           <div>
             <p className="text-sm text-gray-500">Cabin Class</p>
@@ -1171,7 +1079,6 @@ const renderWakanowDetails = () => {
           </div>
         </div>
 
-        {/* Baggage info (if available) */}
         <div className="border-t border-gray-200 pt-4">
           <p className="text-sm text-gray-500 mb-2">Baggage Allowance</p>
           <p className="text-sm">1 x 23kg checked baggage per passenger</p>
@@ -1181,9 +1088,7 @@ const renderWakanowDetails = () => {
     );
   };
 
-  // Render hotel details for authenticated users
   const renderHotelDetails = () => {
-    // Get data from various possible locations
     const providerData = booking?.providerData as any;
     const hotelBookings = providerData?.hotelBookings?.[0];
     const hotelOffer = hotelBookings?.hotelOffer;
@@ -1206,51 +1111,32 @@ const renderWakanowDetails = () => {
       );
     }
 
-    // Extract hotel information
     const hotelName = hotel?.name || hotelOffer?.hotel?.name || bookingData.hotelName || 'Hotel';
     const hotelId = hotel?.hotelId || hotelOffer?.hotel?.hotelId || bookingData.hotelId || 'N/A';
     const chainCode = hotel?.chainCode || hotelOffer?.hotel?.chainCode || '';
     
-    // Extract dates
     const checkInDate = hotelOffer?.checkInDate || bookingData.checkInDate || '';
     const checkOutDate = hotelOffer?.checkOutDate || bookingData.checkOutDate || '';
-    
-    // Calculate nights
     const nights = calculateNights(checkInDate, checkOutDate);
-    
-    // Extract room information
     const roomType = hotelOffer?.room?.type || bookingData.roomType || 'Standard Room';
     const roomDescription = hotelOffer?.room?.description?.text || '';
     const roomQuantity = hotelOffer?.roomQuantity || bookingData.rooms || 1;
-    
-    // Extract guest information
     const adults = hotelOffer?.guests?.adults || bookingData.guests || 1;
     const guests = hotelBookings?.guests || (bookingData.guests ? [bookingData.guests] : []);
-    
-    // Extract price information
     const price = hotelOffer?.price || {};
     const basePrice = price.base ? parseFloat(price.base) : (booking?.basePrice || 0);
     const totalPrice = price.total ? parseFloat(price.total) : (booking?.totalAmount || 0);
     const currency = price.currency || booking?.currency || 'USD';
-    
-    // Extract taxes
     const taxes = price.taxes || [];
-    
-    // Extract cancellation policy
     const cancellations = hotelOffer?.policies?.cancellations || [];
     const cancellationDeadline = cancellations[0]?.deadline || booking?.cancellationDeadline;
     const cancellationAmount = cancellations[0]?.amount;
-    
-    // Extract booking status
     const bookingStatus = hotelBookings?.bookingStatus || booking?.status;
-    
-    // Extract confirmation number
     const confirmationNumber = hotelBookings?.hotelProviderInformation?.[0]?.confirmationNumber || 
                               booking?.providerBookingId;
 
     return (
       <div className="space-y-6">
-        {/* Hotel header with confirmation */}
         <div className="flex items-center justify-between border-b border-gray-200 pb-4">
           <div>
             <p className="text-sm text-gray-500">Hotel</p>
@@ -1273,7 +1159,6 @@ const renderWakanowDetails = () => {
           </div>
         </div>
 
-        {/* Stay dates */}
         <div className="bg-blue-50 p-4 rounded-lg">
           <div className="grid grid-cols-2 gap-4">
             <div className="text-center">
@@ -1294,7 +1179,6 @@ const renderWakanowDetails = () => {
           </div>
         </div>
 
-        {/* Room details */}
         <div className="border border-gray-200 rounded-lg p-4">
           <h4 className="font-semibold mb-3">Room Details</h4>
           <div className="grid grid-cols-2 gap-4">
@@ -1321,7 +1205,6 @@ const renderWakanowDetails = () => {
           </div>
         </div>
 
-        {/* Price breakdown */}
         <div className="border border-gray-200 rounded-lg p-4">
           <h4 className="font-semibold mb-3">Price Breakdown</h4>
           <div className="space-y-2">
@@ -1330,7 +1213,6 @@ const renderWakanowDetails = () => {
               <span className="font-medium">{formatPrice(basePrice, currency)}</span>
             </div>
             
-            {/* Taxes */}
             {taxes.length > 0 && (
               <>
                 <div className="border-t border-gray-100 pt-2 mt-2">
@@ -1354,7 +1236,6 @@ const renderWakanowDetails = () => {
           </div>
         </div>
 
-        {/* Cancellation policy */}
         {(cancellationDeadline || cancellationAmount) && (
           <div className="border border-gray-200 rounded-lg p-4">
             <h4 className="font-semibold mb-3">Cancellation Policy</h4>
@@ -1378,7 +1259,6 @@ const renderWakanowDetails = () => {
           </div>
         )}
 
-        {/* Guest information */}
         {guests.length > 0 && (
           <div className="border border-gray-200 rounded-lg p-4">
             <h4 className="font-semibold mb-3">Guest Information</h4>
@@ -1401,9 +1281,7 @@ const renderWakanowDetails = () => {
     );
   };
 
-  // Render car rental details for authenticated users
   const renderCarRentalDetails = () => {
-    // Get data from various possible locations
     const bookingData = booking?.bookingData || {};
     const providerData = booking?.providerData as any;
     
@@ -1413,25 +1291,19 @@ const renderWakanowDetails = () => {
       booking
     });
 
-    // Extract car rental information from bookingData
     const vehicleType = bookingData.vehicleType || 'Car Rental';
     const offerId = bookingData.offerId || 'N/A';
     const pickupLocationCode = bookingData.pickupLocationCode || 'N/A';
     const dropoffLocationCode = bookingData.dropoffLocationCode || 'N/A';
     const pickupDateTime = bookingData.pickupDateTime || '';
     const dropoffDateTime = bookingData.dropoffDateTime || '';
-    
-    // Extract passenger information
     const passengerInfo = (booking?.passengerInfo as any) || {};
     const firstName = passengerInfo.firstName || '';
     const lastName = passengerInfo.lastName || '';
     const email = passengerInfo.email || '';
     const phone = passengerInfo.phone || '';
-
-    // Calculate rental duration
     const rentalDays = calculateRentalDays(pickupDateTime, dropoffDateTime);
 
-    // Get vehicle type and category
     const getVehicleCategory = (type: string) => {
       if (type.includes('VAN')) return 'Van';
       if (type.includes('SUV')) return 'SUV';
@@ -1442,7 +1314,6 @@ const renderWakanowDetails = () => {
 
     const vehicleCategory = getVehicleCategory(vehicleType);
     
-    // Estimate passengers based on vehicle type
     const getPassengerCapacity = (type: string) => {
       if (type.includes('VAN')) return 7;
       if (type.includes('SUV')) return 5;
@@ -1454,7 +1325,6 @@ const renderWakanowDetails = () => {
 
     return (
       <div className="space-y-6">
-        {/* Car header with status */}
         <div className="flex items-center justify-between border-b border-gray-200 pb-4">
           <div>
             <p className="text-sm text-gray-500">Vehicle</p>
@@ -1469,7 +1339,6 @@ const renderWakanowDetails = () => {
           </div>
         </div>
 
-        {/* Rental period */}
         <div className="bg-blue-50 p-4 rounded-lg">
           <h4 className="font-semibold mb-3 text-center">Rental Period</h4>
           <div className="grid grid-cols-2 gap-4">
@@ -1495,7 +1364,6 @@ const renderWakanowDetails = () => {
           </div>
         </div>
 
-        {/* Vehicle details */}
         <div className="border border-gray-200 rounded-lg p-4">
           <h4 className="font-semibold mb-3">Vehicle Details</h4>
           <div className="grid grid-cols-2 gap-4">
@@ -1518,7 +1386,6 @@ const renderWakanowDetails = () => {
           </div>
         </div>
 
-        {/* Price breakdown */}
         <div className="border border-gray-200 rounded-lg p-4">
           <h4 className="font-semibold mb-3">Price Breakdown</h4>
           <div className="space-y-2">
@@ -1546,7 +1413,6 @@ const renderWakanowDetails = () => {
           </div>
         </div>
 
-        {/* Driver information */}
         <div className="border border-gray-200 rounded-lg p-4">
           <h4 className="font-semibold mb-3">Driver Information</h4>
           <div className="space-y-2">
@@ -1565,7 +1431,6 @@ const renderWakanowDetails = () => {
           </div>
         </div>
 
-        {/* Important notes */}
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start">
             <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1583,7 +1448,6 @@ const renderWakanowDetails = () => {
           </div>
         </div>
 
-        {/* Note about provider confirmation */}
         {providerData?.orderCreationError && (
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
             <div className="flex items-start">
@@ -1603,7 +1467,6 @@ const renderWakanowDetails = () => {
     );
   };
 
-  // Function to determine badge color based on status
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, string> = {
       'CONFIRMED': 'green',
@@ -1617,7 +1480,6 @@ const renderWakanowDetails = () => {
     return statusMap[status] || "gray";
   };
 
-  // Function to format status for display
   const formatStatus = (status: string) => {
     return status
       .replace(/_/g, " ")
@@ -1625,10 +1487,9 @@ const renderWakanowDetails = () => {
       .replace(/\b\w/g, (l) => l.toUpperCase());
   };
 
-  // ADDED: Check if booking is Wakanow
   const isWakanow = booking?.provider === 'WAKANOW' || booking?.bookingData?.provider === 'WAKANOW';
 
-  // Email form for guest bookings
+  // Email form for guest bookings (only shown when no email is provided)
   if (showEmailForm) {
     return (
       <div className="max-w-md mx-auto px-4 py-16">
@@ -1742,7 +1603,6 @@ const renderWakanowDetails = () => {
     );
   }
 
-  // Determine what to show based on actual status
   const isConfirmed = ['CONFIRMED', 'COMPLETED', 'PAID'].includes(booking.status);
   const isPending = ['PENDING', 'PROCESSING'].includes(booking.status);
   const isFailed = ['FAILED', 'CANCELLED'].includes(booking.status);
@@ -1750,29 +1610,51 @@ const renderWakanowDetails = () => {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-16">
-      {/* Show different banners for guest vs authenticated */}
-      {isGuest ? (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
-          <div className="flex items-start">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-amber-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3 flex-1">
-              <p className="text-sm text-amber-800">
-                <span className="font-medium">Guest Booking:</span> You're viewing a summary of your booking. 
-                <button 
-                  onClick={() => router.push(`/auth/register?email=${encodeURIComponent(email)}&bookingRef=${bookingRef}`)}
-                  className="ml-1 underline font-medium hover:text-amber-900"
-                >
-                  Create an account
-                </button> to view full details and manage your booking.
-              </p>
-            </div>
-          </div>
+      {/* Guest banner - encouraging sign up (not blocking content) */}
+      {isGuest && (
+  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 mb-6">
+    <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+          <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
         </div>
-      ) : (
+        <div>
+          <p className="font-semibold text-gray-900">Enjoying your booking experience?</p>
+          <p className="text-sm text-gray-600">Create a free account to earn loyalty points, manage your bookings, and get exclusive deals!</p>
+        </div>
+      </div>
+      <div className="flex gap-3">
+        <button 
+          onClick={() => {
+            const params = new URLSearchParams();
+            if (email) params.set('email', email);
+            if (bookingRef) params.set('bookingRef', bookingRef);
+            router.push(`/register?${params.toString()}`);
+          }}
+          className="px-4 py-2 bg-[#33a8da] text-white font-medium rounded-lg hover:bg-[#2c98c7] transition text-sm"
+        >
+          Sign Up Free
+        </button>
+        <button 
+          onClick={() => {
+            const params = new URLSearchParams();
+            if (email) params.set('email', email);
+            if (bookingRef) params.set('bookingRef', bookingRef);
+            router.push(`/login?${params.toString()}`);
+          }}
+          className="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 border border-gray-300 transition text-sm"
+        >
+          Login
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+      {/* Authenticated welcome banner */}
+      {!isGuest && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
           <div className="flex items-start">
             <div className="flex-shrink-0">
@@ -1782,7 +1664,7 @@ const renderWakanowDetails = () => {
             </div>
             <div className="ml-3 flex-1">
               <p className="text-sm text-green-800">
-                <span className="font-medium">Welcome back!</span> You're viewing your booking details.
+                <span className="font-medium">Welcome back!</span> You're viewing your complete booking details.
               </p>
             </div>
           </div>
@@ -1810,9 +1692,7 @@ const renderWakanowDetails = () => {
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Booking Confirmed!</h1>
             <p className="text-gray-600">
-              {isGuest 
-                ? 'Your booking has been successfully confirmed. A confirmation email has been sent to your email address.'
-                : 'Your booking has been successfully confirmed. A confirmation email has been sent.'}
+              Your booking has been successfully confirmed. A confirmation email has been sent.
             </p>
           </>
         )}
@@ -1883,7 +1763,6 @@ const renderWakanowDetails = () => {
           </p>
         </div>
 
-        {/* Minimal details - show only basic info for everyone */}
         <div className="border-t border-gray-200 pt-4 mt-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="text-center p-3 bg-gray-50 rounded-lg">
@@ -1918,7 +1797,6 @@ const renderWakanowDetails = () => {
               </div>
             )}
 
-            {/* ADDED: Show PNR if available for Wakanow */}
             {isWakanow && booking.pnrNumber && (
               <div className="text-center p-3 bg-gray-50 rounded-lg">
                 <p className="text-sm text-gray-500">PNR Number</p>
@@ -1929,20 +1807,17 @@ const renderWakanowDetails = () => {
         </div>
       </div>
 
-      {/* For authenticated users: Show full detailed itinerary */}
-      {!isGuest && booking && (
+      {/* For ALL users: Show full detailed itinerary (no blur, no blocking) */}
+      {booking && (
         <div className="space-y-6 mb-8">
-          {/* Product-specific full details */}
           <div className="bg-white rounded-xl shadow p-6 border border-gray-100">
             <h3 className="text-xl font-bold mb-4">Trip Details</h3>
-            {/* ADDED: Wakanow details render */}
             {isWakanow && renderWakanowDetails()}
             {!isWakanow && productType?.includes('FLIGHT') && renderFlightDetails()}
             {!isWakanow && productType?.includes('HOTEL') && renderHotelDetails()}
             {!isWakanow && productType?.includes('CAR') && renderCarRentalDetails()}
           </div>
 
-          {/* Price breakdown (if not already shown in product details) */}
           {!productType?.includes('HOTEL') && !productType?.includes('CAR') && booking.basePrice && (
             <div className="bg-white rounded-xl shadow p-6 border border-gray-100">
               <h3 className="text-xl font-bold mb-4">Price Breakdown</h3>
@@ -1969,7 +1844,6 @@ const renderWakanowDetails = () => {
             </div>
           )}
 
-          {/* Passenger information */}
           {booking.passengerInfo && (
             <div className="bg-white rounded-xl shadow p-6 border border-gray-100">
               <h3 className="text-xl font-bold mb-4">Traveler Information</h3>
@@ -1984,7 +1858,6 @@ const renderWakanowDetails = () => {
             </div>
           )}
 
-          {/* Booking information */}
           <div className="bg-white rounded-xl shadow p-6 border border-gray-100">
             <h3 className="text-xl font-bold mb-4">Booking Information</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -1995,51 +1868,9 @@ const renderWakanowDetails = () => {
               {booking.providerBookingId && (
                 <Detail label="Provider Reference" value={booking.providerBookingId} />
               )}
-              {/* ADDED: Show PNR for Wakanow */}
               {isWakanow && booking.pnrNumber && (
                 <Detail label="PNR Number" value={booking.pnrNumber} highlight />
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* For guests: Show blurred preview and registration prompt */}
-      {isGuest && (
-        <div className="relative mb-8">
-          {/* Blurred preview of details */}
-          <div className="bg-white rounded-xl shadow p-6 border border-gray-100 filter blur-sm select-none">
-            <div className="h-8 bg-gray-200 rounded w-1/3 mb-6"></div>
-            <div className="h-32 bg-gray-200 rounded mb-4"></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="h-24 bg-gray-200 rounded"></div>
-              <div className="h-24 bg-gray-200 rounded"></div>
-            </div>
-            <div className="h-16 bg-gray-200 rounded mt-4"></div>
-          </div>
-          
-          {/* Overlay with registration prompt */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="bg-white/90 backdrop-blur-sm p-8 rounded-xl shadow-lg max-w-md text-center">
-              <svg className="w-16 h-16 text-[#33a8da] mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">Full Details Locked</h3>
-              <p className="text-gray-600 mb-6">
-                Create a free account to view your complete itinerary, manage your booking, and earn loyalty points.
-              </p>
-              <button
-                onClick={() => router.push(`/auth/register?email=${encodeURIComponent(email)}&bookingRef=${bookingRef}`)}
-                className="w-full px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition mb-3"
-              >
-                Create Free Account
-              </button>
-              <button
-                onClick={() => router.push(`/auth/login?email=${encodeURIComponent(email)}&bookingRef=${bookingRef}`)}
-                className="w-full px-6 py-3 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 border border-gray-300"
-              >
-                I Already Have an Account
-              </button>
             </div>
           </div>
         </div>
@@ -2081,7 +1912,6 @@ const renderWakanowDetails = () => {
               View My Bookings
             </button>
             
-            {/* PDF Download Button for Authenticated Users - UPDATED for Wakanow */}
             <button 
               onClick={() => {
                 if (isWakanow) {
@@ -2107,13 +1937,17 @@ const renderWakanowDetails = () => {
         ) : (
           <>
             <button 
-              onClick={() => router.push(`/auth/register?email=${encodeURIComponent(email)}&bookingRef=${bookingRef}`)} 
-              className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
-            >
-              Create Account to View Full Details
-            </button>
+  onClick={() => {
+    const params = new URLSearchParams();
+    if (email) params.set('email', email);
+    if (bookingRef) params.set('bookingRef', bookingRef);
+    router.push(`/register?${params.toString()}`);
+  }} 
+  className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
+>
+  Create Free Account
+</button>
             
-            {/* Optional: Allow guests to download basic summary - UPDATED for Wakanow */}
             <button 
               onClick={() => {
                 if (isWakanow) {
@@ -2133,7 +1967,7 @@ const renderWakanowDetails = () => {
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              Download Summary
+              Download Report
             </button>
           </>
         )}
