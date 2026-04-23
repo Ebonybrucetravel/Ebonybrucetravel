@@ -19,6 +19,9 @@ export class CurrencyService {
     'GHS',
     'KES',
     'ZAR',
+    'CAD',
+    'AUD',
+    'INR',
   ];
 
   private readonly conversionBuffer: number;

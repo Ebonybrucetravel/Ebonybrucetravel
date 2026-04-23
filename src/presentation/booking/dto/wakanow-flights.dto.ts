@@ -175,4 +175,12 @@ export class TicketWakanowFlightDto {
   @ApiProperty({ description: 'PNR reference number from the book response' })
   @IsString()
   pnrNumber: string;
+  @ApiPropertyOptional({
+    description:
+      'Local platform booking ID (from POST /bookings/wakanow/book). ' +
+      'When provided, the local booking record will be updated to CONFIRMED after successful ticketing.',
+  })
+  @IsOptional()
+  @IsString()
+  localBookingId?: string;
 }

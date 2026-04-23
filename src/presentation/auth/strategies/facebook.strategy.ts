@@ -53,10 +53,21 @@ export class FacebookStrategy extends PassportStrategy(Strategy, 'facebook') {
 
     try {
       const { id, name, emails, photos, displayName } = profile;
+
+      // Facebook does not always provide an email (e.g. phone-number-only accounts)
+      const email = emails?.[0]?.value;
+      if (!email) {
+        this.logger.warn(`Facebook OAuth: no email returned for profile ${id}. User likely signed up with phone number.`);
+        return done(
+          Object.assign(new Error('no_email'), { code: 'email_required' }),
+          null,
+        );
+      }
+
       const user = {
         provider: 'facebook',
         providerId: id,
-        email: emails?.[0]?.value,
+        email,
         name: name?.givenName && name?.familyName
           ? `${name.givenName} ${name.familyName}`
           : displayName || 'User',

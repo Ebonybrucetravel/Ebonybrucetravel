@@ -88,7 +88,11 @@ export class AuthController {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     try {
       if (!req.user) {
-        return res.redirect(`${frontendUrl}/auth/callback?error=authentication_failed`);
+        // Distinguish between "no email" and a general auth failure
+        const errorCode = (req.authInfo as any)?.code === 'email_required'
+          ? 'facebook_email_required'
+          : 'authentication_failed';
+        return res.redirect(`${frontendUrl}/auth/callback?error=${errorCode}`);
       }
 
       const user = req.user;

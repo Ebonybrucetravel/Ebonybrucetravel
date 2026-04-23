@@ -188,7 +188,7 @@ export class BookingWakanowController {
   @ApiResponse({ status: 404, description: 'Booking not found' })
   async ticketFlight(@Body() ticketDto: TicketWakanowFlightDto) {
     try {
-      const result = await this.ticketWakanowFlightUseCase.execute(ticketDto);
+      const result = await this.ticketWakanowFlightUseCase.execute(ticketDto, ticketDto.localBookingId);
       return {
         success: true,
         data: result,

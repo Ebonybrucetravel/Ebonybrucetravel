@@ -1699,4 +1699,112 @@ export class AdminController {
       message: 'Refund status updated successfully',
     };
   }
+
+  @Patch('bookings/:id/cancel')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancel a booking (Admin)',
+    description:
+      'Marks any booking as CANCELLED in the platform. ' +
+      'For Wakanow flights, cancel the PNR in the Wakanow affiliate portal first, ' +
+      'then call this to sync the status, set refund details, and log the action. ' +
+      'For Amadeus hotel bookings, use POST /admin/cancellation-requests/:id/process for automated refunds.',
+  })
+  @ApiParam({ name: 'id', description: 'Local platform booking ID' })
+  @ApiBody({
+    schema: {
+      properties: {
+        reason: { type: 'string', description: 'Reason for cancellation' },
+        refundAmount: { type: 'number', description: 'Refund amount in major currency units (e.g. GBP)' },
+        refundStatus: {
+          type: 'string',
+          enum: ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'NOT_APPLICABLE'],
+          description: 'Refund status to set. Defaults to PENDING if refundAmount > 0, else NOT_APPLICABLE.',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Booking cancelled' })
+  @ApiResponse({ status: 400, description: 'Booking already cancelled' })
+  @ApiResponse({ status: 404, description: 'Booking not found' })
+  async cancelBookingByAdmin(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      reason?: string;
+      refundAmount?: number;
+      refundStatus?: string;
+    },
+    @Request() req: any,
+  ) {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id, deletedAt: null },
+      include: { user: { select: { id: true, email: true, name: true } } },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    if (booking.status === 'CANCELLED' as any) {
+      throw new BadRequestException('Booking is already cancelled');
+    }
+
+    const refundStatus = body.refundStatus
+      ?? (body.refundAmount && body.refundAmount > 0 ? 'PENDING' : 'NOT_APPLICABLE');
+
+    const validRefundStatuses = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'NOT_APPLICABLE'];
+    if (!validRefundStatuses.includes(refundStatus)) {
+      throw new BadRequestException(`refundStatus must be one of: ${validRefundStatuses.join(', ')}`);
+    }
+
+    await this.prisma.booking.update({
+      where: { id },
+      data: {
+        status: 'CANCELLED' as any,
+        cancelledAt: new Date(),
+        cancelledBy: req.user.id,
+        refundAmount: body.refundAmount ?? null,
+        refundStatus: refundStatus as any,
+        bookingData: {
+          ...(booking.bookingData as any),
+          cancelledAt: new Date().toISOString(),
+          cancelledBy: req.user.email,
+          cancellationReason: body.reason ?? null,
+        },
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: 'ADMIN_CANCEL_BOOKING',
+        entityType: 'Booking',
+        entityId: id,
+        changes: {
+          reference: booking.reference,
+          provider: booking.provider,
+          reason: body.reason,
+          refundAmount: body.refundAmount,
+          refundStatus,
+          cancelledBy: req.user.email,
+        },
+      },
+    });
+
+    return {
+      success: true,
+      data: {
+        id: booking.id,
+        reference: booking.reference,
+        provider: booking.provider,
+        status: 'CANCELLED',
+        refundAmount: body.refundAmount ?? null,
+        refundStatus,
+      },
+      message: `Booking ${booking.reference} cancelled.${
+        booking.provider === 'WAKANOW'
+          ? ' Ensure the PNR is also cancelled in the Wakanow affiliate portal.'
+          : ''
+      }`,
+    };
+  }
 }

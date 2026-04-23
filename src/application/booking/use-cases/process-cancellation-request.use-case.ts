@@ -86,8 +86,14 @@ export class ProcessCancellationRequestUseCase {
     }
 
     const booking = request.booking;
-    if (booking.provider !== Provider.AMADEUS || booking.productType !== 'HOTEL') {
-      throw new BadRequestException('Only Amadeus hotel bookings are supported');
+
+    // Wakanow and other providers: reject action is always available.
+    // Full/partial refund via Amadeus API is only supported for Amadeus hotel bookings.
+    if (dto.action !== 'reject' && (booking.provider !== Provider.AMADEUS || booking.productType !== 'HOTEL')) {
+      throw new BadRequestException(
+        'Automated refund processing is only supported for Amadeus hotel bookings. ' +
+        'For Wakanow flights, use the reject action and process the refund manually via Stripe dashboard.',
+      );
     }
 
     const now = new Date();
