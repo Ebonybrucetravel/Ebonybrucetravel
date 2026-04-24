@@ -23,11 +23,36 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        // Get token and user data from URL params
-        const token = searchParams.get('token');
+        // Get token, code, and user data from URL params
+        const code = searchParams.get('code');
+        let token = searchParams.get('token');
         const userDataParam = searchParams.get('user');
         
-        console.log('Callback params:', { token, userDataParam });
+        console.log('Callback params:', { code, token, userDataParam });
+        
+        let userData = null;
+
+        // If we have an OTT code, exchange it for tokens
+        if (code && !token) {
+          const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ebony-bruce-production.up.railway.app';
+          const exchangeResponse = await fetch(`${API_BASE}/api/v1/auth/ott/exchange`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+          });
+
+          if (!exchangeResponse.ok) {
+            setError('Authentication token exchange failed. Please try again.');
+            setIsProcessing(false);
+            return;
+          }
+
+          const exchangeData = await exchangeResponse.json();
+          if (exchangeData.success && exchangeData.data) {
+            token = exchangeData.data.token;
+            userData = exchangeData.data.user;
+          }
+        }
         
         if (!token) {
           setError('No authentication token received');
@@ -35,9 +60,8 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        // Parse user data if exists
-        let userData = null;
-        if (userDataParam) {
+        // Parse user data if exists from params
+        if (userDataParam && !userData) {
           try {
             userData = JSON.parse(decodeURIComponent(userDataParam));
             console.log('Parsed user data:', userData);

@@ -133,6 +133,366 @@ const CURRENCY_OPTIONS = [
   { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' }
 ] as const;
 
+// ─── Travel Documents Tab ─────────────────────────────────────────────────────
+interface TravelDocumentsTabProps { user: ExtendedUser; }
+
+const TravelDocumentsTab: React.FC<TravelDocumentsTabProps> = ({ user }) => {
+  const inputCls = 'w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] border border-gray-100 transition-all text-sm';
+
+  // Primary traveler state (the account holder)
+  const [primaryId, setPrimaryId] = useState<string | null>(null);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [passportNumber, setPassportNumber] = useState('');
+  const [passportCountry, setPassportCountry] = useState('');
+  const [passportExpiry, setPassportExpiry] = useState('');
+  const [passportIssuingAuthority, setPassportIssuingAuthority] = useState('');
+  const [frequentFlyerNumber, setFrequentFlyerNumber] = useState('');
+  const [frequentFlyerAirline, setFrequentFlyerAirline] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState('');
+
+  // Additional travelers
+  const [additionalTravelers, setAdditionalTravelers] = useState<any[]>([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newT, setNewT] = useState({ firstName: '', lastName: '', dateOfBirth: '', gender: 'Male', passportNumber: '', passportExpiry: '', passportCountry: '' });
+  const [isAddingTraveler, setIsAddingTraveler] = useState(false);
+
+  const passportComplete = !!(passportNumber && passportExpiry && passportCountry);
+
+  useEffect(() => {
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        const res = await userApi.listTravelers();
+        const items: any[] = Array.isArray(res) ? res : ((res as any)?.data ?? []);
+        const primary = items.find((t: any) => t.isDefault) ?? items[0] ?? null;
+        if (primary) {
+          setPrimaryId(primary.id);
+          setFirstName(primary.firstName ?? '');
+          setLastName(primary.lastName ?? '');
+          setPassportNumber(primary.passportNumber ?? '');
+          setPassportCountry(primary.passportCountry ?? '');
+          setPassportExpiry(primary.passportExpiry ? new Date(primary.passportExpiry).toISOString().split('T')[0] : '');
+          setPassportIssuingAuthority(primary.passportIssuingAuthority ?? '');
+          setFrequentFlyerNumber(primary.frequentFlyerNumber ?? '');
+          setFrequentFlyerAirline(primary.frequentFlyerAirline ?? '');
+        } else {
+          // Pre-fill name from user profile
+          const parts = (user.name || '').trim().split(/\s+/);
+          setFirstName(parts[0] || '');
+          setLastName(parts.slice(1).join(' ') || '');
+        }
+        setAdditionalTravelers(items.filter((t: any) => !t.isDefault && t.id !== primary?.id));
+      } catch (err) {
+        console.error('Failed to load travelers', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, [user]);
+
+  const handleSavePrimary = async () => {
+    if (!firstName || !lastName) { alert('First and last name are required.'); return; }
+    setIsSaving(true);
+    setSavedMsg('');
+    try {
+      const payload = {
+        firstName, lastName,
+        passportNumber: passportNumber || undefined,
+        passportCountry: passportCountry || undefined,
+        passportExpiry: passportExpiry || undefined,
+        passportIssuingAuthority: passportIssuingAuthority || undefined,
+        frequentFlyerNumber: frequentFlyerNumber || undefined,
+        frequentFlyerAirline: frequentFlyerAirline || undefined,
+        isDefault: true,
+      };
+      if (primaryId) {
+        await userApi.updateTraveler(primaryId, payload);
+      } else {
+        const created: any = await userApi.createTraveler(payload);
+        setPrimaryId(created?.id ?? created?.data?.id ?? null);
+      }
+      setSavedMsg('Travel documents saved successfully!');
+      setTimeout(() => setSavedMsg(''), 3000);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to save travel documents.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAddTraveler = async () => {
+    if (!newT.firstName || !newT.lastName) { alert('First and last name are required.'); return; }
+    setIsAddingTraveler(true);
+    try {
+      const created: any = await userApi.createTraveler({
+        firstName: newT.firstName, lastName: newT.lastName,
+        dateOfBirth: newT.dateOfBirth || undefined,
+        gender: newT.gender,
+        passportNumber: newT.passportNumber || undefined,
+        passportExpiry: newT.passportExpiry || undefined,
+        nationality: newT.passportCountry || undefined,
+      });
+      const t = created?.data ?? created;
+      setAdditionalTravelers(prev => [...prev, t]);
+      setNewT({ firstName: '', lastName: '', dateOfBirth: '', gender: 'Male', passportNumber: '', passportExpiry: '', passportCountry: '' });
+      setShowAddForm(false);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to add traveler.');
+    } finally {
+      setIsAddingTraveler(false);
+    }
+  };
+
+  const handleRemoveTraveler = async (id: string) => {
+    if (!confirm('Remove this traveler from your profile?')) return;
+    try {
+      await userApi.deleteTraveler(id);
+      setAdditionalTravelers(prev => prev.filter(t => t.id !== id));
+    } catch (err: any) {
+      alert(err?.message || 'Failed to remove traveler.');
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="animate-in fade-in duration-500 flex items-center justify-center py-20">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-blue-100 border-t-[#33a8da] rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-400 font-bold">Loading your travel documents…</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="animate-in fade-in duration-500 space-y-8">
+      {/* Header */}
+      <div className="bg-white rounded-[24px] p-8 md:p-10 shadow-sm border border-gray-100/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Travel Documents</h1>
+          <p className="text-gray-400 font-bold text-sm mt-1">Manage passport details and fellow traveler profiles for faster checkout.</p>
+        </div>
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest ${passportComplete ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'}`}>
+          {passportComplete ? (
+            <>
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+              Profile Complete
+            </>
+          ) : (
+            <>
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01" /></svg>
+              Passport Incomplete
+            </>
+          )}
+        </div>
+      </div>
+
+      {!passportComplete && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-start gap-3">
+          <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          <div>
+            <p className="text-sm font-semibold text-amber-800">Passport details required for international flights</p>
+            <p className="text-xs text-amber-700 mt-1">Please fill in your Passport Number, Issue Country, and Expiry Date below. Without these, you will not be able to proceed to payment on Wakanow international flight bookings.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Primary Traveler / Account Holder */}
+      <div className="bg-white rounded-[32px] p-8 md:p-10 border border-gray-100 space-y-6">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-9 h-9 rounded-full bg-[#33a8da] flex items-center justify-center text-white font-black text-sm">
+            {(firstName[0] || user.name?.[0] || 'U').toUpperCase()}
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">My Travel Profile</h3>
+            <p className="text-xs text-gray-400 font-bold">Used for all your flight bookings</p>
+          </div>
+          <span className="ml-auto text-[10px] font-black uppercase bg-blue-50 text-[#33a8da] px-3 py-1 rounded-full">Primary</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div>
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">First Name *</label>
+            <input value={firstName} onChange={e => setFirstName(e.target.value)} className={inputCls} placeholder="First name" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Last Name *</label>
+            <input value={lastName} onChange={e => setLastName(e.target.value)} className={inputCls} placeholder="Last name" />
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 pt-6">
+          <div className="flex items-center gap-2 mb-5">
+            <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <h4 className="font-bold text-gray-900 text-sm">Passport & Travel Document</h4>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Passport Number *</label>
+              <input value={passportNumber} onChange={e => setPassportNumber(e.target.value)} className={inputCls} placeholder="e.g. A12345678" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Issue Country * (2-letter code)</label>
+              <input value={passportCountry} onChange={e => setPassportCountry(e.target.value.toUpperCase())} className={inputCls} placeholder="e.g. NG" maxLength={2} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Expiry Date *</label>
+              <input type="date" value={passportExpiry} onChange={e => setPassportExpiry(e.target.value)} min={new Date().toISOString().split('T')[0]} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Issuing Authority</label>
+              <input value={passportIssuingAuthority} onChange={e => setPassportIssuingAuthority(e.target.value)} className={inputCls} placeholder="e.g. Nigerian Immigration" />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 pt-6">
+          <div className="flex items-center gap-2 mb-5">
+            <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+            </svg>
+            <h4 className="font-bold text-gray-900 text-sm">Frequent Flyer (Optional)</h4>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Airline Code</label>
+              <input value={frequentFlyerAirline} onChange={e => setFrequentFlyerAirline(e.target.value.toUpperCase())} className={inputCls} placeholder="e.g. BA, LH, EK" maxLength={3} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Frequent Flyer Number</label>
+              <input value={frequentFlyerNumber} onChange={e => setFrequentFlyerNumber(e.target.value)} className={inputCls} placeholder="e.g. FF123456" />
+            </div>
+          </div>
+        </div>
+
+        {savedMsg && (
+          <div className="bg-green-50 border border-green-100 rounded-xl p-3 flex items-center gap-2">
+            <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+            <p className="text-xs font-bold text-green-600">{savedMsg}</p>
+          </div>
+        )}
+
+        <div className="flex justify-end">
+          <button
+            onClick={handleSavePrimary}
+            disabled={isSaving}
+            className="px-10 py-3.5 bg-[#33a8da] text-white font-black text-sm uppercase tracking-widest rounded-xl hover:bg-[#2c98c7] transition shadow-lg disabled:opacity-50 flex items-center gap-2"
+          >
+            {isSaving ? (
+              <>
+                <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                Saving…
+              </>
+            ) : 'Save Travel Documents'}
+          </button>
+        </div>
+      </div>
+
+      {/* Additional Travelers */}
+      <div className="bg-white rounded-[32px] p-8 md:p-10 border border-gray-100">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Fellow Travelers</h3>
+            <p className="text-xs text-gray-400 font-bold mt-0.5">Save profiles for family and colleagues to speed up group bookings.</p>
+          </div>
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#33a8da] text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[#2c98c7] transition"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 4v16m8-8H4" /></svg>
+            Add Traveler
+          </button>
+        </div>
+
+        {additionalTravelers.length === 0 && !showAddForm && (
+          <div className="text-center py-12 border-2 border-dashed border-gray-100 rounded-2xl">
+            <svg className="w-10 h-10 text-gray-200 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0" /></svg>
+            <p className="text-gray-400 font-bold text-sm">No fellow travelers saved yet.</p>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {additionalTravelers.map((t: any) => (
+            <div key={t.id} className="flex items-center gap-4 p-5 bg-gray-50 rounded-2xl border border-gray-100">
+              <div className="w-10 h-10 rounded-full bg-[#f4d9c6] flex items-center justify-center text-[#9a7d6a] font-black text-sm shrink-0">
+                {(t.firstName?.[0] || '?').toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-gray-900">{`${t.firstName || ''} ${t.lastName || ''}`.trim()}</p>
+                <p className="text-xs text-gray-400 font-bold mt-0.5">
+                  {t.passportNumber ? `Passport: ****${t.passportNumber.slice(-4)}` : 'No passport saved'}
+                  {t.passportExpiry && ` • Exp: ${new Date(t.passportExpiry).toLocaleDateString()}`}
+                </p>
+              </div>
+              <button
+                onClick={() => handleRemoveTraveler(t.id)}
+                className="text-red-400 hover:text-red-600 transition p-2"
+                title="Remove traveler"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {showAddForm && (
+          <div className="mt-6 p-6 bg-blue-50 rounded-2xl border border-blue-100 space-y-4">
+            <h4 className="font-bold text-gray-900 text-sm">Add New Traveler</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">First Name *</label>
+                <input value={newT.firstName} onChange={e => setNewT(p => ({...p, firstName: e.target.value}))} className={inputCls} placeholder="First name" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Last Name *</label>
+                <input value={newT.lastName} onChange={e => setNewT(p => ({...p, lastName: e.target.value}))} className={inputCls} placeholder="Last name" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Date of Birth</label>
+                <input type="date" value={newT.dateOfBirth} onChange={e => setNewT(p => ({...p, dateOfBirth: e.target.value}))} max={new Date().toISOString().split('T')[0]} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Gender</label>
+                <select value={newT.gender} onChange={e => setNewT(p => ({...p, gender: e.target.value}))} className={inputCls}>
+                  <option>Male</option><option>Female</option><option>Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Passport Number</label>
+                <input value={newT.passportNumber} onChange={e => setNewT(p => ({...p, passportNumber: e.target.value}))} className={inputCls} placeholder="e.g. A12345678" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Issue Country</label>
+                <input value={newT.passportCountry} onChange={e => setNewT(p => ({...p, passportCountry: e.target.value.toUpperCase()}))} className={inputCls} placeholder="e.g. NG" maxLength={2} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Passport Expiry</label>
+                <input type="date" value={newT.passportExpiry} onChange={e => setNewT(p => ({...p, passportExpiry: e.target.value}))} min={new Date().toISOString().split('T')[0]} className={inputCls} />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end mt-2">
+              <button onClick={() => setShowAddForm(false)} className="px-6 py-2.5 border border-gray-200 rounded-xl text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition">Cancel</button>
+              <button onClick={handleAddTraveler} disabled={isAddingTraveler} className="px-8 py-2.5 bg-[#33a8da] text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-[#2c98c7] transition disabled:opacity-50">
+                {isAddingTraveler ? 'Saving…' : 'Save Traveler'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+
+
 const Profile: React.FC<ProfileProps> = ({ 
   user, 
   activeTab: activeTabProp, 
@@ -1589,7 +1949,7 @@ const handleCheckSaved = async (itemData: {
     { id: 'saved', label: 'Saved Items', icon: <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /> },
     { id: 'rewards', label: 'Rewards', icon: <path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /> },
     { id: 'vouchers', label: 'My Vouchers', icon: <path d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /> },
-    { id: 'travelers', label: 'Other Travelers', icon: <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2m16 0h2a4 4 0 0 0 4-4v-2a4 4 0 0 0-4-4h-2m-1-10a4 4 0 1 1-8 0 4 4 0 0 1 8 0z" /> },
+    { id: 'travelers', label: 'Travel Documents', icon: <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /> },
     { id: 'security', label: 'Security', icon: <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /> },
     { id: 'preferences', label: 'Preferences', icon: <path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /> },
   ];
@@ -2047,6 +2407,10 @@ const handleCheckSaved = async (itemData: {
                 </div>
                 {renderVouchersContent()}
               </div>
+            )}
+
+            {activeTab === 'travelers' && (
+              <TravelDocumentsTab user={user} />
             )}
 
             {activeTab === 'security' && (

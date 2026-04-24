@@ -32,6 +32,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isMobileMenuOpen, onClose }
     ],
     wakanow: [
       { href: '/admin/dashboard/wakanow', label: 'Wakanow Dashboard', icon: '🌍', gradient: 'from-indigo-500 to-purple-500' },
+      { href: '/admin/dashboard/wakanow/book-for-user', label: 'Book for Customer', icon: '🛫', gradient: 'from-violet-500 to-purple-500' },
       { href: '/admin/dashboard/wakanow/tickets', label: 'Issue Tickets', icon: '🎫', gradient: 'from-blue-500 to-indigo-500' },
       { href: '/admin/dashboard/wakanow/wallet', label: 'Wallet Balance', icon: '💰', gradient: 'from-green-500 to-emerald-500' },
       { href: '/admin/dashboard/wakanow/bookings', label: 'Wakanow Bookings', icon: '📋', gradient: 'from-cyan-500 to-blue-500' },

@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useLanguage } from '../context/LanguageContext';
 import type { SearchResult, SearchParams, PassengerInfo, User, Booking } from '../lib/types';
 import { userApi, ApiError, hotelApi } from '../lib/api';
@@ -189,6 +190,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const defaultFirstName = createdBooking?.passengerInfo?.firstName || splitName[0] || '';
   const defaultLastName = createdBooking?.passengerInfo?.lastName || splitName.slice(1).join(' ') || '';
 
+  const router = useRouter();
+
   const [isBooking, setIsBooking] = useState(false);
   const [firstName, setFirstName] = useState(defaultFirstName);
   const [lastName, setLastName] = useState(defaultLastName);
@@ -208,13 +211,26 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [appliedPromo, setAppliedPromo] = useState<any | null>(null);
 
-  // Passport fields for North America
+  // Passport / travel document state
   const [passportNumber, setPassportNumber] = useState('');
   const [passportExpiry, setPassportExpiry] = useState('');
   const [passportIssuingAuthority, setPassportIssuingAuthority] = useState('');
+  const [passportIssueCountry, setPassportIssueCountry] = useState('');
+  const [passportAddress, setPassportAddress] = useState('');
+  const [passportCity, setPassportCity] = useState('');
+  const [passportCountry, setPassportCountry] = useState('');
+  const [passportCountryCode, setPassportCountryCode] = useState('');
+  const [passportPostalCode, setPassportPostalCode] = useState('');
+  const [defaultTravelerId, setDefaultTravelerId] = useState<string | null>(null);
+  const [isPassportIncomplete, setIsPassportIncomplete] = useState(false);
+  const [isCheckingPassport, setIsCheckingPassport] = useState(false);
   const [passportError, setPassportError] = useState<string | null>(null);
 
-  // Check if passport is required
+  const isWakanow = (item as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+    (item as any)?.type?.toLowerCase().includes('wakanow');
+  const passportRequired = isFlight && isWakanow;
+
+  // Check if passport is required for North America
   const requiresPassport = isFlight && isNorthAmericanDestination(extendedItem, searchParams);
 
   // Initialize additional guests
@@ -263,6 +279,51 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       if (user.gender) setGender(user.gender as 'm' | 'f');
     }
   }, [user]);
+
+  // Load saved traveler passport details for Wakanow flights
+  useEffect(() => {
+    if (!passportRequired || !isLoggedIn || createdBooking) return;
+    const load = async () => {
+      setIsCheckingPassport(true);
+      try {
+        // Step 1: List to find default traveler ID
+        const listRes = await userApi.listTravelers();
+        const items: any[] = Array.isArray(listRes) ? listRes : ((listRes as any)?.data ?? []);
+        const defaultTraveler = items.find((t: any) => t.isDefault) ?? items[0] ?? null;
+        if (!defaultTraveler) { setIsPassportIncomplete(true); return; }
+
+        setDefaultTravelerId(defaultTraveler.id);
+
+        // Step 2: Batch fetch to get unmasked passport data
+        const batchRes = await userApi.getTravelersBatch([defaultTraveler.id]);
+        const unmasked: any = Array.isArray(batchRes)
+          ? batchRes[0]
+          : ((batchRes as any)?.data?.[0] ?? (batchRes as any)?.[0] ?? null);
+
+        if (unmasked) {
+          setPassportNumber(unmasked.passportNumber ?? '');
+          setPassportExpiry(
+            unmasked.passportExpiry
+              ? new Date(unmasked.passportExpiry).toISOString().split('T')[0]
+              : ''
+          );
+          setPassportIssueCountry(unmasked.passportCountry ?? '');
+          const incomplete =
+            !unmasked.passportNumber ||
+            !unmasked.passportExpiry ||
+            !unmasked.passportCountry;
+          setIsPassportIncomplete(incomplete);
+        } else {
+          setIsPassportIncomplete(true);
+        }
+      } catch {
+        // silently fail — let the gate catch it
+      } finally {
+        setIsCheckingPassport(false);
+      }
+    };
+    load();
+  }, [passportRequired, isLoggedIn, createdBooking]);
 
   // ==================== PRICE CALCULATION WITH SERVICE FEE ====================
   // Extract values from the selected item (these are already set in SearchContext)
@@ -423,10 +484,16 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         alert('Passenger must be at least 2 years old for flight bookings.');
         return;
       }
-      
       // Validate passport for North America
       if (requiresPassport && !validatePassport()) {
         return;
+      }
+
+      if (passportRequired && !requiresPassport) {
+        if (!passportNumber || !passportExpiry || !passportIssuingAuthority || !passportIssueCountry) {
+          alert('Passport details are required for this flight. Please complete your Travel Profile.');
+          return;
+        }
       }
     }
 
@@ -446,6 +513,17 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           title: title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr',
           gender: gender as 'm' | 'f',
           dateOfBirth
+        }),
+        ...(passportRequired && {
+          passportNumber,
+          passportExpiry,
+          passportIssuingAuthority,
+          passportIssueCountry,
+          address: passportAddress,
+          city: passportCity,
+          country: passportCountry,
+          countryCode: passportCountryCode,
+          postalCode: passportPostalCode,
         })
       };
       
@@ -551,6 +629,33 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                   when providing passenger details. Passport must be valid for at least 6 months beyond your travel date.
                 </p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Passport incomplete gate — redirect to profile */}
+        {passportRequired && isLoggedIn && isPassportIncomplete && !createdBooking && !requiresPassport && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+            <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-800">Passport details required</p>
+              <p className="text-xs text-amber-700 mt-1">
+                Passport information is required to complete this flight booking. Please add your travel documents to your profile, then return here to continue.
+              </p>
+              <button
+                onClick={() => {
+                  sessionStorage.setItem('authReturnTo', '/booking/review');
+                  router.push('/profile?tab=travelers');
+                }}
+                className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                Complete Travel Profile
+              </button>
             </div>
           </div>
         )}
@@ -693,6 +798,58 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                 </div>
               )}
 
+              {/* Passport fields section — shown for logged-in Wakanow flights */}
+              {passportRequired && isLoggedIn && !createdBooking && !isPassportIncomplete && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <div className="flex items-center gap-2 mb-3">
+                    <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <h3 className="text-sm font-semibold text-gray-900">Travel Documents</h3>
+                    <span className="ml-auto text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Loaded from profile</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Passport Number *</label>
+                      <input value={passportNumber} onChange={e => setPassportNumber(e.target.value)} className={inputCls} placeholder="e.g. A12345678" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Expiry Date *</label>
+                      <input type="date" value={passportExpiry} onChange={e => setPassportExpiry(e.target.value)} min={new Date().toISOString().split('T')[0]} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Issuing Authority *</label>
+                      <input value={passportIssuingAuthority} onChange={e => setPassportIssuingAuthority(e.target.value)} className={inputCls} placeholder="e.g. Nigerian Immigration" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Issue Country *</label>
+                      <input value={passportIssueCountry} onChange={e => setPassportIssueCountry(e.target.value)} className={inputCls} placeholder="e.g. NG" maxLength={2} />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Address</label>
+                      <input value={passportAddress} onChange={e => setPassportAddress(e.target.value)} className={inputCls} placeholder="Street address" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
+                      <input value={passportCity} onChange={e => setPassportCity(e.target.value)} className={inputCls} placeholder="City" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Country</label>
+                      <input value={passportCountry} onChange={e => setPassportCountry(e.target.value)} className={inputCls} placeholder="Country" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Country Code</label>
+                      <input value={passportCountryCode} onChange={e => setPassportCountryCode(e.target.value)} className={inputCls} placeholder="e.g. NG" maxLength={2} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Postal Code</label>
+                      <input value={passportPostalCode} onChange={e => setPassportPostalCode(e.target.value)} className={inputCls} placeholder="Postal code" />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-2">These details are pre-filled from your Travel Profile. Update them in your profile settings if needed.</p>
+                </div>
+              )}
+
               {!isLoggedIn && onSignInRequired && !createdBooking && (
                 <div className="mt-4 p-3 bg-blue-50 rounded-lg flex items-center gap-2">
                   <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -823,12 +980,18 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
               <button
                 onClick={handleCompleteBooking}
-                disabled={isBooking || isCreating || (isHotel && !agreedToPolicy)}
+                disabled={
+                  isBooking || isCreating ||
+                  (isHotel && !agreedToPolicy) ||
+                  (passportRequired && isLoggedIn && isPassportIncomplete) ||
+                  isCheckingPassport
+                }
                 className="w-full bg-[#33a8da] text-white font-medium py-3 rounded-xl hover:bg-[#2c98c7] transition disabled:opacity-50 mt-4"
               >
-                {isCreating ? 'Creating Booking...' :
-                  isBooking ? 'Please wait...' :
-                    createdBooking ? 'Proceed to Payment' : 'Continue to payment'}
+                {isCheckingPassport ? 'Checking passport...' :
+                  isCreating ? 'Creating Booking...' :
+                    isBooking ? 'Please wait...' :
+                      createdBooking ? 'Proceed to Payment' : 'Continue to payment'}
               </button>
 
               <p className="mt-4 text-xs text-gray-400 text-center flex items-center justify-center gap-1">

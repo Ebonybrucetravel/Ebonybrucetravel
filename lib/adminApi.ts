@@ -583,3 +583,135 @@ export async function deleteMarkup(id: string) {
     method: 'DELETE',
   });
 }
+
+// ─── Admin: cancel/sync booking status ────────────────────────────────────────
+export async function cancelBookingStatus(id: string, reason?: string) {
+  return adminFetch<any>(`/api/v1/admin/bookings/${id}/cancel`, {
+    method: 'PATCH',
+    body: { reason: reason ?? 'Admin manual cancellation' },
+  });
+}
+
+// ─── Admin: fetch a customer's default saved traveler ─────────────────────────
+export async function getCustomerDefaultTraveler(customerId: string) {
+  return adminFetch<any>(`/api/v1/admin/customers/${customerId}/travelers/default`);
+}
+
+// ─── Admin: Wakanow flight booking on behalf of a user ───────────────────────
+
+export async function adminSearchWakanowFlights(params: {
+  origin: string;
+  destination: string;
+  departureDate: string;
+  returnDate?: string;
+  adults: number;
+  children?: number;
+  infants?: number;
+  cabinClass?: string;
+}) {
+  const token = typeof window !== 'undefined' ? (localStorage.getItem('adminToken') ?? '') : '';
+  const BASE_URL = (await import('./config')).config.apiBaseUrl;
+
+  const ticketClassMap: Record<string, string> = {
+    economy: 'Y',
+    premium_economy: 'W',
+    business: 'C',
+    first: 'F',
+  };
+
+  const body = {
+    FlightSearchType: params.returnDate ? 'Return' : 'Oneway',
+    Ticketclass: ticketClassMap[params.cabinClass ?? 'economy'] ?? 'Y',
+    Adults: params.adults,
+    Children: params.children ?? 0,
+    Infants: params.infants ?? 0,
+    TargetCurrency: 'NGN',
+    Itineraries: [
+      {
+        Departure: params.origin.toUpperCase(),
+        Destination: params.destination.toUpperCase(),
+        DepartureDate: params.departureDate,
+      },
+      ...(params.returnDate
+        ? [
+            {
+              Departure: params.destination.toUpperCase(),
+              Destination: params.origin.toUpperCase(),
+              DepartureDate: params.returnDate,
+            },
+          ]
+        : []),
+    ],
+  };
+
+  const res = await fetch(`${BASE_URL}/api/v1/bookings/wakanow/search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message ?? `Search failed: ${res.status}`);
+  return data;
+}
+
+export async function adminSelectWakanowFlight(selectData: string) {
+  const token = typeof window !== 'undefined' ? (localStorage.getItem('adminToken') ?? '') : '';
+  const BASE_URL = (await import('./config')).config.apiBaseUrl;
+
+  const res = await fetch(`${BASE_URL}/api/v1/bookings/wakanow/select`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ SelectData: selectData, TargetCurrency: 'NGN' }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message ?? `Select failed: ${res.status}`);
+  return data;
+}
+
+export async function adminBookWakanowFlightForUser(payload: {
+  userId: string;
+  selectData: string;
+  bookingId: string;
+  passengers: Array<{
+    PassengerType: 'Adult' | 'Child' | 'Infant';
+    Title: string;
+    FirstName: string;
+    MiddleName?: string;
+    LastName: string;
+    DateOfBirth: string;
+    Gender: 'Male' | 'Female';
+    Email: string;
+    PhoneNumber: string;
+    PassportNumber: string;
+    ExpiryDate: string;
+    PassportIssuingAuthority: string;
+    PassportIssueCountryCode?: string;
+    Address: string;
+    City: string;
+    Country: string;
+    CountryCode: string;
+    PostalCode: string;
+  }>;
+  targetCurrency?: string;
+}) {
+  const token = typeof window !== 'undefined' ? (localStorage.getItem('adminToken') ?? '') : '';
+  const BASE_URL = (await import('./config')).config.apiBaseUrl;
+
+  const res = await fetch(`${BASE_URL}/api/v1/bookings/wakanow/book`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      BookingData: payload.selectData,
+      BookingId: payload.bookingId,
+      TargetCurrency: payload.targetCurrency ?? 'NGN',
+      PassengerDetails: payload.passengers,
+      userId: payload.userId,
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message ?? `Booking failed: ${res.status}`);
+  return data;
+}
