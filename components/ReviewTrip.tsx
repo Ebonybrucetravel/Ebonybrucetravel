@@ -54,7 +54,20 @@ interface ExtendedSearchResult extends SearchResult {
   taxes?: string;
   original_amount?: string;
   final_amount?: string;
+  destination?: string;
+  origin?: string;
+  departureAirport?: string;
+  arrivalAirport?: string;
+  departureCity?: string;
+  arrivalCity?: string;
+  offerId?: string;
+  selectData?: string;
+  airline?: string;
+  flightNumber?: string;
+  departureDate?: string;
+  cabinClass?: string;
 }
+
 
 interface ReviewTripProps {
   item: SearchResult | null;
@@ -68,6 +81,55 @@ interface ReviewTripProps {
   productType?: 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL';
   createdBooking?: Booking | null;
 }
+
+// Helper function to check if destination is in North America
+const isNorthAmericanDestination = (item: ExtendedSearchResult, searchParams: SearchParams | null): boolean => {
+  // Get destination from multiple possible sources
+  const destination = 
+    item.destination || 
+    item.arrivalAirport || 
+    item.arrivalCity ||
+    searchParams?.segments?.[0]?.to ||
+    searchParams?.destination ||
+    searchParams?.location;
+  
+  // Also check origin (for round trips, departure might be from North America too)
+  const origin = 
+    item.origin ||
+    item.departureAirport ||
+    item.departureCity ||
+    searchParams?.segments?.[0]?.from;
+  
+  // List of North American airport codes
+  const northAmericanAirports = [
+    // USA
+    'JFK', 'EWR', 'LGA', 'LAX', 'SFO', 'ORD', 'DFW', 'ATL', 'IAH', 'MIA', 
+    'BOS', 'SEA', 'DEN', 'PHX', 'DTW', 'MSP', 'CLT', 'PDX', 'SAN', 'LAS',
+    'IAD', 'DCA', 'BWI', 'PHL', 'STL', 'MCI', 'IND', 'CMH', 'PIT', 'CLE',
+    // Canada  
+    'YYZ', 'YVR', 'YUL', 'YYC', 'YOW', 'YHZ', 'YEG', 'YQB', 'YWG', 'YXE',
+    // Mexico
+    'MEX', 'CUN', 'GDL', 'MTY', 'PVR', 'SJD', 'BJX', 'QRO', 'VER', 'CZM'
+  ];
+  
+  // Extract airport code from string (e.g., "JFK" or "JFK (New York)")
+  const extractCode = (str: string | undefined) => {
+    if (!str) return '';
+    const match = str.match(/([A-Z]{3})/);
+    return match?.[1] || str.substring(0, 3).toUpperCase();
+  };
+  
+  const destinationCode = extractCode(destination);
+  const originCode = extractCode(origin);
+  
+  // Check if either destination OR origin is in North America
+  const destinationInNA = northAmericanAirports.includes(destinationCode);
+  const originInNA = northAmericanAirports.includes(originCode);
+  
+  // For passport requirement, check if traveling TO North America
+  // (arriving at a North American destination)
+  return destinationInNA;
+};
 
 const ReviewTrip: React.FC<ReviewTripProps> = ({
   item,
@@ -146,6 +208,15 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [appliedPromo, setAppliedPromo] = useState<any | null>(null);
 
+  // Passport fields for North America
+  const [passportNumber, setPassportNumber] = useState('');
+  const [passportExpiry, setPassportExpiry] = useState('');
+  const [passportIssuingAuthority, setPassportIssuingAuthority] = useState('');
+  const [passportError, setPassportError] = useState<string | null>(null);
+
+  // Check if passport is required
+  const requiresPassport = isFlight && isNorthAmericanDestination(extendedItem, searchParams);
+
   // Initialize additional guests
   useEffect(() => {
     if (isHBXHotel && !createdBooking) {
@@ -215,7 +286,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     taxes,
     serviceFee,
     totalDue,
-    currency: offerCurrency
+    currency: offerCurrency,
+    requiresPassport
   });
 
   const formattedDiscountedTotal = appliedPromo?.discountAmount
@@ -262,6 +334,62 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
   };
 
+  // Passport validation function
+  const validatePassport = (): boolean => {
+    if (!requiresPassport) return true;
+    
+    setPassportError(null);
+    
+    // Check passport number (letter + 7-8 digits or standard format)
+    const passportRegex = /^[A-Za-z][0-9]{7,8}$|^[A-Za-z0-9]{6,9}$/;
+    if (!passportNumber) {
+      setPassportError('Passport number is required for North America travel');
+      return false;
+    }
+    if (!passportRegex.test(passportNumber)) {
+      setPassportError('Please enter a valid passport number (e.g., A12345678)');
+      return false;
+    }
+    
+    // Check expiry date
+    if (!passportExpiry) {
+      setPassportError('Passport expiry date is required');
+      return false;
+    }
+    
+    const expiryDate = new Date(passportExpiry);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Get travel date from searchParams
+    let travelDate = new Date();
+    if (searchParams?.segments?.[0]?.date) {
+      travelDate = new Date(searchParams.segments[0].date);
+    } else if (searchParams?.departureDate) {
+      travelDate = new Date(searchParams.departureDate);
+    }
+    
+    const sixMonthsFromTravel = new Date(travelDate);
+    sixMonthsFromTravel.setMonth(sixMonthsFromTravel.getMonth() + 6);
+    
+    if (expiryDate < today) {
+      setPassportError('Your passport has expired. Please renew your passport.');
+      return false;
+    }
+    if (expiryDate < sixMonthsFromTravel) {
+      setPassportError('Your passport must be valid for at least 6 months from your travel date');
+      return false;
+    }
+    
+    // Check issuing authority
+    if (!passportIssuingAuthority) {
+      setPassportError('Passport issuing authority/country is required');
+      return false;
+    }
+    
+    return true;
+  };
+
   const handleCompleteBooking = async () => {
     if (!firstName || !lastName || !email || !phone) {
       alert('All passenger fields are required.');
@@ -295,6 +423,11 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         alert('Passenger must be at least 2 years old for flight bookings.');
         return;
       }
+      
+      // Validate passport for North America
+      if (requiresPassport && !validatePassport()) {
+        return;
+      }
     }
 
     if (isHotel && !agreedToPolicy) {
@@ -315,6 +448,13 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           dateOfBirth
         })
       };
+      
+      // Add passport info to passengerInfo for North America flights
+      if (isFlight && requiresPassport) {
+        (passengerInfo as any).passportNumber = passportNumber;
+        (passengerInfo as any).passportExpiry = passportExpiry;
+        (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
+      }
 
       let hbxMetadata: any = undefined;
       if (isHBXHotel && hbxQuote) {
@@ -397,6 +537,24 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           </p>
         </div>
 
+        {/* North America Travel Warning Banner */}
+        {requiresPassport && !createdBooking && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="font-semibold text-blue-800">Important Travel Requirement</p>
+                <p className="text-sm text-blue-700">
+                  Flights to North America require a valid passport. Please ensure you have your passport ready
+                  when providing passenger details. Passport must be valid for at least 6 months beyond your travel date.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {bookingReference && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
             <p className="text-sm text-blue-800">
@@ -466,6 +624,72 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                       <p className="text-xs text-gray-400 mt-1">Format: YYYY-MM-DD</p>
                     </div>
                   </div>
+                  
+                  {/* PASSPORT SECTION FOR NORTH AMERICA */}
+                  {requiresPassport && (
+                    <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <div className="flex items-start gap-2 mb-4">
+                        <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <div>
+                          <p className="font-semibold text-yellow-800">Passport Required for North America Travel</p>
+                          <p className="text-sm text-yellow-700">
+                            Please provide your passport details exactly as shown on your passport.
+                            Passport must be valid for at least 6 months from your travel date.
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Passport Number <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={passportNumber}
+                            onChange={(e) => setPassportNumber(e.target.value.toUpperCase())}
+                            className={inputCls}
+                            placeholder="e.g., A12345678"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Enter your passport number as shown on your passport</p>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Passport Expiry Date <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="date"
+                            value={passportExpiry}
+                            onChange={(e) => setPassportExpiry(e.target.value)}
+                            min={new Date().toISOString().split('T')[0]}
+                            className={inputCls}
+                          />
+                          <p className="text-xs text-yellow-600 mt-1">⚠️ Must be valid for at least 6 months from travel date</p>
+                        </div>
+                        
+                        <div className="md:col-span-2">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Passport Issuing Authority / Country <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={passportIssuingAuthority}
+                            onChange={(e) => setPassportIssuingAuthority(e.target.value)}
+                            className={inputCls}
+                            placeholder="e.g., UK Visas and Immigration (UKVI)"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Enter the country or authority that issued your passport</p>
+                        </div>
+                      </div>
+                      
+                      {passportError && (
+                        <p className="mt-3 text-sm text-red-600 bg-red-50 p-2 rounded">{passportError}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
