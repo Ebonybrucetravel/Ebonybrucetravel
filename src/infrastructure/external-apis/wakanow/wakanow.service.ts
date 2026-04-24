@@ -545,7 +545,7 @@ export class WakanowService {
           HttpStatus.CONFLICT,
         );
       }
-      const pnr = data.FlightBookingResult.FlightBookingSummaryModel.PnrReferenceNumber;
+      const pnr = data.FlightBookingResult?.FlightBookingSummaryModel?.PnrReferenceNumber || 'PENDING_ISSUE';
       this.logger.log(`Wakanow flight booked. PNR: ${pnr}, BookingId: ${data.BookingId}`);
       return data;
     } catch (error) {

@@ -50,8 +50,11 @@ export class BookWakanowFlightUseCase {
       BookingId: bookingId,
     };
     const bookResponse = await this.wakanowService.bookFlight(wakanowRequest);
-    const pnr = bookResponse.FlightBookingResult.FlightBookingSummaryModel.PnrReferenceNumber;
-    const combo = bookResponse.FlightBookingResult.FlightBookingSummaryModel.FlightSummaryModel.FlightCombination;
+    const pnr = bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.PnrReferenceNumber || 'PENDING_ISSUE';
+    const combo = bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.FlightSummaryModel?.FlightCombination;
+    if (!combo) {
+      throw new Error('Flight booking failed: Invalid response from Wakanow (missing FlightCombination)');
+    }
     const price = combo.Price;
     const firstDep = combo.FlightModels[0]?.DepartureCode || '';
     const firstArr = combo.FlightModels[0]?.ArrivalCode || '';

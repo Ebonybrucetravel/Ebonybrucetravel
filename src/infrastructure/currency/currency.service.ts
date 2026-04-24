@@ -72,7 +72,7 @@ export class CurrencyService {
       return amount * exchangeRate;
     } catch (error) {
       this.logger.error(`Failed to convert ${amount} ${fromCurrency} to ${toCurrency}:`, error);
-      return amount;
+      throw new Error(`Currency conversion failed from ${fromCurrency} to ${toCurrency}. Please try again later.`);
     }
   }
 
