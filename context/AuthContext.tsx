@@ -83,6 +83,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
     }, []);
 
+    // Listen for auth success events (e.g. from OAuth callbacks)
+    useEffect(() => {
+        const onAuthSuccess = (event: Event) => {
+            const customEvent = event as CustomEvent;
+            const { token, user: userData } = customEvent.detail || {};
+            
+            if (token) {
+                console.log('Auth success event received in AuthContext');
+                if (userData) {
+                    api.setAuthToken(token, userData);
+                    setUser(userData);
+                    setIsLoggedIn(true);
+                } else {
+                    api.setAuthToken(token);
+                    api.userApi.getProfile().then(profile => {
+                        if (profile) {
+                            setUser(profile);
+                            setIsLoggedIn(true);
+                        }
+                    }).catch(console.error);
+                }
+            }
+        };
+
+        window.addEventListener('auth-success', onAuthSuccess);
+        
+        return () => {
+            window.removeEventListener('auth-success', onAuthSuccess);
+        };
+    }, []);
+
     // Inactivity timeout
     useEffect(() => {
         if (!isLoggedIn) return;

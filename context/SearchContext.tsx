@@ -79,32 +79,9 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     }
   }, [searchParams?.type, fetchAirlines]);
 
-  const search = useCallback(async (params: SearchParams) => {
-    console.log('🔍 Search called with params:', params);
-    setSearchParams(params);
-    setIsSearching(true);
-    setSearchResults([]);
-    setSearchError(null);
-    setSearchCompleted(false);
-
-    try {
-      if (params.type === 'car-rentals' || params.type === 'cars') {
-        await searchCars(params);
-      } else if (params.type === 'hotels') {
-        await searchHotels(params);
-      } else if (params.type === 'flights') {
-        await searchFlights(params);
-      }
-    } catch (err) {
-      console.error('Search error:', err);
-      setSearchError('Failed to load results. Please try again.');
-      const mockKey = params.type === 'cars' ? 'car-rentals' : params.type;
-      setSearchResults(MOCK[mockKey] ?? []);
-    } finally {
-      setIsSearching(false);
-      setSearchCompleted(true);
-    }
-  }, []);
+  // Ref that always holds the latest search dispatch so the stable `search` callback
+  // doesn't capture stale closures over currency/conversion helpers.
+  const searchDispatchRef = React.useRef<(params: SearchParams) => Promise<void>>(async () => {});
 
   // Helper function to calculate total service fee (markup + conversion fee + taxes)
   const calculateTotalServiceFee = (markupAmount: number, conversionFee: number, taxes: number): number => {
@@ -1075,6 +1052,44 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       setSearchResults([]);
     }
   };
+
+  // Update the ref on every render so the stable `search` callback always calls
+  // the latest version (with up-to-date currency helpers, exchange rates, etc.)
+  const _searchImpl = async (params: SearchParams) => {
+    console.log('🔍 Search called with params:', params);
+    setSearchParams(params);
+    setIsSearching(true);
+    setSearchResults([]);
+    setSearchError(null);
+    setSearchCompleted(false);
+
+    try {
+      if (params.type === 'car-rentals' || params.type === 'cars') {
+        await searchCars(params);
+      } else if (params.type === 'hotels') {
+        await searchHotels(params);
+      } else if (params.type === 'flights') {
+        await searchFlights(params);
+      }
+    } catch (err) {
+      console.error('Search error:', err);
+      setSearchError('Failed to load results. Please try again.');
+      const mockKey = params.type === 'cars' ? 'car-rentals' : params.type;
+      setSearchResults(MOCK[mockKey] ?? []);
+    } finally {
+      setIsSearching(false);
+      setSearchCompleted(true);
+    }
+  };
+
+  // Keep the ref current on every render (no deps needed — runs every render)
+  searchDispatchRef.current = _searchImpl;
+
+  // Stable callback — safe to pass as prop without re-rendering consumers
+  const search = useCallback((params: SearchParams) => {
+    return searchDispatchRef.current(params);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const selectItem = useCallback((item: SearchResult) => {
     console.log('📦 Item selected with service fee breakdown (NGN base):', {

@@ -103,7 +103,9 @@ export default function AuthCallbackPage() {
           localStorage.removeItem('pendingBookingEmail');
           router.push(`/booking/success?ref=${pendingBookingRef}`);
         } else {
-          router.push('/');
+          const returnTo = sessionStorage.getItem('authReturnTo') || '/';
+          sessionStorage.removeItem('authReturnTo');
+          router.push(returnTo);
         }
         
       } catch (err) {
