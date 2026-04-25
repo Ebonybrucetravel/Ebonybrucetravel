@@ -9,6 +9,7 @@ import api, {
   publicRequest,
   bookHotelHBX,
 } from "@/lib/api";
+import { selectWakanowFlight, bookWakanowFlight } from "@/lib/wakanow-api";
 
 // Extend the SearchResult type locally to include pricing fields
 interface ExtendedSearchResult {
@@ -188,7 +189,7 @@ export function useBooking() {
 
         // Calculate taxes by adding markup and service fee together
         const markupAmount = parseFloat(item.markup_amount || "0");
-        const serviceFee = parseFloat((item as any).service_charge || "0");
+        const serviceFee = parseFloat(item.service_fee || (item as any).service_charge || "0");
         const taxes = markupAmount + serviceFee;
 
         // Final amount = basePrice + taxes
@@ -213,6 +214,7 @@ export function useBooking() {
           currency: offerCurrency,
           basePrice: basePrice,
           passengerInfo: {
+            ...passenger,
             firstName: passenger.firstName,
             lastName: passenger.lastName,
             email: passenger.email,
@@ -322,6 +324,70 @@ export function useBooking() {
 
         console.log("📤 Sending booking request:", JSON.stringify(body, null, 2));
 
+        const token = getStoredAuthToken();
+
+        // ✅ SPECIALIZED WAKANOW FLOW
+        if (provider === 'WAKANOW' && (productType === 'FLIGHT_DOMESTIC' || productType === 'FLIGHT_INTERNATIONAL')) {
+          console.log("🚀 STARTING SPECIALIZED WAKANOW FLOW");
+          
+          // 1. SELECT STEP (to get confirmed pricing and bookingId)
+          const selectData = item.selectData || item.id;
+          const selectResult = await selectWakanowFlight(selectData, offerCurrency);
+          
+          if (!selectResult.BookingId) {
+            throw new Error(selectResult.message || "Failed to confirm flight availability with Wakanow.");
+          }
+
+          // 2. BOOK STEP
+          const wakanowBookingId = selectResult.BookingId;
+          const wakanowSelectData = selectResult.SelectData || selectData;
+
+          // Map all passengers (Lead + Additional)
+          const allPassengers: PassengerInfo[] = [
+            passenger, // Lead passenger
+            ...(passenger.travellers || []) // Additional passengers
+          ];
+
+          const wakanowPassengers = allPassengers.map(p => ({
+            PassengerType: (p.type === 'child' ? 'Child' : p.type === 'infant' ? 'Infant' : 'Adult') as any,
+            FirstName: p.firstName,
+            LastName: p.lastName,
+            DateOfBirth: p.dateOfBirth || "1990-01-01",
+            PhoneNumber: p.phone || passenger.phone, // Fallback to lead phone
+            Email: p.email || passenger.email, // Fallback to lead email
+            Gender: (p.gender === 'm' ? 'Male' : p.gender === 'f' ? 'Female' : 'Male') as any,
+            Title: (p.title || 'Mr').charAt(0).toUpperCase() + (p.title || 'Mr').slice(1).toLowerCase() as any,
+            PassportNumber: p.passportNumber || '',
+            ExpiryDate: p.passportExpiry || '',
+            PassportIssuingAuthority: p.passportIssuingAuthority || '',
+            PassportIssueCountryCode: p.passportIssueCountryCode || '',
+            Address: p.address || passenger.address || '123 Fake Street',
+            City: p.city || passenger.city || 'Lagos',
+            Country: p.country || passenger.country || 'Nigeria',
+            CountryCode: p.countryCode || passenger.countryCode || 'NG',
+            PostalCode: p.postalCode || passenger.postalCode || '100001',
+          }));
+
+          const bookingRequest = {
+            PassengerDetails: wakanowPassengers,
+            BookingId: wakanowBookingId,
+            TargetCurrency: offerCurrency,
+            BookingData: wakanowSelectData,
+          };
+
+          const result = await bookWakanowFlight(bookingRequest, token || undefined);
+          
+          if (!result || !result.BookingId) {
+            throw new Error(result.message || "Wakanow booking failed.");
+          }
+
+          // The result from bookWakanowFlight is the local booking object if successful
+          const created: Booking = (result as any).data ?? result;
+          setBooking(created);
+          return created;
+        }
+
+        // ✅ GENERIC FLOW (DUFFEL, HOTELS, CARS)
         const endpoint = isGuest
           ? "/api/v1/bookings/guest"
           : "/api/v1/bookings";
@@ -330,11 +396,8 @@ export function useBooking() {
           Accept: "application/json",
         };
 
-        if (!isGuest) {
-          const token = getStoredAuthToken();
-          if (token) {
-            headers["Authorization"] = `Bearer ${token}`;
-          }
+        if (!isGuest && token) {
+          headers["Authorization"] = `Bearer ${token}`;
         }
 
         const res = await fetch(`${BASE}${endpoint}`, {

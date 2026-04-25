@@ -207,7 +207,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [hbxQuote, setHbxQuote] = useState<any | null>(null);
   const [isQuoting, setIsQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
-  const [additionalGuests, setAdditionalGuests] = useState<Array<{ firstName: string; lastName: string; title: string }>>([]);
+  const [additionalPassengers, setAdditionalPassengers] = useState<PassengerInfo[]>([]);
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [appliedPromo, setAppliedPromo] = useState<any | null>(null);
 
@@ -241,15 +241,59 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const passportRequired = showPassportSection;
   const requiresPassport = isPassportMandatory;
 
-  // Initialize additional guests
+  // Initialize additional passengers based on search results
   useEffect(() => {
-    if (isHBXHotel && !createdBooking) {
-      const adultsCount = searchParams?.adults || 1;
-      if (adultsCount > 1) {
-        setAdditionalGuests(Array(adultsCount - 1).fill({ firstName: '', lastName: '', title: 'MR' }));
+    if (!createdBooking) {
+      let adults = 1;
+      let children = 0;
+      let infants = 0;
+
+      if (typeof searchParams?.passengers === 'object') {
+        adults = searchParams.passengers.adults || 1;
+        children = searchParams.passengers.children || 0;
+        infants = searchParams.passengers.infants || 0;
+      } else if (typeof searchParams?.adults === 'number') {
+        adults = searchParams.adults;
+        children = searchParams.children || 0;
+      } else if (typeof searchParams?.guests === 'number') {
+        adults = searchParams.guests;
+      }
+
+      const totalAdditional = (adults - 1) + children + infants;
+      
+      if (totalAdditional > 0) {
+        const initial: PassengerInfo[] = [];
+        
+        // Additional adults (excluding the lead)
+        for (let i = 0; i < adults - 1; i++) {
+          initial.push({ 
+            firstName: '', lastName: '', email: '', phone: '', 
+            type: 'adult', title: 'mr', gender: 'm', dateOfBirth: '' 
+          });
+        }
+        
+        // Children
+        for (let i = 0; i < children; i++) {
+          initial.push({ 
+            firstName: '', lastName: '', email: '', phone: '', 
+            type: 'child', title: 'miss', gender: 'f', dateOfBirth: '' 
+          });
+        }
+        
+        // Infants
+        for (let i = 0; i < infants; i++) {
+          initial.push({ 
+            firstName: '', lastName: '', email: '', phone: '', 
+            type: 'infant', title: 'miss', gender: 'f', dateOfBirth: '' 
+          });
+        }
+        
+        setAdditionalPassengers(initial);
+      } else {
+        setAdditionalPassengers([]);
       }
     }
-  }, [isHBXHotel, searchParams, createdBooking]);
+  }, [searchParams, createdBooking]);
 
   // HBX quote
   useEffect(() => {
@@ -519,11 +563,47 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
     setIsBooking(true);
     try {
+      // Validate additional passengers if any
+      for (let i = 0; i < additionalPassengers.length; i++) {
+        const p = additionalPassengers[i];
+        const label = `${p.type.toUpperCase()} #${i + 1}`;
+        
+        if (!p.firstName || !p.lastName) {
+          alert(`${label}: First and Last name are required.`);
+          setIsBooking(false);
+          return;
+        }
+
+        if (isFlight) {
+          if (!p.title || !p.gender || !p.dateOfBirth) {
+            alert(`${label}: Title, Gender, and Date of Birth are required.`);
+            setIsBooking(false);
+            return;
+          }
+          const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+          if (!dateRegex.test(p.dateOfBirth)) {
+            alert(`${label}: Date of birth must be in YYYY-MM-DD format.`);
+            setIsBooking(false);
+            return;
+          }
+
+          // Mandatory passport validation for additional passengers
+          if (isPassportMandatory) {
+            if (!p.passportNumber || !p.passportExpiry || !p.passportIssuingAuthority) {
+              alert(`${label}: Passport details are mandatory for this destination.`);
+              setIsBooking(false);
+              return;
+            }
+          }
+        }
+      }
+
       const passengerInfo: PassengerInfo = {
         firstName,
         lastName,
         email,
         phone,
+        type: 'adult', // Lead is always adult
         ...(isFlight && {
           title: title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr',
           gender: gender as 'm' | 'f',
@@ -539,7 +619,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           country: passportCountry,
           countryCode: passportCountryCode,
           postalCode: passportPostalCode,
-        })
+        }),
+        travellers: additionalPassengers // Include all additional passengers
       };
       
       // Add passport info to passengerInfo for international flights if provided
@@ -562,14 +643,14 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         };
       }
 
-      if (isHBXHotel && additionalGuests.length > 0) {
+      if (isHBXHotel && additionalPassengers.length > 0) {
         (passengerInfo as any).guests = [
           {
             name: { firstName, lastName, title: (title || 'mr').toUpperCase() },
             travelerId: 1
           },
-          ...additionalGuests.map((g, idx) => ({
-            name: { firstName: g.firstName, lastName: g.lastName, title: g.title.toUpperCase() },
+          ...additionalPassengers.map((g, idx) => ({
+            name: { firstName: g.firstName, lastName: g.lastName, title: (g.title || 'mr').toUpperCase() },
             travelerId: idx + 2
           }))
         ];
@@ -879,6 +960,164 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                     </div>
                   </div>
                   <p className="text-[10px] text-gray-400 mt-2">These details are pre-filled from your Travel Profile. Update them in your profile settings if needed.</p>
+                </div>
+              )}
+
+              {/* ADDITIONAL PASSENGERS SECTION */}
+              {additionalPassengers.length > 0 && !createdBooking && (
+                <div className="mt-8 space-y-6">
+                  {additionalPassengers.map((passenger, idx) => (
+                    <div key={`passenger-${idx}`} className="pt-6 border-t border-gray-100">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 text-[#33a8da] flex items-center justify-center font-bold text-sm">
+                          {idx + 2}
+                        </div>
+                        <h3 className="text-md font-bold text-gray-900 capitalize">
+                          {passenger.type} Passenger details
+                        </h3>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">First name *</label>
+                          <input 
+                            value={passenger.firstName} 
+                            onChange={e => {
+                              const newArr = [...additionalPassengers];
+                              newArr[idx] = { ...newArr[idx], firstName: e.target.value };
+                              setAdditionalPassengers(newArr);
+                            }} 
+                            className={inputCls} 
+                            placeholder="First Name" 
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Last name *</label>
+                          <input 
+                            value={passenger.lastName} 
+                            onChange={e => {
+                              const newArr = [...additionalPassengers];
+                              newArr[idx] = { ...newArr[idx], lastName: e.target.value };
+                              setAdditionalPassengers(newArr);
+                            }} 
+                            className={inputCls} 
+                            placeholder="Last Name" 
+                            required
+                          />
+                        </div>
+                        
+                        {(isFlight || isHotel) && (
+                          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Title *</label>
+                              <select 
+                                value={passenger.title} 
+                                onChange={e => {
+                                  const newArr = [...additionalPassengers];
+                                  newArr[idx] = { ...newArr[idx], title: e.target.value as any };
+                                  setAdditionalPassengers(newArr);
+                                }} 
+                                className={inputCls}
+                                required
+                              >
+                                <option value="mr">Mr</option>
+                                <option value="ms">Ms</option>
+                                <option value="mrs">Mrs</option>
+                                <option value="miss">Miss</option>
+                                <option value="dr">Dr</option>
+                              </select>
+                            </div>
+                            {isFlight && (
+                              <>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-500 mb-1">Gender *</label>
+                                  <select 
+                                    value={passenger.gender} 
+                                    onChange={e => {
+                                      const newArr = [...additionalPassengers];
+                                      newArr[idx] = { ...newArr[idx], gender: e.target.value as any };
+                                      setAdditionalPassengers(newArr);
+                                    }} 
+                                    className={inputCls}
+                                    required
+                                  >
+                                    <option value="m">Male</option>
+                                    <option value="f">Female</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-500 mb-1">Date of Birth *</label>
+                                  <input 
+                                    type="date" 
+                                    value={passenger.dateOfBirth} 
+                                    onChange={e => {
+                                      const newArr = [...additionalPassengers];
+                                      newArr[idx] = { ...newArr[idx], dateOfBirth: e.target.value };
+                                      setAdditionalPassengers(newArr);
+                                    }} 
+                                    className={inputCls} 
+                                    required
+                                  />
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Additional Passenger Passport Section */}
+                        {showPassportSection && (
+                          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 bg-yellow-50/50 border border-yellow-100 rounded-xl">
+                            <div className="md:col-span-2 flex items-center gap-2 mb-2">
+                              <svg className="w-4 h-4 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                              </svg>
+                              <span className="text-xs font-bold text-yellow-800">Passport Details {isPassportMandatory ? '(Required)' : '(Optional)'}</span>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-medium text-yellow-700 mb-1">Passport Number</label>
+                              <input 
+                                value={passenger.passportNumber || ''} 
+                                onChange={e => {
+                                  const newArr = [...additionalPassengers];
+                                  newArr[idx] = { ...newArr[idx], passportNumber: e.target.value.toUpperCase() };
+                                  setAdditionalPassengers(newArr);
+                                }} 
+                                className="w-full px-3 py-2 bg-white/50 border border-yellow-200 rounded-lg text-sm focus:ring-2 focus:ring-yellow-400/20 focus:border-yellow-400"
+                                placeholder="Number"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-medium text-yellow-700 mb-1">Expiry Date</label>
+                              <input 
+                                type="date"
+                                value={passenger.passportExpiry || ''} 
+                                onChange={e => {
+                                  const newArr = [...additionalPassengers];
+                                  newArr[idx] = { ...newArr[idx], passportExpiry: e.target.value };
+                                  setAdditionalPassengers(newArr);
+                                }} 
+                                className="w-full px-3 py-2 bg-white/50 border border-yellow-200 rounded-lg text-sm focus:ring-2 focus:ring-yellow-400/20 focus:border-yellow-400"
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-[10px] font-medium text-yellow-700 mb-1">Issuing Authority</label>
+                              <input 
+                                value={passenger.passportIssuingAuthority || ''} 
+                                onChange={e => {
+                                  const newArr = [...additionalPassengers];
+                                  newArr[idx] = { ...newArr[idx], passportIssuingAuthority: e.target.value };
+                                  setAdditionalPassengers(newArr);
+                                }} 
+                                className="w-full px-3 py-2 bg-white/50 border border-yellow-200 rounded-lg text-sm focus:ring-2 focus:ring-yellow-400/20 focus:border-yellow-400"
+                                placeholder="Authority"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 

@@ -324,6 +324,7 @@ export default function BookingSuccessPage() {
     
     const bookingData = booking?.bookingData || {};
     const pnr = booking.pnrNumber || 
+                bookingData.pnrReferenceNumber ||
                 bookingData.pnrNumber || 
                 bookingData.PnReferenceNumber || 
                 bookingData.pnReferenceNumber || 
@@ -348,11 +349,18 @@ export default function BookingSuccessPage() {
 
     yPos = addSection('PASSENGER INFORMATION', yPos);
     
-    const passengerInfo = booking?.passengerInfo || {};
+    const allTravelers = Array.isArray(booking.passengerInfo) 
+      ? booking.passengerInfo 
+      : (booking.passengerInfo?.travellers ? [booking.passengerInfo, ...booking.passengerInfo.travellers] : [booking.passengerInfo]);
     
-    yPos = addField('Lead Passenger', `${passengerInfo.title || ''} ${passengerInfo.firstName || ''} ${passengerInfo.lastName || ''}`.trim(), yPos, true);
-    yPos = addField('Email', passengerInfo.email || 'N/A', yPos);
-    yPos = addField('Phone', passengerInfo.phone || 'N/A', yPos);
+    allTravelers.forEach((p: any, index: number) => {
+      const label = allTravelers.length > 1 ? `Passenger #${index + 1} (${p.type || 'Adult'})` : 'Passenger';
+      yPos = addField(label, `${p.title || ''} ${p.firstName || ''} ${p.lastName || ''}`.trim(), yPos, index === 0);
+      if (index === 0) {
+        yPos = addField('Email', p.email || 'N/A', yPos);
+        yPos = addField('Phone', p.phone || 'N/A', yPos);
+      }
+    });
     yPos += 5;
 
     yPos = addSection('PRICE BREAKDOWN', yPos);
@@ -452,6 +460,7 @@ export default function BookingSuccessPage() {
               <p className="text-sm text-gray-500">PNR Number</p>
               <p className="font-mono font-bold text-lg">
                 {(booking?.pnrNumber || 
+                  bookingData?.pnrReferenceNumber ||
                   bookingData?.pnrNumber || 
                   bookingData?.PnReferenceNumber || 
                   bookingData?.pnReferenceNumber || 
@@ -601,17 +610,18 @@ export default function BookingSuccessPage() {
 
     yPos = addSection('PASSENGER INFORMATION', yPos);
     
-    const passengerInfo = booking?.passengerInfo || {};
-    const passengers = typeof bookingData.passengers === 'object' 
-      ? bookingData.passengers 
-      : { adults: bookingData.passengers || 1, children: 0, infants: 0 };
+    const allTravelers = Array.isArray(booking.passengerInfo) 
+      ? booking.passengerInfo 
+      : (booking.passengerInfo?.travellers ? [booking.passengerInfo, ...booking.passengerInfo.travellers] : [booking.passengerInfo]);
     
-    yPos = addField('Lead Passenger', `${passengerInfo.title || ''} ${passengerInfo.firstName || ''} ${passengerInfo.lastName || ''}`.trim(), yPos, true);
-    yPos = addField('Email', passengerInfo.email || 'N/A', yPos);
-    yPos = addField('Phone', passengerInfo.phone || 'N/A', yPos);
-    yPos = addField('Adults', passengers.adults?.toString() || '1', yPos);
-    if (passengers.children > 0) yPos = addField('Children', passengers.children.toString(), yPos);
-    if (passengers.infants > 0) yPos = addField('Infants', passengers.infants.toString(), yPos);
+    allTravelers.forEach((p: any, index: number) => {
+      const label = allTravelers.length > 1 ? `Passenger #${index + 1} (${p.type || 'Adult'})` : 'Passenger';
+      yPos = addField(label, `${p.title || ''} ${p.firstName || ''} ${p.lastName || ''}`.trim(), yPos, index === 0);
+    });
+    
+    const lead = allTravelers[0] || {};
+    yPos = addField('Email', lead.email || 'N/A', yPos);
+    yPos = addField('Phone', lead.phone || 'N/A', yPos);
     yPos += 5;
 
     yPos = addSection('BAGGAGE ALLOWANCE', yPos);
@@ -1902,13 +1912,30 @@ export default function BookingSuccessPage() {
           {booking.passengerInfo && (
             <div className="bg-white rounded-xl shadow p-6 border border-gray-100">
               <h3 className="text-xl font-bold mb-4">Traveler Information</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <Detail 
-                  label="Name" 
-                  value={`${booking.passengerInfo.title || ''} ${booking.passengerInfo.firstName || ''} ${booking.passengerInfo.lastName || ''}`.trim()} 
-                />
-                <Detail label="Email" value={booking.passengerInfo.email} />
-                <Detail label="Phone" value={booking.passengerInfo.phone || 'N/A'} />
+              <div className="space-y-6">
+                {(Array.isArray(booking.passengerInfo) ? booking.passengerInfo : 
+                  (booking.passengerInfo.travellers ? [booking.passengerInfo, ...booking.passengerInfo.travellers] : [booking.passengerInfo])
+                ).map((p: any, idx: number) => (
+                  <div key={idx} className={idx > 0 ? "pt-4 border-t border-gray-50" : ""}>
+                    <p className="text-xs font-bold text-[#33a8da] uppercase mb-2">
+                      Passenger #{idx + 1} {p.type && `(${p.type})`}
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Detail 
+                        label="Name" 
+                        value={`${p.title || ''} ${p.firstName || ''} ${p.lastName || ''}`.trim()} 
+                      />
+                      {idx === 0 && (
+                        <>
+                          <Detail label="Email" value={p.email} />
+                          <Detail label="Phone" value={p.phone || 'N/A'} />
+                        </>
+                      )}
+                      {p.gender && <Detail label="Gender" value={p.gender === 'm' || p.gender === 'Male' ? 'Male' : 'Female'} />}
+                      {p.dateOfBirth && <Detail label="Date of Birth" value={p.dateOfBirth} />}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

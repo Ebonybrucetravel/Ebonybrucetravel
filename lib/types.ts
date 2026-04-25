@@ -378,10 +378,27 @@ export interface PassengerInfo {
   lastName: string;
   email: string;
   phone: string;
+  type?: "adult" | "child" | "infant";
   title?: "mr" | "ms" | "mrs" | "miss" | "dr";
   gender?: "m" | "f";
   dateOfBirth?: string;
   born_on?: string;
+  
+  // Passport fields
+  passportNumber?: string;
+  passportExpiry?: string;
+  passportIssuingAuthority?: string;
+  passportIssueCountry?: string;
+  passportIssueCountryCode?: string;
+  
+  // Address fields
+  address?: string;
+  city?: string;
+  country?: string;
+  countryCode?: string;
+  postalCode?: string;
+  
+  travellers?: PassengerInfo[];
   guests?: Array<{
     name?: {
       title?: string;

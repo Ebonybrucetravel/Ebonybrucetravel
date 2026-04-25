@@ -70,8 +70,12 @@ export default function BookingDetailsPage() {
 
   const transformBookingData = (apiData: any) => {
     // Map API response to component format
-    const passengerName = apiData.passengerInfo 
-      ? `${apiData.passengerInfo.firstName} ${apiData.passengerInfo.lastName}`
+    const leadPassenger = Array.isArray(apiData.passengerInfo) 
+      ? apiData.passengerInfo[0] 
+      : apiData.passengerInfo;
+      
+    const passengerName = leadPassenger
+      ? `${leadPassenger.firstName} ${leadPassenger.lastName}`
       : apiData.user?.name || 'Guest';
     
     return {
@@ -79,8 +83,8 @@ export default function BookingDetailsPage() {
       type: apiData.productType?.replace('_', ' ') || 'Flight',
       source: apiData.provider || 'Unknown',
       customer: passengerName,
-      email: apiData.passengerInfo?.email || apiData.user?.email,
-      phone: apiData.passengerInfo?.phone || apiData.user?.phone,
+      email: leadPassenger?.email || apiData.user?.email,
+      phone: leadPassenger?.phone || apiData.user?.phone,
       price: apiData.totalAmount ? `${apiData.currency || '$'}${apiData.totalAmount.toLocaleString()}` : '$0.00',
       rawPrice: apiData.totalAmount,
       status: apiData.status || 'Pending',
@@ -99,7 +103,9 @@ export default function BookingDetailsPage() {
       currency: apiData.currency || 'USD',
       productType: apiData.productType,
       provider: apiData.provider,
-      passengerInfo: apiData.passengerInfo,
+      passengerInfo: leadPassenger,
+      allPassengers: Array.isArray(apiData.passengerInfo) ? apiData.passengerInfo : 
+                    (apiData.passengerInfo?.travellers ? [apiData.passengerInfo, ...apiData.passengerInfo.travellers] : [apiData.passengerInfo]),
       bookingData: apiData.bookingData,
       cancellationRequests: apiData.cancellationRequests || [],
       cancellationRequestId: apiData.cancellationRequests?.[0]?.id 
@@ -411,6 +417,7 @@ export default function BookingDetailsPage() {
                       <p className="text-xs text-gray-500 mb-1">Airline PNR Number</p>
                       <p className="font-mono font-bold text-[#33a8da]">
                         {booking.pnrNumber || 
+                         booking.bookingData?.pnrReferenceNumber ||
                          booking.bookingData?.pnrNumber || 
                          booking.bookingData?.PnReferenceNumber || 
                          booking.bookingData?.pnReferenceNumber || 
@@ -425,41 +432,59 @@ export default function BookingDetailsPage() {
             </div>
 
             {/* Passenger Details (if available) */}
-            {booking.passengerInfo && (
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Passenger Details</h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {booking.passengerInfo.firstName && (
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">First Name</p>
-                      <p className="font-medium text-gray-900">{booking.passengerInfo.firstName}</p>
+            {booking.allPassengers && booking.allPassengers.length > 0 && (
+              <div className="space-y-6">
+                {booking.allPassengers.map((p: any, idx: number) => (
+                  <div key={idx} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                      {booking.allPassengers.length > 1 ? `Passenger #${idx + 1} (${p.type || 'Adult'})` : 'Passenger Details'}
+                    </h2>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {p.firstName && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">First Name</p>
+                          <p className="font-medium text-gray-900">{p.firstName}</p>
+                        </div>
+                      )}
+                      {p.lastName && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Last Name</p>
+                          <p className="font-medium text-gray-900">{p.lastName}</p>
+                        </div>
+                      )}
+                      {p.title && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Title</p>
+                          <p className="font-medium text-gray-900 capitalize">{p.title}</p>
+                        </div>
+                      )}
+                      {p.gender && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Gender</p>
+                          <p className="font-medium text-gray-900">{p.gender === 'm' || p.gender === 'Male' ? 'Male' : 'Female'}</p>
+                        </div>
+                      )}
+                      {p.dateOfBirth && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Date of Birth</p>
+                          <p className="font-medium text-gray-900">{p.dateOfBirth}</p>
+                        </div>
+                      )}
+                      {p.passengerType && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Type</p>
+                          <p className="font-medium text-gray-900">{p.passengerType}</p>
+                        </div>
+                      )}
+                      {p.passportNumber && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Passport Number</p>
+                          <p className="font-medium text-gray-900">{p.passportNumber}</p>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {booking.passengerInfo.lastName && (
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Last Name</p>
-                      <p className="font-medium text-gray-900">{booking.passengerInfo.lastName}</p>
-                    </div>
-                  )}
-                  {booking.passengerInfo.title && (
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Title</p>
-                      <p className="font-medium text-gray-900 capitalize">{booking.passengerInfo.title}</p>
-                    </div>
-                  )}
-                  {booking.passengerInfo.gender && (
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Gender</p>
-                      <p className="font-medium text-gray-900">{booking.passengerInfo.gender === 'm' ? 'Male' : 'Female'}</p>
-                    </div>
-                  )}
-                  {booking.passengerInfo.dateOfBirth && (
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Date of Birth</p>
-                      <p className="font-medium text-gray-900">{booking.passengerInfo.dateOfBirth}</p>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
