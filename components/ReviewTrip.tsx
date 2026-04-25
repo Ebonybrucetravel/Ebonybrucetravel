@@ -335,12 +335,19 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
   // ==================== PRICE CALCULATION WITH SERVICE FEE ====================
   // Extract values from the selected item (these are already set in SearchContext)
+  // Consistent price calculation for display
   const basePrice = parseFloat(extendedItem.original_amount || '0');
   const markupAmount = parseFloat(extendedItem.markup_amount || '0');
   const conversionFee = parseFloat(extendedItem.conversion_fee || '0');
   const taxes = parseFloat(extendedItem.taxes || '0');
-  const serviceFee = parseFloat(extendedItem.service_fee || (markupAmount + conversionFee + taxes).toString());
-  const totalDue = parseFloat(extendedItem.final_amount || (basePrice + serviceFee).toString());
+  
+  // ✅ FIX: Ensure mathematical consistency in display. 
+  // If final_amount is provided, the service fee MUST be the difference between total and base.
+  // This prevents discrepancies like £804.31 + £607.57 = £884.74.
+  const totalDue = parseFloat(extendedItem.final_amount || (basePrice + markupAmount + conversionFee + taxes).toString());
+  const serviceFee = extendedItem.final_amount 
+    ? (totalDue - basePrice) 
+    : (markupAmount + conversionFee + taxes);
 
   // Format prices for display
   const displayBasePrice = formatPrice(basePrice, offerCurrency);
@@ -460,6 +467,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   };
 
   const handleCompleteBooking = async () => {
+    if (isBooking || isCreating) return;
+
     if (!firstName || !lastName || !email || !phone) {
       alert('All passenger fields are required.');
       return;

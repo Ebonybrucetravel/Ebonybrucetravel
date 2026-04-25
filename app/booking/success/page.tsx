@@ -323,7 +323,13 @@ export default function BookingSuccessPage() {
     yPos = addSection('WAKANOW BOOKING DETAILS', yPos);
     
     const bookingData = booking?.bookingData || {};
-    const pnr = booking.pnrNumber || bookingData.pnrNumber || 'Will be issued soon';
+    const pnr = booking.pnrNumber || 
+                bookingData.pnrNumber || 
+                bookingData.PnReferenceNumber || 
+                bookingData.pnReferenceNumber || 
+                bookingData.FlightBookingResult?.PnReferenceNumber ||
+                bookingData.FlightBookingSummary?.PnReferenceNumber ||
+                'Will be issued soon';
     const airline = bookingData.airline || 'Wakanow Partner Airline';
     const flightNumber = bookingData.flightNumber || bookingData.offerId || 'N/A';
     const origin = bookingData.origin || 'N/A';
@@ -445,7 +451,12 @@ export default function BookingSuccessPage() {
             <div>
               <p className="text-sm text-gray-500">PNR Number</p>
               <p className="font-mono font-bold text-lg">
-                {(booking?.pnrNumber || bookingData?.pnrNumber) || 'Not issued yet'}
+                {(booking?.pnrNumber || 
+                  bookingData?.pnrNumber || 
+                  bookingData?.PnReferenceNumber || 
+                  bookingData?.pnReferenceNumber || 
+                  bookingData?.FlightBookingResult?.PnReferenceNumber ||
+                  bookingData?.FlightBookingSummary?.PnReferenceNumber) || 'Not issued yet'}
               </p>
             </div>
             <div>

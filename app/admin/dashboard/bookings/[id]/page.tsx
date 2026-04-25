@@ -406,6 +406,20 @@ export default function BookingDetailsPage() {
                     <p className="text-xs text-gray-500 mb-1">Arrival</p>
                     <p className="font-medium text-gray-900">{booking.arrival}</p>
                   </div>
+                  {(booking.productType?.includes('FLIGHT') || booking.type?.includes('Flight')) && (
+                    <div className="col-span-2 mt-2 pt-4 border-t border-gray-100">
+                      <p className="text-xs text-gray-500 mb-1">Airline PNR Number</p>
+                      <p className="font-mono font-bold text-[#33a8da]">
+                        {booking.pnrNumber || 
+                         booking.bookingData?.pnrNumber || 
+                         booking.bookingData?.PnReferenceNumber || 
+                         booking.bookingData?.pnReferenceNumber || 
+                         booking.bookingData?.FlightBookingResult?.PnReferenceNumber ||
+                         booking.bookingData?.FlightBookingSummary?.PnReferenceNumber ||
+                         'Not issued yet'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
