@@ -7,9 +7,8 @@ export interface ExchangeRates {
   timestamp: number;
 }
 
-// Cache rates for 5 minutes
-let cachedRates: ExchangeRates | null = null;
-let lastFetchTime = 0;
+// Cache rates for 5 minutes per base currency
+const ratesCache = new Map<string, { rates: ExchangeRates; timestamp: number }>();
 const CACHE_DURATION = 300000; // 5 minutes
 
 export const SUPPORTED_CURRENCIES = ['GBP', 'NGN', 'USD', 'EUR', 'CAD', 'AUD', 'JPY', 'CNY', 'ZAR', 'KES'];
@@ -26,10 +25,11 @@ export async function fetchExchangeRates(baseCurrency: string = 'GBP'): Promise<
   // Normalize currency code to uppercase
   baseCurrency = baseCurrency.toUpperCase();
   
+  const cached = ratesCache.get(baseCurrency);
   // Return cached rates if still fresh
-  if (cachedRates && (Date.now() - lastFetchTime) < CACHE_DURATION) {
-    console.log(`📊 Using cached exchange rates (base: ${cachedRates.base})`);
-    return cachedRates;
+  if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+    console.log(`📊 Using cached exchange rates (base: ${cached.rates.base})`);
+    return cached.rates;
   }
 
   try {
@@ -68,8 +68,7 @@ export async function fetchExchangeRates(baseCurrency: string = 'GBP'): Promise<
       });
       
       // Cache the successful response
-      cachedRates = rates;
-      lastFetchTime = Date.now();
+      ratesCache.set(baseCurrency, { rates, timestamp: Date.now() });
       
       return rates;
     } else {
@@ -79,9 +78,10 @@ export async function fetchExchangeRates(baseCurrency: string = 'GBP'): Promise<
     console.error('Failed to fetch exchange rates:', error);
     
     // If we have expired cached rates, use them as last resort
-    if (cachedRates) {
+    const cached = ratesCache.get(baseCurrency);
+    if (cached) {
       console.warn('⚠️ Using expired cached rates as last resort');
-      return cachedRates;
+      return cached.rates;
     }
     
     throw new Error(`Unable to fetch exchange rates: ${error instanceof Error ? error.message : 'Unknown error'}`);

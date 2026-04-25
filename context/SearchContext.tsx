@@ -91,24 +91,20 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   // Helper function to format price in user's currency
   const formatPriceInUserCurrency = useCallback(async (amount: number, fromCurrency: string = 'NGN'): Promise<string> => {
     try {
-      // Convert to user's selected currency if needed
       let finalAmount = amount;
       if (fromCurrency !== currency.code) {
+        // Convert to user's currency first
         finalAmount = await convertPrice(amount, fromCurrency);
       }
-      // Format with user's currency symbol
-      return await formatPrice(finalAmount, fromCurrency);
+      // ✅ FIX: pass NO fromCurrency — finalAmount is already in user's currency (currency.code)
+      // Previously passing fromCurrency here caused formatPrice to convert AGAIN (double-conversion)
+      return formatPrice(finalAmount);
     } catch (error) {
       console.error('Failed to format price in user currency:', error);
-      // Fallback: Show original amount with original currency symbol
-      const symbols: Record<string, string> = {
-        'NGN': '₦',
-        'GBP': '£',
-        'USD': '$',
-        'EUR': '€',
-      };
-      const symbol = symbols[fromCurrency] || fromCurrency;
-      return `${symbol}${amount.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`;
+      // Fallback: return amount with user's currency symbol (not fromCurrency)
+      const symbols: Record<string, string> = { 'NGN': '₦', 'GBP': '£', 'USD': '$', 'EUR': '€', 'CAD': 'C$', 'AUD': 'A$' };
+      const symbol = symbols[currency.code] || currency.code;
+      return `${symbol}${amount.toLocaleString('en-GB', { minimumFractionDigits: 0 })}`;
     }
   }, [currency.code, convertPrice, formatPrice]);
 
@@ -859,199 +855,170 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       }
     }
   
-    // INTERNATIONAL flights
-    console.log('🌍 International flight detected - Fetching from both Wakanow and Duffel');
-    
+    // INTERNATIONAL: run both in parallel but render Wakanow immediately when ready
+    console.log('🌍 International flight detected - Fetching from Wakanow + Duffel in parallel');
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
-    
-    try {
-      const [wakanowPromise, duffelPromise] = await Promise.allSettled([
-        (async () => {
-          const { wakanowService } = await import('@/lib/wakanow.service');
-          const wakanowParams = {
-            from: origin,
-            to: destination,
-            departureDate: formatDateForWakanow(departureDate),
-            returnDate: returnDate ? formatDateForWakanow(returnDate) : undefined,
-            adults,
-            children,
-            infants,
-            cabinClass: cabinClass as 'economy' | 'premium_economy' | 'business' | 'first',
-            targetCurrency: 'NGN'  // Always request in NGN
-          };
-          const result = await wakanowService.searchDomesticFlights(wakanowParams);
-          const offers = result.offers || result.normalizedFlights || [];
-          return await transformWakanowOffers(offers, returnDate, cabinClass, false);
-        })(),
-        
-        (async () => {
-          const requestBody: any = {
-            origin,
-            destination,
-            departureDate,
-            passengers: adults + children + infants,
-            cabinClass,
-            currency: 'NGN'  // Request in NGN
-          };
-          if (returnDate) requestBody.returnDate = returnDate;
-          
-          const offerRes = await fetch(`${BASE}/api/v1/bookings/search/flights`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody),
-            signal: controller.signal
-          });
-          
-          if (!offerRes.ok) throw new Error(`Offer request failed: ${offerRes.status}`);
-          
-          const offerData = await offerRes.json();
-          if (!offerData.success || !offerData.data?.offer_request_id) {
-            throw new Error('No offer request ID in response');
-          }
-          
-          const offerRequestId = offerData.data.offer_request_id;
-          
-          let allOffers: any[] = [];
-          let cursor: string | null = null;
-          let hasMore = true;
-          let page = 1;
-          const MAX_PAGES = 5;
-          
-          while (hasMore && page <= MAX_PAGES) {
-            const url = new URL(`${BASE}/api/v1/bookings/offers`);
-            url.searchParams.set('offer_request_id', offerRequestId);
-            if (cursor) url.searchParams.set('cursor', cursor);
-            
-            const offersRes = await fetch(url.toString(), { signal: controller.signal });
-            if (!offersRes.ok) throw new Error('List offers failed');
-            
-            const offersData = await offersRes.json();
-            const pageOffers: any[] = offersData.data?.offers ?? offersData.data ?? offersData.offers ?? [];
-            allOffers = allOffers.concat(pageOffers);
-            
-            hasMore = offersData.meta?.hasMore ?? false;
-            cursor = offersData.meta?.nextCursor ?? null;
-            page++;
-          }
-          
-          return await transformDuffelOffers(allOffers, cabinClass, offerRequestId);
-        })()
-      ]);
-      
-      clearTimeout(timeoutId);
-      
-      let wakanowResults: SearchResult[] = [];
-      let duffelResults: SearchResult[] = [];
-      
-      if (wakanowPromise.status === 'fulfilled') {
-        wakanowResults = wakanowPromise.value;
-        console.log(`✅ Wakanow returned ${wakanowResults.length} international flights with NGN base`);
-      } else {
-        console.error('❌ Wakanow international search failed:', wakanowPromise.reason);
-      }
-      
-      if (duffelPromise.status === 'fulfilled') {
-        duffelResults = duffelPromise.value;
-        console.log(`✅ Duffel returned ${duffelResults.length} international flights with NGN base`);
-      } else {
-        console.error('❌ Duffel search failed:', duffelPromise.reason);
-      }
-      
-      // Deduplication logic
-      const combinedResults = [...wakanowResults, ...duffelResults];
-      const uniqueResults = new Map();
-      
+
+    // Helper: dedup + sort a list of results
+    const deduplicateAndSort = (combined: SearchResult[]): SearchResult[] => {
+      const uniqueMap = new Map<string, SearchResult>();
+
       const normalizeString = (str?: string) => (str || '').toUpperCase().trim();
-      
-      const getDateTimeKey = (timeStr?: string): string => {
-        if (!timeStr) return '';
+      const getDateTimeKey = (t?: string) => {
+        if (!t) return '';
         try {
-          const date = new Date(timeStr);
-          return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:${date.getMinutes()}`;
-        } catch {
-          return '';
-        }
+          const d = new Date(t);
+          return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()} ${d.getHours()}:${d.getMinutes()}`;
+        } catch { return ''; }
       };
-      
-      const getAirlineKey = (flight: any): string => {
-        const airline = normalizeString(flight.airlineName || flight.airline || '');
-        const airlineMap: Record<string, string> = {
-          'ROYAL AIR MAROC': 'AT',
-          'EGYPTAIR': 'MS',
-          'BRITISH AIRWAYS': 'BA',
-          'KENYA AIRWAYS': 'KQ',
-          'EMIRATES AIRLINES': 'EK',
-          'RWANDAIR': 'WB',
-          'QATAR AIRWAYS': 'QR',
-          'ETHIOPIAN AIRLINES': 'ET',
-          'KLM ROYAL DUTCH AIRLINES': 'KL',
-          'AIR FRANCE': 'AF',
-          'VIRGIN ATLANTIC': 'VS',
-          'TURKISH AIRLINES': 'TK',
-          'AIR PEACE': 'P4',
-        };
-        return airlineMap[airline] || airline;
+      const airlineMap: Record<string, string> = {
+        'ROYAL AIR MAROC': 'AT', 'EGYPTAIR': 'MS', 'BRITISH AIRWAYS': 'BA',
+        'KENYA AIRWAYS': 'KQ', 'EMIRATES AIRLINES': 'EK', 'RWANDAIR': 'WB',
+        'QATAR AIRWAYS': 'QR', 'ETHIOPIAN AIRLINES': 'ET', 'KLM ROYAL DUTCH AIRLINES': 'KL',
+        'AIR FRANCE': 'AF', 'VIRGIN ATLANTIC': 'VS', 'TURKISH AIRLINES': 'TK', 'AIR PEACE': 'P4',
       };
-      
-      for (const flight of combinedResults) {
-        const flightAny = flight as any;
-        if (!flightAny.departureAirport || !flightAny.arrivalAirport) continue;
-        
-        const departureAirport = normalizeString(flightAny.departureAirport);
-        const arrivalAirport = normalizeString(flightAny.arrivalAirport);
-        const departureTimeKey = getDateTimeKey(flightAny.departureTime);
-        const airlineKey = getAirlineKey(flightAny);
-        
-        let key = `${airlineKey}-${departureAirport}-${arrivalAirport}-${departureTimeKey}`;
-        
-        if (flightAny.returnFlight) {
-          const returnTimeKey = getDateTimeKey(flightAny.returnFlight.departureTime);
-          key = `${key}-${returnTimeKey}`;
-        }
-        
-        if (!uniqueResults.has(key)) {
-          uniqueResults.set(key, flight);
+      const getAirlineKey = (f: any) => {
+        const a = normalizeString(f.airlineName || f.airline || '');
+        return airlineMap[a] || a;
+      };
+
+      for (const flight of combined) {
+        const f = flight as any;
+        if (!f.departureAirport || !f.arrivalAirport) continue;
+        let key = `${getAirlineKey(f)}-${normalizeString(f.departureAirport)}-${normalizeString(f.arrivalAirport)}-${getDateTimeKey(f.departureTime)}`;
+        if (f.returnFlight) key += `-${getDateTimeKey(f.returnFlight.departureTime)}`;
+
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, flight);
         } else {
-          const existing = uniqueResults.get(key);
+          const existing = uniqueMap.get(key)!;
           const existingProvider = (existing as any).provider;
-          const currentProvider = flightAny.provider;
-          
-          if (currentProvider === 'wakanow' && existingProvider === 'duffel') {
-            uniqueResults.set(key, flight);
-          } else if (currentProvider === existingProvider) {
-            const existingPrice = (existing as any).rawPrice || Infinity;
-            const currentPrice = flightAny.rawPrice || Infinity;
-            if (currentPrice < existingPrice) {
-              uniqueResults.set(key, flight);
+          // Prefer wakanow; otherwise keep cheaper of same provider
+          if (f.provider === 'wakanow' && existingProvider === 'duffel') {
+            uniqueMap.set(key, flight);
+          } else if (f.provider === existingProvider) {
+            if ((f.rawPrice || Infinity) < ((existing as any).rawPrice || Infinity)) {
+              uniqueMap.set(key, flight);
             }
           }
         }
       }
-      
-      const finalResults = Array.from(uniqueResults.values());
-      finalResults.sort((a, b) => ((a as any).rawPrice || Infinity) - ((b as any).rawPrice || Infinity));
-      
-      console.log(`✅ After deduplication: ${finalResults.length} unique international flights`);
-      
-      if (finalResults.length === 0 && wakanowPromise.status === 'rejected' && duffelPromise.status === 'rejected') {
-        setSearchError('No flights found from any provider. Please try again.');
+
+      return Array.from(uniqueMap.values())
+        .sort((a, b) => ((a as any).rawPrice || Infinity) - ((b as any).rawPrice || Infinity));
+    };
+
+    try {
+      // ── 1. Start both fetches in parallel ──────────────────────────────────
+      const wakanowFetchPromise = (async (): Promise<SearchResult[]> => {
+        const { wakanowService } = await import('@/lib/wakanow.service');
+        const wakanowParams = {
+          from: origin, to: destination,
+          departureDate: formatDateForWakanow(departureDate),
+          returnDate: returnDate ? formatDateForWakanow(returnDate) : undefined,
+          adults, children, infants,
+          cabinClass: cabinClass as 'economy' | 'premium_economy' | 'business' | 'first',
+          targetCurrency: 'NGN',
+        };
+        const result = await wakanowService.searchDomesticFlights(wakanowParams);
+        const offers = result.offers || result.normalizedFlights || [];
+        return transformWakanowOffers(offers, returnDate, cabinClass, false);
+      })();
+
+      const duffelFetchPromise = (async (): Promise<SearchResult[]> => {
+        const requestBody: any = {
+          origin, destination, departureDate,
+          passengers: adults + children + infants,
+          cabinClass, currency: 'NGN',
+        };
+        if (returnDate) requestBody.returnDate = returnDate;
+
+        const offerRes = await fetch(`${BASE}/api/v1/bookings/search/flights`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+        if (!offerRes.ok) throw new Error(`Offer request failed: ${offerRes.status}`);
+
+        const offerData = await offerRes.json();
+        if (!offerData.success || !offerData.data?.offer_request_id) {
+          throw new Error('No offer request ID in response');
+        }
+        const offerRequestId = offerData.data.offer_request_id;
+
+        // Limit to 2 pages for speed – that's already 50–100 offers
+        let allOffers: any[] = [];
+        let cursor: string | null = null;
+        let hasMore = true;
+        let page = 1;
+        const MAX_PAGES = 2;
+
+        while (hasMore && page <= MAX_PAGES) {
+          const url = new URL(`${BASE}/api/v1/bookings/offers`);
+          url.searchParams.set('offer_request_id', offerRequestId);
+          if (cursor) url.searchParams.set('cursor', cursor);
+          const offersRes = await fetch(url.toString(), { signal: controller.signal });
+          if (!offersRes.ok) throw new Error('List offers failed');
+          const offersData = await offersRes.json();
+          const pageOffers: any[] = offersData.data?.offers ?? offersData.data ?? offersData.offers ?? [];
+          allOffers = allOffers.concat(pageOffers);
+          hasMore = offersData.meta?.hasMore ?? false;
+          cursor = offersData.meta?.nextCursor ?? null;
+          page++;
+        }
+
+        return transformDuffelOffers(allOffers, cabinClass, offerRequestId);
+      })();
+
+      // ── 2. Show Wakanow results as soon as they're ready ──────────────────
+      let wakanowResults: SearchResult[] = [];
+      let duffelResults: SearchResult[] = [];
+
+      wakanowFetchPromise
+        .then(results => {
+          wakanowResults = results;
+          console.log(`✅ Wakanow: ${results.length} flights ready – rendering immediately`);
+          // Show right away; Duffel will merge in below
+          setSearchResults(deduplicateAndSort([...wakanowResults, ...duffelResults]));
+        })
+        .catch(err => console.error('❌ Wakanow international search failed:', err));
+
+      // ── 3. When Duffel finishes, merge and update ──────────────────────────
+      duffelFetchPromise
+        .then(results => {
+          duffelResults = results;
+          console.log(`✅ Duffel: ${results.length} flights ready – merging`);
+          setSearchResults(deduplicateAndSort([...wakanowResults, ...duffelResults]));
+        })
+        .catch(err => console.error('❌ Duffel search failed:', err));
+
+      // ── 4. Await both so finally/error handling still runs ─────────────────
+      const [wakanowSettled, duffelSettled] = await Promise.allSettled([
+        wakanowFetchPromise, duffelFetchPromise,
+      ]);
+
+      clearTimeout(timeoutId);
+
+      if (wakanowSettled.status === 'rejected' && duffelSettled.status === 'rejected') {
+        setSearchError('No flights found. Please try again.');
         setSearchResults([]);
-      } else {
-        setSearchResults(finalResults);
       }
+
     } catch (error: any) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        console.error('❌ International flight search timed out');
         setSearchError('Search is taking too long. Please try again.');
       } else {
         console.error('❌ International flight search failed:', error);
-        setSearchError('Failed to search international flights. Please try again.');
+        setSearchError('Failed to search flights. Please try again.');
       }
       setSearchResults([]);
     }
   };
+
 
   // Update the ref on every render so the stable `search` callback always calls
   // the latest version (with up-to-date currency helpers, exchange rates, etc.)
