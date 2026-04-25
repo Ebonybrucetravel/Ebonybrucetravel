@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { config } from '@/lib/config';
-import { extractAirportCode } from '@/lib/utils';
+import { extractAirportCode, transformWakanowToDuffelFormat } from '@/lib/utils';
 import type { SearchParams, SearchResult } from '@/lib/types';
 import type { Airline } from '@/lib/duffel-airlines';
 import api from '@/lib/api';
@@ -101,10 +101,10 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       return formatPrice(finalAmount);
     } catch (error) {
       console.error('Failed to format price in user currency:', error);
-      // Fallback: return amount with user's currency symbol (not fromCurrency)
+      // Fallback: return amount with ORIGINAL currency symbol
       const symbols: Record<string, string> = { 'NGN': '₦', 'GBP': '£', 'USD': '$', 'EUR': '€', 'CAD': 'C$', 'AUD': 'A$' };
-      const symbol = symbols[currency.code] || currency.code;
-      return `${symbol}${amount.toLocaleString('en-GB', { minimumFractionDigits: 0 })}`;
+      const symbol = symbols[fromCurrency] || fromCurrency;
+      return `${symbol}${amount.toLocaleString('en-GB', { minimumFractionDigits: 0 })} (Rate Unavailable)`;
     }
   }, [currency.code, convertPrice, formatPrice]);
 
@@ -371,14 +371,19 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     
     const results: SearchResult[] = [];
     
-    for (const offer of offers) {
+    for (let offer of offers) {
+      // ✅ Handle raw Wakanow format by transforming it to the expected Duffel-like format
+      if (!offer.slices && (offer.FlightLegs || offer.flightLegs || offer.legs || offer.DepartureCode)) {
+        console.log('🔄 Normalizing raw Wakanow offer to Duffel format');
+        offer = transformWakanowToDuffelFormat(offer);
+      }
+
       console.log('💰 Raw Wakanow offer (NGN base):', {
         id: offer.id,
-        original_amount_NGN: offer.original_amount,
-        base_amount_NGN: offer.base_amount,
-        conversion_fee: offer.conversion_fee,
-        markup_amount: offer.markup_amount,
-        final_amount_NGN: offer.final_amount,
+        hasSlices: !!offer.slices,
+        slicesCount: offer.slices?.length,
+        priceObj: offer.Price || offer.price,
+        original_amount: offer.original_amount,
       });
       
       const slices = offer.slices || [];
@@ -406,8 +411,16 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       const airlineLogo = airline.logo_url || `https://images.wakanow.com/Images/flight-logos/${airlineCode}.gif`;
       
       // ========== EXTRACT PRICE COMPONENTS (ALL IN NGN) ==========
-      const originalAmountNGN = parseFloat(offer.original_amount || '0');
-      const baseAmountNGN = parseFloat(offer.base_amount || '0');
+      // Try multiple possible price fields to be robust
+      const rawOriginalAmount = 
+        offer.original_amount || 
+        offer.Price?.Amount || 
+        offer.price?.amount || 
+        offer.TotalAmount || 
+        '0';
+        
+      const originalAmountNGN = parseFloat(rawOriginalAmount.toString());
+      const baseAmountNGN = parseFloat((offer.base_amount || originalAmountNGN).toString());
       
       // Calculate service fee on the original NGN amount (10%)
       const serviceFeeNGN = originalAmountNGN * (SERVICE_FEE_PERCENTAGE / 100);
@@ -631,16 +644,21 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       let conversionFeeNGN = conversionFeeOriginal;
       let taxesNGN = taxesOriginal;
       let finalPriceNGN = finalPriceOriginal;
+      let originalCurrencyForInternalStorage = 'NGN';
       
       if (originalCurrency !== 'NGN') {
         try {
-          basePriceNGN = await convertPrice(basePriceOriginal, originalCurrency);
-          markupAmountNGN = await convertPrice(markupAmountOriginal, originalCurrency);
-          conversionFeeNGN = await convertPrice(conversionFeeOriginal, originalCurrency);
-          taxesNGN = await convertPrice(taxesOriginal, originalCurrency);
-          finalPriceNGN = await convertPrice(finalPriceOriginal, originalCurrency);
+          const { convertCurrencyLive } = await import('@/lib/currency-service');
+          basePriceNGN = (await convertCurrencyLive(basePriceOriginal, originalCurrency, 'NGN')).convertedAmount;
+          markupAmountNGN = (await convertCurrencyLive(markupAmountOriginal, originalCurrency, 'NGN')).convertedAmount;
+          conversionFeeNGN = (await convertCurrencyLive(conversionFeeOriginal, originalCurrency, 'NGN')).convertedAmount;
+          taxesNGN = (await convertCurrencyLive(taxesOriginal, originalCurrency, 'NGN')).convertedAmount;
+          finalPriceNGN = (await convertCurrencyLive(finalPriceOriginal, originalCurrency, 'NGN')).convertedAmount;
         } catch (error) {
           console.error('Failed to convert Duffel prices to NGN:', error);
+          // If conversion fails, DO NOT treat non-NGN price as NGN.
+          // Keep original currency so the UI can display it correctly.
+          originalCurrencyForInternalStorage = originalCurrency;
         }
       }
       
@@ -757,7 +775,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         service_fee: totalServiceFeeNGN.toString(),
         service_fee_percentage: serviceFeePercentage,
         final_amount: finalPriceNGN.toString(),
-        currency: 'NGN',  // Always NGN for internal storage
+        currency: originalCurrencyForInternalStorage,  // Store original currency if conversion failed
         isRoundTrip: !!returnSlice,
         rating: 4,
         amenities: ['Seat Selection', 'Cabin Baggage'],

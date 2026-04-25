@@ -228,10 +228,18 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
   const isWakanow = (item as any)?.provider?.toUpperCase() === 'WAKANOW' ||
     (item as any)?.type?.toLowerCase().includes('wakanow');
-  const passportRequired = isFlight && isWakanow;
-
-  // Check if passport is required for North America
-  const requiresPassport = isFlight && isNorthAmericanDestination(extendedItem, searchParams);
+  
+  const isDomesticFlight = (item as any)?.productType === 'FLIGHT_DOMESTIC';
+  
+  // Visibility: Show for all international Wakanow flights
+  const showPassportSection = isFlight && !isDomesticFlight && isWakanow;
+  
+  // Mandatory: Only for North America
+  const isPassportMandatory = isFlight && isNorthAmericanDestination(extendedItem, searchParams);
+  
+  // Legacy flag for background profile checks
+  const passportRequired = showPassportSection;
+  const requiresPassport = isPassportMandatory;
 
   // Initialize additional guests
   useEffect(() => {
@@ -484,16 +492,14 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         alert('Passenger must be at least 2 years old for flight bookings.');
         return;
       }
-      // Validate passport for North America
-      if (requiresPassport && !validatePassport()) {
+      // Validate passport for North America (MANDATORY)
+      if (isPassportMandatory && !validatePassport()) {
         return;
       }
 
-      if (passportRequired && !requiresPassport) {
-        if (!passportNumber || !passportExpiry || !passportIssuingAuthority || !passportIssueCountry) {
-          alert('Passport details are required for this flight. Please complete your Travel Profile.');
-          return;
-        }
+      // For other international flights, passport is optional but must be valid if partially filled
+      if (showPassportSection && !isPassportMandatory && passportNumber) {
+        if (!validatePassport()) return;
       }
     }
 
@@ -527,8 +533,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         })
       };
       
-      // Add passport info to passengerInfo for North America flights
-      if (isFlight && requiresPassport) {
+      // Add passport info to passengerInfo for international flights if provided
+      if (isFlight && showPassportSection && passportNumber) {
         (passengerInfo as any).passportNumber = passportNumber;
         (passengerInfo as any).passportExpiry = passportExpiry;
         (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
@@ -616,7 +622,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         </div>
 
         {/* North America Travel Warning Banner */}
-        {requiresPassport && !createdBooking && (
+        {isPassportMandatory && !createdBooking && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-start gap-3">
               <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -627,6 +633,23 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                 <p className="text-sm text-blue-700">
                   Flights to North America require a valid passport. Please ensure you have your passport ready
                   when providing passenger details. Passport must be valid for at least 6 months beyond your travel date.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* International Travel Info Banner (Optional) */}
+        {showPassportSection && !isPassportMandatory && !createdBooking && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="font-semibold text-blue-800">International Travel Recommendation</p>
+                <p className="text-sm text-blue-700">
+                  Providing your passport details now will speed up your airport check-in. If you don't have it handy, you can continue without it.
                 </p>
               </div>
             </div>
@@ -730,18 +753,21 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                     </div>
                   </div>
                   
-                  {/* PASSPORT SECTION FOR NORTH AMERICA */}
-                  {requiresPassport && (
+                  {/* PASSPORT SECTION FOR INTERNATIONAL FLIGHTS */}
+                  {showPassportSection && (
                     <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                       <div className="flex items-start gap-2 mb-4">
                         <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                         </svg>
                         <div>
-                          <p className="font-semibold text-yellow-800">Passport Required for North America Travel</p>
+                          <p className="font-semibold text-yellow-800">
+                            Passport Details {isPassportMandatory ? '(Required)' : '(Optional but Recommended)'}
+                          </p>
                           <p className="text-sm text-yellow-700">
-                            Please provide your passport details exactly as shown on your passport.
-                            Passport must be valid for at least 6 months from your travel date.
+                            {isPassportMandatory 
+                              ? 'Please provide your passport details exactly as shown on your passport. Passport must be valid for at least 6 months from travel.'
+                              : 'Providing passport details now will save time during airport check-in.'}
                           </p>
                         </div>
                       </div>
@@ -749,7 +775,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Passport Number <span className="text-red-500">*</span>
+                            Passport Number {isPassportMandatory && <span className="text-red-500">*</span>}
                           </label>
                           <input
                             type="text"
@@ -758,12 +784,11 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                             className={inputCls}
                             placeholder="e.g., A12345678"
                           />
-                          <p className="text-xs text-gray-500 mt-1">Enter your passport number as shown on your passport</p>
                         </div>
                         
                         <div>
                           <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Passport Expiry Date <span className="text-red-500">*</span>
+                            Passport Expiry Date {isPassportMandatory && <span className="text-red-500">*</span>}
                           </label>
                           <input
                             type="date"
@@ -772,12 +797,11 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                             min={new Date().toISOString().split('T')[0]}
                             className={inputCls}
                           />
-                          <p className="text-xs text-yellow-600 mt-1">⚠️ Must be valid for at least 6 months from travel date</p>
                         </div>
                         
                         <div className="md:col-span-2">
                           <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Passport Issuing Authority / Country <span className="text-red-500">*</span>
+                            Passport Issuing Authority / Country {isPassportMandatory && <span className="text-red-500">*</span>}
                           </label>
                           <input
                             type="text"
@@ -786,7 +810,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                             className={inputCls}
                             placeholder="e.g., UK Visas and Immigration (UKVI)"
                           />
-                          <p className="text-xs text-gray-500 mt-1">Enter the country or authority that issued your passport</p>
                         </div>
                       </div>
                       

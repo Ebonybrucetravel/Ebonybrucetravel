@@ -419,6 +419,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const [priceRange, setPriceRange] = useState<number>(2000000);
   const [sortBy, setSortBy] = useState<"match" | "price" | "rating">("match");
   const [visibleCount, setVisibleCount] = useState(6);
+  const [flightVisibleCount, setFlightVisibleCount] = useState(15);
   const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
 
   // Hotel Filters
@@ -448,6 +449,15 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       router.push(ad.link);
     }
   };
+  
+  // Normalize results to an array for safe access (fixing TS errors)
+  const resultsArray = useMemo(() => {
+    if (Array.isArray(results)) return results;
+    if (results && typeof results === 'object' && 'data' in results && Array.isArray(results.data)) {
+      return results.data;
+    }
+    return [];
+  }, [results]);
 
   // Debug log
   useEffect(() => {
@@ -2368,8 +2378,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     </div>
   );
 
-  // Loading state
-  if (isLoading) {
+  // Loading state (only show full screen if no results yet)
+  if (isLoading && resultsArray.length === 0) {
     return (
       <div className="bg-gray-50 min-h-screen">
         <div className="bg-white shadow-sm border-b border-gray-200 py-4">
@@ -2429,6 +2439,17 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               </aside>
 
               <div className="flex-1">
+                {/* Batch Loading Indicator */}
+                {isLoading && resultsArray.length > 0 && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6 flex items-center justify-between shadow-sm animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-5 h-5 border-2 border-[#33a8da] border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-[#33a8da] font-medium text-sm">Searching for more flights...</span>
+                    </div>
+                    <span className="text-xs text-blue-600 font-medium bg-blue-100 px-3 py-1 rounded-full shadow-sm">{resultsArray.length} flights found so far</span>
+                  </div>
+                )}
+                
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-gray-600">
@@ -2508,7 +2529,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 </div>
 
                 {filteredAndSortedFlights.length > 0 ? (
-                  filteredAndSortedFlights.map(flight => renderFlightCard(flight))
+                  filteredAndSortedFlights.slice(0, flightVisibleCount).map(flight => renderFlightCard(flight))
                 ) : (
                   <div className="bg-white rounded-2xl p-12 text-center border border-gray-200">
                     <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2518,6 +2539,17 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                     <p className="text-gray-500">Try adjusting your search criteria or filters</p>
                   </div>
                 )}
+
+              {filteredAndSortedFlights.length > flightVisibleCount && (
+                <div className="pt-6 pb-6 flex justify-center">
+                  <button
+                    onClick={() => setFlightVisibleCount(p => p + 15)}
+                    className="px-16 py-4 bg-[#33a8da] text-white font-black rounded-2xl shadow-xl hover:bg-[#2c98c7] transition uppercase text-xs"
+                  >
+                    Load More Flights
+                  </button>
+                </div>
+              )}
               </div>
 
               {renderRightSidebarAds()}

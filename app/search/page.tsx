@@ -93,8 +93,8 @@ export default function SearchPage() {
     }
   };
 
-  // Show loading state
-  if (isSearching) {
+  // Show full page loading state only when we don't have any results yet
+  if (isSearching && (!searchResults || searchResults.length === 0)) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-20 text-center">
         <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#33a8da] mb-6"></div>

@@ -7,9 +7,13 @@ export interface ExchangeRates {
   timestamp: number;
 }
 
-// Cache rates for 5 minutes per base currency
-const ratesCache = new Map<string, { rates: ExchangeRates; timestamp: number }>();
-const CACHE_DURATION = 300000; // 5 minutes
+// In-memory cache for the current session and in-flight promises
+const ratesCache = new Map<string, ExchangeRates>();
+const pendingRequests = new Map<string, Promise<ExchangeRates>>();
+
+// Cache duration: 6 hours (reduces API calls significantly)
+const CACHE_DURATION = 6 * 60 * 60 * 1000; 
+const LS_CACHE_PREFIX = 'eb_rates_';
 
 export const SUPPORTED_CURRENCIES = ['GBP', 'NGN', 'USD', 'EUR', 'CAD', 'AUD', 'JPY', 'CNY', 'ZAR', 'KES'];
 
@@ -18,74 +22,90 @@ const API_KEY = "bbbcb8f5a2eaf222da3fb787";
 const BASE_URL = "https://v6.exchangerate-api.com/v6";
 
 /**
- * Fetch real-time exchange rates using ExchangeRate-API
- * No CORS issues - the API supports CORS natively
+ * Fetch real-time exchange rates using ExchangeRate-API with aggressive caching
  */
 export async function fetchExchangeRates(baseCurrency: string = 'GBP'): Promise<ExchangeRates> {
-  // Normalize currency code to uppercase
   baseCurrency = baseCurrency.toUpperCase();
   
-  const cached = ratesCache.get(baseCurrency);
-  // Return cached rates if still fresh
-  if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
-    console.log(`📊 Using cached exchange rates (base: ${cached.rates.base})`);
-    return cached.rates;
+  // 1. Check in-memory cache
+  const inMemory = ratesCache.get(baseCurrency);
+  if (inMemory && (Date.now() - inMemory.timestamp) < CACHE_DURATION) {
+    return inMemory;
   }
 
-  try {
-    // Use ExchangeRate-API directly (supports CORS)
-    const url = `${BASE_URL}/${API_KEY}/latest/${baseCurrency}`;
-    console.log(`🌍 Fetching exchange rates from ExchangeRate-API for ${baseCurrency}`);
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      cache: 'no-cache',
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+  // 2. Check localStorage cache (for cross-refresh persistence)
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(`${LS_CACHE_PREFIX}${baseCurrency}`);
+      if (stored) {
+        const parsed = JSON.parse(stored) as ExchangeRates;
+        if ((Date.now() - parsed.timestamp) < CACHE_DURATION) {
+          ratesCache.set(baseCurrency, parsed);
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to read from localStorage cache:', e);
     }
-    
-    const data = await response.json();
-    
-    // Check if the response was successful
-    if (data.result === 'success') {
-      const rates: ExchangeRates = {
-        base: data.base_code,
-        rates: data.conversion_rates,
-        date: new Date().toISOString().split('T')[0],
-        timestamp: Date.now(),
-      };
+  }
+
+  // 3. De-duplicate in-flight requests
+  const pending = pendingRequests.get(baseCurrency);
+  if (pending) return pending;
+
+  // 4. Fetch from API
+  const fetchPromise = (async () => {
+    try {
+      const url = `${BASE_URL}/${API_KEY}/latest/${baseCurrency}`;
+      console.log(`🌍 API CALL: Fetching exchange rates for ${baseCurrency}`);
       
-      console.log(`✅ Exchange rates fetched successfully: 1 ${baseCurrency} =`, {
-        NGN: rates.rates.NGN || 'N/A',
-        USD: rates.rates.USD || 'N/A',
-        EUR: rates.rates.EUR || 'N/A',
-        GBP: rates.rates.GBP || 'N/A',
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-cache',
       });
       
-      // Cache the successful response
-      ratesCache.set(baseCurrency, { rates, timestamp: Date.now() });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       
-      return rates;
-    } else {
-      throw new Error(`API error: ${data['error-type'] || 'Unknown error'}`);
+      const data = await response.json();
+      
+      if (data.result === 'success') {
+        const rates: ExchangeRates = {
+          base: data.base_code,
+          rates: data.conversion_rates,
+          date: new Date().toISOString().split('T')[0],
+          timestamp: Date.now(),
+        };
+        
+        // 5. Accuracy Check (No false data fallbacks)
+        // If NGN rate is suspiciously low (garbage), we don't fix it with false data.
+        // We log it and let the caller handle the failure.
+        if (rates.rates.NGN && rates.rates.NGN < 100) {
+          console.error(`❌ GARBAGE DATA DETECTED: NGN rate (${rates.rates.NGN}) for base ${baseCurrency} is unrealistic.`);
+          throw new Error(`Currency conversion service returned invalid rates for NGN.`);
+        }
+        
+        // Save to caches
+        ratesCache.set(baseCurrency, rates);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(`${LS_CACHE_PREFIX}${baseCurrency}`, JSON.stringify(rates));
+          } catch (e) {}
+        }
+        
+        return rates;
+      } else {
+        throw new Error(`API error: ${data['error-type'] || 'Unknown error'}`);
+      }
+    } finally {
+      pendingRequests.delete(baseCurrency);
     }
-  } catch (error) {
-    console.error('Failed to fetch exchange rates:', error);
-    
-    // If we have expired cached rates, use them as last resort
-    const cached = ratesCache.get(baseCurrency);
-    if (cached) {
-      console.warn('⚠️ Using expired cached rates as last resort');
-      return cached.rates;
-    }
-    
-    throw new Error(`Unable to fetch exchange rates: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
+  })();
+
+  pendingRequests.set(baseCurrency, fetchPromise);
+  return fetchPromise;
 }
 
 /**
@@ -112,10 +132,10 @@ export async function convertCurrencyLive(
       throw new Error(`No exchange rate available for ${fromCurrency} to ${toCurrency}`);
     }
     
-    const convertedAmount = amount * rate;
-    return { convertedAmount, rate };
+    return { convertedAmount: amount * rate, rate };
   } catch (error) {
     console.error('Currency conversion failed:', error);
+    // Propagate error so UI can handle it properly
     throw error;
   }
 }
@@ -125,26 +145,14 @@ export async function convertCurrencyLive(
  */
 export function formatPriceWithCurrency(amount: number, currencyCode: string): string {
   const symbols: Record<string, string> = {
-    'GBP': '£',
-    'NGN': '₦',
-    'USD': '$',
-    'EUR': '€',
-    'CAD': 'C$',
-    'AUD': 'A$',
-    'JPY': '¥',
-    'CNY': '¥',
-    'ZAR': 'R',
-    'KES': 'KSh',
+    'GBP': '£', 'NGN': '₦', 'USD': '$', 'EUR': '€', 
+    'CAD': 'C$', 'AUD': 'A$', 'JPY': '¥', 'CNY': '¥', 
+    'ZAR': 'R', 'KES': 'KSh'
   };
   
   const symbol = symbols[currencyCode] || currencyCode;
   
-  if (currencyCode === 'NGN') {
-    const roundedAmount = Math.round(amount);
-    return `${symbol}${roundedAmount.toLocaleString()}`;
-  }
-  
-  if (currencyCode === 'JPY') {
+  if (currencyCode === 'NGN' || currencyCode === 'JPY') {
     return `${symbol}${Math.round(amount).toLocaleString()}`;
   }
   
@@ -155,31 +163,19 @@ export function formatPriceWithCurrency(amount: number, currencyCode: string): s
   return `${symbol}${amount.toFixed(2)}`;
 }
 
-/**
- * Get conversion rate between currencies
- */
 export async function getConversionRate(fromCurrency: string, toCurrency: string): Promise<number> {
   if (fromCurrency === toCurrency) return 1;
-  
   const rates = await fetchExchangeRates(fromCurrency);
   const rate = rates.rates[toCurrency];
-  
-  if (!rate || rate === 0) {
-    throw new Error(`No exchange rate available for ${fromCurrency} to ${toCurrency}`);
-  }
-  
+  if (!rate || rate === 0) throw new Error(`No rate for ${fromCurrency} to ${toCurrency}`);
   return rate;
 }
 
-/**
- * Check if exchange rates are available
- */
 export async function areExchangeRatesAvailable(): Promise<boolean> {
   try {
     await fetchExchangeRates('USD');
     return true;
-  } catch (error) {
-    console.error('Exchange rates not available:', error);
+  } catch {
     return false;
   }
 }

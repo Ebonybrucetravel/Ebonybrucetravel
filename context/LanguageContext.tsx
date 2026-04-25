@@ -97,8 +97,11 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
         } catch (error) {
             console.error('Failed to fetch exchange rates:', error);
             setUsingLiveRates(false);
-            setRatesError(`Unable to fetch live exchange rates: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            throw error; // Re-throw - no fallbacks
+            const msg = error instanceof Error && error.message.includes('invalid rates') 
+                ? "Live exchange rates for NGN are currently unreliable. Prices are shown in original currency."
+                : `Unable to fetch live exchange rates: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            setRatesError(msg);
+            throw error;
         }
     }, []);
 
@@ -145,10 +148,9 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
             // This will throw if formatting fails
             return formatPriceWithCurrency(finalAmount, displayCurrency);
         } catch (error) {
-            console.error('Price formatting failed:', error);
-            // Return a simple fallback format instead of throwing
-            const symbol = CURRENCY_SYMBOLS[currency.code] || currency.code;
-            return `${symbol}${amount.toFixed(2)}`;
+            // If conversion fails, return the amount in original currency if possible, or a clear error
+            const fallbackSymbol = fromCurrency ? (CURRENCY_SYMBOLS[fromCurrency] || fromCurrency) : currency.symbol;
+            return `${fallbackSymbol}${amount.toLocaleString()} (Rate Unavailable)`;
         }
     }, [currency, convertPrice]);
 

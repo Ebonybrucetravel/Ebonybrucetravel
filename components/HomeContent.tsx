@@ -24,8 +24,9 @@ export default function HomeContent({ activeTab }: HomeContentProps) {
   const [isTrendingSearching, setIsTrendingSearching] = useState(false);
 
   const handleSearch = async (params: SearchParams) => {
-    await search(params);
     router.push('/search');
+    // Let the search run in the background so the UI immediately switches to the loading skeleton
+    search(params).catch(err => console.error('Search failed:', err));
   };
 
   const handleTabChange = (tab: 'flights' | 'hotels' | 'cars') => {
@@ -37,7 +38,8 @@ export default function HomeContent({ activeTab }: HomeContentProps) {
     console.log('🏨 Hotel search triggered from card:', searchData);
     setIsHotelSearching(true);
     try {
-      await search({
+      router.push('/search');
+      search({
         type: 'hotels',
         location: searchData.location,
         cityCode: searchData.cityCode,
@@ -46,8 +48,11 @@ export default function HomeContent({ activeTab }: HomeContentProps) {
         travellers: searchData.travellers,
         rooms: searchData.rooms,
         currency: searchData.currency
+      }).catch(err => {
+        console.error('Hotel search failed:', err);
+      }).finally(() => {
+        setIsHotelSearching(false);
       });
-      router.push('/search');
     } catch (error) {
       console.error('Hotel search failed:', error);
     } finally {
@@ -80,8 +85,12 @@ export default function HomeContent({ activeTab }: HomeContentProps) {
       };
       
       console.log('🚗 Sending car search data to API:', searchData);
-      await search(searchData);
       router.push('/search');
+      search(searchData).catch(err => {
+        console.error('Car search failed:', err);
+      }).finally(() => {
+        setIsCarSearching(false);
+      });
     } catch (error) {
       console.error('Car search failed:', error);
     } finally {
@@ -94,12 +103,17 @@ export default function HomeContent({ activeTab }: HomeContentProps) {
     console.log('📍 Trending destination search triggered:', city);
     setIsTrendingSearching(true);
     try {
-      await handleSearch({
+      router.push('/search');
+      handleSearch({
         type: 'flights',
         segments: [{ from: 'LOS', to: city.code || 'ABV', date: new Date().toISOString().split('T')[0] }],
         passengers: { adults: 1, children: 0, infants: 0 },
         cabinClass: 'economy',
-      } as SearchParams);
+      } as SearchParams).catch(err => {
+        console.error('Trending destination search failed:', err);
+      }).finally(() => {
+        setIsTrendingSearching(false);
+      });
     } catch (error) {
       console.error('Trending destination search failed:', error);
     } finally {
