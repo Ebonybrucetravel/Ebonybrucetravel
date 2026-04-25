@@ -63,7 +63,7 @@ export default function BookingsPage() {
             type: item.productType || item.type || 'Flight',
             source: item.provider || item.source || 'Unknown',
             customer: item.user?.name || item.customerName || 'Guest',
-            price: item.totalAmount ? `$${item.totalAmount.toLocaleString()}` : '$0.00',
+            price: item.totalAmount ? `${item.currency || 'USD'} ${item.totalAmount.toLocaleString()}` : '$0.00',
             rawPrice: item.totalAmount,
             status: item.status || 'Pending',
             date: item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-US', { 

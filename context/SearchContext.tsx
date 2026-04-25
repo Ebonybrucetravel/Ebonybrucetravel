@@ -101,9 +101,8 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       return formatPrice(finalAmount);
     } catch (error) {
       console.error('Failed to format price in user currency:', error);
-      // Fallback: return amount with ORIGINAL currency symbol
-      const symbols: Record<string, string> = { 'NGN': '₦', 'GBP': '£', 'USD': '$', 'EUR': '€', 'CAD': 'C$', 'AUD': 'A$' };
-      const symbol = symbols[fromCurrency] || fromCurrency;
+      const { CURRENCY_SYMBOLS } = await import('@/lib/currency-service');
+      const symbol = CURRENCY_SYMBOLS[fromCurrency] || fromCurrency;
       return `${symbol}${amount.toLocaleString('en-GB', { minimumFractionDigits: 0 })} (Rate Unavailable)`;
     }
   }, [currency.code, convertPrice, formatPrice]);
@@ -363,7 +362,13 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   };
 
   // ==================== FLIGHT TRANSFORMATION WITH PROPER CURRENCY ====================
-  const transformWakanowOffers = async (offers: any[], returnDate?: string, cabinClass: string = 'economy', isDomesticRoute: boolean = false): Promise<SearchResult[]> => {
+  const transformWakanowOffers = (
+    offers: any[], 
+    returnDate?: string, 
+    cabinClass: string = 'economy', 
+    isDomesticRoute: boolean = false,
+    rates: Record<string, number> = { NGN: 1 }
+  ): SearchResult[] => {
     if (!offers || offers.length === 0) return [];
     
     // Service fee percentage for Wakanow flights
@@ -434,9 +439,26 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       // Final total in NGN
       const finalAmountNGN = originalAmountNGN + totalServiceFeeNGN;
       
-      // Get display price in user's currency
-      const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalAmountNGN, 'NGN');
-      const formattedDisplayPrice = await formatPriceInUserCurrency(finalAmountNGN, 'NGN');
+      // Get display price in user's currency (Synchronous using pre-fetched rates)
+      const userCurrencyCode = currency.code;
+      const rateToUserCurrency = rates[userCurrencyCode] || 0;
+      
+      let displayPriceInUserCurrency = finalAmountNGN;
+      let formattedDisplayPrice = "";
+      
+      if (rateToUserCurrency > 0) {
+        displayPriceInUserCurrency = finalAmountNGN * rateToUserCurrency;
+        const symbol = CURRENCY_SYMBOLS[userCurrencyCode] || userCurrencyCode;
+        // Round NGN to whole numbers
+        const roundedAmount = userCurrencyCode === 'NGN' ? Math.round(displayPriceInUserCurrency) : displayPriceInUserCurrency;
+        formattedDisplayPrice = `${symbol}${roundedAmount.toLocaleString('en-GB', { 
+          minimumFractionDigits: userCurrencyCode === 'NGN' ? 0 : 2,
+          maximumFractionDigits: userCurrencyCode === 'NGN' ? 0 : 2 
+        })}`;
+      } else {
+        const symbol = CURRENCY_SYMBOLS['NGN'] || '₦';
+        formattedDisplayPrice = `${symbol}${Math.round(finalAmountNGN).toLocaleString()} (Rate Unavailable)`;
+      }
       
       console.log(`✈️ Flight (${airlineName}) - Price Breakdown (NGN base):`, {
         originalAmountNGN: `₦${originalAmountNGN.toFixed(2)}`,
@@ -582,7 +604,12 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     return results;
   };
 
-  const transformDuffelOffers = async (offers: any[], cabinClass: string, offerRequestId: string): Promise<SearchResult[]> => {
+  const transformDuffelOffers = (
+    offers: any[], 
+    cabinClass: string = 'economy', 
+    offerRequestId: string,
+    rates: Record<string, number> = { NGN: 1 }
+  ): SearchResult[] => {
     const results: SearchResult[] = [];
     
     for (const offer of offers) {
@@ -647,32 +674,42 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       let originalCurrencyForInternalStorage = 'NGN';
       
       if (originalCurrency !== 'NGN') {
-        try {
-          const { convertCurrencyLive } = await import('@/lib/currency-service');
-          basePriceNGN = (await convertCurrencyLive(basePriceOriginal, originalCurrency, 'NGN')).convertedAmount;
-          markupAmountNGN = (await convertCurrencyLive(markupAmountOriginal, originalCurrency, 'NGN')).convertedAmount;
-          conversionFeeNGN = (await convertCurrencyLive(conversionFeeOriginal, originalCurrency, 'NGN')).convertedAmount;
-          taxesNGN = (await convertCurrencyLive(taxesOriginal, originalCurrency, 'NGN')).convertedAmount;
-          finalPriceNGN = (await convertCurrencyLive(finalPriceOriginal, originalCurrency, 'NGN')).convertedAmount;
-        } catch (error) {
-          console.error('Failed to convert Duffel prices to NGN:', error);
-          // If conversion fails, DO NOT treat non-NGN price as NGN.
-          // Keep original currency so the UI can display it correctly.
+        const rateToNGN = rates['NGN'] || 0; // rates are based on fromCurrency
+        if (rateToNGN > 0) {
+          basePriceNGN = basePriceOriginal * rateToNGN;
+          markupAmountNGN = markupAmountOriginal * rateToNGN;
+          conversionFeeNGN = conversionFeeOriginal * rateToNGN;
+          taxesNGN = taxesOriginal * rateToNGN;
+          finalPriceNGN = finalPriceOriginal * rateToNGN;
+        } else {
+          console.error('Failed to convert Duffel prices to NGN: Rate Unavailable');
           originalCurrencyForInternalStorage = originalCurrency;
         }
       }
       
-      // Calculate total service fee in NGN
-      const totalServiceFeeNGN = markupAmountNGN + conversionFeeNGN + taxesNGN;
+      // Final total in NGN
+      const finalAmountNGN = finalPriceNGN;
       
-      let serviceFeePercentage = 0;
-      if (basePriceNGN > 0 && totalServiceFeeNGN > 0) {
-        serviceFeePercentage = (totalServiceFeeNGN / basePriceNGN) * 100;
+      // Get display price in user's currency (Synchronous using pre-fetched rates)
+      const userCurrencyCode = currency.code;
+      const rateNGNtoUser = rates[`NGN_${userCurrencyCode}`] || 0;
+      
+      let displayPriceInUserCurrency = finalAmountNGN;
+      let formattedDisplayPrice = "";
+      
+      if (originalCurrencyForInternalStorage === 'NGN' && rateNGNtoUser > 0) {
+        displayPriceInUserCurrency = finalAmountNGN * rateNGNtoUser;
+        const symbol = CURRENCY_SYMBOLS[userCurrencyCode] || userCurrencyCode;
+        // Round NGN to whole numbers
+        const roundedAmount = userCurrencyCode === 'NGN' ? Math.round(displayPriceInUserCurrency) : displayPriceInUserCurrency;
+        formattedDisplayPrice = `${symbol}${roundedAmount.toLocaleString('en-GB', { 
+          minimumFractionDigits: userCurrencyCode === 'NGN' ? 0 : 2,
+          maximumFractionDigits: userCurrencyCode === 'NGN' ? 0 : 2 
+        })}`;
+      } else {
+        const symbol = CURRENCY_SYMBOLS[originalCurrencyForInternalStorage] || originalCurrencyForInternalStorage;
+        formattedDisplayPrice = `${symbol}${Math.round(finalPriceOriginal).toLocaleString()} (Rate Unavailable)`;
       }
-      
-      // Get display price in user's currency
-      const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalPriceNGN, 'NGN');
-      const formattedDisplayPrice = await formatPriceInUserCurrency(finalPriceNGN, 'NGN');
       
       console.log(`✈️ Duffel Flight (${airlineName}) - Converted to NGN:`, {
         originalCurrency,
@@ -929,94 +966,127 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     };
 
     try {
-      // ── 1. Start both fetches in parallel ──────────────────────────────────
+      // ── 1. Pre-fetch Exchange Rates once for the entire search ─────────────
+      const { fetchExchangeRates } = await import('@/lib/currency-service');
+      const [ratesToNGN, ratesFromNGN] = await Promise.all([
+        fetchExchangeRates('GBP'), // Duffel base (usually)
+        fetchExchangeRates('NGN')  // Wakanow base
+      ]);
+      
+      const rateMap: Record<string, number> = {
+        'NGN': ratesToNGN.rates['NGN'] || 0,
+        [`NGN_${currency.code}`]: ratesFromNGN.rates[currency.code] || 0,
+        [currency.code]: ratesFromNGN.rates[currency.code] || 0 // For Wakanow direct NGN->User
+      };
+
+      // ── 2. Start both fetches in parallel ──────────────────────────────────
       const wakanowFetchPromise = (async (): Promise<SearchResult[]> => {
-        const { wakanowService } = await import('@/lib/wakanow.service');
-        const wakanowParams = {
-          from: origin, to: destination,
-          departureDate: formatDateForWakanow(departureDate),
-          returnDate: returnDate ? formatDateForWakanow(returnDate) : undefined,
-          adults, children, infants,
-          cabinClass: cabinClass as 'economy' | 'premium_economy' | 'business' | 'first',
-          targetCurrency: 'NGN',
-        };
-        const result = await wakanowService.searchDomesticFlights(wakanowParams);
-        const offers = result.offers || result.normalizedFlights || [];
-        return transformWakanowOffers(offers, returnDate, cabinClass, false);
+        try {
+          const { wakanowService } = await import('@/lib/wakanow.service');
+          const wakanowParams = {
+            from: origin, to: destination,
+            departureDate: formatDateForWakanow(departureDate),
+            returnDate: returnDate ? formatDateForWakanow(returnDate) : undefined,
+            adults, children, infants,
+            cabinClass: cabinClass as 'economy' | 'premium_economy' | 'business' | 'first',
+            targetCurrency: 'NGN',
+          };
+          const result = await wakanowService.searchDomesticFlights(wakanowParams);
+          const offers = result.offers || result.normalizedFlights || [];
+          return transformWakanowOffers(offers, returnDate, cabinClass, false, rateMap);
+        } catch (err) {
+          console.error('❌ Wakanow fetch failed:', err);
+          return [];
+        }
       })();
 
       const duffelFetchPromise = (async (): Promise<SearchResult[]> => {
-        const requestBody: any = {
-          origin, destination, departureDate,
-          passengers: adults + children + infants,
-          cabinClass, currency: 'NGN',
-        };
-        if (returnDate) requestBody.returnDate = returnDate;
+        try {
+          const requestBody: any = {
+            origin, destination, departureDate,
+            passengers: adults + children + infants,
+            cabinClass, currency: 'NGN',
+          };
+          if (returnDate) requestBody.returnDate = returnDate;
 
-        const offerRes = await fetch(`${BASE}/api/v1/bookings/search/flights`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-          signal: controller.signal,
-        });
-        if (!offerRes.ok) throw new Error(`Offer request failed: ${offerRes.status}`);
+          const offerRes = await fetch(`${BASE}/api/v1/bookings/search/flights`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal,
+          });
+          if (!offerRes.ok) throw new Error(`Offer request failed: ${offerRes.status}`);
 
-        const offerData = await offerRes.json();
-        if (!offerData.success || !offerData.data?.offer_request_id) {
-          throw new Error('No offer request ID in response');
+          const offerData = await offerRes.json();
+          if (!offerData.success || !offerData.data?.offer_request_id) {
+            throw new Error('No offer request ID in response');
+          }
+          const offerRequestId = offerData.data.offer_request_id;
+
+          // Limit to 2 pages for speed – that's already 50–100 offers
+          let allOffers: any[] = [];
+          let cursor: string | null = null;
+          let hasMore = true;
+          let page = 1;
+          const MAX_PAGES = 2;
+
+          while (hasMore && page <= MAX_PAGES) {
+            const url = new URL(`${BASE}/api/v1/bookings/offers`);
+            url.searchParams.set('offer_request_id', offerRequestId);
+            if (cursor) url.searchParams.set('cursor', cursor);
+            const offersRes = await fetch(url.toString(), { signal: controller.signal });
+            if (!offersRes.ok) throw new Error('List offers failed');
+            const offersData = await offersRes.json();
+            const pageOffers: any[] = offersData.data?.offers ?? offersData.data ?? offersData.offers ?? [];
+            allOffers = allOffers.concat(pageOffers);
+            hasMore = offersData.meta?.hasMore ?? false;
+            cursor = offersData.meta?.nextCursor ?? null;
+            page++;
+          }
+
+          return transformDuffelOffers(allOffers, cabinClass, offerRequestId, rateMap);
+        } catch (err) {
+          console.error('❌ Duffel fetch failed:', err);
+          return [];
         }
-        const offerRequestId = offerData.data.offer_request_id;
-
-        // Limit to 2 pages for speed – that's already 50–100 offers
-        let allOffers: any[] = [];
-        let cursor: string | null = null;
-        let hasMore = true;
-        let page = 1;
-        const MAX_PAGES = 2;
-
-        while (hasMore && page <= MAX_PAGES) {
-          const url = new URL(`${BASE}/api/v1/bookings/offers`);
-          url.searchParams.set('offer_request_id', offerRequestId);
-          if (cursor) url.searchParams.set('cursor', cursor);
-          const offersRes = await fetch(url.toString(), { signal: controller.signal });
-          if (!offersRes.ok) throw new Error('List offers failed');
-          const offersData = await offersRes.json();
-          const pageOffers: any[] = offersData.data?.offers ?? offersData.data ?? offersData.offers ?? [];
-          allOffers = allOffers.concat(pageOffers);
-          hasMore = offersData.meta?.hasMore ?? false;
-          cursor = offersData.meta?.nextCursor ?? null;
-          page++;
-        }
-
-        return transformDuffelOffers(allOffers, cabinClass, offerRequestId);
       })();
 
-      // ── 2. Show Wakanow results as soon as they're ready ──────────────────
+      // ── 3. Show Wakanow results as soon as they're ready ──────────────────
       let wakanowResults: SearchResult[] = [];
       let duffelResults: SearchResult[] = [];
 
       wakanowFetchPromise
         .then(results => {
           wakanowResults = results;
-          console.log(`✅ Wakanow: ${results.length} flights ready – rendering immediately`);
-          // Show right away; Duffel will merge in below
-          setSearchResults(deduplicateAndSort([...wakanowResults, ...duffelResults]));
-        })
-        .catch(err => console.error('❌ Wakanow international search failed:', err));
+          if (results.length > 0) {
+            console.log(`✅ Wakanow: ${results.length} flights ready – rendering immediately`);
+            setSearchResults(deduplicateAndSort([...wakanowResults, ...duffelResults]));
+          }
+        });
 
-      // ── 3. When Duffel finishes, merge and update ──────────────────────────
+      // ── 4. When Duffel finishes, merge and update ──────────────────────────
       duffelFetchPromise
         .then(results => {
           duffelResults = results;
-          console.log(`✅ Duffel: ${results.length} flights ready – merging`);
-          setSearchResults(deduplicateAndSort([...wakanowResults, ...duffelResults]));
-        })
-        .catch(err => console.error('❌ Duffel search failed:', err));
+          if (results.length > 0) {
+            console.log(`✅ Duffel: ${results.length} flights ready – merging`);
+            setSearchResults(deduplicateAndSort([...wakanowResults, ...duffelResults]));
+          }
+        });
 
-      // ── 4. Await both so finally/error handling still runs ─────────────────
+      // ── 5. Await both so finally/error handling still runs ─────────────────
       const [wakanowSettled, duffelSettled] = await Promise.allSettled([
         wakanowFetchPromise, duffelFetchPromise,
       ]);
+
+      clearTimeout(timeoutId);
+
+      if (wakanowResults.length === 0 && duffelResults.length === 0) {
+        setSearchError('No flights found for your criteria. Please try different dates or airports.');
+        setSearchResults([]);
+      }
+
+    } catch (error: any) {
 
       clearTimeout(timeoutId);
 

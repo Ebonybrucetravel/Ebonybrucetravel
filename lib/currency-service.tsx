@@ -82,7 +82,8 @@ export async function fetchExchangeRates(baseCurrency: string = 'GBP'): Promise<
         // 5. Accuracy Check (No false data fallbacks)
         // If NGN rate is suspiciously low (garbage), we don't fix it with false data.
         // We log it and let the caller handle the failure.
-        if (rates.rates.NGN && rates.rates.NGN < 100) {
+        // NOTE: We only check this if the base is NOT NGN, because 1 NGN = 1 NGN is correct.
+        if (baseCurrency !== 'NGN' && rates.rates.NGN && rates.rates.NGN < 100) {
           console.error(`❌ GARBAGE DATA DETECTED: NGN rate (${rates.rates.NGN}) for base ${baseCurrency} is unrealistic.`);
           throw new Error(`Currency conversion service returned invalid rates for NGN.`);
         }
@@ -140,17 +141,17 @@ export async function convertCurrencyLive(
   }
 }
 
+export const CURRENCY_SYMBOLS: Record<string, string> = {
+  'GBP': '£', 'NGN': '₦', 'USD': '$', 'EUR': '€', 
+  'CAD': 'C$', 'AUD': 'A$', 'JPY': '¥', 'CNY': '¥', 
+  'ZAR': 'R', 'KES': 'KSh'
+};
+
 /**
  * Format price with currency symbol
  */
 export function formatPriceWithCurrency(amount: number, currencyCode: string): string {
-  const symbols: Record<string, string> = {
-    'GBP': '£', 'NGN': '₦', 'USD': '$', 'EUR': '€', 
-    'CAD': 'C$', 'AUD': 'A$', 'JPY': '¥', 'CNY': '¥', 
-    'ZAR': 'R', 'KES': 'KSh'
-  };
-  
-  const symbol = symbols[currencyCode] || currencyCode;
+  const symbol = CURRENCY_SYMBOLS[currencyCode] || currencyCode;
   
   if (currencyCode === 'NGN' || currencyCode === 'JPY') {
     return `${symbol}${Math.round(amount).toLocaleString()}`;

@@ -342,7 +342,7 @@ export default function MarkupsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-2">Service Fee (£)</label>
+                    <label className="block text-xs text-gray-500 mb-2">Service Fee ({formData.currency})</label>
                     <input
                       type="number"
                       step="0.01"
