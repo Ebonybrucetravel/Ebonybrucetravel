@@ -206,18 +206,20 @@ export class SearchFlightsUseCase {
           );
 
           let markupPercentage = 0;
+          let serviceFeeAmount = 0;
           try {
             const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
               ProductType.FLIGHT_INTERNATIONAL,
               targetCurrency,
             );
             markupPercentage = markupConfig?.markupPercentage || 0;
+            serviceFeeAmount = markupConfig?.serviceFeeAmount || 0;
           } catch (error) {
             console.warn(`Could not fetch markup config for ${targetCurrency}, using 0%:`, error);
           }
 
           const markupAmount = (conversionDetails.totalWithFee * markupPercentage) / 100;
-          const finalPrice = conversionDetails.totalWithFee + markupAmount;
+          const finalPrice = conversionDetails.totalWithFee + markupAmount + serviceFeeAmount;
 
           return {
             ...offer,
@@ -246,6 +248,7 @@ export class SearchFlightsUseCase {
             total_currency: targetCurrency,
             markup_percentage: markupPercentage,
             markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
+            service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
             final_amount: this.currencyService.formatAmount(finalPrice, targetCurrency),
             currency: targetCurrency,
           };

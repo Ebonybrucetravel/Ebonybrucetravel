@@ -97,36 +97,16 @@ export class BookWakanowFlightUseCase {
       paymentStatus: PaymentStatus.PENDING,
     });
     this.logger.log(`Wakanow flight booked. Local booking: ${booking.id}, PNR: ${pnr}`);
+    
+    // Return the standard booking object but enriched with Wakanow-specific details
+    // to maintain consistency with other booking endpoints
     return {
-      provider: 'WAKANOW',
-      booking_id: booking.id,
-      booking_reference: reference,
+      ...booking,
       wakanow_booking_id: bookResponse.BookingId,
       pnr_reference: pnr,
-      pnr_date: bookResponse.FlightBookingResult.FlightBookingSummaryModel.PnrDate,
-      price: {
-        base_price: price.Amount,
-        markup_percentage: markupPercentage,
-        markup_amount: markupAmount,
-        service_fee: serviceFee,
-        total_amount: totalAmount,
-        currency: price.CurrencyCode,
-      },
-      flight_summary: {
-        slices: combo.FlightModels.map((fm) => ({
-          airline: fm.AirlineName,
-          departure_code: fm.DepartureCode,
-          arrival_code: fm.ArrivalCode,
-          departure_time: fm.DepartureTime,
-          arrival_time: fm.ArrivalTime,
-          stops: fm.Stops,
-          trip_duration: fm.TripDuration,
-        })),
-      },
-      passengers: bookResponse.FlightBookingResult.FlightBookingSummaryModel.TravellerDetails,
-      is_fare_low: bookResponse.FlightBookingResult.IsFareLow,
-      is_fare_high: bookResponse.FlightBookingResult.IsFareHigh,
-      terms_and_conditions: bookResponse.ProductTermsAndConditions,
+      pnr_date: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.PnrDate,
+      flight_summary: combo,
+      passengers: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.TravellerDetails,
       message: 'Flight booked successfully. Please proceed to payment.',
     };
   }

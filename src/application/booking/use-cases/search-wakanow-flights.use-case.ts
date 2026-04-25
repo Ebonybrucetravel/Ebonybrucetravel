@@ -88,15 +88,17 @@ export class SearchWakanowFlightsUseCase {
       displayCurrency,
     );
     let markupPercentage = 0;
+    let serviceFeeAmount = 0;
     try {
       const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
       const markupConfig = await this.markupRepository.findActiveMarkupByProductType(productType, displayCurrency);
       markupPercentage = markupConfig?.markupPercentage || 0;
+      serviceFeeAmount = markupConfig?.serviceFeeAmount || 0;
     } catch (error) {
       this.logger.warn(`Could not fetch markup config for ${displayCurrency}, using 0%`);
     }
     const markupAmount = (conversionDetails.totalWithFee * markupPercentage) / 100;
-    const finalPrice = conversionDetails.totalWithFee + markupAmount;
+    const finalPrice = conversionDetails.totalWithFee + markupAmount + serviceFeeAmount;
     let totalBaseFare = 0;
     let totalTax = 0;
     for (const pd of combo.PriceDetails) {
@@ -165,6 +167,7 @@ export class SearchWakanowFlightsUseCase {
       conversion_fee_percentage: priceCurrency !== displayCurrency ? this.currencyService.getConversionBuffer() : 0,
       markup_percentage: markupPercentage,
       markup_amount: this.currencyService.formatAmount(markupAmount, displayCurrency),
+      service_fee: this.currencyService.formatAmount(serviceFeeAmount, displayCurrency),
       total_amount: this.currencyService.formatAmount(conversionDetails.totalWithFee, displayCurrency),
       final_amount: this.currencyService.formatAmount(finalPrice, displayCurrency),
       total_currency: displayCurrency,
