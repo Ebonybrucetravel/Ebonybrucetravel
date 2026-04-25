@@ -241,16 +241,19 @@ export class HandleStripeWebhookUseCase {
         try {
           this.logger.log(`Automatically ticketing Wakanow flight for booking ${bookingId}...`);
           
-          const pnrNumber = typeof booking.providerData === 'object' && booking.providerData !== null 
-            ? (booking.providerData as any).pnr 
-            : null;
+          // Extract PNR and BookingId from providerData or bookingData
+          const bookingData = booking.bookingData as any;
+          const providerData = booking.providerData as any;
+          
+          const pnrNumber = bookingData?.pnrReferenceNumber || 
+                            providerData?.FlightBookingResult?.FlightBookingSummaryModel?.PnrReferenceNumber;
             
-          const wakanowBookingId = typeof booking.providerData === 'object' && booking.providerData !== null 
-            ? (booking.providerData as any).bookingId 
-            : null;
+          const wakanowBookingId = bookingData?.wakanowBookingId || 
+                                   providerData?.BookingId;
             
-          if (!pnrNumber || !wakanowBookingId) {
-            throw new Error('PNR or Wakanow BookingId missing in booking providerData. Cannot issue ticket.');
+          if (!pnrNumber || !wakanowBookingId || pnrNumber === 'PENDING_ISSUE') {
+            this.logger.error(`Ticketing data missing for booking ${bookingId}. PNR: ${pnrNumber}, WakanowId: ${wakanowBookingId}`);
+            throw new Error(`Cannot issue ticket: ${!pnrNumber || pnrNumber === 'PENDING_ISSUE' ? 'PNR is missing or pending' : 'Wakanow BookingId is missing'}.`);
           }
 
           await this.ticketWakanowFlightUseCase.execute({ bookingId: wakanowBookingId, pnrNumber }, bookingId);
