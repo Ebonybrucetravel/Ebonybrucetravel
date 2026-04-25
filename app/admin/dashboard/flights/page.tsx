@@ -110,7 +110,7 @@ export default function FlightsPage() {
           change: '+0%', 
           color: 'text-purple-600', 
           bgColor: 'bg-purple-50',
-          icon: '✈️' 
+          icon: <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
         },
         { 
           label: 'Avg Booking Value', 
@@ -132,7 +132,7 @@ export default function FlightsPage() {
           percentage: flightPercentage, 
           color: '#33a8da', 
           value: flightBookings, 
-          icon: '✈️' 
+          icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
         },
       ],
       topLocations: extractTopFlightRoutes(apiData.recentBookings || [], flightData),
@@ -198,7 +198,7 @@ export default function FlightsPage() {
       title="Flight Analytics"
       dateRange={dateRange}
       onDateRangeChange={setDateRange}
-      serviceIcon="✈️"
+      serviceIcon={<svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>}
       serviceColor="from-blue-500 to-cyan-500"
     />
   );

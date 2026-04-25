@@ -101,7 +101,7 @@ export default function HotelsPage() {
           change: '+0%', // API doesn't provide this yet
           color: 'text-blue-600', 
           bgColor: 'bg-blue-50',
-          icon: '🏨' 
+          icon: <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" /></svg>
         },
         { 
           label: 'Share of Bookings', 
@@ -126,7 +126,7 @@ export default function HotelsPage() {
           percentage: hotelPercentage, 
           color: '#f59e0b', 
           value: hotelBookings, 
-          icon: '🏨' 
+          icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" /></svg>
         },
       ],
       topLocations: extractTopHotelLocations(apiData.recentBookings || [], hotelData),
@@ -192,7 +192,7 @@ export default function HotelsPage() {
       title="Hotel Analytics"
       dateRange={dateRange}
       onDateRangeChange={setDateRange}
-      serviceIcon="🏨"
+      serviceIcon={<svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" /></svg>}
       serviceColor="from-amber-500 to-orange-500"
     />
   );

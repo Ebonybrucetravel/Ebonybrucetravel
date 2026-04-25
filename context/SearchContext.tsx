@@ -7,6 +7,7 @@ import type { SearchParams, SearchResult } from '@/lib/types';
 import type { Airline } from '@/lib/duffel-airlines';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
+import { CURRENCY_SYMBOLS } from '@/lib/currency-service';
 
 // ─── Mock fallback data (only used when API fails) ─────────────────────────────
 const MOCK: Record<string, SearchResult[]> = {
@@ -689,6 +690,8 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       
       // Final total in NGN
       const finalAmountNGN = finalPriceNGN;
+      const totalServiceFeeNGN = markupAmountNGN + conversionFeeNGN + taxesNGN;
+      const serviceFeePercentage = finalPriceNGN > 0 ? (totalServiceFeeNGN / finalPriceNGN) * 100 : 0;
       
       // Get display price in user's currency (Synchronous using pre-fetched rates)
       const userCurrencyCode = currency.code;
@@ -1083,15 +1086,6 @@ export function SearchProvider({ children }: { children: ReactNode }) {
 
       if (wakanowResults.length === 0 && duffelResults.length === 0) {
         setSearchError('No flights found for your criteria. Please try different dates or airports.');
-        setSearchResults([]);
-      }
-
-    } catch (error: any) {
-
-      clearTimeout(timeoutId);
-
-      if (wakanowSettled.status === 'rejected' && duffelSettled.status === 'rejected') {
-        setSearchError('No flights found. Please try again.');
         setSearchResults([]);
       }
 

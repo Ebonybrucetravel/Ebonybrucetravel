@@ -14,8 +14,12 @@ const BookingsList: React.FC = () => {
         {bookings.map((booking) => (
           <div key={booking.id} className="flex items-center justify-between p-6 bg-gray-50 rounded-2xl border border-gray-100 hover:shadow-md transition">
             <div className="flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold ${booking.type === 'Flight' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
-                {booking.type === 'Flight' ? '✈️' : '🏨'}
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold ${booking.type === 'Flight' ? 'bg-blue-50' : 'bg-orange-50'}`}>
+                {booking.type === 'Flight' ? (
+                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                ) : (
+                  <svg className="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" /></svg>
+                )}
               </div>
               <div>
                 <h4 className="font-bold text-gray-900">{booking.title}</h4>

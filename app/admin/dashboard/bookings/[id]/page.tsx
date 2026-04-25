@@ -374,9 +374,14 @@ export default function BookingDetailsPage() {
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Trip Details</h2>
               <div className="space-y-4">
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
-                  <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-xl">
-                    {booking.type.includes('FLIGHT') ? '✈️' : 
-                     booking.type.includes('HOTEL') ? '🏨' : '🚗'}
+                  <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center">
+                    {booking.type.includes('FLIGHT') ? (
+                      <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                    ) : booking.type.includes('HOTEL') ? (
+                      <svg className="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" /></svg>
+                    ) : (
+                      <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" /></svg>
+                    )}
                   </div>
                   <div className="flex-1">
                     <p className="font-semibold text-gray-900">{booking.type}</p>
