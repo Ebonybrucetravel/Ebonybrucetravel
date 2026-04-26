@@ -564,40 +564,40 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     setIsBooking(true);
     try {
       // Validate additional passengers if any
-      for (let i = 0; i < additionalPassengers.length; i++) {
-        const p = additionalPassengers[i];
-        const label = `${p.type.toUpperCase()} #${i + 1}`;
-        
-        if (!p.firstName || !p.lastName) {
-          alert(`${label}: First and Last name are required.`);
-          setIsBooking(false);
-          return;
-        }
+for (let i = 0; i < additionalPassengers.length; i++) {
+  const p = additionalPassengers[i];
+  const passengerType = p.type || 'adult';  // ← Add this line
+  const label = `${passengerType.toUpperCase()} #${i + 1}`;  // ← Use passengerType here
+  
+  if (!p.firstName || !p.lastName) {
+    alert(`${label}: First and Last name are required.`);
+    setIsBooking(false);
+    return;
+  }
 
-        if (isFlight) {
-          if (!p.title || !p.gender || !p.dateOfBirth) {
-            alert(`${label}: Title, Gender, and Date of Birth are required.`);
-            setIsBooking(false);
-            return;
-          }
-          const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-          if (!dateRegex.test(p.dateOfBirth)) {
-            alert(`${label}: Date of birth must be in YYYY-MM-DD format.`);
-            setIsBooking(false);
-            return;
-          }
+  if (isFlight) {
+    if (!p.title || !p.gender || !p.dateOfBirth) {
+      alert(`${label}: Title, Gender, and Date of Birth are required.`);
+      setIsBooking(false);
+      return;
+    }
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(p.dateOfBirth)) {
+      alert(`${label}: Date of birth must be in YYYY-MM-DD format.`);
+      setIsBooking(false);
+      return;
+    }
 
-          // Mandatory passport validation for additional passengers
-          if (isPassportMandatory) {
-            if (!p.passportNumber || !p.passportExpiry || !p.passportIssuingAuthority) {
-              alert(`${label}: Passport details are mandatory for this destination.`);
-              setIsBooking(false);
-              return;
-            }
-          }
-        }
+    // Mandatory passport validation for additional passengers
+    if (isPassportMandatory) {
+      if (!p.passportNumber || !p.passportExpiry || !p.passportIssuingAuthority) {
+        alert(`${label}: Passport details are mandatory for this destination.`);
+        setIsBooking(false);
+        return;
       }
-
+    }
+  }
+}
       const passengerInfo: PassengerInfo = {
         firstName,
         lastName,
