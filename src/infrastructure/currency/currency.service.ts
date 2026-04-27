@@ -11,6 +11,7 @@ export class CurrencyService {
   private readonly cache: Map<string, { rate: number; timestamp: number }> = new Map();
   private readonly cacheTTL = 24 * 60 * 60 * 1000; // 24 hours
   private readonly cacheFilePath = path.join(process.cwd(), '.currency-cache.json');
+  private readonly inFlightRequests = new Map<string, Promise<number>>();
 
   private readonly supportedCurrencies = [
     'GBP',
@@ -153,6 +154,21 @@ export class CurrencyService {
       return cached.rate;
     }
 
+    if (this.inFlightRequests.has(cacheKey)) {
+      return this.inFlightRequests.get(cacheKey)!;
+    }
+
+    const fetchPromise = this.fetchAndCacheExchangeRate(fromCurrency, toCurrency, cacheKey);
+    this.inFlightRequests.set(cacheKey, fetchPromise);
+
+    try {
+      return await fetchPromise;
+    } finally {
+      this.inFlightRequests.delete(cacheKey);
+    }
+  }
+
+  private async fetchAndCacheExchangeRate(fromCurrency: string, toCurrency: string, cacheKey: string): Promise<number> {
     try {
       let rate: number;
 
