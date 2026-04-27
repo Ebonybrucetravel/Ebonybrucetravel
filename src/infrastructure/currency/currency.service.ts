@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class CurrencyService {
@@ -7,7 +9,8 @@ export class CurrencyService {
   private readonly apiKey: string | undefined;
   private readonly baseUrl: string;
   private readonly cache: Map<string, { rate: number; timestamp: number }> = new Map();
-  private readonly cacheTTL = 60 * 60 * 1000;
+  private readonly cacheTTL = 24 * 60 * 60 * 1000; // 24 hours
+  private readonly cacheFilePath = path.join(process.cwd(), '.currency-cache.json');
 
   private readonly supportedCurrencies = [
     'GBP',
@@ -49,6 +52,32 @@ export class CurrencyService {
     this.logger.log(
       `Currency conversion buffer set to ${this.conversionBuffer}% to protect against rate fluctuations`,
     );
+
+    this.loadCache();
+  }
+
+  private loadCache(): void {
+    try {
+      if (fs.existsSync(this.cacheFilePath)) {
+        const data = fs.readFileSync(this.cacheFilePath, 'utf8');
+        const parsed = JSON.parse(data);
+        for (const [key, value] of Object.entries(parsed)) {
+          this.cache.set(key, value as { rate: number; timestamp: number });
+        }
+        this.logger.log(`Loaded ${this.cache.size} exchange rates from persistent cache`);
+      }
+    } catch (error) {
+      this.logger.warn('Failed to load currency cache from file', error);
+    }
+  }
+
+  private saveCache(): void {
+    try {
+      const obj = Object.fromEntries(this.cache.entries());
+      fs.writeFileSync(this.cacheFilePath, JSON.stringify(obj, null, 2), 'utf8');
+    } catch (error) {
+      this.logger.warn('Failed to save currency cache to file', error);
+    }
   }
 
   async convert(
@@ -177,6 +206,7 @@ export class CurrencyService {
       }
 
       this.cache.set(cacheKey, { rate, timestamp: Date.now() });
+      this.saveCache(); // Persist to file
       this.logger.debug(`Exchange rate ${fromCurrency} to ${toCurrency}: ${rate}`);
 
       return rate;
