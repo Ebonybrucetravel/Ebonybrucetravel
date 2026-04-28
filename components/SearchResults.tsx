@@ -22,6 +22,11 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
     original_total?: string;
     original_currency?: string;
   };
+  bookingId?: string;
+  terms_and_conditions?: {
+    TermsAndConditions: string[];
+    TermsAndConditionImportantNotice: string;
+  } | null;
   final_price?: string;
   original_price?: string;
   car_original_currency?: string;
@@ -318,7 +323,7 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
   type?: "flights" | "hotels" | "car-rentals";
   provider: string;
   isWakanow?: boolean;
-  isWakanowDomestic?: boolean; 
+  isWakanowDomestic?: boolean;
   selectData?: string;
   legs?: Array<{
     number: string;
@@ -336,7 +341,6 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
   }>;
   fareRules?: string[];
   penaltyRules?: string[] | null;
-  // Store original price info for conversion
   originalPriceAmount?: number;
   originalPriceCurrency?: string;
 }
@@ -402,10 +406,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const router = useRouter();
   const { currency, formatPrice: formatPriceWithCurrency, isLoadingRates } = useLanguage();
   const searchType = (searchParams?.type || "flights").toLowerCase() as "flights" | "hotels" | "car-rentals";
-  
+
   const compactTab = searchType === 'car-rentals' ? 'cars' : searchType;
   const [isSearchBoxLoading, setIsSearchBoxLoading] = useState(false);
-  
+
   // Flight-specific states
   const [selectedStopFilter, setSelectedStopFilter] = useState<string>("all");
   const [selectedAirlineFilters, setSelectedAirlineFilters] = useState<Set<string>>(new Set());
@@ -414,7 +418,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const [selectedReturnDepartureTimeFilter, setSelectedReturnDepartureTimeFilter] = useState<string>("all");
   const [selectedReturnArrivalTimeFilter, setSelectedReturnArrivalTimeFilter] = useState<string>("all");
   const [sortOption, setSortOption] = useState<string>("recommended");
-  
+
   // Shared States for Hotels and Cars
   const [priceRange, setPriceRange] = useState<number>(2000000);
   const [sortBy, setSortBy] = useState<"match" | "price" | "rating">("match");
@@ -437,6 +441,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const [hotelCarPrices, setHotelCarPrices] = useState<Record<string, string>>({});
   const [processedFlights, setProcessedFlights] = useState<ExtendedSearchResult[]>([]);
 
+  // ==================== Track which flight is being booked ====================
+  const [bookingFlightId, setBookingFlightId] = useState<string | null>(null);
+  // ==================== END NEW ====================
+
   // Helper function to handle ad click navigation
   const handleAdClick = (ad: typeof advertisements[0]) => {
     if (ad.type === "hotels") {
@@ -449,7 +457,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       router.push(ad.link);
     }
   };
-  
+
   // Normalize results to an array for safe access (fixing TS errors)
   const resultsArray = useMemo(() => {
     if (Array.isArray(results)) return results;
@@ -489,7 +497,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
     if (resultsArray.length === 0) return false;
 
-    // If it's a Wakanow response (has FlightCombination), it's NOT processed yet
     if (resultsArray[0] && 'FlightCombination' in resultsArray[0]) {
       return false;
     }
@@ -501,12 +508,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   }, [results, searchType]);
 
   const flightOffers = useMemo(() => {
-    // Check for Wakanow response format (array with FlightCombination property)
     if (Array.isArray(results) && results.length > 0 && 'FlightCombination' in results[0]) {
       console.log('✅ Detected Wakanow response format with', results.length, 'combinations');
       return results;
     }
-    
+
     if (areResultsProcessed) {
       if (Array.isArray(results)) {
         return results;
@@ -619,44 +625,40 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   useEffect(() => {
     const processFlights = async () => {
       if (searchType !== 'flights') return;
-      
+
       const processed: ExtendedSearchResult[] = [];
-      
-      // Check if this is a Wakanow response
-      const isWakanowResponse = Array.isArray(flightOffers) && 
-        flightOffers.length > 0 && 
+
+      const isWakanowResponse = Array.isArray(flightOffers) &&
+        flightOffers.length > 0 &&
         'FlightCombination' in flightOffers[0];
 
       if (isWakanowResponse) {
         console.log('🛫 Processing Wakanow flights, count:', flightOffers.length);
-        
+
         for (const combination of flightOffers as any[]) {
           const flightCombination = combination.FlightCombination;
           const selectData = combination.SelectData;
           const flightModels = flightCombination?.FlightModels || [];
-          
+
           if (flightModels.length === 0) continue;
-          
+
           const outboundFlight = flightModels[0];
           const returnFlight = flightModels[1];
           const outboundLeg = outboundFlight.FlightLegs?.[0];
-          
-          // Extract price
+
           let priceAmount = 0;
           let priceCurrency = 'NGN';
-          
+
           if (flightCombination.Price) {
             priceAmount = parseFloat(flightCombination.Price.Amount || '0');
             priceCurrency = flightCombination.Price.CurrencyCode || 'NGN';
           }
-          
-          // Get airline logo
+
           let airlineLogo = outboundFlight.AirlineLogoUrl || '';
           if (!airlineLogo && outboundFlight.Airline) {
             airlineLogo = `https://images.wakanow.com/Images/flight-logos/${outboundFlight.Airline}.gif`;
           }
-          
-          // Format duration
+
           let durationDisplay = outboundFlight.TripDuration || '';
           if (durationDisplay) {
             const parts = durationDisplay.split(':');
@@ -668,8 +670,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               else if (minutes > 0) durationDisplay = `${minutes}m`;
             }
           }
-          
-          // Format return duration
+
           let returnDurationDisplay = '';
           if (returnFlight?.TripDuration) {
             const parts = returnFlight.TripDuration.split(':');
@@ -681,8 +682,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               else if (minutes > 0) returnDurationDisplay = `${minutes}m`;
             }
           }
-          
-          // Get baggage text
+
           let baggageText = '';
           if (outboundFlight.FreeBaggage) {
             if (outboundFlight.FreeBaggage.BagCount > 0) {
@@ -691,7 +691,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               baggageText = `${outboundFlight.FreeBaggage.Weight} ${outboundFlight.FreeBaggage.WeightUnit || 'kg'} baggage`;
             }
           }
-          
+
           const processedOffer: ExtendedSearchResult = {
             id: `${outboundFlight.Airline}-${outboundFlight.Name}-${Date.now()}-${Math.random()}`,
             type: 'flights',
@@ -699,29 +699,20 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             isWakanowDomestic: true,
             selectData: selectData,
             provider: 'wakanow',
-            
-            // Flight details
             airlineCode: outboundFlight.Airline || '',
             airlineName: outboundFlight.AirlineName || outboundFlight.Airline || 'Unknown Airline',
             airlineLogo: airlineLogo,
             flightNumber: outboundFlight.Name || '',
-            
-            // Airport codes
             departureAirport: outboundFlight.DepartureCode || '',
             departureCity: outboundFlight.DepartureName || '',
             departureTime: outboundFlight.DepartureTime || '',
-            
             arrivalAirport: outboundFlight.ArrivalCode || '',
             arrivalCity: outboundFlight.ArrivalName || '',
             arrivalTime: outboundFlight.ArrivalTime || '',
-            
-            // Flight metadata
             duration: durationDisplay,
             stopCount: outboundFlight.Stops || 0,
-            stopText: outboundFlight.Stops === 0 ? 'Non stop' : 
-                      outboundFlight.Stops === 1 ? '1 Stop' : `${outboundFlight.Stops} Stops`,
-            
-            // Store original price info for conversion
+            stopText: outboundFlight.Stops === 0 ? 'Non stop' :
+              outboundFlight.Stops === 1 ? '1 Stop' : `${outboundFlight.Stops} Stops`,
             originalPriceAmount: priceAmount,
             originalPriceCurrency: priceCurrency,
             displayPrice: '',
@@ -731,19 +722,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             original_currency: priceCurrency,
             final_amount: priceAmount.toString(),
             currency: priceCurrency,
-            
-            // Cabin class
             cabin: outboundLeg?.CabinClassName || 'Economy',
-            
-            // Baggage
             baggage: baggageText,
-            
-            // Title and subtitle
             title: `${outboundFlight.DepartureCode || ''} → ${outboundFlight.ArrivalCode || ''}`,
             subtitle: outboundFlight.AirlineName || 'Domestic Flight',
             image: airlineLogo,
-            
-            // Return flight info
             isRoundTrip: !!returnFlight,
             returnFlight: returnFlight ? {
               departureAirport: returnFlight.DepartureCode || '',
@@ -758,17 +741,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               timeOfDay: getTimeOfDay(returnFlight.DepartureTime),
               arrivalTimeOfDay: getArrivalTimeOfDay(returnFlight.ArrivalTime)
             } : undefined,
-            
-            // Time of day
             outboundTimeOfDay: getTimeOfDay(outboundFlight.DepartureTime),
             outboundArrivalTimeOfDay: getArrivalTimeOfDay(outboundFlight.ArrivalTime),
-            
-            // Fare rules
             fareRules: flightCombination.FareRules || [],
             penaltyRules: flightCombination.PenaltyRules || null,
             isRefundable: flightCombination.IsRefundable || false,
-            
-            // Legs data
             legs: outboundFlight.FlightLegs?.map((leg: any) => ({
               number: leg.FlightLegNumber || '',
               from: leg.DepartureCode || '',
@@ -784,15 +761,14 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               bookingClass: leg.BookingClass || '',
             })) || [],
           };
-          
+
           processed.push(processedOffer);
         }
       } else if (areResultsProcessed) {
-        // Already processed flights (Duffel)
         for (const offer of (flightOffers as ExtendedSearchResult[])) {
           let priceAmount = 0;
           let priceCurrency = 'GBP';
-          
+
           if (offer.original_amount) {
             priceAmount = parseFloat(offer.original_amount);
             priceCurrency = offer.original_currency || 'GBP';
@@ -803,7 +779,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             priceAmount = parseFloat(offer.final_amount);
             priceCurrency = offer.currency || 'GBP';
           }
-          
+
           processed.push({
             ...offer,
             originalPriceAmount: priceAmount,
@@ -812,7 +788,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           });
         }
       } else {
-        // Process Duffel/International flights
         for (const offer of (flightOffers as ExtendedSearchResult[])) {
           let segments: any[] = [];
           let firstSlice: any = null;
@@ -995,10 +970,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           });
         }
       }
-      
+
       setProcessedFlights(processed);
     };
-    
+
     processFlights();
   }, [searchType, flightOffers, areResultsProcessed, airlinesMap]);
 
@@ -1006,14 +981,14 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   useEffect(() => {
     const convertFlightPrices = async () => {
       if (!formatPriceWithCurrency || processedFlights.length === 0) return;
-      
+
       const newPrices: Record<string, string> = {};
-      
+
       for (const flight of processedFlights) {
         if (flight.originalPriceAmount && flight.originalPriceCurrency) {
           try {
             const converted = await formatPriceWithCurrency(
-              flight.originalPriceAmount, 
+              flight.originalPriceAmount,
               flight.originalPriceCurrency
             );
             newPrices[flight.id] = converted;
@@ -1030,10 +1005,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           }
         }
       }
-      
+
       setFlightPrices(newPrices);
     };
-    
+
     convertFlightPrices();
   }, [processedFlights, currency.code, formatPriceWithCurrency]);
 
@@ -1044,23 +1019,23 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       '1 Stop': { count: 0, cheapestPrice: Infinity, cheapestFlight: null as ExtendedSearchResult | null },
       '1+ Stops': { count: 0, cheapestPrice: Infinity, cheapestFlight: null as ExtendedSearchResult | null },
     };
-    
+
     processedFlights.forEach(flight => {
       const stopCount = flight.stopCount || 0;
       let category = '';
       if (stopCount === 0) category = 'Non stop';
       else if (stopCount === 1) category = '1 Stop';
       else category = '1+ Stops';
-      
+
       stops[category as keyof typeof stops].count++;
-      
+
       const price = flight.originalPriceAmount || flight.rawPrice || Infinity;
       if (price < stops[category as keyof typeof stops].cheapestPrice) {
         stops[category as keyof typeof stops].cheapestPrice = price;
         stops[category as keyof typeof stops].cheapestFlight = flight;
       }
     });
-    
+
     return stops;
   }, [processedFlights]);
 
@@ -1071,7 +1046,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       '1 Stop': { count: 0, cheapestPrice: Infinity, cheapestFlight: null as ExtendedSearchResult | null },
       '1+ Stops': { count: 0, cheapestPrice: Infinity, cheapestFlight: null as ExtendedSearchResult | null },
     };
-    
+
     processedFlights.forEach(flight => {
       if (flight.returnFlight) {
         const stopCount = flight.returnFlight.stopCount || 0;
@@ -1079,9 +1054,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         if (stopCount === 0) category = 'Non stop';
         else if (stopCount === 1) category = '1 Stop';
         else category = '1+ Stops';
-        
+
         stops[category as keyof typeof stops].count++;
-        
+
         const price = flight.originalPriceAmount || flight.rawPrice || Infinity;
         if (price < stops[category as keyof typeof stops].cheapestPrice) {
           stops[category as keyof typeof stops].cheapestPrice = price;
@@ -1089,7 +1064,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         }
       }
     });
-    
+
     return stops;
   }, [processedFlights]);
 
@@ -1157,7 +1132,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     let filtered = processedFlights;
 
     if (selectedAirlineFilters.size > 0) {
-      filtered = filtered.filter(flight => 
+      filtered = filtered.filter(flight =>
         selectedAirlineFilters.has(flight.airlineName || 'Unknown')
       );
     }
@@ -1220,7 +1195,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   // Get cheapest and fastest flights
   const cheapestFlight = useMemo(() => {
     if (filteredAndSortedFlights.length === 0) return null;
-    return filteredAndSortedFlights.reduce((min, flight) => 
+    return filteredAndSortedFlights.reduce((min, flight) =>
       (flight.originalPriceAmount || flight.rawPrice || Infinity) < (min.originalPriceAmount || min.rawPrice || Infinity) ? flight : min
     );
   }, [filteredAndSortedFlights]);
@@ -1266,37 +1241,37 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     const origin = searchParams?.origin || '';
     const destination = searchParams?.destination || '';
     const tripType = searchParams?.tripType || 'Round Trip';
-    
+
     if (origin && destination) {
       if (tripType === 'Round Trip') {
         return `From ${origin} to ${destination} and back`;
       }
       return `${origin} to ${destination}`;
     }
-    
+
     if (processedFlights.length > 0) {
       const firstFlight = processedFlights[0];
       if (firstFlight.departureCity && firstFlight.arrivalCity) {
         const originCity = firstFlight.departureCity;
         const destinationCity = firstFlight.arrivalCity;
-        
+
         if (firstFlight.isRoundTrip || (firstFlight.slices?.length || 0) > 1) {
           return `From ${originCity} to ${destinationCity} and back`;
         }
         return `${originCity} to ${destinationCity}`;
       }
-      
+
       if (firstFlight.departureAirport && firstFlight.arrivalAirport) {
         const originCode = firstFlight.departureAirport;
         const destinationCode = firstFlight.arrivalAirport;
-        
+
         if (firstFlight.isRoundTrip || (firstFlight.slices?.length || 0) > 1) {
           return `From ${originCode} to ${destinationCode} and back`;
         }
         return `${originCode} to ${destinationCode}`;
       }
     }
-    
+
     return 'Flights';
   }, [searchParams, processedFlights]);
 
@@ -1312,7 +1287,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   // Extract hotel and car results with price conversion
   const hotelAndCarResults = useMemo(() => {
     if (searchType === 'flights') return [];
-    
+
     let items: ExtendedSearchResult[] = [];
     if (Array.isArray(results)) {
       items = results.map(r => ({
@@ -1326,12 +1301,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         type: r.type || searchType
       }));
     }
-    
-    // Store original price info for each item
+
     return items.map(item => {
       let originalPrice = 0;
       let originalCurrency = 'GBP';
-      
+
       if (item.original_amount) {
         originalPrice = parseFloat(item.original_amount);
         originalCurrency = item.original_currency || 'GBP';
@@ -1348,7 +1322,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           originalCurrency = item.price.currency || 'GBP';
         }
       }
-      
+
       return {
         ...item,
         originalPriceAmount: originalPrice,
@@ -1361,9 +1335,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   useEffect(() => {
     const convertHotelCarPrices = async () => {
       if (!formatPriceWithCurrency || hotelAndCarResults.length === 0) return;
-      
+
       const newPrices: Record<string, string> = {};
-      
+
       for (const item of hotelAndCarResults) {
         if (item.originalPriceAmount && item.originalPriceAmount > 0) {
           try {
@@ -1380,10 +1354,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           newPrices[item.id] = 'Price on request';
         }
       }
-      
+
       setHotelCarPrices(newPrices);
     };
-    
+
     convertHotelCarPrices();
   }, [hotelAndCarResults, currency.code, formatPriceWithCurrency]);
 
@@ -1720,21 +1694,59 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
 
-  // Flight Card Component - supports both Duffel and Wakanow
+  // ==================== UPDATED: Flight Card Component with component-level state ====================
   const renderFlightCard = (flight: ExtendedSearchResult) => {
     const isRefundable = flight.conditions?.refund_before_departure?.allowed;
     const baggageText = getBaggageText(flight);
     const hasReturn = flight.isRoundTrip && flight.returnFlight?.departureTime;
     const displayPrice = flightPrices[flight.id] || 'Loading...';
+    const isBookingThisFlight = bookingFlightId === flight.id;
 
     // Determine flight type for badge
     const isWakanowDomestic = flight.isWakanow && (flight as any).isWakanowDomestic === true;
     const isWakanowInternational = flight.isWakanow && (flight as any).isWakanowDomestic === false;
     const isDuffelFlight = !flight.isWakanow;
 
+    const handleBookClick = async (e: React.MouseEvent) => {
+      e.stopPropagation();
+
+      if (isBookingThisFlight) return;
+      setBookingFlightId(flight.id);
+
+      let finalFlight = flight;
+
+      // For Wakanow flights, fetch terms before proceeding
+      if (flight.isWakanow && flight.selectData) {
+        try {
+          console.log('🔄 Fetching terms for Wakanow flight from search results...');
+          const { wakanowService } = await import('@/lib/wakanow.service');
+          const flightDetails = await wakanowService.getFlightDetails(
+            flight.selectData,
+            'NGN'
+          );
+
+          finalFlight = {
+            ...flight,
+            terms_and_conditions: flightDetails.termsAndConditions ? {
+              TermsAndConditions: flightDetails.termsAndConditions,
+              TermsAndConditionImportantNotice: ''
+            } : null,
+            bookingId: flightDetails.bookingId,
+          };
+
+          console.log('✅ Terms loaded:', flightDetails.termsAndConditions?.length);
+        } catch (error) {
+          console.error('Failed to get flight terms:', error);
+        }
+      }
+
+      onSelect?.(finalFlight);
+      setBookingFlightId(null);
+    };
+
     return (
-      <div 
-        key={flight.id} 
+      <div
+        key={flight.id}
         className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 mb-6 overflow-hidden border border-gray-200 cursor-pointer"
         onClick={() => onSelect?.(flight)}
       >
@@ -1775,14 +1787,12 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               {isLoadingRates && (
                 <p className="text-[9px] text-gray-400 mt-1">Converting...</p>
               )}
-              <button 
-                className="mt-2 bg-[#33a8da] text-white font-semibold px-5 py-1.5 rounded-lg text-sm hover:bg-[#2c98c7] transition"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelect?.(flight);
-                }}
+              <button
+                className="mt-2 bg-[#33a8da] text-white font-semibold px-5 py-1.5 rounded-lg text-sm hover:bg-[#2c98c7] transition disabled:opacity-50"
+                onClick={handleBookClick}
+                disabled={isBookingThisFlight}
               >
-                Book Now
+                {isBookingThisFlight ? 'Loading...' : 'Book Now'}
               </button>
             </div>
           </div>
@@ -1798,7 +1808,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   <p className="text-sm font-medium text-gray-700 mt-2">{flight.departureAirport}</p>
                   <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.departureTime)}</p>
                 </div>
-                
+
                 <div className="flex-1 mx-6">
                   <div className="relative">
                     <div className="w-full h-[1px] bg-gray-300"></div>
@@ -1813,7 +1823,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                     <p className="text-xs text-gray-400 mt-1">{flight.stopText}</p>
                   </div>
                 </div>
-                
+
                 <div className="text-right">
                   <p className="text-2xl font-bold text-gray-900">{formatTime(flight.arrivalTime)}</p>
                   <p className="text-sm font-medium text-gray-700 mt-2">{flight.arrivalAirport}</p>
@@ -1833,7 +1843,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                     <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.departureAirport}</p>
                     <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.returnFlight.departureTime)}</p>
                   </div>
-                  
+
                   <div className="flex-1 mx-6">
                     <div className="relative">
                       <div className="w-full h-[1px] bg-gray-300"></div>
@@ -1846,12 +1856,12 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                     <div className="text-center mt-3">
                       <p className="text-sm font-medium text-gray-600">{flight.returnFlight.duration}</p>
                       <p className="text-xs text-gray-400 mt-1">
-                        {flight.returnFlight.stopCount === 0 ? 'Non stop' : 
-                         flight.returnFlight.stopCount === 1 ? '1 Stop' : `${flight.returnFlight.stopCount} Stops`}
+                        {flight.returnFlight.stopCount === 0 ? 'Non stop' :
+                          flight.returnFlight.stopCount === 1 ? '1 Stop' : `${flight.returnFlight.stopCount} Stops`}
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="text-right">
                     <p className="text-2xl font-bold text-gray-900">{formatTime(flight.returnFlight.arrivalTime)}</p>
                     <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.arrivalAirport}</p>
@@ -1889,7 +1899,15 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 </div>
               )}
             </div>
-            <button className="text-[#33a8da] text-sm font-medium hover:underline">
+            <button
+              onClick={() => {
+                // Navigate to flight details page
+                const searchParams = new URLSearchParams();
+                searchParams.set('id', flight.id);
+                router.push(`/flights/details?${searchParams.toString()}`);
+              }}
+              className="text-[#33a8da] text-sm font-medium hover:underline"
+            >
               View Flight Details
             </button>
           </div>
@@ -1897,6 +1915,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       </div>
     );
   };
+  // ==================== END UPDATED ====================
 
   // Right Sidebar Ads Component - Only for flights
   const renderRightSidebarAds = () => (
@@ -1963,7 +1982,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           )}
         </div>
       ))}
-      
+
       <div className="bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-2xl p-4 text-white text-center shadow-md">
         <svg className="w-10 h-10 mx-auto mb-2 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -2020,8 +2039,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             {airlineList.map(airline => (
               <label key={airline.name} className="flex items-center justify-between cursor-pointer group">
                 <div className="flex items-center gap-3">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={selectedAirlineFilters.has(airline.name)}
                     onChange={() => toggleAirlineFilter(airline.name)}
                     className="rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
@@ -2037,14 +2056,14 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         {/* Onward Journey Section */}
         <div className="mb-8">
           <h3 className="font-bold text-gray-900 mb-4 text-base">Onward Journey</h3>
-          
+
           <div className="mb-6">
             <h4 className="font-medium text-gray-700 mb-3 text-sm">Stops from {origin}</h4>
             <div className="space-y-3">
               <label className="flex items-center justify-between cursor-pointer">
                 <div className="flex items-center gap-2">
-                  <input 
-                    type="radio" 
+                  <input
+                    type="radio"
                     name="stopFilter"
                     checked={selectedStopFilter === 'Non stop'}
                     onChange={() => setSelectedStopFilter('Non stop')}
@@ -2058,8 +2077,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               </label>
               <label className="flex items-center justify-between cursor-pointer">
                 <div className="flex items-center gap-2">
-                  <input 
-                    type="radio" 
+                  <input
+                    type="radio"
                     name="stopFilter"
                     checked={selectedStopFilter === '1 Stop'}
                     onChange={() => setSelectedStopFilter('1 Stop')}
@@ -2073,8 +2092,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               </label>
               <label className="flex items-center justify-between cursor-pointer">
                 <div className="flex items-center gap-2">
-                  <input 
-                    type="radio" 
+                  <input
+                    type="radio"
                     name="stopFilter"
                     checked={selectedStopFilter === '1+ Stops'}
                     onChange={() => setSelectedStopFilter('1+ Stops')}
@@ -2093,8 +2112,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Departure From {origin}</p>
             <div className="space-y-2">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
+                <input
+                  type="radio"
                   name="outboundDepartureTimeFilter"
                   checked={selectedOutboundDepartureTimeFilter === 'morning'}
                   onChange={() => setSelectedOutboundDepartureTimeFilter('morning')}
@@ -2103,8 +2122,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 <span className="text-sm text-gray-700">Morning (12:00AM - 11:59AM) ({outboundDepartureTimeCounts.morning})</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
+                <input
+                  type="radio"
                   name="outboundDepartureTimeFilter"
                   checked={selectedOutboundDepartureTimeFilter === 'afternoon'}
                   onChange={() => setSelectedOutboundDepartureTimeFilter('afternoon')}
@@ -2113,8 +2132,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 <span className="text-sm text-gray-700">Afternoon (12:00PM - 5:59PM) ({outboundDepartureTimeCounts.afternoon})</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
+                <input
+                  type="radio"
                   name="outboundDepartureTimeFilter"
                   checked={selectedOutboundDepartureTimeFilter === 'evening'}
                   onChange={() => setSelectedOutboundDepartureTimeFilter('evening')}
@@ -2129,8 +2148,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Arrival at {destination}</p>
             <div className="space-y-2">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
+                <input
+                  type="radio"
                   name="outboundArrivalTimeFilter"
                   checked={selectedOutboundArrivalTimeFilter === 'morning'}
                   onChange={() => setSelectedOutboundArrivalTimeFilter('morning')}
@@ -2139,8 +2158,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 <span className="text-sm text-gray-700">Morning (12:00AM - 11:59AM) ({outboundArrivalTimeCounts.morning})</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
+                <input
+                  type="radio"
                   name="outboundArrivalTimeFilter"
                   checked={selectedOutboundArrivalTimeFilter === 'afternoon'}
                   onChange={() => setSelectedOutboundArrivalTimeFilter('afternoon')}
@@ -2149,8 +2168,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 <span className="text-sm text-gray-700">Afternoon (12:00PM - 5:59PM) ({outboundArrivalTimeCounts.afternoon})</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
+                <input
+                  type="radio"
                   name="outboundArrivalTimeFilter"
                   checked={selectedOutboundArrivalTimeFilter === 'evening'}
                   onChange={() => setSelectedOutboundArrivalTimeFilter('evening')}
@@ -2166,7 +2185,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         {processedFlights.some(flight => flight.isRoundTrip) && (
           <div className="pt-6 border-t border-gray-100">
             <h3 className="font-bold text-gray-900 mb-4 text-base">Return Journey</h3>
-            
+
             <div className="mb-6">
               <h4 className="font-medium text-gray-700 mb-3 text-sm">Stops from {destination}</h4>
               <div className="space-y-3">
@@ -2195,8 +2214,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Departure From {destination}</p>
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="radio" 
+                  <input
+                    type="radio"
                     name="returnDepartureTimeFilter"
                     checked={selectedReturnDepartureTimeFilter === 'morning'}
                     onChange={() => setSelectedReturnDepartureTimeFilter('morning')}
@@ -2205,8 +2224,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   <span className="text-sm text-gray-700">Morning (12:00AM - 11:59AM) ({returnDepartureTimeCounts.morning})</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="radio" 
+                  <input
+                    type="radio"
                     name="returnDepartureTimeFilter"
                     checked={selectedReturnDepartureTimeFilter === 'afternoon'}
                     onChange={() => setSelectedReturnDepartureTimeFilter('afternoon')}
@@ -2215,8 +2234,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   <span className="text-sm text-gray-700">Afternoon (12:00PM - 5:59PM) ({returnDepartureTimeCounts.afternoon})</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="radio" 
+                  <input
+                    type="radio"
                     name="returnDepartureTimeFilter"
                     checked={selectedReturnDepartureTimeFilter === 'evening'}
                     onChange={() => setSelectedReturnDepartureTimeFilter('evening')}
@@ -2231,8 +2250,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Arrival at {origin}</p>
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="radio" 
+                  <input
+                    type="radio"
                     name="returnArrivalTimeFilter"
                     checked={selectedReturnArrivalTimeFilter === 'morning'}
                     onChange={() => setSelectedReturnArrivalTimeFilter('morning')}
@@ -2241,8 +2260,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   <span className="text-sm text-gray-700">Morning (12:00AM - 11:59AM) ({returnArrivalTimeCounts.morning})</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="radio" 
+                  <input
+                    type="radio"
                     name="returnArrivalTimeFilter"
                     checked={selectedReturnArrivalTimeFilter === 'afternoon'}
                     onChange={() => setSelectedReturnArrivalTimeFilter('afternoon')}
@@ -2251,8 +2270,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   <span className="text-sm text-gray-700">Afternoon (12:00PM - 5:59PM) ({returnArrivalTimeCounts.afternoon})</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="radio" 
+                  <input
+                    type="radio"
                     name="returnArrivalTimeFilter"
                     checked={selectedReturnArrivalTimeFilter === 'evening'}
                     onChange={() => setSelectedReturnArrivalTimeFilter('evening')}
@@ -2266,7 +2285,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         )}
 
         {/* Clear Filters Button */}
-        {(selectedAirlineFilters.size > 0 || selectedStopFilter !== 'all' || 
+        {(selectedAirlineFilters.size > 0 || selectedStopFilter !== 'all' ||
           selectedOutboundDepartureTimeFilter !== 'all' || selectedOutboundArrivalTimeFilter !== 'all' ||
           selectedReturnDepartureTimeFilter !== 'all' || selectedReturnArrivalTimeFilter !== 'all') && (
           <button
@@ -2396,14 +2415,14 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#33a8da] mb-6"></div>
             <h3 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-2">
-              {searchType === 'flights' ? 'Searching for flights...' : 
-               searchType === 'hotels' ? 'Searching for hotels...' : 
-               'Searching for car rentals...'}
+              {searchType === 'flights' ? 'Searching for flights...' :
+                searchType === 'hotels' ? 'Searching for hotels...' :
+                  'Searching for car rentals...'}
             </h3>
             <p className="text-sm text-gray-500 font-medium">
-              {searchType === 'flights' ? 'Finding the best flight options for you' : 
-               searchType === 'hotels' ? 'Finding the best hotel options for you' : 
-               'Finding the best car rental options for you'}
+              {searchType === 'flights' ? 'Finding the best flight options for you' :
+                searchType === 'hotels' ? 'Finding the best hotel options for you' :
+                  'Finding the best car rental options for you'}
             </p>
           </div>
         </div>
@@ -2449,7 +2468,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                     <span className="text-xs text-blue-600 font-medium bg-blue-100 px-3 py-1 rounded-full shadow-sm">{resultsArray.length} flights found so far</span>
                   </div>
                 )}
-                
+
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-gray-600">
@@ -2474,7 +2493,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                       </>
                     )}
                   </div>
-                  <select 
+                  <select
                     value={sortOption}
                     onChange={(e) => setSortOption(e.target.value)}
                     className="text-sm border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#33a8da] focus:border-transparent"
@@ -2540,16 +2559,16 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   </div>
                 )}
 
-              {filteredAndSortedFlights.length > flightVisibleCount && (
-                <div className="pt-6 pb-6 flex justify-center">
-                  <button
-                    onClick={() => setFlightVisibleCount(p => p + 15)}
-                    className="px-16 py-4 bg-[#33a8da] text-white font-black rounded-2xl shadow-xl hover:bg-[#2c98c7] transition uppercase text-xs"
-                  >
-                    Load More Flights
-                  </button>
-                </div>
-              )}
+                {filteredAndSortedFlights.length > flightVisibleCount && (
+                  <div className="pt-6 pb-6 flex justify-center">
+                    <button
+                      onClick={() => setFlightVisibleCount(p => p + 15)}
+                      className="px-16 py-4 bg-[#33a8da] text-white font-black rounded-2xl shadow-xl hover:bg-[#2c98c7] transition uppercase text-xs"
+                    >
+                      Load More Flights
+                    </button>
+                  </div>
+                )}
               </div>
 
               {renderRightSidebarAds()}

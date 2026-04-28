@@ -43,6 +43,13 @@ interface ExtendedSearchResult extends SearchResult {
     [key: string]: any;
   };
   isDomestic?: boolean;
+  isWakanow?: boolean;
+  selectData?: string;
+  terms_and_conditions?: {
+    TermsAndConditions: string[];
+    TermsAndConditionImportantNotice: string;
+  } | null;
+  bookingId?: string;
   [key: string]: any;
 }
 
@@ -61,6 +68,44 @@ const isDomesticFlight = (origin: string, destination: string): boolean => {
   const nigerianAirports = ['LOS', 'ABV', 'PHC', 'KAN', 'ENU', 'QOW', 'BNI', 'JOS', 'KAD', 'YOL'];
   return nigerianAirports.includes(origin?.toUpperCase()) && nigerianAirports.includes(destination?.toUpperCase());
 };
+
+const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSearchResult> => {
+  // Safe check for existing terms
+  const termsExist = !!(item.terms_and_conditions && 
+                       item.terms_and_conditions.TermsAndConditions && 
+                       item.terms_and_conditions.TermsAndConditions.length > 0);
+  
+  if (termsExist) {
+    console.log('✅ Terms already present:', item.terms_and_conditions?.TermsAndConditions?.length);
+    return item;
+  }
+  
+  // Only fetch for Wakanow flights with selectData
+  if (item.isWakanow && item.selectData) {
+    console.log('🔄 Fetching terms for Wakanow flight...');
+    try {
+      const { wakanowService } = await import('@/lib/wakanow.service');
+      const flightDetails = await wakanowService.getFlightDetails(item.selectData, 'NGN');
+      
+      const hasFetchedTerms = flightDetails.termsAndConditions && flightDetails.termsAndConditions.length > 0;
+      
+      return {
+        ...item,
+        terms_and_conditions: hasFetchedTerms ? {
+          TermsAndConditions: flightDetails.termsAndConditions!,
+          TermsAndConditionImportantNotice: ''
+        } : null,
+        bookingId: flightDetails.bookingId,
+      };
+    } catch (error) {
+      console.error('Failed to fetch terms:', error);
+      return item;
+    }
+  }
+  
+  return item;
+};
+// ==================== END NEW ====================
 
 export default function BookingReviewPage() {
   const router = useRouter();
@@ -277,17 +322,28 @@ export default function BookingReviewPage() {
     }
 
     try {
+      // ==================== NEW: Ensure terms exist for Wakanow flights ====================
+      let bookingItem = extendedItem;
+      if (isFlight && extendedItem.isWakanow) {
+        bookingItem = await ensureTermsExist(extendedItem);
+        if (bookingItem !== extendedItem) {
+          // Update the enhanced item state with terms
+          setEnhancedItem(bookingItem);
+        }
+      }
+      // ==================== END NEW ====================
+
       // ✅ FIX: Detect domestic flights and override provider
-      const origin = extendedItem.origin || extendedItem.departureAirport || extendedItem.bookingData?.origin;
-      const destination = extendedItem.destination || extendedItem.arrivalAirport || extendedItem.bookingData?.destination;
+      const origin = bookingItem.origin || bookingItem.departureAirport || bookingItem.bookingData?.origin;
+      const destination = bookingItem.destination || bookingItem.arrivalAirport || bookingItem.bookingData?.destination;
       
       // Check if this is a domestic Nigerian flight
       const isDomestic = origin && destination && isDomesticFlight(origin, destination);
       
       // Use the converted values
-      const basePrice = extendedItem.calculatedBasePrice || parseFloat(extendedItem.original_amount || "0");
-      const serviceFee = extendedItem.calculatedServiceFee || parseFloat(extendedItem.service_fee || "0");
-      const finalAmount = extendedItem.calculatedTotal || parseFloat(extendedItem.final_amount || "0");
+      const basePrice = bookingItem.calculatedBasePrice || parseFloat(bookingItem.original_amount || "0");
+      const serviceFee = bookingItem.calculatedServiceFee || parseFloat(bookingItem.service_fee || "0");
+      const finalAmount = bookingItem.calculatedTotal || parseFloat(bookingItem.final_amount || "0");
 
       console.log(`💰 ${productType} booking creation:`, { 
         basePrice, 
@@ -297,16 +353,17 @@ export default function BookingReviewPage() {
         origin,
         destination,
         isDomestic,
-        originalProvider: extendedItem.provider,
-        willUseProvider: isDomestic ? 'WAKANOW' : (extendedItem.provider || 'DUFFEL')
+        originalProvider: bookingItem.provider,
+        willUseProvider: isDomestic ? 'WAKANOW' : (bookingItem.provider || 'DUFFEL'),
+        hasTerms: !!bookingItem.terms_and_conditions?.TermsAndConditions?.length
       });
 
       // ✅ Create a modified item with corrected provider and product type
       const correctedItem = {
-        ...extendedItem,
-        provider: isDomestic ? 'WAKANOW' : (extendedItem.provider || 'DUFFEL'),
+        ...bookingItem,
+        provider: isDomestic ? 'WAKANOW' : (bookingItem.provider || 'DUFFEL'),
         isDomestic: isDomestic,
-        originalProvider: extendedItem.provider,
+        originalProvider: bookingItem.provider,
         // ✅ Add product type override
         productTypeOverride: isDomestic ? 'FLIGHT_DOMESTIC' : 'FLIGHT_INTERNATIONAL',
       };

@@ -388,12 +388,79 @@ export default function BookingSuccessPage() {
     doc.save(`wakanow-booking-${booking.reference}.pdf`);
   };
 
+
   const renderWakanowDetails = () => {
     const bookingData = booking?.bookingData || {};
+    const providerData = booking?.providerData as any;
     const isWakanow = booking?.provider === 'WAKANOW' || bookingData?.provider === 'WAKANOW';
-    const hasTicket = !!(booking?.pnrNumber || bookingData?.pnrNumber);
+    const hasTicket = !!(booking?.pnrNumber || providerData?.FlightBookingSummary?.PnrReferenceNumber);
     
     if (!isWakanow) return null;
+    
+    // ✅ Extract flight details from the nested providerData structure
+    const flightSummaryModel = providerData?.FlightBookingSummary?.FlightSummaryModel;
+    const flightCombination = flightSummaryModel?.FlightCombination;
+    const flightModels = flightCombination?.FlightModels || [];
+    const outboundFlight = flightModels[0] || {};
+    const returnFlight = flightModels[1] || null;
+    const flightLegs = outboundFlight?.FlightLegs || [];
+    const firstLeg = flightLegs[0] || {};
+    const lastLeg = flightLegs[flightLegs.length - 1] || firstLeg;
+    
+    // ✅ CORRECT: Flight number from FlightLegs
+    const flightNumber = firstLeg?.FlightNumber || 'N/A';
+    
+    // ✅ Airline from FlightModel
+    const airline = outboundFlight?.AirlineName || outboundFlight?.Airline || 'ValueJet';
+    const airlineCode = outboundFlight?.Airline || '';
+    
+    // ✅ Departure from FlightLeg
+    const departureCode = firstLeg?.DepartureCode || 'N/A';
+    const departureName = firstLeg?.DepartureName || '';
+    const departureTime = firstLeg?.StartTime || '--:--';
+    const departureDate = outboundFlight?.DepartureTime?.split('T')[0] || '';
+    
+    // ✅ Arrival from FlightLeg
+    const arrivalCode = lastLeg?.DestinationCode || 'N/A';
+    const arrivalName = lastLeg?.DestinationName || '';
+    const arrivalTime = lastLeg?.EndTime || '--:--';
+    
+    // ✅ Stops
+    const stops = outboundFlight?.Stops || 0;
+    const stopText = stops === 0 ? 'Direct' : stops === 1 ? '1 stop' : `${stops} stops`;
+    
+    // ✅ Duration
+    const duration = outboundFlight?.TripDuration || '';
+    const formattedDuration = duration.includes(':') 
+      ? `${parseInt(duration.split(':')[0])}h ${parseInt(duration.split(':')[1])}m`
+      : duration;
+    
+    // ✅ Baggage
+    const freeBaggage = outboundFlight?.FreeBaggage || {};
+    const baggageCount = freeBaggage?.BagCount || 0;
+    const baggageText = baggageCount > 0 ? `${baggageCount} checked bag${baggageCount > 1 ? 's' : ''}` : 'Check with airline';
+    
+    // ✅ Cabin Class
+    const cabinClass = firstLeg?.CabinClassName || 'Economy';
+    
+    // ✅ PNR - from providerData
+    const pnrNumber = providerData?.FlightBookingSummary?.PnrReferenceNumber || booking?.pnrNumber || 'Not issued yet';
+    
+    // Format date
+    const formatDisplayDate = (dateStr: string) => {
+      if (!dateStr) return 'Date TBD';
+      try {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-GB', { 
+          weekday: 'short', 
+          day: 'numeric', 
+          month: 'short', 
+          year: 'numeric' 
+        });
+      } catch {
+        return dateStr;
+      }
+    };
     
     return (
       <div className="space-y-6">
@@ -407,29 +474,30 @@ export default function BookingSuccessPage() {
           </div>
         </div>
         
+        {/* Flight Summary Header */}
         <div className="flex items-center justify-between border-b border-gray-200 pb-4">
           <div>
             <p className="text-sm text-gray-500">Airline</p>
-            <p className="font-semibold text-lg">{bookingData.airline || 'Wakanow Partner'}</p>
+            <p className="font-semibold text-lg">{airline} {airlineCode && `(${airlineCode})`}</p>
           </div>
           <div className="text-right">
             <p className="text-sm text-gray-500">Flight Number</p>
-            <p className="font-semibold text-lg">{bookingData.flightNumber || bookingData.offerId || 'N/A'}</p>
+            <p className="font-semibold text-lg">{flightNumber}</p>
           </div>
         </div>
-
+  
+        {/* Journey Visualization */}
         <div className="flex items-center justify-between">
           <div className="text-center flex-1">
             <div className="bg-blue-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
-              <span className="text-2xl font-bold text-blue-600">{bookingData.origin || 'N/A'}</span>
+              <span className="text-2xl font-bold text-blue-600">{departureCode}</span>
             </div>
-            <p className="font-bold text-xl">{bookingData.origin || 'N/A'}</p>
-            <p className="text-sm text-gray-500">Departure</p>
-            <p className="font-medium mt-1">
-              {bookingData.departureDate ? formatDate(bookingData.departureDate) : 'Date TBD'}
-            </p>
+            <p className="font-bold text-lg">{departureCode}</p>
+            <p className="text-xs text-gray-500 truncate max-w-[100px] mx-auto">{departureName}</p>
+            <p className="text-sm font-medium mt-2">{formatDisplayDate(departureDate)}</p>
+            <p className="text-xl font-bold text-blue-600 mt-1">{departureTime}</p>
           </div>
-
+  
           <div className="flex-1 px-4">
             <div className="relative">
               <div className="border-t-2 border-gray-300 border-dashed absolute w-full top-1/2"></div>
@@ -439,42 +507,88 @@ export default function BookingSuccessPage() {
                 </svg>
               </div>
             </div>
-            <p className="text-center text-sm text-gray-500 mt-2">Wakanow Flight</p>
-          </div>
-
-          <div className="text-center flex-1">
-            <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
-              <span className="text-2xl font-bold text-green-600">{bookingData.destination || 'N/A'}</span>
-            </div>
-            <p className="font-bold text-xl">{bookingData.destination || 'N/A'}</p>
-            <p className="text-sm text-gray-500">Arrival</p>
-            <p className="font-medium mt-1">
-              {bookingData.departureDate ? formatDate(bookingData.departureDate) : 'Date TBD'}
+            <p className="text-center text-sm text-gray-500 mt-2">
+              {formattedDuration || '--:--'} • {stopText}
             </p>
           </div>
+  
+          <div className="text-center flex-1">
+            <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
+              <span className="text-2xl font-bold text-green-600">{arrivalCode}</span>
+            </div>
+            <p className="font-bold text-lg">{arrivalCode}</p>
+            <p className="text-xs text-gray-500 truncate max-w-[100px] mx-auto">{arrivalName}</p>
+            <p className="text-sm font-medium mt-2">{formatDisplayDate(departureDate)}</p>
+            <p className="text-xl font-bold text-green-600 mt-1">{arrivalTime}</p>
+          </div>
         </div>
-
+  
+        {/* Return flight if round trip */}
+        {returnFlight && (
+          <div className="mt-6 pt-4 border-t border-gray-200">
+            <p className="text-sm font-semibold text-gray-500 mb-3 text-center">Return Flight</p>
+            <div className="flex items-center justify-between">
+              <div className="text-center flex-1">
+                <div className="bg-purple-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-1">
+                  <span className="text-lg font-bold text-purple-600">{returnFlight?.DepartureCode || arrivalCode}</span>
+                </div>
+                <p className="font-bold text-sm">{returnFlight?.DepartureCode || arrivalCode}</p>
+                <p className="text-xs text-gray-500">{returnFlight?.DepartureTime?.split('T')[1]?.substring(0,5) || '--:--'}</p>
+              </div>
+              <div className="flex-1 px-4">
+                <div className="relative">
+                  <div className="border-t border-gray-300 absolute w-full top-1/2"></div>
+                  <div className="flex justify-center">
+                    <svg className="w-4 h-4 text-gray-400 bg-white rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+              <div className="text-center flex-1">
+                <div className="bg-purple-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-1">
+                  <span className="text-lg font-bold text-purple-600">{returnFlight?.ArrivalCode || departureCode}</span>
+                </div>
+                <p className="font-bold text-sm">{returnFlight?.ArrivalCode || departureCode}</p>
+                <p className="text-xs text-gray-500">{returnFlight?.ArrivalTime?.split('T')[1]?.substring(0,5) || '--:--'}</p>
+              </div>
+            </div>
+          </div>
+        )}
+  
+        {/* Flight Details Grid */}
         <div className="bg-gray-50 p-4 rounded-lg">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-gray-500">PNR Number</p>
-              <p className="font-mono font-bold text-lg">
-                {(booking?.pnrNumber || 
-                  bookingData?.pnrReferenceNumber ||
-                  bookingData?.pnrNumber || 
-                  bookingData?.PnReferenceNumber || 
-                  bookingData?.pnReferenceNumber || 
-                  bookingData?.FlightBookingResult?.PnReferenceNumber ||
-                  bookingData?.FlightBookingSummary?.PnReferenceNumber) || 'Not issued yet'}
-              </p>
+              <p className="font-mono font-bold text-lg">{pnrNumber}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Cabin Class</p>
-              <p className="font-medium capitalize">{bookingData.cabinClass || 'Economy'}</p>
+              <p className="font-medium capitalize">{cabinClass}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Baggage Allowance</p>
+              <p className="font-medium">{baggageText}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Flight Duration</p>
+              <p className="font-medium">{formattedDuration || '--:--'}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Stops</p>
+              <p className="font-medium">{stopText}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Booking Status</p>
+              <span className="inline-block text-xs font-bold uppercase px-2 py-1 rounded-full bg-green-100 text-green-700">
+                {booking?.status || 'CONFIRMED'}
+              </span>
             </div>
           </div>
         </div>
-
+  
+        {/* Ticket issuance form (if needed) */}
         {!hasTicket && !isGuest && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <div className="flex items-start">
@@ -527,6 +641,7 @@ export default function BookingSuccessPage() {
       </div>
     );
   };
+
 
   const downloadFlightPDF = () => {
     if (!booking) return;

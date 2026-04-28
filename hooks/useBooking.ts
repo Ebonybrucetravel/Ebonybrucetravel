@@ -41,6 +41,7 @@ interface ExtendedSearchResult {
   offerId?: string;
   selectData?: string;
   isWakanow?: boolean;
+  slices?: any[];
   realData?: {
     offerId?: string;
     finalPrice?: number;
@@ -74,29 +75,21 @@ const isDomesticNigerianFlight = (origin: string, destination: string): boolean 
   return isDomestic;
 };
 
-// ✅ Helper function to check the actual provider from the item
+// Helper function to check the actual provider from the item
 const getActualProvider = (item: ExtendedSearchResult): string => {
-  // First, check if the item has an explicit provider
   if (item.provider === 'WAKANOW') return 'WAKANOW';
   if (item.provider === 'DUFFEL') return 'DUFFEL';
   if (item.isWakanow === true) return 'WAKANOW';
   
-  // Check by ID patterns
   const id = item.id || item.offerId || item.realData?.offerId || '';
   if (id.toString().toLowerCase().includes('wakanow')) return 'WAKANOW';
-  
-  // Check by Duffel ID pattern (off_...)
   if (id.toString().startsWith('off_')) return 'DUFFEL';
   
-  // Check by selectData (could be either)
   if (item.selectData) {
-    // If selectData is a Duffel offer ID (starts with off_), it's Duffel
     if (item.selectData.startsWith('off_')) return 'DUFFEL';
-    // Otherwise assume it could be Wakanow
     return 'WAKANOW';
   }
   
-  // Default to DUFFEL for international
   return 'DUFFEL';
 };
 
@@ -117,7 +110,6 @@ export function useBooking() {
       setIsCreating(true);
       setError(null);
       try {
-        // ✅ Extract origin and destination from multiple sources
         const originRaw = item.origin || 
                          item.departureAirport || 
                          item.departureCity ||
@@ -133,41 +125,61 @@ export function useBooking() {
         const originCode = extractAirportCode(originRaw);
         const destinationCode = extractAirportCode(destinationRaw);
         
-        // ✅ Check if this is a domestic Nigerian flight
-        const isDomestic = !!(originCode && destinationCode && isDomesticNigerianFlight(originCode, destinationCode));
+        const isFlight = 
+          item.type === 'flights' || 
+          searchParams?.type === 'flights' ||
+          !!item.selectData ||
+          !!item.isWakanow ||
+          !!item.slices ||
+          !!(item.airlineName || item.airlineCode);
         
-        // ✅ Get the actual provider from the item (preserve what was selected)
-        let provider = getActualProvider(item);
+        const isDomestic = isFlight && !!(originCode && destinationCode && isDomesticNigerianFlight(originCode, destinationCode));
+        
         let productType: string;
+        let provider: string;
         
-        // ✅ For domestic flights, force WAKANOW and FLIGHT_DOMESTIC
+        console.log("🔍 Booking creation - Item analysis:", {
+          itemType: item.type,
+          searchParamsType: searchParams?.type,
+          isFlight,
+          isDomestic,
+          hasSelectData: !!item.selectData,
+          isWakanow: item.isWakanow,
+          hasSlices: !!item.slices,
+          originCode,
+          destinationCode
+        });
+        
         if (isDomestic) {
           productType = "FLIGHT_DOMESTIC";
           provider = "WAKANOW";
-          console.log("🏠 DOMESTIC FLIGHT - Forcing WAKANOW", { 
-            originCode, 
-            destinationCode,
-            productType,
-            provider
-          });
-        } else {
-          // ✅ For international flights, preserve the original provider from the selected item
-          productType = "FLIGHT_INTERNATIONAL";
-          
-          // If provider is still not determined, use Duffel as default
-          if (!provider || provider === 'Unknown') {
-            provider = "DUFFEL";
-          }
-          
-          console.log("🌍 INTERNATIONAL FLIGHT - Using original provider", { 
-            originCode, 
-            destinationCode,
-            productType,
-            provider,
-            originalItemProvider: item.provider,
-            itemId: item.id
-          });
+          console.log("🏠 DOMESTIC FLIGHT - Forcing WAKANOW", { originCode, destinationCode });
         }
+        else if (isFlight) {
+          productType = "FLIGHT_INTERNATIONAL";
+          provider = getActualProvider(item);
+          console.log("🌍 INTERNATIONAL FLIGHT - Using provider:", provider);
+        }
+        else if (item.type === 'hotels' || searchParams?.type === 'hotels') {
+          productType = "HOTEL";
+          provider = item.provider || "AMADEUS";
+          console.log("🏨 HOTEL booking");
+        }
+        else if (item.type === 'car-rentals' || searchParams?.type === 'car-rentals') {
+          productType = "CAR_RENTAL";
+          provider = item.provider || "AMADEUS";
+          console.log("🚗 CAR RENTAL booking");
+        }
+        else if (item.selectData || item.isWakanow || item.slices || item.airlineName) {
+          productType = "FLIGHT_INTERNATIONAL";
+          provider = getActualProvider(item);
+          console.log("✈️ FALLBACK - Flight detected by properties");
+        }
+        else {
+          throw new Error(`Cannot determine product type. Item type: ${item.type}, Search type: ${searchParams?.type}`);
+        }
+        
+        console.log("📦 Final determination:", { productType, provider });
         
         const offerCurrency = (
           item.realData?.currency ??
@@ -175,7 +187,6 @@ export function useBooking() {
           "NGN"
         ).toUpperCase();
 
-        // Get base price (original amount before markup)
         const basePrice =
           options?.basePrice ??
           (typeof item.original_amount === "string"
@@ -187,12 +198,9 @@ export function useBooking() {
                 : 100;
             })());
 
-        // Calculate taxes by adding markup and service fee together
         const markupAmount = parseFloat(item.markup_amount || "0");
         const serviceFee = parseFloat(item.service_fee || (item as any).service_charge || "0");
         const taxes = markupAmount + serviceFee;
-
-        // Final amount = basePrice + taxes
         const finalAmount = basePrice + taxes;
 
         console.log("💰 Price breakdown:", {
@@ -201,9 +209,8 @@ export function useBooking() {
           serviceFee,
           taxes,
           finalAmount,
-          isDomestic,
-          provider,
           productType,
+          provider,
           originCode,
           destinationCode
         });
@@ -223,12 +230,7 @@ export function useBooking() {
           bookingData: {},
         };
 
-        // Add flight-specific fields if this is a flight booking
-        if (
-          productType === "FLIGHT_INTERNATIONAL" ||
-          productType === "FLIGHT_DOMESTIC"
-        ) {
-          // Include title, gender, and dateOfBirth for flight bookings
+        if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC") {
           body.passengerInfo = {
             ...body.passengerInfo,
             title: passenger.title,
@@ -236,11 +238,8 @@ export function useBooking() {
             dateOfBirth: passenger.dateOfBirth,
           };
 
-          // Use originCode and destinationCode with fallbacks
           const finalOrigin = originCode || "LOS";
           const finalDestination = destinationCode || "ABV";
-          
-          // Use selectData or offerId based on provider
           const offerId = item.selectData || item.realData?.offerId || item.offerId || item.id;
 
           body.bookingData = {
@@ -254,7 +253,6 @@ export function useBooking() {
             }),
             cabinClass: searchParams?.cabinClass ?? "economy",
             passengers: searchParams?.passengers ?? 1,
-            // Include pricing breakdown
             basePrice: basePrice,
             markup_amount: markupAmount,
             service_fee: serviceFee,
@@ -263,8 +261,7 @@ export function useBooking() {
             original_amount: item.original_amount,
             final_amount: item.final_amount,
             markup_percentage: item.markup_percentage,
-            // Add flags for backend
-            is_domestic: isDomestic,
+            is_domestic: productType === "FLIGHT_DOMESTIC",
             is_wakanow: provider === 'WAKANOW',
             select_data: item.selectData,
           };
@@ -326,26 +323,30 @@ export function useBooking() {
 
         const token = getStoredAuthToken();
 
-        // ✅ SPECIALIZED WAKANOW FLOW
+        // ✅ SPECIALIZED WAKANOW FLOW (for domestic flights)
         if (provider === 'WAKANOW' && (productType === 'FLIGHT_DOMESTIC' || productType === 'FLIGHT_INTERNATIONAL')) {
           console.log("🚀 STARTING SPECIALIZED WAKANOW FLOW");
           
-          // 1. SELECT STEP (to get confirmed pricing and bookingId)
           const selectData = item.selectData || item.id;
           const selectResult = await selectWakanowFlight(selectData, offerCurrency);
           
-          if (!selectResult.BookingId) {
+          console.log("📦 Select result:", {
+            hasBookingId: !!selectResult?.booking_id,
+            hasTerms: !!selectResult?.terms_and_conditions,
+            termsLength: selectResult?.terms_and_conditions?.TermsAndConditions?.length,
+            fullResult: selectResult
+          });
+          
+          if (!selectResult?.booking_id) {
             throw new Error(selectResult.message || "Failed to confirm flight availability with Wakanow.");
           }
 
-          // 2. BOOK STEP
-          const wakanowBookingId = selectResult.BookingId;
-          const wakanowSelectData = selectResult.SelectData || selectData;
+          const wakanowBookingId = selectResult.booking_id;
+          const wakanowSelectData = selectResult.select_data || selectData;
 
-          // Map all passengers (Lead + Additional)
           const allPassengers: PassengerInfo[] = [
-            passenger, // Lead passenger
-            ...(passenger.travellers || []) // Additional passengers
+            passenger,
+            ...(passenger.travellers || [])
           ];
 
           const wakanowPassengers = allPassengers.map(p => ({
@@ -353,8 +354,8 @@ export function useBooking() {
             FirstName: p.firstName,
             LastName: p.lastName,
             DateOfBirth: p.dateOfBirth || "1990-01-01",
-            PhoneNumber: p.phone || passenger.phone, // Fallback to lead phone
-            Email: p.email || passenger.email, // Fallback to lead email
+            PhoneNumber: p.phone || passenger.phone,
+            Email: p.email || passenger.email,
             Gender: (p.gender === 'm' ? 'Male' : p.gender === 'f' ? 'Female' : 'Male') as any,
             Title: (p.title || 'Mr').charAt(0).toUpperCase() + (p.title || 'Mr').slice(1).toLowerCase() as any,
             PassportNumber: p.passportNumber || '',
@@ -375,14 +376,53 @@ export function useBooking() {
             BookingData: wakanowSelectData,
           };
 
+          console.log("📤 Sending Wakanow booking request:", bookingRequest);
+
           const result = await bookWakanowFlight(bookingRequest, token || undefined);
           
-          if (!result || !result.BookingId) {
-            throw new Error(result.message || "Wakanow booking failed.");
+          console.log("📦 Raw Wakanow booking response:", JSON.stringify(result, null, 2));
+          
+          // ✅ FIX: Handle different response formats to extract booking ID
+          let bookingId: string | undefined;
+          
+          if (result) {
+            // Try multiple possible paths to get the booking ID
+            bookingId = result.BookingId || 
+                        result.bookingId || 
+                        result.data?.BookingId || 
+                        result.data?.bookingId ||
+                        result.data?.data?.BookingId ||
+                        result.id;
           }
+          
+          if (!bookingId) {
+            console.error("Failed to extract booking ID from response:", result);
+            throw new Error(result?.message || "Wakanow booking failed: No booking ID in response");
+          }
+          
+          console.log("✅ Wakanow booking successful! Booking ID:", bookingId);
 
-          // The result from bookWakanowFlight is the local booking object if successful
-          const created: Booking = (result as any).data ?? result;
+          // Create a proper Booking object from the response
+          const created: Booking = {
+            id: bookingId,
+            reference: result?.reference || result?.bookingReference || result?.data?.reference || `WAK-${bookingId}`,
+            status: result?.status || result?.data?.status || "CONFIRMED",
+            paymentStatus: result?.paymentStatus || result?.data?.paymentStatus || "PENDING",
+            productType: productType,
+            provider: "WAKANOW",
+            basePrice: basePrice,
+            totalAmount: finalAmount,
+            currency: offerCurrency,
+            bookingData: result?.data?.bookingData || result?.bookingData || result,
+            passengerInfo: {
+              firstName: passenger.firstName,
+              lastName: passenger.lastName,
+              email: passenger.email,
+              phone: passenger.phone,
+            },
+            createdAt: new Date().toISOString(),
+          };
+          
           setBooking(created);
           return created;
         }
@@ -459,10 +499,6 @@ export function useBooking() {
     },
     [BASE],
   );
-
-  // ✅ ALL OTHER FUNCTIONS REMAIN EXACTLY THE SAME
-  // (createPaymentIntent, createAmadeusHotelBooking, chargeMarginAmadeusHotel, 
-  // pollBookingStatus, reset, createHotelbedsBooking)
 
   const createPaymentIntent = useCallback(
     async (

@@ -17,7 +17,6 @@ export default function SearchPage() {
     isLoadingAirlines,
     searchError,
     searchCompleted,
-    search // Add this from your context if available
   } = useSearch();
 
   // Debug only - remove in production
@@ -27,9 +26,24 @@ export default function SearchPage() {
   }, [searchResults, searchParams]);
 
   const handleSelect = (item: any) => {
+    console.log('📦 Flight selected in SearchPage:', {
+      id: item.id,
+      provider: item.provider,
+      isWakanow: item.isWakanow,
+      hasTerms: !!(item as any).terms_and_conditions,
+      termsLength: (item as any).terms_and_conditions?.TermsAndConditions?.length
+    });
+    
     selectItem(item);
     
-    // Determine the route based on item type
+    // For Wakanow flights (terms already fetched), go directly to booking review
+    if (item.isWakanow && (item as any).selectData) {
+      console.log('🚀 Wakanow flight - navigating directly to booking review');
+      router.push('/booking/review');
+      return;
+    }
+    
+    // For other flights, go to flight details page
     let route = '/';
     switch (item.type) {
       case 'hotels':
@@ -56,41 +70,32 @@ export default function SearchPage() {
   const handleNewSearch = async (searchData: any) => {
     console.log('🔄 New search from compact box:', searchData);
     
-    // If your context has a search function, use it
-    if (typeof search === 'function') {
-      await search(searchData);
-    } else {
-      // Otherwise, you need to implement the search here
-      // This would typically call your API and update the context
-      console.warn('Search function not available in context');
-      
-      // Alternative: navigate to home page with search params
-      const params = new URLSearchParams();
-      params.set('type', searchData.type);
-      
-      if (searchData.type === 'flights') {
-        params.set('tripType', searchData.tripType);
-        params.set('segments', JSON.stringify(searchData.segments));
-        if (searchData.returnDate) params.set('returnDate', searchData.returnDate);
-        params.set('passengers', JSON.stringify(searchData.passengers));
-        if (searchData.cabinClass) params.set('cabinClass', searchData.cabinClass);
-      } else if (searchData.type === 'hotels') {
-        params.set('location', searchData.location);
-        if (searchData.cityCode) params.set('cityCode', searchData.cityCode);
-        params.set('checkInDate', searchData.checkInDate);
-        params.set('checkOutDate', searchData.checkOutDate);
-        params.set('travellers', JSON.stringify(searchData.travellers));
-        params.set('rooms', searchData.rooms.toString());
-      } else if (searchData.type === 'car-rentals') {
-        params.set('pickupLocationCode', searchData.pickupLocationCode);
-        params.set('dropoffLocationCode', searchData.dropoffLocationCode);
-        params.set('pickupDateTime', searchData.pickupDateTime);
-        params.set('dropoffDateTime', searchData.dropoffDateTime);
-        params.set('passengers', searchData.passengers.toString());
-      }
-      
-      router.push(`/?${params.toString()}`);
+    // Navigate to home page with search params
+    const params = new URLSearchParams();
+    params.set('type', searchData.type);
+    
+    if (searchData.type === 'flights') {
+      params.set('tripType', searchData.tripType);
+      params.set('segments', JSON.stringify(searchData.segments));
+      if (searchData.returnDate) params.set('returnDate', searchData.returnDate);
+      params.set('passengers', JSON.stringify(searchData.passengers));
+      if (searchData.cabinClass) params.set('cabinClass', searchData.cabinClass);
+    } else if (searchData.type === 'hotels') {
+      params.set('location', searchData.location);
+      if (searchData.cityCode) params.set('cityCode', searchData.cityCode);
+      params.set('checkInDate', searchData.checkInDate);
+      params.set('checkOutDate', searchData.checkOutDate);
+      params.set('travellers', JSON.stringify(searchData.travellers));
+      params.set('rooms', searchData.rooms.toString());
+    } else if (searchData.type === 'car-rentals') {
+      params.set('pickupLocationCode', searchData.pickupLocationCode);
+      params.set('dropoffLocationCode', searchData.dropoffLocationCode);
+      params.set('pickupDateTime', searchData.pickupDateTime);
+      params.set('dropoffDateTime', searchData.dropoffDateTime);
+      params.set('passengers', searchData.passengers.toString());
     }
+    
+    router.push(`/?${params.toString()}`);
   };
 
   // Show full page loading state only when we don't have any results yet
@@ -155,13 +160,13 @@ export default function SearchPage() {
   // Show results - pass raw searchResults, let SearchResults handle all transformations
   return (
     <SearchResults
-      results={searchResults || []}
+      results={searchResults as any}
       searchParams={searchParams}
       onClear={handleClear}
       onSelect={handleSelect}
       isLoading={isSearching || isLoadingAirlines}
       airlines={airlines}
-      onNewSearch={handleNewSearch}  // ← ADD THIS LINE
+      onNewSearch={handleNewSearch}
     />
   );
 }

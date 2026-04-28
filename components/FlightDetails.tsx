@@ -317,10 +317,41 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     return `${hours ? hours[1] + 'h ' : ''}${minutes ? minutes[1] + 'm' : ''}`.trim() || durationStr;
   };
 
-  const handleBookClick = () => {
+  const handleBookClick = async () => {
+    // For Wakanow flights, fetch terms before proceeding
+    let finalItem = { ...transformedItem };
+    
+    if (transformedItem.isWakanow && (transformedItem as any).selectData) {
+      try {
+        setIsConverting(true);
+        
+        const { wakanowService } = await import('@/lib/wakanow.service');
+        const flightDetails = await wakanowService.getFlightDetails(
+          (transformedItem as any).selectData,
+          'NGN'
+        );
+        
+        // Merge terms into the flight object
+        finalItem = {
+          ...transformedItem,
+          terms_and_conditions: flightDetails.termsAndConditions ? {
+            TermsAndConditions: flightDetails.termsAndConditions,
+            TermsAndConditionImportantNotice: ''
+          } : null,
+          bookingId: flightDetails.bookingId,
+        };
+        
+        console.log('✅ Terms loaded:', flightDetails.termsAndConditions?.length);
+      } catch (error) {
+        console.error('Failed to get flight terms:', error);
+      } finally {
+        setIsConverting(false);
+      }
+    }
+    
     const completeBooking = {
-      ...transformedItem,
-      id: transformedItem.id || `flight-${Date.now()}`,
+      ...finalItem,
+      id: finalItem.id || `flight-${Date.now()}`,
       type: 'flight',
       status: 'Confirmed'
     };
@@ -328,7 +359,6 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     sessionStorage.setItem('currentBooking', JSON.stringify(completeBooking));
     router.push('/booking/review');
   };
-
   // Render a single flight segment
   const renderSegment = (segment: any, index: number, isLast: boolean) => (
     <div key={index} className={`${!isLast ? 'mb-6' : ''}`}>

@@ -111,14 +111,12 @@ export interface WakanowFlight {
   ConnectionCode: string;
 }
 
-// ✅ FIXED: Updated to handle your backend's response format
+// Updated to handle your backend's response format
 export interface WakanowSearchResponse {
-  // Your backend's format (from the logs)
   provider?: string;
-  offers?: any[];  // Array of flight offers
+  offers?: any[];
   total_offers?: number;
   selectData?: string;
-  // Original Wakanow formats (kept for compatibility)
   FlightCombination?: {
     FlightModels: WakanowFlight[];
     Price?: { Amount: number; CurrencyCode: string };
@@ -135,31 +133,28 @@ export interface WakanowSearchResponse {
   [key: string]: any;
 }
 
+// Updated to match your backend's actual response structure
 export interface WakanowSelectResponse {
-  FlightSummaryModel?: {
-    FlightCombination?: {
-      FlightModels: WakanowFlight[];
-    };
-    Price?: {
-      Amount: number;
-      CurrencyCode: string;
-    };
-    BookingId?: string;
+  provider?: string;
+  booking_id?: string;
+  is_price_matched?: boolean;
+  is_passport_required?: boolean;
+  select_data?: string;
+  flight_summary?: {
+    slices: any[];
+    price: { Amount: number; CurrencyCode: string };
+    price_details: any[];
+    is_refundable: boolean;
   };
-  FlightModels?: WakanowFlight[];
-  Price?: {
-    Amount: number;
-    CurrencyCode: string;
-  };
-  BookingId?: string;
-  IsPriceMatched?: boolean;
-  HasResult?: boolean;
-  SelectData?: string;
-  ProductTermsAndConditions?: {
+  fare_rules?: string[];
+  penalty_rules?: any;
+  terms_and_conditions?: {
     TermsAndConditions: string[];
+    TermsAndConditionImportantNotice: string;
   };
-  success?: boolean;
+  custom_messages?: any[];
   message?: string;
+  success?: boolean;
   [key: string]: any;
 }
 
@@ -365,7 +360,7 @@ export async function getWakanowAirports(): Promise<WakanowAirport[]> {
 }
 
 export async function searchWakanowFlights(params: WakanowFlightSearchParams): Promise<WakanowSearchResponse> {
-  console.log('Search flights via backend:', params);
+  console.log('🔍 Search flights via backend:', params);
   
   // ✅ Convert params to match your backend's expected format
   const backendParams = {
@@ -376,7 +371,7 @@ export async function searchWakanowFlights(params: WakanowFlightSearchParams): P
     infants: params.Infants,
     ticketClass: params.Ticketclass,
     targetCurrency: params.TargetCurrency,
-    currency: 'GBP', // Default as per your backend example
+    currency: 'GBP',
     itineraries: params.Itineraries.map(itin => ({
       Departure: itin.Departure,
       Destination: itin.Destination,
@@ -389,15 +384,22 @@ export async function searchWakanowFlights(params: WakanowFlightSearchParams): P
     body: backendParams,
   });
   
-  console.log('Search response from backend:', result);
+  console.log('📦 Search response from backend:', {
+    hasOffers: !!result?.offers,
+    offersLength: result?.offers?.length,
+    hasSelectData: !!result?.selectData
+  });
+  
   return result;
 }
 
+// ✅ FIXED: Updated to properly handle your backend's response format
 export async function selectWakanowFlight(selectData: string, targetCurrency: string = 'NGN'): Promise<WakanowSelectResponse> {
-  console.log('Select flight via backend');
+  console.log('🛫 Select flight via backend');
+  console.log('📝 Request payload:', { selectDataLength: selectData?.length, targetCurrency });
   
   // ✅ Call your backend select endpoint
-  const result = await backendFetch<WakanowSelectResponse>('/select', {
+  const result = await backendFetch<any>('/select', {
     method: 'POST',
     body: {
       selectData: selectData,
@@ -405,12 +407,22 @@ export async function selectWakanowFlight(selectData: string, targetCurrency: st
     },
   });
   
-  console.log('Select response from backend:', result);
-  return result;
+  console.log('📦 Select response from backend:', {
+    hasData: !!result,
+    dataKeys: result ? Object.keys(result) : [],
+    hasBookingId: !!result?.booking_id,
+    hasFlightSummary: !!result?.flight_summary,
+    hasTerms: !!result?.terms_and_conditions,
+    termsLength: result?.terms_and_conditions?.TermsAndConditions?.length
+  });
+  
+  // The response is already the data object (unwrapped by backendFetch)
+  // Structure: { provider, booking_id, select_data, flight_summary, terms_and_conditions, ... }
+  return result as WakanowSelectResponse;
 }
 
 export async function bookWakanowFlight(bookingData: WakanowBookingRequest, authToken?: string): Promise<WakanowBookingResponse> {
-  console.log('Book flight via backend:', { bookingId: bookingData.BookingId });
+  console.log('📝 Book flight via backend:', { bookingId: bookingData.BookingId });
   
   // ✅ Convert to your backend's guest booking format
   const passengers = bookingData.PassengerDetails.map(passenger => ({
@@ -440,12 +452,16 @@ export async function bookWakanowFlight(bookingData: WakanowBookingRequest, auth
     authToken: authToken
   });
   
-  console.log('Book response from backend:', result);
+  console.log('📦 Book response from backend:', {
+    success: result?.success,
+    hasBookingId: !!result?.BookingId
+  });
+  
   return result;
 }
 
 export async function ticketWakanowPNR(bookingId: string, pnrNumber: string): Promise<WakanowTicketResponse> {
-  console.log('Get ticket via backend:', { bookingId, pnrNumber });
+  console.log('🎫 Get ticket via backend:', { bookingId, pnrNumber });
   
   // ✅ Call your backend ticket endpoint
   const result = await backendFetch<WakanowTicketResponse>('/ticket', {
@@ -456,12 +472,16 @@ export async function ticketWakanowPNR(bookingId: string, pnrNumber: string): Pr
     },
   });
   
-  console.log('Ticket response from backend:', result);
+  console.log('📦 Ticket response from backend:', {
+    success: result?.success,
+    hasBookingSummary: !!result?.FlightBookingSummary
+  });
+  
   return result;
 }
 
 export async function getWakanowWalletBalance(authToken?: string): Promise<{ Balance: number; Currency: string }> {
-  console.log('Get wallet balance via backend');
+  console.log('💰 Get wallet balance via backend');
   
   // ✅ Call your backend wallet endpoint
   const result = await backendFetch<{ balance: number; currency: string }>('/wallet-balance', {

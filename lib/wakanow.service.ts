@@ -106,7 +106,11 @@ export interface WakanowSearchResult {
   flights: WakanowFlight[];
   selectData: string;
   normalizedFlights: NormalizedFlight[];
-  offers: any[]; // Raw offers from backend
+  offers: any[]; 
+  terms_and_conditions?: {  
+    TermsAndConditions: string[];
+    TermsAndConditionImportantNotice: string;
+  } | null;
 }
 
 export class WakanowService {
@@ -131,10 +135,10 @@ export class WakanowService {
       business: 'C',
       first: 'F',
     };
-
+  
     const ticketClass = ticketClassMap[params.cabinClass || 'economy'] as 'Y' | 'W' | 'C' | 'F';
     const flightSearchType = params.returnDate ? 'Return' : 'Oneway' as 'Oneway' | 'Return' | 'Multidestination';
-
+  
     const searchParams: WakanowFlightSearchParams = {
       FlightSearchType: flightSearchType,
       Ticketclass: ticketClass,
@@ -150,7 +154,7 @@ export class WakanowService {
         },
       ],
     };
-
+  
     if (params.returnDate) {
       searchParams.Itineraries.push({
         Departure: params.to.toUpperCase(),
@@ -158,7 +162,7 @@ export class WakanowService {
         DepartureDate: params.returnDate,
       });
     }
-
+  
     const result = await searchWakanowFlights(searchParams);
     
     console.log('📦 Backend response received:', {
@@ -170,6 +174,7 @@ export class WakanowService {
     // Extract the offers array from the response
     const offers = result.offers || [];
     const selectData = result.selectData || '';
+    const termsAndConditions = offers[0]?.terms_and_conditions || null;
     
     console.log(`✅ Returning ${offers.length} raw offers to SearchContext`);
     
@@ -179,6 +184,7 @@ export class WakanowService {
       selectData: selectData,
       normalizedFlights: [],
       offers: offers,
+      terms_and_conditions: termsAndConditions,  
     };
   }
 
@@ -187,37 +193,90 @@ export class WakanowService {
     
     const result = await selectWakanowFlight(selectData, targetCurrency);
     
+    console.log('📦 Raw select response structure:', {
+      hasSuccess: !!result?.success,
+      hasData: !!result?.data,
+      dataKeys: result?.data ? Object.keys(result.data) : [],
+      hasTerms: !!result?.data?.terms_and_conditions
+    });
+    
+    // Handle the actual response structure from your backend
+    // Your backend returns: { success: true, data: { ... } }
+    const responseData = result?.data || result;
+    
     let flight: WakanowFlight;
     let price = { amount: 0, currency: targetCurrency };
     let bookingId: string | undefined;
+    let termsAndConditions: string[] | undefined;
     
-    if (result.FlightSummaryModel && result.FlightSummaryModel.FlightCombination) {
-      flight = result.FlightSummaryModel.FlightCombination.FlightModels[0];
+    // Extract booking_id
+    bookingId = responseData?.booking_id;
+    
+    // Extract price from flight_summary
+    if (responseData?.flight_summary?.price) {
       price = {
-        amount: result.FlightSummaryModel.Price?.Amount || 0,
-        currency: result.FlightSummaryModel.Price?.CurrencyCode || targetCurrency,
+        amount: responseData.flight_summary.price.Amount || 0,
+        currency: responseData.flight_summary.price.CurrencyCode || targetCurrency,
       };
-      bookingId = result.FlightSummaryModel.BookingId;
-    } 
-    else if (result.FlightModels && Array.isArray(result.FlightModels)) {
-      flight = result.FlightModels[0];
-      if (result.Price) {
-        price = {
-          amount: result.Price.Amount || 0,
-          currency: result.Price.CurrencyCode || targetCurrency,
-        };
-      }
     }
-    else {
-      throw new Error('Unable to parse flight details response');
+    
+    // Extract terms and conditions
+    const termsData = responseData?.terms_and_conditions?.TermsAndConditions;
+    if (termsData && Array.isArray(termsData) && termsData.length > 0) {
+      termsAndConditions = termsData;
+      console.log('✅ Terms extracted:', termsAndConditions.length);
+    } else {
+      console.log('⚠️ No terms found in select response');
     }
+    
+    // Create a flight object from flight_summary
+    const slices = responseData?.flight_summary?.slices || [];
+    const outboundSlice = slices[0];
+    const firstSegment = outboundSlice?.segments?.[0] || {};
+    
+    flight = {
+      Airline: outboundSlice?.airline_code || '',
+      AirlineName: outboundSlice?.airline || '',
+      Name: firstSegment?.flight_number || '',
+      DepartureCode: outboundSlice?.departure_code || '',
+      DepartureName: outboundSlice?.departure_name || '',
+      DepartureTime: outboundSlice?.departure_time || '',
+      ArrivalCode: outboundSlice?.arrival_code || '',
+      ArrivalName: outboundSlice?.arrival_name || '',
+      ArrivalTime: outboundSlice?.arrival_time || '',
+      TripDuration: outboundSlice?.trip_duration || '',
+      Stops: outboundSlice?.stops || 0,
+      FlightLegs: slices.flatMap((slice: any) => 
+        (slice.segments || []).map((segment: any) => ({
+          FlightLegNumber: segment.flight_number || '',
+          DepartureCode: segment.departure_code || '',
+          DepartureName: segment.departure_name || '',
+          DestinationCode: segment.destination_code || '',
+          DestinationName: segment.destination_name || '',
+          StartTime: segment.start_time || '',
+          EndTime: segment.end_time || '',
+          Duration: segment.duration || '',
+          OperatingCarrierName: segment.operating_carrier || '',
+          FlightNumber: segment.flight_number || '',
+          CabinClassName: segment.cabin_class || '',
+          BookingClass: '',
+        }))
+      ),
+    } as any;
+    
+    console.log('✅ getFlightDetails returning:', {
+      hasTerms: !!termsAndConditions,
+      termsLength: termsAndConditions?.length || 0,
+      bookingId,
+      priceAmount: price.amount
+    });
     
     return {
       flight,
       price,
-      selectData: result.SelectData || selectData,
-      bookingId: bookingId || result.BookingId,
-      termsAndConditions: result.ProductTermsAndConditions?.TermsAndConditions,
+      selectData: responseData?.select_data || selectData,
+      bookingId: bookingId,
+      termsAndConditions: termsAndConditions || [],  // Default to empty array if undefined
     };
   }
 

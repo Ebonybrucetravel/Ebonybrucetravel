@@ -585,6 +585,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         fareRules: offer.fare_rules || [],
         penaltyRules: offer.penalty_rules || null,
         connection_code: offer.connection_code,
+        terms_and_conditions: offer.terms_and_conditions || null,
       };
       
       console.log(`✅ Created flight result (NGN base):`, {

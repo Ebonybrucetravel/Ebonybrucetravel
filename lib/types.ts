@@ -78,6 +78,10 @@ export interface SearchResult {
   layoverDetails?: string;
   imageUrl?: string;
   airlineCode?: string;
+  terms_and_conditions?: {
+    TermsAndConditions: string[];
+    TermsAndConditionImportantNotice: string;
+  } | null;
   owner?: {
     id?: string;
     name?: string;

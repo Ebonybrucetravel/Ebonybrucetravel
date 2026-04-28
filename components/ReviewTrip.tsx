@@ -67,6 +67,10 @@ interface ExtendedSearchResult extends SearchResult {
   flightNumber?: string;
   departureDate?: string;
   cabinClass?: string;
+  terms_and_conditions?: {
+    TermsAndConditions: string[];
+    TermsAndConditionImportantNotice: string;
+  };
 }
 
 
@@ -210,6 +214,11 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [additionalPassengers, setAdditionalPassengers] = useState<PassengerInfo[]>([]);
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [appliedPromo, setAppliedPromo] = useState<any | null>(null);
+
+  // ==================== NEW: Terms & Conditions State ====================
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [displayedTerms, setDisplayedTerms] = useState<string[]>([]);
+  // ==================== END NEW ====================
 
   // Passport / travel document state
   const [passportNumber, setPassportNumber] = useState('');
@@ -376,6 +385,16 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     };
     load();
   }, [passportRequired, isLoggedIn, createdBooking]);
+
+  // ==================== NEW: Load Terms & Conditions from API ====================
+  useEffect(() => {
+    if (extendedItem?.terms_and_conditions?.TermsAndConditions) {
+      setDisplayedTerms(extendedItem.terms_and_conditions.TermsAndConditions);
+    } else if ((item as any)?.terms_and_conditions?.TermsAndConditions) {
+      setDisplayedTerms((item as any).terms_and_conditions.TermsAndConditions);
+    }
+  }, [extendedItem, item]);
+  // ==================== END NEW ====================
 
   // ==================== PRICE CALCULATION WITH SERVICE FEE ====================
   // Extract values from the selected item (these are already set in SearchContext)
@@ -554,6 +573,13 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       if (showPassportSection && !isPassportMandatory && passportNumber) {
         if (!validatePassport()) return;
       }
+
+      // ==================== NEW: Validate Terms & Conditions for flights ====================
+      if (displayedTerms.length > 0 && !agreedToTerms) {
+        alert('Please agree to the Terms & Conditions to continue.');
+        return;
+      }
+      // ==================== END NEW ====================
     }
 
     if (isHotel && !agreedToPolicy) {
@@ -629,6 +655,13 @@ for (let i = 0; i < additionalPassengers.length; i++) {
         (passengerInfo as any).passportExpiry = passportExpiry;
         (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
       }
+
+      // ==================== NEW: Add policy acceptance to passengerInfo ====================
+      if (isFlight && displayedTerms.length > 0) {
+        (passengerInfo as any).policyAccepted = agreedToTerms;
+        (passengerInfo as any).policyAcceptedAt = new Date().toISOString();
+      }
+      // ==================== END NEW ====================
 
       let hbxMetadata: any = undefined;
       if (isHBXHotel && hbxQuote) {
@@ -1176,6 +1209,41 @@ for (let i = 0; i < additionalPassengers.length; i++) {
                   </div>
                 </div>
               )}
+
+              {/* ==================== NEW: Terms & Conditions Section ==================== */}
+              {displayedTerms.length > 0 && !createdBooking && isFlight && (
+                <div className="mt-6 pt-6 border-t border-gray-100">
+                  <h3 className="text-md font-semibold text-gray-900 mb-3">Terms & Conditions</h3>
+                  <div className="max-h-60 overflow-y-auto bg-gray-50 rounded-xl p-4 mb-4">
+                    <ul className="space-y-2">
+                      {displayedTerms.map((term, idx) => (
+                        <li key={idx} className="text-xs text-gray-600 flex gap-2">
+                          <span className="text-[#33a8da] font-bold">•</span>
+                          <span>{term}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-xl">
+                    <input
+                      type="checkbox"
+                      id="termsAndConditions"
+                      checked={agreedToTerms}
+                      onChange={(e) => setAgreedToTerms(e.target.checked)}
+                      className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
+                      required
+                    />
+                    <label htmlFor="termsAndConditions" className="text-sm text-gray-700">
+                      I have read and agree to the <span className="font-semibold">Terms & Conditions</span> and
+                      <span className="font-semibold"> Cancellation Policy</span>.
+                    </label>
+                  </div>
+                  {!agreedToTerms && isBooking && (
+                    <p className="mt-2 text-xs text-red-500">Please agree to the Terms & Conditions to continue.</p>
+                  )}
+                </div>
+              )}
+              {/* ==================== END NEW ==================== */}
             </div>
           </div>
 
@@ -1260,6 +1328,7 @@ for (let i = 0; i < additionalPassengers.length; i++) {
                 disabled={
                   isBooking || isCreating ||
                   (isHotel && !agreedToPolicy) ||
+                  (isFlight && !agreedToTerms && displayedTerms.length > 0) ||
                   (passportRequired && isLoggedIn && isPassportIncomplete) ||
                   isCheckingPassport
                 }
