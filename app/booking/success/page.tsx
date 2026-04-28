@@ -272,122 +272,339 @@ export default function BookingSuccessPage() {
       setIssuingTicket(false);
     }
   };
-
+ 
   const downloadWakanowPDF = () => {
     if (!booking) return;
     
     const doc = new jsPDF();
-    let yPos = 20;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let yPos = 15;
     
+    // Helper: Add section header with underline
     const addSection = (title: string, y: number) => {
-      doc.setFontSize(14);
-      doc.setTextColor(51, 168, 222);
-      doc.text(title, 20, y);
-      return y + 8;
-    };
-
-    const addField = (label: string, value: string, y: number, isImportant: boolean = false) => {
-      doc.setFontSize(10);
-      doc.setTextColor(100, 100, 100);
-      doc.text(label, 25, y);
       doc.setFontSize(11);
-      doc.setTextColor(isImportant ? 51 : 0, isImportant ? 168 : 0, isImportant ? 222 : 0);
-      doc.text(value, 25, y + 5);
+      doc.setTextColor(51, 168, 222);
+      doc.setFont('helvetica', 'bold');
+      doc.text(title, 20, y);
+      doc.setDrawColor(51, 168, 222);
+      doc.setLineWidth(0.5);
+      doc.line(20, y + 2, pageWidth - 20, y + 2);
+      return y + 10;
+    };
+  
+    // Helper: Add label-value pair
+    const addField = (label: string, value: string, y: number, indent: number = 0) => {
+      if (!value || value === 'N/A' || value.trim() === '') return y;
+      doc.setFontSize(9);
+      doc.setTextColor(100, 100, 100);
+      doc.setFont('helvetica', 'normal');
+      doc.text(label, 20 + indent, y);
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'bold');
+      doc.text(value, 20 + indent, y + 5);
       return y + 12;
     };
-
-    doc.setFontSize(22);
+  
+    // Helper: Add two columns
+    const addTwoColumns = (col1Label: string, col1Value: string, col2Label: string, col2Value: string, y: number) => {
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.setFont('helvetica', 'normal');
+      doc.text(col1Label, 20, y);
+      doc.text(col2Label, pageWidth / 2 + 10, y);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'bold');
+      doc.text(col1Value, 20, y + 5);
+      doc.text(col2Value, pageWidth / 2 + 10, y + 5);
+      return y + 12;
+    };
+  
+    // Helper: Draw journey card
+    const drawJourneyCard = (flight: any, legs: any[], title: string, y: number) => {
+      const firstLeg = legs[0] || {};
+      const depCode = firstLeg?.DepartureCode || 'N/A';
+      const depName = firstLeg?.DepartureName || '';
+      const arrCode = firstLeg?.DestinationCode || 'N/A';
+      const arrName = firstLeg?.DestinationName || '';
+      const depTime = firstLeg?.StartTime ? new Date(firstLeg.StartTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+      const arrTime = firstLeg?.EndTime ? new Date(firstLeg.EndTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+      const duration = flight?.TripDuration || '';
+      let formattedDuration = duration;
+      if (duration && duration.includes(':')) {
+        const parts = duration.split(':');
+        formattedDuration = `${parseInt(parts[0])}h ${parseInt(parts[1])}m`;
+      }
+      const stops = flight?.Stops || 0;
+      const stopText = stops === 0 ? 'Direct' : stops === 1 ? '1 Stop' : `${stops} Stops`;
+      const cabinClass = firstLeg?.CabinClassName || 'Economy';
+      
+      // Card background
+      doc.setFillColor(248, 250, 252);
+      doc.rect(17, y - 4, pageWidth - 34, 58, 'F');
+      
+      // Title
+      doc.setFontSize(10);
+      doc.setTextColor(51, 168, 222);
+      doc.setFont('helvetica', 'bold');
+      doc.text(title, 22, y);
+      y += 7;
+      
+      // Departure block
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text('DEPARTURE', 22, y);
+      doc.setFontSize(13);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'bold');
+      doc.text(depCode, 22, y + 7);
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.setFont('helvetica', 'normal');
+      const wrappedDepName = doc.splitTextToSize(depName, 50);
+      doc.text(wrappedDepName, 22, y + 13);
+      
+      // Time and duration in center
+      doc.setFontSize(10);
+      doc.setTextColor(51, 168, 222);
+      doc.setFont('helvetica', 'bold');
+      doc.text(depTime, pageWidth / 2 - 20, y + 7);
+      doc.text('→', pageWidth / 2 - 8, y + 7);
+      doc.text(arrTime, pageWidth / 2 + 5, y + 7);
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.setFont('helvetica', 'normal');
+      doc.text(formattedDuration, pageWidth / 2 - 15, y + 14);
+      
+      // Arrival block
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text('ARRIVAL', pageWidth - 65, y);
+      doc.setFontSize(13);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'bold');
+      doc.text(arrCode, pageWidth - 65, y + 7);
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.setFont('helvetica', 'normal');
+      const wrappedArrName = doc.splitTextToSize(arrName, 50);
+      doc.text(wrappedArrName, pageWidth - 65, y + 13);
+      
+      y += 35;
+      
+      // Flight info bar
+      doc.setFillColor(245, 248, 250);
+      doc.rect(18, y - 2, pageWidth - 36, 10, 'F');
+      doc.setFontSize(8);
+      doc.setTextColor(80, 80, 80);
+      doc.text(`✈️ ${stopText}  |  🧳 Standard baggage  |  💺 ${cabinClass}`, 22, y + 3);
+      
+      return y + 12;
+    };
+  
+    // ============ HEADER ============
+    doc.setFontSize(24);
     doc.setTextColor(51, 168, 222);
-    doc.text('Ebony Bruce Travels', 105, yPos, { align: 'center' });
-    yPos += 10;
+    doc.setFont('helvetica', 'bold');
+    doc.text('EBONY BRUCE TRAVELS', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 8;
     
-    doc.setFontSize(16);
-    doc.setTextColor(0, 0, 0);
-    doc.text('WAKANOW FLIGHT CONFIRMATION', 105, yPos, { align: 'center' });
+    doc.setFontSize(11);
+    doc.setTextColor(100, 100, 100);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Wakanow Flight e-Ticket & Booking Confirmation', pageWidth / 2, yPos, { align: 'center' });
     yPos += 15;
-
-    doc.setDrawColor(51, 168, 222);
-    doc.setLineWidth(0.5);
-    doc.line(20, yPos, 190, yPos);
-    yPos += 5;
     
-    doc.setFontSize(12);
-    doc.setTextColor(0, 0, 0);
-    doc.text(`Booking Reference: ${booking.reference}`, 20, yPos);
-    yPos += 7;
-    doc.text(`Status: ${booking.status}`, 20, yPos);
-    yPos += 7;
-    doc.text(`Booked On: ${formatDate(booking.createdAt)}`, 20, yPos);
-    yPos += 15;
-
-    yPos = addSection('WAKANOW BOOKING DETAILS', yPos);
+    // ============ BOOKING SUMMARY CARD ============
+    doc.setFillColor(51, 168, 222);
+    doc.rect(15, yPos - 5, pageWidth - 30, 30, 'F');
     
-    const bookingData = booking?.bookingData || {};
-    const pnr = booking.pnrNumber || 
-                bookingData.pnrReferenceNumber ||
-                bookingData.pnrNumber || 
-                bookingData.PnReferenceNumber || 
-                bookingData.pnReferenceNumber || 
-                bookingData.FlightBookingResult?.PnReferenceNumber ||
-                bookingData.FlightBookingSummary?.PnReferenceNumber ||
-                'Will be issued soon';
-    const airline = bookingData.airline || 'Wakanow Partner Airline';
-    const flightNumber = bookingData.flightNumber || bookingData.offerId || 'N/A';
-    const origin = bookingData.origin || 'N/A';
-    const destination = bookingData.destination || 'N/A';
-    const departureDate = bookingData.departureDate || '';
-    const cabinClass = bookingData.cabinClass || 'Economy';
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BOOKING SUMMARY', 20, yPos);
     
-    yPos = addField('PNR Number', pnr, yPos, true);
-    yPos = addField('Airline', airline, yPos, true);
-    yPos = addField('Flight Number', flightNumber, yPos, true);
-    yPos = addField('From', `${origin} - ${getAirportName(origin)}`, yPos);
-    yPos = addField('To', `${destination} - ${getAirportName(destination)}`, yPos);
-    yPos = addField('Departure Date', formatDate(departureDate), yPos);
-    yPos = addField('Cabin Class', cabinClass, yPos);
-    yPos += 5;
-
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Reference: ${booking.reference}`, 20, yPos + 7);
+    doc.text(`Status: ${booking.status}`, pageWidth / 2, yPos + 7);
+    doc.text(`Booked: ${formatDate(booking.createdAt)}`, pageWidth - 70, yPos + 7);
+    yPos += 30;
+    
+    // ============ FLIGHT DETAILS SECTION ============
+    yPos = addSection('FLIGHT DETAILS', yPos);
+    
+    // Extract flight data
+    const providerData = booking?.providerData as any;
+    const flightSummaryModel = providerData?.FlightBookingSummary?.FlightSummaryModel;
+    const flightCombination = flightSummaryModel?.FlightCombination;
+    const flightModels = flightCombination?.FlightModels || [];
+    const outboundFlight = flightModels[0] || {};
+    const returnFlight = flightModels[1] || null;
+    const outboundLegs = outboundFlight?.FlightLegs || [];
+    const returnLegs = returnFlight?.FlightLegs || [];
+    
+    const pnrNumber = providerData?.FlightBookingSummary?.PnrReferenceNumber || booking?.pnrNumber || 'Pending';
+    const airline = outboundFlight?.AirlineName || outboundFlight?.Airline || 'ValueJet';
+    const flightNumber = outboundLegs[0]?.FlightNumber || 'N/A';
+    const cabinClass = outboundLegs[0]?.CabinClassName || 'Economy';
+    
+    // Two-column flight info
+    yPos = addTwoColumns('PNR NUMBER', pnrNumber, 'AIRLINE', airline, yPos);
+    yPos = addTwoColumns('FLIGHT NUMBER', flightNumber, 'CABIN CLASS', cabinClass, yPos);
+    yPos += 2;
+    
+    // ============ OUTBOUND JOURNEY ============
+    yPos = drawJourneyCard(outboundFlight, outboundLegs, 'OUTBOUND JOURNEY', yPos);
+    
+    // ============ RETURN JOURNEY (if exists) ============
+    if (returnFlight && returnLegs.length > 0) {
+      yPos = drawJourneyCard(returnFlight, returnLegs, 'RETURN JOURNEY', yPos);
+    }
+    
+    // ============ PASSENGER INFORMATION ============
     yPos = addSection('PASSENGER INFORMATION', yPos);
     
     const allTravelers = Array.isArray(booking.passengerInfo) 
       ? booking.passengerInfo 
       : (booking.passengerInfo?.travellers ? [booking.passengerInfo, ...booking.passengerInfo.travellers] : [booking.passengerInfo]);
     
-    allTravelers.forEach((p: any, index: number) => {
-      const label = allTravelers.length > 1 ? `Passenger #${index + 1} (${p.type || 'Adult'})` : 'Passenger';
-      yPos = addField(label, `${p.title || ''} ${p.firstName || ''} ${p.lastName || ''}`.trim(), yPos, index === 0);
-      if (index === 0) {
-        yPos = addField('Email', p.email || 'N/A', yPos);
-        yPos = addField('Phone', p.phone || 'N/A', yPos);
+    for (let i = 0; i < allTravelers.length; i++) {
+      const p = allTravelers[i];
+      const name = `${p.title || ''} ${p.firstName || ''} ${p.lastName || ''}`.trim();
+      
+      doc.setFillColor(250, 250, 252);
+      doc.rect(17, yPos - 2, pageWidth - 34, 18, 'F');
+      
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`PASSENGER ${i + 1}`, 22, yPos + 2);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'bold');
+      doc.text(name, 22, yPos + 9);
+      
+      if (i === 0) {
+        doc.setFontSize(8);
+        doc.setTextColor(100, 100, 100);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Email: ${p.email || 'N/A'}`, pageWidth / 2, yPos + 5);
+        doc.text(`Phone: ${p.phone || 'N/A'}`, pageWidth / 2, yPos + 12);
       }
-    });
-    yPos += 5;
+      yPos += 22;
+    }
+    
+   // ============ PRICE BREAKDOWN ============
+yPos = addSection('PRICE BREAKDOWN', yPos);
 
-    yPos = addSection('PRICE BREAKDOWN', yPos);
+const basePrice = booking.basePrice || 0;
+const markupAmount = booking.markupAmount || 0;
+const serviceFee = booking.serviceFee || 0;
+const totalAmount = booking.totalAmount || 0;
+const currency = booking.currency || 'NGN';
+
+// Format numbers with commas
+const formatMoney = (amount: number) => {
+  return new Intl.NumberFormat('en-NG').format(Math.round(amount));
+};
+
+// Price table
+doc.setFillColor(250, 250, 252);
+doc.rect(17, yPos - 2, pageWidth - 34, 52, 'F');
+
+// Row 1: Base Fare
+doc.setFontSize(10);
+doc.setTextColor(0, 0, 0);
+doc.setFont('helvetica', 'normal');
+doc.text('Base Fare', 25, yPos + 5);
+doc.text(`${currency} ${formatMoney(basePrice)}`, pageWidth - 35, yPos + 5, { align: 'right' });
+
+// Row 2: Markup
+doc.text('Markup (10%)', 25, yPos + 15);
+doc.text(`${currency} ${formatMoney(markupAmount)}`, pageWidth - 35, yPos + 15, { align: 'right' });
+
+// Row 3: Service Fee
+doc.text('Service Fee', 25, yPos + 25);
+doc.text(`${currency} ${formatMoney(serviceFee)}`, pageWidth - 35, yPos + 25, { align: 'right' });
+
+// Divider
+doc.setDrawColor(200, 200, 200);
+doc.line(20, yPos + 32, pageWidth - 20, yPos + 32);
+
+// TOTAL (bold and highlighted)
+doc.setFontSize(11);
+doc.setTextColor(51, 168, 222);
+doc.setFont('helvetica', 'bold');
+doc.text('TOTAL', 25, yPos + 42);
+doc.text(`${currency} ${formatMoney(totalAmount)}`, pageWidth - 35, yPos + 42, { align: 'right' });
+
+yPos += 56;  
+    // ============ BOOKING INFORMATION ============
+    yPos = addSection('BOOKING INFORMATION', yPos);
     
-    const basePrice = booking.basePrice || 0;
-    const markupAmount = booking.markupAmount || 0;
-    const serviceFee = booking.serviceFee || 0;
-    const totalAmount = booking.totalAmount || 0;
-    const currency = booking.currency || 'USD';
-    
-    yPos = addField('Base Fare', formatPrice(basePrice, currency), yPos);
-    yPos = addField('Markup', formatPrice(markupAmount, currency), yPos);
-    yPos = addField('Service Fee', formatPrice(serviceFee, currency), yPos);
-    doc.setFontSize(12);
-    doc.setTextColor(51, 168, 222);
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Booking Reference:`, 20, yPos);
     doc.setFont('helvetica', 'bold');
-    doc.text(`TOTAL: ${formatPrice(totalAmount, currency)}`, 25, yPos + 5);
-    yPos += 15;
-
-    doc.setFontSize(10);
-    doc.setTextColor(150, 150, 150);
-    doc.text('Thank you for choosing Ebony Bruce Travels!', 105, doc.internal.pageSize.height - 20, { align: 'center' });
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 105, doc.internal.pageSize.height - 15, { align: 'center' });
+    doc.text(booking.reference, 70, yPos);
     
-    doc.save(`wakanow-booking-${booking.reference}.pdf`);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Provider:`, pageWidth / 2, yPos);
+    doc.setFont('helvetica', 'bold');
+    doc.text(booking.provider || 'WAKANOW', pageWidth / 2 + 35, yPos);
+    yPos += 8;
+    
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Payment Status:`, 20, yPos);
+    doc.setFont('helvetica', 'bold');
+    doc.text(booking.paymentStatus || 'COMPLETED', 70, yPos);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Payment Ref:`, pageWidth / 2, yPos);
+    doc.setFont('helvetica', 'bold');
+    const paymentRef = (booking.paymentReference || 'N/A').substring(0, 20);
+    doc.text(paymentRef, pageWidth / 2 + 50, yPos);
+    yPos += 15;
+    
+    // ============ FOOTER ============
+    // Add terms if available
+    const terms = providerData?.ProductTermsAndConditions?.TermsAndConditions || [];
+    if (terms.length > 0 && yPos < pageHeight - 40) {
+      yPos = addSection('IMPORTANT INFORMATION', yPos);
+      doc.setFontSize(7);
+      doc.setTextColor(100, 100, 100);
+      doc.setFont('helvetica', 'normal');
+      const firstTerm = terms[0];
+      const wrappedTerm = doc.splitTextToSize(`• ${firstTerm.substring(0, 120)}...`, pageWidth - 40);
+      doc.text(wrappedTerm, 20, yPos);
+      yPos += 8 * wrappedTerm.length;
+    }
+    
+    // Footer bar
+    doc.setFillColor(51, 168, 222);
+    doc.rect(0, pageHeight - 12, pageWidth, 12, 'F');
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Thank you for choosing Ebony Bruce Travels', pageWidth / 2, pageHeight - 6, { align: 'center' });
+    
+    const issueDate = new Date().toLocaleString();
+    doc.text(`Issued: ${issueDate}`, pageWidth - 20, pageHeight - 6, { align: 'right' });
+    
+    // Page number
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text('Page 1 of 1', pageWidth / 2, pageHeight - 6, { align: 'center' });
+    
+    doc.save(`Wakanow-Ticket-${booking.reference}.pdf`);
   };
-
 
   const renderWakanowDetails = () => {
     const bookingData = booking?.bookingData || {};
