@@ -483,9 +483,46 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const handleNewSearch = (searchData: any) => {
     console.log('🔄 New search from compact box:', searchData);
     setIsSearchBoxLoading(true);
+    
+    // Build new URL with search parameters
+    const params = new URLSearchParams();
+    
+    if (searchData.type === 'flights') {
+      params.set('type', 'flights');
+      params.set('tripType', searchData.tripType);
+      params.set('origin', searchData.segments[0].from);
+      params.set('destination', searchData.segments[0].to);
+      params.set('departureDate', searchData.segments[0].date);
+      if (searchData.returnDate) {
+        params.set('returnDate', searchData.returnDate);
+      }
+      params.set('adults', searchData.passengers.adults.toString());
+      params.set('children', searchData.passengers.children.toString());
+      params.set('infants', searchData.passengers.infants.toString());
+      params.set('cabinClass', searchData.cabinClass);
+    } else if (searchData.type === 'hotels') {
+      params.set('type', 'hotels');
+      params.set('destination', searchData.location);
+      params.set('checkInDate', searchData.checkInDate);
+      params.set('checkOutDate', searchData.checkOutDate);
+      params.set('guests', searchData.travellers.adults.toString());
+    } else if (searchData.type === 'car-rentals') {
+      params.set('type', 'cars');
+      params.set('pickupLocation', searchData.pickupLocationCode);
+      params.set('dropoffLocation', searchData.dropoffLocationCode);
+      params.set('pickupDate', searchData.pickupDateTime.split('T')[0]);
+      params.set('dropoffDate', searchData.dropoffDateTime.split('T')[0]);
+    }
+    
+    // Update URL without full page navigation
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.pushState({}, '', newUrl);
+    
+    // Call the parent's onNewSearch to trigger the actual search
     if (onNewSearch) {
       onNewSearch(searchData);
     }
+    
     setTimeout(() => setIsSearchBoxLoading(false), 500);
   };
 
@@ -1746,10 +1783,12 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
     return (
       <div
-        key={flight.id}
-        className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 mb-6 overflow-hidden border border-gray-200 cursor-pointer"
-        onClick={() => onSelect?.(flight)}
-      >
+      key={flight.id}
+      className="bg-white rounded-2xl ... cursor-pointer"
+      onClick={() => {
+        router.push(`/flights/${encodeURIComponent(flight.id)}`);
+      }}
+    >
         <div className="p-6">
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
             <div className="flex items-center gap-4">
@@ -1899,17 +1938,16 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 </div>
               )}
             </div>
-            <button
-              onClick={() => {
-                // Navigate to flight details page
-                const searchParams = new URLSearchParams();
-                searchParams.set('id', flight.id);
-                router.push(`/flights/details?${searchParams.toString()}`);
-              }}
-              className="text-[#33a8da] text-sm font-medium hover:underline"
-            >
-              View Flight Details
-            </button>
+          
+<button
+  onClick={(e) => {
+    e.stopPropagation(); // Prevent triggering parent div click
+    router.push(`/flights/${encodeURIComponent(flight.id)}`);
+  }}
+  className="text-[#33a8da] text-sm font-medium hover:underline"
+>
+  View Flight Details
+</button>
           </div>
         </div>
       </div>

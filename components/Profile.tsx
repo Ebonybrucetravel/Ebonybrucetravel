@@ -48,8 +48,6 @@ interface ProfileProps {
   initialActiveTab?: string;
 }
 
-// REMOVED local Booking interface - now using imported one
-
 interface OtherTraveler {
   id: string;
   name: string;
@@ -57,8 +55,6 @@ interface OtherTraveler {
   dob: string;
   gender: string;
 }
-
-// Remove PaymentCard interface
 
 interface SavedItem {
   id: string;
@@ -119,10 +115,7 @@ interface Voucher {
   productTypes?: string[];
 }
 
-// Remove 'payment' from ProfileTab
 type ProfileTab = 'details' | 'travelers' | 'bookings' | 'saved' | 'rewards' | 'security' | 'preferences' | 'vouchers';
-
-// Remove stripePromise
 
 const CURRENCY_OPTIONS = [
   { code: 'USD', symbol: '$', name: 'US Dollar' },
@@ -139,7 +132,7 @@ interface TravelDocumentsTabProps { user: ExtendedUser; }
 const TravelDocumentsTab: React.FC<TravelDocumentsTabProps> = ({ user }) => {
   const inputCls = 'w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] border border-gray-100 transition-all text-sm';
 
-  // Primary traveler state (the account holder)
+  // Primary traveler state (the account holder - YOU)
   const [primaryId, setPrimaryId] = useState<string | null>(null);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -215,7 +208,7 @@ const TravelDocumentsTab: React.FC<TravelDocumentsTabProps> = ({ user }) => {
         const created: any = await userApi.createTraveler(payload);
         setPrimaryId(created?.id ?? created?.data?.id ?? null);
       }
-      setSavedMsg('Travel documents saved successfully!');
+      setSavedMsg('Your travel documents saved successfully!');
       setTimeout(() => setSavedMsg(''), 3000);
     } catch (err: any) {
       alert(err?.message || 'Failed to save travel documents.');
@@ -274,18 +267,18 @@ const TravelDocumentsTab: React.FC<TravelDocumentsTabProps> = ({ user }) => {
       <div className="bg-white rounded-[24px] p-8 md:p-10 shadow-sm border border-gray-100/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Travel Documents</h1>
-          <p className="text-gray-400 font-bold text-sm mt-1">Manage passport details and fellow traveler profiles for faster checkout.</p>
+          <p className="text-gray-400 font-bold text-sm mt-1">Manage YOUR passport and fellow traveler profiles for faster checkout.</p>
         </div>
         <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest ${passportComplete ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'}`}>
           {passportComplete ? (
             <>
               <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-              Profile Complete
+              Your Profile Complete
             </>
           ) : (
             <>
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01" /></svg>
-              Passport Incomplete
+              Your Passport Incomplete
             </>
           )}
         </div>
@@ -297,63 +290,113 @@ const TravelDocumentsTab: React.FC<TravelDocumentsTabProps> = ({ user }) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
           </svg>
           <div>
-            <p className="text-sm font-semibold text-amber-800">Passport details required for international flights</p>
-            <p className="text-xs text-amber-700 mt-1">Please fill in your Passport Number, Issue Country, and Expiry Date below. Without these, you will not be able to proceed to payment on Wakanow international flight bookings.</p>
+            <p className="text-sm font-semibold text-amber-800">Your passport details required for international flights</p>
+            <p className="text-xs text-amber-700 mt-1">Please fill in YOUR Passport Number, Issue Country, and Expiry Date below. Without these, you will not be able to proceed to payment on Wakanow international flight bookings.</p>
           </div>
         </div>
       )}
 
-      {/* Primary Traveler / Account Holder */}
+      {/* ========== YOUR OWN PASSPORT SECTION - PRIMARY TRAVELER ========== */}
       <div className="bg-white rounded-[32px] p-8 md:p-10 border border-gray-100 space-y-6">
         <div className="flex items-center gap-3 mb-2">
           <div className="w-9 h-9 rounded-full bg-[#33a8da] flex items-center justify-center text-white font-black text-sm">
             {(firstName[0] || user.name?.[0] || 'U').toUpperCase()}
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">My Travel Profile</h3>
-            <p className="text-xs text-gray-400 font-bold">Used for all your flight bookings</p>
+            <h3 className="text-lg font-bold text-gray-900">MY TRAVEL PROFILE</h3>
+            <p className="text-xs text-gray-400 font-bold">This is YOU - your personal travel documents for booking flights</p>
           </div>
           <span className="ml-auto text-[10px] font-black uppercase bg-blue-50 text-[#33a8da] px-3 py-1 rounded-full">Primary</span>
         </div>
 
+        {/* Name fields */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">First Name *</label>
-            <input value={firstName} onChange={e => setFirstName(e.target.value)} className={inputCls} placeholder="First name" />
+            <input value={firstName} onChange={e => setFirstName(e.target.value)} className={inputCls} placeholder="Your first name" />
           </div>
           <div>
             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Last Name *</label>
-            <input value={lastName} onChange={e => setLastName(e.target.value)} className={inputCls} placeholder="Last name" />
+            <input value={lastName} onChange={e => setLastName(e.target.value)} className={inputCls} placeholder="Your last name" />
           </div>
         </div>
 
+        {/* YOUR PASSPORT SECTION */}
         <div className="border-t border-gray-100 pt-6">
           <div className="flex items-center gap-2 mb-5">
             <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <h4 className="font-bold text-gray-900 text-sm">Passport & Travel Document</h4>
+            <h4 className="font-bold text-gray-900 text-sm">MY PASSPORT & TRAVEL DOCUMENT</h4>
+            {passportComplete ? (
+              <span className="ml-auto text-[9px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Verified</span>
+            ) : (
+              <span className="ml-auto text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Required for flights</span>
+            )}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Passport Number *</label>
-              <input value={passportNumber} onChange={e => setPassportNumber(e.target.value)} className={inputCls} placeholder="e.g. A12345678" />
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+                Passport Number {!passportNumber && <span className="text-red-500">*</span>}
+              </label>
+              <input 
+                value={passportNumber} 
+                onChange={e => setPassportNumber(e.target.value)} 
+                className={inputCls} 
+                placeholder="e.g. A12345678" 
+              />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Issue Country * (2-letter code)</label>
-              <input value={passportCountry} onChange={e => setPassportCountry(e.target.value.toUpperCase())} className={inputCls} placeholder="e.g. NG" maxLength={2} />
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+                Issue Country {!passportCountry && <span className="text-red-500">*</span>} (2-letter code)
+              </label>
+              <input 
+                value={passportCountry} 
+                onChange={e => setPassportCountry(e.target.value.toUpperCase())} 
+                className={inputCls} 
+                placeholder="e.g. NG" 
+                maxLength={2} 
+              />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Expiry Date *</label>
-              <input type="date" value={passportExpiry} onChange={e => setPassportExpiry(e.target.value)} min={new Date().toISOString().split('T')[0]} className={inputCls} />
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+                Expiry Date {!passportExpiry && <span className="text-red-500">*</span>}
+              </label>
+              <input 
+                type="date" 
+                value={passportExpiry} 
+                onChange={e => setPassportExpiry(e.target.value)} 
+                min={new Date().toISOString().split('T')[0]} 
+                className={inputCls} 
+              />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Issuing Authority</label>
-              <input value={passportIssuingAuthority} onChange={e => setPassportIssuingAuthority(e.target.value)} className={inputCls} placeholder="e.g. Nigerian Immigration" />
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+                Issuing Authority (Optional)
+              </label>
+              <input 
+                value={passportIssuingAuthority} 
+                onChange={e => setPassportIssuingAuthority(e.target.value)} 
+                className={inputCls} 
+                placeholder="e.g. Nigerian Immigration Service" 
+              />
             </div>
           </div>
+          
+          {/* Warning if passport incomplete */}
+          {(!passportNumber || !passportExpiry || !passportCountry) && (
+            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+              <p className="text-xs text-amber-700 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Your passport details are required for international flight bookings
+              </p>
+            </div>
+          )}
         </div>
 
+        {/* Frequent Flyer Section (Optional) */}
         <div className="border-t border-gray-100 pt-6">
           <div className="flex items-center gap-2 mb-5">
             <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -364,11 +407,22 @@ const TravelDocumentsTab: React.FC<TravelDocumentsTabProps> = ({ user }) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
               <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Airline Code</label>
-              <input value={frequentFlyerAirline} onChange={e => setFrequentFlyerAirline(e.target.value.toUpperCase())} className={inputCls} placeholder="e.g. BA, LH, EK" maxLength={3} />
+              <input 
+                value={frequentFlyerAirline} 
+                onChange={e => setFrequentFlyerAirline(e.target.value.toUpperCase())} 
+                className={inputCls} 
+                placeholder="e.g. BA, LH, EK" 
+                maxLength={3} 
+              />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Frequent Flyer Number</label>
-              <input value={frequentFlyerNumber} onChange={e => setFrequentFlyerNumber(e.target.value)} className={inputCls} placeholder="e.g. FF123456" />
+              <input 
+                value={frequentFlyerNumber} 
+                onChange={e => setFrequentFlyerNumber(e.target.value)} 
+                className={inputCls} 
+                placeholder="e.g. FF123456" 
+              />
             </div>
           </div>
         </div>
@@ -389,14 +443,14 @@ const TravelDocumentsTab: React.FC<TravelDocumentsTabProps> = ({ user }) => {
             {isSaving ? (
               <>
                 <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                Saving…
+                Saving...
               </>
-            ) : 'Save Travel Documents'}
+            ) : 'Save My Travel Documents'}
           </button>
         </div>
       </div>
 
-      {/* Additional Travelers */}
+      {/* ========== FELLOW TRAVELERS SECTION ========== */}
       <div className="bg-white rounded-[32px] p-8 md:p-10 border border-gray-100">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -491,8 +545,68 @@ const TravelDocumentsTab: React.FC<TravelDocumentsTabProps> = ({ user }) => {
   );
 };
 
+// Helper function to extract flight details from booking
+const extractFlightDetails = (booking: Booking) => {
+  const providerData = booking.providerData as any;
+  
+  // For Wakanow flights
+  if (booking.provider === 'WAKANOW' && providerData) {
+    const flightSummaryModel = providerData?.FlightBookingSummary?.FlightSummaryModel;
+    const flightCombination = flightSummaryModel?.FlightCombination;
+    const flightModels = flightCombination?.FlightModels || [];
+    const outboundFlight = flightModels[0] || {};
+    const flightLegs = outboundFlight?.FlightLegs || [];
+    const firstLeg = flightLegs[0] || {};
+    const lastLeg = flightLegs[flightLegs.length - 1] || firstLeg;
+    
+    return {
+      origin: firstLeg?.DepartureCode || booking.bookingData?.origin || 'N/A',
+      destination: lastLeg?.DestinationCode || booking.bookingData?.destination || 'N/A',
+      originName: firstLeg?.DepartureName || '',
+      destinationName: lastLeg?.DestinationName || '',
+      flightNumber: firstLeg?.FlightNumber || booking.bookingData?.flightNumber || 'N/A',
+      airline: outboundFlight?.AirlineName || outboundFlight?.Airline || booking.bookingData?.airline || booking.provider,
+      departureDate: firstLeg?.StartTime || booking.bookingData?.departureDate || booking.createdAt,
+      arrivalDate: lastLeg?.EndTime || '',
+      duration: outboundFlight?.TripDuration || '',
+      stops: outboundFlight?.Stops || 0,
+      cabinClass: firstLeg?.CabinClassName || booking.bookingData?.cabinClass || 'Economy',
+      pnrNumber: providerData?.FlightBookingSummary?.PnrReferenceNumber || booking.pnrNumber,
+      passengers: flightCombination?.Adults || 1,
+      price: booking.totalAmount,
+      currency: booking.currency,
+      status: booking.status,
+      reference: booking.reference,
+      isWakanow: true
+    };
+  }
+  
+  // For Duffel/other flights
+  return {
+    origin: booking.bookingData?.origin || 'N/A',
+    destination: booking.bookingData?.destination || 'N/A',
+    originName: '',
+    destinationName: '',
+    flightNumber: booking.bookingData?.flightNumber || 'N/A',
+    airline: booking.bookingData?.airline || booking.provider,
+    departureDate: booking.bookingData?.departureDate || booking.createdAt,
+    arrivalDate: '',
+    duration: '',
+    stops: 0,
+    cabinClass: booking.bookingData?.cabinClass || 'Economy',
+    pnrNumber: booking.pnrNumber,
+    passengers: typeof booking.bookingData?.passengers === 'object' 
+      ? (booking.bookingData.passengers as any).adults || 1 
+      : booking.bookingData?.passengers || 1,
+    price: booking.totalAmount,
+    currency: booking.currency,
+    status: booking.status,
+    reference: booking.reference,
+    isWakanow: false
+  };
+};
 
-
+// ========== MAIN PROFILE COMPONENT ==========
 const Profile: React.FC<ProfileProps> = ({ 
   user, 
   activeTab: activeTabProp, 
@@ -627,6 +741,8 @@ const Profile: React.FC<ProfileProps> = ({
                 email: '',
                 phone: ''
               },
+              providerData: b.providerData,
+              pnrNumber: b.pnrNumber,
               createdAt: b.createdAt || new Date().toISOString(),
             };
           });
@@ -702,12 +818,11 @@ const Profile: React.FC<ProfileProps> = ({
     
     try {
       const [loyaltyData, transactionsData, rewardsResponse] = await Promise.all([
-        userApi.getLoyaltyAccount().catch(() => null), // Don't fail if this errors
+        userApi.getLoyaltyAccount().catch(() => null),
         userApi.getLoyaltyTransactions(),
-        userApi.getAvailableRewards().catch(() => []) // Don't fail if this errors
+        userApi.getAvailableRewards().catch(() => [])
       ]);
       
-      // Calculate total points from transactions
       let calculatedPoints = 0;
       let lifetimePoints = 0;
       let transactions: LoyaltyTransaction[] = [];
@@ -720,19 +835,16 @@ const Profile: React.FC<ProfileProps> = ({
           transactions = response.data || response.transactions || response.items || [];
         }
         
-        // Calculate points from EARNED transactions
         calculatedPoints = transactions
           .filter(tx => tx.type === 'EARNED')
           .reduce((sum, tx) => sum + tx.points, 0);
         
-        // Subtract REDEEMED points
         const redeemedPoints = transactions
           .filter(tx => tx.type === 'REDEEMED')
           .reduce((sum, tx) => sum + Math.abs(tx.points), 0);
         
         calculatedPoints = calculatedPoints - redeemedPoints;
         
-        // Calculate lifetime points (all EARNED transactions)
         lifetimePoints = transactions
           .filter(tx => tx.type === 'EARNED')
           .reduce((sum, tx) => sum + tx.points, 0);
@@ -740,7 +852,6 @@ const Profile: React.FC<ProfileProps> = ({
         setLoyaltyTransactions(transactions);
       }
       
-      // Use loyaltyData if it has points, otherwise use calculated points
       const finalLoyaltyData: LoyaltyAccount = {
         id: loyaltyData?.id || `loyalty-${user.id || 'temp'}`,
         points: loyaltyData?.points > 0 ? loyaltyData.points : calculatedPoints,
@@ -754,9 +865,7 @@ const Profile: React.FC<ProfileProps> = ({
       };
       
       setLoyalty(finalLoyaltyData);
-      console.log('Loyalty data loaded:', finalLoyaltyData);
   
-      // Process available rewards
       let items: AvailableReward[] = [];
       if (rewardsResponse) {
         if (Array.isArray(rewardsResponse)) {
@@ -766,7 +875,6 @@ const Profile: React.FC<ProfileProps> = ({
           items = response.data || response.rewards || response.items || [];
         }
         
-        // Use calculated points for canAfford flag
         items = items.map(reward => ({
           ...reward,
           canAfford: (finalLoyaltyData.points || 0) >= reward.pointsCost
@@ -780,54 +888,8 @@ const Profile: React.FC<ProfileProps> = ({
       
     } catch (error: any) {
       console.error('Failed to load loyalty data:', error);
-      
-      // Try to at least load transactions
-      try {
-        const transactionsData = await userApi.getLoyaltyTransactions();
-        if (transactionsData) {
-          let transactions: LoyaltyTransaction[] = [];
-          if (Array.isArray(transactionsData)) {
-            transactions = transactionsData;
-          } else {
-            const response = transactionsData as Record<string, any>;
-            transactions = response.data || response.transactions || response.items || [];
-          }
-          
-          // Calculate points from transactions
-          const earnedPoints = transactions
-            .filter(tx => tx.type === 'EARNED')
-            .reduce((sum, tx) => sum + tx.points, 0);
-          
-          const redeemedPoints = transactions
-            .filter(tx => tx.type === 'REDEEMED')
-            .reduce((sum, tx) => sum + Math.abs(tx.points), 0);
-          
-          const calculatedPoints = earnedPoints - redeemedPoints;
-          
-          const fallbackLoyalty: LoyaltyAccount = {
-            id: `loyalty-${user.id || 'temp'}`,
-            points: calculatedPoints,
-            lifetimePoints: earnedPoints,
-            tier: 'BRONZE',
-            tierName: 'Bronze',
-            joinDate: new Date().toISOString(),
-            lastActivity: new Date().toISOString(),
-            pointsToNextTier: 1000,
-            nextTier: 'SILVER'
-          };
-          
-          setLoyalty(fallbackLoyalty);
-          setLoyaltyTransactions(transactions);
-          setHasLoadedTransactions(true);
-        }
-      } catch (txError) {
-        console.error('Failed to load even transactions:', txError);
-      }
-      
       setHasLoadedLoyalty(false);
       setHasLoadedRewards(false);
-      
-      
     } finally {
       setIsLoadingLoyalty(false);
       setIsLoadingTransactions(false);
@@ -866,12 +928,9 @@ const Profile: React.FC<ProfileProps> = ({
     
     try {
       const result = await userApi.redeemReward(reward.id);
-      
-      // Refresh loyalty account to get updated points
       const updatedLoyalty = await userApi.getLoyaltyAccount();
       setLoyalty(updatedLoyalty);
       
-      // Refresh available rewards with updated canAfford flag
       if (updatedLoyalty?.points) {
         setAvailableRewards(prev => prev.map(r => ({
           ...r,
@@ -879,7 +938,6 @@ const Profile: React.FC<ProfileProps> = ({
         })));
       }
       
-      // Refresh vouchers
       await loadVouchers();
       
       setRedeemResult({
@@ -962,13 +1020,6 @@ const Profile: React.FC<ProfileProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
   
-    console.log('📁 Selected file:', {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      lastModified: new Date(file.lastModified).toLocaleString()
-    });
-  
     if (file.size > 5 * 1024 * 1024) {
       alert('Image size should be less than 5MB');
       return;
@@ -1004,25 +1055,10 @@ const Profile: React.FC<ProfileProps> = ({
       setFormData(prev => ({ ...prev, image: imageUrl }));
       const userFromUpload = (uploadResult as any)?.id != null ? uploadResult : { ...user, image: imageUrl };
       onUpdateUser(userFromUpload as Partial<User>);
-      console.log('✅ Profile picture updated');
       alert('Profile picture updated successfully!');
     } catch (error: any) {
-      console.error('❌ Failed to upload profile picture:', error);
-      
-      let errorMessage = 'Failed to upload image';
-      if (error instanceof ApiError) {
-        errorMessage = error.message;
-        console.log('🔍 ApiError details:', {
-          message: error.message,
-          status: error.status,
-          code: error.code
-        });
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      alert(`Failed to upload image: ${errorMessage}`);
-      
+      console.error('Failed to upload profile picture:', error);
+      alert('Failed to upload image');
       setFormData({ ...user });
     } finally {
       setIsSaving(false);
@@ -1037,23 +1073,17 @@ const Profile: React.FC<ProfileProps> = ({
     setIsSaving(true);
     
     try {
-      console.log('🔄 Saving profile updates:', formData);
-      
       const payload: Record<string, any> = {};
       if (formData.name) payload.name = formData.name;
       if (formData.phone) payload.phone = formData.phone;
       if (formData.dob) {
-        payload.dateOfBirth = formData.dob; // Sends YYYY-MM-DD
+        payload.dateOfBirth = formData.dob;
       }
       if (formData.gender) payload.gender = formData.gender;
   
-      console.log('📤 Sending payload to API:', payload);
-      
       const result = await userApi.updateProfile(payload as any);
-      console.log('📥 API response:', result);
       
       if (result) {
-        // Make sure we're passing the complete updated user data back
         onUpdateUser(result);
         alert('Profile updated successfully!');
         setIsEditing(false);
@@ -1061,16 +1091,8 @@ const Profile: React.FC<ProfileProps> = ({
         throw new Error('Failed to save profile');
       }
     } catch (error: any) {
-      console.error('❌ Failed to save profile:', error);
-      
-      let errorMessage = 'Failed to save profile';
-      if (error instanceof ApiError) {
-        errorMessage = error.message;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      alert(`Failed to save profile: ${errorMessage}`);
+      console.error('Failed to save profile:', error);
+      alert('Failed to save profile');
     } finally {
       setIsSaving(false);
     }
@@ -1099,136 +1121,94 @@ const Profile: React.FC<ProfileProps> = ({
     try {
       await userApi.removeSavedItem(id);
     } catch (error) {
-      console.error('Failed to remove saved item:', error);
-      // Revert on error
       setSavedItems(previous);
-      alert(error instanceof ApiError ? error.message : 'Failed to remove saved item');
+      alert('Failed to remove saved item');
     }
   };
-// Update handleSaveItem with proper typing
-const handleSaveItem = async (itemData: {
-  itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
-  itemId: string;
-  itemDetails?: any;
-  notes?: string;
-}) => {
-  try {
-    // Convert to the format expected by the API with proper typing
-    const apiData: {
-      productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
-      title: string;
-      description?: string;
-      price?: number;
-      currency?: string;
-      image?: string;
-      metadata?: Record<string, any>;
-      notes?: string;
-    } = {
-      productType: getProductType(itemData.itemType),
-      title: itemData.itemDetails?.name || itemData.itemId || 'Saved item',
-      description: itemData.itemDetails?.description,
-      price: itemData.itemDetails?.pricePerNight || itemData.itemDetails?.price,
-      currency: 'GBP',
-      image: itemData.itemDetails?.image,
-      metadata: itemData.itemDetails,
-      notes: itemData.notes
-    };
-    
-    const result = await userApi.saveItem(apiData);
-    
-    // Refresh saved items list
-    const updatedItems = await userApi.getSavedItems();
-    const mapped = mapSavedItems(updatedItems);
-    setSavedItems(mapped);
-    
-    alert('Item saved successfully!');
-    return result;
-  } catch (error: any) {
-    console.error('Failed to save item:', error);
-    alert(error instanceof ApiError ? error.message : 'Failed to save item');
-    throw error;
-  }
-};
 
-// Update handleToggleSaved with proper typing
-const handleToggleSaved = async (itemData: {
-  itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
-  itemId: string;
-  itemDetails?: any;
-}) => {
-  try {
-    // Convert to the format expected by the API with proper typing
-    const apiData: {
-      productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
-      itemId: string;
-      itemDetails?: Record<string, any>;
-    } = {
-      productType: getProductType(itemData.itemType),
-      itemId: itemData.itemId,
-      itemDetails: itemData.itemDetails
-    };
-    
-    const result = await userApi.toggleSavedItem(apiData);
-    
-    // Refresh saved items list
-    const updatedItems = await userApi.getSavedItems();
-    const mapped = mapSavedItems(updatedItems);
-    setSavedItems(mapped);
+  const handleSaveItem = async (itemData: {
+    itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+    itemId: string;
+    itemDetails?: any;
+    notes?: string;
+  }) => {
+    try {
+      const apiData = {
+        productType: getProductType(itemData.itemType),
+        title: itemData.itemDetails?.name || itemData.itemId || 'Saved item',
+        description: itemData.itemDetails?.description,
+        price: itemData.itemDetails?.pricePerNight || itemData.itemDetails?.price,
+        currency: 'GBP',
+        image: itemData.itemDetails?.image,
+        metadata: itemData.itemDetails,
+        notes: itemData.notes
+      };
       
-    return result;
-  } catch (error: any) {
-    console.error('Failed to toggle saved item:', error);
-    throw error;
-  }
-};
+      await userApi.saveItem(apiData);
+      const updatedItems = await userApi.getSavedItems();
+      const mapped = mapSavedItems(updatedItems);
+      setSavedItems(mapped);
+      alert('Item saved successfully!');
+    } catch (error: any) {
+      alert('Failed to save item');
+      throw error;
+    }
+  };
 
-// Update handleCheckSaved with proper typing
-const handleCheckSaved = async (itemData: {
-  itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
-  itemId: string;
-}): Promise<boolean> => {
-  try {
-    // Convert to the format expected by the API with proper typing
-    const apiData: {
-      productType: 'FLIGHT_DOMESTIC' | 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL' | 'PACKAGE';
-      itemId: string;
-    } = {
-      productType: getProductType(itemData.itemType),
-      itemId: itemData.itemId
-    };
-    
-    const result = await userApi.checkSavedItem(apiData);
-    return result?.isSaved || false;
-  } catch (error: any) {
-    console.error('Failed to check saved item:', error);
-    return false;
-  }
-};
+  const handleToggleSaved = async (itemData: {
+    itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+    itemId: string;
+    itemDetails?: any;
+  }) => {
+    try {
+      const apiData = {
+        productType: getProductType(itemData.itemType),
+        itemId: itemData.itemId,
+        itemDetails: itemData.itemDetails
+      };
+      
+      await userApi.toggleSavedItem(apiData);
+      const updatedItems = await userApi.getSavedItems();
+      const mapped = mapSavedItems(updatedItems);
+      setSavedItems(mapped);
+    } catch (error: any) {
+      throw error;
+    }
+  };
+
+  const handleCheckSaved = async (itemData: {
+    itemType: 'HOTEL' | 'FLIGHT' | 'CAR_RENTAL';
+    itemId: string;
+  }): Promise<boolean> => {
+    try {
+      const apiData = {
+        productType: getProductType(itemData.itemType),
+        itemId: itemData.itemId
+      };
+      
+      const result = await userApi.checkSavedItem(apiData);
+      return result?.isSaved || false;
+    } catch (error: any) {
+      return false;
+    }
+  };
   
-  // ADD THIS MISSING FUNCTION - handleUpdateNotes
   const handleUpdateNotes = async (id: string, notes: string) => {
     try {
-      const result = await userApi.updateSavedItemNotes(id, notes);
-      
-      // Update local state
+      await userApi.updateSavedItemNotes(id, notes);
       setSavedItems(prev => prev.map(item => 
         item.id === id ? { ...item, notes } : item
       ));
-      
       alert('Notes updated successfully!');
-      return result;
     } catch (error: any) {
-      console.error('Failed to update notes:', error);
-      alert(error instanceof ApiError ? error.message : 'Failed to update notes');
+      alert('Failed to update notes');
       throw error;
     }
   };
   
-  // Update mapSavedItems to handle the new response format
   const mapSavedItems = (data: any): SavedItem[] => {
     const items = Array.isArray(data) ? data : (data?.data || []);
     return items.map((s: any) => {
-      // Handle both possible response formats
       const metadata = s.metadata || s.itemDetails || {};
       const title = s.title || metadata.name || metadata.title || s.itemId || 'Saved item';
       const location = metadata.location || 
@@ -1282,8 +1262,7 @@ const handleCheckSaved = async (itemData: {
       setPasswords({ current: '', new: '', confirm: '' });
       alert('Password updated successfully!');
     } catch (error: any) {
-      const msg = error instanceof ApiError ? error.message : (error?.message || 'Failed to update password');
-      alert(msg);
+      alert('Failed to update password');
     } finally {
       setIsUpdatingPassword(false);
     }
@@ -1294,16 +1273,11 @@ const handleCheckSaved = async (itemData: {
       return;
     }
     try {
-      const result = await userApi.deleteAccount();
-      alert(result?.message || 'Your account has been deleted.');
+      await userApi.deleteAccount();
+      alert('Your account has been deleted.');
       onSignOut();
     } catch (error: any) {
-      console.error('Failed to delete account:', error);
-      const msg =
-        error instanceof ApiError
-          ? error.message
-          : (error?.message || 'Failed to delete account');
-      alert(msg);
+      alert('Failed to delete account');
     }
   };
 
@@ -1336,9 +1310,7 @@ const handleCheckSaved = async (itemData: {
       setNewTraveler({ name: '', relationship: 'Spouse', dob: '', gender: 'Male' });
       setShowAddTravelerForm(false);
     } catch (error: any) {
-      console.error('Failed to create traveler:', error);
-      const msg = error instanceof ApiError ? error.message : (error?.message || 'Failed to save traveler');
-      alert(msg);
+      alert('Failed to save traveler');
     }
   };
 
@@ -1348,22 +1320,45 @@ const handleCheckSaved = async (itemData: {
     try {
       await userApi.deleteTraveler(id);
     } catch (error: any) {
-      console.error('Failed to delete traveler:', error);
       setTravelers(previous);
-      const msg = error instanceof ApiError ? error.message : (error?.message || 'Failed to remove traveler');
-      alert(msg);
+      alert('Failed to remove traveler');
     }
   };
 
+  // ✅ UPDATED: Handle manage booking with extracted flight details
   const handleManageBooking = (booking: Booking) => {
-    setSelectedBooking(booking);
+    console.log('📦 Managing booking:', {
+      id: booking.id,
+      provider: booking.provider,
+      bookingData: booking.bookingData,
+      providerData: booking.providerData
+    });
+    
+    // Extract flight details for Wakanow bookings
+    const flightDetails = extractFlightDetails(booking);
+    
+    // Create enhanced booking with extracted details for the modal
+    const enhancedBooking: Booking = {
+      ...booking,
+      bookingData: {
+        ...booking.bookingData,
+        origin: flightDetails.origin,
+        destination: flightDetails.destination,
+        flightNumber: flightDetails.flightNumber,
+        airline: flightDetails.airline,
+        departureDate: flightDetails.departureDate,
+        cabinClass: flightDetails.cabinClass,
+        passengers: flightDetails.passengers
+      },
+      pnrNumber: flightDetails.pnrNumber || booking.pnrNumber
+    };
+    
+    setSelectedBooking(enhancedBooking);
     setIsManageModalOpen(true);
   };
 
   const handleCancelClick = () => {
     if (selectedBooking) {
-      console.log('Cancelling booking:', selectedBooking.id);
-      
       setBookings(prev => prev.map(b => 
         b.id === selectedBooking.id 
           ? { ...b, status: 'CANCELLED' } 
@@ -1374,17 +1369,18 @@ const handleCheckSaved = async (itemData: {
         onCancelRequest(selectedBooking);
       }
       
-      // Close the modal
       setIsManageModalOpen(false);
+      
+      const flightDetails = extractFlightDetails(selectedBooking);
       
       const cancelData = {
         item: {
           id: selectedBooking.id,
-          title: selectedBooking.bookingData?.origin && selectedBooking.bookingData?.destination 
-            ? `${selectedBooking.bookingData.origin} → ${selectedBooking.bookingData.destination}`
+          title: flightDetails.origin && flightDetails.destination 
+            ? `${flightDetails.origin} → ${flightDetails.destination}`
             : selectedBooking.reference,
           provider: selectedBooking.provider,
-          subtitle: selectedBooking.bookingData?.flightNumber || '',
+          subtitle: flightDetails.flightNumber || '',
           date: selectedBooking.createdAt,
           price: selectedBooking.totalAmount?.toFixed(2) || '0.00',
           type: selectedBooking.productType?.includes('FLIGHT') ? 'flight' : 
@@ -1395,8 +1391,8 @@ const handleCheckSaved = async (itemData: {
         searchParams: {
           segments: [
             {
-              from: selectedBooking.bookingData?.origin ? `${selectedBooking.bookingData.origin} (${selectedBooking.bookingData.origin})` : 'Lagos (LOS)',
-              to: selectedBooking.bookingData?.destination ? `${selectedBooking.bookingData.destination} (${selectedBooking.bookingData.destination})` : 'Abuja (ABV)'
+              from: flightDetails.origin ? `${flightDetails.origin} (${flightDetails.origin})` : 'Lagos (LOS)',
+              to: flightDetails.destination ? `${flightDetails.destination} (${flightDetails.destination})` : 'Abuja (ABV)'
             }
           ],
           travellers: '1 Traveller',
@@ -1462,8 +1458,8 @@ const handleCheckSaved = async (itemData: {
     return type === bookingFilter;
   });
 
+  // ✅ UPDATED: Render booking card with proper airport extraction
   const renderBookingCard = (booking: Booking) => {
-    // Determine display status for UI
     let displayStatus = 'Active';
     let statusColor = 'bg-green-100 text-green-600';
     
@@ -1481,12 +1477,16 @@ const handleCheckSaved = async (itemData: {
       statusColor = 'bg-green-100 text-green-600';
     }
     
-    // Determine booking type for icon
     const bookingType = booking.productType?.includes('HOTEL') ? 'hotel' : 
                         booking.productType?.includes('CAR') ? 'car' : 'flight';
     
-    // Format price for display
     const formattedPrice = booking.totalAmount?.toFixed(2) || '0.00';
+    
+    // Extract flight details using the helper function
+    const flightDetails = extractFlightDetails(booking);
+    const routeText = flightDetails.origin && flightDetails.destination 
+      ? `${flightDetails.origin} → ${flightDetails.destination}`
+      : booking.reference;
     
     return (
       <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow">
@@ -1496,30 +1496,36 @@ const handleCheckSaved = async (itemData: {
         }`}>
           {bookingType === 'flight' && <svg className="w-8 h-8 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>}
           {bookingType === 'hotel' && <svg className="w-8 h-8 text-orange-500" fill="currentColor" viewBox="0 0 24 24"><path d="M19 9H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V11a2 2 0 00-2-2zm-6 4h-2v-2h2v2zm6 0h-4v-2h4v2zM5 13h4v2H5v-2z"/></svg>}
-          {bookingType === 'car' && <svg className="w-8 h-8 text-purple-600" fill="currentColor" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" /></svg>}
+          {bookingType === 'car' && <svg className="w-8 h-8 text-purple-600" fill="currentColor" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z"/></svg>}
         </div>
         <div className="flex-1 text-center md:text-left min-w-0">
           <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
             <h4 className="text-lg font-black text-gray-900 truncate tracking-tight">
-              {booking.bookingData?.origin && booking.bookingData?.destination 
-                ? `${booking.bookingData.origin} → ${booking.bookingData.destination}`
-                : booking.reference}
+              {routeText}
             </h4>
             <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${statusColor}`}>
               {displayStatus}
             </span>
           </div>
           <p className="text-[11px] font-bold text-gray-400 mb-3">
-            {booking.provider} 
-            {booking.bookingData?.flightNumber && ` • ${booking.bookingData.flightNumber}`}
+            {flightDetails.airline} 
+            {flightDetails.flightNumber !== 'N/A' && ` • Flight ${flightDetails.flightNumber}`}
           </p>
           <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] font-black text-gray-400 uppercase tracking-tight">
             <div className="flex items-center gap-1.5">
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              {new Date(booking.createdAt).toLocaleDateString()}
+              {flightDetails.departureDate ? new Date(flightDetails.departureDate).toLocaleDateString() : new Date(booking.createdAt).toLocaleDateString()}
             </div>
+            {flightDetails.cabinClass && (
+              <div className="flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                {flightDetails.cabinClass}
+              </div>
+            )}
           </div>
         </div>
         <div className="text-center md:text-right shrink-0">
@@ -1545,7 +1551,6 @@ const handleCheckSaved = async (itemData: {
     );
   };
 
-  // Update the renderSavedCard function
   const renderSavedCard = (item: SavedItem & { notes?: string }) => {
     const formattedItem = { ...item, title: item.name, subtitle: item.location };
     const itemState = editingNotes[item.id] || { isEditing: false, notes: item.notes || '' };
@@ -1595,7 +1600,6 @@ const handleCheckSaved = async (itemData: {
           <h4 className="text-lg font-black text-gray-900 tracking-tight">{item.name}</h4>
           <p className="text-[11px] font-bold text-gray-400">{item.location}</p>
           
-          {/* Notes section */}
           {item.notes && !itemState.isEditing && (
             <div className="mt-2 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
               <p className="italic">"{item.notes}"</p>
@@ -1629,7 +1633,7 @@ const handleCheckSaved = async (itemData: {
           )}
           
           <div className="flex items-center justify-center md:justify-start gap-1 mt-2 text-yellow-400">
-            {[...Array(5)].map((_, i) => <svg key={i} className="w-3 h-3 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>)}
+            {[...Array(5)].map((_, i) => <svg key={i} className="w-3 h-3 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>)}
           </div>
         </div>
         <div className="text-center md:text-right">
@@ -1665,13 +1669,10 @@ const handleCheckSaved = async (itemData: {
 
     return (
       <div className="space-y-8">
-        {/* Loyalty Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-[24px] p-8 text-white shadow-lg">
             <p className="text-xs font-bold uppercase tracking-widest mb-2 opacity-80">Current Balance</p>
-            <p className="text-6xl font-black mb-1">
-              {loyalty?.points ?? 0}
-            </p>
+            <p className="text-6xl font-black mb-1">{loyalty?.points ?? 0}</p>
             <p className="text-sm font-bold opacity-90">points</p>
             
             {loyalty?.tier && (
@@ -1689,11 +1690,7 @@ const handleCheckSaved = async (itemData: {
                     <div className="h-2 bg-white/20 rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-white rounded-full" 
-                        style={{ 
-                          width: loyalty?.points && loyalty?.pointsToNextTier 
-                            ? `${Math.min(100, (loyalty.points / (loyalty.points + loyalty.pointsToNextTier)) * 100)}%` 
-                            : '0%' 
-                        }}
+                        style={{ width: loyalty?.points && loyalty?.pointsToNextTier ? `${Math.min(100, (loyalty.points / (loyalty.points + loyalty.pointsToNextTier)) * 100)}%` : '0%' }} 
                       />
                     </div>
                   </div>
@@ -1711,21 +1708,16 @@ const handleCheckSaved = async (itemData: {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm font-bold text-gray-500">Join Date</span>
-                <span className="text-sm font-bold text-gray-900">
-                  {loyalty?.joinDate ? new Date(loyalty.joinDate).toLocaleDateString() : 'N/A'}
-                </span>
+                <span className="text-sm font-bold text-gray-900">{loyalty?.joinDate ? new Date(loyalty.joinDate).toLocaleDateString() : 'N/A'}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm font-bold text-gray-500">Last Activity</span>
-                <span className="text-sm font-bold text-gray-900">
-                  {loyalty?.lastActivity ? new Date(loyalty.lastActivity).toLocaleDateString() : 'N/A'}
-                </span>
+                <span className="text-sm font-bold text-gray-900">{loyalty?.lastActivity ? new Date(loyalty.lastActivity).toLocaleDateString() : 'N/A'}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Available Rewards */}
         <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
           <h3 className="font-bold text-gray-900 text-lg mb-6">Available Rewards</h3>
           
@@ -1734,9 +1726,7 @@ const handleCheckSaved = async (itemData: {
               <div className="animate-spin w-6 h-6 border-2 border-[#33a8da] border-t-transparent rounded-full" />
             </div>
           ) : availableRewards.length === 0 ? (
-            <p className="text-sm font-bold text-gray-400 text-center py-8">
-              No rewards available yet. Complete bookings to earn points.
-            </p>
+            <p className="text-sm font-bold text-gray-400 text-center py-8">No rewards available yet. Complete bookings to earn points.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {availableRewards.map((reward) => (
@@ -1757,23 +1747,13 @@ const handleCheckSaved = async (itemData: {
                       {reward.discountType === 'PERCENTAGE' ? `${reward.discountValue}% off` : `${reward.discountValue} off`}
                       {reward.minSpend && ` min. spend ${reward.minSpend}`}
                     </span>
-                    <button
-                      onClick={() => handleRedeemReward(reward)}
-                      disabled={isRedeemingReward || reward.canAfford === false}
-                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition ${
-                        reward.canAfford === false
-                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : 'bg-[#33a8da] text-white hover:bg-[#2c98c7]'
-                      }`}
-                    >
+                    <button onClick={() => handleRedeemReward(reward)} disabled={isRedeemingReward || reward.canAfford === false} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition ${reward.canAfford === false ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#33a8da] text-white hover:bg-[#2c98c7]'}`}>
                       {reward.canAfford === false ? 'Insufficient Points' : 'Redeem'}
                     </button>
                   </div>
                   
                   {reward.validUntil && (
-                    <p className="text-[10px] font-bold text-gray-400 mt-3">
-                      Valid until {new Date(reward.validUntil).toLocaleDateString()}
-                    </p>
+                    <p className="text-[10px] font-bold text-gray-400 mt-3">Valid until {new Date(reward.validUntil).toLocaleDateString()}</p>
                   )}
                 </div>
               ))}
@@ -1781,7 +1761,6 @@ const handleCheckSaved = async (itemData: {
           )}
         </div>
 
-        {/* Transaction History */}
         <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
           <h3 className="font-bold text-gray-900 text-lg mb-6">Transaction History</h3>
           
@@ -1790,52 +1769,23 @@ const handleCheckSaved = async (itemData: {
               <div className="animate-spin w-6 h-6 border-2 border-[#33a8da] border-t-transparent rounded-full" />
             </div>
           ) : loyaltyTransactions.length === 0 ? (
-            <p className="text-sm font-bold text-gray-400 text-center py-8">
-              No transactions yet. Start earning points with your next booking!
-            </p>
+            <p className="text-sm font-bold text-gray-400 text-center py-8">No transactions yet. Start earning points with your next booking!</p>
           ) : (
             <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
               {loyaltyTransactions.map((tx) => (
                 <div key={tx.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
                   <div className="flex items-start gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                      tx.type === 'EARNED' ? 'bg-green-100 text-green-600' :
-                      tx.type === 'REDEEMED' ? 'bg-red-100 text-red-500' :
-                      'bg-gray-100 text-gray-500'
-                    }`}>
-                      {tx.type === 'EARNED' && (
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                        </svg>
-                      )}
-                      {tx.type === 'REDEEMED' && (
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                        </svg>
-                      )}
-                      {tx.type === 'EXPIRED' && (
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      )}
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${tx.type === 'EARNED' ? 'bg-green-100 text-green-600' : tx.type === 'REDEEMED' ? 'bg-red-100 text-red-500' : 'bg-gray-100 text-gray-500'}`}>
+                      {tx.type === 'EARNED' && (<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>)}
+                      {tx.type === 'REDEEMED' && (<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg>)}
+                      {tx.type === 'EXPIRED' && (<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>)}
                     </div>
                     <div>
                       <p className="text-sm font-bold text-gray-900">{tx.description}</p>
-                      <p className="text-[10px] font-bold text-gray-400 mt-1">
-                        {new Date(tx.createdAt).toLocaleDateString()} • {tx.source}
-                        {tx.expiryDate && ` • Expires ${new Date(tx.expiryDate).toLocaleDateString()}`}
-                      </p>
+                      <p className="text-[10px] font-bold text-gray-400 mt-1">{new Date(tx.createdAt).toLocaleDateString()} • {tx.source}{tx.expiryDate && ` • Expires ${new Date(tx.expiryDate).toLocaleDateString()}`}</p>
                     </div>
                   </div>
-                  <span className={`text-sm font-black ${
-  tx.type === 'EARNED' ? 'text-green-600' :
-  tx.type === 'REDEEMED' ? 'text-red-500' :
-  'text-gray-400'
-}`}>
-  {tx.type === 'EARNED' ? '+' : ''}
-  {tx.type === 'REDEEMED' && tx.points > 0 ? '-' : ''}
-  {Math.abs(tx.points)} pts
-</span>
+                  <span className={`text-sm font-black ${tx.type === 'EARNED' ? 'text-green-600' : tx.type === 'REDEEMED' ? 'text-red-500' : 'text-gray-400'}`}>{tx.type === 'EARNED' ? '+' : ''}{tx.type === 'REDEEMED' && tx.points > 0 ? '-' : ''}{Math.abs(tx.points)} pts</span>
                 </div>
               ))}
             </div>
@@ -1861,14 +1811,11 @@ const handleCheckSaved = async (itemData: {
 
     return (
       <div className="space-y-8">
-        {/* Active Vouchers */}
         <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
           <h3 className="font-bold text-gray-900 text-lg mb-6">Active Vouchers</h3>
           
           {activeVouchers.length === 0 ? (
-            <p className="text-sm font-bold text-gray-400 text-center py-8">
-              No active vouchers. Redeem points for rewards to get vouchers!
-            </p>
+            <p className="text-sm font-bold text-gray-400 text-center py-8">No active vouchers. Redeem points for rewards to get vouchers!</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {activeVouchers.map((voucher) => (
@@ -1878,31 +1825,17 @@ const handleCheckSaved = async (itemData: {
                       <span className="text-xs font-bold text-[#33a8da] uppercase tracking-widest">Voucher Code</span>
                       <p className="text-xl font-black text-gray-900 font-mono mt-1">{voucher.code}</p>
                     </div>
-                    <span className="bg-green-100 text-green-600 px-3 py-1 rounded-full text-[10px] font-black uppercase">
-                      Active
-                    </span>
+                    <span className="bg-green-100 text-green-600 px-3 py-1 rounded-full text-[10px] font-black uppercase">Active</span>
                   </div>
                   
                   <div className="mt-4">
-                    <p className="text-lg font-black text-gray-900">
-                      {voucher.discountType === 'PERCENTAGE' 
-                        ? `${voucher.value}% OFF` 
-                        : `${voucher.value} ${voucher.discountType === 'FIXED' ? 'off' : ''}`}
-                    </p>
-                    {voucher.minSpend && (
-                      <p className="text-xs font-bold text-gray-400 mt-1">Min. spend: {voucher.minSpend}</p>
-                    )}
+                    <p className="text-lg font-black text-gray-900">{voucher.discountType === 'PERCENTAGE' ? `${voucher.value}% OFF` : `${voucher.value} ${voucher.discountType === 'FIXED' ? 'off' : ''}`}</p>
+                    {voucher.minSpend && <p className="text-xs font-bold text-gray-400 mt-1">Min. spend: {voucher.minSpend}</p>}
                   </div>
                   
                   <div className="mt-4 pt-4 border-t border-gray-200">
-                    <p className="text-[10px] font-bold text-gray-400">
-                      Valid until {new Date(voucher.validUntil).toLocaleDateString()}
-                    </p>
-                    {voucher.productTypes && voucher.productTypes.length > 0 && (
-                      <p className="text-[10px] font-bold text-gray-400 mt-1">
-                        Valid for: {voucher.productTypes.join(', ')}
-                      </p>
-                    )}
+                    <p className="text-[10px] font-bold text-gray-400">Valid until {new Date(voucher.validUntil).toLocaleDateString()}</p>
+                    {voucher.productTypes && voucher.productTypes.length > 0 && <p className="text-[10px] font-bold text-gray-400 mt-1">Valid for: {voucher.productTypes.join(', ')}</p>}
                   </div>
                 </div>
               ))}
@@ -1910,7 +1843,6 @@ const handleCheckSaved = async (itemData: {
           )}
         </div>
 
-        {/* Voucher History */}
         {(usedVouchers.length > 0 || expiredVouchers.length > 0) && (
           <div className="bg-white rounded-[24px] p-8 border border-gray-100 shadow-sm">
             <h3 className="font-bold text-gray-900 text-lg mb-6">Voucher History</h3>
@@ -1942,7 +1874,6 @@ const handleCheckSaved = async (itemData: {
     );
   };
 
-  // Updated menuItems with vouchers
   const menuItems = [
     { id: 'details', label: 'Personal Details', icon: <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /> },
     { id: 'bookings', label: 'My Bookings', icon: <path d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745V20a2 2 0 002 2h14a2 2 0 002-2v-6.745zM16 8V5a3 3 0 00-6 0v3h6z" /> },
@@ -1974,13 +1905,9 @@ const handleCheckSaved = async (itemData: {
         accept="image/jpeg,image/png,image/jpg,image/gif,image/webp" 
       />
       
-      {/* Soft Mobile Menu Drawer (Slide-in) */}
       {isDrawerOpen && (
         <div className="fixed inset-0 z-[60] lg:hidden animate-in fade-in duration-300">
-          <div 
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm" 
-            onClick={onCloseDrawer}
-          />
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCloseDrawer} />
           <div className="absolute left-0 top-0 bottom-0 w-[280px] bg-white shadow-2xl flex flex-col p-6 animate-in slide-in-from-left duration-300">
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-lg font-black text-gray-900 tracking-tight">Navigation</h3>
@@ -1993,11 +1920,7 @@ const handleCheckSaved = async (itemData: {
             
             <div className="flex-1 space-y-2 overflow-y-auto hide-scrollbar">
               {menuItems.map((item) => (
-                <button 
-                  key={item.id} 
-                  onClick={() => handleTabClick(item.id as ProfileTab)} 
-                  className={`w-full flex items-center gap-4 px-5 py-4 rounded-xl transition-all text-sm font-bold ${activeTab === item.id ? 'bg-blue-50 text-[#33a8da]' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
+                <button key={item.id} onClick={() => handleTabClick(item.id as ProfileTab)} className={`w-full flex items-center gap-4 px-5 py-4 rounded-xl transition-all text-sm font-bold ${activeTab === item.id ? 'bg-blue-50 text-[#33a8da]' : 'text-gray-500 hover:bg-gray-50'}`}>
                   <svg className={`w-5 h-5 ${activeTab === item.id ? 'text-[#33a8da]' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     {item.icon}
                   </svg>
@@ -2020,24 +1943,11 @@ const handleCheckSaved = async (itemData: {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="flex flex-col lg:flex-row gap-8">
-          {/* Soft Desktop Sidebar */}
           <aside className="hidden lg:block w-full lg:w-[320px] space-y-6">
             <div className="bg-white rounded-[24px] p-8 shadow-sm border border-gray-100/50">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 bg-[#f4d9c6] rounded-full flex items-center justify-center text-[#9a7d6a] border-2 border-white shadow-sm overflow-hidden shrink-0">
-                  <img 
-                    src={
-                      formData.image ||
-                      formData.profilePicture ||
-                      formData.avatar ||
-                      `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=56`
-                    } 
-                    className="w-full h-full object-cover" 
-                    alt="Profile" 
-                    onError={(e) => {
-                      e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=56`;
-                    }}
-                  />
+                  <img src={formData.image || formData.profilePicture || formData.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=56`} className="w-full h-full object-cover" alt="Profile" onError={(e) => { e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=56`; }} />
                 </div>
                 <div className="min-w-0">
                   <h2 className="text-xl font-black text-gray-900 tracking-tight truncate">{formData.name || 'Ebony Bruce'}</h2>
@@ -2048,11 +1958,7 @@ const handleCheckSaved = async (itemData: {
             
             <nav className="bg-white rounded-[24px] overflow-hidden shadow-sm border border-gray-100/50">
               {menuItems.map((item) => (
-                <button 
-                  key={item.id} 
-                  onClick={() => handleTabClick(item.id as ProfileTab)} 
-                  className={`w-full flex items-center gap-5 px-8 py-5 transition-all text-[15px] font-bold ${activeTab === item.id ? 'bg-[#f0f9ff] text-[#33a8da]' : 'text-gray-400 hover:bg-gray-50'}`}
-                >
+                <button key={item.id} onClick={() => handleTabClick(item.id as ProfileTab)} className={`w-full flex items-center gap-5 px-8 py-5 transition-all text-[15px] font-bold ${activeTab === item.id ? 'bg-[#f0f9ff] text-[#33a8da]' : 'text-gray-400 hover:bg-gray-50'}`}>
                   <svg className={`w-5 h-5 ${activeTab === item.id ? 'text-[#33a8da]' : 'text-gray-400 opacity-60'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     {item.icon}
                   </svg>
@@ -2064,27 +1970,14 @@ const handleCheckSaved = async (itemData: {
             <div className="bg-[#f0f9ff] rounded-[24px] p-8 shadow-sm border border-blue-50">
               <div className="flex items-center gap-3 mb-5">
                 <div className="w-5 h-5 bg-orange-400 rounded-full flex items-center justify-center text-white">
-                  <svg className="w-3" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                  </svg>
+                  <svg className="w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
                 </div>
-                <h3 className="text-xs font-bold text-gray-900 uppercase tracking-tighter">
-                  {loyalty?.tierName || 'Gold Level'}
-                </h3>
+                <h3 className="text-xs font-bold text-gray-900 uppercase tracking-tighter">{loyalty?.tierName || 'Gold Level'}</h3>
               </div>
               <div className="w-full bg-white h-1.5 rounded-full overflow-hidden mb-3">
-                <div 
-                  className="h-full bg-orange-400 rounded-full" 
-                  style={{ 
-                    width: loyalty?.points && loyalty?.pointsToNextTier 
-                      ? `${Math.min(100, (loyalty.points / (loyalty.points + loyalty.pointsToNextTier)) * 100)}%` 
-                      : '75%' 
-                  }} 
-                />
+                <div className="h-full bg-orange-400 rounded-full" style={{ width: loyalty?.points && loyalty?.pointsToNextTier ? `${Math.min(100, (loyalty.points / (loyalty.points + loyalty.pointsToNextTier)) * 100)}%` : '75%' }} />
               </div>
-              <p className="text-[11px] text-gray-500 font-bold uppercase tracking-widest">
-                {loyalty?.points ?? 1200} points • {loyalty?.pointsToNextTier ?? 800} to next tier
-              </p>
+              <p className="text-[11px] text-gray-500 font-bold uppercase tracking-widest">{loyalty?.points ?? 1200} points • {loyalty?.pointsToNextTier ?? 800} to next tier</p>
             </div>
           </aside>
 
@@ -2095,19 +1988,7 @@ const handleCheckSaved = async (itemData: {
                   <div className="flex items-center gap-8">
                     <div onClick={handleProfilePictureClick} className={`relative group shrink-0 ${isEditing ? 'cursor-pointer hover:scale-105 transition-transform' : ''}`}>
                       <div className="w-24 h-24 bg-[#f4d9c6] rounded-full flex items-center justify-center border-4 border-white shadow-sm overflow-hidden">
-                        <img 
-                          src={
-                            formData.image ||
-                            formData.profilePicture ||
-                            formData.avatar ||
-                            `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=96`
-                          } 
-                          className="w-full h-full object-cover" 
-                          alt="Profile" 
-                          onError={(e) => {
-                            e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=96`;
-                          }}
-                        />
+                        <img src={formData.image || formData.profilePicture || formData.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=96`} className="w-full h-full object-cover" alt="Profile" onError={(e) => { e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=f4d9c6&color=9a7d6a&size=96`; }} />
                         {isEditing && (
                           <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                             <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2145,34 +2026,16 @@ const handleCheckSaved = async (itemData: {
                   <div className="space-y-8">
                     <div>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Full Name</label>
-                      <input 
-                        type="text" 
-                        disabled={!isEditing} 
-                        value={formData.name || ''} 
-                        onChange={(e) => handleInputChange('name', e.target.value)} 
-                        placeholder="Full Name" 
-                        className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold transition-all outline-none ${isEditing ? 'text-gray-900 border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'text-gray-700 border-transparent cursor-not-allowed'}`} 
-                      />
+                      <input type="text" disabled={!isEditing} value={formData.name || ''} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="Full Name" className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold transition-all outline-none ${isEditing ? 'text-gray-900 border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'text-gray-700 border-transparent cursor-not-allowed'}`} />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Date of Birth</label>
-  <input 
-    type="date" 
-    disabled={!isEditing} 
-    value={formData.dob ? formData.dob.split('T')[0] : ''} // Format ISO to YYYY-MM-DD
-    onChange={(e) => handleInputChange('dob', e.target.value)} 
-    className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold transition-all outline-none ${isEditing ? 'text-gray-900 border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'text-gray-700 border-transparent cursor-not-allowed'}`} 
-  />
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Date of Birth</label>
+                        <input type="date" disabled={!isEditing} value={formData.dob ? formData.dob.split('T')[0] : ''} onChange={(e) => handleInputChange('dob', e.target.value)} className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold transition-all outline-none ${isEditing ? 'text-gray-900 border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'text-gray-700 border-transparent cursor-not-allowed'}`} />
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Gender</label>
-                        <select 
-                          disabled={!isEditing} 
-                          value={formData.gender || 'Male'} 
-                          onChange={(e) => handleInputChange('gender', e.target.value)} 
-                          className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold transition-all outline-none appearance-none ${isEditing ? 'text-gray-900 border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'text-gray-700 border-transparent cursor-not-allowed'}`}
-                        >
+                        <select disabled={!isEditing} value={formData.gender || 'Male'} onChange={(e) => handleInputChange('gender', e.target.value)} className={`w-full px-6 py-4 bg-gray-50 border-2 rounded-xl font-bold transition-all outline-none appearance-none ${isEditing ? 'text-gray-900 border-transparent focus:bg-white focus:border-[#33a8da] focus:ring-4 focus:ring-[#33a8da]/10' : 'text-gray-700 border-transparent cursor-not-allowed'}`}>
                           <option value="Male">Male</option>
                           <option value="Female">Female</option>
                           <option value="Other">Other</option>
@@ -2193,13 +2056,7 @@ const handleCheckSaved = async (itemData: {
                       </div>
                       <div className="flex-1">
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Email Address</p>
-                        <input 
-                          type="email" 
-                          disabled={!isEditing} 
-                          value={formData.email || ''} 
-                          onChange={(e) => handleInputChange('email', e.target.value)} 
-                          className={`w-full bg-transparent font-bold border-none outline-none p-0 focus:ring-0 ${isEditing ? 'text-gray-900' : 'text-gray-700 cursor-not-allowed'}`} 
-                        />
+                        <input type="email" disabled={!isEditing} value={formData.email || ''} onChange={(e) => handleInputChange('email', e.target.value)} className={`w-full bg-transparent font-bold border-none outline-none p-0 focus:ring-0 ${isEditing ? 'text-gray-900' : 'text-gray-700 cursor-not-allowed'}`} />
                       </div>
                       {isEditing && <span className="text-[10px] font-black uppercase text-green-500 bg-green-50 px-2 py-0.5 rounded">Verified</span>}
                     </div>
@@ -2211,13 +2068,7 @@ const handleCheckSaved = async (itemData: {
                       </div>
                       <div className="flex-1">
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Phone Number</p>
-                        <input 
-                          type="tel" 
-                          disabled={!isEditing} 
-                          value={formData.phone || ''} 
-                          onChange={(e) => handleInputChange('phone', e.target.value)} 
-                          className={`w-full bg-transparent font-bold border-none outline-none p-0 focus:ring-0 ${isEditing ? 'text-gray-900' : 'text-gray-700 cursor-not-allowed'}`} 
-                        />
+                        <input type="tel" disabled={!isEditing} value={formData.phone || ''} onChange={(e) => handleInputChange('phone', e.target.value)} className={`w-full bg-transparent font-bold border-none outline-none p-0 focus:ring-0 ${isEditing ? 'text-gray-900' : 'text-gray-700 cursor-not-allowed'}`} />
                       </div>
                       {isEditing && <button className="text-[10px] font-bold uppercase text-gray-400 hover:text-[#33a8da] transition">Update</button>}
                     </div>
@@ -2226,24 +2077,10 @@ const handleCheckSaved = async (itemData: {
 
                 <div className="flex flex-col md:flex-row justify-end gap-4 pb-12">
                   {isEditing && (
-                    <button 
-                      onClick={() => { setIsEditing(false); setFormData({ ...user }); }} 
-                      className="px-8 py-3.5 border border-gray-200 rounded-xl text-gray-500 font-bold text-sm uppercase tracking-widest hover:bg-gray-50 transition"
-                    >
-                      Cancel
-                    </button>
+                    <button onClick={() => { setIsEditing(false); setFormData({ ...user }); }} className="px-8 py-3.5 border border-gray-200 rounded-xl text-gray-500 font-bold text-sm uppercase tracking-widest hover:bg-gray-50 transition">Cancel</button>
                   )}
-                  <button 
-                    onClick={onSignOut} 
-                    className="px-10 py-3.5 border border-blue-100 rounded-xl text-[#33a8da] font-bold text-sm uppercase tracking-widest hover:bg-blue-50 transition"
-                  >
-                    Sign Out
-                  </button>
-                  <button 
-                    onClick={handleSave} 
-                    disabled={isSaving || !isEditing} 
-                    className={`px-10 py-3.5 text-white font-bold text-sm uppercase tracking-widest rounded-xl shadow-xl transition transform active:scale-95 flex items-center justify-center gap-2 ${isEditing ? 'bg-[#33a8da] shadow-blue-100 hover:bg-[#2c98c7]' : 'bg-gray-300 shadow-none cursor-not-allowed'}`}
-                  >
+                  <button onClick={onSignOut} className="px-10 py-3.5 border border-blue-100 rounded-xl text-[#33a8da] font-bold text-sm uppercase tracking-widest hover:bg-blue-50 transition">Sign Out</button>
+                  <button onClick={handleSave} disabled={isSaving || !isEditing} className={`px-10 py-3.5 text-white font-bold text-sm uppercase tracking-widest rounded-xl shadow-xl transition transform active:scale-95 flex items-center justify-center gap-2 ${isEditing ? 'bg-[#33a8da] shadow-blue-100 hover:bg-[#2c98c7]' : 'bg-gray-300 shadow-none cursor-not-allowed'}`}>
                     {isSaving ? (
                       <>
                         <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
@@ -2266,10 +2103,7 @@ const handleCheckSaved = async (itemData: {
                     <p className="text-gray-400 font-bold text-sm mt-1">Manage your upcoming and past travels.</p>
                   </div>
                   <div className="relative" ref={filterRef}>
-                    <button 
-                      onClick={() => setShowFilterDropdown(!showFilterDropdown)} 
-                      className="px-5 py-2.5 bg-white border border-gray-100 rounded-xl text-xs font-bold text-gray-500 flex items-center gap-2 hover:border-[#33a8da] transition shadow-sm"
-                    >
+                    <button onClick={() => setShowFilterDropdown(!showFilterDropdown)} className="px-5 py-2.5 bg-white border border-gray-100 rounded-xl text-xs font-bold text-gray-500 flex items-center gap-2 hover:border-[#33a8da] transition shadow-sm">
                       {bookingFilter === 'All' ? 'All Bookings' : `${bookingFilter}s`}
                       <svg className={`w-3.5 h-3.5 transition-transform ${showFilterDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
@@ -2278,11 +2112,7 @@ const handleCheckSaved = async (itemData: {
                     {showFilterDropdown && (
                       <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
                         {['All', 'Flight', 'Hotel', 'Car'].map((f) => (
-                          <button 
-                            key={f} 
-                            onClick={() => { setBookingFilter(f as any); setShowFilterDropdown(false); }} 
-                            className={`w-full text-left px-5 py-3 text-xs font-bold ${bookingFilter === f ? 'text-[#33a8da] bg-blue-50' : 'text-gray-500 hover:bg-gray-50'}`}
-                          >
+                          <button key={f} onClick={() => { setBookingFilter(f as any); setShowFilterDropdown(false); }} className={`w-full text-left px-5 py-3 text-xs font-bold ${bookingFilter === f ? 'text-[#33a8da] bg-blue-50' : 'text-gray-500 hover:bg-gray-50'}`}>
                             {f === 'All' ? 'All Bookings' : `${f}s`}
                           </button>
                         ))}
@@ -2308,86 +2138,66 @@ const handleCheckSaved = async (itemData: {
               </div>
             )}
 
-{activeTab === 'saved' && (
-  <div className="animate-in fade-in duration-500 space-y-8">
-    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Saved Items</h1>
-        <p className="text-gray-400 font-bold text-sm mt-1">Your personal travel wishlist.</p>
-      </div>
-      <div className="flex items-center gap-3">
-        {/* Filter buttons */}
-        <div className="flex bg-gray-100 rounded-xl p-1">
-          {['All', 'Hotels', 'Flights', 'Car Rentals'].map((filter) => (
-            <button
-              key={filter}
-              onClick={() => {
-                // Add filter logic here if needed
-                console.log(`Filter by ${filter}`);
-              }}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition ${
-                filter === 'All' 
-                  ? 'bg-white text-[#33a8da] shadow-sm' 
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {filter}
-            </button>
-          ))}
-        </div>
-        <button onClick={handleShareList} disabled={isSharing} className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 rounded-xl text-[#33a8da] font-bold text-xs uppercase tracking-widest hover:bg-gray-50 active:scale-95 disabled:opacity-50">
-          {isSharing ? (
-            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          ) : (
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
-            </svg>
-          )}
-          {isSharing ? 'Sharing...' : 'Share List'}
-        </button>
-      </div>
-    </div>
-    
-    {/* Saved items count badge */}
-    {savedItems.length > 0 && (
-      <div className="bg-blue-50 rounded-2xl px-4 py-2 inline-block">
-        <p className="text-xs font-bold text-[#33a8da]">
-          {savedItems.length} saved {savedItems.length === 1 ? 'item' : 'items'}
-        </p>
-      </div>
-    )}
-    
-    <div className="space-y-4">
-      {isLoadingSavedItems ? (
-        <div className="bg-white rounded-[32px] p-16 text-center border border-gray-100">
-          <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-gray-500 font-bold">Loading your saved items…</p>
-        </div>
-      ) : savedItems.length > 0 ? (
-        savedItems.map(renderSavedCard)
-      ) : (
-        <div className="bg-white rounded-[32px] p-16 text-center border-4 border-dashed border-gray-100">
-          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-            </svg>
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">No saved items yet</h3>
-          <p className="text-gray-400 font-bold mb-6">Start exploring and save your favorite hotels, flights, and car rentals!</p>
-          <button 
-            onClick={() => window.location.href = '/search'} 
-            className="px-8 py-3 bg-[#33a8da] text-white rounded-xl font-bold text-sm uppercase tracking-widest hover:bg-[#2c98c7] transition shadow-lg"
-          >
-            Explore Now
-          </button>
-        </div>
-      )}
-    </div>
-  </div>
-)}
+            {activeTab === 'saved' && (
+              <div className="animate-in fade-in duration-500 space-y-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Saved Items</h1>
+                    <p className="text-gray-400 font-bold text-sm mt-1">Your personal travel wishlist.</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex bg-gray-100 rounded-xl p-1">
+                      {['All', 'Hotels', 'Flights', 'Car Rentals'].map((filter) => (
+                        <button key={filter} onClick={() => console.log(`Filter by ${filter}`)} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${filter === 'All' ? 'bg-white text-[#33a8da] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                          {filter}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={handleShareList} disabled={isSharing} className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 rounded-xl text-[#33a8da] font-bold text-xs uppercase tracking-widest hover:bg-gray-50 active:scale-95 disabled:opacity-50">
+                      {isSharing ? (
+                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+                        </svg>
+                      )}
+                      {isSharing ? 'Sharing...' : 'Share List'}
+                    </button>
+                  </div>
+                </div>
+                
+                {savedItems.length > 0 && (
+                  <div className="bg-blue-50 rounded-2xl px-4 py-2 inline-block">
+                    <p className="text-xs font-bold text-[#33a8da]">{savedItems.length} saved {savedItems.length === 1 ? 'item' : 'items'}</p>
+                  </div>
+                )}
+                
+                <div className="space-y-4">
+                  {isLoadingSavedItems ? (
+                    <div className="bg-white rounded-[32px] p-16 text-center border border-gray-100">
+                      <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
+                      <p className="text-gray-500 font-bold">Loading your saved items…</p>
+                    </div>
+                  ) : savedItems.length > 0 ? (
+                    savedItems.map(renderSavedCard)
+                  ) : (
+                    <div className="bg-white rounded-[32px] p-16 text-center border-4 border-dashed border-gray-100">
+                      <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                      </div>
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">No saved items yet</h3>
+                      <p className="text-gray-400 font-bold mb-6">Start exploring and save your favorite hotels, flights, and car rentals!</p>
+                      <button onClick={() => window.location.href = '/search'} className="px-8 py-3 bg-[#33a8da] text-white rounded-xl font-bold text-sm uppercase tracking-widest hover:bg-[#2c98c7] transition shadow-lg">Explore Now</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {activeTab === 'rewards' && (
               <div className="animate-in fade-in duration-500 space-y-8">
@@ -2424,51 +2234,22 @@ const handleCheckSaved = async (itemData: {
                   <div className="space-y-5">
                     <div>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Current Password</label>
-                      <input 
-                        type="password" 
-                        value={passwords.current} 
-                        onChange={(e) => setPasswords({...passwords, current: e.target.value})} 
-                        className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
-                        placeholder="Enter current password" 
-                      />
+                      <input type="password" value={passwords.current} onChange={(e) => setPasswords({...passwords, current: e.target.value})} className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" placeholder="Enter current password" />
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">New Password</label>
-                      <input 
-                        type="password" 
-                        value={passwords.new} 
-                        onChange={(e) => setPasswords({...passwords, new: e.target.value})} 
-                        className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
-                        placeholder="Enter new password (min 6 chars)" 
-                      />
+                      <input type="password" value={passwords.new} onChange={(e) => setPasswords({...passwords, new: e.target.value})} className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" placeholder="Enter new password (min 6 chars)" />
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Confirm New Password</label>
-                      <input 
-                        type="password" 
-                        value={passwords.confirm} 
-                        onChange={(e) => setPasswords({...passwords, confirm: e.target.value})} 
-                        className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
-                        placeholder="Re-enter new password" 
-                      />
+                      <input type="password" value={passwords.confirm} onChange={(e) => setPasswords({...passwords, confirm: e.target.value})} className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" placeholder="Re-enter new password" />
                     </div>
-                    <button 
-                      onClick={handleUpdatePassword} 
-                      disabled={isUpdatingPassword || !passwords.current || !passwords.new} 
-                      className="bg-[#33a8da] text-white px-8 py-3.5 rounded-xl font-bold uppercase text-xs tracking-widest hover:bg-[#2c98c7] transition disabled:opacity-50"
-                    >
-                      {isUpdatingPassword ? 'Updating...' : 'Change Password'}
-                    </button>
+                    <button onClick={handleUpdatePassword} disabled={isUpdatingPassword || !passwords.current || !passwords.new} className="bg-[#33a8da] text-white px-8 py-3.5 rounded-xl font-bold uppercase text-xs tracking-widest hover:bg-[#2c98c7] transition disabled:opacity-50">{isUpdatingPassword ? 'Updating...' : 'Change Password'}</button>
                   </div>
                 </div>
                 <div className="bg-white rounded-[32px] p-8 border border-gray-100 flex items-center justify-between">
                   <p className="text-sm font-bold text-gray-600">Two-Factor Authentication</p>
-                  <button 
-                    onClick={() => !twoFactorEnabled ? open2FAModal() : setTwoFactorEnabled(false)} 
-                    className={`px-6 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest ${twoFactorEnabled ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-                  >
-                    {twoFactorEnabled ? 'Disable' : 'Enable'}
-                  </button>
+                  <button onClick={() => !twoFactorEnabled ? open2FAModal() : setTwoFactorEnabled(false)} className={`px-6 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest ${twoFactorEnabled ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>{twoFactorEnabled ? 'Disable' : 'Enable'}</button>
                 </div>
               </div>
             )}
@@ -2480,25 +2261,13 @@ const handleCheckSaved = async (itemData: {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                       <div>
                         <label className="block text-lg font-bold text-gray-900 mb-4">Currency</label>
-                        <select 
-                          value={prefCurrCode} 
-                          onChange={(e) => setPrefCurrCode(e.target.value as 'USD' | 'EUR' | 'GBP' | 'NGN' | 'JPY' | 'CNY')} 
-                          className="w-full px-6 py-4 bg-gray-50 rounded-2xl font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] appearance-none"
-                        >
-                          {CURRENCY_OPTIONS.map(currency => (
-                            <option key={currency.code} value={currency.code}>
-                              {currency.code} ({currency.symbol})
-                            </option>
-                          ))}
+                        <select value={prefCurrCode} onChange={(e) => setPrefCurrCode(e.target.value as 'USD' | 'EUR' | 'GBP' | 'NGN' | 'JPY' | 'CNY')} className="w-full px-6 py-4 bg-gray-50 rounded-2xl font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] appearance-none">
+                          {CURRENCY_OPTIONS.map(currency => (<option key={currency.code} value={currency.code}>{currency.code} ({currency.symbol})</option>))}
                         </select>
                       </div>
                       <div>
                         <label className="block text-lg font-bold text-gray-900 mb-4">Language</label>
-                        <select 
-                          value={prefLang} 
-                          onChange={(e) => setPrefLang(e.target.value as 'EN' | 'FR' | 'ES')} 
-                          className="w-full px-6 py-4 bg-gray-50 rounded-2xl font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] appearance-none"
-                        >
+                        <select value={prefLang} onChange={(e) => setPrefLang(e.target.value as 'EN' | 'FR' | 'ES')} className="w-full px-6 py-4 bg-gray-50 rounded-2xl font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] appearance-none">
                           <option value="EN">English</option>
                           <option value="FR">Français</option>
                           <option value="ES">Español</option>
@@ -2508,110 +2277,7 @@ const handleCheckSaved = async (itemData: {
                   </div>
                 </div>
                 <div className="mt-8 flex justify-end gap-5">
-                  <button 
-                    onClick={() => { 
-                      setLanguage(prefLang); 
-                      const selectedCurrency = CURRENCY_OPTIONS.find(c => c.code === prefCurrCode);
-                      if (selectedCurrency) {
-                        setCurrency(selectedCurrency);
-                      }
-                      setIsSaving(true); 
-                      setTimeout(() => setIsSaving(false), 500); 
-                    }} 
-                    className="px-10 py-3.5 bg-[#33a8da] text-white font-bold rounded-2xl shadow-xl shadow-blue-500/10 hover:bg-[#2c98c7] active:scale-95 text-lg transition"
-                  >
-                    {isSaving ? 'Saving...' : 'Save Preferences'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'travelers' && (
-              <div className="animate-in fade-in duration-500 space-y-8">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white rounded-[24px] p-8 md:p-10 shadow-sm border border-gray-100/50 gap-4">
-                  <div>
-                    <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Other Travelers</h1>
-                    <p className="text-gray-400 font-bold text-sm mt-1">Quicker booking for family and friends.</p>
-                  </div>
-                  <button 
-                    onClick={() => setShowAddTravelerForm(!showAddTravelerForm)} 
-                    className="bg-[#33a8da] text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg hover:bg-[#2c98c7] active:scale-95 transition"
-                  >
-                    {showAddTravelerForm ? 'Cancel' : 'Add Traveler'}
-                  </button>
-                </div>
-                
-                {showAddTravelerForm && (
-                  <div className="bg-white rounded-[32px] p-8 border-2 border-[#33a8da] shadow-sm animate-in slide-in-from-top-4 duration-300">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <input 
-                        type="text" 
-                        value={newTraveler.name} 
-                        onChange={(e) => setNewTraveler({...newTraveler, name: e.target.value})} 
-                        className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
-                        placeholder="Full Name" 
-                      />
-                      <select 
-                        value={newTraveler.relationship} 
-                        onChange={(e) => setNewTraveler({...newTraveler, relationship: e.target.value})} 
-                        className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]"
-                      >
-                        <option value="Spouse">Spouse</option>
-                        <option value="Child">Child</option>
-                        <option value="Friend">Friend</option>
-                      </select>
-                      <input 
-                        type="date" 
-                        value={newTraveler.dob} 
-                        onChange={(e) => setNewTraveler({...newTraveler, dob: e.target.value})} 
-                        className="w-full px-5 py-3.5 bg-gray-50 rounded-xl font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]" 
-                      />
-                      <button 
-                        onClick={handleAddTraveler} 
-                        className="bg-[#33a8da] text-white py-3.5 rounded-xl font-bold uppercase text-xs hover:bg-[#2c98c7] transition"
-                      >
-                        Confirm
-                      </button>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {isLoadingTravelers ? (
-                    <div className="bg-white rounded-[24px] p-10 text-center border border-gray-100 col-span-2">
-                      <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
-                      <p className="text-gray-500 font-bold">Loading saved travelers…</p>
-                    </div>
-                  ) : travelers.length > 0 ? (
-                    travelers.map(t => (
-                      <div key={t.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex items-center justify-between hover:border-[#33a8da]/50 transition-colors">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-[#33a8da]">
-                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                            </svg>
-                          </div>
-                          <div>
-                            <h4 className="font-bold text-gray-900">{t.name}</h4>
-                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{t.relationship} • {t.dob}</p>
-                          </div>
-                        </div>
-                        <button 
-                          onClick={() => handleRemoveTraveler(t.id)} 
-                          className="text-gray-300 hover:text-red-500 transition p-2"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="bg-white rounded-[24px] p-12 text-center border-2 border-dashed border-gray-100 col-span-2">
-                      <h3 className="text-lg font-bold text-gray-900 mb-2">No saved travelers yet</h3>
-                      <p className="text-gray-400 font-bold text-sm">Add travelers to speed up future bookings.</p>
-                    </div>
-                  )}
+                  <button onClick={() => { setLanguage(prefLang); const selectedCurrency = CURRENCY_OPTIONS.find(c => c.code === prefCurrCode); if (selectedCurrency) { setCurrency(selectedCurrency); } setIsSaving(true); setTimeout(() => setIsSaving(false), 500); }} className="px-10 py-3.5 bg-[#33a8da] text-white font-bold rounded-2xl shadow-xl shadow-blue-500/10 hover:bg-[#2c98c7] active:scale-95 text-lg transition">{isSaving ? 'Saving...' : 'Save Preferences'}</button>
                 </div>
               </div>
             )}
@@ -2623,10 +2289,9 @@ const handleCheckSaved = async (itemData: {
         isOpen={isManageModalOpen} 
         onClose={() => setIsManageModalOpen(false)} 
         booking={selectedBooking} 
-        onCancelClick={handleCancelClick}
+        onCancelClick={handleCancelClick} 
       />
 
-      {/* OTP Modal */}
       {is2FAModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-[440px] rounded-[32px] shadow-2xl overflow-hidden relative p-10 text-center">
@@ -2640,26 +2305,9 @@ const handleCheckSaved = async (itemData: {
                 <h2 className="text-2xl font-black text-gray-900 mb-2">Verify Account</h2>
                 <p className="text-sm text-gray-400 font-bold mb-10 px-4">Code sent to {formData.email || 'your email'}</p>
                 <div className="flex justify-center gap-3 mb-10">
-                  {otp.map((digit, idx) => (
-                    <input 
-                      key={idx} 
-                      ref={el => { otpRefs.current[idx] = el; }} 
-                      type="text" 
-                      maxLength={1} 
-                      value={digit} 
-                      onChange={e => handleOtpChange(idx, e.target.value)} 
-                      onKeyDown={e => handleOtpKeyDown(idx, e)} 
-                      className="w-11 h-14 bg-gray-50 border-2 border-gray-100 rounded-xl text-center text-xl font-black text-gray-900 focus:border-[#33a8da] outline-none" 
-                    />
-                  ))}
+                  {otp.map((digit, idx) => (<input key={idx} ref={el => { otpRefs.current[idx] = el; }} type="text" maxLength={1} value={digit} onChange={e => handleOtpChange(idx, e.target.value)} onKeyDown={e => handleOtpKeyDown(idx, e)} className="w-11 h-14 bg-gray-50 border-2 border-gray-100 rounded-xl text-center text-xl font-black text-gray-900 focus:border-[#33a8da] outline-none" />))}
                 </div>
-                <button 
-                  onClick={handleVerifyOtp} 
-                  disabled={isVerifying || otp.some(d => d === '')} 
-                  className="w-full bg-[#33a8da] text-white font-bold py-4 rounded-2xl shadow-xl shadow-blue-500/20 hover:bg-[#2c98c7] disabled:opacity-50 text-sm uppercase tracking-widest"
-                >
-                  {isVerifying ? 'Verifying...' : 'Enable 2FA'}
-                </button>
+                <button onClick={handleVerifyOtp} disabled={isVerifying || otp.some(d => d === '')} className="w-full bg-[#33a8da] text-white font-bold py-4 rounded-2xl shadow-xl shadow-blue-500/20 hover:bg-[#2c98c7] disabled:opacity-50 text-sm uppercase tracking-widest">{isVerifying ? 'Verifying...' : 'Enable 2FA'}</button>
               </>
             ) : (
               <div className="animate-in zoom-in-95 duration-300">

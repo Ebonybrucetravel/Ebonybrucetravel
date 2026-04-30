@@ -277,7 +277,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         for (let i = 0; i < adults - 1; i++) {
           initial.push({ 
             firstName: '', lastName: '', email: '', phone: '', 
-            type: 'adult', title: 'mr', gender: 'm', dateOfBirth: '' 
+            type: 'adult', title: 'mr', gender: 'm', dateOfBirth: '' ,
+            address: '', city: '', country: '', countryCode: '', postalCode: ''
           });
         }
         
@@ -589,66 +590,73 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
     setIsBooking(true);
     try {
-      // Validate additional passengers if any
-for (let i = 0; i < additionalPassengers.length; i++) {
-  const p = additionalPassengers[i];
-  const passengerType = p.type || 'adult';  // ← Add this line
-  const label = `${passengerType.toUpperCase()} #${i + 1}`;  // ← Use passengerType here
-  
-  if (!p.firstName || !p.lastName) {
-    alert(`${label}: First and Last name are required.`);
-    setIsBooking(false);
-    return;
-  }
-
-  if (isFlight) {
-    if (!p.title || !p.gender || !p.dateOfBirth) {
-      alert(`${label}: Title, Gender, and Date of Birth are required.`);
-      setIsBooking(false);
-      return;
-    }
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(p.dateOfBirth)) {
-      alert(`${label}: Date of birth must be in YYYY-MM-DD format.`);
-      setIsBooking(false);
-      return;
-    }
-
-    // Mandatory passport validation for additional passengers
-    if (isPassportMandatory) {
-      if (!p.passportNumber || !p.passportExpiry || !p.passportIssuingAuthority) {
-        alert(`${label}: Passport details are mandatory for this destination.`);
-        setIsBooking(false);
-        return;
-      }
-    }
-  }
-}
-      const passengerInfo: PassengerInfo = {
-        firstName,
-        lastName,
-        email,
-        phone,
-        type: 'adult', // Lead is always adult
-        ...(isFlight && {
-          title: title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr',
-          gender: gender as 'm' | 'f',
-          dateOfBirth
-        }),
-        ...(passportRequired && {
-          passportNumber,
-          passportExpiry,
-          passportIssuingAuthority,
-          passportIssueCountry,
-          address: passportAddress,
-          city: passportCity,
-          country: passportCountry,
-          countryCode: passportCountryCode,
-          postalCode: passportPostalCode,
-        }),
-        travellers: additionalPassengers // Include all additional passengers
-      };
+      for (let i = 0; i < additionalPassengers.length; i++) {
+        const p = additionalPassengers[i];
+        const passengerType = p.type || 'adult';
+        const label = `${passengerType.toUpperCase()} #${i + 1}`;
+        
+        if (!p.firstName || !p.lastName) {
+          alert(`${label}: First and Last name are required.`);
+          setIsBooking(false);
+          return;
+        }
       
+        if (isFlight) {
+          if (!p.title || !p.gender || !p.dateOfBirth) {
+            alert(`${label}: Title, Gender, and Date of Birth are required.`);
+            setIsBooking(false);
+            return;
+          }
+          const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+          if (!dateRegex.test(p.dateOfBirth)) {
+            alert(`${label}: Date of birth must be in YYYY-MM-DD format.`);
+            setIsBooking(false);
+            return;
+          }
+      
+          // ✅ Add address validation for mandatory passport
+          if (isPassportMandatory) {
+            if (!p.passportNumber || !p.passportExpiry || !p.passportIssuingAuthority) {
+              alert(`${label}: Passport details are mandatory for this destination.`);
+              setIsBooking(false);
+              return;
+            }
+            // ✅ Add address validation
+            if (!p.address || !p.city || !p.country || !p.countryCode || !p.postalCode) {
+              alert(`${label}: Address details are required.`);
+              setIsBooking(false);
+              return;
+            }
+          }
+        }
+      }
+
+
+const passengerInfo: PassengerInfo = {
+  firstName,
+  lastName,
+  email,
+  phone,
+  type: 'adult',
+  ...(isFlight && {
+    title: title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr',
+    gender: gender as 'm' | 'f',
+    dateOfBirth
+  }),
+  // ✅ Always include address fields with defaults
+  address: passportAddress || "221B Baker Street",
+  city: passportCity || "London",
+  country: passportCountry || "United Kingdom", 
+  countryCode: passportCountryCode || "GB",
+  postalCode: passportPostalCode || "NW1 6XE",
+  ...(passportRequired && {
+    passportNumber,
+    passportExpiry,
+    passportIssuingAuthority,
+    passportIssueCountry,
+  }),
+  travellers: additionalPassengers
+}; 
       // Add passport info to passengerInfo for international flights if provided
       if (isFlight && showPassportSection && passportNumber) {
         (passengerInfo as any).passportNumber = passportNumber;
@@ -877,70 +885,137 @@ for (let i = 0; i < additionalPassengers.length; i++) {
                   </div>
                   
                   {/* PASSPORT SECTION FOR INTERNATIONAL FLIGHTS */}
-                  {showPassportSection && (
-                    <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <div className="flex items-start gap-2 mb-4">
-                        <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                        <div>
-                          <p className="font-semibold text-yellow-800">
-                            Passport Details {isPassportMandatory ? '(Required)' : '(Optional but Recommended)'}
-                          </p>
-                          <p className="text-sm text-yellow-700">
-                            {isPassportMandatory 
-                              ? 'Please provide your passport details exactly as shown on your passport. Passport must be valid for at least 6 months from travel.'
-                              : 'Providing passport details now will save time during airport check-in.'}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Passport Number {isPassportMandatory && <span className="text-red-500">*</span>}
-                          </label>
-                          <input
-                            type="text"
-                            value={passportNumber}
-                            onChange={(e) => setPassportNumber(e.target.value.toUpperCase())}
-                            className={inputCls}
-                            placeholder="e.g., A12345678"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Passport Expiry Date {isPassportMandatory && <span className="text-red-500">*</span>}
-                          </label>
-                          <input
-                            type="date"
-                            value={passportExpiry}
-                            onChange={(e) => setPassportExpiry(e.target.value)}
-                            min={new Date().toISOString().split('T')[0]}
-                            className={inputCls}
-                          />
-                        </div>
-                        
-                        <div className="md:col-span-2">
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Passport Issuing Authority / Country {isPassportMandatory && <span className="text-red-500">*</span>}
-                          </label>
-                          <input
-                            type="text"
-                            value={passportIssuingAuthority}
-                            onChange={(e) => setPassportIssuingAuthority(e.target.value)}
-                            className={inputCls}
-                            placeholder="e.g., UK Visas and Immigration (UKVI)"
-                          />
-                        </div>
-                      </div>
-                      
-                      {passportError && (
-                        <p className="mt-3 text-sm text-red-600 bg-red-50 p-2 rounded">{passportError}</p>
-                      )}
-                    </div>
-                  )}
+{showPassportSection && (
+  <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+    <div className="flex items-start gap-2 mb-4">
+      <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+      <div>
+        <p className="font-semibold text-yellow-800">
+          Passport Details {isPassportMandatory ? '(Required)' : '(Optional but Recommended)'}
+        </p>
+        <p className="text-sm text-yellow-700">
+          {isPassportMandatory 
+            ? 'Please provide your passport details exactly as shown on your passport. Passport must be valid for at least 6 months from travel.'
+            : 'Providing passport details now will save time during airport check-in.'}
+        </p>
+      </div>
+    </div>
+    
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Passport Number {isPassportMandatory && <span className="text-red-500">*</span>}
+        </label>
+        <input
+          type="text"
+          value={passportNumber}
+          onChange={(e) => setPassportNumber(e.target.value.toUpperCase())}
+          className={inputCls}
+          placeholder="e.g., A12345678"
+        />
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Passport Expiry Date {isPassportMandatory && <span className="text-red-500">*</span>}
+        </label>
+        <input
+          type="date"
+          value={passportExpiry}
+          onChange={(e) => setPassportExpiry(e.target.value)}
+          min={new Date().toISOString().split('T')[0]}
+          className={inputCls}
+        />
+      </div>
+      
+      <div className="md:col-span-2">
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Passport Issuing Authority / Country {isPassportMandatory && <span className="text-red-500">*</span>}
+        </label>
+        <input
+          type="text"
+          value={passportIssuingAuthority}
+          onChange={(e) => setPassportIssuingAuthority(e.target.value)}
+          className={inputCls}
+          placeholder="e.g., UK Visas and Immigration (UKVI)"
+        />
+      </div>
+      
+      {/* ✅ ADD ADDRESS FIELDS */}
+      <div className="md:col-span-2">
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Address {isPassportMandatory && <span className="text-red-500">*</span>}
+        </label>
+        <input
+          type="text"
+          value={passportAddress}
+          onChange={(e) => setPassportAddress(e.target.value)}
+          className={inputCls}
+          placeholder="Street address"
+        />
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          City {isPassportMandatory && <span className="text-red-500">*</span>}
+        </label>
+        <input
+          type="text"
+          value={passportCity}
+          onChange={(e) => setPassportCity(e.target.value)}
+          className={inputCls}
+          placeholder="City"
+        />
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Country {isPassportMandatory && <span className="text-red-500">*</span>}
+        </label>
+        <input
+          type="text"
+          value={passportCountry}
+          onChange={(e) => setPassportCountry(e.target.value)}
+          className={inputCls}
+          placeholder="Country"
+        />
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Country Code {isPassportMandatory && <span className="text-red-500">*</span>}
+        </label>
+        <input
+          type="text"
+          value={passportCountryCode}
+          onChange={(e) => setPassportCountryCode(e.target.value.toUpperCase())}
+          className={inputCls}
+          placeholder="NG, US, GB"
+          maxLength={2}
+        />
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Postal Code {isPassportMandatory && <span className="text-red-500">*</span>}
+        </label>
+        <input
+          type="text"
+          value={passportPostalCode}
+          onChange={(e) => setPassportPostalCode(e.target.value)}
+          className={inputCls}
+          placeholder="Postal code"
+        />
+      </div>
+    </div>
+    
+    {passportError && (
+      <p className="mt-3 text-sm text-red-600 bg-red-50 p-2 rounded">{passportError}</p>
+    )}
+  </div>
+)}
                 </div>
               )}
 

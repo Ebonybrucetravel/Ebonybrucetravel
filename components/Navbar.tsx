@@ -231,14 +231,14 @@ const Navbar: React.FC<NavbarProps> = ({
     },
     {
       id: "rewards",
-      label: "Rewards & Points",
+      label: "Rewards",
       icon: (
         <path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
       ),
     },
     {
       id: "travelers",
-      label: "Other Travelers",
+      label: "Travels Documents",
       icon: (
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2m16 0h2a4 4 0 0 0 4-4v-2a4 4 0 0 0-4-4h-2m-1-10a4 4 0 1 1-8 0 4 4 0 0 1 8 0z" />
       ),

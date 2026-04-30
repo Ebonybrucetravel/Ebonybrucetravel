@@ -7,7 +7,338 @@ import type { SearchParams, SearchResult } from '@/lib/types';
 import type { Airline } from '@/lib/duffel-airlines';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
-import { CURRENCY_SYMBOLS } from '@/lib/currency-service';
+import { CURRENCY_SYMBOLS, fetchExchangeRates } from '@/lib/currency-service';
+
+// ==================== AIRPORT COUNTRY MAPPING (GLOBAL DOMESTIC DETECTION) ====================
+const AIRPORT_COUNTRY_MAP: Record<string, string> = {
+  // UK (United Kingdom)
+  'LHR': 'GB', 'LGW': 'GB', 'MAN': 'GB', 'EDI': 'GB', 'GLA': 'GB',
+  'BHX': 'GB', 'BRS': 'GB', 'LTN': 'GB', 'STN': 'GB', 'LCY': 'GB',
+  'NCL': 'GB', 'BFS': 'GB', 'ABZ': 'GB', 'LBA': 'GB', 'SOU': 'GB',
+  'EMA': 'GB', 'CWL': 'GB', 'BOH': 'GB', 'INV': 'GB', 'JER': 'GB',
+  
+  // Nigeria
+  'LOS': 'NG', 'ABV': 'NG', 'PHC': 'NG', 'KAN': 'NG', 'ENU': 'NG',
+  'QOW': 'NG', 'BNI': 'NG', 'JOS': 'NG', 'KAD': 'NG', 'YOL': 'NG',
+  'ILR': 'NG', 'MDI': 'NG', 'CBQ': 'NG', 'QRW': 'NG', 'SKO': 'NG',
+  
+  // USA
+  'JFK': 'US', 'LAX': 'US', 'ORD': 'US', 'DFW': 'US', 'DEN': 'US',
+  'SFO': 'US', 'SEA': 'US', 'LAS': 'US', 'MCO': 'US', 'EWR': 'US',
+  'MIA': 'US', 'BOS': 'US', 'ATL': 'US', 'IAH': 'US', 'PHX': 'US',
+  'LGA': 'US', 'DCA': 'US', 'IAD': 'US', 'CLT': 'US', 'MSP': 'US',
+  'DTW': 'US', 'FLL': 'US', 'TPA': 'US', 'SAN': 'US', 'PDX': 'US',
+  'SLC': 'US', 'BWI': 'US', 'SJC': 'US', 'OAK': 'US', 'MDW': 'US',
+  
+  // Canada
+  'YYZ': 'CA', 'YVR': 'CA', 'YUL': 'CA', 'YYC': 'CA', 'YOW': 'CA',
+  'YEG': 'CA', 'YHZ': 'CA', 'YWG': 'CA', 'YQB': 'CA', 'YHM': 'CA',
+  
+  // UAE
+  'DXB': 'AE', 'AUH': 'AE', 'SHJ': 'AE',
+  
+  // India
+  'DEL': 'IN', 'BOM': 'IN', 'BLR': 'IN', 'MAA': 'IN', 'CCU': 'IN',
+  'HYD': 'IN', 'COK': 'IN', 'GOI': 'IN', 'AMD': 'IN', 'PNQ': 'IN',
+  
+  // China
+  'PEK': 'CN', 'PVG': 'CN', 'CAN': 'CN', 'SZX': 'CN', 'CTU': 'CN',
+  'SHA': 'CN', 'XIY': 'CN', 'CKG': 'CN', 'KMG': 'CN',
+  
+  // Japan
+  'HND': 'JP', 'NRT': 'JP', 'KIX': 'JP', 'CTS': 'JP', 'FUK': 'JP',
+  'NGO': 'JP', 'OKA': 'JP',
+  
+  // Australia
+  'SYD': 'AU', 'MEL': 'AU', 'BNE': 'AU', 'PER': 'AU', 'ADL': 'AU',
+  'CBR': 'AU', 'HBA': 'AU',
+  
+  // Germany
+  'FRA': 'DE', 'MUC': 'DE', 'BER': 'DE', 'HAM': 'DE', 'CGN': 'DE',
+  'DUS': 'DE', 'STR': 'DE', 'HAJ': 'DE', 'NUE': 'DE', 'LEJ': 'DE',
+  
+  // France
+  'CDG': 'FR', 'ORY': 'FR', 'NCE': 'FR', 'LYS': 'FR', 'MRS': 'FR',
+  'TLS': 'FR', 'BOD': 'FR', 'NTE': 'FR',
+  
+  // South Africa
+  'JNB': 'ZA', 'CPT': 'ZA', 'DUR': 'ZA', 'PLZ': 'ZA',
+  
+  // Kenya
+  'NBO': 'KE', 'MBA': 'KE',
+  
+  // Egypt
+  'CAI': 'EG', 'HRG': 'EG', 'SSH': 'EG',
+  
+  // Ghana
+  'ACC': 'GH',
+  
+  // Ethiopia
+  'ADD': 'ET',
+  
+  // Turkey
+  'IST': 'TR', 'SAW': 'TR', 'ESB': 'TR', 'AYT': 'TR', 'ADB': 'TR',
+  
+  // Singapore
+  'SIN': 'SG',
+  
+  // Malaysia
+  'KUL': 'MY', 'PEN': 'MY', 'JHB': 'MY',
+  
+  // Thailand
+  'BKK': 'TH', 'HKT': 'TH', 'CNX': 'TH', 'DMK': 'TH',
+  
+  // Vietnam
+  'HAN': 'VN', 'SGN': 'VN', 'DAD': 'VN',
+  
+  // Philippines
+  'MNL': 'PH', 'CEB': 'PH',
+  
+  // Brazil
+  'GRU': 'BR', 'GIG': 'BR', 'BSB': 'BR',
+  
+  // Mexico
+  'MEX': 'MX', 'CUN': 'MX', 'GDL': 'MX',
+  
+  // Spain
+  'MAD': 'ES', 'BCN': 'ES', 'AGP': 'ES', 'PMI': 'ES',
+  
+  // Italy
+  'FCO': 'IT', 'MXP': 'IT', 'VCE': 'IT', 'NAP': 'IT',
+  
+  // Netherlands
+  'AMS': 'NL',
+  
+  // Switzerland
+  'ZRH': 'CH', 'GVA': 'CH', 'BSL': 'CH',
+  
+  // Belgium
+  'BRU': 'BE',
+  
+  // Austria
+  'VIE': 'AT',
+  
+  // Sweden
+  'ARN': 'SE', 'GOT': 'SE',
+  
+  // Norway
+  'OSL': 'NO', 'BGO': 'NO',
+  
+  // Denmark
+  'CPH': 'DK',
+  
+  // Qatar
+  'DOH': 'QA',
+  
+  // Oman
+  'MCT': 'OM',
+  
+  // Bahrain
+  'BAH': 'BH',
+  
+  // Kuwait
+  'KWI': 'KW',
+  
+  // Saudi Arabia
+  'JED': 'SA', 'RUH': 'SA', 'DMM': 'SA',
+  
+  // Jordan
+  'AMM': 'JO',
+  
+  // Israel
+  'TLV': 'IL',
+  
+  // Lebanon
+  'BEY': 'LB',
+  
+  // Pakistan
+  'KHI': 'PK', 'LHE': 'PK', 'ISB': 'PK',
+  
+  // Bangladesh
+  'DAC': 'BD',
+  
+  // Sri Lanka
+  'CMB': 'LK',
+  
+  // Indonesia
+  'CGK': 'ID', 'DPS': 'ID', 'SUB': 'ID',
+  
+  // South Korea
+  'ICN': 'KR', 'GMP': 'KR', 'PUS': 'KR',
+  
+  // New Zealand
+  'AKL': 'NZ', 'WLG': 'NZ', 'CHC': 'NZ',
+  
+  // Argentina
+  'EZE': 'AR', 'AEP': 'AR',
+  
+  // Chile
+  'SCL': 'CL',
+  
+  // Colombia
+  'BOG': 'CO',
+  
+  // Panama
+  'PTY': 'PA',
+  
+  // Ireland
+  'DUB': 'IE', 'SNN': 'IE',
+  
+  // Portugal
+  'LIS': 'PT', 'OPO': 'PT',
+  
+  // Greece
+  'ATH': 'GR', 'SKG': 'GR',
+  
+  // Poland
+  'WAW': 'PL', 'KRK': 'PL',
+  
+  // Czech Republic
+  'PRG': 'CZ',
+  
+  // Hungary
+  'BUD': 'HU',
+  
+  // Romania
+  'OTP': 'RO',
+  
+  // Bulgaria
+  'SOF': 'BG',
+  
+  // Croatia
+  'ZAG': 'HR',
+  
+  // Morocco
+  'CMN': 'MA', 'RAK': 'MA',
+  
+  // Tunisia
+  'TUN': 'TN',
+  
+  // Senegal
+  'DSS': 'SN', 'DKR': 'SN',
+  
+  // Ivory Coast
+  'ABJ': 'CI',
+  
+  // Cameroon
+  'DLA': 'CM', 'NSI': 'CM',
+  
+  // Angola
+  'LAD': 'AO',
+  
+  // Zimbabwe
+  'HRE': 'ZW',
+  
+  // Zambia
+  'LUN': 'ZM',
+  
+  // Botswana
+  'GBE': 'BW',
+  
+  // Mauritius
+  'MRU': 'MU',
+  
+  // Seychelles
+  'SEZ': 'SC',
+  
+  // Maldives
+  'MLE': 'MV',
+  
+  // Nepal
+  'KTM': 'NP',
+  
+  // Uzbekistan
+  'TAS': 'UZ',
+  
+  // Kazakhstan
+  'ALA': 'KZ',
+  
+  // Azerbaijan
+  'GYD': 'AZ',
+  
+  // Georgia
+  'TBS': 'GE',
+  
+  // Armenia
+  'EVN': 'AM',
+  
+  // Serbia
+  'BEG': 'RS',
+  
+  // Finland
+  'HEL': 'FI',
+  
+  // Iceland
+  'KEF': 'IS',
+  
+  // Luxembourg
+  'LUX': 'LU',
+  
+  // Malta
+  'MLA': 'MT',
+  
+  // Cyprus
+  'LCA': 'CY', 'PFO': 'CY',
+  
+  // Estonia
+  'TLL': 'EE',
+  
+  // Latvia
+  'RIX': 'LV',
+  
+  // Lithuania
+  'VNO': 'LT',
+  
+  // Slovenia
+  'LJU': 'SI',
+  
+  // Slovakia
+  'BTS': 'SK',
+  
+  // Russia
+  'SVO': 'RU', 'DME': 'RU', 'LED': 'RU',
+  
+  // Ukraine
+  'KBP': 'UA', 'LWO': 'UA',
+  
+  // Belarus
+  'MSQ': 'BY',
+};
+
+// Helper function to get country code from airport code
+const getCountryCodeFromAirport = (airportCode: string): string | null => {
+  if (!airportCode) return null;
+  
+  // Extract 3-letter code from various formats
+  const normalizedCode = airportCode.toUpperCase().trim();
+  const match = normalizedCode.match(/\b([A-Z]{3})\b/);
+  const code = match ? match[1] : normalizedCode.substring(0, 3);
+  
+  return AIRPORT_COUNTRY_MAP[code] || null;
+};
+
+// Helper function to check if flight is domestic (same country)
+const isDomesticFlightGlobal = (origin: string, destination: string): boolean => {
+  if (!origin || !destination) return false;
+  
+  const originCountry = getCountryCodeFromAirport(origin);
+  const destCountry = getCountryCodeFromAirport(destination);
+  
+  console.log(`✈️ Domestic check: ${origin} → ${destination}`, {
+    originCountry,
+    destCountry,
+    isDomestic: originCountry && destCountry && originCountry === destCountry
+  });
+  
+  if (originCountry && destCountry) {
+    return originCountry === destCountry;
+  }
+  
+  // Fallback: check if first 3 letters are the same
+  const normalizedOrigin = origin.toUpperCase().substring(0, 3);
+  const normalizedDest = destination.toUpperCase().substring(0, 3);
+  return normalizedOrigin === normalizedDest;
+};
 
 // ─── Mock fallback data (only used when API fails) ─────────────────────────────
 const MOCK: Record<string, SearchResult[]> = {
@@ -97,14 +428,11 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         // Convert to user's currency first
         finalAmount = await convertPrice(amount, fromCurrency);
       }
-      // ✅ FIX: pass NO fromCurrency — finalAmount is already in user's currency (currency.code)
-      // Previously passing fromCurrency here caused formatPrice to convert AGAIN (double-conversion)
       return formatPrice(finalAmount);
     } catch (error) {
       console.error('Failed to format price in user currency:', error);
-      const { CURRENCY_SYMBOLS } = await import('@/lib/currency-service');
       const symbol = CURRENCY_SYMBOLS[fromCurrency] || fromCurrency;
-      return `${symbol}${amount.toLocaleString('en-GB', { minimumFractionDigits: 0 })} (Rate Unavailable)`;
+      return `${symbol}${amount.toLocaleString('en-GB', { minimumFractionDigits: 0 })}`;
     }
   }, [currency.code, convertPrice, formatPrice]);
 
@@ -363,128 +691,107 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   };
 
   // ==================== FLIGHT TRANSFORMATION WITH PROPER CURRENCY ====================
-  const transformWakanowOffers = (
+  const transformWakanowOffers = async (
     offers: any[], 
     returnDate?: string, 
     cabinClass: string = 'economy', 
-    isDomesticRoute: boolean = false,
-    rates: Record<string, number> = { NGN: 1 }
-  ): SearchResult[] => {
+    isDomesticRoute: boolean = false
+  ): Promise<SearchResult[]> => {
     if (!offers || offers.length === 0) return [];
     
-    // Service fee percentage for Wakanow flights
-    const SERVICE_FEE_PERCENTAGE = 10; // 10% service fee
-    
+    const SERVICE_FEE_PERCENTAGE = 10;
     const results: SearchResult[] = [];
     
     for (let offer of offers) {
-      // ✅ Handle raw Wakanow format by transforming it to the expected Duffel-like format
+      // Handle raw Wakanow format
       if (!offer.slices && (offer.FlightLegs || offer.flightLegs || offer.legs || offer.DepartureCode)) {
-        console.log('🔄 Normalizing raw Wakanow offer to Duffel format');
+        console.log('🔄 Normalizing raw Wakanow offer');
         offer = transformWakanowToDuffelFormat(offer);
       }
-
-      console.log('💰 Raw Wakanow offer (NGN base):', {
-        id: offer.id,
-        hasSlices: !!offer.slices,
-        slicesCount: offer.slices?.length,
-        priceObj: offer.Price || offer.price,
-        original_amount: offer.original_amount,
-      });
-      
+  
       const slices = offer.slices || [];
       const outboundSlice = slices[0];
       const returnSlice = slices.length > 1 ? slices[1] : null;
       
-      if (!outboundSlice) continue;
+      if (!outboundSlice) {
+        console.warn('⚠️ No outbound slice, skipping offer');
+        continue;
+      }
       
       const outboundSegments = outboundSlice.segments || [];
       const firstOutboundSegment = outboundSegments[0] || {};
       const lastOutboundSegment = outboundSegments[outboundSegments.length - 1] || firstOutboundSegment;
       
-      const outboundDepartureTime = outboundSlice.departure_time || firstOutboundSegment.start_time || '';
-      const outboundArrivalTime = outboundSlice.arrival_time || lastOutboundSegment.end_time || '';
+      // ✅ EXTRACT ALL FLIGHT DETAILS - THIS IS WHERE THE PROBLEM WAS
+      const outboundDepartureTime = outboundSlice.departure_time || firstOutboundSegment.departing_at || firstOutboundSegment.start_time || '';
+      const outboundArrivalTime = outboundSlice.arrival_time || lastOutboundSegment.arriving_at || lastOutboundSegment.end_time || '';
       
-      const outboundOrigin = outboundSlice.origin?.iata_code || outboundSlice.origin || firstOutboundSegment.departure_code || '';
-      const outboundDestination = outboundSlice.destination?.iata_code || outboundSlice.destination || lastOutboundSegment.destination_code || '';
+      const outboundOrigin = outboundSlice.origin?.iata_code || outboundSlice.origin || firstOutboundSegment.origin?.iata_code || firstOutboundSegment.departure_code || '';
+      const outboundDestination = outboundSlice.destination?.iata_code || outboundSlice.destination || lastOutboundSegment.destination?.iata_code || lastOutboundSegment.destination_code || '';
+      
+      const outboundOriginCity = outboundSlice.origin?.city_name || outboundSlice.origin?.name || firstOutboundSegment.origin?.city_name || firstOutboundSegment.origin?.name || '';
+      const outboundDestinationCity = outboundSlice.destination?.city_name || outboundSlice.destination?.name || lastOutboundSegment.destination?.city_name || lastOutboundSegment.destination?.name || '';
       
       const outboundDuration = outboundSlice.duration || '';
-      const outboundStopCount = outboundSlice.stops !== undefined ? outboundSlice.stops : (outboundSegments.length - 1);
+      const outboundStopCount = outboundSegments.length > 0 ? outboundSegments.length - 1 : 0;
       
-      const airline = outboundSlice.airline || offer.airline || {};
-      const airlineName = airline.name || offer.marketing_carrier_name || '';
-      const airlineCode = airline.code || offer.marketing_carrier || '';
+      // ✅ EXTRACT AIRLINE INFO
+      const airline = outboundSlice.airline || offer.airline || firstOutboundSegment.airline || firstOutboundSegment.operating_carrier || {};
+      const airlineName = airline.name || offer.marketing_carrier_name || firstOutboundSegment.airline_name || 'Airline';
+      const airlineCode = airline.code || offer.marketing_carrier || firstOutboundSegment.airline_code || '';
       const airlineLogo = airline.logo_url || `https://images.wakanow.com/Images/flight-logos/${airlineCode}.gif`;
       
-      // ========== EXTRACT PRICE COMPONENTS (ALL IN NGN) ==========
-      // Try multiple possible price fields to be robust
-      const rawOriginalAmount = 
-        offer.original_amount || 
-        offer.Price?.Amount || 
-        offer.price?.amount || 
-        offer.TotalAmount || 
-        '0';
-        
+      // ✅ EXTRACT FLIGHT NUMBER
+      const flightNumber = firstOutboundSegment.flight_number || firstOutboundSegment.marketing_carrier_flight_number || '';
+      
+      // ✅ EXTRACT BAGGAGE
+      const freeBaggage = outboundSlice.free_baggage || {};
+      const baggageCount = freeBaggage.BagCount || 0;
+      const baggageWeight = freeBaggage.Weight || 0;
+      const baggageUnit = freeBaggage.WeightUnit || 'kg';
+      const baggageText = baggageCount > 0 ? `${baggageCount} checked bag${baggageCount > 1 ? 's' : ''}` : 
+                          (baggageWeight > 0 ? `${baggageWeight}${baggageUnit} baggage` : '');
+      
+      // ✅ EXTRACT PRICE
+      const rawOriginalAmount = offer.original_amount || offer.Price?.Amount || offer.price?.amount || offer.TotalAmount || '0';
       const originalAmountNGN = parseFloat(rawOriginalAmount.toString());
-      const baseAmountNGN = parseFloat((offer.base_amount || originalAmountNGN).toString());
-      
-      // Calculate service fee on the original NGN amount (10%)
       const serviceFeeNGN = originalAmountNGN * (SERVICE_FEE_PERCENTAGE / 100);
-      
-      // Conversion fee from backend (in NGN)
       const conversionFeeNGN = parseFloat(offer.conversion_fee) || 0;
-      
-      // Total service fee (our markup + conversion fee)
       const totalServiceFeeNGN = serviceFeeNGN + conversionFeeNGN;
-      
-      // Final total in NGN
       const finalAmountNGN = originalAmountNGN + totalServiceFeeNGN;
       
-      // Get display price in user's currency (Synchronous using pre-fetched rates)
-      const userCurrencyCode = currency.code;
-      const rateToUserCurrency = rates[userCurrencyCode] || 0;
+      const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalAmountNGN, 'NGN');
+      const formattedDisplayPrice = await formatPriceInUserCurrency(finalAmountNGN, 'NGN');
       
-      let displayPriceInUserCurrency = finalAmountNGN;
-      let formattedDisplayPrice = "";
-      
-      if (rateToUserCurrency > 0) {
-        displayPriceInUserCurrency = finalAmountNGN * rateToUserCurrency;
-        const symbol = CURRENCY_SYMBOLS[userCurrencyCode] || userCurrencyCode;
-        // Round NGN to whole numbers
-        const roundedAmount = userCurrencyCode === 'NGN' ? Math.round(displayPriceInUserCurrency) : displayPriceInUserCurrency;
-        formattedDisplayPrice = `${symbol}${roundedAmount.toLocaleString('en-GB', { 
-          minimumFractionDigits: userCurrencyCode === 'NGN' ? 0 : 2,
-          maximumFractionDigits: userCurrencyCode === 'NGN' ? 0 : 2 
-        })}`;
-      } else {
-        const symbol = CURRENCY_SYMBOLS['NGN'] || '₦';
-        formattedDisplayPrice = `${symbol}${Math.round(finalAmountNGN).toLocaleString()} (Rate Unavailable)`;
-      }
-      
-      console.log(`✈️ Flight (${airlineName}) - Price Breakdown (NGN base):`, {
-        originalAmountNGN: `₦${originalAmountNGN.toFixed(2)}`,
-        serviceFeePercentage: `${SERVICE_FEE_PERCENTAGE}%`,
-        serviceFeeNGN: `₦${serviceFeeNGN.toFixed(2)}`,
-        conversionFeeNGN: `₦${conversionFeeNGN.toFixed(2)}`,
-        totalServiceFeeNGN: `₦${totalServiceFeeNGN.toFixed(2)}`,
-        finalAmountNGN: `₦${finalAmountNGN.toFixed(2)}`,
-        displayPriceInUserCurrency: formattedDisplayPrice,
-      });
-      
+      // ✅ FORMAT DURATION
       let durationDisplay = outboundDuration;
-      if (durationDisplay && durationDisplay.includes(':')) {
-        const parts = durationDisplay.split(':');
-        if (parts.length === 3) {
-          const hours = parseInt(parts[0]);
-          const minutes = parseInt(parts[1]);
+      if (durationDisplay && typeof durationDisplay === 'string') {
+        if (durationDisplay.includes(':')) {
+          const parts = durationDisplay.split(':');
+          if (parts.length >= 2) {
+            const hours = parseInt(parts[0]);
+            const minutes = parseInt(parts[1]);
+            if (hours > 0 && minutes > 0) durationDisplay = `${hours}h ${minutes}m`;
+            else if (hours > 0) durationDisplay = `${hours}h`;
+            else if (minutes > 0) durationDisplay = `${minutes}m`;
+          }
+        } else {
+          // Handle PT format
+          const hoursMatch = durationDisplay.match(/(\d+)H/);
+          const minutesMatch = durationDisplay.match(/(\d+)M/);
+          const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
+          const minutes = minutesMatch ? parseInt(minutesMatch[1]) : 0;
           if (hours > 0 && minutes > 0) durationDisplay = `${hours}h ${minutes}m`;
           else if (hours > 0) durationDisplay = `${hours}h`;
           else if (minutes > 0) durationDisplay = `${minutes}m`;
         }
       }
       
-      let returnFlightData = null;
+      // ✅ FORMAT TIME FOR DISPLAY
+      const formattedTime = outboundDepartureTime ? new Date(outboundDepartureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--';
       
+      // ✅ PROCESS RETURN FLIGHT
+      let returnFlightData = null;
       if (returnSlice) {
         const returnSegments = returnSlice.segments || [];
         const firstReturnSegment = returnSegments[0] || {};
@@ -495,44 +802,58 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         const returnAirlineName = returnAirline.name || offer.marketing_carrier_name || airlineName;
         
         let returnDurationDisplay = returnSlice.duration || '';
-        if (returnDurationDisplay && returnDurationDisplay.includes(':')) {
-          const parts = returnDurationDisplay.split(':');
-          if (parts.length === 3) {
-            const hours = parseInt(parts[0]);
-            const minutes = parseInt(parts[1]);
-            if (hours > 0 && minutes > 0) returnDurationDisplay = `${hours}h ${minutes}m`;
-            else if (hours > 0) returnDurationDisplay = `${hours}h`;
-            else if (minutes > 0) returnDurationDisplay = `${minutes}m`;
+        if (returnDurationDisplay && typeof returnDurationDisplay === 'string') {
+          if (returnDurationDisplay.includes(':')) {
+            const parts = returnDurationDisplay.split(':');
+            if (parts.length >= 2) {
+              const hours = parseInt(parts[0]);
+              const minutes = parseInt(parts[1]);
+              if (hours > 0 && minutes > 0) returnDurationDisplay = `${hours}h ${minutes}m`;
+              else if (hours > 0) returnDurationDisplay = `${hours}h`;
+              else if (minutes > 0) returnDurationDisplay = `${minutes}m`;
+            }
           }
         }
         
         returnFlightData = {
           departureAirport: returnSlice.origin?.iata_code || returnSlice.origin || '',
           arrivalAirport: returnSlice.destination?.iata_code || returnSlice.destination || '',
-          departureCity: returnSlice.origin?.name || '',
-          arrivalCity: returnSlice.destination?.name || '',
-          departureTime: returnSlice.departure_time || firstReturnSegment.start_time || '',
-          arrivalTime: returnSlice.arrival_time || lastReturnSegment.end_time || '',
+          departureCity: returnSlice.origin?.city_name || returnSlice.origin?.name || '',
+          arrivalCity: returnSlice.destination?.city_name || returnSlice.destination?.name || '',
+          departureTime: returnSlice.departure_time || firstReturnSegment.departing_at || firstReturnSegment.start_time || '',
+          arrivalTime: returnSlice.arrival_time || lastReturnSegment.arriving_at || lastReturnSegment.end_time || '',
           flightNumber: returnFlightNumber,
           airlineName: returnAirlineName,
           duration: returnDurationDisplay,
-          stopCount: returnSlice.stops !== undefined ? returnSlice.stops : (returnSegments.length - 1),
-          stopText: (returnSlice.stops !== undefined ? returnSlice.stops : (returnSegments.length - 1)) === 0 ? 'Direct' : 
-                    (returnSlice.stops !== undefined ? returnSlice.stops : (returnSegments.length - 1)) === 1 ? '1 Stop' : `${returnSlice.stops !== undefined ? returnSlice.stops : (returnSegments.length - 1)} Stops`,
+          stopCount: returnSegments.length > 0 ? returnSegments.length - 1 : 0,
+          stopText: returnSegments.length <= 1 ? 'Direct' : `${returnSegments.length - 1} ${returnSegments.length - 1 === 1 ? 'Stop' : 'Stops'}`,
         };
       }
       
-      const freeBaggage = outboundSlice.free_baggage || {};
-      const baggageCount = freeBaggage.BagCount || 0;
-      const baggageWeight = freeBaggage.Weight || 0;
-      const baggageUnit = freeBaggage.WeightUnit || 'kg';
+      // ✅ GENERATE IDS
+      const offerId = offer.id || offer.offer_id || `wakanow-${Date.now()}-${results.length}`;
+      const selectDataValue = offer.select_data || offer.token || offer.session_id || offer.booking_token || offer.connection_code || '';
+      const offerRequestId = offer.offer_request_id || `wakanow-req-${offerId}`;
       
-      const formattedTime = outboundDepartureTime ? new Date(outboundDepartureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--';
+      // ✅ LOG WHAT WE'RE BUILDING - IMPORTANT FOR DEBUGGING
+      console.log(`✈️ BUILDING WAKANOW FLIGHT:`, {
+        id: offerId,
+        airlineName,
+        airlineCode,
+        flightNumber,
+        departureAirport: outboundOrigin,
+        arrivalAirport: outboundDestination,
+        departureTime: outboundDepartureTime,
+        arrivalTime: outboundArrivalTime,
+        duration: durationDisplay,
+        stopCount: outboundStopCount,
+        price: formattedDisplayPrice,
+      });
       
       const flightResult: SearchResult = {
-        id: offer.id || `wakanow-${results.length}`,
+        id: offerId,
         provider: 'wakanow',
-        title: `${airlineName} ${firstOutboundSegment.flight_number || ''}`.trim() || 'Flight',
+        title: `${airlineName} ${flightNumber}`.trim() || 'Flight',
         subtitle: `${outboundOrigin} → ${outboundDestination}`,
         price: formattedDisplayPrice,
         totalPrice: formattedDisplayPrice,
@@ -541,23 +862,29 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         type: 'flights',
         image: airlineLogo,
         isRefundable: offer.is_refundable || false,
-        baggage: `${baggageCount} bag${baggageCount !== 1 ? 's' : ''}${baggageWeight ? ` (${baggageWeight}${baggageUnit})` : ''}`,
+        baggage: baggageText,
+        
+        // ✅ CRITICAL FIELDS FOR DISPLAY
         airlineCode: airlineCode,
-        flightNumber: firstOutboundSegment.flight_number || '',
+        airlineName: airlineName,
+        airlineLogo: airlineLogo,
+        flightNumber: flightNumber,
+        
         departureAirport: outboundOrigin,
         arrivalAirport: outboundDestination,
-        departureCity: outboundSlice.origin?.name || '',
-        arrivalCity: outboundSlice.destination?.name || '',
+        departureCity: outboundOriginCity,
+        arrivalCity: outboundDestinationCity,
+        
         departureTime: outboundDepartureTime,
         arrivalTime: outboundArrivalTime,
-        airlineName: airlineName || 'Airline',
-        airlineLogo: airlineLogo,
+        
         stopCount: outboundStopCount,
         stopText: outboundStopCount === 0 ? 'Direct' : outboundStopCount === 1 ? '1 Stop' : `${outboundStopCount} Stops`,
         cabin: cabinClass,
+        
         displayPrice: formattedDisplayPrice,
         rawPrice: displayPriceInUserCurrency,
-        // ✅ ALL PRICES STORED IN NGN FOR CONSISTENCY
+        
         original_amount: originalAmountNGN.toString(),
         original_currency: 'NGN',
         markup_amount: serviceFeeNGN.toString(),
@@ -568,7 +895,8 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         service_fee: totalServiceFeeNGN.toString(),
         service_fee_percentage: SERVICE_FEE_PERCENTAGE,
         final_amount: finalAmountNGN.toString(),
-        currency: 'NGN',  // Always NGN for internal storage
+        currency: 'NGN',
+        
         isRoundTrip: !!returnSlice,
         rating: 4,
         amenities: ['Seat Selection', 'Cabin Baggage'],
@@ -577,42 +905,39 @@ export function SearchProvider({ children }: { children: ReactNode }) {
           durationDisplay || '--:--',
           cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1)
         ],
+        
         isWakanow: true,
         isWakanowDomestic: isDomesticRoute,
-        selectData: offer.select_data || '',
+        selectData: selectDataValue,
+        offer_request_id: offerRequestId,
+        offer_id: offerId,
+        connection_code: offer.connection_code,
+        
         slices: slices,
         returnFlight: returnFlightData,
         fareRules: offer.fare_rules || [],
         penaltyRules: offer.penalty_rules || null,
-        connection_code: offer.connection_code,
         terms_and_conditions: offer.terms_and_conditions || null,
+        
+        _normalizedAirline: airlineName.toLowerCase().trim(),
+        _normalizedDepartureTime: outboundDepartureTime,
+        _normalizedArrivalAirport: outboundDestination,
       };
-      
-      console.log(`✅ Created flight result (NGN base):`, {
-        id: flightResult.id,
-        original_amount_NGN: flightResult.original_amount,
-        markup_amount_NGN: flightResult.markup_amount,
-        conversion_fee_NGN: flightResult.conversion_fee,
-        service_fee_NGN: flightResult.service_fee,
-        final_amount_NGN: flightResult.final_amount,
-        display_price: flightResult.price,
-        display_currency: currency.code
-      });
       
       results.push(flightResult);
     }
     
-    console.log(`✅ Transformed ${results.length} Wakanow flights with NGN base`);
+    console.log(`✅ Transformed ${results.length} Wakanow flights`);
     return results;
   };
 
-  const transformDuffelOffers = (
+  const transformDuffelOffers = async (
     offers: any[], 
     cabinClass: string = 'economy', 
-    offerRequestId: string,
-    rates: Record<string, number> = { NGN: 1 }
-  ): SearchResult[] => {
+    offerRequestId: string
+  ): Promise<SearchResult[]> => {
     const results: SearchResult[] = [];
+    const SERVICE_FEE_PERCENTAGE = 10;
     
     for (const offer of offers) {
       const slices = offer.slices || [];
@@ -660,68 +985,23 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       const durationDisplay = `${h}h ${String(m).padStart(2, '0')}m`;
       
       // Extract pricing components (Duffel returns in GBP typically)
-      const basePriceOriginal = parseFloat(offer.original_amount || offer.total_amount || '0');
-      const originalCurrency = offer.original_currency || offer.total_currency || 'GBP';
-      const markupAmountOriginal = parseFloat(offer.markup_amount) || 0;
-      const conversionFeeOriginal = parseFloat(offer.conversion_fee) || 0;
-      const taxesOriginal = parseFloat(offer.tax_amount) || 0;
-      const finalPriceOriginal = parseFloat(offer.final_amount) || (basePriceOriginal + markupAmountOriginal + conversionFeeOriginal + taxesOriginal);
+      const totalAmountOriginal = parseFloat(offer.total_amount || offer.original_amount || '0');
+      const originalCurrency = offer.total_currency || offer.original_currency || 'GBP';
       
-      // Convert ALL prices to NGN for consistent internal storage
-      let basePriceNGN = basePriceOriginal;
-      let markupAmountNGN = markupAmountOriginal;
-      let conversionFeeNGN = conversionFeeOriginal;
-      let taxesNGN = taxesOriginal;
-      let finalPriceNGN = finalPriceOriginal;
-      let originalCurrencyForInternalStorage = 'NGN';
+      // Convert to user's currency
+      let finalAmountInUserCurrency = totalAmountOriginal;
+      let formattedDisplayPrice = '';
       
-      if (originalCurrency !== 'NGN') {
-        const rateToNGN = rates['NGN'] || 0; // rates are based on fromCurrency
-        if (rateToNGN > 0) {
-          basePriceNGN = basePriceOriginal * rateToNGN;
-          markupAmountNGN = markupAmountOriginal * rateToNGN;
-          conversionFeeNGN = conversionFeeOriginal * rateToNGN;
-          taxesNGN = taxesOriginal * rateToNGN;
-          finalPriceNGN = finalPriceOriginal * rateToNGN;
-        } else {
-          console.error('Failed to convert Duffel prices to NGN: Rate Unavailable');
-          originalCurrencyForInternalStorage = originalCurrency;
+      try {
+        if (originalCurrency !== currency.code) {
+          finalAmountInUserCurrency = await convertPrice(totalAmountOriginal, originalCurrency);
         }
+        formattedDisplayPrice = await formatPrice(finalAmountInUserCurrency);
+      } catch (error) {
+        console.error('Failed to convert Duffel price:', error);
+        const symbol = CURRENCY_SYMBOLS[originalCurrency] || originalCurrency;
+        formattedDisplayPrice = `${symbol}${Math.round(totalAmountOriginal).toLocaleString()}`;
       }
-      
-      // Final total in NGN
-      const finalAmountNGN = finalPriceNGN;
-      const totalServiceFeeNGN = markupAmountNGN + conversionFeeNGN + taxesNGN;
-      const serviceFeePercentage = finalPriceNGN > 0 ? (totalServiceFeeNGN / finalPriceNGN) * 100 : 0;
-      
-      // Get display price in user's currency (Synchronous using pre-fetched rates)
-      const userCurrencyCode = currency.code;
-      const rateNGNtoUser = rates[`NGN_${userCurrencyCode}`] || 0;
-      
-      let displayPriceInUserCurrency = finalAmountNGN;
-      let formattedDisplayPrice = "";
-      
-      if (originalCurrencyForInternalStorage === 'NGN' && rateNGNtoUser > 0) {
-        displayPriceInUserCurrency = finalAmountNGN * rateNGNtoUser;
-        const symbol = CURRENCY_SYMBOLS[userCurrencyCode] || userCurrencyCode;
-        // Round NGN to whole numbers
-        const roundedAmount = userCurrencyCode === 'NGN' ? Math.round(displayPriceInUserCurrency) : displayPriceInUserCurrency;
-        formattedDisplayPrice = `${symbol}${roundedAmount.toLocaleString('en-GB', { 
-          minimumFractionDigits: userCurrencyCode === 'NGN' ? 0 : 2,
-          maximumFractionDigits: userCurrencyCode === 'NGN' ? 0 : 2 
-        })}`;
-      } else {
-        const symbol = CURRENCY_SYMBOLS[originalCurrencyForInternalStorage] || originalCurrencyForInternalStorage;
-        formattedDisplayPrice = `${symbol}${Math.round(finalPriceOriginal).toLocaleString()} (Rate Unavailable)`;
-      }
-      
-      console.log(`✈️ Duffel Flight (${airlineName}) - Converted to NGN:`, {
-        originalCurrency,
-        basePriceOriginal: `${originalCurrency} ${basePriceOriginal}`,
-        basePriceNGN: `₦${basePriceNGN.toFixed(2)}`,
-        finalPriceNGN: `₦${finalPriceNGN.toFixed(2)}`,
-        displayPrice: formattedDisplayPrice,
-      });
       
       const outboundStops = Math.max(0, (outboundSegments.length || 1) - 1);
       
@@ -804,19 +1084,18 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         stopText: outboundStops === 0 ? 'Direct' : outboundStops === 1 ? '1 Stop' : `${outboundStops} Stops`,
         cabin: cabinClass,
         displayPrice: formattedDisplayPrice,
-        rawPrice: displayPriceInUserCurrency,
-        // ✅ ALL PRICES STORED IN NGN FOR CONSISTENCY
-        original_amount: basePriceNGN.toString(),
-        original_currency: 'NGN',
-        markup_amount: markupAmountNGN.toString(),
-        markup_percentage: offer.markup_percentage || 0,
-        conversion_fee: conversionFeeNGN.toString(),
-        conversion_fee_percentage: offer.conversion_fee_percentage || 0,
-        taxes: taxesNGN.toString(),
-        service_fee: totalServiceFeeNGN.toString(),
-        service_fee_percentage: serviceFeePercentage,
-        final_amount: finalPriceNGN.toString(),
-        currency: originalCurrencyForInternalStorage,  // Store original currency if conversion failed
+        rawPrice: finalAmountInUserCurrency,
+        original_amount: totalAmountOriginal.toString(),
+        original_currency: originalCurrency,
+        markup_amount: '0',
+        markup_percentage: 0,
+        conversion_fee: '0',
+        conversion_fee_percentage: 0,
+        taxes: '0',
+        service_fee: '0',
+        service_fee_percentage: 0,
+        final_amount: totalAmountOriginal.toString(),
+        currency: originalCurrency,
         isRoundTrip: !!returnSlice,
         rating: 4,
         amenities: ['Seat Selection', 'Cabin Baggage'],
@@ -876,114 +1155,49 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       }
     }
   
-    const nigerianAirports = ['LOS', 'ABV', 'PHC', 'KAN', 'ENU', 'QOW', 'BNI', 'JOS', 'KAD', 'YOL'];
-    const isDomestic = nigerianAirports.includes(origin) && nigerianAirports.includes(destination);
+    // ✅ USE GLOBAL DOMESTIC DETECTION (works for ALL countries)
+    const isDomestic = isDomesticFlightGlobal(origin, destination);
     
     const BASE = config.apiBaseUrl;
   
-    // DOMESTIC flights
-    if (isDomestic && params.tripType !== 'multi-city') {
-      console.log('🇳🇬 Domestic flight detected - Using Wakanow API only');
-      try {
-        const { wakanowService } = await import('@/lib/wakanow.service');
-        
-        const wakanowParams = {
-          from: origin,
-          to: destination,
-          departureDate: formatDateForWakanow(departureDate),
-          returnDate: returnDate ? formatDateForWakanow(returnDate) : undefined,
-          adults,
-          children,
-          infants,
-          cabinClass: cabinClass as 'economy' | 'premium_economy' | 'business' | 'first',
-          targetCurrency: 'NGN'  // Always request in NGN
-        };
-        
-        const result = await wakanowService.searchDomesticFlights(wakanowParams);
-        const offers = result.offers || result.normalizedFlights || [];
-        const transformedResults = await transformWakanowOffers(offers, returnDate, cabinClass, true);
-        
-        console.log(`✅ Wakanow domestic results: ${transformedResults.length} flights with NGN base`);
-        setSearchResults(transformedResults);
-        return;
-      } catch (error) {
-        console.error('❌ Wakanow domestic search failed:', error);
-        setSearchError('Domestic flight search failed. Please try again.');
-        setSearchResults([]);
-        return;
-      }
-    }
+    // ✅ For ALL flights (domestic AND international), fetch from BOTH providers
+    console.log(`✈️ Fetching flights for ${origin} → ${destination} (${isDomestic ? 'DOMESTIC' : 'INTERNATIONAL'}) from Wakanow + Duffel`);
   
-    // INTERNATIONAL: run both in parallel but render Wakanow immediately when ready
-    console.log('🌍 International flight detected - Fetching from Wakanow + Duffel in parallel');
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-    // Helper: dedup + sort a list of results
-    const deduplicateAndSort = (combined: SearchResult[]): SearchResult[] => {
-      const uniqueMap = new Map<string, SearchResult>();
-
-      const normalizeString = (str?: string) => (str || '').toUpperCase().trim();
-      const getDateTimeKey = (t?: string) => {
-        if (!t) return '';
-        try {
-          const d = new Date(t);
-          return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()} ${d.getHours()}:${d.getMinutes()}`;
-        } catch { return ''; }
-      };
-      const airlineMap: Record<string, string> = {
-        'ROYAL AIR MAROC': 'AT', 'EGYPTAIR': 'MS', 'BRITISH AIRWAYS': 'BA',
-        'KENYA AIRWAYS': 'KQ', 'EMIRATES AIRLINES': 'EK', 'RWANDAIR': 'WB',
-        'QATAR AIRWAYS': 'QR', 'ETHIOPIAN AIRLINES': 'ET', 'KLM ROYAL DUTCH AIRLINES': 'KL',
-        'AIR FRANCE': 'AF', 'VIRGIN ATLANTIC': 'VS', 'TURKISH AIRLINES': 'TK', 'AIR PEACE': 'P4',
-      };
-      const getAirlineKey = (f: any) => {
-        const a = normalizeString(f.airlineName || f.airline || '');
-        return airlineMap[a] || a;
-      };
-
-      for (const flight of combined) {
-        const f = flight as any;
-        if (!f.departureAirport || !f.arrivalAirport) continue;
-        let key = `${getAirlineKey(f)}-${normalizeString(f.departureAirport)}-${normalizeString(f.arrivalAirport)}-${getDateTimeKey(f.departureTime)}`;
-        if (f.returnFlight) key += `-${getDateTimeKey(f.returnFlight.departureTime)}`;
-
-        if (!uniqueMap.has(key)) {
-          uniqueMap.set(key, flight);
+    // Deduplication function
+    const deduplicateFlights = (flights: SearchResult[]): SearchResult[] => {
+      const seen = new Map<string, SearchResult>();
+      
+      for (const flight of flights) {
+        const departureDateKey = flight.departureTime ? new Date(flight.departureTime).toISOString().split('T')[0] : '';
+        const uniqueKey = `${flight.airlineCode}-${flight.flightNumber}-${flight.departureAirport}-${flight.arrivalAirport}-${departureDateKey}`.toLowerCase();
+        
+        if (!seen.has(uniqueKey)) {
+          seen.set(uniqueKey, flight);
         } else {
-          const existing = uniqueMap.get(key)!;
-          const existingProvider = (existing as any).provider;
-          // Prefer wakanow; otherwise keep cheaper of same provider
-          if (f.provider === 'wakanow' && existingProvider === 'duffel') {
-            uniqueMap.set(key, flight);
-          } else if (f.provider === existingProvider) {
-            if ((f.rawPrice || Infinity) < ((existing as any).rawPrice || Infinity)) {
-              uniqueMap.set(key, flight);
-            }
+          const existing = seen.get(uniqueKey)!;
+          const existingPrice = parseFloat(existing.rawPrice?.toString() || '0');
+          const newPrice = parseFloat(flight.rawPrice?.toString() || '0');
+          
+          if (newPrice < existingPrice && newPrice > 0) {
+            seen.set(uniqueKey, flight);
+            console.log(`🔄 Deduplicated: Keeping cheaper ${uniqueKey}`);
+          } else {
+            console.log(`🔄 Deduplicated: Removing duplicate ${uniqueKey}`);
           }
         }
       }
-
-      return Array.from(uniqueMap.values())
-        .sort((a, b) => ((a as any).rawPrice || Infinity) - ((b as any).rawPrice || Infinity));
-    };
-
-    try {
-      // ── 1. Pre-fetch Exchange Rates once for the entire search ─────────────
-      const { fetchExchangeRates } = await import('@/lib/currency-service');
-      const [ratesToNGN, ratesFromNGN] = await Promise.all([
-        fetchExchangeRates('GBP'), // Duffel base (usually)
-        fetchExchangeRates('NGN')  // Wakanow base
-      ]);
       
-      const rateMap: Record<string, number> = {
-        'NGN': ratesToNGN.rates['NGN'] || 0,
-        [`NGN_${currency.code}`]: ratesFromNGN.rates[currency.code] || 0,
-        [currency.code]: ratesFromNGN.rates[currency.code] || 0 // For Wakanow direct NGN->User
-      };
-
-      // ── 2. Start both fetches in parallel ──────────────────────────────────
+      return Array.from(seen.values());
+    };
+  
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+  
+    try {
+      let wakanowResults: SearchResult[] = [];
+      let duffelResults: SearchResult[] = [];
+  
+      // Wakanow fetch for ALL flights (same API for both domestic and international)
       const wakanowFetchPromise = (async (): Promise<SearchResult[]> => {
         try {
           const { wakanowService } = await import('@/lib/wakanow.service');
@@ -995,15 +1209,20 @@ export function SearchProvider({ children }: { children: ReactNode }) {
             cabinClass: cabinClass as 'economy' | 'premium_economy' | 'business' | 'first',
             targetCurrency: 'NGN',
           };
+          
+          // ✅ Use the same searchDomesticFlights method for all routes
+          // Wakanow's API handles both domestic and international
           const result = await wakanowService.searchDomesticFlights(wakanowParams);
+          
           const offers = result.offers || result.normalizedFlights || [];
-          return transformWakanowOffers(offers, returnDate, cabinClass, false, rateMap);
+          return await transformWakanowOffers(offers, returnDate, cabinClass, isDomestic);
         } catch (err) {
           console.error('❌ Wakanow fetch failed:', err);
           return [];
         }
       })();
-
+  
+      // Duffel fetch for ALL flights
       const duffelFetchPromise = (async (): Promise<SearchResult[]> => {
         try {
           const requestBody: any = {
@@ -1012,7 +1231,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
             cabinClass, currency: 'NGN',
           };
           if (returnDate) requestBody.returnDate = returnDate;
-
+  
           const offerRes = await fetch(`${BASE}/api/v1/bookings/search/flights`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1020,20 +1239,19 @@ export function SearchProvider({ children }: { children: ReactNode }) {
             signal: controller.signal,
           });
           if (!offerRes.ok) throw new Error(`Offer request failed: ${offerRes.status}`);
-
+  
           const offerData = await offerRes.json();
           if (!offerData.success || !offerData.data?.offer_request_id) {
             throw new Error('No offer request ID in response');
           }
           const offerRequestId = offerData.data.offer_request_id;
-
-          // Limit to 2 pages for speed – that's already 50–100 offers
+  
           let allOffers: any[] = [];
           let cursor: string | null = null;
           let hasMore = true;
           let page = 1;
           const MAX_PAGES = 2;
-
+  
           while (hasMore && page <= MAX_PAGES) {
             const url = new URL(`${BASE}/api/v1/bookings/offers`);
             url.searchParams.set('offer_request_id', offerRequestId);
@@ -1047,55 +1265,56 @@ export function SearchProvider({ children }: { children: ReactNode }) {
             cursor = offersData.meta?.nextCursor ?? null;
             page++;
           }
-
-          return transformDuffelOffers(allOffers, cabinClass, offerRequestId, rateMap);
+  
+          return await transformDuffelOffers(allOffers, cabinClass, offerRequestId);
         } catch (err) {
           console.error('❌ Duffel fetch failed:', err);
           return [];
         }
       })();
-
-      // ── 3. Show Wakanow results as soon as they're ready ──────────────────
-      let wakanowResults: SearchResult[] = [];
-      let duffelResults: SearchResult[] = [];
-
-      wakanowFetchPromise
-        .then(results => {
-          wakanowResults = results;
-          if (results.length > 0) {
-            console.log(`✅ Wakanow: ${results.length} flights ready – rendering immediately`);
-            setSearchResults(deduplicateAndSort([...wakanowResults, ...duffelResults]));
-          }
-        });
-
-      // ── 4. When Duffel finishes, merge and update ──────────────────────────
-      duffelFetchPromise
-        .then(results => {
-          duffelResults = results;
-          if (results.length > 0) {
-            console.log(`✅ Duffel: ${results.length} flights ready – merging`);
-            setSearchResults(deduplicateAndSort([...wakanowResults, ...duffelResults]));
-          }
-        });
-
-      // ── 5. Await both so finally/error handling still runs ─────────────────
-      const [wakanowSettled, duffelSettled] = await Promise.allSettled([
-        wakanowFetchPromise, duffelFetchPromise,
-      ]);
-
+  
+      // Show results as they come in (with deduplication)
+      wakanowFetchPromise.then(results => {
+        wakanowResults = results;
+        if (results.length > 0) {
+          console.log(`✅ Wakanow: ${results.length} flights ready`);
+          const combined = [...wakanowResults, ...duffelResults];
+          const deduplicated = deduplicateFlights(combined);
+          setSearchResults(deduplicated);
+        }
+      });
+  
+      duffelFetchPromise.then(results => {
+        duffelResults = results;
+        if (results.length > 0) {
+          console.log(`✅ Duffel: ${results.length} flights ready`);
+          const combined = [...wakanowResults, ...duffelResults];
+          const deduplicated = deduplicateFlights(combined);
+          setSearchResults(deduplicated);
+        }
+      });
+  
+      await Promise.allSettled([wakanowFetchPromise, duffelFetchPromise]);
       clearTimeout(timeoutId);
-
-      if (wakanowResults.length === 0 && duffelResults.length === 0) {
+  
+      // Final deduplication of all results
+      const allFlights = [...wakanowResults, ...duffelResults];
+      const uniqueFlights = deduplicateFlights(allFlights);
+  
+      if (uniqueFlights.length === 0) {
         setSearchError('No flights found for your criteria. Please try different dates or airports.');
         setSearchResults([]);
+      } else {
+        console.log(`✅ Final unique flights: ${uniqueFlights.length} (from ${allFlights.length} total)`);
+        setSearchResults(uniqueFlights);
       }
-
+  
     } catch (error: any) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
         setSearchError('Search is taking too long. Please try again.');
       } else {
-        console.error('❌ International flight search failed:', error);
+        console.error('❌ Flight search failed:', error);
         setSearchError('Failed to search flights. Please try again.');
       }
       setSearchResults([]);
@@ -1146,6 +1365,11 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       id: item.id,
       provider: item.provider,
       type: item.type,
+      isWakanowDomestic: item.isWakanowDomestic,
+      hasSelectData: !!item.selectData,
+      selectDataValue: item.selectData,
+      hasOfferRequestId: !!item.offer_request_id,
+      hasOfferId: !!item.offer_id,
       original_amount_NGN: item.original_amount,
       original_currency: item.original_currency,
       markup_amount_NGN: item.markup_amount,
@@ -1208,4 +1432,4 @@ export function useSearch() {
   const ctx = useContext(SearchContext);
   if (!ctx) throw new Error('useSearch must be used within <SearchProvider>');
   return ctx;
-} 
+}

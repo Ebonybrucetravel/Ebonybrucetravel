@@ -1,7 +1,6 @@
 'use client';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useLanguage } from '../context/LanguageContext';
-import { airports as airportData } from '../lib/airportData';
 
 interface CompactSearchBoxProps {
   onSearch: (data: any) => void;
@@ -82,8 +81,8 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
   const [carDropoffSuggestions, setCarDropoffSuggestions] = useState<Airport[]>([]);
   const [loadingCarSuggestions, setLoadingCarSuggestions] = useState(false);
 
-  // Popular airports for suggestions
-  const popularAirports: Airport[] = [
+  // Memoize popular airports to prevent recreation
+  const popularAirports = useMemo<Airport[]>(() => [
     { code: 'LOS', name: 'Murtala Muhammed International Airport', city: 'Lagos', country: 'Nigeria', type: 'airport' },
     { code: 'LHR', name: 'Heathrow Airport', city: 'London', country: 'UK', type: 'airport' },
     { code: 'JFK', name: 'John F. Kennedy International Airport', city: 'New York', country: 'USA', type: 'airport' },
@@ -92,9 +91,9 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     { code: 'FRA', name: 'Frankfurt Airport', city: 'Frankfurt', country: 'Germany', type: 'airport' },
     { code: 'AMS', name: 'Schiphol Airport', city: 'Amsterdam', country: 'Netherlands', type: 'airport' },
     { code: 'IST', name: 'Istanbul Airport', city: 'Istanbul', country: 'Turkey', type: 'airport' },
-  ];
+  ], []);
 
-  const popularHotelDestinations: HotelDestination[] = [
+  const popularHotelDestinations = useMemo<HotelDestination[]>(() => [
     { name: 'Lagos', city: 'Lagos', country: 'Nigeria', cityCode: 'LOS' },
     { name: 'London', city: 'London', country: 'United Kingdom', cityCode: 'LON' },
     { name: 'New York', city: 'New York', country: 'USA', cityCode: 'NYC' },
@@ -102,10 +101,19 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     { name: 'Paris', city: 'Paris', country: 'France', cityCode: 'PAR' },
     { name: 'Tokyo', city: 'Tokyo', country: 'Japan', cityCode: 'TYO' },
     { name: 'Singapore', city: 'Singapore', country: 'Singapore', cityCode: 'SIN' },
-  ];
+  ], []);
 
-  // Extract airport code from display value
-  const extractCode = (displayValue: string): string => {
+  // Debounce function
+  const debounce = useCallback((func: Function, delay: number) => {
+    let timeoutId: NodeJS.Timeout;
+    return (...args: any[]) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => func(...args), delay);
+    };
+  }, []);
+
+  // Extract airport code
+  const extractCode = useCallback((displayValue: string): string => {
     if (!displayValue) return '';
     if (/^[A-Z]{3}$/.test(displayValue.trim())) {
       return displayValue.trim();
@@ -114,41 +122,19 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     if (match) return match[1];
     const anyCode = displayValue.match(/\b([A-Z]{3})\b/);
     return anyCode ? anyCode[1] : displayValue;
-  };
+  }, []);
 
-  const getPassengerDisplayText = () => {
+  // Memoize passenger display text
+  const passengerDisplayText = useMemo(() => {
     const total = passengers.adults + passengers.children + passengers.infants;
-    let cabinLabel = '';
-    switch(cabinClass) {
-      case 'economy':
-        cabinLabel = 'Economy';
-        break;
-      case 'premium-economy':
-        cabinLabel = 'Premium Economy';
-        break;
-      case 'business':
-        cabinLabel = 'Business';
-        break;
-      case 'first':
-        cabinLabel = 'First Class';
-        break;
-      default:
-        cabinLabel = 'Economy';
-    }
-    return `${total} Passenger${total !== 1 ? 's' : ''}, ${cabinLabel}`;
-  };
-
-  const updatePassengers = (type: 'adults' | 'children' | 'infants', delta: number) => {
-    setPassengers(prev => {
-      let newValue = prev[type] + delta;
-      if (type === 'adults') {
-        newValue = Math.max(1, Math.min(9, newValue));
-      } else {
-        newValue = Math.max(0, Math.min(9, newValue));
-      }
-      return { ...prev, [type]: newValue };
-    });
-  };
+    const cabinLabels: { [key: string]: string } = {
+      economy: 'Economy',
+      'premium-economy': 'Premium Economy',
+      business: 'Business',
+      first: 'First Class'
+    };
+    return `${total} Passenger${total !== 1 ? 's' : ''}, ${cabinLabels[cabinClass] || 'Economy'}`;
+  }, [passengers.adults, passengers.children, passengers.infants, cabinClass]);
 
   // Fetch airport suggestions
   const fetchAirportSuggestions = useCallback(async (query: string): Promise<Airport[]> => {
@@ -156,10 +142,13 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
       return popularAirports.slice(0, 8);
     }
 
+    const abortController = new AbortController();
+    
     try {
       setLoadingSuggestions(true);
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ebony-bruce-production.up.railway.app'}/api/v1/bookings/flights/places/suggestions?query=${encodeURIComponent(query)}`
+        `${process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ebony-bruce-production.up.railway.app'}/api/v1/bookings/flights/places/suggestions?query=${encodeURIComponent(query)}`,
+        { signal: abortController.signal }
       );
 
       if (response.ok) {
@@ -186,6 +175,9 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
       );
       return filtered.slice(0, 8);
     } catch (error) {
+      if ((error as any).name === 'AbortError') {
+        return [];
+      }
       console.error('Error fetching airport suggestions:', error);
       const lowerQuery = query.toLowerCase();
       const filtered = popularAirports.filter(airport =>
@@ -196,7 +188,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     } finally {
       setLoadingSuggestions(false);
     }
-  }, []);
+  }, [popularAirports]);
 
   // Fetch hotel suggestions
   const fetchHotelSuggestions = useCallback(async (query: string): Promise<HotelDestination[]> => {
@@ -220,69 +212,105 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     } finally {
       setLoadingHotelSuggestions(false);
     }
-  }, []);
+  }, [popularHotelDestinations]);
 
-  // Handle input changes with suggestions
-  const handleFromChange = useCallback(async (value: string) => {
+  // Debounced handlers
+  const debouncedFromChange = useMemo(
+    () => debounce(async (value: string) => {
+      if (value.length >= 1) {
+        const suggestions = await fetchAirportSuggestions(value);
+        setFromSuggestions(suggestions);
+        setShowFromDropdown(true);
+      } else {
+        setFromSuggestions(popularAirports.slice(0, 8));
+        setShowFromDropdown(value.length > 0);
+      }
+    }, 300),
+    [debounce, fetchAirportSuggestions, popularAirports]
+  );
+
+  const debouncedToChange = useMemo(
+    () => debounce(async (value: string) => {
+      if (value.length >= 1) {
+        const suggestions = await fetchAirportSuggestions(value);
+        setToSuggestions(suggestions);
+        setShowToDropdown(true);
+      } else {
+        setToSuggestions(popularAirports.slice(0, 8));
+        setShowToDropdown(value.length > 0);
+      }
+    }, 300),
+    [debounce, fetchAirportSuggestions, popularAirports]
+  );
+
+  const debouncedHotelChange = useMemo(
+    () => debounce(async (value: string) => {
+      if (value.length >= 1) {
+        const suggestions = await fetchHotelSuggestions(value);
+        setHotelSuggestions(suggestions);
+        setShowHotelDropdown(true);
+      } else {
+        setHotelSuggestions(popularHotelDestinations.slice(0, 6));
+        setShowHotelDropdown(value.length > 0);
+      }
+    }, 300),
+    [debounce, fetchHotelSuggestions, popularHotelDestinations]
+  );
+
+  const debouncedCarPickupChange = useMemo(
+    () => debounce(async (value: string) => {
+      if (value.length >= 1) {
+        const suggestions = await fetchAirportSuggestions(value);
+        setCarPickupSuggestions(suggestions);
+        setShowCarPickupDropdown(true);
+      } else {
+        setShowCarPickupDropdown(false);
+      }
+    }, 300),
+    [debounce, fetchAirportSuggestions]
+  );
+
+  const debouncedCarDropoffChange = useMemo(
+    () => debounce(async (value: string) => {
+      if (value.length >= 1) {
+        const suggestions = await fetchAirportSuggestions(value);
+        setCarDropoffSuggestions(suggestions);
+        setShowCarDropoffDropdown(true);
+      } else {
+        setShowCarDropoffDropdown(false);
+      }
+    }, 300),
+    [debounce, fetchAirportSuggestions]
+  );
+
+  // Handle input changes
+  const handleFromChange = useCallback((value: string) => {
     setFlightFrom(value);
-    if (value.length >= 1) {
-      const suggestions = await fetchAirportSuggestions(value);
-      setFromSuggestions(suggestions);
-      setShowFromDropdown(true);
-    } else {
-      setFromSuggestions(popularAirports.slice(0, 8));
-      setShowFromDropdown(value.length > 0);
-    }
-  }, [fetchAirportSuggestions]);
+    debouncedFromChange(value);
+  }, [debouncedFromChange]);
 
-  const handleToChange = useCallback(async (value: string) => {
+  const handleToChange = useCallback((value: string) => {
     setFlightTo(value);
-    if (value.length >= 1) {
-      const suggestions = await fetchAirportSuggestions(value);
-      setToSuggestions(suggestions);
-      setShowToDropdown(true);
-    } else {
-      setToSuggestions(popularAirports.slice(0, 8));
-      setShowToDropdown(value.length > 0);
-    }
-  }, [fetchAirportSuggestions]);
+    debouncedToChange(value);
+  }, [debouncedToChange]);
 
-  const handleHotelChange = useCallback(async (value: string) => {
+  const handleHotelChange = useCallback((value: string) => {
     setHotelLocation(value);
-    if (value.length >= 1) {
-      const suggestions = await fetchHotelSuggestions(value);
-      setHotelSuggestions(suggestions);
-      setShowHotelDropdown(true);
-    } else {
-      setHotelSuggestions(popularHotelDestinations.slice(0, 6));
-      setShowHotelDropdown(value.length > 0);
-    }
-  }, [fetchHotelSuggestions]);
+    debouncedHotelChange(value);
+  }, [debouncedHotelChange]);
 
-  const handleCarPickupChange = useCallback(async (value: string) => {
+  const handleCarPickupChange = useCallback((value: string) => {
     setCarPickup(value);
-    if (value.length >= 1) {
-      const suggestions = await fetchAirportSuggestions(value);
-      setCarPickupSuggestions(suggestions);
-      setShowCarPickupDropdown(true);
-    } else {
-      setShowCarPickupDropdown(false);
-    }
-  }, [fetchAirportSuggestions]);
+    debouncedCarPickupChange(value);
+  }, [debouncedCarPickupChange]);
 
-  const handleCarDropoffChange = useCallback(async (value: string) => {
+  const handleCarDropoffChange = useCallback((value: string) => {
     setCarDropoff(value);
-    if (value.length >= 1) {
-      const suggestions = await fetchAirportSuggestions(value);
-      setCarDropoffSuggestions(suggestions);
-      setShowCarDropoffDropdown(true);
-    } else {
-      setShowCarDropoffDropdown(false);
-    }
-  }, [fetchAirportSuggestions]);
+    debouncedCarDropoffChange(value);
+  }, [debouncedCarDropoffChange]);
 
-  // Handle selection from dropdown
-  const handleAirportSelect = (airport: Airport, type: 'from' | 'to') => {
+  // Handle selections
+  const handleAirportSelect = useCallback((airport: Airport, type: 'from' | 'to') => {
     const displayValue = `${airport.code} - ${airport.city}, ${airport.country}`;
     if (type === 'from') {
       setFlightFrom(displayValue);
@@ -291,14 +319,14 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
       setFlightTo(displayValue);
       setShowToDropdown(false);
     }
-  };
+  }, []);
 
-  const handleHotelSelect = (destination: HotelDestination) => {
+  const handleHotelSelect = useCallback((destination: HotelDestination) => {
     setHotelLocation(`${destination.city}, ${destination.country}`);
     setShowHotelDropdown(false);
-  };
+  }, []);
 
-  const handleCarLocationSelect = (airport: Airport, type: 'pickup' | 'dropoff') => {
+  const handleCarLocationSelect = useCallback((airport: Airport, type: 'pickup' | 'dropoff') => {
     const displayValue = `${airport.code} - ${airport.city}, ${airport.country}`;
     if (type === 'pickup') {
       setCarPickup(displayValue);
@@ -307,9 +335,21 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
       setCarDropoff(displayValue);
       setShowCarDropoffDropdown(false);
     }
-  };
+  }, []);
 
-  // Close dropdowns when clicking outside
+  const updatePassengers = useCallback((type: 'adults' | 'children' | 'infants', delta: number) => {
+    setPassengers(prev => {
+      let newValue = prev[type] + delta;
+      if (type === 'adults') {
+        newValue = Math.max(1, Math.min(9, newValue));
+      } else {
+        newValue = Math.max(0, Math.min(9, newValue));
+      }
+      return { ...prev, [type]: newValue };
+    });
+  }, []);
+
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (flightFromRef.current && !flightFromRef.current.contains(event.target as Node)) {
@@ -353,7 +393,6 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     setCarPickupDate(tomorrowStr);
     setCarDropoffDate(nextWeekStr);
     
-    // Set initial values from params if available
     if (initialParams) {
       console.log('📦 Initial params received:', initialParams);
       if (initialParams.type === 'flights') {
@@ -382,9 +421,20 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
         if (initialParams.dropoffDateTime) setCarDropoffDate(initialParams.dropoffDateTime.split('T')[0]);
       }
     }
-  }, [initialParams]);
+  }, [initialParams, popularAirports]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      setFromSuggestions([]);
+      setToSuggestions([]);
+      setHotelSuggestions([]);
+      setCarPickupSuggestions([]);
+      setCarDropoffSuggestions([]);
+    };
+  }, []);
+
+  const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     
     let searchData: any = {};
@@ -434,9 +484,9 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     }
     
     onSearch(searchData);
-  };
+  }, [activeTab, extractCode, flightFrom, flightTo, flightDate, tripType, returnDate, passengers, cabinClass, hotelLocation, checkIn, checkOut, guests, carPickup, carDropoff, carPickupDate, carDropoffDate, onSearch]);
 
-  const renderDropdown = (suggestions: Airport[], onSelect: (airport: Airport) => void, isLoading: boolean) => (
+  const renderDropdown = useCallback((suggestions: Airport[], onSelect: (airport: Airport) => void, isLoading: boolean) => (
     <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 max-h-64 overflow-y-auto z-50">
       {isLoading ? (
         <div className="px-4 py-4 text-center text-gray-500">
@@ -466,9 +516,9 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
         ))
       )}
     </div>
-  );
+  ), []);
 
-  const renderHotelDropdown = () => (
+  const renderHotelDropdown = useCallback(() => (
     <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 max-h-64 overflow-y-auto z-50">
       {loadingHotelSuggestions ? (
         <div className="px-4 py-4 text-center text-gray-500">
@@ -498,242 +548,170 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
         ))
       )}
     </div>
-  );
+  ), [hotelSuggestions, loadingHotelSuggestions, handleHotelSelect]);
 
-// Single line flight search with editable passenger
-const renderFlightCompact = () => (
-  <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">
-    {/* Trip Type Toggle */}
-    <div className="flex flex-col gap-1.5 min-w-[100px]">
-      <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">TRIP TYPE</span>
-      <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2 border border-gray-200">
-        <label className="flex items-center gap-1.5 cursor-pointer">
-          <input
-            type="radio"
-            name="tripType"
-            checked={tripType === 'round-trip'}
-            onChange={() => setTripType('round-trip')}
-            className="w-3.5 h-3.5 text-[#33a8da] focus:ring-[#33a8da]"
-          />
-          <span className="text-xs font-medium text-gray-700">Round</span>
-        </label>
-        <label className="flex items-center gap-1.5 cursor-pointer">
-          <input
-            type="radio"
-            name="tripType"
-            checked={tripType === 'one-way'}
-            onChange={() => setTripType('one-way')}
-            className="w-3.5 h-3.5 text-[#33a8da] focus:ring-[#33a8da]"
-          />
-          <span className="text-xs font-medium text-gray-700">One way</span>
-        </label>
+  // Memoized render functions
+  const renderFlightCompact = useMemo(() => (
+    <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">
+      <div className="flex flex-col gap-1.5 min-w-[100px]">
+        <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">TRIP TYPE</span>
+        <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2 border border-gray-200">
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input
+              type="radio"
+              name="tripType"
+              checked={tripType === 'round-trip'}
+              onChange={() => setTripType('round-trip')}
+              className="w-3.5 h-3.5 text-[#33a8da] focus:ring-[#33a8da]"
+            />
+            <span className="text-xs font-medium text-gray-700">Round</span>
+          </label>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input
+              type="radio"
+              name="tripType"
+              checked={tripType === 'one-way'}
+              onChange={() => setTripType('one-way')}
+              className="w-3.5 h-3.5 text-[#33a8da] focus:ring-[#33a8da]"
+            />
+            <span className="text-xs font-medium text-gray-700">One way</span>
+          </label>
+        </div>
       </div>
-    </div>
 
-    {/* From */}
-    <div className="flex-1 min-w-[120px] relative" ref={flightFromRef}>
-      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">FROM</label>
-      <input
-        type="text"
-        value={flightFrom}
-        onChange={(e) => handleFromChange(e.target.value)}
-        onFocus={() => {
-          if (flightFrom.length < 2) {
-            setFromSuggestions(popularAirports.slice(0, 8));
-          }
-          setShowFromDropdown(true);
-        }}
-        placeholder="Lagos"
-        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-      />
-      {showFromDropdown && renderDropdown(fromSuggestions, (airport) => handleAirportSelect(airport, 'from'), loadingSuggestions)}
-    </div>
+      <div className="flex-1 min-w-[120px] relative" ref={flightFromRef}>
+        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">FROM</label>
+        <input
+          type="text"
+          value={flightFrom}
+          onChange={(e) => handleFromChange(e.target.value)}
+          onFocus={() => {
+            if (flightFrom.length < 2) {
+              setFromSuggestions(popularAirports.slice(0, 8));
+            }
+            setShowFromDropdown(true);
+          }}
+          placeholder="Lagos"
+          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+        />
+        {showFromDropdown && renderDropdown(fromSuggestions, (airport) => handleAirportSelect(airport, 'from'), loadingSuggestions)}
+      </div>
 
-    {/* To */}
-    <div className="flex-1 min-w-[120px] relative" ref={flightToRef}>
-      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">TO</label>
-      <input
-        type="text"
-        value={flightTo}
-        onChange={(e) => handleToChange(e.target.value)}
-        onFocus={() => {
-          if (flightTo.length < 2) {
-            setToSuggestions(popularAirports.slice(0, 8));
-          }
-          setShowToDropdown(true);
-        }}
-        placeholder="London"
-        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-      />
-      {showToDropdown && renderDropdown(toSuggestions, (airport) => handleAirportSelect(airport, 'to'), loadingSuggestions)}
-    </div>
+      <div className="flex-1 min-w-[120px] relative" ref={flightToRef}>
+        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">TO</label>
+        <input
+          type="text"
+          value={flightTo}
+          onChange={(e) => handleToChange(e.target.value)}
+          onFocus={() => {
+            if (flightTo.length < 2) {
+              setToSuggestions(popularAirports.slice(0, 8));
+            }
+            setShowToDropdown(true);
+          }}
+          placeholder="London"
+          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+        />
+        {showToDropdown && renderDropdown(toSuggestions, (airport) => handleAirportSelect(airport, 'to'), loadingSuggestions)}
+      </div>
 
-    {/* Departure */}
-    <div className="flex-1 min-w-[130px]">
-      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">DEPARTURE</label>
-      <input
-        type="date"
-        value={flightDate}
-        onChange={(e) => setFlightDate(e.target.value)}
-        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-      />
-    </div>
-
-    {/* Return */}
-    {tripType === 'round-trip' && (
       <div className="flex-1 min-w-[130px]">
-        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">RETURN</label>
+        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">DEPARTURE</label>
         <input
           type="date"
-          value={returnDate}
-          onChange={(e) => setReturnDate(e.target.value)}
+          value={flightDate}
+          onChange={(e) => setFlightDate(e.target.value)}
           className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
         />
       </div>
-    )}
 
-    {/* Passenger - Editable */}
-    <div className="min-w-[160px] relative" ref={passengerDropdownRef}>
-      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">PASSENGER</label>
-      <button
-        type="button"
-        onClick={() => setShowPassengerDropdown(!showPassengerDropdown)}
-        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white text-left flex justify-between items-center"
-      >
-        <span>{getPassengerDisplayText()}</span>
-        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {/* Passenger Dropdown */}
-      {showPassengerDropdown && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-200 z-50 p-4 min-w-[280px]">
-          {/* Adults */}
-          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-            <div>
-              <div className="font-medium text-gray-900 text-sm">Adults</div>
-              <div className="text-xs text-gray-400">Age 12+</div>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => updatePassengers('adults', -1)}
-                className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50"
-                disabled={passengers.adults <= 1}
-              >
-                -
-              </button>
-              <span className="w-5 text-center text-sm font-medium">{passengers.adults}</span>
-              <button
-                type="button"
-                onClick={() => updatePassengers('adults', 1)}
-                className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center"
-              >
-                +
-              </button>
-            </div>
-          </div>
-
-          {/* Children */}
-          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-            <div>
-              <div className="font-medium text-gray-900 text-sm">Children</div>
-              <div className="text-xs text-gray-400">Age 2-11</div>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => updatePassengers('children', -1)}
-                className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50"
-                disabled={passengers.children <= 0}
-              >
-                -
-              </button>
-              <span className="w-5 text-center text-sm font-medium">{passengers.children}</span>
-              <button
-                type="button"
-                onClick={() => updatePassengers('children', 1)}
-                className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center"
-              >
-                +
-              </button>
-            </div>
-          </div>
-
-          {/* Infants */}
-          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-            <div>
-              <div className="font-medium text-gray-900 text-sm">Infants</div>
-              <div className="text-xs text-gray-400">Under 2</div>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => updatePassengers('infants', -1)}
-                className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50"
-                disabled={passengers.infants <= 0}
-              >
-                -
-              </button>
-              <span className="w-5 text-center text-sm font-medium">{passengers.infants}</span>
-              <button
-                type="button"
-                onClick={() => updatePassengers('infants', 1)}
-                className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center"
-              >
-                +
-              </button>
-            </div>
-          </div>
-
-          {/* Cabin Class - Updated with Premium Economy */}
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <div className="font-medium text-gray-900 text-sm">Cabin Class</div>
-            </div>
-            <select
-              value={cabinClass}
-              onChange={(e) => setCabinClass(e.target.value)}
-              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#33a8da] bg-gray-50"
-            >
-              <option value="economy">Economy</option>
-              <option value="premium-economy">Premium Economy</option>
-              <option value="business">Business</option>
-              <option value="first">First Class</option>
-            </select>
-          </div>
-
-          {/* Done Button */}
-          <button
-            type="button"
-            onClick={() => setShowPassengerDropdown(false)}
-            className="w-full mt-3 bg-[#33a8da] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#2c98c7] transition"
-          >
-            Done
-          </button>
+      {tripType === 'round-trip' && (
+        <div className="flex-1 min-w-[130px]">
+          <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">RETURN</label>
+          <input
+            type="date"
+            value={returnDate}
+            onChange={(e) => setReturnDate(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+          />
         </div>
       )}
-    </div>
 
-    {/* Search Button */}
-    <div className="flex flex-col gap-1.5">
-      <span className="text-[10px] font-semibold text-transparent uppercase tracking-wider">.</span>
-      <button
-        type="submit"
-        disabled={loading || !flightFrom || !flightTo || !flightDate}
-        className="bg-[#33a8da] text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#2c98c7] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap"
-      >
-        {loading ? '...' : 'Search'}
-      </button>
-    </div>
-  </div>
-);
+      <div className="min-w-[160px] relative" ref={passengerDropdownRef}>
+        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">PASSENGER</label>
+        <button
+          type="button"
+          onClick={() => setShowPassengerDropdown(!showPassengerDropdown)}
+          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white text-left flex justify-between items-center"
+        >
+          <span>{passengerDisplayText}</span>
+          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
 
-  // Single line hotel search
-  const renderHotelCompact = () => (
+        {showPassengerDropdown && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-200 z-50 p-4 min-w-[280px]">
+            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+              <div>
+                <div className="font-medium text-gray-900 text-sm">Adults</div>
+                <div className="text-xs text-gray-400">Age 12+</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => updatePassengers('adults', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.adults <= 1}>-</button>
+                <span className="w-5 text-center text-sm font-medium">{passengers.adults}</span>
+                <button type="button" onClick={() => updatePassengers('adults', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
+              </div>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+              <div>
+                <div className="font-medium text-gray-900 text-sm">Children</div>
+                <div className="text-xs text-gray-400">Age 2-11</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => updatePassengers('children', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.children <= 0}>-</button>
+                <span className="w-5 text-center text-sm font-medium">{passengers.children}</span>
+                <button type="button" onClick={() => updatePassengers('children', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
+              </div>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+              <div>
+                <div className="font-medium text-gray-900 text-sm">Infants</div>
+                <div className="text-xs text-gray-400">Under 2</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => updatePassengers('infants', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.infants <= 0}>-</button>
+                <span className="w-5 text-center text-sm font-medium">{passengers.infants}</span>
+                <button type="button" onClick={() => updatePassengers('infants', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
+              </div>
+            </div>
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <div className="font-medium text-gray-900 text-sm">Cabin Class</div>
+              </div>
+              <select value={cabinClass} onChange={(e) => setCabinClass(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#33a8da] bg-gray-50">
+                <option value="economy">Economy</option>
+                <option value="premium-economy">Premium Economy</option>
+                <option value="business">Business</option>
+                <option value="first">First Class</option>
+              </select>
+            </div>
+            <button type="button" onClick={() => setShowPassengerDropdown(false)} className="w-full mt-3 bg-[#33a8da] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#2c98c7] transition">Done</button>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[10px] font-semibold text-transparent uppercase tracking-wider">.</span>
+        <button type="submit" disabled={loading || !flightFrom || !flightTo || !flightDate} className="bg-[#33a8da] text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#2c98c7] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap">
+          {loading ? '...' : 'Search'}
+        </button>
+      </div>
+    </div>
+  ), [tripType, flightFrom, flightTo, flightDate, returnDate, showFromDropdown, showToDropdown, fromSuggestions, toSuggestions, loadingSuggestions, showPassengerDropdown, passengerDisplayText, passengers.adults, passengers.children, passengers.infants, cabinClass, loading, handleFromChange, handleToChange, handleAirportSelect, renderDropdown, updatePassengers, popularAirports]);
+
+  const renderHotelCompactMemo = useMemo(() => (
     <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">
-      {/* Location */}
       <div className="flex-1 min-w-[180px] relative" ref={hotelLocationRef}>
         <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">DESTINATION</label>
         <input
@@ -752,36 +730,19 @@ const renderFlightCompact = () => (
         {showHotelDropdown && renderHotelDropdown()}
       </div>
 
-      {/* Check In */}
       <div className="flex-1 min-w-[130px]">
         <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">CHECK IN</label>
-        <input
-          type="date"
-          value={checkIn}
-          onChange={(e) => setCheckIn(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-        />
+        <input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white" />
       </div>
 
-      {/* Check Out */}
       <div className="flex-1 min-w-[130px]">
         <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">CHECK OUT</label>
-        <input
-          type="date"
-          value={checkOut}
-          onChange={(e) => setCheckOut(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-        />
+        <input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white" />
       </div>
 
-      {/* Guests */}
       <div className="min-w-[110px]">
         <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">GUESTS</label>
-        <select
-          value={guests}
-          onChange={(e) => setGuests(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-        >
+        <select value={guests} onChange={(e) => setGuests(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white">
           <option value="1">1 Guest</option>
           <option value="2">2 Guests</option>
           <option value="3">3 Guests</option>
@@ -789,92 +750,53 @@ const renderFlightCompact = () => (
         </select>
       </div>
 
-      {/* Search Button */}
       <div className="flex flex-col gap-1.5">
         <span className="text-[10px] font-semibold text-transparent uppercase tracking-wider">.</span>
-        <button
-          type="submit"
-          disabled={loading || !hotelLocation || !checkIn || !checkOut}
-          className="bg-[#33a8da] text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#2c98c7] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap"
-        >
+        <button type="submit" disabled={loading || !hotelLocation || !checkIn || !checkOut} className="bg-[#33a8da] text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#2c98c7] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap">
           {loading ? '...' : 'Search'}
         </button>
       </div>
     </div>
-  );
+  ), [hotelLocation, checkIn, checkOut, guests, showHotelDropdown, loading, handleHotelChange, renderHotelDropdown, popularHotelDestinations]);
 
-  // Single line car search
-  const renderCarCompact = () => (
+  const renderCarCompactMemo = useMemo(() => (
     <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">
-      {/* Pickup */}
       <div className="flex-1 min-w-[130px] relative" ref={carPickupRef}>
         <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">PICKUP</label>
-        <input
-          type="text"
-          value={carPickup}
-          onChange={(e) => handleCarPickupChange(e.target.value)}
-          onFocus={() => setShowCarPickupDropdown(true)}
-          placeholder="City or airport"
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-        />
+        <input type="text" value={carPickup} onChange={(e) => handleCarPickupChange(e.target.value)} onFocus={() => setShowCarPickupDropdown(true)} placeholder="City or airport" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white" />
         {showCarPickupDropdown && renderDropdown(carPickupSuggestions, (airport) => handleCarLocationSelect(airport, 'pickup'), loadingCarSuggestions)}
       </div>
 
-      {/* Dropoff */}
       <div className="flex-1 min-w-[130px] relative" ref={carDropoffRef}>
         <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">DROPOFF</label>
-        <input
-          type="text"
-          value={carDropoff}
-          onChange={(e) => handleCarDropoffChange(e.target.value)}
-          onFocus={() => setShowCarDropoffDropdown(true)}
-          placeholder="City or airport"
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-        />
+        <input type="text" value={carDropoff} onChange={(e) => handleCarDropoffChange(e.target.value)} onFocus={() => setShowCarDropoffDropdown(true)} placeholder="City or airport" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white" />
         {showCarDropoffDropdown && renderDropdown(carDropoffSuggestions, (airport) => handleCarLocationSelect(airport, 'dropoff'), loadingCarSuggestions)}
       </div>
 
-      {/* Pickup Date */}
       <div className="flex-1 min-w-[130px]">
         <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">PICKUP DATE</label>
-        <input
-          type="date"
-          value={carPickupDate}
-          onChange={(e) => setCarPickupDate(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-        />
+        <input type="date" value={carPickupDate} onChange={(e) => setCarPickupDate(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white" />
       </div>
 
-      {/* Dropoff Date */}
       <div className="flex-1 min-w-[130px]">
         <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">DROPOFF DATE</label>
-        <input
-          type="date"
-          value={carDropoffDate}
-          onChange={(e) => setCarDropoffDate(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-        />
+        <input type="date" value={carDropoffDate} onChange={(e) => setCarDropoffDate(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white" />
       </div>
 
-      {/* Search Button */}
       <div className="flex flex-col gap-1.5">
         <span className="text-[10px] font-semibold text-transparent uppercase tracking-wider">.</span>
-        <button
-          type="submit"
-          disabled={loading || !carPickup || !carDropoff || !carPickupDate || !carDropoffDate}
-          className="bg-[#33a8da] text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#2c98c7] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap"
-        >
+        <button type="submit" disabled={loading || !carPickup || !carDropoff || !carPickupDate || !carDropoffDate} className="bg-[#33a8da] text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#2c98c7] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap">
           {loading ? '...' : 'Search'}
         </button>
       </div>
     </div>
-  );
+  ), [carPickup, carDropoff, carPickupDate, carDropoffDate, showCarPickupDropdown, showCarDropoffDropdown, carPickupSuggestions, carDropoffSuggestions, loadingCarSuggestions, loading, handleCarPickupChange, handleCarDropoffChange, handleCarLocationSelect, renderDropdown]);
 
   return (
     <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
-      {activeTab === 'flights' && renderFlightCompact()}
-      {activeTab === 'hotels' && renderHotelCompact()}
-      {activeTab === 'cars' && renderCarCompact()}
+      {activeTab === 'flights' && renderFlightCompact}
+      {activeTab === 'hotels' && renderHotelCompactMemo}
+      {activeTab === 'cars' && renderCarCompactMemo}
     </form>
   );
 };

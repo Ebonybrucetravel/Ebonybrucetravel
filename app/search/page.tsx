@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
 import SearchResults from '@/components/SearchResults';
+
 
 export default function SearchPage() {
   const router = useRouter();
@@ -17,6 +18,7 @@ export default function SearchPage() {
     isLoadingAirlines,
     searchError,
     searchCompleted,
+    search, // Add this - we need to call search directly
   } = useSearch();
 
   // Debug only - remove in production
@@ -66,36 +68,44 @@ export default function SearchPage() {
     router.push('/');
   };
 
-  // Handle new search from the compact search box
+  // Handle new search from the compact search box - STAY ON SEARCH PAGE
   const handleNewSearch = async (searchData: any) => {
     console.log('🔄 New search from compact box:', searchData);
     
-    // Navigate to home page with search params
-    const params = new URLSearchParams();
-    params.set('type', searchData.type);
-    
-    if (searchData.type === 'flights') {
-      params.set('tripType', searchData.tripType);
-      params.set('segments', JSON.stringify(searchData.segments));
-      if (searchData.returnDate) params.set('returnDate', searchData.returnDate);
-      params.set('passengers', JSON.stringify(searchData.passengers));
-      if (searchData.cabinClass) params.set('cabinClass', searchData.cabinClass);
-    } else if (searchData.type === 'hotels') {
-      params.set('location', searchData.location);
-      if (searchData.cityCode) params.set('cityCode', searchData.cityCode);
-      params.set('checkInDate', searchData.checkInDate);
-      params.set('checkOutDate', searchData.checkOutDate);
-      params.set('travellers', JSON.stringify(searchData.travellers));
-      params.set('rooms', searchData.rooms.toString());
-    } else if (searchData.type === 'car-rentals') {
-      params.set('pickupLocationCode', searchData.pickupLocationCode);
-      params.set('dropoffLocationCode', searchData.dropoffLocationCode);
-      params.set('pickupDateTime', searchData.pickupDateTime);
-      params.set('dropoffDateTime', searchData.dropoffDateTime);
-      params.set('passengers', searchData.passengers.toString());
+    // Perform the search directly without navigating away
+    try {
+      await search(searchData);
+      // Update URL parameters without full navigation
+      const params = new URLSearchParams();
+      params.set('type', searchData.type);
+      
+      if (searchData.type === 'flights') {
+        params.set('tripType', searchData.tripType);
+        params.set('origin', searchData.segments[0].from);
+        params.set('destination', searchData.segments[0].to);
+        params.set('departureDate', searchData.segments[0].date);
+        if (searchData.returnDate) params.set('returnDate', searchData.returnDate);
+        params.set('adults', searchData.passengers.adults.toString());
+        params.set('children', searchData.passengers.children.toString());
+        params.set('infants', searchData.passengers.infants.toString());
+        if (searchData.cabinClass) params.set('cabinClass', searchData.cabinClass);
+      } else if (searchData.type === 'hotels') {
+        params.set('location', searchData.location);
+        params.set('checkInDate', searchData.checkInDate);
+        params.set('checkOutDate', searchData.checkOutDate);
+        params.set('guests', searchData.travellers.adults.toString());
+      } else if (searchData.type === 'car-rentals') {
+        params.set('pickupLocation', searchData.pickupLocationCode);
+        params.set('dropoffLocation', searchData.dropoffLocationCode);
+        params.set('pickupDate', searchData.pickupDateTime.split('T')[0]);
+        params.set('dropoffDate', searchData.dropoffDateTime.split('T')[0]);
+      }
+      
+      // Update URL without refreshing the page
+      window.history.pushState({}, '', `/search?${params.toString()}`);
+    } catch (error) {
+      console.error('New search failed:', error);
     }
-    
-    router.push(`/?${params.toString()}`);
   };
 
   // Show full page loading state only when we don't have any results yet
@@ -159,14 +169,16 @@ export default function SearchPage() {
 
   // Show results - pass raw searchResults, let SearchResults handle all transformations
   return (
-    <SearchResults
-      results={searchResults as any}
-      searchParams={searchParams}
-      onClear={handleClear}
-      onSelect={handleSelect}
-      isLoading={isSearching || isLoadingAirlines}
-      airlines={airlines}
-      onNewSearch={handleNewSearch}
-    />
+    <Suspense fallback={<div>Loading...</div>}>
+      <SearchResults
+        results={searchResults as any}
+        searchParams={searchParams}
+        onClear={handleClear}
+        onSelect={handleSelect}
+        isLoading={isSearching || isLoadingAirlines}
+        airlines={airlines}
+        onNewSearch={handleNewSearch}
+      />
+    </Suspense>
   );
 }

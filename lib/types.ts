@@ -328,7 +328,7 @@ export interface Booking {
     flightNumber?: string;
     departureDate?: string;
     cabinClass?: string;
-    passengers?: number | { adults: number; infants: number; children: number };
+    passengers?: number | { adults: number; infants: number; children: number; } | any[]; 
 
     // Hotel fields
     guests?: number;

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
 import Hero from '@/components/Hero';
 import Partners from '@/components/Partners';
@@ -18,12 +18,97 @@ interface HomeContentProps {
 
 export default function HomeContent({ activeTab }: HomeContentProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { search, isSearching } = useSearch();
   const [isHotelSearching, setIsHotelSearching] = useState(false);
   const [isCarSearching, setIsCarSearching] = useState(false);
   const [isTrendingSearching, setIsTrendingSearching] = useState(false);
+  const [hasInitialSearch, setHasInitialSearch] = useState(false);
+
+  // Handle search from URL parameters only ONCE when page loads
+  useEffect(() => {
+    // Prevent running multiple times
+    if (hasInitialSearch) return;
+    
+    const type = searchParams.get('type');
+    
+    // Only auto-search if we have valid search params and we're on the home page
+    if (type && !isSearching && !isHotelSearching && !isCarSearching && !isTrendingSearching) {
+      console.log('🔍 Detected search parameters in URL:', Object.fromEntries(searchParams.entries()));
+      
+      let searchData: SearchParams | null = null;
+      
+      if (type === 'flights') {
+        const origin = searchParams.get('origin');
+        const destination = searchParams.get('destination');
+        const departureDate = searchParams.get('departureDate');
+        const returnDate = searchParams.get('returnDate');
+        const tripType = searchParams.get('tripType') as 'round-trip' | 'one-way' || 'round-trip';
+        const adults = parseInt(searchParams.get('adults') || '1');
+        const children = parseInt(searchParams.get('children') || '0');
+        const infants = parseInt(searchParams.get('infants') || '0');
+        const cabinClass = searchParams.get('cabinClass') || 'economy';
+        
+        if (origin && destination && departureDate) {
+          searchData = {
+            type: 'flights',
+            tripType,
+            segments: [{ from: origin, to: destination, date: departureDate }],
+            passengers: { adults, children, infants },
+            cabinClass,
+          };
+          
+          if (tripType === 'round-trip' && returnDate) {
+            searchData.returnDate = returnDate;
+          }
+        }
+      } else if (type === 'hotels') {
+        const destination = searchParams.get('destination');
+        const checkInDate = searchParams.get('checkInDate');
+        const checkOutDate = searchParams.get('checkOutDate');
+        const guests = parseInt(searchParams.get('guests') || '1');
+        
+        if (destination && checkInDate && checkOutDate) {
+          searchData = {
+            type: 'hotels',
+            location: destination,
+            checkInDate,
+            checkOutDate,
+            travellers: { adults: guests, children: 0 },
+            rooms: 1,
+          };
+        }
+      } else if (type === 'cars') {
+        const pickupLocation = searchParams.get('pickupLocation');
+        const dropoffLocation = searchParams.get('dropoffLocation');
+        const pickupDate = searchParams.get('pickupDate');
+        const dropoffDate = searchParams.get('dropoffDate');
+        
+        if (pickupLocation && dropoffLocation && pickupDate && dropoffDate) {
+          searchData = {
+            type: 'car-rentals',
+            pickupLocationCode: pickupLocation,
+            dropoffLocationCode: dropoffLocation,
+            pickupDateTime: `${pickupDate}T10:00:00`,
+            dropoffDateTime: `${dropoffDate}T10:00:00`,
+            passengers: 2,
+          };
+        }
+      }
+      
+      if (searchData) {
+        console.log('🚀 Auto-triggering search from URL params:', searchData);
+        setHasInitialSearch(true);
+        // Clear the URL parameters to prevent re-triggering
+        router.replace('/');
+        // Perform the search
+        search(searchData).catch(err => console.error('Search failed:', err));
+      }
+    }
+  }, [searchParams, hasInitialSearch]); // Now includes hasInitialSearch dependency
 
   const handleSearch = async (params: SearchParams) => {
+    // Navigate to search page
     router.push('/search');
     // Let the search run in the background so the UI immediately switches to the loading skeleton
     search(params).catch(err => console.error('Search failed:', err));
@@ -39,7 +124,7 @@ export default function HomeContent({ activeTab }: HomeContentProps) {
     setIsHotelSearching(true);
     try {
       router.push('/search');
-      search({
+      await search({
         type: 'hotels',
         location: searchData.location,
         cityCode: searchData.cityCode,
@@ -48,11 +133,7 @@ export default function HomeContent({ activeTab }: HomeContentProps) {
         travellers: searchData.travellers,
         rooms: searchData.rooms,
         currency: searchData.currency
-      }).catch(err => {
-        console.error('Hotel search failed:', err);
-      }).finally(() => {
-        setIsHotelSearching(false);
-      });
+      } as SearchParams);
     } catch (error) {
       console.error('Hotel search failed:', error);
     } finally {
@@ -86,11 +167,7 @@ export default function HomeContent({ activeTab }: HomeContentProps) {
       
       console.log('🚗 Sending car search data to API:', searchData);
       router.push('/search');
-      search(searchData).catch(err => {
-        console.error('Car search failed:', err);
-      }).finally(() => {
-        setIsCarSearching(false);
-      });
+      await search(searchData);
     } catch (error) {
       console.error('Car search failed:', error);
     } finally {
@@ -104,16 +181,12 @@ export default function HomeContent({ activeTab }: HomeContentProps) {
     setIsTrendingSearching(true);
     try {
       router.push('/search');
-      handleSearch({
+      await search({
         type: 'flights',
         segments: [{ from: 'LOS', to: city.code || 'ABV', date: new Date().toISOString().split('T')[0] }],
         passengers: { adults: 1, children: 0, infants: 0 },
         cabinClass: 'economy',
-      } as SearchParams).catch(err => {
-        console.error('Trending destination search failed:', err);
-      }).finally(() => {
-        setIsTrendingSearching(false);
-      });
+      } as SearchParams);
     } catch (error) {
       console.error('Trending destination search failed:', error);
     } finally {

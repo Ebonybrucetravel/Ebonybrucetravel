@@ -3,11 +3,85 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
+import { config } from '@/lib/config';
 import { formatPrice } from '@/lib/utils';
 import type { Booking as BookingType } from '@/lib/types';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { ticketWakanowPNR } from '@/lib/wakanow-api';
+
+// Helper function to get airport name
+const getAirportName = (code: string): string => {
+  const airports: Record<string, string> = {
+    'LOS': 'Murtala Muhammed International Airport, Lagos',
+    'ABV': 'Nnamdi Azikiwe International Airport, Abuja',
+    'PHC': 'Port Harcourt International Airport',
+    'KAN': 'Mallam Aminu Kano International Airport',
+    'ENU': 'Akanu Ibiam International Airport, Enugu',
+    'QOW': 'Sam Mbakwe Airport, Owerri',
+    'BNI': 'Benin Airport',
+    'JOS': 'Yakubu Gowon Airport, Jos',
+    'KAD': 'Kaduna Airport',
+    'YOL': 'Yola Airport',
+    'LHR': 'London Heathrow Airport',
+    'JFK': 'John F. Kennedy International Airport, New York',
+  };
+  return airports[code] || code;
+};
+
+// Helper function to format date
+const formatDate = (dateString: string | undefined): string => {
+  if (!dateString) return 'N/A';
+  try {
+    return new Date(dateString).toLocaleDateString('en-GB', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  } catch {
+    return dateString;
+  }
+};
+
+// Helper function to format time
+const formatTime = (dateString: string | undefined): string => {
+  if (!dateString) return 'N/A';
+  try {
+    return new Date(dateString).toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return '';
+  }
+};
+
+// Helper function to calculate nights
+const calculateNights = (checkIn: string, checkOut: string): number => {
+  if (!checkIn || !checkOut) return 1;
+  try {
+    const start = new Date(checkIn);
+    const end = new Date(checkOut);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays || 1;
+  } catch {
+    return 1;
+  }
+};
+
+// Helper function to calculate rental days
+const calculateRentalDays = (pickup: string, dropoff: string): number => {
+  if (!pickup || !dropoff) return 1;
+  try {
+    const start = new Date(pickup);
+    const end = new Date(dropoff);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays || 1;
+  } catch {
+    return 1;
+  }
+};
 
 export default function BookingSuccessPage() {
   const router = useRouter();
@@ -28,126 +102,77 @@ export default function BookingSuccessPage() {
   const [pnrNumber, setPnrNumber] = useState('');
   const [issuingTicket, setIssuingTicket] = useState(false);
 
-  useEffect(() => {
-    const id = params.get("id");
-    const ref = params.get("ref");
-    const email = params.get("email");
+  const BASE_URL = config.apiBaseUrl;
 
-    if (!id && !ref) {
-      setLoading(false);
-      setError("Missing booking ID or reference");
-      return;
-    }
-
-    const fetchBooking = async () => {
-      try {
-        const token = api.getStoredAuthToken();
-        const isAuthenticated = !!token;
-        
-        console.log('Auth status:', { isAuthenticated, token: !!token });
-        console.log('URL params:', { bookingId, bookingRef, emailParam });
-
-        // CASE 1: Authenticated user with ID
-        if (isAuthenticated && bookingId) {
-          console.log('📱 Authenticated user fetching by ID:', bookingId);
-          setIsGuest(false);
-          await fetchAuthBooking(bookingId);
-          return;
-        }
-        
-        // CASE 2: Authenticated user with reference
-        if (isAuthenticated && bookingRef) {
-          console.log('📱 Authenticated user fetching by reference:', bookingRef);
-          setIsGuest(false);
-          try {
-            const response = await api.bookingApi.getBookingById(bookingRef);
-            const bookingData = response?.data ?? response ?? null;
-            if (bookingData) {
-              setBooking(bookingData);
-              setLoading(false);
-              return;
-            }
-          } catch {
-            if (emailParam) {
-              await fetchGuestBooking(bookingRef, emailParam);
-            } else {
-              setShowEmailForm(true);
-              setLoading(false);
-            }
-          }
-          return;
-        }
-        
-        // CASE 3: Guest user with reference
-        if (bookingRef) {
-          console.log('👤 Guest user fetching by reference:', bookingRef);
-          setIsGuest(true);
-          
-          // Try to fetch without email first
-          try {
-            console.log('Attempting to fetch booking without email...');
-            const response = await api.publicRequest(
-              `/api/v1/bookings/public/by-reference/${encodeURIComponent(bookingRef)}`,
-              { method: 'GET' }
-            );
-            const bookingData = response?.data ?? response ?? null;
-            if (bookingData) {
-              setBooking(bookingData);
-              const fetchedEmail = bookingData.passengerInfo?.email;
-              if (fetchedEmail) {
-                setEmail(fetchedEmail);
-                localStorage.setItem('guestEmail', fetchedEmail);
-              }
-              setLoading(false);
-              return;
-            }
-          } catch (err) {
-            console.log('Fetch without email failed, trying with email');
-          }
-          
-          const storedEmail = localStorage.getItem('guestEmail') || sessionStorage.getItem('guestEmail');
-          const urlEmail = emailParam;
-          
-          if (urlEmail) {
-            setEmail(urlEmail);
-            localStorage.setItem('guestEmail', urlEmail);
-            await fetchGuestBooking(bookingRef, urlEmail);
-          } else if (storedEmail) {
-            setEmail(storedEmail);
-            await fetchGuestBooking(bookingRef, storedEmail);
-          } else {
-            setShowEmailForm(true);
-            setLoading(false);
-          }
-          return;
-        }
-        
-        // CASE 4: Fallback
-        if (bookingId) {
-          console.log('⚠️ Attempting to fetch by ID without auth');
-          setError('Please sign in to view this booking');
-          setLoading(false);
-        }
-        
-      } catch (err) {
-        console.error('Fetch error:', err);
-        setLoading(false);
+  // Define fetch functions
+  const fetchAuthBooking = async (id: string) => {
+    setLoading(true);
+    try {
+      console.log('Fetching authenticated booking:', id);
+      const token = api.getStoredAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found');
       }
-    };
-
-    fetchBooking();
-  }, [bookingId, bookingRef, emailParam]);
+      
+      // ✅ FIX: Use BASE_URL from config instead of api.defaults.baseURL
+      const response = await fetch(`${BASE_URL}/api/v1/bookings/${id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch booking: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      const bookingData = result?.data?.booking || result?.data || result;
+      
+      if (!bookingData) {
+        throw new Error('No booking data found');
+      }
+      
+      setBooking(bookingData);
+      console.log('Auth booking fetched:', bookingData);
+      
+    } catch (err: any) {
+      console.error('Failed to fetch auth booking:', err);
+      
+      if (err.message?.includes('401') || err.status === 401) {
+        setError('Your session has expired. Please sign in again.');
+      } else if (err.message?.includes('404') || err.status === 404) {
+        setError('Booking not found');
+      } else {
+        setError(err.message || 'Unable to load booking details');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchGuestBooking = async (ref: string, emailAddress: string) => {
     setLoading(true);
     setError(null);
     
     try {
-      const url = `/api/v1/bookings/public/by-reference/${encodeURIComponent(ref)}?email=${encodeURIComponent(emailAddress)}`;
+      const url = `${BASE_URL}/api/v1/bookings/public/by-reference/${encodeURIComponent(ref)}?email=${encodeURIComponent(emailAddress)}`;
       console.log('Fetching guest booking with email:', url);
       
-      const response = await api.publicRequest(url, { method: 'GET' });
-      const bookingData = response?.data ?? response ?? null;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch booking: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      const bookingData = result?.data ?? result ?? null;
       
       if (!bookingData) {
         throw new Error('No booking data found');
@@ -167,36 +192,92 @@ export default function BookingSuccessPage() {
     }
   };
 
-  const fetchAuthBooking = async (id: string) => {
-    setLoading(true);
-    try {
-      console.log('Fetching authenticated booking:', id);
-      const response = await api.bookingApi.getBookingById(id);
-      console.log('Auth response:', response);
+  useEffect(() => {
+    const fetchBooking = async () => {
+      const token = api.getStoredAuthToken();
+      const isAuthenticated = !!token;
       
-      const bookingData = response?.data ?? response ?? null;
-      
-      if (!bookingData) {
-        throw new Error('No booking data found');
+      console.log('Auth status:', { isAuthenticated, token: !!token });
+      console.log('URL params:', { bookingId, bookingRef, emailParam });
+
+      // CASE 1: Authenticated user with ID
+      if (isAuthenticated && bookingId) {
+        console.log('📱 Authenticated user fetching by ID:', bookingId);
+        setIsGuest(false);
+        await fetchAuthBooking(bookingId);
+        return;
       }
       
-      setBooking(bookingData);
-      console.log('Auth booking fetched:', bookingData);
+      // CASE 2: Authenticated user with reference
+      if (isAuthenticated && bookingRef) {
+        console.log('📱 Authenticated user fetching by reference:', bookingRef);
+        setIsGuest(false);
+        try {
+          const response = await fetch(`${BASE_URL}/api/v1/bookings/${bookingRef}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            const bookingData = result?.data?.booking || result?.data || result;
+            if (bookingData) {
+              setBooking(bookingData);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch (err) {
+          console.log('Fetch by reference failed:', err);
+        }
+        
+        if (emailParam) {
+          await fetchGuestBooking(bookingRef, emailParam);
+        } else {
+          setShowEmailForm(true);
+          setLoading(false);
+        }
+        return;
+      }
       
-    } catch (err: any) {
-      console.error('Failed to fetch auth booking:', err);
+      // CASE 3: Guest user with reference
+      if (bookingRef) {
+        console.log('👤 Guest user fetching by reference:', bookingRef);
+        setIsGuest(true);
+        
+        // Try to fetch with email from param or storage
+        const storedEmail = localStorage.getItem('guestEmail') || sessionStorage.getItem('guestEmail');
+        const urlEmail = emailParam;
+        
+        if (urlEmail) {
+          setEmail(urlEmail);
+          localStorage.setItem('guestEmail', urlEmail);
+          await fetchGuestBooking(bookingRef, urlEmail);
+        } else if (storedEmail) {
+          setEmail(storedEmail);
+          await fetchGuestBooking(bookingRef, storedEmail);
+        } else {
+          setShowEmailForm(true);
+          setLoading(false);
+        }
+        return;
+      }
       
-      if (err.status === 401) {
-        setError('Your session has expired. Please sign in again.');
-      } else if (err.status === 404) {
-        setError('Booking not found');
+      // CASE 4: Fallback
+      if (bookingId) {
+        console.log('⚠️ Attempting to fetch by ID without auth');
+        setError('Please sign in to view this booking');
+        setLoading(false);
       } else {
-        setError(err.message || 'Unable to load booking details');
+        setError('Missing booking ID or reference');
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    fetchBooking();
+  }, [bookingId, bookingRef, emailParam]);
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,19 +288,7 @@ export default function BookingSuccessPage() {
       
       try {
         localStorage.setItem('guestEmail', email);
-        const url = `/api/v1/bookings/public/by-reference/${encodeURIComponent(bookingRef)}?email=${encodeURIComponent(email)}`;
-        console.log('Submitting email form:', url);
-        
-        const response = await api.publicRequest(url, { method: 'GET' });
-        const bookingData = response?.data ?? response ?? null;
-        
-        if (!bookingData) {
-          throw new Error('No booking data found');
-        }
-        
-        setBooking(bookingData);
-        console.log('Booking fetched after email submit:', bookingData);
-        
+        await fetchGuestBooking(bookingRef, email);
       } catch (err: any) {
         console.error('Failed to fetch booking:', err);
         setError('Unable to load booking. Please check your reference and email.');
@@ -241,17 +310,17 @@ export default function BookingSuccessPage() {
       return;
     }
     
-    const bookingId = booking.id;
-    if (!bookingId) {
+    const bookingIdValue = booking.id;
+    if (!bookingIdValue) {
       alert('Booking ID not found. Please refresh the page and try again.');
       return;
     }
     
     try {
       setIssuingTicket(true);
-      console.log('Issuing ticket for booking:', bookingId, 'PNR:', pnrNumber);
+      console.log('Issuing ticket for booking:', bookingIdValue, 'PNR:', pnrNumber);
       
-      const response = await ticketWakanowPNR(bookingId, pnrNumber);
+      const response = await ticketWakanowPNR(bookingIdValue, pnrNumber);
       console.log('Ticket response:', response);
       
       if (response.success !== false) {
@@ -259,9 +328,8 @@ export default function BookingSuccessPage() {
         setShowTicketForm(false);
         setPnrNumber('');
         
-        if (bookingId) {
-          await fetchAuthBooking(bookingId);
-        }
+        // Refresh booking data
+        await fetchAuthBooking(bookingIdValue);
       } else {
         alert(response.message || response.error || 'Failed to issue ticket');
       }
@@ -272,349 +340,16 @@ export default function BookingSuccessPage() {
       setIssuingTicket(false);
     }
   };
- 
-  const downloadWakanowPDF = () => {
-    if (!booking) return;
-    
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    let yPos = 15;
-    
-    // Helper: Add section header with underline
-    const addSection = (title: string, y: number) => {
-      doc.setFontSize(11);
-      doc.setTextColor(51, 168, 222);
-      doc.setFont('helvetica', 'bold');
-      doc.text(title, 20, y);
-      doc.setDrawColor(51, 168, 222);
-      doc.setLineWidth(0.5);
-      doc.line(20, y + 2, pageWidth - 20, y + 2);
-      return y + 10;
-    };
-  
-    // Helper: Add label-value pair
-    const addField = (label: string, value: string, y: number, indent: number = 0) => {
-      if (!value || value === 'N/A' || value.trim() === '') return y;
-      doc.setFontSize(9);
-      doc.setTextColor(100, 100, 100);
-      doc.setFont('helvetica', 'normal');
-      doc.text(label, 20 + indent, y);
-      doc.setFontSize(10);
-      doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'bold');
-      doc.text(value, 20 + indent, y + 5);
-      return y + 12;
-    };
-  
-    // Helper: Add two columns
-    const addTwoColumns = (col1Label: string, col1Value: string, col2Label: string, col2Value: string, y: number) => {
-      doc.setFontSize(8);
-      doc.setTextColor(100, 100, 100);
-      doc.setFont('helvetica', 'normal');
-      doc.text(col1Label, 20, y);
-      doc.text(col2Label, pageWidth / 2 + 10, y);
-      
-      doc.setFontSize(10);
-      doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'bold');
-      doc.text(col1Value, 20, y + 5);
-      doc.text(col2Value, pageWidth / 2 + 10, y + 5);
-      return y + 12;
-    };
-  
-    // Helper: Draw journey card
-    const drawJourneyCard = (flight: any, legs: any[], title: string, y: number) => {
-      const firstLeg = legs[0] || {};
-      const depCode = firstLeg?.DepartureCode || 'N/A';
-      const depName = firstLeg?.DepartureName || '';
-      const arrCode = firstLeg?.DestinationCode || 'N/A';
-      const arrName = firstLeg?.DestinationName || '';
-      const depTime = firstLeg?.StartTime ? new Date(firstLeg.StartTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '--:--';
-      const arrTime = firstLeg?.EndTime ? new Date(firstLeg.EndTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '--:--';
-      const duration = flight?.TripDuration || '';
-      let formattedDuration = duration;
-      if (duration && duration.includes(':')) {
-        const parts = duration.split(':');
-        formattedDuration = `${parseInt(parts[0])}h ${parseInt(parts[1])}m`;
-      }
-      const stops = flight?.Stops || 0;
-      const stopText = stops === 0 ? 'Direct' : stops === 1 ? '1 Stop' : `${stops} Stops`;
-      const cabinClass = firstLeg?.CabinClassName || 'Economy';
-      
-      // Card background
-      doc.setFillColor(248, 250, 252);
-      doc.rect(17, y - 4, pageWidth - 34, 58, 'F');
-      
-      // Title
-      doc.setFontSize(10);
-      doc.setTextColor(51, 168, 222);
-      doc.setFont('helvetica', 'bold');
-      doc.text(title, 22, y);
-      y += 7;
-      
-      // Departure block
-      doc.setFontSize(8);
-      doc.setTextColor(120, 120, 120);
-      doc.text('DEPARTURE', 22, y);
-      doc.setFontSize(13);
-      doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'bold');
-      doc.text(depCode, 22, y + 7);
-      doc.setFontSize(8);
-      doc.setTextColor(100, 100, 100);
-      doc.setFont('helvetica', 'normal');
-      const wrappedDepName = doc.splitTextToSize(depName, 50);
-      doc.text(wrappedDepName, 22, y + 13);
-      
-      // Time and duration in center
-      doc.setFontSize(10);
-      doc.setTextColor(51, 168, 222);
-      doc.setFont('helvetica', 'bold');
-      doc.text(depTime, pageWidth / 2 - 20, y + 7);
-      doc.text('→', pageWidth / 2 - 8, y + 7);
-      doc.text(arrTime, pageWidth / 2 + 5, y + 7);
-      doc.setFontSize(8);
-      doc.setTextColor(120, 120, 120);
-      doc.setFont('helvetica', 'normal');
-      doc.text(formattedDuration, pageWidth / 2 - 15, y + 14);
-      
-      // Arrival block
-      doc.setFontSize(8);
-      doc.setTextColor(120, 120, 120);
-      doc.text('ARRIVAL', pageWidth - 65, y);
-      doc.setFontSize(13);
-      doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'bold');
-      doc.text(arrCode, pageWidth - 65, y + 7);
-      doc.setFontSize(8);
-      doc.setTextColor(100, 100, 100);
-      doc.setFont('helvetica', 'normal');
-      const wrappedArrName = doc.splitTextToSize(arrName, 50);
-      doc.text(wrappedArrName, pageWidth - 65, y + 13);
-      
-      y += 35;
-      
-      // Flight info bar
-      doc.setFillColor(245, 248, 250);
-      doc.rect(18, y - 2, pageWidth - 36, 10, 'F');
-      doc.setFontSize(8);
-      doc.setTextColor(80, 80, 80);
-      doc.text(`✈️ ${stopText}  |  🧳 Standard baggage  |  💺 ${cabinClass}`, 22, y + 3);
-      
-      return y + 12;
-    };
-  
-    // ============ HEADER ============
-    doc.setFontSize(24);
-    doc.setTextColor(51, 168, 222);
-    doc.setFont('helvetica', 'bold');
-    doc.text('EBONY BRUCE TRAVELS', pageWidth / 2, yPos, { align: 'center' });
-    yPos += 8;
-    
-    doc.setFontSize(11);
-    doc.setTextColor(100, 100, 100);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Wakanow Flight e-Ticket & Booking Confirmation', pageWidth / 2, yPos, { align: 'center' });
-    yPos += 15;
-    
-    // ============ BOOKING SUMMARY CARD ============
-    doc.setFillColor(51, 168, 222);
-    doc.rect(15, yPos - 5, pageWidth - 30, 30, 'F');
-    
-    doc.setFontSize(9);
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.text('BOOKING SUMMARY', 20, yPos);
-    
-    doc.setFontSize(9);
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Reference: ${booking.reference}`, 20, yPos + 7);
-    doc.text(`Status: ${booking.status}`, pageWidth / 2, yPos + 7);
-    doc.text(`Booked: ${formatDate(booking.createdAt)}`, pageWidth - 70, yPos + 7);
-    yPos += 30;
-    
-    // ============ FLIGHT DETAILS SECTION ============
-    yPos = addSection('FLIGHT DETAILS', yPos);
-    
-    // Extract flight data
-    const providerData = booking?.providerData as any;
-    const flightSummaryModel = providerData?.FlightBookingSummary?.FlightSummaryModel;
-    const flightCombination = flightSummaryModel?.FlightCombination;
-    const flightModels = flightCombination?.FlightModels || [];
-    const outboundFlight = flightModels[0] || {};
-    const returnFlight = flightModels[1] || null;
-    const outboundLegs = outboundFlight?.FlightLegs || [];
-    const returnLegs = returnFlight?.FlightLegs || [];
-    
-    const pnrNumber = providerData?.FlightBookingSummary?.PnrReferenceNumber || booking?.pnrNumber || 'Pending';
-    const airline = outboundFlight?.AirlineName || outboundFlight?.Airline || 'ValueJet';
-    const flightNumber = outboundLegs[0]?.FlightNumber || 'N/A';
-    const cabinClass = outboundLegs[0]?.CabinClassName || 'Economy';
-    
-    // Two-column flight info
-    yPos = addTwoColumns('PNR NUMBER', pnrNumber, 'AIRLINE', airline, yPos);
-    yPos = addTwoColumns('FLIGHT NUMBER', flightNumber, 'CABIN CLASS', cabinClass, yPos);
-    yPos += 2;
-    
-    // ============ OUTBOUND JOURNEY ============
-    yPos = drawJourneyCard(outboundFlight, outboundLegs, 'OUTBOUND JOURNEY', yPos);
-    
-    // ============ RETURN JOURNEY (if exists) ============
-    if (returnFlight && returnLegs.length > 0) {
-      yPos = drawJourneyCard(returnFlight, returnLegs, 'RETURN JOURNEY', yPos);
-    }
-    
-    // ============ PASSENGER INFORMATION ============
-    yPos = addSection('PASSENGER INFORMATION', yPos);
-    
-    const allTravelers = Array.isArray(booking.passengerInfo) 
-      ? booking.passengerInfo 
-      : (booking.passengerInfo?.travellers ? [booking.passengerInfo, ...booking.passengerInfo.travellers] : [booking.passengerInfo]);
-    
-    for (let i = 0; i < allTravelers.length; i++) {
-      const p = allTravelers[i];
-      const name = `${p.title || ''} ${p.firstName || ''} ${p.lastName || ''}`.trim();
-      
-      doc.setFillColor(250, 250, 252);
-      doc.rect(17, yPos - 2, pageWidth - 34, 18, 'F');
-      
-      doc.setFontSize(8);
-      doc.setTextColor(100, 100, 100);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`PASSENGER ${i + 1}`, 22, yPos + 2);
-      
-      doc.setFontSize(10);
-      doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'bold');
-      doc.text(name, 22, yPos + 9);
-      
-      if (i === 0) {
-        doc.setFontSize(8);
-        doc.setTextColor(100, 100, 100);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Email: ${p.email || 'N/A'}`, pageWidth / 2, yPos + 5);
-        doc.text(`Phone: ${p.phone || 'N/A'}`, pageWidth / 2, yPos + 12);
-      }
-      yPos += 22;
-    }
-    
-   // ============ PRICE BREAKDOWN ============
-yPos = addSection('PRICE BREAKDOWN', yPos);
-
-const basePrice = booking.basePrice || 0;
-const markupAmount = booking.markupAmount || 0;
-const serviceFee = booking.serviceFee || 0;
-const totalAmount = booking.totalAmount || 0;
-const currency = booking.currency || 'NGN';
-
-// Format numbers with commas
-const formatMoney = (amount: number) => {
-  return new Intl.NumberFormat('en-NG').format(Math.round(amount));
-};
-
-// Price table
-doc.setFillColor(250, 250, 252);
-doc.rect(17, yPos - 2, pageWidth - 34, 52, 'F');
-
-// Row 1: Base Fare
-doc.setFontSize(10);
-doc.setTextColor(0, 0, 0);
-doc.setFont('helvetica', 'normal');
-doc.text('Base Fare', 25, yPos + 5);
-doc.text(`${currency} ${formatMoney(basePrice)}`, pageWidth - 35, yPos + 5, { align: 'right' });
-
-// Row 2: Markup
-doc.text('Markup (10%)', 25, yPos + 15);
-doc.text(`${currency} ${formatMoney(markupAmount)}`, pageWidth - 35, yPos + 15, { align: 'right' });
-
-// Row 3: Service Fee
-doc.text('Service Fee', 25, yPos + 25);
-doc.text(`${currency} ${formatMoney(serviceFee)}`, pageWidth - 35, yPos + 25, { align: 'right' });
-
-// Divider
-doc.setDrawColor(200, 200, 200);
-doc.line(20, yPos + 32, pageWidth - 20, yPos + 32);
-
-// TOTAL (bold and highlighted)
-doc.setFontSize(11);
-doc.setTextColor(51, 168, 222);
-doc.setFont('helvetica', 'bold');
-doc.text('TOTAL', 25, yPos + 42);
-doc.text(`${currency} ${formatMoney(totalAmount)}`, pageWidth - 35, yPos + 42, { align: 'right' });
-
-yPos += 56;  
-    // ============ BOOKING INFORMATION ============
-    yPos = addSection('BOOKING INFORMATION', yPos);
-    
-    doc.setFontSize(9);
-    doc.setTextColor(0, 0, 0);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Booking Reference:`, 20, yPos);
-    doc.setFont('helvetica', 'bold');
-    doc.text(booking.reference, 70, yPos);
-    
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Provider:`, pageWidth / 2, yPos);
-    doc.setFont('helvetica', 'bold');
-    doc.text(booking.provider || 'WAKANOW', pageWidth / 2 + 35, yPos);
-    yPos += 8;
-    
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Payment Status:`, 20, yPos);
-    doc.setFont('helvetica', 'bold');
-    doc.text(booking.paymentStatus || 'COMPLETED', 70, yPos);
-    
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Payment Ref:`, pageWidth / 2, yPos);
-    doc.setFont('helvetica', 'bold');
-    const paymentRef = (booking.paymentReference || 'N/A').substring(0, 20);
-    doc.text(paymentRef, pageWidth / 2 + 50, yPos);
-    yPos += 15;
-    
-    // ============ FOOTER ============
-    // Add terms if available
-    const terms = providerData?.ProductTermsAndConditions?.TermsAndConditions || [];
-    if (terms.length > 0 && yPos < pageHeight - 40) {
-      yPos = addSection('IMPORTANT INFORMATION', yPos);
-      doc.setFontSize(7);
-      doc.setTextColor(100, 100, 100);
-      doc.setFont('helvetica', 'normal');
-      const firstTerm = terms[0];
-      const wrappedTerm = doc.splitTextToSize(`• ${firstTerm.substring(0, 120)}...`, pageWidth - 40);
-      doc.text(wrappedTerm, 20, yPos);
-      yPos += 8 * wrappedTerm.length;
-    }
-    
-    // Footer bar
-    doc.setFillColor(51, 168, 222);
-    doc.rect(0, pageHeight - 12, pageWidth, 12, 'F');
-    doc.setFontSize(8);
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Thank you for choosing Ebony Bruce Travels', pageWidth / 2, pageHeight - 6, { align: 'center' });
-    
-    const issueDate = new Date().toLocaleString();
-    doc.text(`Issued: ${issueDate}`, pageWidth - 20, pageHeight - 6, { align: 'right' });
-    
-    // Page number
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text('Page 1 of 1', pageWidth / 2, pageHeight - 6, { align: 'center' });
-    
-    doc.save(`Wakanow-Ticket-${booking.reference}.pdf`);
-  };
 
   const renderWakanowDetails = () => {
-    const bookingData = booking?.bookingData || {};
+    if (!booking) return null;
+    
     const providerData = booking?.providerData as any;
-    const isWakanow = booking?.provider === 'WAKANOW' || bookingData?.provider === 'WAKANOW';
-    const hasTicket = !!(booking?.pnrNumber || providerData?.FlightBookingSummary?.PnrReferenceNumber);
+    const isWakanow = booking?.provider === 'WAKANOW';
     
     if (!isWakanow) return null;
     
-    // ✅ Extract flight details from the nested providerData structure
+    // Extract flight details
     const flightSummaryModel = providerData?.FlightBookingSummary?.FlightSummaryModel;
     const flightCombination = flightSummaryModel?.FlightCombination;
     const flightModels = flightCombination?.FlightModels || [];
@@ -624,60 +359,21 @@ yPos += 56;
     const firstLeg = flightLegs[0] || {};
     const lastLeg = flightLegs[flightLegs.length - 1] || firstLeg;
     
-    // ✅ CORRECT: Flight number from FlightLegs
     const flightNumber = firstLeg?.FlightNumber || 'N/A';
-    
-    // ✅ Airline from FlightModel
     const airline = outboundFlight?.AirlineName || outboundFlight?.Airline || 'ValueJet';
     const airlineCode = outboundFlight?.Airline || '';
-    
-    // ✅ Departure from FlightLeg
     const departureCode = firstLeg?.DepartureCode || 'N/A';
     const departureName = firstLeg?.DepartureName || '';
-    const departureTime = firstLeg?.StartTime || '--:--';
-    const departureDate = outboundFlight?.DepartureTime?.split('T')[0] || '';
-    
-    // ✅ Arrival from FlightLeg
+    const departureTime = firstLeg?.StartTime ? new Date(firstLeg.StartTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+    const departureDate = firstLeg?.StartTime || '';
     const arrivalCode = lastLeg?.DestinationCode || 'N/A';
     const arrivalName = lastLeg?.DestinationName || '';
-    const arrivalTime = lastLeg?.EndTime || '--:--';
-    
-    // ✅ Stops
+    const arrivalTime = lastLeg?.EndTime ? new Date(lastLeg.EndTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '--:--';
     const stops = outboundFlight?.Stops || 0;
     const stopText = stops === 0 ? 'Direct' : stops === 1 ? '1 stop' : `${stops} stops`;
-    
-    // ✅ Duration
     const duration = outboundFlight?.TripDuration || '';
-    const formattedDuration = duration.includes(':') 
-      ? `${parseInt(duration.split(':')[0])}h ${parseInt(duration.split(':')[1])}m`
-      : duration;
-    
-    // ✅ Baggage
-    const freeBaggage = outboundFlight?.FreeBaggage || {};
-    const baggageCount = freeBaggage?.BagCount || 0;
-    const baggageText = baggageCount > 0 ? `${baggageCount} checked bag${baggageCount > 1 ? 's' : ''}` : 'Check with airline';
-    
-    // ✅ Cabin Class
     const cabinClass = firstLeg?.CabinClassName || 'Economy';
-    
-    // ✅ PNR - from providerData
-    const pnrNumber = providerData?.FlightBookingSummary?.PnrReferenceNumber || booking?.pnrNumber || 'Not issued yet';
-    
-    // Format date
-    const formatDisplayDate = (dateStr: string) => {
-      if (!dateStr) return 'Date TBD';
-      try {
-        const date = new Date(dateStr);
-        return date.toLocaleDateString('en-GB', { 
-          weekday: 'short', 
-          day: 'numeric', 
-          month: 'short', 
-          year: 'numeric' 
-        });
-      } catch {
-        return dateStr;
-      }
-    };
+    const pnrNumberValue = providerData?.FlightBookingSummary?.PnrReferenceNumber || booking?.pnrNumber || 'Not issued yet';
     
     return (
       <div className="space-y-6">
@@ -691,7 +387,6 @@ yPos += 56;
           </div>
         </div>
         
-        {/* Flight Summary Header */}
         <div className="flex items-center justify-between border-b border-gray-200 pb-4">
           <div>
             <p className="text-sm text-gray-500">Airline</p>
@@ -702,19 +397,18 @@ yPos += 56;
             <p className="font-semibold text-lg">{flightNumber}</p>
           </div>
         </div>
-  
-        {/* Journey Visualization */}
+
         <div className="flex items-center justify-between">
           <div className="text-center flex-1">
             <div className="bg-blue-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
               <span className="text-2xl font-bold text-blue-600">{departureCode}</span>
             </div>
             <p className="font-bold text-lg">{departureCode}</p>
-            <p className="text-xs text-gray-500 truncate max-w-[100px] mx-auto">{departureName}</p>
-            <p className="text-sm font-medium mt-2">{formatDisplayDate(departureDate)}</p>
+            <p className="text-sm text-gray-500 truncate max-w-[100px] mx-auto">{departureName}</p>
+            <p className="text-sm font-medium mt-2">{formatDate(departureDate)}</p>
             <p className="text-xl font-bold text-blue-600 mt-1">{departureTime}</p>
           </div>
-  
+
           <div className="flex-1 px-4">
             <div className="relative">
               <div className="border-t-2 border-gray-300 border-dashed absolute w-full top-1/2"></div>
@@ -725,72 +419,30 @@ yPos += 56;
               </div>
             </div>
             <p className="text-center text-sm text-gray-500 mt-2">
-              {formattedDuration || '--:--'} • {stopText}
+              {duration} • {stopText}
             </p>
           </div>
-  
+
           <div className="text-center flex-1">
             <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
               <span className="text-2xl font-bold text-green-600">{arrivalCode}</span>
             </div>
             <p className="font-bold text-lg">{arrivalCode}</p>
-            <p className="text-xs text-gray-500 truncate max-w-[100px] mx-auto">{arrivalName}</p>
-            <p className="text-sm font-medium mt-2">{formatDisplayDate(departureDate)}</p>
+            <p className="text-sm text-gray-500 truncate max-w-[100px] mx-auto">{arrivalName}</p>
+            <p className="text-sm font-medium mt-2">{formatDate(departureDate)}</p>
             <p className="text-xl font-bold text-green-600 mt-1">{arrivalTime}</p>
           </div>
         </div>
-  
-        {/* Return flight if round trip */}
-        {returnFlight && (
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <p className="text-sm font-semibold text-gray-500 mb-3 text-center">Return Flight</p>
-            <div className="flex items-center justify-between">
-              <div className="text-center flex-1">
-                <div className="bg-purple-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-1">
-                  <span className="text-lg font-bold text-purple-600">{returnFlight?.DepartureCode || arrivalCode}</span>
-                </div>
-                <p className="font-bold text-sm">{returnFlight?.DepartureCode || arrivalCode}</p>
-                <p className="text-xs text-gray-500">{returnFlight?.DepartureTime?.split('T')[1]?.substring(0,5) || '--:--'}</p>
-              </div>
-              <div className="flex-1 px-4">
-                <div className="relative">
-                  <div className="border-t border-gray-300 absolute w-full top-1/2"></div>
-                  <div className="flex justify-center">
-                    <svg className="w-4 h-4 text-gray-400 bg-white rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2z" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-              <div className="text-center flex-1">
-                <div className="bg-purple-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-1">
-                  <span className="text-lg font-bold text-purple-600">{returnFlight?.ArrivalCode || departureCode}</span>
-                </div>
-                <p className="font-bold text-sm">{returnFlight?.ArrivalCode || departureCode}</p>
-                <p className="text-xs text-gray-500">{returnFlight?.ArrivalTime?.split('T')[1]?.substring(0,5) || '--:--'}</p>
-              </div>
-            </div>
-          </div>
-        )}
-  
-        {/* Flight Details Grid */}
+
         <div className="bg-gray-50 p-4 rounded-lg">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-gray-500">PNR Number</p>
-              <p className="font-mono font-bold text-lg">{pnrNumber}</p>
+              <p className="font-mono font-bold text-lg">{pnrNumberValue}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Cabin Class</p>
               <p className="font-medium capitalize">{cabinClass}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Baggage Allowance</p>
-              <p className="font-medium">{baggageText}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Flight Duration</p>
-              <p className="font-medium">{formattedDuration || '--:--'}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Stops</p>
@@ -804,9 +456,9 @@ yPos += 56;
             </div>
           </div>
         </div>
-  
-        {/* Ticket issuance form (if needed) */}
-        {!hasTicket && !isGuest && (
+
+        {/* Ticket issuance form if needed */}
+        {pnrNumberValue === 'Not issued yet' && !isGuest && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <div className="flex items-start">
               <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -859,1012 +511,7 @@ yPos += 56;
     );
   };
 
-
-  const downloadFlightPDF = () => {
-    if (!booking) return;
-    
-    const doc = new jsPDF();
-    let yPos = 20;
-    
-    const addSection = (title: string, y: number) => {
-      doc.setFontSize(14);
-      doc.setTextColor(51, 168, 222);
-      doc.text(title, 20, y);
-      return y + 8;
-    };
-
-    const addField = (label: string, value: string, y: number, isImportant: boolean = false) => {
-      doc.setFontSize(10);
-      doc.setTextColor(100, 100, 100);
-      doc.text(label, 25, y);
-      doc.setFontSize(11);
-      doc.setTextColor(isImportant ? 51 : 0, isImportant ? 168 : 0, isImportant ? 222 : 0);
-      doc.text(value, 25, y + 5);
-      return y + 12;
-    };
-
-    doc.setFontSize(22);
-    doc.setTextColor(51, 168, 222);
-    doc.text('Ebony Bruce Travels', 105, yPos, { align: 'center' });
-    yPos += 10;
-    
-    doc.setFontSize(16);
-    doc.setTextColor(0, 0, 0);
-    doc.text('FLIGHT BOOKING CONFIRMATION', 105, yPos, { align: 'center' });
-    yPos += 15;
-
-    doc.setDrawColor(51, 168, 222);
-    doc.setLineWidth(0.5);
-    doc.line(20, yPos, 190, yPos);
-    yPos += 5;
-    
-    doc.setFontSize(12);
-    doc.setTextColor(0, 0, 0);
-    doc.text(`Booking Reference: ${booking.reference}`, 20, yPos);
-    yPos += 7;
-    doc.text(`Status: ${booking.status}`, 20, yPos);
-    yPos += 7;
-    doc.text(`Booked On: ${formatDate(booking.createdAt)}`, 20, yPos);
-    yPos += 15;
-
-    yPos = addSection('FLIGHT DETAILS', yPos);
-    
-    const bookingData = booking?.bookingData || {};
-    const airline = bookingData.airline || 'N/A';
-    const flightNumber = bookingData.flightNumber || 'N/A';
-    const origin = bookingData.origin || 'N/A';
-    const destination = bookingData.destination || 'N/A';
-    const departureDate = bookingData.departureDate || '';
-    const cabinClass = bookingData.cabinClass || 'Economy';
-    
-    yPos = addField('Airline', airline, yPos, true);
-    yPos = addField('Flight Number', flightNumber, yPos, true);
-    yPos = addField('From', `${origin} - ${getAirportName(origin)}`, yPos);
-    yPos = addField('To', `${destination} - ${getAirportName(destination)}`, yPos);
-    yPos = addField('Departure Date', formatDate(departureDate), yPos);
-    yPos = addField('Cabin Class', cabinClass, yPos);
-    
-    const formatFlightTime = (date: string, hoursToAdd: number) => {
-      if (!date) return 'N/A';
-      try {
-        const d = new Date(date);
-        d.setHours(d.getHours() + hoursToAdd);
-        return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-      } catch {
-        return 'N/A';
-      }
-    };
-
-    yPos = addField('Departure Time', formatFlightTime(departureDate, 0), yPos);
-    yPos = addField('Arrival Time', formatFlightTime(departureDate, 2), yPos);
-    yPos = addField('Duration', '2h 00m (estimated)', yPos);
-    yPos += 5;
-
-    yPos = addSection('PASSENGER INFORMATION', yPos);
-    
-    const allTravelers = Array.isArray(booking.passengerInfo) 
-      ? booking.passengerInfo 
-      : (booking.passengerInfo?.travellers ? [booking.passengerInfo, ...booking.passengerInfo.travellers] : [booking.passengerInfo]);
-    
-    allTravelers.forEach((p: any, index: number) => {
-      const label = allTravelers.length > 1 ? `Passenger #${index + 1} (${p.type || 'Adult'})` : 'Passenger';
-      yPos = addField(label, `${p.title || ''} ${p.firstName || ''} ${p.lastName || ''}`.trim(), yPos, index === 0);
-    });
-    
-    const lead = allTravelers[0] || {};
-    yPos = addField('Email', lead.email || 'N/A', yPos);
-    yPos = addField('Phone', lead.phone || 'N/A', yPos);
-    yPos += 5;
-
-    yPos = addSection('BAGGAGE ALLOWANCE', yPos);
-    yPos = addField('Checked Baggage', '1 x 23kg per passenger', yPos);
-    yPos = addField('Cabin Baggage', '1 x 7kg per passenger', yPos);
-    yPos += 5;
-
-    yPos = addSection('PRICE BREAKDOWN', yPos);
-    
-    const basePrice = booking.basePrice || 0;
-    const markupAmount = booking.markupAmount || 0;
-    const serviceFee = booking.serviceFee || 0;
-    const totalAmount = booking.totalAmount || 0;
-    const currency = booking.currency || 'USD';
-    
-    yPos = addField('Base Fare', formatPrice(basePrice, currency), yPos);
-    yPos = addField('Markup', formatPrice(markupAmount, currency), yPos);
-    yPos = addField('Service Fee', formatPrice(serviceFee, currency), yPos);
-    doc.setFontSize(12);
-    doc.setTextColor(51, 168, 222);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`TOTAL: ${formatPrice(totalAmount, currency)}`, 25, yPos + 5);
-    yPos += 15;
-
-    yPos = addSection('IMPORTANT INFORMATION', yPos);
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    doc.text('• Check-in opens 24 hours before departure', 25, yPos);
-    yPos += 5;
-    doc.text('• Arrive at airport at least 3 hours before departure', 25, yPos);
-    yPos += 5;
-    doc.text('• Valid passport/ID required for all passengers', 25, yPos);
-    yPos += 5;
-    doc.text('• Visa requirements vary by destination - check before travel', 25, yPos);
-    yPos += 5;
-    doc.text('• Flight times are estimates and subject to change', 25, yPos);
-    yPos += 10;
-
-    doc.setFontSize(10);
-    doc.setTextColor(150, 150, 150);
-    doc.text('Thank you for choosing Ebony Bruce Travels!', 105, doc.internal.pageSize.height - 20, { align: 'center' });
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 105, doc.internal.pageSize.height - 15, { align: 'center' });
-    
-    doc.save(`flight-booking-${booking.reference}.pdf`);
-  };
-
-  const downloadHotelPDF = () => {
-    if (!booking) return;
-    
-    const doc = new jsPDF();
-    let yPos = 20;
-    
-    const addSection = (title: string, y: number) => {
-      doc.setFontSize(14);
-      doc.setTextColor(51, 168, 222);
-      doc.text(title, 20, y);
-      return y + 8;
-    };
-
-    const addField = (label: string, value: string, y: number, isImportant: boolean = false) => {
-      doc.setFontSize(10);
-      doc.setTextColor(100, 100, 100);
-      doc.text(label, 25, y);
-      doc.setFontSize(11);
-      doc.setTextColor(isImportant ? 51 : 0, isImportant ? 168 : 0, isImportant ? 222 : 0);
-      doc.text(value, 25, y + 5);
-      return y + 12;
-    };
-
-    doc.setFontSize(22);
-    doc.setTextColor(51, 168, 222);
-    doc.text('Ebony Bruce Travels', 105, yPos, { align: 'center' });
-    yPos += 10;
-    
-    doc.setFontSize(16);
-    doc.setTextColor(0, 0, 0);
-    doc.text('HOTEL BOOKING CONFIRMATION', 105, yPos, { align: 'center' });
-    yPos += 15;
-
-    doc.setDrawColor(51, 168, 222);
-    doc.setLineWidth(0.5);
-    doc.line(20, yPos, 190, yPos);
-    yPos += 5;
-    
-    doc.setFontSize(12);
-    doc.setTextColor(0, 0, 0);
-    doc.text(`Booking Reference: ${booking.reference}`, 20, yPos);
-    yPos += 7;
-    doc.text(`Status: ${booking.status}`, 20, yPos);
-    yPos += 7;
-    doc.text(`Booked On: ${formatDate(booking.createdAt)}`, 20, yPos);
-    yPos += 15;
-
-    yPos = addSection('HOTEL DETAILS', yPos);
-    
-    const providerData = booking?.providerData as any;
-    const hotelBookings = providerData?.hotelBookings?.[0];
-    const hotelOffer = hotelBookings?.hotelOffer;
-    const hotel = hotelBookings?.hotel;
-    const bookingData = booking?.bookingData || {};
-    
-    const hotelName = hotel?.name || hotelOffer?.hotel?.name || bookingData.hotelName || 'Hotel';
-    const checkInDate = hotelOffer?.checkInDate || bookingData.checkInDate || '';
-    const checkOutDate = hotelOffer?.checkOutDate || bookingData.checkOutDate || '';
-    const nights = calculateNights(checkInDate, checkOutDate);
-    const roomType = hotelOffer?.room?.type || bookingData.roomType || 'Standard Room';
-    const roomDescription = hotelOffer?.room?.description?.text || '';
-    const roomQuantity = hotelOffer?.roomQuantity || bookingData.rooms || 1;
-    const adults = hotelOffer?.guests?.adults || bookingData.guests || 1;
-    const confirmationNumber = hotelBookings?.hotelProviderInformation?.[0]?.confirmationNumber || booking?.providerBookingId;
-    
-    yPos = addField('Hotel Name', hotelName, yPos, true);
-    if (confirmationNumber) yPos = addField('Confirmation Number', confirmationNumber, yPos, true);
-    yPos = addField('Check-in Date', formatDate(checkInDate), yPos);
-    yPos = addField('Check-out Date', formatDate(checkOutDate), yPos);
-    yPos = addField('Nights', nights.toString(), yPos);
-    yPos = addField('Room Type', roomType, yPos);
-    if (roomDescription) yPos = addField('Room Description', roomDescription, yPos);
-    yPos = addField('Rooms', roomQuantity.toString(), yPos);
-    yPos = addField('Guests', `${adults} Adult(s)`, yPos);
-    yPos += 5;
-
-    yPos = addSection('GUEST INFORMATION', yPos);
-    
-    const passengerInfo = booking?.passengerInfo || {};
-    const guests = hotelBookings?.guests || [];
-    
-    yPos = addField('Lead Guest', `${passengerInfo.title || ''} ${passengerInfo.firstName || ''} ${passengerInfo.lastName || ''}`.trim(), yPos, true);
-    yPos = addField('Email', passengerInfo.email || 'N/A', yPos);
-    yPos = addField('Phone', passengerInfo.phone || 'N/A', yPos);
-    
-    if (guests.length > 0) {
-      yPos = addField('Additional Guests', guests.map((g: any) => `${g.name?.firstName} ${g.name?.lastName}`).join(', '), yPos);
-    }
-    yPos += 5;
-
-    yPos = addSection('PRICE BREAKDOWN', yPos);
-    
-    const basePrice = booking.basePrice || 0;
-    const markupAmount = booking.markupAmount || 0;
-    const serviceFee = booking.serviceFee || 0;
-    const totalAmount = booking.totalAmount || 0;
-    const currency = booking.currency || 'USD';
-    
-    yPos = addField('Base Price', formatPrice(basePrice, currency), yPos);
-    yPos = addField('Markup', formatPrice(markupAmount, currency), yPos);
-    yPos = addField('Service Fee', formatPrice(serviceFee, currency), yPos);
-    yPos = addField('Price per Night', formatPrice(totalAmount / nights, currency), yPos);
-    
-    doc.setFontSize(12);
-    doc.setTextColor(51, 168, 222);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`TOTAL: ${formatPrice(totalAmount, currency)}`, 25, yPos + 5);
-    yPos += 15;
-
-    const cancellations = hotelOffer?.policies?.cancellations || [];
-    const cancellationDeadline = cancellations[0]?.deadline;
-    const cancellationAmount = cancellations[0]?.amount;
-    
-    if (cancellationDeadline || cancellationAmount) {
-      yPos = addSection('CANCELLATION POLICY', yPos);
-      if (cancellationDeadline) {
-        yPos = addField('Free cancellation until', formatDate(cancellationDeadline), yPos, true);
-      }
-      if (cancellationAmount) {
-        yPos = addField('Cancellation fee after', formatPrice(parseFloat(cancellationAmount), currency), yPos);
-      }
-      yPos += 5;
-    }
-
-    yPos = addSection('HOTEL POLICIES', yPos);
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    doc.text('• Check-in: from 14:00', 25, yPos);
-    yPos += 5;
-    doc.text('• Check-out: until 11:00', 25, yPos);
-    yPos += 5;
-    doc.text('• Breakfast hours: 07:00 - 10:30', 25, yPos);
-    yPos += 5;
-    doc.text('• Valid ID required at check-in', 25, yPos);
-    yPos += 5;
-    doc.text('• Credit card required for incidentals', 25, yPos);
-    yPos += 10;
-
-    doc.setFontSize(10);
-    doc.setTextColor(150, 150, 150);
-    doc.text('Thank you for choosing Ebony Bruce Travels!', 105, doc.internal.pageSize.height - 20, { align: 'center' });
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 105, doc.internal.pageSize.height - 15, { align: 'center' });
-    
-    doc.save(`hotel-booking-${booking.reference}.pdf`);
-  };
-
-  const downloadCarPDF = () => {
-    if (!booking) return;
-    
-    const doc = new jsPDF();
-    let yPos = 20;
-    
-    const addSection = (title: string, y: number) => {
-      doc.setFontSize(14);
-      doc.setTextColor(51, 168, 222);
-      doc.text(title, 20, y);
-      return y + 8;
-    };
-
-    const addField = (label: string, value: string, y: number, isImportant: boolean = false) => {
-      doc.setFontSize(10);
-      doc.setTextColor(100, 100, 100);
-      doc.text(label, 25, y);
-      doc.setFontSize(11);
-      doc.setTextColor(isImportant ? 51 : 0, isImportant ? 168 : 0, isImportant ? 222 : 0);
-      doc.text(value, 25, y + 5);
-      return y + 12;
-    };
-
-    doc.setFontSize(22);
-    doc.setTextColor(51, 168, 222);
-    doc.text('Ebony Bruce Travels', 105, yPos, { align: 'center' });
-    yPos += 10;
-    
-    doc.setFontSize(16);
-    doc.setTextColor(0, 0, 0);
-    doc.text('CAR RENTAL CONFIRMATION', 105, yPos, { align: 'center' });
-    yPos += 15;
-
-    doc.setDrawColor(51, 168, 222);
-    doc.setLineWidth(0.5);
-    doc.line(20, yPos, 190, yPos);
-    yPos += 5;
-    
-    doc.setFontSize(12);
-    doc.setTextColor(0, 0, 0);
-    doc.text(`Booking Reference: ${booking.reference}`, 20, yPos);
-    yPos += 7;
-    doc.text(`Status: ${booking.status}`, 20, yPos);
-    yPos += 7;
-    doc.text(`Booked On: ${formatDate(booking.createdAt)}`, 20, yPos);
-    yPos += 15;
-
-    yPos = addSection('VEHICLE DETAILS', yPos);
-    
-    const bookingData = booking?.bookingData || {};
-    const vehicleType = bookingData.vehicleType || 'Car Rental';
-    const offerId = bookingData.offerId || 'N/A';
-    const pickupLocationCode = bookingData.pickupLocationCode || 'N/A';
-    const dropoffLocationCode = bookingData.dropoffLocationCode || 'N/A';
-    const pickupDateTime = bookingData.pickupDateTime || '';
-    const dropoffDateTime = bookingData.dropoffDateTime || '';
-    const rentalDays = calculateRentalDays(pickupDateTime, dropoffDateTime);
-    
-    const getVehicleCategory = (type: string) => {
-      if (type.includes('VAN')) return 'Van';
-      if (type.includes('SUV')) return 'SUV';
-      if (type.includes('LUXURY')) return 'Luxury';
-      if (type.includes('ECONOMY')) return 'Economy';
-      return 'Standard';
-    };
-    
-    const vehicleCategory = getVehicleCategory(vehicleType);
-    const passengerCapacity = vehicleType.includes('VAN') ? 7 : vehicleType.includes('SUV') ? 5 : 4;
-    
-    yPos = addField('Vehicle Type', vehicleType, yPos, true);
-    yPos = addField('Category', vehicleCategory, yPos);
-    yPos = addField('Passenger Capacity', `${passengerCapacity} seats`, yPos);
-    yPos = addField('Transmission', 'Automatic', yPos);
-    yPos = addField('Offer ID', offerId, yPos);
-    yPos += 5;
-
-    yPos = addSection('RENTAL PERIOD', yPos);
-    
-    yPos = addField('Pick-up Location', `${pickupLocationCode} - ${getAirportName(pickupLocationCode)}`, yPos, true);
-    yPos = addField('Pick-up Date', formatDate(pickupDateTime), yPos);
-    yPos = addField('Pick-up Time', formatTime(pickupDateTime), yPos, true);
-    yPos = addField('Drop-off Location', `${dropoffLocationCode} - ${getAirportName(dropoffLocationCode)}`, yPos, true);
-    yPos = addField('Drop-off Date', formatDate(dropoffDateTime), yPos);
-    yPos = addField('Drop-off Time', formatTime(dropoffDateTime), yPos, true);
-    yPos = addField('Rental Duration', `${rentalDays} day(s)`, yPos);
-    yPos += 5;
-
-    yPos = addSection('DRIVER INFORMATION', yPos);
-    
-    const passengerInfo = booking?.passengerInfo || {};
-    
-    yPos = addField('Driver Name', `${passengerInfo.title || ''} ${passengerInfo.firstName || ''} ${passengerInfo.lastName || ''}`.trim(), yPos, true);
-    yPos = addField('Email', passengerInfo.email || 'N/A', yPos);
-    yPos = addField('Phone', passengerInfo.phone || 'N/A', yPos);
-    yPos = addField('Driver License', 'Required at pick-up', yPos);
-    yPos += 5;
-
-    yPos = addSection('PRICE BREAKDOWN', yPos);
-    
-    const basePrice = booking.basePrice || 0;
-    const markupAmount = booking.markupAmount || 0;
-    const serviceFee = booking.serviceFee || 0;
-    const totalAmount = booking.totalAmount || 0;
-    const currency = booking.currency || 'USD';
-    
-    yPos = addField('Base Price', formatPrice(basePrice, currency), yPos);
-    yPos = addField('Markup', formatPrice(markupAmount, currency), yPos);
-    yPos = addField('Service Fee', formatPrice(serviceFee, currency), yPos);
-    yPos = addField('Price per Day', formatPrice(totalAmount / rentalDays, currency), yPos);
-    
-    doc.setFontSize(12);
-    doc.setTextColor(51, 168, 222);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`TOTAL: ${formatPrice(totalAmount, currency)}`, 25, yPos + 5);
-    yPos += 15;
-
-    yPos = addSection('INCLUDED IN RENTAL', yPos);
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    doc.text('• Unlimited mileage', 25, yPos);
-    yPos += 5;
-    doc.text('• Collision Damage Waiver (CDW)', 25, yPos);
-    yPos += 5;
-    doc.text('• Theft Protection (TP)', 25, yPos);
-    yPos += 5;
-    doc.text('• Third Party Liability', 25, yPos);
-    yPos += 5;
-    doc.text('• Airport surcharges', 25, yPos);
-    yPos += 5;
-    doc.text('• 24/7 Roadside Assistance', 25, yPos);
-    yPos += 10;
-
-    yPos = addSection('IMPORTANT INFORMATION', yPos);
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    doc.text('• Valid driver\'s license required at pick-up', 25, yPos);
-    yPos += 5;
-    doc.text('• Driver must be at least 21 years old', 25, yPos);
-    yPos += 5;
-    doc.text('• Credit card required for security deposit', 25, yPos);
-    yPos += 5;
-    doc.text('• Fuel policy: Same-to-same (return with full tank)', 25, yPos);
-    yPos += 5;
-    doc.text('• Additional drivers can be added at counter', 25, yPos);
-    yPos += 5;
-    doc.text('• Cross-border travel may be restricted', 25, yPos);
-    yPos += 10;
-
-    doc.setFontSize(10);
-    doc.setTextColor(150, 150, 150);
-    doc.text('Thank you for choosing Ebony Bruce Travels!', 105, doc.internal.pageSize.height - 20, { align: 'center' });
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 105, doc.internal.pageSize.height - 15, { align: 'center' });
-    
-    doc.save(`car-rental-${booking.reference}.pdf`);
-  };
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return 'N/A';
-    try {
-      return new Date(dateString).toLocaleDateString('en-GB', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric'
-      });
-    } catch {
-      return dateString;
-    }
-  };
-
-  const formatTime = (dateString: string) => {
-    if (!dateString) return 'N/A';
-    try {
-      return new Date(dateString).toLocaleTimeString('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch {
-      return '';
-    }
-  };
-
-  const getAirportName = (code: string) => {
-    const airports: Record<string, string> = {
-      'LOS': 'Murtala Muhammed International Airport',
-      'LHR': 'London Heathrow Airport',
-      'LGW': 'London Gatwick Airport',
-      'JFK': 'John F. Kennedy International Airport',
-      'CDG': 'Charles de Gaulle Airport',
-      'DXB': 'Dubai International Airport',
-      'SYD': 'Sydney Airport',
-      'NYC': 'New York Airport',
-      'PAR': 'Paris Airport',
-      'ABV': 'Nnamdi Azikiwe International Airport',
-    };
-    return airports[code] || code;
-  };
-
-  const calculateNights = (checkIn: string, checkOut: string) => {
-    if (!checkIn || !checkOut) return 1;
-    try {
-      const start = new Date(checkIn);
-      const end = new Date(checkOut);
-      const diffTime = Math.abs(end.getTime() - start.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return diffDays || 1;
-    } catch {
-      return 1;
-    }
-  };
-
-  const calculateRentalDays = (pickup: string, dropoff: string) => {
-    if (!pickup || !dropoff) return 1;
-    try {
-      const start = new Date(pickup);
-      const end = new Date(dropoff);
-      const diffTime = Math.abs(end.getTime() - start.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return diffDays || 1;
-    } catch {
-      return 1;
-    }
-  };
-
-  const renderFlightDetails = () => {
-    const bookingData = booking?.bookingData || {};
-    
-    const airline = bookingData.airline || 'N/A';
-    const flightNumber = bookingData.flightNumber || 'N/A';
-    const origin = bookingData.origin || 'N/A';
-    const destination = bookingData.destination || 'N/A';
-    const departureDate = bookingData.departureDate || '';
-    const cabinClass = bookingData.cabinClass || 'Economy';
-    const passengers = typeof bookingData.passengers === 'object' 
-      ? bookingData.passengers 
-      : { adults: bookingData.passengers || 1, children: 0, infants: 0 };
-    
-    const formatDepartureTime = () => {
-      if (!departureDate) return 'N/A';
-      try {
-        const date = new Date(departureDate);
-        return date.toLocaleTimeString('en-GB', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          hour12: false 
-        });
-      } catch {
-        return '00:00';
-      }
-    };
-
-    const getEstimatedArrival = () => {
-      if (!departureDate) return 'N/A';
-      try {
-        const date = new Date(departureDate);
-        date.setHours(date.getHours() + 2);
-        return date.toLocaleTimeString('en-GB', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          hour12: false 
-        });
-      } catch {
-        return '02:00';
-      }
-    };
-
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-          <div>
-            <p className="text-sm text-gray-500">Airline</p>
-            <p className="font-semibold text-lg">{airline}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-500">Flight Number</p>
-            <p className="font-semibold text-lg">{flightNumber}</p>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div className="text-center flex-1">
-            <div className="bg-blue-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
-              <span className="text-2xl font-bold text-blue-600">{origin}</span>
-            </div>
-            <p className="font-bold text-xl">{origin}</p>
-            <p className="text-sm text-gray-500">Departure</p>
-            <p className="font-medium mt-1">{formatDate(departureDate)}</p>
-            <p className="text-lg font-semibold text-blue-600">{formatDepartureTime()}</p>
-          </div>
-
-          <div className="flex-1 px-4">
-            <div className="relative">
-              <div className="border-t-2 border-gray-300 border-dashed absolute w-full top-1/2"></div>
-              <div className="flex justify-center">
-                <svg className="w-8 h-8 text-gray-400 bg-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
-              </div>
-            </div>
-            <p className="text-center text-sm text-gray-500 mt-2">Direct Flight</p>
-          </div>
-
-          <div className="text-center flex-1">
-            <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
-              <span className="text-2xl font-bold text-green-600">{destination}</span>
-            </div>
-            <p className="font-bold text-xl">{destination}</p>
-            <p className="text-sm text-gray-500">Arrival</p>
-            <p className="font-medium mt-1">{formatDate(departureDate)}</p>
-            <p className="text-lg font-semibold text-green-600">{getEstimatedArrival()}</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 mt-6 bg-gray-50 p-4 rounded-lg">
-          <div>
-            <p className="text-sm text-gray-500">Cabin Class</p>
-            <p className="font-medium capitalize">{cabinClass}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Passengers</p>
-            <p className="font-medium">{passengers.adults || 1} Adult(s)</p>
-            {passengers.children > 0 && (
-              <p className="text-sm text-gray-600">{passengers.children} Child(ren)</p>
-            )}
-            {passengers.infants > 0 && (
-              <p className="text-sm text-gray-600">{passengers.infants} Infant(s)</p>
-            )}
-          </div>
-        </div>
-
-        <div className="border-t border-gray-200 pt-4">
-          <p className="text-sm text-gray-500 mb-2">Baggage Allowance</p>
-          <p className="text-sm">1 x 23kg checked baggage per passenger</p>
-          <p className="text-sm">1 x 7kg cabin baggage per passenger</p>
-        </div>
-      </div>
-    );
-  };
-
-  const renderHotelDetails = () => {
-    const providerData = booking?.providerData as any;
-    const hotelBookings = providerData?.hotelBookings?.[0];
-    const hotelOffer = hotelBookings?.hotelOffer;
-    const hotel = hotelBookings?.hotel;
-    const bookingData = booking?.bookingData || {};
-    
-    console.log('Hotel data for rendering:', {
-      providerData,
-      hotelBookings,
-      hotelOffer,
-      hotel,
-      bookingData
-    });
-
-    if (!hotelOffer && !hotel) {
-      return (
-        <div className="text-center py-8 text-gray-500">
-          Hotel details not available
-        </div>
-      );
-    }
-
-    const hotelName = hotel?.name || hotelOffer?.hotel?.name || bookingData.hotelName || 'Hotel';
-    const hotelId = hotel?.hotelId || hotelOffer?.hotel?.hotelId || bookingData.hotelId || 'N/A';
-    const chainCode = hotel?.chainCode || hotelOffer?.hotel?.chainCode || '';
-    
-    const checkInDate = hotelOffer?.checkInDate || bookingData.checkInDate || '';
-    const checkOutDate = hotelOffer?.checkOutDate || bookingData.checkOutDate || '';
-    const nights = calculateNights(checkInDate, checkOutDate);
-    const roomType = hotelOffer?.room?.type || bookingData.roomType || 'Standard Room';
-    const roomDescription = hotelOffer?.room?.description?.text || '';
-    const roomQuantity = hotelOffer?.roomQuantity || bookingData.rooms || 1;
-    const adults = hotelOffer?.guests?.adults || bookingData.guests || 1;
-    const guests = hotelBookings?.guests || (bookingData.guests ? [bookingData.guests] : []);
-    const price = hotelOffer?.price || {};
-    const basePrice = price.base ? parseFloat(price.base) : (booking?.basePrice || 0);
-    const totalPrice = price.total ? parseFloat(price.total) : (booking?.totalAmount || 0);
-    const currency = price.currency || booking?.currency || 'USD';
-    const taxes = price.taxes || [];
-    const cancellations = hotelOffer?.policies?.cancellations || [];
-    const cancellationDeadline = cancellations[0]?.deadline || booking?.cancellationDeadline;
-    const cancellationAmount = cancellations[0]?.amount;
-    const bookingStatus = hotelBookings?.bookingStatus || booking?.status;
-    const confirmationNumber = hotelBookings?.hotelProviderInformation?.[0]?.confirmationNumber || 
-                              booking?.providerBookingId;
-
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-          <div>
-            <p className="text-sm text-gray-500">Hotel</p>
-            <p className="font-semibold text-xl">{hotelName}</p>
-            {chainCode && <p className="text-sm text-gray-500">{chainCode} • {hotelId}</p>}
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-500">Booking Status</p>
-            <span className={`inline-block mt-1 text-xs font-bold uppercase px-3 py-1 rounded-full ${
-              bookingStatus === 'CONFIRMED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-            }`}>
-              {bookingStatus || 'CONFIRMED'}
-            </span>
-            {confirmationNumber && (
-              <>
-                <p className="text-sm text-gray-500 mt-2">Confirmation #</p>
-                <p className="font-mono text-sm">{confirmationNumber}</p>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-blue-50 p-4 rounded-lg">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="text-center">
-              <p className="text-sm text-gray-600">Check-in</p>
-              <p className="font-bold text-lg">{formatDate(checkInDate)}</p>
-              <p className="text-sm text-gray-600">from 14:00</p>
-            </div>
-            <div className="text-center">
-              <p className="text-sm text-gray-600">Check-out</p>
-              <p className="font-bold text-lg">{formatDate(checkOutDate)}</p>
-              <p className="text-sm text-gray-600">until 11:00</p>
-            </div>
-          </div>
-          <div className="text-center mt-2">
-            <span className="inline-block bg-white px-3 py-1 rounded-full text-sm font-medium">
-              {nights} {nights === 1 ? 'night' : 'nights'}
-            </span>
-          </div>
-        </div>
-
-        <div className="border border-gray-200 rounded-lg p-4">
-          <h4 className="font-semibold mb-3">Room Details</h4>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-500">Room Type</p>
-              <p className="font-medium">{roomType}</p>
-              {roomDescription && (
-                <p className="text-sm text-gray-600 mt-1">{roomDescription}</p>
-              )}
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Quantity</p>
-              <p className="font-medium">{roomQuantity} room(s)</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Guests</p>
-              <p className="font-medium">{adults} Adult(s)</p>
-              {guests.length > 0 && (
-                <p className="text-xs text-gray-500">
-                  {guests.map((g: any) => `${g.name?.firstName} ${g.name?.lastName}`).join(', ')}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="border border-gray-200 rounded-lg p-4">
-          <h4 className="font-semibold mb-3">Price Breakdown</h4>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Base Price ({nights} nights)</span>
-              <span className="font-medium">{formatPrice(basePrice, currency)}</span>
-            </div>
-            
-            {taxes.length > 0 && (
-              <>
-                <div className="border-t border-gray-100 pt-2 mt-2">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Taxes & Fees</p>
-                  {taxes.map((tax: any, index: number) => (
-                    <div key={index} className="flex justify-between text-sm">
-                      <span className="text-gray-500">{tax.code?.replace(/_/g, ' ')}</span>
-                      <span>{formatPrice(parseFloat(tax.amount), tax.currency || currency)}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-            
-            <div className="border-t border-gray-200 pt-2 mt-2">
-              <div className="flex justify-between font-bold">
-                <span>Total</span>
-                <span className="text-[#33a8da] text-lg">{formatPrice(totalPrice, currency)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {(cancellationDeadline || cancellationAmount) && (
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h4 className="font-semibold mb-3">Cancellation Policy</h4>
-            <div className="space-y-2">
-              {cancellationDeadline && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Free cancellation until</span>
-                  <span className="font-medium">{formatDate(cancellationDeadline)}</span>
-                </div>
-              )}
-              {cancellationAmount && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Cancellation fee after</span>
-                  <span className="font-medium text-red-600">{formatPrice(parseFloat(cancellationAmount), currency)}</span>
-                </div>
-              )}
-              <p className="text-xs text-gray-500 mt-2">
-                {booking?.cancellationPolicySnapshot || 'Standard cancellation policy applies'}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {guests.length > 0 && (
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h4 className="font-semibold mb-3">Guest Information</h4>
-            {guests.map((guest: any, index: number) => (
-              <div key={index} className="mb-3 last:mb-0">
-                <p className="font-medium">
-                  {guest.name?.title} {guest.name?.firstName} {guest.name?.lastName}
-                </p>
-                {guest.contact && (
-                  <div className="text-sm text-gray-600">
-                    <p>Email: {guest.contact.email}</p>
-                    <p>Phone: {guest.contact.phone}</p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderCarRentalDetails = () => {
-    const bookingData = booking?.bookingData || {};
-    const providerData = booking?.providerData as any;
-    
-    console.log('Car rental data for rendering:', {
-      bookingData,
-      providerData,
-      booking
-    });
-
-    const vehicleType = bookingData.vehicleType || 'Car Rental';
-    const offerId = bookingData.offerId || 'N/A';
-    const pickupLocationCode = bookingData.pickupLocationCode || 'N/A';
-    const dropoffLocationCode = bookingData.dropoffLocationCode || 'N/A';
-    const pickupDateTime = bookingData.pickupDateTime || '';
-    const dropoffDateTime = bookingData.dropoffDateTime || '';
-    const passengerInfo = (booking?.passengerInfo as any) || {};
-    const firstName = passengerInfo.firstName || '';
-    const lastName = passengerInfo.lastName || '';
-    const email = passengerInfo.email || '';
-    const phone = passengerInfo.phone || '';
-    const rentalDays = calculateRentalDays(pickupDateTime, dropoffDateTime);
-
-    const getVehicleCategory = (type: string) => {
-      if (type.includes('VAN')) return 'Van';
-      if (type.includes('SUV')) return 'SUV';
-      if (type.includes('LUXURY')) return 'Luxury';
-      if (type.includes('ECONOMY')) return 'Economy';
-      return 'Standard';
-    };
-
-    const vehicleCategory = getVehicleCategory(vehicleType);
-    
-    const getPassengerCapacity = (type: string) => {
-      if (type.includes('VAN')) return 7;
-      if (type.includes('SUV')) return 5;
-      if (type.includes('LUXURY')) return 4;
-      return 4;
-    };
-
-    const passengerCapacity = getPassengerCapacity(vehicleType);
-
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-          <div>
-            <p className="text-sm text-gray-500">Vehicle</p>
-            <p className="font-semibold text-xl">{vehicleType}</p>
-            <p className="text-sm text-gray-500 mt-1">{vehicleCategory} • Offer ID: {offerId}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-500">Booking Status</p>
-            <span className="inline-block mt-1 text-xs font-bold uppercase px-3 py-1 rounded-full bg-green-100 text-green-700">
-              {booking?.status || 'CONFIRMED'}
-            </span>
-          </div>
-        </div>
-
-        <div className="bg-blue-50 p-4 rounded-lg">
-          <h4 className="font-semibold mb-3 text-center">Rental Period</h4>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="text-center">
-              <p className="text-sm text-gray-600">Pick-up</p>
-              <p className="font-bold text-lg">{formatDate(pickupDateTime)}</p>
-              <p className="text-lg font-semibold text-blue-600">{formatTime(pickupDateTime)}</p>
-              <p className="text-sm font-medium mt-1">{getAirportName(pickupLocationCode)}</p>
-              <p className="text-xs text-gray-500">{pickupLocationCode}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-sm text-gray-600">Drop-off</p>
-              <p className="font-bold text-lg">{formatDate(dropoffDateTime)}</p>
-              <p className="text-lg font-semibold text-blue-600">{formatTime(dropoffDateTime)}</p>
-              <p className="text-sm font-medium mt-1">{getAirportName(dropoffLocationCode)}</p>
-              <p className="text-xs text-gray-500">{dropoffLocationCode}</p>
-            </div>
-          </div>
-          <div className="text-center mt-3">
-            <span className="inline-block bg-white px-4 py-2 rounded-full text-sm font-medium">
-              {rentalDays} {rentalDays === 1 ? 'day' : 'days'} rental
-            </span>
-          </div>
-        </div>
-
-        <div className="border border-gray-200 rounded-lg p-4">
-          <h4 className="font-semibold mb-3">Vehicle Details</h4>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-500">Vehicle Type</p>
-              <p className="font-medium">{vehicleCategory}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Passenger Capacity</p>
-              <p className="font-medium">{passengerCapacity} seats</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Transmission</p>
-              <p className="font-medium">Automatic</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Baggage</p>
-              <p className="font-medium">{vehicleCategory === 'Van' ? '4 bags' : '2 bags'}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="border border-gray-200 rounded-lg p-4">
-          <h4 className="font-semibold mb-3">Price Breakdown</h4>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Base Price ({rentalDays} days)</span>
-              <span className="font-medium">{formatPrice(booking?.basePrice || 0, booking?.currency)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Markup</span>
-              <span className="font-medium">{formatPrice(booking?.markupAmount || 0, booking?.currency)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Service Fee</span>
-              <span className="font-medium">{formatPrice(booking?.serviceFee || 0, booking?.currency)}</span>
-            </div>
-            <div className="border-t border-gray-200 pt-2 mt-2">
-              <div className="flex justify-between font-bold">
-                <span>Total Amount</span>
-                <span className="text-[#33a8da] text-lg">{formatPrice(booking?.totalAmount || 0, booking?.currency)}</span>
-              </div>
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              Price per day: {formatPrice((booking?.totalAmount || 0) / rentalDays, booking?.currency)}
-            </p>
-          </div>
-        </div>
-
-        <div className="border border-gray-200 rounded-lg p-4">
-          <h4 className="font-semibold mb-3">Driver Information</h4>
-          <div className="space-y-2">
-            <div>
-              <p className="text-sm text-gray-500">Name</p>
-              <p className="font-medium">{firstName} {lastName}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Email</p>
-              <p className="font-medium">{email}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Phone</p>
-              <p className="font-medium">{phone}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex items-start">
-            <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <div>
-              <p className="font-medium text-yellow-800 mb-1">Important Information</p>
-              <ul className="text-sm text-yellow-700 space-y-1">
-                <li>• Valid driver's license required</li>
-                <li>• Driver must be at least 21 years old</li>
-                <li>• Credit card required at pick-up for deposit</li>
-                <li>• Fuel policy: Same-to-same (return with full tank)</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        {providerData?.orderCreationError && (
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-            <div className="flex items-start">
-              <svg className="w-5 h-5 text-orange-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <div>
-                <p className="font-medium text-orange-800">Provider Confirmation Pending</p>
-                <p className="text-sm text-orange-700">
-                  Your booking is confirmed and payment successful. We're waiting for final confirmation from the rental provider. You'll receive an email once confirmed.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string): string => {
     const statusMap: Record<string, string> = {
       'CONFIRMED': 'green',
       'PENDING': 'yellow',
@@ -1877,16 +524,20 @@ yPos += 56;
     return statusMap[status] || "gray";
   };
 
-  const formatStatus = (status: string) => {
+  const formatStatus = (status: string): string => {
     return status
       .replace(/_/g, " ")
       .toLowerCase()
       .replace(/\b\w/g, (l) => l.toUpperCase());
   };
 
-  const isWakanow = booking?.provider === 'WAKANOW' || booking?.bookingData?.provider === 'WAKANOW';
+  const isWakanow = booking?.provider === 'WAKANOW';
+  const productType = booking?.productType || '';
+  const isConfirmed = ['CONFIRMED', 'COMPLETED', 'PAID'].includes(booking?.status || '');
+  const isPending = ['PENDING', 'PROCESSING'].includes(booking?.status || '');
+  const isFailed = ['FAILED', 'CANCELLED'].includes(booking?.status || '');
 
-  // Email form for guest bookings (only shown when no email is provided and no booking)
+  // Email form for guest bookings
   if (showEmailForm && !booking) {
     return (
       <div className="max-w-md mx-auto px-4 py-16">
@@ -2000,14 +651,9 @@ yPos += 56;
     );
   }
 
-  const isConfirmed = ['CONFIRMED', 'COMPLETED', 'PAID'].includes(booking.status);
-  const isPending = ['PENDING', 'PROCESSING'].includes(booking.status);
-  const isFailed = ['FAILED', 'CANCELLED'].includes(booking.status);
-  const productType = booking.productType || booking.bookingData?.productType;
-
   return (
     <div className="max-w-3xl mx-auto px-4 py-16">
-      {/* Guest banner - encouraging sign up (not blocking content) */}
+      {/* Guest banner */}
       {isGuest && (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 mb-6">
           <div className="flex items-center justify-between flex-wrap gap-4">
@@ -2068,83 +714,46 @@ yPos += 56;
         </div>
       )}
 
-      {/* Status-specific header */}
+      {/* Status header */}
       <div className="text-center mb-8">
         {isConfirmed && (
           <>
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg
-                className="w-10 h-10 text-green-600"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2.5}
-                  d="M5 13l4 4L19 7"
-                />
+              <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
               </svg>
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Booking Confirmed!</h1>
-            <p className="text-gray-600">
-              Your booking has been successfully confirmed. A confirmation email has been sent.
-            </p>
+            <p className="text-gray-600">Your booking has been successfully confirmed.</p>
           </>
         )}
 
         {isPending && (
           <>
             <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg
-                className="w-10 h-10 text-yellow-600"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2.5}
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
+              <svg className="w-10 h-10 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Booking Processing</h1>
-            <p className="text-gray-600">Your payment was successful, but we're still waiting for confirmation from the provider. We'll notify you via email once confirmed.</p>
+            <p className="text-gray-600">Your payment was successful, but we're still waiting for confirmation from the provider.</p>
           </>
         )}
 
         {isFailed && (
           <>
             <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg
-                className="w-10 h-10 text-red-600"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2.5}
-                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
+              <svg className="w-10 h-10 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Booking Failed
-            </h1>
-            <p className="text-gray-600 mb-4">
-              We couldn't confirm your booking with the provider. A refund has
-              been initiated.
-            </p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Booking Failed</h1>
+            <p className="text-gray-600 mb-4">We couldn't confirm your booking with the provider.</p>
           </>
         )}
       </div>
 
-      {/* Basic booking summary - visible to everyone */}
+      {/* Booking summary */}
       <div className="bg-white rounded-xl shadow p-6 mb-8 border border-gray-100">
         <div className="text-center mb-4">
           <div className="inline-block bg-blue-50 px-4 py-2 rounded-full mb-4">
@@ -2153,11 +762,6 @@ yPos += 56;
             </span>
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Booking Reference: {booking.reference}</h2>
-          <p className="text-gray-600">
-            {isConfirmed && 'Your booking has been confirmed'}
-            {isPending && 'Your booking is being processed'}
-            {isFailed && 'Your booking could not be completed'}
-          </p>
         </div>
 
         <div className="border-t border-gray-200 pt-4 mt-4">
@@ -2193,259 +797,58 @@ yPos += 56;
                 <p className="font-medium truncate">{email}</p>
               </div>
             )}
-
-            {isWakanow && booking.pnrNumber && (
-              <div className="text-center p-3 bg-gray-50 rounded-lg">
-                <p className="text-sm text-gray-500">PNR Number</p>
-                <p className="font-mono font-bold text-sm">{booking.pnrNumber}</p>
-              </div>
-            )}
           </div>
         </div>
       </div>
 
-      {/* For ALL users: Show full detailed itinerary (no blur, no blocking) */}
+      {/* Trip details */}
       {booking && (
-        <div className="space-y-6 mb-8">
-          <div className="bg-white rounded-xl shadow p-6 border border-gray-100">
-            <h3 className="text-xl font-bold mb-4">Trip Details</h3>
-            {isWakanow && renderWakanowDetails()}
-            {!isWakanow && productType?.includes('FLIGHT') && renderFlightDetails()}
-            {!isWakanow && productType?.includes('HOTEL') && renderHotelDetails()}
-            {!isWakanow && productType?.includes('CAR') && renderCarRentalDetails()}
-          </div>
-
-          {!productType?.includes('HOTEL') && !productType?.includes('CAR') && booking.basePrice && (
-            <div className="bg-white rounded-xl shadow p-6 border border-gray-100">
-              <h3 className="text-xl font-bold mb-4">Price Breakdown</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Base Price</span>
-                  <span className="font-medium">{formatPrice(booking.basePrice || 0, booking.currency)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Markup</span>
-                  <span className="font-medium">{formatPrice(booking.markupAmount || 0, booking.currency)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Service Fee</span>
-                  <span className="font-medium">{formatPrice(booking.serviceFee || 0, booking.currency)}</span>
-                </div>
-                <div className="border-t border-gray-200 pt-2 mt-2">
-                  <div className="flex justify-between font-bold">
-                    <span>Total Amount</span>
-                    <span className="text-[#33a8da] text-lg">{formatPrice(booking.totalAmount || 0, booking.currency)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {booking.passengerInfo && (
-            <div className="bg-white rounded-xl shadow p-6 border border-gray-100">
-              <h3 className="text-xl font-bold mb-4">Traveler Information</h3>
-              <div className="space-y-6">
-                {(Array.isArray(booking.passengerInfo) ? booking.passengerInfo : 
-                  (booking.passengerInfo.travellers ? [booking.passengerInfo, ...booking.passengerInfo.travellers] : [booking.passengerInfo])
-                ).map((p: any, idx: number) => (
-                  <div key={idx} className={idx > 0 ? "pt-4 border-t border-gray-50" : ""}>
-                    <p className="text-xs font-bold text-[#33a8da] uppercase mb-2">
-                      Passenger #{idx + 1} {p.type && `(${p.type})`}
-                    </p>
-                    <div className="grid grid-cols-2 gap-4">
-                      <Detail 
-                        label="Name" 
-                        value={`${p.title || ''} ${p.firstName || ''} ${p.lastName || ''}`.trim()} 
-                      />
-                      {idx === 0 && (
-                        <>
-                          <Detail label="Email" value={p.email} />
-                          <Detail label="Phone" value={p.phone || 'N/A'} />
-                        </>
-                      )}
-                      {p.gender && <Detail label="Gender" value={p.gender === 'm' || p.gender === 'Male' ? 'Male' : 'Female'} />}
-                      {p.dateOfBirth && <Detail label="Date of Birth" value={p.dateOfBirth} />}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="bg-white rounded-xl shadow p-6 border border-gray-100">
-            <h3 className="text-xl font-bold mb-4">Booking Information</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <Detail label="Booking Reference" value={booking.reference} highlight />
-              <Detail label="Provider" value={booking.provider || 'N/A'} />
-              <Detail label="Payment Status" value={booking.paymentStatus} badge={getStatusBadge(booking.paymentStatus)} />
-              <Detail label="Payment Reference" value={booking.paymentReference || 'N/A'} />
-              {booking.providerBookingId && (
-                <Detail label="Provider Reference" value={booking.providerBookingId} />
-              )}
-              {isWakanow && booking.pnrNumber && (
-                <Detail label="PNR Number" value={booking.pnrNumber} highlight />
-              )}
-            </div>
-          </div>
+        <div className="bg-white rounded-xl shadow p-6 mb-8 border border-gray-100">
+          <h3 className="text-xl font-bold mb-4">Trip Details</h3>
+          {renderWakanowDetails()}
         </div>
       )}
 
-      {/* Status-specific messages */}
-      {isPending && (
-        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-8 text-sm text-blue-800">
-          <p className="font-medium mb-1">What happens next?</p>
-          <p>We're confirming your booking with the provider. This usually takes 1-2 minutes. You'll receive an email once confirmed.</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="mt-3 text-blue-600 hover:text-blue-800 font-medium underline"
-          >
-            Refresh Status
-          </button>
-        </div>
-      )}
-
-      {isFailed && (
-        <div className="bg-red-50 border border-red-100 rounded-lg p-4 mb-8 text-sm text-red-800">
-          <p className="font-medium mb-1">Refund Information</p>
-          <p>
-            A full refund of{" "}
-            {formatPrice(booking.totalAmount, booking.currency)} has been
-            initiated. It may take 5-10 business days to appear in your account.
-          </p>
+      {/* Price breakdown */}
+      {booking && booking.basePrice && (
+        <div className="bg-white rounded-xl shadow p-6 mb-8 border border-gray-100">
+          <h3 className="text-xl font-bold mb-4">Price Breakdown</h3>
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Base Price</span>
+              <span className="font-medium">{formatPrice(booking.basePrice, booking.currency)}</span>
+            </div>
+            {booking.markupAmount && booking.markupAmount > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Markup</span>
+                <span className="font-medium">{formatPrice(booking.markupAmount, booking.currency)}</span>
+              </div>
+            )}
+            {booking.serviceFee && booking.serviceFee > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Service Fee</span>
+                <span className="font-medium">{formatPrice(booking.serviceFee, booking.currency)}</span>
+              </div>
+            )}
+            <div className="border-t border-gray-200 pt-2 mt-2">
+              <div className="flex justify-between font-bold">
+                <span>Total Amount</span>
+                <span className="text-[#33a8da] text-lg">{formatPrice(booking.totalAmount, booking.currency)}</span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Action buttons */}
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
-        {!isGuest ? (
-          <>
-            <button 
-              onClick={() => router.push('/profile?tab=bookings')} 
-              className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
-            >
-              View My Bookings
-            </button>
-            
-            <button 
-              onClick={() => {
-                if (isWakanow) {
-                  downloadWakanowPDF();
-                } else if (productType?.includes('FLIGHT')) {
-                  downloadFlightPDF();
-                } else if (productType?.includes('HOTEL')) {
-                  downloadHotelPDF();
-                } else if (productType?.includes('CAR')) {
-                  downloadCarPDF();
-                } else {
-                  downloadFlightPDF();
-                }
-              }}
-              className="px-6 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Download {isWakanow ? 'Wakanow' : (productType?.includes('FLIGHT') ? 'Flight' : productType?.includes('HOTEL') ? 'Hotel' : 'Car Rental')} Report
-            </button>
-          </>
-        ) : (
-          <>
-            <button 
-              onClick={() => {
-                const params = new URLSearchParams();
-                if (email) params.set('email', email);
-                if (bookingRef) params.set('bookingRef', bookingRef);
-                router.push(`/register?${params.toString()}`);
-              }} 
-              className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
-            >
-              Create Free Account
-            </button>
-            
-            <button 
-              onClick={() => {
-                if (isWakanow) {
-                  downloadWakanowPDF();
-                } else if (productType?.includes('FLIGHT')) {
-                  downloadFlightPDF();
-                } else if (productType?.includes('HOTEL')) {
-                  downloadHotelPDF();
-                } else if (productType?.includes('CAR')) {
-                  downloadCarPDF();
-                } else {
-                  downloadFlightPDF();
-                }
-              }}
-              className="px-6 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Download Report
-            </button>
-          </>
-        )}
-        
         <button 
           onClick={() => router.push('/')} 
-          className="px-6 py-3 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 border border-gray-300"
+          className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
         >
           Back to Home
         </button>
       </div>
-
-      {/* Guest reminder */}
-      {isGuest && (
-        <p className="text-center text-sm text-gray-500 mt-6">
-          <svg className="inline-block w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          Your booking reference has been sent to {email}. Save it to check your booking later.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function Detail({
-  label,
-  value,
-  highlight,
-  badge,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-  badge?: string;
-}) {
-  const badgeColors = {
-    green: "bg-green-100 text-green-700",
-    yellow: "bg-yellow-100 text-yellow-700",
-    red: "bg-red-100 text-red-700",
-    gray: "bg-gray-100 text-gray-700",
-    purple: "bg-purple-100 text-purple-700",
-  };
-
-  if (!value || value === 'N/A' || value.trim() === '') {
-    return null;
-  }
-
-  return (
-    <div className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
-      <span className="text-sm text-gray-500">{label}</span>
-      {badge ? (
-        <span
-          className={`text-xs font-bold uppercase px-3 py-1 rounded-full ${badgeColors[badge as keyof typeof badgeColors] || badgeColors.gray}`}
-        >
-          {value}
-        </span>
-      ) : (
-        <span
-          className={`font-medium ${highlight ? "text-lg text-[#33a8da]" : "text-gray-900"}`}
-        >
-          {value}
-        </span>
-      )}
     </div>
   );
 }

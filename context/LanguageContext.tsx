@@ -77,7 +77,6 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     const fetchLiveRates = useCallback(async (baseCurrency: string) => {
         try {
-            // Use the currency-service.ts to fetch rates (no client-side cache here - let service handle it)
             const ratesData = await fetchExchangeRates(baseCurrency);
             
             if (ratesData && ratesData.rates) {
@@ -97,10 +96,8 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
         } catch (error) {
             console.error('Failed to fetch exchange rates:', error);
             setUsingLiveRates(false);
-            const msg = error instanceof Error && error.message.includes('invalid rates') 
-                ? "Live exchange rates for NGN are currently unreliable. Prices are shown in original currency."
-                : `Unable to fetch live exchange rates: ${error instanceof Error ? error.message : 'Unknown error'}`;
-            setRatesError(msg);
+            // ✅ Silent error - no user-facing message
+            setRatesError(null);
             throw error;
         }
     }, []);
@@ -110,12 +107,11 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
         setRatesError(null);
         
         try {
-            // This will throw if fails - no fallback
             await fetchLiveRates(currency.code);
             console.log('✅ Rates refreshed successfully');
         } catch (error) {
             console.error('Failed to refresh rates:', error);
-            // Don't set empty rates - keep previous rates or let components handle the error
+            // ✅ Silent - don't set error message
         } finally {
             setIsLoadingRates(false);
         }
@@ -126,7 +122,6 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
         if (amount === 0 || isNaN(amount)) return 0;
         
         try {
-            // This will throw if rates aren't available
             const { convertedAmount } = await convertCurrencyLive(amount, fromCurrency, currency.code);
             return convertedAmount;
         } catch (error) {
@@ -145,12 +140,11 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
                 displayCurrency = currency.code;
             }
             
-            // This will throw if formatting fails
             return formatPriceWithCurrency(finalAmount, displayCurrency);
         } catch (error) {
-            // If conversion fails, return the amount in original currency if possible, or a clear error
+            // ✅ Silent fallback - no "(Rate Unavailable)" message
             const fallbackSymbol = fromCurrency ? (CURRENCY_SYMBOLS[fromCurrency] || fromCurrency) : currency.symbol;
-            return `${fallbackSymbol}${amount.toLocaleString()} (Rate Unavailable)`;
+            return `${fallbackSymbol}${amount.toLocaleString()}`;
         }
     }, [currency, convertPrice]);
 
@@ -215,12 +209,12 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
                     setCurrencyState({ code: parsedCurr.code, symbol: parsedCurr.symbol });
                     setHasInitialized(true);
                     
-                    // Try to fetch rates, but don't block UI if it fails
+                    // Try to fetch rates silently
                     try {
                         await refreshRates();
                     } catch (error) {
                         console.error('Initial rate fetch failed:', error);
-                        setRatesError('Unable to load exchange rates. Please check your connection.');
+                        // Silent - no error message
                     }
                     return;
                 } catch (e) {
@@ -249,12 +243,12 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
             
             setHasInitialized(true);
             
-            // Try to fetch initial rates
+            // Try to fetch initial rates silently
             try {
                 await refreshRates();
             } catch (error) {
                 console.error('Initial rate fetch failed:', error);
-                setRatesError('Unable to load exchange rates. Please check your connection.');
+                // Silent - no error message
             }
         };
         
@@ -287,14 +281,8 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
             convertPrice, formatPrice, isLoadingRates, refreshRates, ratesError, usingLiveRates
         }}>
             {hasInitialized ? (
-                <>
-                    {ratesError && (
-                        <div className="fixed top-16 left-0 right-0 z-50 bg-red-50 border-b border-red-200 py-2 px-4 text-center">
-                            <p className="text-sm text-red-800">⚠️ {ratesError}</p>
-                        </div>
-                    )}
-                    {children}
-                </>
+                // ✅ REMOVED the error banner from UI
+                children
             ) : (
                 <div className="fixed inset-0 bg-white z-[999] flex items-center justify-center">
                     <div className="w-10 h-10 border-4 border-blue-50 border-t-[#33a8da] rounded-full animate-spin"></div>

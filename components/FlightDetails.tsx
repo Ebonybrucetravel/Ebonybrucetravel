@@ -124,130 +124,233 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     });
   };
 
-  // Transform the item to ensure correct return direction
-  const transformedItem = useMemo(() => {
-    if (!item) return null;
+  // Transform the item to ensure correct structure for display
+ // Transform the item to ensure correct structure for display
+const transformedItem = useMemo(() => {
+  if (!item) return null;
+  
+  console.log('🔄 FlightDetails: Transforming flight:', {
+    id: item.id,
+    provider: item.provider,
+    isWakanow: item.isWakanow,
+    hasSlices: !!(item.slices),
+    slicesLength: item.slices?.length,
+    departureAirport: item.departureAirport,
+    arrivalAirport: item.arrivalAirport,
+    departureTime: item.departureTime,
+    arrivalTime: item.arrivalTime,
+  });
+  
+  // Handle Wakanow flights
+  if (item.isWakanow) {
+    const wakanowItem = item as any;
     
-    console.log('🔄 FlightDetails: Transforming flight:', {
-      provider: item.provider,
-      isWakanow: item.isWakanow,
-      hasSlices: !!(item.slices),
-      slicesLength: item.slices?.length,
+    // If slices exist, transform them to ensure proper structure
+    if (wakanowItem.slices && wakanowItem.slices.length > 0) {
+      console.log('📦 Processing existing Wakanow slices:', wakanowItem.slices.length);
+      
+      // Transform each slice to ensure segments have proper structure
+      const transformedSlices = wakanowItem.slices.map((slice: any, sliceIndex: number) => {
+        const segments = (slice.segments || []).map((segment: any) => {
+          // Extract data from segment with fallbacks to slice level
+          const departingAt = segment.departing_at || segment.departureTime || segment.start_time || slice.departure_time;
+          const arrivingAt = segment.arriving_at || segment.arrivalTime || segment.end_time || slice.arrival_time;
+          
+          const originCode = segment.origin?.iata_code || segment.from || segment.departure_code || slice.origin?.iata_code;
+          const originName = segment.origin?.name || segment.fromName || slice.origin?.name;
+          const originCity = segment.origin?.city_name || segment.departureCity || slice.origin?.city_name;
+          
+          const destCode = segment.destination?.iata_code || segment.to || segment.destination_code || slice.destination?.iata_code;
+          const destName = segment.destination?.name || segment.toName || slice.destination?.name;
+          const destCity = segment.destination?.city_name || segment.arrivalCity || slice.destination?.city_name;
+          
+          const airlineName = segment.operating_carrier?.name || segment.airline || wakanowItem.airlineName;
+          const airlineCode = segment.operating_carrier?.iata_code || segment.airlineCode || wakanowItem.airlineCode;
+          const flightNum = segment.flight_number || segment.marketing_carrier_flight_number || wakanowItem.flightNumber;
+          
+          return {
+            departing_at: departingAt,
+            arriving_at: arrivingAt,
+            duration: segment.duration,
+            origin: {
+              iata_code: originCode,
+              name: originName,
+              city_name: originCity,
+            },
+            destination: {
+              iata_code: destCode,
+              name: destName,
+              city_name: destCity,
+            },
+            operating_carrier: {
+              name: airlineName,
+              iata_code: airlineCode,
+            },
+            marketing_carrier_flight_number: flightNum,
+          };
+        });
+        
+        return {
+          ...slice,
+          segments: segments,
+          origin: segments[0]?.origin,
+          destination: segments[segments.length - 1]?.destination,
+          departure_time: segments[0]?.departing_at,
+          arrival_time: segments[segments.length - 1]?.arriving_at,
+        };
+      });
+      
+      console.log('✅ Transformed Wakanow slices:', {
+        sliceCount: transformedSlices.length,
+        outboundSegments: transformedSlices[0]?.segments?.length,
+        outboundOrigin: transformedSlices[0]?.origin?.iata_code,
+        outboundDest: transformedSlices[0]?.destination?.iata_code,
+        outboundDeparture: transformedSlices[0]?.departure_time,
+      });
+      
+      return {
+        ...item,
+        slices: transformedSlices,
+        isRoundTrip: transformedSlices.length > 1,
+      };
+    }
+    
+    // If no slices, build from direct flight data
+    console.log('🏗️ Building slices from direct flight data');
+    
+    const departureTime = wakanowItem.departureTime || wakanowItem.time;
+    const arrivalTime = wakanowItem.arrivalTime;
+    const duration = wakanowItem.duration;
+    
+    const outboundSegment = {
+      departing_at: departureTime,
+      arriving_at: arrivalTime,
+      duration: duration,
+      origin: {
+        iata_code: wakanowItem.departureAirport || wakanowItem.departureCity,
+        name: wakanowItem.departureCity,
+        city_name: wakanowItem.departureCity,
+      },
+      destination: {
+        iata_code: wakanowItem.arrivalAirport || wakanowItem.arrivalCity,
+        name: wakanowItem.arrivalCity,
+        city_name: wakanowItem.arrivalCity,
+      },
+      operating_carrier: {
+        name: wakanowItem.airlineName || wakanowItem.title?.split(' ')[0],
+        iata_code: wakanowItem.airlineCode,
+      },
+      marketing_carrier_flight_number: wakanowItem.flightNumber,
+    };
+    
+    const outboundSlice = {
+      segments: [outboundSegment],
+      duration: duration,
+      origin: outboundSegment.origin,
+      destination: outboundSegment.destination,
+      departure_time: departureTime,
+      arrival_time: arrivalTime,
+    };
+    
+    const slices = [outboundSlice];
+    
+    // Add return slice for round trip
+    if (wakanowItem.isRoundTrip || wakanowItem.returnFlight) {
+      const returnFlight = wakanowItem.returnFlight;
+      const returnDepartureTime = returnFlight?.departureTime;
+      const returnArrivalTime = returnFlight?.arrivalTime;
+      const returnDuration = returnFlight?.duration;
+      
+      const returnSegment = {
+        departing_at: returnDepartureTime,
+        arriving_at: returnArrivalTime,
+        duration: returnDuration,
+        origin: {
+          iata_code: returnFlight?.departureAirport,
+          name: returnFlight?.departureCity,
+          city_name: returnFlight?.departureCity,
+        },
+        destination: {
+          iata_code: returnFlight?.arrivalAirport,
+          name: returnFlight?.arrivalCity,
+          city_name: returnFlight?.arrivalCity,
+        },
+        operating_carrier: {
+          name: returnFlight?.airlineName || wakanowItem.airlineName,
+          iata_code: returnFlight?.airlineCode,
+        },
+        marketing_carrier_flight_number: returnFlight?.flightNumber,
+      };
+      
+      const returnSlice = {
+        segments: [returnSegment],
+        duration: returnDuration,
+        origin: returnSegment.origin,
+        destination: returnSegment.destination,
+        departure_time: returnDepartureTime,
+        arrival_time: returnArrivalTime,
+      };
+      
+      slices.push(returnSlice);
+    }
+    
+    console.log('✅ Built slices from direct data:', {
+      slicesCount: slices.length,
+      outboundOrigin: slices[0]?.origin?.iata_code,
+      outboundDest: slices[0]?.destination?.iata_code,
     });
     
-    // Handle Wakanow flights
-    if (item.isWakanow) {
-      const wakanowItem = item as any;
-      let slices = wakanowItem.slices || [];
-      
-      if (slices.length > 0) {
-        slices = slices.map((slice: any, sliceIndex: number) => {
-          const isReturnSlice = sliceIndex === 1;
-          
-          const outboundOrigin = slices[0]?.segments?.[0]?.origin?.iata_code || 
-                                 slices[0]?.segments?.[0]?.from || 
-                                 wakanowItem.departureAirport;
-          const outboundDest = slices[0]?.segments?.[0]?.destination?.iata_code || 
-                               slices[0]?.segments?.[0]?.to || 
-                               wakanowItem.arrivalAirport;
-          
-          const segments = (slice.segments || []).map((segment: any) => {
-            let flightNumber = segment.flightNumber || wakanowItem.flightNumber;
-            if (isReturnSlice && wakanowItem.returnLegs && wakanowItem.returnLegs[0]) {
-              flightNumber = wakanowItem.returnLegs[0].flightNumber || flightNumber;
-            }
-            
-            let originCode = '', originName = '', destCode = '', destName = '';
-            
-            if (isReturnSlice) {
-              originCode = outboundDest;
-              originName = outboundDest;
-              destCode = outboundOrigin;
-              destName = outboundOrigin;
-            } else {
-              originCode = segment.from || segment.origin?.iata_code || wakanowItem.departureAirport;
-              originName = segment.fromName || segment.origin?.name || wakanowItem.departureCity;
-              destCode = segment.to || segment.destination?.iata_code || wakanowItem.arrivalAirport;
-              destName = segment.toName || segment.destination?.name || wakanowItem.arrivalCity;
-            }
-            
-            return {
-              departing_at: segment.departureTime || segment.departing_at || segment.start_time || '',
-              arriving_at: segment.arrivalTime || segment.arriving_at || segment.end_time || '',
-              duration: segment.duration || '',
-              origin: {
-                iata_code: originCode,
-                name: originName,
-                city_name: originName?.split('(')[0]?.trim() || originName,
-              },
-              destination: {
-                iata_code: destCode,
-                name: destName,
-                city_name: destName?.split('(')[0]?.trim() || destName,
-              },
-              operating_carrier: {
-                name: segment.airline || segment.operating_carrier?.name || wakanowItem.airlineName,
-                iata_code: segment.airlineCode || segment.operating_carrier?.iata_code || wakanowItem.airlineCode
-              },
-              marketing_carrier_flight_number: flightNumber,
-            };
-          });
-          
-          return { ...slice, segments };
-        });
-      }
-      
-      return {
-        ...item,
-        slices: slices,
-        isRoundTrip: slices.length > 1,
-      };
-    }
+    return {
+      ...item,
+      slices: slices,
+      isRoundTrip: slices.length > 1,
+    };
+  }
+  
+  // Handle Duffel flights - ensure return direction is correct
+  if (item.provider === 'duffel' || item.slices) {
+    let slices = [...(item.slices || [])];
     
-    // Handle Duffel flights - ensure return direction is correct
-    if (item.provider === 'duffel' || item.slices) {
-      let slices = [...(item.slices || [])];
+    // Fix return direction for Duffel if needed
+    if (slices.length > 1) {
+      const outboundOrigin = slices[0]?.segments?.[0]?.origin?.iata_code;
+      const outboundDest = slices[0]?.segments?.[slices[0].segments.length - 1]?.destination?.iata_code;
+      const returnOrigin = slices[1]?.segments?.[0]?.origin?.iata_code;
+      const returnDest = slices[1]?.segments?.[slices[1].segments.length - 1]?.destination?.iata_code;
       
-      // Fix return direction for Duffel if needed
-      if (slices.length > 1) {
-        const outboundOrigin = slices[0]?.segments?.[0]?.origin?.iata_code;
-        const outboundDest = slices[0]?.segments?.[slices[0].segments.length - 1]?.destination?.iata_code;
-        const returnOrigin = slices[1]?.segments?.[0]?.origin?.iata_code;
-        const returnDest = slices[1]?.segments?.[slices[1].segments.length - 1]?.destination?.iata_code;
-        
-        // Check if return is going the wrong way (same as outbound)
-        if (returnOrigin === outboundOrigin && returnDest === outboundDest) {
-          console.log('🔄 Fixing Duffel return journey direction - swapping');
-          const returnSegments = slices[1].segments.map((seg: any) => {
-            const newOrigin = seg.destination;
-            const newDestination = seg.origin;
-            return {
-              ...seg,
-              origin: newOrigin,
-              destination: newDestination,
-              departing_at: seg.arriving_at,
-              arriving_at: seg.departing_at,
-            };
-          });
-          
-          slices[1] = {
-            ...slices[1],
-            origin: { iata_code: outboundDest },
-            destination: { iata_code: outboundOrigin },
-            segments: returnSegments
+      // Check if return is going the wrong way (same as outbound)
+      if (returnOrigin === outboundOrigin && returnDest === outboundDest) {
+        console.log('🔄 Fixing Duffel return journey direction - swapping');
+        const returnSegments = slices[1].segments.map((seg: any) => {
+          const newOrigin = seg.destination;
+          const newDestination = seg.origin;
+          return {
+            ...seg,
+            origin: newOrigin,
+            destination: newDestination,
+            departing_at: seg.arriving_at,
+            arriving_at: seg.departing_at,
           };
-        }
+        });
+        
+        slices[1] = {
+          ...slices[1],
+          origin: { iata_code: outboundDest },
+          destination: { iata_code: outboundOrigin },
+          segments: returnSegments
+        };
       }
-      
-      return {
-        ...item,
-        slices: slices,
-        isRoundTrip: slices.length > 1,
-      };
     }
     
-    return item;
-  }, [item]);
+    return {
+      ...item,
+      slices: slices,
+      isRoundTrip: slices.length > 1,
+    };
+  }
+  
+  return item;
+}, [item]);
 
   if (!transformedItem) {
     return (
@@ -256,11 +359,11 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
           <div className="bg-white rounded-[32px] p-12 shadow-xl border border-gray-100">
             <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-6">
               <svg className="w-8 h-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h3 className="text-xl font-black text-gray-900 uppercase mb-2">Flight Details Loading</h3>
-            <p className="text-sm text-gray-500 font-medium mb-6">Please wait while we load the complete flight information.</p>
+            <h3 className="text-xl font-black text-gray-900 uppercase mb-2">Flight Details Unavailable</h3>
+            <p className="text-sm text-gray-500 font-medium mb-6">Unable to load flight details. Please go back and try again.</p>
             <button onClick={onBack} className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition">
               Back to Results
             </button>
@@ -318,11 +421,19 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
   };
 
   const handleBookClick = async () => {
-    // For Wakanow flights, fetch terms before proceeding
-    let finalItem = { ...transformedItem };
-    
-    if (transformedItem.isWakanow && (transformedItem as any).selectData) {
-      try {
+    try {
+      // For Wakanow flights, ensure we have selectData
+      let finalItem = { ...transformedItem };
+      
+      console.log('📦 handleBookClick - Flight data:', {
+        id: transformedItem.id,
+        provider: transformedItem.provider,
+        isWakanow: transformedItem.isWakanow,
+        hasSelectData: !!(transformedItem as any).selectData,
+        hasOfferRequestId: !!(transformedItem as any).offer_request_id,
+      });
+      
+      if (transformedItem.isWakanow && (transformedItem as any).selectData) {
         setIsConverting(true);
         
         const { wakanowService } = await import('@/lib/wakanow.service');
@@ -331,7 +442,6 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
           'NGN'
         );
         
-        // Merge terms into the flight object
         finalItem = {
           ...transformedItem,
           terms_and_conditions: flightDetails.termsAndConditions ? {
@@ -341,63 +451,93 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
           bookingId: flightDetails.bookingId,
         };
         
-        console.log('✅ Terms loaded:', flightDetails.termsAndConditions?.length);
-      } catch (error) {
-        console.error('Failed to get flight terms:', error);
-      } finally {
-        setIsConverting(false);
+        console.log('✅ Terms loaded for Wakanow flight:', flightDetails.termsAndConditions?.length);
       }
+      
+      const completeBooking = {
+        ...finalItem,
+        id: finalItem.id || `flight-${Date.now()}`,
+        type: 'flight',
+        status: 'Confirmed'
+      };
+      
+      selectItem(completeBooking);
+      
+      // Store in sessionStorage for recovery
+      sessionStorage.setItem('selectedBooking', JSON.stringify(completeBooking));
+      
+      router.push('/booking/review');
+    } catch (error) {
+      console.error('Failed to prepare booking:', error);
+      // Still proceed with basic item
+      const completeBooking = {
+        ...transformedItem,
+        id: transformedItem.id || `flight-${Date.now()}`,
+        type: 'flight',
+        status: 'Confirmed'
+      };
+      selectItem(completeBooking);
+      router.push('/booking/review');
+    } finally {
+      setIsConverting(false);
     }
-    
-    const completeBooking = {
-      ...finalItem,
-      id: finalItem.id || `flight-${Date.now()}`,
-      type: 'flight',
-      status: 'Confirmed'
-    };
-    selectItem(completeBooking);
-    sessionStorage.setItem('currentBooking', JSON.stringify(completeBooking));
-    router.push('/booking/review');
   };
+
   // Render a single flight segment
-  const renderSegment = (segment: any, index: number, isLast: boolean) => (
-    <div key={index} className={`${!isLast ? 'mb-6' : ''}`}>
-      <div className="flex items-center justify-between">
-        <div className="text-left">
-          <p className="text-2xl font-black text-gray-900">{formatTime(segment.departing_at)}</p>
-          <p className="text-xs font-bold text-gray-400 mt-1 uppercase">{segment.origin?.iata_code}</p>
-          <p className="text-[10px] text-gray-400">{segment.origin?.city_name || segment.origin?.name}</p>
-        </div>
-        
-        <div className="flex-1 px-4">
-          <div className="w-full h-[2px] bg-gray-100 relative">
-            <div className="absolute left-1/2 -translate-x-1/2 -top-[11px] bg-white px-2">
-              <svg className="w-5 h-5 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-              </svg>
-            </div>
+  const renderSegment = (segment: any, index: number, isLast: boolean) => {
+    if (!segment) return null;
+    
+    return (
+      <div key={index} className={`${!isLast ? 'mb-6' : ''}`}>
+        <div className="flex items-center justify-between">
+          <div className="text-left">
+            <p className="text-2xl font-black text-gray-900">{formatTime(segment.departing_at)}</p>
+            <p className="text-xs font-bold text-gray-400 mt-1 uppercase">{segment.origin?.iata_code || '--'}</p>
+            <p className="text-[10px] text-gray-400">{segment.origin?.city_name || ''}</p>
           </div>
-          <p className="text-[9px] font-black text-gray-400 text-center mt-2 tracking-widest">
-            {calculateDuration(segment.duration)}
+          
+          <div className="flex-1 px-4">
+            <div className="w-full h-[2px] bg-gray-100 relative">
+              <div className="absolute left-1/2 -translate-x-1/2 -top-[11px] bg-white px-2">
+                <svg className="w-5 h-5 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                </svg>
+              </div>
+            </div>
+            <p className="text-[9px] font-black text-gray-400 text-center mt-2 tracking-widest">
+              {calculateDuration(segment.duration)}
+            </p>
+          </div>
+
+          <div className="text-right">
+            <p className="text-2xl font-black text-gray-900">{formatTime(segment.arriving_at)}</p>
+            <p className="text-xs font-bold text-gray-400 mt-1 uppercase">{segment.destination?.iata_code || '--'}</p>
+            <p className="text-[10px] text-gray-400">{segment.destination?.city_name || ''}</p>
+          </div>
+        </div>
+        <div className="mt-2 text-center">
+          <p className="text-[10px] text-gray-500">
+            Flight {segment.marketing_carrier_flight_number || '--'} • {segment.operating_carrier?.name || ''}
           </p>
         </div>
-
-        <div className="text-right">
-          <p className="text-2xl font-black text-gray-900">{formatTime(segment.arriving_at)}</p>
-          <p className="text-xs font-bold text-gray-400 mt-1 uppercase">{segment.destination?.iata_code}</p>
-          <p className="text-[10px] text-gray-400">{segment.destination?.city_name || segment.destination?.name}</p>
-        </div>
       </div>
-      <div className="mt-2 text-center">
-        <p className="text-[10px] text-gray-500">
-          Flight {segment.marketing_carrier_flight_number} • {segment.operating_carrier?.name}
-        </p>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // Render a journey with stopovers
   const renderJourney = (slice: any, title: string, date: string) => {
+    if (!slice) {
+      return (
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{title}</h3>
+            <p className="text-xs font-bold text-gray-600">{date}</p>
+          </div>
+          <div className="text-center py-8 text-gray-400">No flight information available</div>
+        </div>
+      );
+    }
+    
     const segments = slice?.segments || [];
     const stopovers = getStopoverAirports(segments);
     const hasStopovers = stopovers.length > 0;
@@ -550,7 +690,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                 <div>
                   <h1 className="text-2xl font-black text-gray-900 tracking-tight">{airlineName}</h1>
                   <div className="flex items-center gap-2 mt-1">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{flightNumber}</p>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{flightNumber || 'Flight'}</p>
                     <span className="w-1 h-1 rounded-full bg-gray-300"></span>
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{stopText}</p>
                   </div>
