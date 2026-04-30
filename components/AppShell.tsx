@@ -95,19 +95,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      {isLoggedIn && (
-        <button
-          onClick={() => setIsAiOpen(!isAiOpen)}
-          className="fixed bottom-8 right-8 w-16 h-16 bg-[#33a8da] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition z-50"
-          aria-label="Open AI Assistant"
-        >
-          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-          </svg>
-        </button>
-      )}
+      {/* ✅ AI Assistant Button - Visible to EVERYONE (guests + logged in) */}
+      <button
+        onClick={() => setIsAiOpen(!isAiOpen)}
+        className="fixed bottom-8 right-8 w-16 h-16 bg-[#33a8da] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition z-50"
+        aria-label="Open AI Assistant"
+      >
+        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+        </svg>
+      </button>
 
-      {isAiOpen && <AIAssistant onClose={() => setIsAiOpen(false)} user={user ?? undefined} />}
+      {/* AI Assistant Modal - Pass user if logged in, otherwise undefined/null */}
+      {isAiOpen && (
+        <AIAssistant 
+          onClose={() => setIsAiOpen(false)} 
+          user={isLoggedIn ? user : null} 
+        />
+      )}
     </div>
   );
 }
