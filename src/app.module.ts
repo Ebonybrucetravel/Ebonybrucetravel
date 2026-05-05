@@ -42,6 +42,8 @@ import { MarkupController } from './presentation/markup/markup.controller';
 import { DashboardController } from './presentation/dashboard/dashboard.controller';
 import { BookingHotelbedsController } from './presentation/booking/booking-hotelbeds.controller';
 import { BookingWakanowController } from './presentation/booking/booking-wakanow.controller';
+import { CurrencyController } from './presentation/currency/currency.controller';
+import { CurrencyModule } from './infrastructure/currency/currency.module';
 
 @Module({
   imports: [
@@ -69,6 +71,7 @@ import { BookingWakanowController } from './presentation/booking/booking-wakanow
     CacheModule,
     HotelImagesModule,
     UsageTrackingModule,
+    CurrencyModule,
 
     // Domains
     BookingModule,
@@ -89,7 +92,7 @@ import { BookingWakanowController } from './presentation/booking/booking-wakanow
     HealthModule,
     ContactModule,
   ],
-  controllers: [BookingController, PaymentController, MarkupController, DashboardController, BookingHotelbedsController, BookingWakanowController],
+  controllers: [BookingController, PaymentController, MarkupController, DashboardController, BookingHotelbedsController, BookingWakanowController, CurrencyController],
   providers: [
     {
       provide: APP_FILTER,

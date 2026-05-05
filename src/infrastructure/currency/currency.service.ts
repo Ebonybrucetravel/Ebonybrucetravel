@@ -9,6 +9,7 @@ export class CurrencyService {
   private readonly apiKey: string | undefined;
   private readonly baseUrl: string;
   private readonly cache: Map<string, { rate: number; timestamp: number }> = new Map();
+  private readonly fullRatesCache: Map<string, { rates: Record<string, number>; timestamp: number }> = new Map();
   private readonly cacheTTL = 24 * 60 * 60 * 1000; // 24 hours
   private readonly cacheFilePath = path.join(process.cwd(), '.currency-cache.json');
   private readonly inFlightRequests = new Map<string, Promise<number>>();
@@ -142,6 +143,46 @@ export class CurrencyService {
         await new Promise((resolve) => setTimeout(resolve, backoff));
         return this.fetchWithRetry(url, retries - 1, backoff * 2);
       }
+      throw error;
+    }
+  }
+
+  async getAllRates(baseCurrency: string = 'GBP'): Promise<any> {
+    baseCurrency = baseCurrency.toUpperCase();
+    const cacheKey = `all_${baseCurrency}`;
+    const cached = this.fullRatesCache.get(cacheKey);
+
+    if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
+      return {
+        base: baseCurrency,
+        rates: cached.rates,
+        date: new Date(cached.timestamp).toISOString().split('T')[0],
+        timestamp: cached.timestamp
+      };
+    }
+
+    try {
+      const response = await this.fetchWithRetry(`${this.baseUrl}/latest/${baseCurrency}`);
+      if (!response.ok) {
+        throw new Error(`Exchange rate API error: ${response.status}`);
+      }
+      const data = await response.json();
+      const rates = data.conversion_rates || data.rates;
+      
+      if (!data || !rates) {
+        throw new Error(`Invalid API response structure: rates not found`);
+      }
+
+      this.fullRatesCache.set(cacheKey, { rates, timestamp: Date.now() });
+
+      return {
+        base: baseCurrency,
+        rates,
+        date: new Date().toISOString().split('T')[0],
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      this.logger.error(`Failed to fetch all rates for ${baseCurrency}:`, error);
       throw error;
     }
   }
