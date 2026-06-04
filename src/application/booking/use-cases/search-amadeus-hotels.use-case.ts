@@ -110,8 +110,6 @@ export class SearchAmadeusHotelsUseCase {
             radius,
             radiusUnit,
             chainCodes,
-            amenities,
-            ratings,
             hotelSource,
           });
         } else if (cityCode) {
@@ -119,8 +117,6 @@ export class SearchAmadeusHotelsUseCase {
           hotelsListResponse = await this.amadeusService.getHotelsByCity({
             cityCode,
             chainCodes,
-            amenities,
-            ratings,
             radius,
             radiusUnit,
             hotelSource,
