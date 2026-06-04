@@ -171,7 +171,7 @@ export class SearchCarRentalsUseCase {
         originLocationCode: pickupLocationCode,
         destinationLocationCode: dropoffLocationCode || pickupLocationCode,
         departureDateTime: formattedPickupDateTime,
-        returnDateTime: formattedDropoffDateTime, // Not used by API, but kept for reference
+        //returnDateTime: formattedDropoffDateTime, // Not used by API, but kept for reference
         passengers,
         vehicleTypes: vehicleTypes || undefined,
         transferType: 'PRIVATE', // Default to PRIVATE transfer (can be PRIVATE, SHARED, TAXI, HOURLY, etc.)
