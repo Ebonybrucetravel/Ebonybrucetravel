@@ -152,7 +152,7 @@ export class AmadeusService {
         let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
         if (response.status === 401 || response.status === 403) {
           httpStatus = HttpStatus.UNAUTHORIZED;
-          this.accessToken = null; // Clear invalid token
+          this.accessToken = null;
         } else if (response.status === 400 || response.status === 422) {
           httpStatus = HttpStatus.BAD_REQUEST;
         } else if (response.status === 404) {
@@ -342,10 +342,6 @@ export class AmadeusService {
       },
     };
     
-    //if (params.accommodationSpecialRequests) {
-      //requestBody.data.accommodationSpecialRequests = params.accommodationSpecialRequests;
-    //}
-    
     return this.makeRequest('/v2/booking/hotel-orders', { method: 'POST', body: requestBody });
   }
 
@@ -373,34 +369,58 @@ export class AmadeusService {
   // ==================== TRANSFERS / CAR RENTAL API (v1) ====================
   
   async searchTransfers(params: {
-    originLocationCode: string;
-    destinationLocationCode?: string;
-    departureDateTime: string;
+    startLocationCode?: string;
+    endLocationCode?: string;
+    startDateTime: string;
     passengers: number;
-    vehicleTypes?: string[];
     transferType?: string;
     duration?: string;
     currency?: string;
+    startAddressLine?: string;
+    startCityName?: string;
+    startCountryCode?: string;
+    endAddressLine?: string;
+    endCityName?: string;
+    endCountryCode?: string;
   }): Promise<any> {
     const requestBody: any = {
-      startDateTime: params.departureDateTime,
-      startLocationCode: params.originLocationCode,
+      startDateTime: params.startDateTime,
       passengers: params.passengers,
-      endLocationCode: params.destinationLocationCode ?? params.originLocationCode,
     };
+    
+    if (params.startLocationCode) {
+      requestBody.startLocationCode = params.startLocationCode;
+    } else if (params.startAddressLine && params.startCityName && params.startCountryCode) {
+      requestBody.startAddressLine = params.startAddressLine;
+      requestBody.startCityName = params.startCityName;
+      requestBody.startCountryCode = params.startCountryCode;
+    } else {
+      throw new HttpException(
+        'Either startLocationCode or startAddressLine with startCityName and startCountryCode is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    
+    if (params.endLocationCode) {
+      requestBody.endLocationCode = params.endLocationCode;
+    } else if (params.endAddressLine && params.endCityName && params.endCountryCode) {
+      requestBody.endAddressLine = params.endAddressLine;
+      requestBody.endCityName = params.endCityName;
+      requestBody.endCountryCode = params.endCountryCode;
+    } else if (params.startLocationCode) {
+      requestBody.endLocationCode = params.startLocationCode;
+    } else {
+      throw new HttpException(
+        'Either endLocationCode or endAddressLine with endCityName and endCountryCode is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     
     if (params.transferType) requestBody.transferType = params.transferType;
     if (params.duration) requestBody.duration = params.duration;
     if (params.currency) requestBody.currency = params.currency;
     
-    if (params.vehicleTypes?.length) {
-      const vehicleCodeMap: Record<string, string> = {
-        SEDAN: 'SED', SUV: 'SUV', VAN: 'VAN', CONVERTIBLE: 'CAR',
-        COUPE: 'CAR', HATCHBACK: 'CAR', WAGON: 'WGN', PICKUP: 'VAN',
-      };
-      const mappedCode = vehicleCodeMap[params.vehicleTypes[0].toUpperCase()];
-      if (mappedCode) requestBody.vehicleCode = mappedCode;
-    }
+    this.logger.log(`Transfers request: ${JSON.stringify(requestBody)}`);
     
     return this.makeRequest('/v1/shopping/transfer-offers', { method: 'POST', body: requestBody });
   }
