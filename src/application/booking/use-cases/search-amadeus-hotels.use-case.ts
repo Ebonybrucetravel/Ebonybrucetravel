@@ -110,7 +110,6 @@ export class SearchAmadeusHotelsUseCase {
             radius,
             radiusUnit,
             chainCodes,
-            hotelSource,
           });
         } else if (cityCode) {
           // Use city search
