@@ -1,1 +1,469 @@
-import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';import { ConfigService } from '@nestjs/config';import { redactCardFromString } from '@common/utils/pci-redaction.util';@Injectable()export class AmadeusService {  private readonly logger = new Logger(AmadeusService.name);  private readonly apiKey: string;  private readonly apiSecret: string;  private readonly baseUrl: string;  private accessToken: string | null = null;  private tokenExpiresAt: number = 0;  constructor(private readonly configService: ConfigService) {    this.apiKey = this.configService.get<string>('AMADEUS_API_KEY') || '';    this.apiSecret = this.configService.get<string>('AMADEUS_API_SECRET') || '';    const env = this.configService.get<string>('AMADEUS_ENV') || 'test';    this.baseUrl = env === 'production'       ? 'https://api.amadeus.com'      : 'https://test.api.amadeus.com';    if (!this.apiKey || !this.apiSecret) {      this.logger.warn('Amadeus API credentials not configured. Hotel/transfer features will not work.');    }  }  private async getAccessToken(): Promise<string> {    if (this.accessToken && Date.now() < this.tokenExpiresAt) {      return this.accessToken;    }    if (!this.apiKey || !this.apiSecret) {      throw new HttpException(        'Amadeus API credentials not configured',        HttpStatus.INTERNAL_SERVER_ERROR,      );    }    try {      const credentials = Buffer.from(`${this.apiKey}:${this.apiSecret}`).toString('base64');      const response = await fetch(`${this.baseUrl}/v1/security/oauth2/token`, {        method: 'POST',        headers: {          'Content-Type': 'application/x-www-form-urlencoded',          Authorization: `Basic ${credentials}`,        },        body: 'grant_type=client_credentials',      });      if (!response.ok) {        const errorText = await response.text();        throw new HttpException(          `Failed to get Amadeus access token: ${response.status} ${errorText}`,          HttpStatus.UNAUTHORIZED,        );      }      const data = await response.json();      this.accessToken = data.access_token;      this.tokenExpiresAt = Date.now() + (data.expires_in - 300) * 1000;      return this.accessToken;    } catch (error) {      if (error instanceof HttpException) {        throw error;      }      throw new HttpException(        `Failed to authenticate with Amadeus: ${error instanceof Error ? error.message : 'Unknown error'}`,        HttpStatus.INTERNAL_SERVER_ERROR,      );    }  }  private async makeRequest(    endpoint: string,    options: {      method?: 'GET' | 'POST' | 'PUT' | 'DELETE';      body?: any;      params?: Record<string, string>;    } = {},  ): Promise<any> {    const token = await this.getAccessToken();    const { method = 'GET', body, params } = options;    let url = `${this.baseUrl}${endpoint}`;    if (params && Object.keys(params).length > 0) {      const searchParams = new URLSearchParams(params);      url += `?${searchParams.toString()}`;    }    const headers: Record<string, string> = {      Authorization: `Bearer ${token}`,      Accept: 'application/json',    };    if (body && (method === 'POST' || method === 'PUT')) {      headers['Content-Type'] = 'application/json';    }    try {      const response = await fetch(url, {        method,        headers,        body: body ? JSON.stringify(body) : undefined,      });      if (!response.ok) {        const errorText = await response.text();        this.logger.warn(`Amadeus API error ${response.status} ${endpoint}: ${redactCardFromString(errorText, 500)}`);        let errorMessage = `Amadeus API error: ${response.status}`;        let errorDetails: any[] = [];        try {          const errorJson = JSON.parse(errorText);          if (errorJson.errors && Array.isArray(errorJson.errors) && errorJson.errors.length > 0) {            errorDetails = errorJson.errors.map((e: any) => ({              status: e.status || response.status,              code: e.code,              title: e.title,              detail: e.detail,              source: e.source || {},              documentation: e.documentation,            }));            const firstError = errorJson.errors[0];            errorMessage = firstError.detail || firstError.title || errorMessage;          } else {            errorMessage += ` - ${redactCardFromString(errorText, 200)}`;          }        } catch {          errorMessage += ` - ${redactCardFromString(errorText, 200)}`;        }        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;        if (response.status === 401 || response.status === 403) {          httpStatus = HttpStatus.UNAUTHORIZED;        } else if (response.status === 400 || response.status === 422) {          httpStatus = HttpStatus.BAD_REQUEST;        } else if (response.status === 404) {          httpStatus = HttpStatus.NOT_FOUND;        } else if (response.status >= 500) {          httpStatus = HttpStatus.SERVICE_UNAVAILABLE;        }        if (errorDetails.length > 0) {          const errorCode = errorDetails[0].code;          const badRequestCodes = [            61,             137,             145,             381,             382,             383,             392,             397,             400,             404,           ];          if (badRequestCodes.includes(errorCode)) {            httpStatus = HttpStatus.BAD_REQUEST;          }        }        throw new HttpException(          {            message: errorMessage,            error: response.status === 403               ? 'Feature not available'               : response.status === 401                 ? 'Authentication failed'                : 'API error',            statusCode: httpStatus,            errors: errorDetails.length > 0 ? errorDetails : undefined,          },          httpStatus,        );      }      return await response.json();    } catch (error) {      if (error instanceof HttpException) {        throw error;      }      throw new HttpException(        `Amadeus API request failed: ${error instanceof Error ? error.message : 'Unknown error'}`,        HttpStatus.INTERNAL_SERVER_ERROR,      );    }  }  async searchHotels(params: {    hotelIds: string[];     checkInDate: string;     checkOutDate: string;     adults?: number;     roomQuantity?: number;     countryOfResidence?: string;     priceRange?: string;     currency?: string;     paymentPolicy?: 'GUARANTEE' | 'DEPOSIT' | 'NONE';     boardType?: 'ROOM_ONLY' | 'BREAKFAST' | 'HALF_BOARD' | 'FULL_BOARD' | 'ALL_INCLUSIVE';    includeClosed?: boolean;     bestRateOnly?: boolean;     lang?: string;   }): Promise<any> {    const queryParams: Record<string, string> = {      checkInDate: params.checkInDate,      checkOutDate: params.checkOutDate,    };    if (!params.hotelIds || params.hotelIds.length === 0) {      throw new HttpException(        'hotelIds is required for Amadeus v3 hotel search. Use Hotel List API to get hotel IDs by city first.',        HttpStatus.BAD_REQUEST,      );    }    queryParams.hotelIds = params.hotelIds.join(',');    if (params.adults) queryParams.adults = params.adults.toString();    if (params.roomQuantity) queryParams.roomQuantity = params.roomQuantity.toString();    if (params.countryOfResidence) queryParams.countryOfResidence = params.countryOfResidence;    if (params.priceRange) {      queryParams.priceRange = params.priceRange;      if (params.currency) queryParams.currency = params.currency;    }    if (params.currency && !params.priceRange) queryParams.currency = params.currency;    if (params.paymentPolicy) queryParams.paymentPolicy = params.paymentPolicy;    if (params.boardType) queryParams.boardType = params.boardType;    if (params.includeClosed !== undefined) queryParams.includeClosed = params.includeClosed.toString();    if (params.bestRateOnly !== undefined) queryParams.bestRateOnly = params.bestRateOnly.toString();    if (params.lang) queryParams.lang = params.lang;    return this.makeRequest('/v3/shopping/hotel-offers', {      method: 'GET',      params: queryParams,    });  }  async getHotelOfferPricing(params: {    offerId: string;    lang?: string;  }): Promise<any> {    const queryParams: Record<string, string> = {};    if (params.lang) queryParams.lang = params.lang;    return this.makeRequest(`/v3/shopping/hotel-offers/${params.offerId}`, {      method: 'GET',      params: queryParams,    });  }  async createHotelBooking(params: {    hotelOfferId: string;    guests: Array<{      title: string;       firstName: string;      lastName: string;      phone: string;      email: string;    }>;    roomAssociations: Array<{      hotelOfferId: string;      guestReferences: Array<{        guestReference: string;       }>;    }>;    payment: {      method: 'CREDIT_CARD';      paymentCard: {        paymentCardInfo: {          vendorCode: string;           cardNumber: string;          expiryDate: string;           holderName?: string;          securityCode?: string;        };      };    };    travelAgentEmail?: string;    accommodationSpecialRequests?: string;  }): Promise<any> {    const amadeusGuests = params.guests.map((guest, index) => ({      tid: index + 1,       title: guest.title,      firstName: guest.firstName,      lastName: guest.lastName,      phone: guest.phone,      email: guest.email,    }));    const amadeusRoomAssociations = params.roomAssociations.map((room) => ({      guestReferences: room.guestReferences,      hotelOfferId: room.hotelOfferId,    }));    const travelAgentEmail =      params.travelAgentEmail ||      this.configService.get<string>('AMADEUS_TRAVEL_AGENT_EMAIL');    if (!travelAgentEmail?.trim()) {      throw new HttpException(        'Amadeus requires a travel agent contact. Set AMADEUS_TRAVEL_AGENT_EMAIL in env or send travelAgentEmail in the booking request.',        HttpStatus.BAD_REQUEST,      );    }    const requestBody: any = {      data: {        type: 'hotel-order',        guests: amadeusGuests,        roomAssociations: amadeusRoomAssociations,        payment: params.payment,        travelAgent: {          contact: {            email: travelAgentEmail.trim(),          },        },      },    };    return this.makeRequest('/v2/booking/hotel-orders', {      method: 'POST',      body: requestBody,    });  }  async getHotelBooking(orderId: string): Promise<any> {    return this.makeRequest(`/v2/booking/hotel-orders/${orderId}`, {      method: 'GET',    });  }  async cancelHotelBooking(orderId: string): Promise<any> {    return this.makeRequest(`/v2/booking/hotel-orders/${orderId}/cancellation`, {      method: 'POST',      body: {        data: {        },      },    });  }  async searchHotelNames(params: {    keyword: string;    subType?: string;     countryCode?: string;    page?: {      limit?: number;      offset?: number;    };  }): Promise<any> {    const queryParams: Record<string, string> = {      keyword: params.keyword,    };    if (params.subType) queryParams.subType = params.subType;    if (params.countryCode) queryParams.countryCode = params.countryCode;    if (params.page?.limit) queryParams['page[limit]'] = params.page.limit.toString();    if (params.page?.offset) queryParams['page[offset]'] = params.page.offset.toString();    return this.makeRequest('/v1/reference-data/locations/hotel', {      method: 'GET',      params: queryParams,    });  }  async getHotelsByCity(params: {    cityCode: string;    hotelIds?: string[];    amenities?: string[];    ratings?: number[];    chainCodes?: string[];    radius?: number;    radiusUnit?: 'KM' | 'MILE';    hotelSource?: 'BEDBANK' | 'DIRECTCHAIN' | 'ALL';  }): Promise<any> {    const queryParams: Record<string, string> = {      cityCode: params.cityCode,    };    if (params.hotelIds && params.hotelIds.length > 0) {      queryParams.hotelIds = params.hotelIds.join(',');    }    if (params.amenities && params.amenities.length > 0) {      queryParams.amenities = params.amenities.join(',');    }    if (params.ratings && params.ratings.length > 0) {      queryParams.ratings = params.ratings.join(',').toString();    }    if (params.chainCodes && params.chainCodes.length > 0) {      queryParams.chainCodes = params.chainCodes.join(',');    }    if (params.radius) {      queryParams.radius = params.radius.toString();    }    if (params.radiusUnit) {      queryParams.radiusUnit = params.radiusUnit;    }    if (params.hotelSource) {      queryParams.hotelSource = params.hotelSource;    }    return this.makeRequest('/v1/reference-data/locations/hotels/by-city', {      method: 'GET',      params: queryParams,    });  }  async getHotelsByGeocode(params: {    latitude: number;    longitude: number;    radius?: number;    radiusUnit?: 'KM' | 'MILE';    chainCodes?: string[];    amenities?: string[];    ratings?: number[];    hotelSource?: 'BEDBANK' | 'DIRECTCHAIN' | 'ALL';  }): Promise<any> {    const queryParams: Record<string, string> = {      latitude: params.latitude.toString(),      longitude: params.longitude.toString(),    };    if (params.radius) {      queryParams.radius = params.radius.toString();    }    if (params.radiusUnit) {      queryParams.radiusUnit = params.radiusUnit;    }    if (params.chainCodes && params.chainCodes.length > 0) {      queryParams.chainCodes = params.chainCodes.join(',');    }    if (params.amenities && params.amenities.length > 0) {      queryParams.amenities = params.amenities.join(',');    }    if (params.ratings && params.ratings.length > 0) {      queryParams.ratings = params.ratings.join(',').toString();    }    if (params.hotelSource) {      queryParams.hotelSource = params.hotelSource;    }    return this.makeRequest('/v1/reference-data/locations/hotels/by-geocode', {      method: 'GET',      params: queryParams,    });  }  async getHotelsByIds(params: {    hotelIds: string[];  }): Promise<any> {    const queryParams: Record<string, string> = {      hotelIds: params.hotelIds.join(','),    };    return this.makeRequest('/v1/reference-data/locations/hotels/by-hotels', {      method: 'GET',      params: queryParams,    });  }  async getHotelRatings(params: {    hotelIds: string[];  }): Promise<any> {    const queryParams: Record<string, string> = {      hotelIds: params.hotelIds.join(','),    };    return this.makeRequest('/v2/e-reputation/hotel-sentiments', {      method: 'GET',      params: queryParams,    });  }  async searchTransfers(params: {    originLocationCode: string;     destinationLocationCode?: string;     departureDateTime: string;     returnDateTime?: string;     passengers: number;    vehicleTypes?: string[];     includedServices?: string[];    transferType?: string;     duration?: string;     currency?: string;   }): Promise<any> {    const requestBody: any = {      startDateTime: params.departureDateTime,       startLocationCode: params.originLocationCode,       passengers: params.passengers,    };    requestBody.endLocationCode =      params.destinationLocationCode ?? params.originLocationCode;    if (params.transferType) {      requestBody.transferType = params.transferType;    }    if (params.duration) {      requestBody.duration = params.duration;    }    if (params.currency) {      requestBody.currency = params.currency;    }    if (params.vehicleTypes && params.vehicleTypes.length > 0) {      const vehicleCodeMap: Record<string, string> = {        SEDAN: 'SED',        SUV: 'SUV',        VAN: 'VAN',        CONVERTIBLE: 'CAR',        COUPE: 'CAR',        HATCHBACK: 'CAR',        WAGON: 'WGN',        PICKUP: 'VAN',      };      const mappedCode = vehicleCodeMap[params.vehicleTypes[0].toUpperCase()];      if (mappedCode) {        requestBody.vehicleCode = mappedCode;      }    }    this.logger.log(`Amadeus transfer search request body: ${JSON.stringify(requestBody, null, 2)}`);    return this.makeRequest('/v1/shopping/transfer-offers', {      method: 'POST',      body: requestBody,    });  }  async createTransferBooking(params: {    offerId: string;    passengers: Array<{      name: {        title: string;        firstName: string;        lastName: string;      };      contact: {        phone: string;        email: string;      };    }>;    payments: Array<{      method: string;      card?: {        vendorCode: string;        cardNumber: string;        expiryDate: string;      };    }>;  }): Promise<any> {    return this.makeRequest('/v1/ordering/transfer-orders', {      method: 'POST',      body: {        data: {          offerId: params.offerId,          passengers: params.passengers,          payments: params.payments,        },      },    });  }  async cancelTransfer(orderId: string): Promise<any> {    return this.makeRequest(      `/v1/ordering/transfer-orders/${orderId}/transfers/cancellation`,      {        method: 'POST',      },    );  }}
+import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { redactCardFromString } from '@common/utils/pci-redaction.util';
+
+@Injectable()
+export class AmadeusService {
+  private readonly logger = new Logger(AmadeusService.name);
+  private readonly apiKey: string;
+  private readonly apiSecret: string;
+  private readonly baseUrl: string;
+  private accessToken: string | null = null;
+  private tokenExpiresAt: number = 0;
+
+  constructor(private readonly configService: ConfigService) {
+    // Enterprise credentials
+    this.apiKey = this.configService.get<string>('AMADEUS_API_KEY') || '';
+    this.apiSecret = this.configService.get<string>('AMADEUS_API_SECRET') || '';
+    
+    // Enterprise base URL (includes "travel." for Enterprise APIs)
+    const env = this.configService.get<string>('AMADEUS_ENV') || 'test';
+    this.baseUrl = env === 'production' 
+      ? 'https://travel.api.amadeus.com'       // Enterprise production
+      : 'https://test.travel.api.amadeus.com';  // Enterprise test
+    
+    if (!this.apiKey || !this.apiSecret) {
+      this.logger.warn('Amadeus API credentials not configured. Features will not work.');
+    }
+    
+    this.logger.log(`AmadeusService initialized with base URL: ${this.baseUrl}`);
+  }
+
+  // ==================== AUTHENTICATION ====================
+  
+  private async getAccessToken(): Promise<string> {
+    if (this.accessToken && Date.now() < this.tokenExpiresAt) {
+      this.logger.debug('Using cached access token');
+      return this.accessToken;
+    }
+
+    if (!this.apiKey || !this.apiSecret) {
+      throw new HttpException(
+        'Amadeus API credentials not configured. Set AMADEUS_API_KEY and AMADEUS_API_SECRET.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    try {
+      this.logger.log('Requesting Amadeus OAuth token...');
+      this.logger.debug(`Token endpoint: ${this.baseUrl}/v1/security/oauth2/token`);
+      
+      const response = await fetch(`${this.baseUrl}/v1/security/oauth2/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'client_credentials',
+          client_id: this.apiKey,
+          client_secret: this.apiSecret,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(`OAuth failed: ${response.status} - ${errorText}`);
+        
+        if (response.status === 401) {
+          throw new HttpException(
+            'Invalid Amadeus credentials. Please check your AMADEUS_API_KEY and AMADEUS_API_SECRET.',
+            HttpStatus.UNAUTHORIZED,
+          );
+        }
+        
+        throw new HttpException(
+          `Failed to get Amadeus access token: ${response.status} - ${errorText}`,
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      const data = await response.json();
+      this.accessToken = data.access_token;
+      this.tokenExpiresAt = Date.now() + (data.expires_in - 300) * 1000;
+      
+      this.logger.log('Amadeus OAuth token obtained successfully');
+      return this.accessToken;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Failed to authenticate with Amadeus: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  private async makeRequest(
+    endpoint: string,
+    options: {
+      method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+      body?: any;
+      params?: Record<string, string>;
+    } = {},
+  ): Promise<any> {
+    const token = await this.getAccessToken();
+    const { method = 'GET', body, params } = options;
+    
+    let url = `${this.baseUrl}${endpoint}`;
+    if (params && Object.keys(params).length > 0) {
+      const searchParams = new URLSearchParams(params);
+      url += `?${searchParams.toString()}`;
+    }
+
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json',
+    };
+
+    if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    this.logger.debug(`Amadeus API ${method} ${endpoint}`);
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.warn(`Amadeus API error ${response.status} ${endpoint}: ${redactCardFromString(errorText, 500)}`);
+        
+        let errorMessage = `Amadeus API error: ${response.status}`;
+        let errorDetails: any[] = [];
+        
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.errors && Array.isArray(errorJson.errors) && errorJson.errors.length > 0) {
+            errorDetails = errorJson.errors;
+            const firstError = errorJson.errors[0];
+            errorMessage = firstError.detail || firstError.title || errorMessage;
+          } else if (errorJson.message) {
+            errorMessage = errorJson.message;
+          }
+        } catch {
+          // Use default error message
+        }
+
+        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (response.status === 401 || response.status === 403) {
+          httpStatus = HttpStatus.UNAUTHORIZED;
+          this.accessToken = null; // Clear invalid token
+        } else if (response.status === 400 || response.status === 422) {
+          httpStatus = HttpStatus.BAD_REQUEST;
+        } else if (response.status === 404) {
+          httpStatus = HttpStatus.NOT_FOUND;
+        }
+
+        throw new HttpException(
+          {
+            message: errorMessage,
+            statusCode: httpStatus,
+            errors: errorDetails,
+          },
+          httpStatus,
+        );
+      }
+
+      if (response.status === 204) {
+        return { success: true };
+      }
+      
+      return await response.json();
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Amadeus API request failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // ==================== HOTEL LIST API (v1) ====================
+  
+  async searchHotelNames(params: {
+    keyword: string;
+    subType?: string;
+    countryCode?: string;
+    page?: { limit?: number; offset?: number };
+  }): Promise<any> {
+    const queryParams: Record<string, string> = { keyword: params.keyword };
+    if (params.subType) queryParams.subType = params.subType;
+    if (params.countryCode) queryParams.countryCode = params.countryCode;
+    if (params.page?.limit) queryParams['page[limit]'] = params.page.limit.toString();
+    if (params.page?.offset) queryParams['page[offset]'] = params.page.offset.toString();
+    
+    return this.makeRequest('/v1/reference-data/locations/hotel', { method: 'GET', params: queryParams });
+  }
+
+  async getHotelsByCity(params: {
+    cityCode: string;
+    hotelIds?: string[];
+    amenities?: string[];
+    ratings?: number[];
+    chainCodes?: string[];
+    radius?: number;
+    radiusUnit?: 'KM' | 'MILE';
+    hotelSource?: 'BEDBANK' | 'DIRECTCHAIN' | 'ALL';
+  }): Promise<any> {
+    const queryParams: Record<string, string> = { cityCode: params.cityCode };
+    if (params.hotelIds?.length) queryParams.hotelIds = params.hotelIds.join(',');
+    if (params.amenities?.length) queryParams.amenities = params.amenities.join(',');
+    if (params.ratings?.length) queryParams.ratings = params.ratings.join(',');
+    if (params.chainCodes?.length) queryParams.chainCodes = params.chainCodes.join(',');
+    if (params.radius) queryParams.radius = params.radius.toString();
+    if (params.radiusUnit) queryParams.radiusUnit = params.radiusUnit;
+    if (params.hotelSource) queryParams.hotelSource = params.hotelSource;
+    
+    return this.makeRequest('/v1/reference-data/locations/hotels/by-city', { method: 'GET', params: queryParams });
+  }
+
+  async getHotelsByGeocode(params: {
+    latitude: number;
+    longitude: number;
+    radius?: number;
+    radiusUnit?: 'KM' | 'MILE';
+    chainCodes?: string[];
+  }): Promise<any> {
+    const queryParams: Record<string, string> = {
+      latitude: params.latitude.toString(),
+      longitude: params.longitude.toString(),
+    };
+    if (params.radius) queryParams.radius = params.radius.toString();
+    if (params.radiusUnit) queryParams.radiusUnit = params.radiusUnit;
+    if (params.chainCodes?.length) queryParams.chainCodes = params.chainCodes.join(',');
+    
+    return this.makeRequest('/v1/reference-data/locations/hotels/by-geocode', { method: 'GET', params: queryParams });
+  }
+
+  async getHotelsByIds(params: { hotelIds: string[] }): Promise<any> {
+    return this.makeRequest('/v1/reference-data/locations/hotels/by-hotels', {
+      method: 'GET',
+      params: { hotelIds: params.hotelIds.join(',') },
+    });
+  }
+
+  async getHotelRatings(params: { hotelIds: string[] }): Promise<any> {
+    return this.makeRequest('/v2/e-reputation/hotel-sentiments', {
+      method: 'GET',
+      params: { hotelIds: params.hotelIds.join(',') },
+    });
+  }
+
+  // ==================== HOTEL CONTENT API (v3) ====================
+  
+  async getHotelContent(
+    hotelId: string,
+    fields?: Array<'promotions' | 'awards' | 'policies' | 'rooms' | 'facilities' | 'pointOfInterest' | 'hotel' | 'basic'>,
+    view?: 'LIGHT' | 'FULL'
+  ): Promise<any> {
+    if (!hotelId) throw new HttpException('Hotel ID is required', HttpStatus.BAD_REQUEST);
+    
+    const queryParams: Record<string, string> = { hotelID: hotelId };
+    if (fields?.length) queryParams.fields = fields.join(',');
+    if (view) queryParams.view = view;
+    
+    return this.makeRequest('/v3/reference-data/locations/by-hotel', { method: 'GET', params: queryParams });
+  }
+
+  async getHotelBasicInfo(hotelId: string): Promise<any> {
+    return this.getHotelContent(hotelId, ['basic'], 'LIGHT');
+  }
+
+  async getHotelFullDetails(hotelId: string): Promise<any> {
+    return this.getHotelContent(hotelId, undefined, 'FULL');
+  }
+
+  // ==================== HOTEL SEARCH API (v3) ====================
+  
+  async searchHotels(params: {
+    hotelIds: string[];
+    checkInDate: string;
+    checkOutDate: string;
+    adults?: number;
+    roomQuantity?: number;
+    currency?: string;
+    bestRateOnly?: boolean;
+  }): Promise<any> {
+    if (!params.hotelIds?.length) {
+      throw new HttpException('hotelIds is required', HttpStatus.BAD_REQUEST);
+    }
+    
+    const queryParams: Record<string, string> = {
+      checkInDate: params.checkInDate,
+      checkOutDate: params.checkOutDate,
+      hotelIds: params.hotelIds.join(','),
+    };
+    if (params.adults) queryParams.adults = params.adults.toString();
+    if (params.roomQuantity) queryParams.roomQuantity = params.roomQuantity.toString();
+    if (params.currency) queryParams.currency = params.currency;
+    if (params.bestRateOnly !== undefined) queryParams.bestRateOnly = params.bestRateOnly.toString();
+    
+    return this.makeRequest('/v3/shopping/hotel-offers', { method: 'GET', params: queryParams });
+  }
+
+  async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<any> {
+    const queryParams: Record<string, string> = {};
+    if (params.lang) queryParams.lang = params.lang;
+    return this.makeRequest(`/v3/shopping/hotel-offers/${params.offerId}`, { method: 'GET', params: queryParams });
+  }
+
+  // ==================== HOTEL BOOKING API (v2) ====================
+  
+  async createHotelBooking(params: {
+    hotelOfferId: string;
+    guests: Array<{ title: string; firstName: string; lastName: string; phone: string; email: string }>;
+    roomAssociations: Array<{ hotelOfferId: string; guestReferences: Array<{ guestReference: string }> }>;
+    payment: {
+      method: 'CREDIT_CARD';
+      paymentCard: { paymentCardInfo: { vendorCode: string; cardNumber: string; expiryDate: string; holderName?: string; securityCode?: string } };
+    };
+    travelAgentEmail?: string;
+    accommodationSpecialRequests?: string;
+  }): Promise<any> {
+    const travelAgentEmail = params.travelAgentEmail || this.configService.get<string>('AMADEUS_TRAVEL_AGENT_EMAIL');
+    if (!travelAgentEmail?.trim()) {
+      throw new HttpException('Travel agent email is required', HttpStatus.BAD_REQUEST);
+    }
+    
+    const requestBody = {
+      data: {
+        type: 'hotel-order',
+        guests: params.guests.map((guest, index) => ({ tid: index + 1, ...guest })),
+        roomAssociations: params.roomAssociations,
+        payment: params.payment,
+        travelAgent: { contact: { email: travelAgentEmail.trim() } },
+      },
+    };
+    
+    if (params.accommodationSpecialRequests) {
+      requestBody.data.accommodationSpecialRequests = params.accommodationSpecialRequests;
+    }
+    
+    return this.makeRequest('/v2/booking/hotel-orders', { method: 'POST', body: requestBody });
+  }
+
+  async getHotelBooking(orderId: string): Promise<any> {
+    if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
+    return this.makeRequest(`/v2/booking/hotel-orders/${orderId}`, { method: 'GET' });
+  }
+
+  async getHotelBookingByReference(reference: string): Promise<any> {
+    if (!reference) throw new HttpException('Reference is required', HttpStatus.BAD_REQUEST);
+    return this.makeRequest('/v2/booking/hotel-orders/by-reference', {
+      method: 'GET',
+      params: { reference: reference.toUpperCase() },
+    });
+  }
+
+  async cancelHotelBooking(orderId: string): Promise<any> {
+    if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
+    return this.makeRequest(`/v2/booking/hotel-orders/${orderId}/cancellation`, {
+      method: 'POST',
+      body: { data: {} },
+    });
+  }
+
+  // ==================== TRANSFERS / CAR RENTAL API (v1) ====================
+  
+  async searchTransfers(params: {
+    originLocationCode: string;
+    destinationLocationCode?: string;
+    departureDateTime: string;
+    passengers: number;
+    vehicleTypes?: string[];
+    transferType?: string;
+    duration?: string;
+    currency?: string;
+  }): Promise<any> {
+    const requestBody: any = {
+      startDateTime: params.departureDateTime,
+      startLocationCode: params.originLocationCode,
+      passengers: params.passengers,
+      endLocationCode: params.destinationLocationCode ?? params.originLocationCode,
+    };
+    
+    if (params.transferType) requestBody.transferType = params.transferType;
+    if (params.duration) requestBody.duration = params.duration;
+    if (params.currency) requestBody.currency = params.currency;
+    
+    if (params.vehicleTypes?.length) {
+      const vehicleCodeMap: Record<string, string> = {
+        SEDAN: 'SED', SUV: 'SUV', VAN: 'VAN', CONVERTIBLE: 'CAR',
+        COUPE: 'CAR', HATCHBACK: 'CAR', WAGON: 'WGN', PICKUP: 'VAN',
+      };
+      const mappedCode = vehicleCodeMap[params.vehicleTypes[0].toUpperCase()];
+      if (mappedCode) requestBody.vehicleCode = mappedCode;
+    }
+    
+    return this.makeRequest('/v1/shopping/transfer-offers', { method: 'POST', body: requestBody });
+  }
+
+  async createTransferBooking(params: {
+    offerId: string;
+    passengers: Array<{
+      name: { title: string; firstName: string; lastName: string };
+      contact: { phone: string; email: string };
+    }>;
+    payments: Array<{ method: string; card?: { vendorCode: string; cardNumber: string; expiryDate: string } }>;
+  }): Promise<any> {
+    return this.makeRequest('/v1/ordering/transfer-orders', {
+      method: 'POST',
+      body: { data: { offerId: params.offerId, passengers: params.passengers, payments: params.payments } },
+    });
+  }
+
+  async getTransferBooking(orderId: string): Promise<any> {
+    if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
+    return this.makeRequest(`/v1/ordering/transfer-orders/${orderId}`, { method: 'GET' });
+  }
+
+  async getTransferBookingByPNR(params: { pnr: string; firstName: string; lastName: string }): Promise<any> {
+    if (!params.pnr || !params.firstName || !params.lastName) {
+      throw new HttpException('PNR, first name, and last name are required', HttpStatus.BAD_REQUEST);
+    }
+    
+    return this.makeRequest('/v1/ordering/transfer-orders/retrieve', {
+      method: 'POST',
+      body: { pnr: params.pnr.toUpperCase(), firstName: params.firstName, lastName: params.lastName },
+    });
+  }
+
+  async createTransferBookingOnExistingOrder(
+    orderId: string,
+    params: {
+      offerId: string;
+      passengers: Array<{
+        name: { title: string; firstName: string; lastName: string };
+        contact: { phone: string; email: string };
+      }>;
+      payments: Array<{ method: string; card?: { vendorCode: string; cardNumber: string; expiryDate: string } }>;
+    }
+  ): Promise<any> {
+    if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
+    
+    return this.makeRequest(`/v1/ordering/transfer-orders/${orderId}`, {
+      method: 'POST',
+      body: { data: { offerId: params.offerId, passengers: params.passengers, payments: params.payments } },
+    });
+  }
+
+  async cancelTransfer(orderId: string): Promise<any> {
+    if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
+    return this.makeRequest(`/v1/ordering/transfer-orders/${orderId}/transfers/cancellation`, { method: 'POST' });
+  }
+
+  async listTransferBookings(params?: { page?: number; limit?: number }): Promise<any> {
+    const queryParams: Record<string, string> = {};
+    if (params?.page) queryParams.page = params.page.toString();
+    if (params?.limit) queryParams.limit = params.limit.toString();
+    
+    return this.makeRequest('/v1/ordering/transfer-orders', { method: 'GET', params: queryParams });
+  }
+}
