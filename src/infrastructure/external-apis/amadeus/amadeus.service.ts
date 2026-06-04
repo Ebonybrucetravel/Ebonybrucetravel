@@ -344,7 +344,7 @@ export class AmadeusService {
     
     //if (params.accommodationSpecialRequests) {
       //requestBody.data.accommodationSpecialRequests = params.accommodationSpecialRequests;
-    }
+    //}
     
     return this.makeRequest('/v2/booking/hotel-orders', { method: 'POST', body: requestBody });
   }
