@@ -39,7 +39,7 @@ export class SearchAmadeusHotelsUseCase {
       adults = 1,
       roomQuantity = 1,
       priceRange,
-      currency: targetCurrency = 'NGN',  // Changed default to NGN
+      currency: targetCurrency = 'NGN',
       paymentPolicy,
       boardType,
       includeClosed,
@@ -110,30 +110,35 @@ export class SearchAmadeusHotelsUseCase {
         );
       }
 
-      // ✅ Request prices in a base currency (EUR or USD) that Amadeus supports well
-      // Then convert to target currency using your own rates
-      const baseCurrency = 'EUR'; // Amadeus works well with EUR, USD, GBP
-      
-      // Calculate pagination offset
-      const offset = (page - 1) * limit;
-      
-      // Search hotels using V3 API
+      // ✅ Apply pagination to hotel IDs (client-side pagination)
+      let allHotelIds = hotelIdsToSearch;
+      const totalHotels = allHotelIds.length;
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedHotelIds = allHotelIds.slice(startIndex, endIndex);
+
+      if (paginatedHotelIds.length === 0) {
+        throw new BadRequestException(
+          `No hotels found for page ${page}. Please try a different page.`,
+        );
+      }
+
+      // ✅ Search hotels using paginated hotel IDs (NO pagination params sent to Amadeus)
       const response = await this.amadeusService.searchHotels({
-        hotelIds: hotelIdsToSearch,
+        hotelIds: paginatedHotelIds,
         checkInDate,
         checkOutDate,
         adults,
         roomQuantity,
-        ...(priceRange && { priceRange, currency: baseCurrency }),
-        ...(!priceRange && { currency: baseCurrency }),
+        ...(priceRange && { priceRange, currency: targetCurrency }),
+        ...(!priceRange && { currency: targetCurrency }),
         ...(paymentPolicy && { paymentPolicy }),
         ...(boardType && { boardType }),
         ...(includeClosed !== undefined && { includeClosed }),
         ...(bestRateOnly !== undefined && { bestRateOnly }),
         ...(countryOfResidence && { countryOfResidence }),
         ...(lang && { lang }),
-        'page[offset]': offset.toString(),
-        'page[limit]': limit.toString(),
+        // ❌ REMOVED: 'page[offset]' and 'page[limit]' parameters
       });
 
       // Validate response
@@ -172,27 +177,25 @@ export class SearchAmadeusHotelsUseCase {
         response.data.map(async (hotelOffer: any) => {
           const processedOffers = await Promise.all(
             (hotelOffer.offers || []).map(async (offer: any) => {
-              // Get original price from Amadeus (in baseCurrency like EUR)
+              // Get original price from Amadeus
               const originalPriceAmount = parseFloat(offer.price?.total || offer.price?.base || '0');
-              const originalCurrency = offer.price?.currency || baseCurrency;
+              const originalCurrency = offer.price?.currency || 'EUR';
               
               this.logger.debug(`Processing offer: original ${originalPriceAmount} ${originalCurrency}`);
 
-              // Step 1: Convert from original currency to target currency using your exchange rate service
+              // Convert currency if needed
               let convertedBasePrice: number;
               let conversionFee: number;
               let conversionFeePercentage: number;
               let priceAfterConversion: number;
 
               if (originalCurrency !== targetCurrency) {
-                // Use your currency service for conversion
                 convertedBasePrice = await this.currencyService.convert(
                   originalPriceAmount,
                   originalCurrency,
                   targetCurrency,
                 );
                 
-                // Calculate conversion fee (e.g., 2.5% buffer for rate fluctuations)
                 const conversionDetails = this.currencyService.calculateConversionFee(
                   convertedBasePrice,
                   originalCurrency,
@@ -203,53 +206,29 @@ export class SearchAmadeusHotelsUseCase {
                 conversionFeePercentage = this.currencyService.getConversionBuffer();
                 priceAfterConversion = conversionDetails.totalWithFee;
               } else {
-                // No conversion needed
                 convertedBasePrice = originalPriceAmount;
                 conversionFee = 0;
                 conversionFeePercentage = 0;
                 priceAfterConversion = originalPriceAmount;
               }
 
-              // Step 2: Apply markup percentage on the converted price
+              // Apply markup
               const markupAmount = (priceAfterConversion * markupPercentage) / 100;
-
-              // Step 3: Apply service fee (flat amount)
               const finalPrice = priceAfterConversion + markupAmount + serviceFeeAmount;
-
-              this.logger.debug(`Price breakdown for ${hotelOffer.hotel?.hotelId}:`, {
-                original: `${originalPriceAmount} ${originalCurrency}`,
-                converted: `${convertedBasePrice} ${targetCurrency}`,
-                conversionFee: `${conversionFee} ${targetCurrency}`,
-                priceAfterConversion: `${priceAfterConversion} ${targetCurrency}`,
-                markupAmount: `${markupAmount} ${targetCurrency}`,
-                serviceFee: `${serviceFeeAmount} ${targetCurrency}`,
-                finalPrice: `${finalPrice} ${targetCurrency}`,
-              });
 
               return {
                 ...offer,
-                // Original price info
                 original_price: originalPriceAmount.toString(),
                 original_currency: originalCurrency,
-                
-                // Converted price (without fees)
                 base_price: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
                 currency: targetCurrency,
-                
-                // Conversion fees
                 conversion_fee: this.currencyService.formatAmount(conversionFee, targetCurrency),
                 conversion_fee_percentage: conversionFeePercentage,
                 price_after_conversion: this.currencyService.formatAmount(priceAfterConversion, targetCurrency),
-                
-                // Markup and service fees
                 markup_percentage: markupPercentage,
                 markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
                 service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
-                
-                // Final price (what customer pays)
                 final_price: this.currencyService.formatAmount(finalPrice, targetCurrency),
-                
-                // Update price object for backward compatibility
                 price: {
                   ...offer.price,
                   currency: targetCurrency,
@@ -257,9 +236,6 @@ export class SearchAmadeusHotelsUseCase {
                   total: this.currencyService.formatAmount(finalPrice, targetCurrency),
                   original_total: originalPriceAmount.toString(),
                   original_currency: originalCurrency,
-                  conversion_fee: this.currencyService.formatAmount(conversionFee, targetCurrency),
-                  markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
-                  service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
                 },
               };
             }),
@@ -274,8 +250,7 @@ export class SearchAmadeusHotelsUseCase {
         }),
       );
 
-      // Get pagination metadata
-      const totalHotels = response.meta?.total || processedResults.length;
+      // Calculate pagination metadata
       const totalPages = Math.ceil(totalHotels / limit);
       const hasMore = page < totalPages;
 
@@ -310,7 +285,7 @@ export class SearchAmadeusHotelsUseCase {
           prevPage: page > 1 ? page - 1 : null,
         },
         currency: targetCurrency,
-        conversion_note: `Prices converted from ${baseCurrency} to ${targetCurrency} including a ${this.currencyService.getConversionBuffer()}% conversion fee to protect against exchange rate fluctuations. Markup: ${markupPercentage}%.`,
+        conversion_note: `Prices include ${markupPercentage}% markup and conversion fees.`,
         cached: false,
       };
 
