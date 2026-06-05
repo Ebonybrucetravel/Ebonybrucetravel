@@ -8,6 +8,9 @@ export class AmadeusService {
   private readonly apiKey: string;
   private readonly apiSecret: string;
   private readonly baseUrl: string;
+  private readonly officeId: string;
+  private readonly orgId: string;
+  private readonly userId: string;
   private accessToken: string | null = null;
   private tokenExpiresAt: number = 0;
 
@@ -15,6 +18,11 @@ export class AmadeusService {
     // Enterprise credentials
     this.apiKey = this.configService.get<string>('AMADEUS_API_KEY') || '';
     this.apiSecret = this.configService.get<string>('AMADEUS_API_SECRET') || '';
+    
+    // Enterprise Office credentials (from TestSAP)
+    this.officeId = this.configService.get<string>('AMADEUS_OFFICE_ID') || 'LOSN8250A';
+    this.orgId = this.configService.get<string>('AMADEUS_ORG_ID') || 'NMC-NIGERI';
+    this.userId = this.configService.get<string>('AMADEUS_USER_ID') || 'USE9BAQC';
     
     // Enterprise base URL (includes "travel." for Enterprise APIs)
     const env = this.configService.get<string>('AMADEUS_ENV') || 'test';
@@ -27,6 +35,7 @@ export class AmadeusService {
     }
     
     this.logger.log(`AmadeusService initialized with base URL: ${this.baseUrl}`);
+    this.logger.log(`Office ID: ${this.officeId}, Org ID: ${this.orgId}, User ID: ${this.userId}`);
   }
 
   // ==================== AUTHENTICATION ====================
@@ -114,6 +123,9 @@ export class AmadeusService {
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${token}`,
       'Accept': 'application/json',
+      'X-Office-Id': this.officeId,
+      'X-Organization-Id': this.orgId,
+      'X-User-Id': this.userId,
     };
 
     if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
