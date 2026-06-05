@@ -11,16 +11,6 @@ import { ProductType } from '@prisma/client';
 export class SearchAmadeusHotelsUseCase {
   private readonly logger = new Logger(SearchAmadeusHotelsUseCase.name);
 
-  // Predefined hotel IDs for major cities (workaround until you get Hotel List API access)
-  private readonly CITY_HOTEL_MAP: Record<string, string[]> = {
-    'LON': ['WHLON464', 'XKLON321', 'WHLON462', 'WHLON463'],
-    'LOS': ['WHLOS001', 'WHLOS002', 'WHLOS003'],
-    'PAR': ['WHPAR001', 'WHPAR002'],
-    'NYC': ['WHNYC001', 'WHNYC002', 'WHNYC003'],
-    'DXB': ['WHDXB001', 'WHDXB002'],
-    // Add more cities as needed
-  };
-
   constructor(
     private readonly amadeusService: AmadeusService,
     private readonly markupRepository: MarkupRepository,
@@ -32,8 +22,6 @@ export class SearchAmadeusHotelsUseCase {
   async execute(searchParams: SearchAmadeusHotelsDto) {
     const {
       hotelIds,
-      cityCode,
-      geographicCoordinates,
       checkInDate,
       checkOutDate,
       adults = 1,
@@ -50,10 +38,12 @@ export class SearchAmadeusHotelsUseCase {
       page = 1,
     } = searchParams;
 
-    // Validate search parameters for V3 API
-    if (!hotelIds?.length && !cityCode && !geographicCoordinates) {
+    // ✅ V3.5.0 REQUIRES hotelIds - no exceptions
+    if (!hotelIds || hotelIds.length === 0) {
       throw new BadRequestException(
-        'Either hotelIds, cityCode, or geographicCoordinates must be provided',
+        'hotelIds are required for Hotel Search API v3.5.0. ' +
+        'Please provide Amadeus property codes (8-character hotel IDs). ' +
+        'Example: ["WHLON464", "XKLON321"]'
       );
     }
 
@@ -87,35 +77,11 @@ export class SearchAmadeusHotelsUseCase {
     }
 
     try {
-      // Get hotel IDs to search
-      let hotelIdsToSearch = hotelIds;
-
-      // If no hotelIds provided but cityCode is given, use predefined mapping
-      if ((!hotelIdsToSearch || hotelIdsToSearch.length === 0) && cityCode) {
-        hotelIdsToSearch = this.CITY_HOTEL_MAP[cityCode.toUpperCase()];
-        
-        if (!hotelIdsToSearch || hotelIdsToSearch.length === 0) {
-          throw new BadRequestException(
-            `No predefined hotels for city code: ${cityCode}. Please provide hotelIds directly.`
-          );
-        }
-        
-        this.logger.log(`Using predefined hotel IDs for ${cityCode}: ${hotelIdsToSearch.join(', ')}`);
-      }
-
-      // If still no hotelIds, throw error
-      if (!hotelIdsToSearch || hotelIdsToSearch.length === 0) {
-        throw new BadRequestException(
-          'Hotel IDs are required for V3 Enterprise API. Please provide hotelIds parameter.'
-        );
-      }
-
       // ✅ Apply pagination to hotel IDs (client-side pagination)
-      let allHotelIds = hotelIdsToSearch;
-      const totalHotels = allHotelIds.length;
+      const totalHotels = hotelIds.length;
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + limit;
-      const paginatedHotelIds = allHotelIds.slice(startIndex, endIndex);
+      const paginatedHotelIds = hotelIds.slice(startIndex, endIndex);
 
       if (paginatedHotelIds.length === 0) {
         throw new BadRequestException(
@@ -123,7 +89,9 @@ export class SearchAmadeusHotelsUseCase {
         );
       }
 
-      // ✅ Search hotels using paginated hotel IDs (NO pagination params sent to Amadeus)
+      this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelIds.join(', ')}`);
+
+      // ✅ Search hotels using hotelIds (v3.5.0 compliant)
       const response = await this.amadeusService.searchHotels({
         hotelIds: paginatedHotelIds,
         checkInDate,
@@ -138,11 +106,11 @@ export class SearchAmadeusHotelsUseCase {
         ...(bestRateOnly !== undefined && { bestRateOnly }),
         ...(countryOfResidence && { countryOfResidence }),
         ...(lang && { lang }),
-        // ❌ REMOVED: 'page[offset]' and 'page[limit]' parameters
       });
 
       // Validate response
       if (!response || !response.data || !Array.isArray(response.data)) {
+        this.logger.error('Invalid response structure:', response);
         throw new HttpException(
           'Invalid response from Amadeus API: missing or invalid data array',
           HttpStatus.INTERNAL_SERVER_ERROR,
@@ -150,7 +118,7 @@ export class SearchAmadeusHotelsUseCase {
       }
 
       // Fetch markup configuration
-      let markupPercentage = 0;
+      let markupPercentage = 2.5; // Default markup
       let serviceFeeAmount = 0;
       try {
         const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
@@ -158,18 +126,13 @@ export class SearchAmadeusHotelsUseCase {
           targetCurrency,
         );
         if (markupConfig) {
-          markupPercentage = markupConfig.markupPercentage || 0;
+          markupPercentage = markupConfig.markupPercentage || 2.5;
           serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
         } else {
-          // Default markup if no config found
-          markupPercentage = 2.5;
-          serviceFeeAmount = 0;
-          this.logger.warn(`No markup config found, using default ${markupPercentage}%`);
+          this.logger.warn(`No markup config found for ${targetCurrency}, using default ${markupPercentage}%`);
         }
       } catch (error) {
-        this.logger.warn(`Could not fetch markup config, using defaults:`, error);
-        markupPercentage = 2.5;
-        serviceFeeAmount = 0;
+        this.logger.warn(`Could not fetch markup config, using default ${markupPercentage}%:`, error);
       }
 
       // Process results with currency conversion and markup
@@ -181,7 +144,7 @@ export class SearchAmadeusHotelsUseCase {
               const originalPriceAmount = parseFloat(offer.price?.total || offer.price?.base || '0');
               const originalCurrency = offer.price?.currency || 'EUR';
               
-              this.logger.debug(`Processing offer: original ${originalPriceAmount} ${originalCurrency}`);
+              this.logger.debug(`Processing offer: ${originalPriceAmount} ${originalCurrency} → ${targetCurrency}`);
 
               // Convert currency if needed
               let convertedBasePrice: number;
@@ -212,23 +175,46 @@ export class SearchAmadeusHotelsUseCase {
                 priceAfterConversion = originalPriceAmount;
               }
 
-              // Apply markup
+              // Apply markup percentage
               const markupAmount = (priceAfterConversion * markupPercentage) / 100;
+              
+              // Apply service fee (flat amount)
               const finalPrice = priceAfterConversion + markupAmount + serviceFeeAmount;
+
+              this.logger.debug(`Price breakdown for ${hotelOffer.hotel?.hotelId}:`, {
+                original: `${originalPriceAmount} ${originalCurrency}`,
+                converted: `${convertedBasePrice.toFixed(2)} ${targetCurrency}`,
+                conversionFee: `${conversionFee.toFixed(2)}`,
+                priceAfterConversion: `${priceAfterConversion.toFixed(2)}`,
+                markupAmount: `${markupAmount.toFixed(2)} (${markupPercentage}%)`,
+                serviceFee: serviceFeeAmount,
+                finalPrice: `${finalPrice.toFixed(2)}`
+              });
 
               return {
                 ...offer,
+                // Original price info
                 original_price: originalPriceAmount.toString(),
                 original_currency: originalCurrency,
+                
+                // Converted price (without fees)
                 base_price: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
                 currency: targetCurrency,
+                
+                // Conversion fees
                 conversion_fee: this.currencyService.formatAmount(conversionFee, targetCurrency),
                 conversion_fee_percentage: conversionFeePercentage,
                 price_after_conversion: this.currencyService.formatAmount(priceAfterConversion, targetCurrency),
+                
+                // Markup and service fees
                 markup_percentage: markupPercentage,
                 markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
                 service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
+                
+                // Final price (what customer pays)
                 final_price: this.currencyService.formatAmount(finalPrice, targetCurrency),
+                
+                // Update price object for backward compatibility
                 price: {
                   ...offer.price,
                   currency: targetCurrency,
@@ -236,6 +222,9 @@ export class SearchAmadeusHotelsUseCase {
                   total: this.currencyService.formatAmount(finalPrice, targetCurrency),
                   original_total: originalPriceAmount.toString(),
                   original_currency: originalCurrency,
+                  conversion_fee: this.currencyService.formatAmount(conversionFee, targetCurrency),
+                  markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
+                  service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
                 },
               };
             }),
@@ -254,10 +243,11 @@ export class SearchAmadeusHotelsUseCase {
       const totalPages = Math.ceil(totalHotels / limit);
       const hasMore = page < totalPages;
 
-      // Attach images
+      // Attach images from cache
       const ids = processedResults
         .map((r: any) => r.hotel?.hotelId)
         .filter((id): id is string => Boolean(id));
+      
       let primaryUrls: Record<string, string> = {};
       if (ids.length > 0) {
         try {
@@ -285,7 +275,7 @@ export class SearchAmadeusHotelsUseCase {
           prevPage: page > 1 ? page - 1 : null,
         },
         currency: targetCurrency,
-        conversion_note: `Prices include ${markupPercentage}% markup and conversion fees.`,
+        conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${serviceFeeAmount} ${targetCurrency} service fee` : ''}.`,
         cached: false,
       };
 
@@ -295,9 +285,27 @@ export class SearchAmadeusHotelsUseCase {
       return result;
     } catch (error) {
       this.logger.error('Error searching Amadeus hotels:', error);
+      
+      // Handle specific Amadeus error codes
+      if (error.response?.data?.errors) {
+        const amadeusError = error.response.data.errors[0];
+        if (amadeusError.code === '38190' || amadeusError.code === '701') {
+          throw new HttpException(
+            {
+              success: false,
+              message: 'Amadeus API authentication failed. Please check your API credentials and ensure Hotel Search API v3.5.0 is enabled for your Enterprise account.',
+              error: amadeusError.title,
+              code: amadeusError.code,
+            },
+            HttpStatus.UNAUTHORIZED,
+          );
+        }
+      }
+      
       if (error instanceof HttpException) {
         throw error;
       }
+      
       throw new HttpException(
         {
           success: false,
@@ -313,7 +321,6 @@ export class SearchAmadeusHotelsUseCase {
   private generateCacheKey(searchParams: SearchAmadeusHotelsDto): string {
     const {
       hotelIds,
-      cityCode,
       checkInDate,
       checkOutDate,
       adults,
@@ -327,8 +334,6 @@ export class SearchAmadeusHotelsUseCase {
 
     if (hotelIds && hotelIds.length > 0) {
       key += `:hotels-${[...hotelIds].sort().join(',')}`;
-    } else if (cityCode) {
-      key += `:city-${cityCode}`;
     }
 
     return key;
