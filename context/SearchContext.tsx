@@ -573,115 +573,127 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   };
 
   // ==================== HOTEL SEARCH WITH MERGED SERVICE FEE ====================
-  const searchHotels = async (params: SearchParams) => {
-    try {
-      const searchParamsTravellers = (params.travellers as any);
-      const hotelParams = {
-        cityCode: params.cityCode || 'LOS',
-        checkInDate: params.checkInDate || new Date().toISOString().split('T')[0],
-        checkOutDate: params.checkOutDate || new Date(Date.now() + 86400000).toISOString().split('T')[0],
-        adults: (typeof searchParamsTravellers === 'object' && searchParamsTravellers !== null) ? searchParamsTravellers.adults : (params.adults || 1),
-        children: (typeof searchParamsTravellers === 'object' && searchParamsTravellers !== null) ? searchParamsTravellers.children : 0,
-        roomQuantity: params.rooms || 1,
-        currency: 'NGN', // Always request in NGN
-      };
+  const getHotelIdsForCity = (cityCode: string): string[] => {
+  const cityHotelMap: Record<string, string[]> = {
+    'LON': ['WHLON464', 'XKLON321', 'WHLON462', 'WHLON463'],
+    'LOS': ['WHLOS001', 'WHLOS002', 'WHLOS003'],
+    'PAR': ['WHPAR001', 'WHPAR002'],
+    'NYC': ['WHNYC001', 'WHNYC002', 'WHNYC003'],
+    'DXB': ['WHDXB001', 'WHDXB002'],
+    // Add more cities as needed
+  };
+  
+  return cityHotelMap[cityCode.toUpperCase()] || [];
+};
 
-      const provider = params.provider || 'hotelbeds';
-      const result = await api.hotelApi.searchAndTransformHotels(hotelParams, params.location || 'Lagos', provider as any);
+const searchHotels = async (params: SearchParams) => {
+  try {
+    // ✅ Convert cityCode to hotelIds if needed
+    let hotelIds = params.hotelIds;
+    
+    if ((!hotelIds || hotelIds.length === 0) && params.cityCode) {
+      hotelIds = getHotelIdsForCity(params.cityCode);
+      console.log(`🔄 Converted cityCode ${params.cityCode} to hotelIds:`, hotelIds);
+    }
+    
+    // ✅ If still no hotelIds, throw error or use mock
+    if (!hotelIds || hotelIds.length === 0) {
+      console.error('❌ No hotelIds provided and no mapping for cityCode:', params.cityCode);
+      setSearchError(`No hotels found for ${params.cityCode}. Please try a different location.`);
+      setSearchResults([]);
+      return;
+    }
+    
+    const hotelParams = {
+      hotelIds: hotelIds,  // ✅ Send hotelIds instead of cityCode
+      checkInDate: params.checkInDate || new Date().toISOString().split('T')[0],
+      checkOutDate: params.checkOutDate || new Date(Date.now() + 86400000).toISOString().split('T')[0],
+      adults: params.adults || 1,
+      roomQuantity: params.rooms || 1,
+      currency: 'NGN',
+      page: params.page || 1,
+      limit: params.limit || 20,
+    };
 
-      if (result.success && result.results) {
-        const hotelsWithMarkup = await Promise.all(result.results.map(async (hotel: any) => {
-          const offers = hotel.offers || [];
+    console.log('🏨 Sending hotel search request:', hotelParams);
+
+    // You need to update your API call to use the correct endpoint with hotelIds
+    // Assuming your API method accepts hotelIds
+    const result = await api.hotelApi.searchAndTransformHotels(hotelParams, params.location || 'Lagos');
+
+    if (result.success && result.results) {
+      const hotelsWithMarkup = await Promise.all(result.results.map(async (hotel: any) => {
+        const offers = hotel.offers || [];
+        
+        const processedOffers = await Promise.all(offers.map(async (offer: any) => {
+          // ✅ READ MARKUP FROM BACKEND RESPONSE
+          const basePrice = parseFloat(offer.base_price || offer.price?.base || '0');
+          const finalPriceNGN = parseFloat(offer.final_price || offer.price?.total || '0');
           
-          const processedOffers = await Promise.all(offers.map(async (offer: any) => {
-            const priceData = offer.price || {};
-            // All prices in NGN from API
-            const basePrice = parseFloat(priceData.base || '0');
-            const totalPriceNGN = parseFloat(priceData.total || '0');
-            const markupAmount = parseFloat(priceData.markup_amount || '0');
-            const conversionFee = parseFloat(priceData.conversionFee || '0');
-            const taxes = 0;
-            
-            // Calculate total service fee
-            const totalServiceFee = calculateTotalServiceFee(markupAmount, conversionFee, taxes);
-            
-            // Calculate service fee percentage
-            let serviceFeePercentage = 0;
-            if (basePrice > 0 && totalServiceFee > 0) {
-              serviceFeePercentage = (totalServiceFee / basePrice) * 100;
-            }
-            
-            // Get display price in user's currency
-            const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(totalPriceNGN, 'NGN');
-            const formattedDisplayPrice = await formatPriceInUserCurrency(totalPriceNGN, 'NGN');
-            
-            console.log(`🏨 Hotel offer - Service Fee Breakdown:`, {
-              hotel: hotel.hotel?.name,
-              room: offer.room?.type,
-              basePriceNGN: `₦${basePrice}`,
-              markupAmountNGN: `₦${markupAmount}`,
-              conversionFeeNGN: `₦${conversionFee}`,
-              totalServiceFeeNGN: `₦${totalServiceFee}`,
-              serviceFeePercentage: `${serviceFeePercentage}%`,
-              totalPriceNGN: `₦${totalPriceNGN}`,
-              displayPrice: formattedDisplayPrice,
-            });
-            
-            return {
-              ...offer,
-              // ALL PRICES STORED IN NGN
-              original_amount: basePrice.toString(),
-              original_currency: 'NGN',
-              markup_amount: markupAmount.toString(),
-              conversion_fee: conversionFee.toString(),
-              taxes: taxes.toString(),
-              service_fee: totalServiceFee.toString(),
-              service_fee_percentage: serviceFeePercentage,
-              final_amount: totalPriceNGN.toString(),
-              currency: 'NGN',
-              rawPrice: totalPriceNGN,
-              // Display price in user's currency
-              price: formattedDisplayPrice,
-              totalPriceFormatted: formattedDisplayPrice,
-              displayPriceRaw: displayPriceInUserCurrency,
-            };
-          }));
+          const markupAmount = parseFloat(offer.markup_amount || '0');
+          const markupPercentage = parseFloat(offer.markup_percentage || '0');
+          const conversionFee = parseFloat(offer.conversion_fee || '0');
+          const conversionFeePercentage = parseFloat(offer.conversion_fee_percentage || '0');
+          const serviceFee = parseFloat(offer.service_fee || '0');
           
-          const firstOffer = processedOffers[0] || {};
+          const totalServiceFee = markupAmount + conversionFee + serviceFee;
+          
+          const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalPriceNGN, 'NGN');
+          const formattedDisplayPrice = await formatPriceInUserCurrency(finalPriceNGN, 'NGN');
+          
+          console.log(`🏨 Hotel offer - Reading backend markup:`, {
+            hotel: hotel.hotel?.name,
+            room: offer.room?.type,
+            basePriceNGN: `₦${basePrice}`,
+            markupAmountNGN: `₦${markupAmount}`,
+            markupPercentage: `${markupPercentage}%`,
+            conversionFeeNGN: `₦${conversionFee}`,
+            serviceFeeNGN: `₦${serviceFee}`,
+            finalPriceNGN: `₦${finalPriceNGN}`,
+            displayPrice: formattedDisplayPrice,
+          });
           
           return {
-            ...hotel,
-            offers: processedOffers,
-            // ALL PRICES STORED IN NGN
-            original_amount: firstOffer.original_amount,
-            original_currency: 'NGN',
-            markup_amount: firstOffer.markup_amount,
-            conversion_fee: firstOffer.conversion_fee,
-            taxes: firstOffer.taxes,
-            service_fee: firstOffer.service_fee,
-            service_fee_percentage: firstOffer.service_fee_percentage,
-            final_amount: firstOffer.final_amount,
+            ...offer,
+            original_amount: basePrice.toString(),
+            original_currency: offer.original_currency || 'NGN',
+            markup_amount: markupAmount.toString(),
+            markup_percentage: markupPercentage,
+            conversion_fee: conversionFee.toString(),
+            conversion_fee_percentage: conversionFeePercentage,
+            taxes: '0',
+            service_fee: totalServiceFee.toString(),
+            service_fee_percentage: markupPercentage + conversionFeePercentage,
+            final_amount: finalPriceNGN.toString(),
             currency: 'NGN',
-            rawPrice: firstOffer.rawPrice,
-            // Display price in user's currency
-            price: firstOffer.price,
-            totalPrice: firstOffer.totalPriceFormatted,
-            displayPriceRaw: firstOffer.displayPriceRaw,
+            rawPrice: finalPriceNGN,
+            price: formattedDisplayPrice,
+            totalPriceFormatted: formattedDisplayPrice,
+            displayPriceRaw: displayPriceInUserCurrency,
           };
         }));
         
-        setSearchResults(hotelsWithMarkup);
-        console.log(`✅ Processed ${hotelsWithMarkup.length} hotels with merged service fee`);
-      } else {
-        setSearchResults([]);
-      }
-    } catch (err) {
-      console.error('Hotel search failed:', err);
+        return {
+          ...hotel,
+          offers: processedOffers,
+          price: processedOffers[0]?.price,
+          markup_amount: processedOffers[0]?.markup_amount,
+          markup_percentage: processedOffers[0]?.markup_percentage,
+          final_amount: processedOffers[0]?.final_amount,
+        };
+      }));
+      
+      setSearchResults(hotelsWithMarkup);
+      console.log(`✅ Processed ${hotelsWithMarkup.length} hotels with backend markup`);
+    } else {
       setSearchResults([]);
-      throw new Error('Hotel search failed');
     }
-  };
-
+  } catch (err) {
+    console.error('Hotel search failed:', err);
+    setSearchResults([]);
+    setSearchError('Failed to search hotels. Please try again.');
+  }
+};
   const formatDateForWakanow = (dateStr: string): string => {
     const date = new Date(dateStr);
     const month = (date.getMonth() + 1).toString().padStart(2, '0');

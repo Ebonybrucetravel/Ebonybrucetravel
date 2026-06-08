@@ -48,15 +48,18 @@ export interface User {
 }
 
 export interface HotelSearchParams {
-  cityCode: string;
+  hotelIds: string[];  // ✅ REQUIRED for Amadeus v3.5.0
   checkInDate: string;
   checkOutDate: string;
   adults: number;
   roomQuantity: number;
   currency?: string;
   bestRateOnly?: boolean;
+  page?: number;
+  limit?: number;
   [key: string]: any;
 }
+
 
 export interface HotelOffer {
   type: string;
@@ -784,24 +787,36 @@ const getHotelEndpointPrefix = (hotelId?: string): string => {
 };
 
 // Hotel Search API - Amadeus Endpoint
+// Hotel Search API - Amadeus Endpoint (v3.5.0 Enterprise)
 export const searchHotelsAmadeus = async (
   searchParams: HotelSearchParams,
 ): Promise<HotelSearchResponse> => {
   try {
-    console.log("🏨 Starting hotel search with params:", searchParams);
+    console.log("🏨 Starting Amadeus hotel search with params:", searchParams);
 
-    const response = await request<HotelSearchResponse>(
+    // Validate required parameters for v3.5.0
+    if (!searchParams.hotelIds || searchParams.hotelIds.length === 0) {
+      throw new ApiError(
+        "hotelIds are required for Amadeus Hotel Search API v3.5.0. Please provide Amadeus property codes (8-character hotel IDs). Example: ['WHLON464', 'XKLON321']",
+        400,
+        "MISSING_HOTEL_IDS",
+      );
+    }
+
+    const response = await publicRequest<HotelSearchResponse>(
       "/api/v1/bookings/search/hotels/amadeus",
       {
         method: "POST",
         body: JSON.stringify({
-          cityCode: searchParams.cityCode,
+          hotelIds: searchParams.hotelIds,  // ✅ Send hotelIds instead of cityCode
           checkInDate: searchParams.checkInDate,
           checkOutDate: searchParams.checkOutDate,
           adults: searchParams.adults,
           roomQuantity: searchParams.roomQuantity,
-          currency: searchParams.currency || "GBP",
+          currency: searchParams.currency || "NGN",
           bestRateOnly: searchParams.bestRateOnly ?? true,
+          page: searchParams.page || 1,
+          limit: searchParams.limit || 20,
         }),
       },
     );
@@ -817,12 +832,11 @@ export const searchHotelsAmadeus = async (
   } catch (error: any) {
     console.error("❌ Hotel search failed:", error);
 
-    // Provide more specific error messages
-    if (error.message?.includes("cityCode")) {
+    if (error.message?.includes("hotelIds")) {
       throw new ApiError(
-        "Invalid city code. Please try a different location.",
+        "Hotel IDs are required for Amadeus search. Please provide valid hotel IDs.",
         400,
-        "INVALID_CITY_CODE",
+        "INVALID_HOTEL_IDS",
       );
     }
 
@@ -936,6 +950,7 @@ export const bookHotelHBX = async (
 };
 
 // Hotel search with pagination and filtering
+// Hotel search with pagination and filtering
 export async function searchHotelsWithPagination(
   params: HotelSearchParams & {
     minPrice?: number;
@@ -960,15 +975,17 @@ export async function searchHotelsWithPagination(
   try {
     console.log("🔍 Starting hotel search with pagination:", params);
 
-    // Step 1: Initial search
+    // ✅ FIXED: Use hotelIds instead of cityCode
     const response = await searchHotelsAmadeus({
-      cityCode: params.cityCode,
+      hotelIds: params.hotelIds,
       checkInDate: params.checkInDate,
       checkOutDate: params.checkOutDate,
       adults: params.adults,
       roomQuantity: params.roomQuantity,
       currency: params.currency,
       bestRateOnly: params.bestRateOnly,
+      page: params.page,
+      limit: params.limit,
     });
 
     if (!response.success) {
@@ -983,7 +1000,7 @@ export async function searchHotelsWithPagination(
 
     console.log(`✅ Initial hotel results: ${allHotels.length} hotels`);
 
-    // Step 2: Apply filters locally
+    // Rest of the function remains the same...
     if (allHotels.length > 0) {
       // Filter by price range
       if (params.minPrice !== undefined || params.maxPrice !== undefined) {
@@ -995,14 +1012,14 @@ export async function searchHotelsWithPagination(
         });
       }
 
-      // Filter by rating (if available in response)
+      // Filter by rating
       if (
         params.ratings &&
         params.ratings.length > 0 &&
-        allHotels[0].hotel.rating
+        allHotels[0]?.hotel?.rating
       ) {
         allHotels = allHotels.filter((hotel) => {
-          const rating = hotel.hotel.rating || 0;
+          const rating = hotel.hotel?.rating || 0;
           return params.ratings!.some((minRating) => rating >= minRating);
         });
       }
@@ -1018,12 +1035,12 @@ export async function searchHotelsWithPagination(
               bValue = parseFloat(b.offers?.[0]?.price?.total || "0");
               break;
             case "rating":
-              aValue = a.hotel.rating || 0;
-              bValue = b.hotel.rating || 0;
+              aValue = a.hotel?.rating || 0;
+              bValue = b.hotel?.rating || 0;
               break;
             case "name":
-              aValue = a.hotel.name || "";
-              bValue = b.hotel.name || "";
+              aValue = a.hotel?.name || "";
+              bValue = b.hotel?.name || "";
               break;
             default:
               return 0;
@@ -1441,6 +1458,7 @@ function getHotelImage(chainCode?: string, index: number = 0): string {
 }
 
 // Format hotel search parameters
+// Format hotel search parameters
 export async function formatHotelSearchParams(
   location: string,
   checkInDate?: string,
@@ -1448,9 +1466,13 @@ export async function formatHotelSearchParams(
   guests?: number,
   rooms?: number,
 ): Promise<HotelSearchParams> {
-  // Get city code
+  // Get city code from location
   const cityCode = getCityCode(location);
-
+  
+  // You need to have a mapping from cityCode to hotelIds
+  // For now, return empty array - the caller must provide hotelIds
+  // Or you can maintain a mapping of hotel IDs per city
+  
   // Set default dates if not provided
   const today = new Date();
   const tomorrow = new Date(today);
@@ -1462,17 +1484,19 @@ export async function formatHotelSearchParams(
     checkOutDate ||
     (() => {
       const checkOutDate = new Date(checkIn);
-      checkOutDate.setDate(checkOutDate.getDate() + 3); // Default 3-night stay
+      checkOutDate.setDate(checkOutDate.getDate() + 3);
       return checkOutDate.toISOString().split("T")[0];
     })();
 
+  // ⚠️ IMPORTANT: You must provide hotelIds. This function now returns empty array
+  // The caller should provide hotelIds, or you need to implement city to hotel mapping
   return {
-    cityCode,
+    hotelIds: [], // ❗ MUST be provided by caller or mapped from cityCode
     checkInDate: checkIn,
     checkOutDate: checkOut,
     adults: Math.max(1, guests || 2),
     roomQuantity: Math.max(1, rooms || 1),
-    currency: "GBP", // Default to GBP since API returns GBP
+    currency: "NGN",
     bestRateOnly: true,
   };
 }
@@ -1539,9 +1563,31 @@ export async function searchAndTransformHotels(
         isRealData: true,
       };
     } else {
-      // Amadeus flow
-      const response = await searchHotelsAmadeus(searchParams);
-
+      // Amadeus flow - FIXED for v3.5.0
+      // Make sure we have hotelIds
+      let hotelIds = searchParams.hotelIds;
+      
+      if (!hotelIds || hotelIds.length === 0) {
+        return {
+          success: false,
+          results: [],
+          message: "hotelIds are required for Amadeus Hotel Search API v3.5.0. Please provide hotel IDs.",
+          total: 0,
+          isRealData: false,
+        };
+      }
+      
+      const response = await searchHotelsAmadeus({
+        hotelIds: hotelIds,
+        checkInDate: searchParams.checkInDate,
+        checkOutDate: searchParams.checkOutDate,
+        adults: searchParams.adults,
+        roomQuantity: searchParams.roomQuantity || 1,
+        currency: searchParams.currency || "NGN",
+        page: searchParams.page || 1,
+        limit: searchParams.limit || 20,
+      });
+    
       // Handle case where API returns success but no data
       if (!response.data?.data || response.data.data.length === 0) {
         return {
@@ -1552,7 +1598,7 @@ export async function searchAndTransformHotels(
           isRealData: false,
         };
       }
-
+    
       const hotels = response.data.data;
       const transformedResults = hotels.map((hotel, index) =>
         transformHotelToSearchResult(
@@ -1563,7 +1609,7 @@ export async function searchAndTransformHotels(
           index,
         ),
       );
-
+    
       return {
         success: true,
         results: transformedResults,
@@ -2022,7 +2068,7 @@ export const searchCarRentals = async (
   try {
     console.log("🚗 Starting car rental search with params:", searchParams);
 
-    const response = await request<CarRentalSearchResponse>(
+    const response = await publicRequest<CarRentalSearchResponse>(
       "/api/v1/bookings/search/car-rentals",
       {
         method: "POST",

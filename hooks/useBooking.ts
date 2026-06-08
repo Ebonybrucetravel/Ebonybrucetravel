@@ -67,266 +67,33 @@ interface ExtendedSearchResult {
 
 // ==================== AIRPORT COUNTRY MAPPING (GLOBAL DOMESTIC DETECTION) ====================
 const AIRPORT_COUNTRY_MAP: Record<string, string> = {
-  // Nigeria
   'LOS': 'NG', 'ABV': 'NG', 'PHC': 'NG', 'KAN': 'NG', 'ENU': 'NG',
   'QOW': 'NG', 'BNI': 'NG', 'JOS': 'NG', 'KAD': 'NG', 'YOL': 'NG',
-  'ILR': 'NG', 'MDI': 'NG', 'CBQ': 'NG', 'QRW': 'NG', 'SKO': 'NG',
-  
-  // USA
   'JFK': 'US', 'LAX': 'US', 'ORD': 'US', 'DFW': 'US', 'DEN': 'US',
-  'SFO': 'US', 'SEA': 'US', 'LAS': 'US', 'MCO': 'US', 'EWR': 'US',
-  'MIA': 'US', 'BOS': 'US', 'ATL': 'US', 'IAH': 'US', 'PHX': 'US',
-  'LGA': 'US', 'DCA': 'US', 'IAD': 'US', 'CLT': 'US', 'MSP': 'US',
-  'DTW': 'US', 'FLL': 'US', 'TPA': 'US', 'SAN': 'US', 'PDX': 'US',
-  
-  // UK
   'LHR': 'GB', 'LGW': 'GB', 'MAN': 'GB', 'EDI': 'GB', 'GLA': 'GB',
-  'BHX': 'GB', 'BRS': 'GB', 'LTN': 'GB', 'STN': 'GB', 'LCY': 'GB',
-  'NCL': 'GB', 'BFS': 'GB', 'ABZ': 'GB',
-  
-  // Canada
-  'YYZ': 'CA', 'YVR': 'CA', 'YUL': 'CA', 'YYC': 'CA', 'YOW': 'CA',
-  'YEG': 'CA', 'YHZ': 'CA', 'YWG': 'CA',
-  
-  // UAE
-  'DXB': 'AE', 'AUH': 'AE', 'SHJ': 'AE',
-  
-  // India
-  'DEL': 'IN', 'BOM': 'IN', 'BLR': 'IN', 'MAA': 'IN', 'CCU': 'IN',
-  'HYD': 'IN', 'COK': 'IN', 'GOI': 'IN',
-  
-  // China
-  'PEK': 'CN', 'PVG': 'CN', 'CAN': 'CN', 'SZX': 'CN', 'CTU': 'CN',
-  
-  // Japan
-  'HND': 'JP', 'NRT': 'JP', 'KIX': 'JP', 'CTS': 'JP', 'FUK': 'JP',
-  
-  // Australia
-  'SYD': 'AU', 'MEL': 'AU', 'BNE': 'AU', 'PER': 'AU', 'ADL': 'AU',
-  
-  // Germany
-  'FRA': 'DE', 'MUC': 'DE', 'BER': 'DE', 'HAM': 'DE', 'CGN': 'DE',
-  'DUS': 'DE', 'STR': 'DE',
-  
-  // France
-  'CDG': 'FR', 'ORY': 'FR', 'NCE': 'FR', 'LYS': 'FR', 'MRS': 'FR',
-  
-  // South Africa
-  'JNB': 'ZA', 'CPT': 'ZA', 'DUR': 'ZA', 'PLZ': 'ZA',
-  
-  // Kenya
-  'NBO': 'KE', 'MBA': 'KE',
-  
-  // Egypt
-  'CAI': 'EG', 'HRG': 'EG', 'SSH': 'EG',
-  
-  // Ghana
-  'ACC': 'GH',
-  
-  // Ethiopia
-  'ADD': 'ET',
-  
-  // Turkey
-  'IST': 'TR', 'SAW': 'TR', 'ESB': 'TR',
-  
-  // Singapore
-  'SIN': 'SG',
-  
-  // Malaysia
-  'KUL': 'MY', 'PEN': 'MY',
-  
-  // Thailand
-  'BKK': 'TH', 'HKT': 'TH', 'CNX': 'TH',
-  
-  // Vietnam
-  'HAN': 'VN', 'SGN': 'VN', 'DAD': 'VN',
-  
-  // Philippines
-  'MNL': 'PH', 'CEB': 'PH',
-  
-  // Brazil
-  'GRU': 'BR', 'GIG': 'BR', 'BSB': 'BR',
-  
-  // Mexico
-  'MEX': 'MX', 'CUN': 'MX', 'GDL': 'MX',
-  
-  // Spain
-  'MAD': 'ES', 'BCN': 'ES', 'AGP': 'ES',
-  
-  // Italy
-  'FCO': 'IT', 'MXP': 'IT', 'VCE': 'IT',
-  
-  // Netherlands
-  'AMS': 'NL',
-  
-  // Switzerland
-  'ZRH': 'CH', 'GVA': 'CH',
-  
-  // Belgium
-  'BRU': 'BE',
-  
-  // Austria
-  'VIE': 'AT',
-  
-  // Sweden
-  'ARN': 'SE',
-  
-  // Norway
-  'OSL': 'NO',
-  
-  // Denmark
-  'CPH': 'DK',
-  
-  // Qatar
-  'DOH': 'QA',
-  
-  // Oman
-  'MCT': 'OM',
-  
-  // Bahrain
-  'BAH': 'BH',
-  
-  // Kuwait
-  'KWI': 'KW',
-  
-  // Saudi Arabia
-  'JED': 'SA', 'RUH': 'SA', 'DMM': 'SA',
-  
-  // Jordan
-  'AMM': 'JO',
-  
-  // Israel
-  'TLV': 'IL',
-  
-  // Lebanon
-  'BEY': 'LB',
-  
-  // Pakistan
-  'KHI': 'PK', 'LHE': 'PK', 'ISB': 'PK',
-  
-  // Bangladesh
-  'DAC': 'BD',
-  
-  // Sri Lanka
-  'CMB': 'LK',
-  
-  // Indonesia
-  'CGK': 'ID', 'DPS': 'ID',
-  
-  // South Korea
-  'ICN': 'KR', 'GMP': 'KR', 'PUS': 'KR',
-  
-  // New Zealand
-  'AKL': 'NZ', 'WLG': 'NZ', 'CHC': 'NZ',
-  
-  // Argentina
-  'EZE': 'AR', 'AEP': 'AR',
-  
-  // Chile
-  'SCL': 'CL',
-  
-  // Colombia
-  'BOG': 'CO',
-  
-  // Panama
-  'PTY': 'PA',
-  
-  // Ireland
-  'DUB': 'IE', 'SNN': 'IE',
-  
-  // Portugal
-  'LIS': 'PT', 'OPO': 'PT',
-  
-  // Greece
-  'ATH': 'GR', 'SKG': 'GR',
-  
-  // Poland
-  'WAW': 'PL', 'KRK': 'PL',
-  
-  // Czech Republic
-  'PRG': 'CZ',
-  
-  // Hungary
-  'BUD': 'HU',
-  
-  // Romania
-  'OTP': 'RO',
-  
-  // Bulgaria
-  'SOF': 'BG',
-  
-  // Croatia
-  'ZAG': 'HR',
-  
-  // Morocco
-  'CMN': 'MA', 'RAK': 'MA',
-  
-  // Tunisia
-  'TUN': 'TN',
-  
-  // Senegal
-  'DSS': 'SN', 'DKR': 'SN',
-  
-  // Ivory Coast
-  'ABJ': 'CI',
-  
-  // Cameroon
-  'DLA': 'CM', 'NSI': 'CM',
-  
-  // Angola
-  'LAD': 'AO',
-  
-  // Zimbabwe
-  'HRE': 'ZW',
-  
-  // Zambia
-  'LUN': 'ZM',
-  
-  // Botswana
-  'GBE': 'BW',
-  
-  // Mauritius
-  'MRU': 'MU',
-  
-  // Seychelles
-  'SEZ': 'SC',
-  
-  // Maldives
-  'MLE': 'MV',
-  
-  // Nepal
-  'KTM': 'NP',
-  
-  // Uzbekistan
-  'TAS': 'UZ',
-  
-  // Kazakhstan
-  'ALA': 'KZ',
-  
-  // Azerbaijan
-  'GYD': 'AZ',
-  
-  // Georgia
-  'TBS': 'GE',
-  
-  // Armenia
-  'EVN': 'AM',
-  
-  // Serbia
-  'BEG': 'RS',
-  
-  // Finland
-  'HEL': 'FI',
+  'DXB': 'AE', 'AUH': 'AE', 'CDG': 'FR', 'FRA': 'DE', 'AMS': 'NL',
+  'SYD': 'AU', 'MEL': 'AU', 'SIN': 'SG', 'NRT': 'JP', 'HND': 'JP',
+  'YYZ': 'CA', 'YVR': 'CA', 'DEL': 'IN', 'BOM': 'IN', 'PEK': 'CN',
+  'PVG': 'CN', 'JNB': 'ZA', 'CPT': 'ZA', 'NBO': 'KE', 'CAI': 'EG',
+  'ACC': 'GH', 'ADD': 'ET', 'IST': 'TR', 'MAD': 'ES', 'BCN': 'ES',
+  'FCO': 'IT', 'MXP': 'IT', 'SCL': 'CL', 'EZE': 'AR', 'MEX': 'MX',
+  'DUB': 'IE', 'LIS': 'PT', 'ATH': 'GR', 'WAW': 'PL', 'PRG': 'CZ',
+  'BUD': 'HU', 'OTP': 'RO', 'SOF': 'BG', 'ZAG': 'HR', 'CMN': 'MA',
+  'TUN': 'TN', 'DSS': 'SN', 'DKR': 'SN', 'ABJ': 'CI', 'DLA': 'CM',
+  'LAD': 'AO', 'HRE': 'ZW', 'LUN': 'ZM', 'GBE': 'BW', 'MRU': 'MU',
+  'SEZ': 'SC', 'MLE': 'MV', 'KTM': 'NP', 'TAS': 'UZ', 'ALA': 'KZ',
+  'GYD': 'AZ', 'TBS': 'GE', 'EVN': 'AM', 'BEG': 'RS', 'HEL': 'FI',
+  'KEF': 'IS', 'LUX': 'LU', 'MLA': 'MT', 'LCA': 'CY', 'TLL': 'EE',
+  'RIX': 'LV', 'VNO': 'LT', 'LJU': 'SI', 'BTS': 'SK', 'MSQ': 'BY',
+  'KBP': 'UA', 'LWO': 'UA', 'SVO': 'RU', 'DME': 'RU', 'LED': 'RU',
 };
 
-// Helper function to extract airport code
 const extractAirportCode = (str: string | undefined): string => {
   if (!str) return "";
   const match = str.match(/([A-Z]{3})/);
   return match?.[1] || str.substring(0, 3).toUpperCase();
 };
 
-// Helper function to get country code from airport code
 const getCountryCodeFromAirport = (airportCode: string): string | null => {
   if (!airportCode) return null;
   const normalizedCode = airportCode.toUpperCase().trim();
@@ -335,26 +102,18 @@ const getCountryCodeFromAirport = (airportCode: string): string | null => {
   return AIRPORT_COUNTRY_MAP[code] || null;
 };
 
-// Helper function to check if flight is domestic (same country)
 const isDomesticFlight = (origin: string, destination: string): boolean => {
   if (!origin || !destination) return false;
-  
   const originCountry = getCountryCodeFromAirport(origin);
   const destCountry = getCountryCodeFromAirport(destination);
-  
-  console.log(`✈️ Domestic flight check: ${origin} (${originCountry}) → ${destination} (${destCountry})`);
-  
   if (originCountry && destCountry) {
     return originCountry === destCountry;
   }
-  
-  // Fallback: same first 3 letters
   const normalizedOrigin = origin.toUpperCase().substring(0, 3);
   const normalizedDest = destination.toUpperCase().substring(0, 3);
   return normalizedOrigin === normalizedDest;
 };
 
-// Helper function to get selectData from item
 const getSelectData = (item: ExtendedSearchResult): string => {
   return item.selectData || 
          item.token || 
@@ -365,22 +124,18 @@ const getSelectData = (item: ExtendedSearchResult): string => {
          "";
 };
 
-// Helper function to check the actual provider from the item
 const getActualProvider = (item: ExtendedSearchResult): string => {
   if (item.provider === 'WAKANOW') return 'WAKANOW';
   if (item.provider === 'DUFFEL') return 'DUFFEL';
   if (item.isWakanow === true) return 'WAKANOW';
-  
   const id = item.id || item.offerId || item.realData?.offerId || '';
   if (id.toString().toLowerCase().includes('wakanow')) return 'WAKANOW';
   if (id.toString().startsWith('off_')) return 'DUFFEL';
-  
   const selectData = getSelectData(item);
   if (selectData) {
     if (selectData.startsWith('off_')) return 'DUFFEL';
     return 'WAKANOW';
   }
-  
   return 'DUFFEL';
 };
 
@@ -424,7 +179,6 @@ export function useBooking() {
           !!item.slices ||
           !!(item.airlineName || item.airlineCode);
         
-        // ✅ Use global domestic detection (same country)
         const isDomestic = isFlight && !!(originCode && destinationCode && isDomesticFlight(originCode, destinationCode));
         
         let productType: string;
@@ -445,7 +199,6 @@ export function useBooking() {
           offer_id: item.offer_id,
         });
         
-        // ✅ Determine product type and provider
         if (isDomestic) {
           productType = "FLIGHT_DOMESTIC";
           provider = "WAKANOW";
@@ -537,22 +290,17 @@ export function useBooking() {
           const finalOrigin = originCode || "LOS";
           const finalDestination = destinationCode || "ABV";
           
-          // ✅ Get the correct selectData/offer ID for the flight
           let offerId = "";
           
           if (provider === 'WAKANOW') {
-            // For Wakanow flights, use selectData
             offerId = getSelectData(item);
             console.log("🔑 Wakanow selectData:", { offerId: offerId?.substring(0, 30) });
-            
             if (!offerId) {
               throw new Error("Missing selectData for Wakanow flight. Please go back and select the flight again.");
             }
           } else {
-            // For Duffel flights, use offer_request_id or offer_id
             offerId = item.offer_request_id || item.offer_id || item.selectData || item.id;
             console.log("🔑 Duffel offer ID:", { offerId });
-            
             if (!offerId) {
               throw new Error("Missing offer ID for Duffel flight. Please go back and select the flight again.");
             }
@@ -612,19 +360,11 @@ export function useBooking() {
             new Date(Date.now() + 86400000).toISOString().slice(0, 19);
           body.bookingData = {
             offerId: item.realData?.offerId ?? item.id,
-            pickupLocationCode:
-              searchParams?.pickupLocationCode ??
-              item.realData?.pickupLocation ??
-              "LHR",
+            pickupLocationCode: searchParams?.pickupLocationCode ?? item.realData?.pickupLocation ?? "LHR",
             pickupDateTime: pickupDt,
-            dropoffLocationCode:
-              searchParams?.dropoffLocationCode ??
-              searchParams?.pickupLocationCode ??
-              item.realData?.dropoffLocation ??
-              "LHR",
+            dropoffLocationCode: searchParams?.dropoffLocationCode ?? searchParams?.pickupLocationCode ?? item.realData?.dropoffLocation ?? "LHR",
             dropoffDateTime: dropoffDt,
-            vehicleType:
-              item.realData?.vehicleType ?? item.title ?? "Standard Car",
+            vehicleType: item.realData?.vehicleType ?? item.title ?? "Standard Car",
             basePrice: basePrice,
             markup_amount: markupAmount,
             service_fee: serviceFee,
@@ -636,8 +376,6 @@ export function useBooking() {
           };
         }
 
-        console.log("📤 Sending booking request:", JSON.stringify(body, null, 2));
-
         const token = getStoredAuthToken();
 
         // ✅ SPECIALIZED WAKANOW FLOW (Both Domestic AND International)
@@ -645,20 +383,28 @@ export function useBooking() {
           console.log("🚀 STARTING SPECIALIZED WAKANOW FLOW");
           
           const selectData = getSelectData(item);
-          console.log("🔑 Wakanow selectData for booking:", { selectData: selectData?.substring(0, 30) });
+          console.log("🔑 Original selectData:", { 
+            selectData: selectData?.substring(0, 100),
+            length: selectData?.length 
+          });
           
           if (!selectData) {
             throw new Error("Missing booking token for this flight. Please go back and select the flight again.");
           }
           
+          // ✅ Validate selectData length - if too long, it's likely wrong
+          if (selectData.length > 5000) {
+            console.warn("⚠️ selectData is very long:", selectData.length);
+          }
+          
           // Step 1: Select the flight with Wakanow
           const selectResult = await selectWakanowFlight(selectData, offerCurrency);
           
-          console.log("📦 Select result:", {
+          console.log("📦 Select result from Wakanow:", {
             hasBookingId: !!selectResult?.booking_id,
+            selectDataResponseLength: selectResult?.select_data?.length,
+            selectDataResponsePreview: selectResult?.select_data?.substring(0, 50),
             hasTerms: !!selectResult?.terms_and_conditions,
-            termsLength: selectResult?.terms_and_conditions?.TermsAndConditions?.length,
-            fullResult: selectResult
           });
           
           if (!selectResult?.booking_id) {
@@ -666,15 +412,36 @@ export function useBooking() {
           }
 
           const wakanowBookingId = selectResult.booking_id;
-          const wakanowSelectData = selectResult.select_data || selectData;
+          // ✅ Use the select_data from the response (should be a short token)
+          let wakanowSelectData = selectResult.select_data || selectData;
+          
+          // ✅ Validate the new selectData length
+          if (wakanowSelectData && wakanowSelectData.length > 5000) {
+            console.error("❌ Response selectData is still too long:", wakanowSelectData.length);
+            // Try to extract a shorter token
+            if (selectResult.token) {
+              wakanowSelectData = selectResult.token;
+            } else if (selectResult.booking_token) {
+              wakanowSelectData = selectResult.booking_token;
+            } else if (selectResult.session_id) {
+              wakanowSelectData = selectResult.session_id;
+            } else {
+              throw new Error("Invalid response from Wakanow. The booking token format is incorrect.");
+            }
+          }
+          
+          console.log("✅ Using selectData for booking:", {
+            bookingId: wakanowBookingId,
+            selectDataLength: wakanowSelectData.length,
+            selectDataPreview: wakanowSelectData?.substring(0, 50)
+          });
 
-          // Step 2: Transform passengers to match API docs format
+          // Step 2: Transform passengers
           const allPassengers: PassengerInfo[] = [
             passenger,
             ...(passenger.travellers || [])
           ];
 
-          // Format according to API docs: passengers array with specific fields
           const formattedPassengers = allPassengers.map(p => ({
             passengerType: (p.type === 'child' ? 'Child' : p.type === 'infant' ? 'Infant' : 'Adult'),
             firstName: p.firstName,
@@ -700,7 +467,13 @@ export function useBooking() {
           };
 
           console.log("📤 Sending Wakanow booking request to:", `${BASE}/api/v1/bookings/wakanow/book`);
-          console.log("📤 Request payload:", JSON.stringify(bookingRequest, null, 2));
+          console.log("📤 Request payload:", {
+            bookingId: bookingRequest.bookingId,
+            selectDataLength: bookingRequest.selectData.length,
+            selectDataPreview: bookingRequest.selectData.substring(0, 50),
+            targetCurrency: bookingRequest.targetCurrency,
+            passengersCount: bookingRequest.passengers.length
+          });
 
           const headers: Record<string, string> = {
             "Content-Type": "application/json",
@@ -712,7 +485,6 @@ export function useBooking() {
             console.log("🔐 Using auth token for Wakanow booking");
           }
 
-          // Use the authenticated endpoint
           const endpoint = isGuest ? "/api/v1/bookings/wakanow/book/guest" : "/api/v1/bookings/wakanow/book";
           const response = await fetch(`${BASE}${endpoint}`, {
             method: "POST",
@@ -726,17 +498,17 @@ export function useBooking() {
           
           if (!response.ok) {
             console.error("Wakanow booking failed:", result);
-            throw new Error(result.message || result.error || "Wakanow booking failed");
+            const errorMsg = result.message || result.error || "Wakanow booking failed";
+            if (result.statusCode === 400) {
+              throw new Error("Invalid booking request. The booking token may have expired. Please go back and search again.");
+            }
+            throw new Error(errorMsg);
           }
           
-          // Extract booking ID from response
           let bookingId: string | undefined;
           let bookingData = result.data || result;
           
-          bookingId = bookingData.id || 
-                      bookingData.bookingId || 
-                      result.id ||
-                      result.bookingId;
+          bookingId = bookingData.id || bookingData.bookingId || result.id || result.bookingId;
           
           if (!bookingId) {
             console.error("Failed to extract booking ID from response:", result);
@@ -745,7 +517,6 @@ export function useBooking() {
           
           console.log("✅ Wakanow booking successful! Booking ID:", bookingId);
 
-          // Create booking object with correct status type
           const created: Booking = {
             id: bookingId,
             reference: bookingData.reference || result.reference || `WAK-${bookingId}`,
@@ -777,8 +548,6 @@ export function useBooking() {
           };
           
           setBooking(created);
-          
-          // Store in sessionStorage for recovery
           sessionStorage.setItem(`booking_${bookingId}`, JSON.stringify(created));
           sessionStorage.setItem('current_booking', JSON.stringify({
             id: bookingId,
@@ -791,9 +560,7 @@ export function useBooking() {
         }
 
         // ✅ GENERIC FLOW (DUFFEL, HOTELS, CARS)
-        const endpoint = isGuest
-          ? "/api/v1/bookings/guest"
-          : "/api/v1/bookings";
+        const endpoint = isGuest ? "/api/v1/bookings/guest" : "/api/v1/bookings";
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
           Accept: "application/json",
@@ -815,30 +582,12 @@ export function useBooking() {
         } catch (e) {
           const text = await res.text();
           console.error("Non-JSON response:", text);
-          throw new Error(
-            `Server returned ${res.status}: ${text.substring(0, 100)}`,
-          );
+          throw new Error(`Server returned ${res.status}: ${text.substring(0, 100)}`);
         }
 
         if (!res.ok) {
           const msg = data.message ?? data.error ?? "Booking creation failed";
           console.error("Booking creation failed:", data);
-
-          if (typeof msg === "string") {
-            if (msg.includes("No active markup configuration found")) {
-              const friendly =
-                "Booking isn’t available for this currency right now. Try another currency or contact support.";
-              setError(friendly);
-              throw new Error(friendly);
-            }
-
-            if (msg.includes("dateOfBirth")) {
-              throw new Error(
-                "Date of birth is required for flight bookings. Please fill in all required fields.",
-              );
-            }
-          }
-
           throw new Error(msg);
         }
 
@@ -954,9 +703,7 @@ export function useBooking() {
           ? {
             cardNumber: card.cardNumber.replace(/\s+/g, ""),
             expiryDate: `${card.expiryYear}-${card.expiryMonth.padStart(2, "0")}`,
-            holderName:
-              card.holderName ||
-              `${passenger.firstName} ${passenger.lastName}`,
+            holderName: card.holderName || `${passenger.firstName} ${passenger.lastName}`,
             securityCode: card.cvc,
           }
           : undefined;
@@ -987,11 +734,7 @@ export function useBooking() {
           throw new Error(response.message || "Booking failed");
         }
 
-        const raw =
-          response.data?.booking ??
-          response.booking ??
-          response.data ??
-          response;
+        const raw = response.data?.booking ?? response.booking ?? response.data ?? response;
 
         if (!raw?.id) {
           throw new Error("Invalid response from server - missing booking ID");
@@ -1006,8 +749,7 @@ export function useBooking() {
           provider: "AMADEUS",
           basePrice: basePrice,
           totalAmount: basePrice + taxes,
-          currency:
-            raw.currency || (item.realData?.currency ?? "GBP").toUpperCase(),
+          currency: raw.currency || (item.realData?.currency ?? "GBP").toUpperCase(),
           bookingData: {
             ...raw,
             taxes: taxes,
@@ -1060,9 +802,9 @@ export function useBooking() {
 
       const body = isGuest
         ? {
-          bookingReference: booking.reference,
-          email: booking.passengerInfo.email,
-        }
+            bookingReference: booking.reference,
+            email: booking.passengerInfo.email,
+          }
         : { bookingId: booking.id };
 
       const res = await fetch(url, {
@@ -1076,23 +818,6 @@ export function useBooking() {
       if (!res.ok) {
         const msg = data.message ?? "Booking creation failed";
         console.error("Booking creation failed:", data);
-
-        if (
-          typeof msg === "string" &&
-          msg.includes("No active markup configuration found")
-        ) {
-          const friendly =
-            "Booking isn’t available for this currency right now. Try another currency or contact support.";
-          setError(friendly);
-          throw new Error(friendly);
-        }
-
-        if (typeof msg === "string" && msg.includes("dateOfBirth")) {
-          throw new Error(
-            "Date of birth is required for flight bookings. Please fill in all required fields.",
-          );
-        }
-
         throw new Error(msg);
       }
 
@@ -1159,8 +884,7 @@ export function useBooking() {
             data = await res.json();
           }
   
-          const b: Booking =
-            data?.data?.booking ?? data?.data ?? data?.booking ?? data;
+          const b: Booking = data?.data?.booking ?? data?.data ?? data?.booking ?? data;
             
           if (b?.status === "CONFIRMED" || b?.paymentStatus === "COMPLETED") {
             console.log("✅ Booking confirmed via polling!");
@@ -1294,5 +1018,4 @@ export function useBooking() {
 }
 
 const today = () => new Date().toISOString().split("T")[0];
-const tomorrow = () =>
-  new Date(Date.now() + 86400000).toISOString().split("T")[0];
+const tomorrow = () => new Date(Date.now() + 86400000).toISOString().split("T")[0];
