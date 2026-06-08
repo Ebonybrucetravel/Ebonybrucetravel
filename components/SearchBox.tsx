@@ -106,7 +106,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const [selectedHotelCityCode, setSelectedHotelCityCode] = useState<string | null>(null);
   const [hotelLocationSuggestions, setHotelLocationSuggestions] = useState<HotelDestination[]>([]);
   const [loadingHotelSuggestions, setLoadingHotelSuggestions] = useState(false);
-  const [hotelProvider, setHotelProvider] = useState<'amadeus' | 'hotelbeds'>('hotelbeds');
 
   const defaultDates = (() => {
     const d1 = new Date();
@@ -798,7 +797,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         return;
       }
 
-      // Create flight search payload in the format expected by SearchContext
       const data = {
         type: 'flights',
         tripType,
@@ -817,7 +815,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
       console.log('📦 FINAL Flight Payload:', JSON.stringify(data, null, 2));
 
-      // Send to API - SearchContext will decide whether to use Wakanow or Duffel
       onSearch(data);
     } else if (activeTab === 'hotels') {
       const errors = [];
@@ -855,6 +852,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         return;
       }
 
+      // Using Amadeus only (Hotelbeds removed)
       const data = {
         type: 'hotels',
         location: hotelLocation,
@@ -867,7 +865,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         },
         rooms,
         currency: currency.code || 'USD',
-        provider: hotelProvider
+        provider: 'amadeus'  // Hardcoded to Amadeus
       };
 
       onSearch(data);
@@ -1472,28 +1470,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
           {activeTab === 'hotels' && (
             <div className="space-y-3">
-              <div className="flex items-center gap-3 px-1">
-                <span className="text-[10px] font-black text-white/80 uppercase tracking-widest">{t('search.provider')}:</span>
-                <div className="flex bg-white/10 p-0.5 rounded-lg border border-white/20">
-                  {[
-                    { id: 'hotelbeds', label: t('search.hotelbeds'), icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
-                    { id: 'amadeus', label: t('search.amadeus'), icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg> }
-                  ].map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setHotelProvider(p.id as any)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${hotelProvider === p.id
-                        ? 'bg-white text-[#33a8da] shadow-sm'
-                        : 'text-white/70 hover:text-white hover:bg-white/5'
-                        }`}
-                    >
-                      {p.icon}
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* Provider selector removed - Amadeus only */}
 
               <div className="flex flex-col lg:flex-row items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px] shadow-lg border border-white/20">
                 <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-[2px]">
