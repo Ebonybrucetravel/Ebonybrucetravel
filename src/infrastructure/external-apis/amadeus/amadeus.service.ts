@@ -292,6 +292,79 @@ export class AmadeusService {
     return this.getHotelContent(hotelId, undefined, 'FULL');
   }
 
+  // ==================== HOTEL IMAGES API (v1) ====================
+  
+  async getHotelImages(hotelIds: string[]): Promise<any> {
+    if (!hotelIds?.length) {
+      throw new HttpException('hotelIds is required', HttpStatus.BAD_REQUEST);
+    }
+    
+    return this.makeRequest('/v1/shopping/hotels', {
+      method: 'POST',
+      body: { hotelIds: hotelIds.join(',') },
+    });
+  }
+
+  // ==================== COMPLETE HOTEL DETAILS (Combined) ====================
+  
+  async getCompleteHotelDetails(hotelId: string): Promise<any> {
+    try {
+      this.logger.log(`Fetching complete hotel details for ${hotelId}`);
+      
+      // Fetch all hotel data in parallel
+      const [content, ratings, images] = await Promise.allSettled([
+        this.getHotelFullDetails(hotelId),
+        this.getHotelRatings([hotelId]),
+        this.getHotelImages([hotelId]),
+      ]);
+
+      const result: any = {
+        hotelId,
+        content: null,
+        ratings: null,
+        images: [],
+      };
+
+      // Process content
+      if (content.status === 'fulfilled' && content.value) {
+        result.content = content.value;
+        this.logger.log(`✅ Hotel content retrieved for ${hotelId}`);
+      } else {
+        this.logger.warn(`❌ Hotel content failed for ${hotelId}: ${content.status === 'rejected' ? content.reason?.message : 'Unknown error'}`);
+      }
+
+      // Process ratings
+      if (ratings.status === 'fulfilled' && ratings.value?.data) {
+        result.ratings = ratings.value.data;
+        this.logger.log(`✅ Hotel ratings retrieved for ${hotelId}`);
+      } else {
+        this.logger.warn(`❌ Hotel ratings failed for ${hotelId}`);
+      }
+
+      // Process images
+      if (images.status === 'fulfilled' && images.value?.data) {
+        result.images = images.value.data;
+        this.logger.log(`✅ Hotel images retrieved for ${hotelId}`);
+      } else {
+        this.logger.warn(`❌ Hotel images failed for ${hotelId}`);
+      }
+
+      return {
+        success: true,
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get complete hotel details for ${hotelId}: ${error.message}`);
+      throw new HttpException(
+        {
+          message: `Failed to fetch hotel details: ${error.message}`,
+          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   // ==================== HOTEL SEARCH API (v3) ====================
   
   async searchHotels(params: {
