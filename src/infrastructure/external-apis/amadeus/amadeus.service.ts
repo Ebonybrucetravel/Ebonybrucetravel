@@ -314,7 +314,7 @@ export class AmadeusService {
       // Fetch all hotel data in parallel
       const [content, ratings, images] = await Promise.allSettled([
         this.getHotelFullDetails(hotelId),
-        this.getHotelRatings([hotelId]),
+        this.getHotelRatings({ hotelIds: [hotelId] }),  
         this.getHotelImages([hotelId]),
       ]);
 
