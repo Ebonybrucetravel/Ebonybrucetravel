@@ -268,96 +268,190 @@ export class AmadeusService {
     });
   }
 
-  // ==================== HOTEL CONTENT API (v3) ====================
+  // ==================== HOTEL CONTENT & IMAGES API (v3) ====================
   
+  /**
+   * Get hotel content including images, descriptions, amenities, etc.
+   * @param hotelId - The hotel ID (e.g., "WHLON464")
+   * @param fields - Optional categories to retrieve
+   * @param view - Either "LIGHT" or "FULL"
+   */
   async getHotelContent(
     hotelId: string,
     fields?: Array<'promotions' | 'awards' | 'policies' | 'rooms' | 'facilities' | 'pointOfInterest' | 'hotel' | 'basic'>,
     view?: 'LIGHT' | 'FULL'
   ): Promise<any> {
-    if (!hotelId) throw new HttpException('Hotel ID is required', HttpStatus.BAD_REQUEST);
+    if (!hotelId) {
+      throw new HttpException('Hotel ID is required', HttpStatus.BAD_REQUEST);
+    }
     
-    const queryParams: Record<string, string> = { hotelID: hotelId };
-    if (fields?.length) queryParams.fields = fields.join(',');
-    if (view) queryParams.view = view;
+    const queryParams: Record<string, string> = {
+      hotelID: hotelId,
+    };
     
-    return this.makeRequest('/v3/reference-data/locations/by-hotel', { method: 'GET', params: queryParams });
+    if (fields?.length) {
+      queryParams.fields = fields.join(',');
+    }
+    
+    if (view) {
+      queryParams.view = view;
+    }
+    
+    this.logger.log(`Fetching hotel content for: ${hotelId}`);
+    
+    return this.makeRequest('/v3/reference-data/locations/by-hotel', {
+      method: 'GET',
+      params: queryParams,
+    });
   }
 
+  /**
+   * Get hotel basic information only
+   */
   async getHotelBasicInfo(hotelId: string): Promise<any> {
     return this.getHotelContent(hotelId, ['basic'], 'LIGHT');
   }
 
+  /**
+   * Get complete hotel details including all content (descriptions, amenities, etc.)
+   */
   async getHotelFullDetails(hotelId: string): Promise<any> {
     return this.getHotelContent(hotelId, undefined, 'FULL');
   }
 
-  // ==================== HOTEL IMAGES API (v1) ====================
-  
-  async getHotelImages(hotelIds: string[]): Promise<any> {
-    if (!hotelIds?.length) {
-      throw new HttpException('hotelIds is required', HttpStatus.BAD_REQUEST);
+  /**
+   * Extract and return all image URLs from hotel content
+   * @param hotelId - The hotel ID
+   * @returns Array of image URLs
+   */
+  async getHotelImageUrls(hotelId: string): Promise<string[]> {
+    try {
+      const response = await this.getHotelContent(hotelId, undefined, 'FULL');
+      const images: string[] = [];
+      
+      if (response?.data?.basic?.media && Array.isArray(response.data.basic.media)) {
+        for (const media of response.data.basic.media) {
+          if (media.mediaScales && Array.isArray(media.mediaScales) && media.mediaScales.length > 0) {
+            // Get the largest image from mediaScales
+            const largestImage = media.mediaScales.sort((a: any, b: any) => {
+              const aSize = (a.dimensions?.height || 0) * (a.dimensions?.width || 0);
+              const bSize = (b.dimensions?.height || 0) * (b.dimensions?.width || 0);
+              return bSize - aSize;
+            })[0];
+            
+            if (largestImage?.href) {
+              images.push(largestImage.href);
+            }
+          }
+        }
+      }
+      
+      this.logger.log(`Found ${images.length} images for hotel ${hotelId}`);
+      return images;
+    } catch (error) {
+      this.logger.error(`Failed to fetch images for hotel ${hotelId}:`, error);
+      return [];
     }
-    
-    return this.makeRequest('/v1/shopping/hotels', {
-      method: 'POST',
-      body: { hotelIds: hotelIds.join(',') },
-    });
   }
 
-  // ==================== COMPLETE HOTEL DETAILS (Combined) ====================
-  
+  /**
+   * Get the primary image URL for a hotel (best representative image)
+   * Priority: EXTERIOR_VIEW > LOBBY_VIEW > LOGO > RESTAURANT > BAR_OR_LOUNGE > any
+   * @param hotelId - The hotel ID
+   * @returns Primary image URL or null
+   */
+  async getHotelPrimaryImageUrl(hotelId: string): Promise<string | null> {
+    try {
+      const response = await this.getHotelContent(hotelId, undefined, 'FULL');
+      
+      if (response?.data?.basic?.media && Array.isArray(response.data.basic.media)) {
+        // Priority order for primary image
+        const priorityCategories = ['EXTERIOR_VIEW', 'LOBBY_VIEW', 'LOGO', 'RESTAURANT', 'BAR_OR_LOUNGE'];
+        
+        for (const category of priorityCategories) {
+          const mediaItem = response.data.basic.media.find(
+            (m: any) => m.category === category && m.mediaScales?.length > 0
+          );
+          
+          if (mediaItem?.mediaScales?.length > 0) {
+            // Get the largest image
+            const largest = mediaItem.mediaScales.sort((a: any, b: any) => {
+              const aSize = (a.dimensions?.height || 0) * (a.dimensions?.width || 0);
+              const bSize = (b.dimensions?.height || 0) * (b.dimensions?.width || 0);
+              return bSize - aSize;
+            })[0];
+            
+            if (largest?.href) {
+              this.logger.log(`Primary image found for ${hotelId} in category ${category}`);
+              return largest.href;
+            }
+          }
+        }
+        
+        // Fallback: return first image from any category
+        const firstMedia = response.data.basic.media.find((m: any) => m.mediaScales?.length > 0);
+        if (firstMedia?.mediaScales?.[0]?.href) {
+          this.logger.log(`Primary image fallback for ${hotelId}`);
+          return firstMedia.mediaScales[0].href;
+        }
+      }
+      
+      this.logger.warn(`No images found for hotel ${hotelId}`);
+      return null;
+    } catch (error) {
+      this.logger.error(`Failed to fetch primary image for hotel ${hotelId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get complete hotel details with images (content + images combined)
+   * This is the main method to use for hotel detail pages
+   * @param hotelId - The hotel ID
+   * @returns Complete hotel details including content and images
+   */
   async getCompleteHotelDetails(hotelId: string): Promise<any> {
     try {
       this.logger.log(`Fetching complete hotel details for ${hotelId}`);
       
-      // Fetch all hotel data in parallel
-      const [content, ratings, images] = await Promise.allSettled([
+      // Fetch content and images in parallel
+      const [contentResponse, imageUrls, primaryImage] = await Promise.all([
         this.getHotelFullDetails(hotelId),
-        this.getHotelRatings({ hotelIds: [hotelId] }),  
-        this.getHotelImages([hotelId]),
+        this.getHotelImageUrls(hotelId),
+        this.getHotelPrimaryImageUrl(hotelId),
       ]);
-
-      const result: any = {
-        hotelId,
-        content: null,
-        ratings: null,
-        images: [],
-      };
-
-      // Process content
-      if (content.status === 'fulfilled' && content.value) {
-        result.content = content.value;
-        this.logger.log(`✅ Hotel content retrieved for ${hotelId}`);
-      } else {
-        this.logger.warn(`❌ Hotel content failed for ${hotelId}: ${content.status === 'rejected' ? content.reason?.message : 'Unknown error'}`);
-      }
-
-      // Process ratings
-      if (ratings.status === 'fulfilled' && ratings.value?.data) {
-        result.ratings = ratings.value.data;
-        this.logger.log(`✅ Hotel ratings retrieved for ${hotelId}`);
-      } else {
-        this.logger.warn(`❌ Hotel ratings failed for ${hotelId}`);
-      }
-
-      // Process images
-      if (images.status === 'fulfilled' && images.value?.data) {
-        result.images = images.value.data;
-        this.logger.log(`✅ Hotel images retrieved for ${hotelId}`);
-      } else {
-        this.logger.warn(`❌ Hotel images failed for ${hotelId}`);
-      }
-
+      
+      // Extract the basic hotel data
+      const hotelData = contentResponse?.data?.basic || contentResponse?.data || contentResponse;
+      
       return {
         success: true,
-        data: result,
+        data: {
+          hotelId,
+          name: hotelData?.name || null,
+          chainCode: hotelData?.chainCode || null,
+          chainName: hotelData?.chainName || null,
+          description: hotelData?.description || null,
+          address: hotelData?.contact?.[0]?.address || null,
+          contact: hotelData?.contact || null,
+          location: hotelData?.location || null,
+          media: hotelData?.media || null,
+          images: imageUrls,
+          primaryImage: primaryImage,
+          amenities: hotelData?.amenities || null,
+          policies: hotelData?.policies || null,
+          checkInOut: {
+            checkIn: hotelData?.checkInOut?.checkIn || '15:00',
+            checkOut: hotelData?.checkInOut?.checkOut || '12:00',
+          },
+        },
+        message: 'Hotel details retrieved successfully',
       };
     } catch (error) {
-      this.logger.error(`Failed to get complete hotel details for ${hotelId}: ${error.message}`);
+      this.logger.error(`Failed to get complete hotel details for ${hotelId}:`, error);
       throw new HttpException(
         {
-          message: `Failed to fetch hotel details: ${error.message}`,
+          message: `Failed to fetch hotel details: ${error instanceof Error ? error.message : 'Unknown error'}`,
           statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
         },
         HttpStatus.INTERNAL_SERVER_ERROR,
