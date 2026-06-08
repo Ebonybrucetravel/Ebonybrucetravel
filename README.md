@@ -1,1 +1,1 @@
-Ebony Bruce Travels Update
+Ebony Bruce Travels Update both frontend and backend
