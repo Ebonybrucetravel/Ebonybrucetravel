@@ -45,6 +45,9 @@ import { BookingWakanowController } from './presentation/booking/booking-wakanow
 import { CurrencyController } from './presentation/currency/currency.controller';
 import { CurrencyModule } from './infrastructure/currency/currency.module';
 
+// ✅ ADD THIS IMPORT
+import { HotelImagesController } from './presentation/hotel-images/hotel-images.controller';
+
 @Module({
   imports: [
     // Configuration
@@ -92,7 +95,17 @@ import { CurrencyModule } from './infrastructure/currency/currency.module';
     HealthModule,
     ContactModule,
   ],
-  controllers: [BookingController, PaymentController, MarkupController, DashboardController, BookingHotelbedsController, BookingWakanowController, CurrencyController],
+  // HotelImagesController to the controllers array
+  controllers: [
+    BookingController,
+    PaymentController,
+    MarkupController,
+    DashboardController,
+    BookingHotelbedsController,
+    BookingWakanowController,
+    CurrencyController,
+    HotelImagesController,  
+  ],
   providers: [
     {
       provide: APP_FILTER,
