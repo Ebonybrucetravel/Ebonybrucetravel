@@ -1111,21 +1111,20 @@ export function transformHotelToSearchResult(
     const noOfferPrimary = (hotel as any).primaryImageUrl ?? null;
     return {
       id: hotelInfo.hotelId || `hotel-${index}`,
-      provider: hotelInfo.chainCode
-        ? `${hotelInfo.chainCode} Hotels`
-        : "Premium Hotels",
+      provider: hotelInfo.chainCode ? `${hotelInfo.chainCode} Hotels` : "Premium Hotels",
       title: hotelInfo.name || "Hotel",
       subtitle: `${location} • Standard Hotel`,
       price: "₦0/night",
       totalPrice: "₦0 total",
       rating: 4.0,
-      image:
-        noOfferPrimary ??
-        "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400",
+      image: noOfferPrimary ?? "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400",
       primaryImageUrl: noOfferPrimary,
       amenities: ["Free WiFi", "Air Conditioning", "TV", "Private Bathroom"],
       features: ["Standard Room", "2 guests", "1 night"],
       type: "hotels" as const,
+      // ✅ ADD THESE LINES
+      offers: [],  // ← ADD THIS
+      hotel: hotelInfo,  // ← ADD THIS
       realData: {
         hotelId: hotelInfo.hotelId,
         hotelName: hotelInfo.name,
@@ -1182,6 +1181,7 @@ export function transformHotelToSearchResult(
   const starRating = determineStarRating(rating, hotelInfo.chainCode);
 
   const primaryImageUrl = (hotel as any).primaryImageUrl ?? null;
+  
   return {
     id: hotelInfo.hotelId || `hotel-${index}`,
     provider: getHotelProviderName(hotelInfo.chainCode),
@@ -1201,10 +1201,16 @@ export function transformHotelToSearchResult(
       offer.rateCode ? offer.rateCode.replace("_", " ") : (offer.boardName || "Best Rate"),
     ],
     type: "hotels" as const,
+    
+    // ✅ ADD THESE 3 LINES - THIS IS THE FIX!
+    offers: hotel.offers,  // ← Preserve all offers
+    hotel: hotelInfo,      // ← Preserve hotel info
+    originalOffer: offer,  // ← Preserve the selected offer
+    
     original_amount: (hotel as any).original_price,
     final_amount: (hotel as any).final_price,
-    original_price: (hotel as any).original_price, // For compatibility
-    final_price: (hotel as any).final_price, // For compatibility
+    original_price: (hotel as any).original_price,
+    final_price: (hotel as any).final_price,
     markup_amount: (hotel as any).markup_amount,
     markup_percentage: (hotel as any).markup_percentage,
     service_fee: (hotel as any).service_fee,
@@ -1212,7 +1218,7 @@ export function transformHotelToSearchResult(
     realData: {
       hotelId: hotelInfo.hotelId,
       offerId: offer.id,
-      rateKey: offer.id, // Support components expecting rateKey
+      rateKey: offer.id,
       hotelName: hotelInfo.name,
       checkInDate,
       checkOutDate,
@@ -4296,25 +4302,71 @@ export const hotelApi = {
     );
   },
 
-  // Get hotel details
-  getHotelDetails: async (hotelId: string) => {
+  // ✅ NEW: Get complete hotel details (content + ratings + images)
+  getHotelDetails: async (hotelId: string): Promise<any> => {
     try {
-      console.log(`🏨 Fetching details for hotel: ${hotelId}`);
-      const prefix = getHotelEndpointPrefix(hotelId);
-
-      const response = await request<any>(`${prefix}/hotels/${hotelId}/details`, {
-        method: "GET",
-      });
-
+      console.log(`🏨 Fetching complete hotel details for: ${hotelId}`);
+      const response = await publicRequest<any>(
+        `/api/v1/bookings/hotels/${hotelId}/details`,
+        {
+          method: "GET",
+        },
+      );
       console.log("✅ Hotel details response:", response);
       return response;
     } catch (error: any) {
       console.error("❌ Failed to fetch hotel details:", error);
-      throw error;
+      return {
+        success: false,
+        data: null,
+        message: error.message,
+      };
     }
   },
 
-  // Get hotel photos
+  // ✅ NEW: Get hotel content only (description, amenities, policies)
+  getHotelContent: async (hotelId: string, view?: 'LIGHT' | 'FULL'): Promise<any> => {
+    try {
+      const url = view 
+        ? `/api/v1/bookings/hotels/${hotelId}/content?view=${view}`
+        : `/api/v1/bookings/hotels/${hotelId}/content`;
+      const response = await publicRequest<any>(url, { method: "GET" });
+      return response;
+    } catch (error: any) {
+      console.error("❌ Failed to fetch hotel content:", error);
+      return { success: false, data: null };
+    }
+  },
+
+  // ✅ NEW: Get hotel images only
+  getHotelImagesById: async (hotelId: string): Promise<any> => {
+    try {
+      const response = await publicRequest<any>(
+        `/api/v1/bookings/hotels/${hotelId}/images`,
+        { method: "GET" },
+      );
+      return response;
+    } catch (error: any) {
+      console.error("❌ Failed to fetch hotel images:", error);
+      return { success: false, data: [] };
+    }
+  },
+
+  // ✅ NEW: Get hotel ratings only
+  getHotelRatingsById: async (hotelId: string): Promise<any> => {
+    try {
+      const response = await publicRequest<any>(
+        `/api/v1/bookings/hotels/${hotelId}/ratings`,
+        { method: "GET" },
+      );
+      return response;
+    } catch (error: any) {
+      console.error("❌ Failed to fetch hotel ratings:", error);
+      return { success: false, data: null };
+    }
+  },
+
+  // ✅ NEW: Get hotel photos (existing - keep for compatibility)
   getHotelPhotos: async (hotelId: string, limit: number = 5) => {
     try {
       console.log(`📸 Fetching photos for hotel: ${hotelId}`);

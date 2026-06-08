@@ -105,6 +105,7 @@ export interface SearchResult {
   // ✅ DISPLAY FIELDS
   displayPrice?: string;
   rawPrice?: number;
+  displayPriceRaw?: number; 
 
   // ✅ CUSTOM CALCULATED FIELDS
   calculatedBasePrice?: number;
@@ -166,6 +167,16 @@ export interface SearchResult {
   guests?: number;
   hotelAddress?: string;
   hotelAmenities?: string[];
+  pricePerNight?: string;        // ← ADD THIS
+  nights?: number;               // ← ADD THIS
+  roomDescription?: string;      // ← ADD THIS
+  roomType?: string;             // ← ADD THIS
+  cancellationDeadline?: string; // ← ADD THIS
+  offer?: any;
+hotel?: any;
+adults?: number;
+
+
 
   // ✅ CAR RENTAL SPECIFIC FIELDS
   pickupLocation?: string;

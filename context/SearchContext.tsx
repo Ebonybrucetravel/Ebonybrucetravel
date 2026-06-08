@@ -586,26 +586,44 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   return cityHotelMap[cityCode.toUpperCase()] || [];
 };
 
+
 const searchHotels = async (params: SearchParams) => {
   try {
-    // ✅ Convert cityCode to hotelIds if needed
+    // ✅ You need to have a mapping from city to hotel IDs
+    // For London, the hotel IDs should be provided
     let hotelIds = params.hotelIds;
     
+    // If no hotelIds provided but we have cityCode, map it
     if ((!hotelIds || hotelIds.length === 0) && params.cityCode) {
-      hotelIds = getHotelIdsForCity(params.cityCode);
-      console.log(`🔄 Converted cityCode ${params.cityCode} to hotelIds:`, hotelIds);
+      // This mapping should come from your backend or a configuration
+      // For now, let's use the hotelId from your API response: "WHLON464"
+      const cityHotelMap: Record<string, string[]> = {
+        'LON': ['WHLON464'], // W London Leicester Square
+        'LOS': ['WHLOS001'], // Add Lagos hotel IDs
+        'PAR': ['WHPAR001'],
+        'NYC': ['WHNYC001'],
+        'DXB': ['WHDXB001'],
+      };
+      
+      hotelIds = cityHotelMap[params.cityCode.toUpperCase()] || [];
+      
+      if (hotelIds.length === 0) {
+        console.error(`❌ No hotel IDs mapped for city code: ${params.cityCode}`);
+        setSearchError(`No hotels found for ${params.cityCode}. Please try a different location.`);
+        setSearchResults([]);
+        return;
+      }
     }
     
-    // ✅ If still no hotelIds, throw error or use mock
+    // ✅ Ensure we have hotelIds
     if (!hotelIds || hotelIds.length === 0) {
-      console.error('❌ No hotelIds provided and no mapping for cityCode:', params.cityCode);
-      setSearchError(`No hotels found for ${params.cityCode}. Please try a different location.`);
+      setSearchError('Please provide a valid hotel location.');
       setSearchResults([]);
       return;
     }
     
     const hotelParams = {
-      hotelIds: hotelIds,  // ✅ Send hotelIds instead of cityCode
+      hotelIds: hotelIds, // ✅ Send hotelIds array
       checkInDate: params.checkInDate || new Date().toISOString().split('T')[0],
       checkOutDate: params.checkOutDate || new Date(Date.now() + 86400000).toISOString().split('T')[0],
       adults: params.adults || 1,
@@ -617,81 +635,134 @@ const searchHotels = async (params: SearchParams) => {
 
     console.log('🏨 Sending hotel search request:', hotelParams);
 
-    // You need to update your API call to use the correct endpoint with hotelIds
-    // Assuming your API method accepts hotelIds
-    const result = await api.hotelApi.searchAndTransformHotels(hotelParams, params.location || 'Lagos');
+    // ✅ Use the correct API method
+    const result = await api.searchAndTransformHotels(hotelParams, params.location || 'London');
 
-    if (result.success && result.results) {
-      const hotelsWithMarkup = await Promise.all(result.results.map(async (hotel: any) => {
+    if (result.success && result.results && result.results.length > 0) {
+      const hotelsWithBestOffers: SearchResult[] = [];
+      
+      for (const hotel of result.results) {
+        // Get all offers
         const offers = hotel.offers || [];
         
-        const processedOffers = await Promise.all(offers.map(async (offer: any) => {
-          // ✅ READ MARKUP FROM BACKEND RESPONSE
-          const basePrice = parseFloat(offer.base_price || offer.price?.base || '0');
-          const finalPriceNGN = parseFloat(offer.final_price || offer.price?.total || '0');
-          
-          const markupAmount = parseFloat(offer.markup_amount || '0');
-          const markupPercentage = parseFloat(offer.markup_percentage || '0');
-          const conversionFee = parseFloat(offer.conversion_fee || '0');
-          const conversionFeePercentage = parseFloat(offer.conversion_fee_percentage || '0');
-          const serviceFee = parseFloat(offer.service_fee || '0');
-          
-          const totalServiceFee = markupAmount + conversionFee + serviceFee;
-          
-          const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalPriceNGN, 'NGN');
-          const formattedDisplayPrice = await formatPriceInUserCurrency(finalPriceNGN, 'NGN');
-          
-          console.log(`🏨 Hotel offer - Reading backend markup:`, {
-            hotel: hotel.hotel?.name,
-            room: offer.room?.type,
-            basePriceNGN: `₦${basePrice}`,
-            markupAmountNGN: `₦${markupAmount}`,
-            markupPercentage: `${markupPercentage}%`,
-            conversionFeeNGN: `₦${conversionFee}`,
-            serviceFeeNGN: `₦${serviceFee}`,
-            finalPriceNGN: `₦${finalPriceNGN}`,
-            displayPrice: formattedDisplayPrice,
-          });
-          
-          return {
-            ...offer,
-            original_amount: basePrice.toString(),
-            original_currency: offer.original_currency || 'NGN',
-            markup_amount: markupAmount.toString(),
-            markup_percentage: markupPercentage,
-            conversion_fee: conversionFee.toString(),
-            conversion_fee_percentage: conversionFeePercentage,
-            taxes: '0',
-            service_fee: totalServiceFee.toString(),
-            service_fee_percentage: markupPercentage + conversionFeePercentage,
-            final_amount: finalPriceNGN.toString(),
-            currency: 'NGN',
-            rawPrice: finalPriceNGN,
-            price: formattedDisplayPrice,
-            totalPriceFormatted: formattedDisplayPrice,
-            displayPriceRaw: displayPriceInUserCurrency,
-          };
-        }));
+        if (offers.length === 0) {
+          console.warn(`⚠️ No offers for hotel: ${hotel.title}`);
+          continue;
+        }
         
-        return {
-          ...hotel,
-          offers: processedOffers,
-          price: processedOffers[0]?.price,
-          markup_amount: processedOffers[0]?.markup_amount,
-          markup_percentage: processedOffers[0]?.markup_percentage,
-          final_amount: processedOffers[0]?.final_amount,
+        // Find best offer (lowest price)
+        const bestOffer = offers.reduce((best: any, current: any) => {
+          const bestPrice = parseFloat(best.final_price || best.price?.total || '0');
+          const currentPrice = parseFloat(current.final_price || current.price?.total || '0');
+          return currentPrice < bestPrice ? current : best;
+        }, offers[0]);
+        
+        // Extract pricing
+        const basePrice = parseFloat(bestOffer.base_price || bestOffer.price?.base || '0');
+        const finalPriceNGN = parseFloat(bestOffer.final_price || bestOffer.price?.total || '0');
+        
+        if (finalPriceNGN === 0) {
+          console.warn(`⚠️ No valid price for hotel: ${hotel.title}`);
+          continue;
+        }
+        
+        const markupAmount = parseFloat(bestOffer.markup_amount || '0');
+        const markupPercentage = parseFloat(bestOffer.markup_percentage || '0');
+        const conversionFee = parseFloat(bestOffer.conversion_fee || '0');
+        const conversionFeePercentage = parseFloat(bestOffer.conversion_fee_percentage || '0');
+        const serviceFee = parseFloat(bestOffer.service_fee || '0');
+        
+        const totalServiceFee = markupAmount + conversionFee + serviceFee;
+        
+        // Get display prices
+        const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalPriceNGN, 'NGN');
+        const formattedDisplayPrice = await formatPriceInUserCurrency(finalPriceNGN, 'NGN');
+        
+        // Calculate nights
+        const checkIn = new Date(params.checkInDate || new Date());
+        const checkOut = new Date(params.checkOutDate || new Date(Date.now() + 86400000));
+        const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
+        
+        // Calculate price per night
+        const pricePerNightNGN = finalPriceNGN / nights;
+        const formattedPricePerNight = await formatPriceInUserCurrency(pricePerNightNGN, 'NGN');
+        
+        const roomType = bestOffer.room?.typeEstimated?.category || bestOffer.room?.type || 'Standard';
+        const bedType = bestOffer.room?.typeEstimated?.bedType || 'King';
+        const beds = bestOffer.room?.typeEstimated?.beds || 1;
+        
+        console.log(`🏨 Hotel: ${hotel.title}`, {
+          nights,
+          pricePerNight: formattedPricePerNight,
+          finalPrice: formattedDisplayPrice,
+          roomType,
+          bedType
+        });
+        
+        // Create hotel result
+        const hotelResult: SearchResult = {
+          id: hotel.id || `hotel-${Date.now()}-${hotelsWithBestOffers.length}`,
+          type: 'hotels',
+          provider: hotel.provider || 'Amadeus Hotels',
+          title: hotel.title,
+          subtitle: `${hotel.subtitle} • ${nights} night${nights > 1 ? 's' : ''}`,
+          price: formattedDisplayPrice,
+          totalPrice: formattedDisplayPrice,
+          pricePerNight: formattedPricePerNight,
+          nights: nights,
+          rating: hotel.rating || 4.0,
+          image: hotel.image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=800',
+          amenities: hotel.amenities || ['Free Wi-Fi', 'Air Conditioning', 'TV', 'Private Bathroom'],
+          features: [
+            roomType,
+            `${beds} ${bedType.toLowerCase()} bed${beds > 1 ? 's' : ''}`,
+            `${nights} night${nights > 1 ? 's' : ''}`,
+            bestOffer.boardType || 'Room Only'
+          ],
+          isRefundable: bestOffer.policies?.refundable?.cancellationRefund === 'REFUNDABLE_UP_TO_DEADLINE',
+          rawPrice: displayPriceInUserCurrency,
+          displayPrice: formattedDisplayPrice,
+          displayPriceRaw: displayPriceInUserCurrency,
+          roomDescription: bestOffer.room?.description?.text || '',
+          roomType: roomType,
+          cancellationDeadline: bestOffer.policies?.cancellations?.[0]?.deadline,
+          original_amount: basePrice.toString(),
+          original_currency: bestOffer.original_currency || 'NGN',
+          markup_amount: markupAmount.toString(),
+          markup_percentage: markupPercentage,
+          conversion_fee: conversionFee.toString(),
+          conversion_fee_percentage: conversionFeePercentage,
+          taxes: '0',
+          service_fee: totalServiceFee.toString(),
+          service_fee_percentage: markupPercentage + conversionFeePercentage,
+          final_amount: finalPriceNGN.toString(),
+          currency: 'NGN',
+          offer: bestOffer,
+          hotel: hotel.hotel || hotel,
+          checkInDate: params.checkInDate,
+          checkOutDate: params.checkOutDate,
+          adults: params.adults || 1,
+          rooms: params.rooms || 1,
         };
-      }));
+        
+        hotelsWithBestOffers.push(hotelResult);
+      }
       
-      setSearchResults(hotelsWithMarkup);
-      console.log(`✅ Processed ${hotelsWithMarkup.length} hotels with backend markup`);
+      setSearchResults(hotelsWithBestOffers);
+      console.log(`✅ Processed ${hotelsWithBestOffers.length} hotels with best offers`);
+      
+      if (hotelsWithBestOffers.length === 0) {
+        setSearchError('No hotels found with valid offers. Please try different dates.');
+      }
     } else {
+      console.log('No hotels found:', result.message);
       setSearchResults([]);
+      setSearchError(result.message || 'No hotels found for your search criteria.');
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error('Hotel search failed:', err);
     setSearchResults([]);
-    setSearchError('Failed to search hotels. Please try again.');
+    setSearchError(err.message || 'Failed to search hotels. Please try again.');
   }
 };
   const formatDateForWakanow = (dateStr: string): string => {

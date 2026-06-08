@@ -420,7 +420,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const [sortOption, setSortOption] = useState<string>("recommended");
 
   // Shared States for Hotels and Cars
-  const [priceRange, setPriceRange] = useState<number>(2000000);
+  const [priceRange, setPriceRange] = useState<number>(5000000);
   const [sortBy, setSortBy] = useState<"match" | "price" | "rating">("match");
   const [visibleCount, setVisibleCount] = useState(6);
   const [flightVisibleCount, setFlightVisibleCount] = useState(15);
@@ -1321,52 +1321,103 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return searchParams?.destination || (processedFlights[0]?.arrivalCity) || 'London';
   }, [searchParams, processedFlights]);
 
-  // Extract hotel and car results with price conversion
-  const hotelAndCarResults = useMemo(() => {
-    if (searchType === 'flights') return [];
+// Extract hotel and car results with price conversion
+const hotelAndCarResults = useMemo(() => {
+  if (searchType === 'flights') return [];
 
-    let items: ExtendedSearchResult[] = [];
-    if (Array.isArray(results)) {
-      items = results.map(r => ({
-        ...r,
-        type: r.type || searchType
-      }));
+  let items: ExtendedSearchResult[] = [];
+  
+  console.log('🔍 hotelAndCarResults - input results:', {
+    isArray: Array.isArray(results),
+    resultsType: typeof results,
+    hasResults: results && typeof results === 'object' && 'results' in results,
+    keys: results && typeof results === 'object' ? Object.keys(results) : []
+  });
+  
+  // Case 1: results is directly an array (what your SearchContext sends)
+  if (Array.isArray(results)) {
+    items = results.map((r: ExtendedSearchResult) => ({
+      ...r,
+      type: r.type || searchType
+    }));
+    console.log('✅ Extracted from direct array:', items.length);
+  }
+  // Case 2: results has a 'results' property that's an array
+  else if (results && typeof results === 'object' && 'results' in results && Array.isArray((results as any).results)) {
+    items = (results as any).results.map((r: ExtendedSearchResult) => ({
+      ...r,
+      type: r.type || searchType
+    }));
+    console.log('✅ Extracted from results.results:', items.length);
+  }
+  // Case 3: results has a 'data' property that's an array (for Amadeus raw response)
+  else if (results && typeof results === 'object' && 'data' in results && Array.isArray((results as any).data)) {
+    items = (results as any).data.map((r: ExtendedSearchResult) => ({
+      ...r,
+      type: r.type || searchType
+    }));
+    console.log('✅ Extracted from results.data:', items.length);
+  }
+  // Case 4: results is an object with numeric keys (array-like)
+  else if (results && typeof results === 'object') {
+    const possibleArray = Object.values(results);
+    if (possibleArray.length > 0 && possibleArray[0] && typeof possibleArray[0] === 'object') {
+      items = possibleArray as ExtendedSearchResult[];
+      console.log('✅ Extracted from Object.values:', items.length);
     }
-    if (results && typeof results === 'object' && 'data' in results) {
-      items = results.data.map(r => ({
-        ...r,
-        type: r.type || searchType
-      }));
-    }
+  }
 
-    return items.map(item => {
-      let originalPrice = 0;
-      let originalCurrency = 'GBP';
+  console.log('📊 Hotel results extracted:', {
+    itemsCount: items.length,
+    firstItem: items[0]?.title,
+    firstItemType: items[0]?.type,
+    firstItemId: items[0]?.id
+  });
 
-      if (item.original_amount) {
-        originalPrice = parseFloat(item.original_amount);
-        originalCurrency = item.original_currency || 'GBP';
-      } else if (item.total_amount) {
-        originalPrice = parseFloat(item.total_amount);
-        originalCurrency = item.total_currency || 'GBP';
-      } else if (item.price) {
-        if (typeof item.price === 'string') {
-          originalPrice = parseFloat(item.price.replace(/[^\d.]/g, '')) || 0;
-        } else if (typeof item.price === 'number') {
-          originalPrice = item.price;
-        } else if (typeof item.price === 'object' && item.price.total) {
-          originalPrice = parseFloat(item.price.total);
-          originalCurrency = item.price.currency || 'GBP';
-        }
+  return items.map((item: ExtendedSearchResult) => {
+    let originalPrice = 0;
+    let originalCurrency = 'GBP';
+
+    // Extract price from hotel data
+    if (item.final_amount) {
+      originalPrice = parseFloat(item.final_amount);
+      originalCurrency = item.currency || 'GBP';
+    } else if (item.original_amount) {
+      originalPrice = parseFloat(item.original_amount);
+      originalCurrency = item.original_currency || 'GBP';
+    } else if (item.final_price) {
+      originalPrice = parseFloat(item.final_price);
+      originalCurrency = item.currency || 'GBP';
+    } else if (item.price) {
+      if (typeof item.price === 'string') {
+        originalPrice = parseFloat(item.price.replace(/[^\d.]/g, '')) || 0;
+      } else if (typeof item.price === 'number') {
+        originalPrice = item.price;
+      } else if (typeof item.price === 'object' && item.price.total) {
+        originalPrice = parseFloat(item.price.total);
+        originalCurrency = item.price.currency || 'GBP';
       }
+    } else if (item.totalPrice) {
+      const priceMatch = item.totalPrice.match(/[\d,]+\.?\d*/);
+      if (priceMatch) {
+        originalPrice = parseFloat(priceMatch[0].replace(/,/g, ''));
+      }
+    }
 
-      return {
-        ...item,
-        originalPriceAmount: originalPrice,
-        originalPriceCurrency: originalCurrency,
-      };
+    console.log(`💰 Price extracted for ${item.title}:`, {
+      originalPrice,
+      originalCurrency,
+      final_amount: item.final_amount,
+      original_amount: item.original_amount
     });
-  }, [results, searchType]);
+
+    return {
+      ...item,
+      originalPriceAmount: originalPrice,
+      originalPriceCurrency: originalCurrency,
+    };
+  });
+}, [results, searchType]);
 
   // Convert hotel and car prices
   useEffect(() => {

@@ -432,60 +432,87 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   useEffect(() => {
     const fetchData = async () => {
       if (!item?.id) return;
-
+  
       try {
         setLoadingImages(true);
         setLoadingDetails(true);
         setLoadingStats(true);
-
+  
         const role = user?.role?.toUpperCase();
         const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
-
-        const [imagesRes, detailsRes, statsRes] = await Promise.allSettled([
-          api.paymentApi.getHotelImages(item.id, { hotelName: item.title }),
-          api.hotelApi.getHotelDetails(item.id),
+  
+        // ✅ Use the new hotelApi methods
+        const [detailsRes, imagesRes, ratingsRes, statsRes] = await Promise.allSettled([
+          api.hotelApi.getHotelDetails(item.id),      // New: combined details endpoint
+          api.hotelApi.getHotelImagesById(item.id),   // New: images endpoint
+          api.hotelApi.getHotelRatingsById(item.id),  // New: ratings endpoint
           ...(isAdmin ? [api.hotelApi.getUsageStats()] : [])
         ]);
-
-        // Handle images
-        if (imagesRes.status === 'fulfilled' && imagesRes.value.success && imagesRes.value.data?.images) {
-          const fetchedImages = imagesRes.value.data.images;
-          const filteredImages = fetchedImages.filter((img: any) => {
+  
+        // ============ Handle Hotel Details (Content) ============
+        if (detailsRes.status === 'fulfilled' && detailsRes.value?.success) {
+          const details = detailsRes.value.data;
+          
+          // Extract content from response
+          const hotelContent = details?.content || {};
+          const hotelData = hotelContent?.hotel || {};
+          
+          setFullDetails({
+            name: hotelData.name || item.title,
+            description: hotelData.description?.text || hotelContent?.description?.text || item.subtitle,
+            amenities: hotelContent?.facilities || hotelContent?.amenities || item.amenities || [],
+            policies: hotelContent?.policies,
+            awards: hotelContent?.awards,
+            promotions: hotelContent?.promotions,
+            rooms: hotelContent?.rooms,
+            pointOfInterest: hotelContent?.pointOfInterest,
+            address: hotelData.address,
+            contact: hotelData.contact,
+          });
+          
+          console.log('✅ Hotel details loaded:', hotelData.name);
+        } else {
+          // Fallback to item data
+          setFullDetails({
+            name: item.title,
+            description: item.subtitle,
+            amenities: item.amenities || [],
+          });
+          console.warn('⚠️ Using fallback hotel details');
+        }
+  
+        // ============ Handle Hotel Images ============
+        if (imagesRes.status === 'fulfilled' && imagesRes.value?.success && imagesRes.value.data?.length > 0) {
+          const images = imagesRes.value.data;
+          const filteredImages = images.filter((img: any) => {
             const url = typeof img === 'string' ? img : img.url;
             return url && !url.includes('placehold.co') && !url.includes('dummyimage.com');
           });
-
+  
           if (filteredImages.length > 0) {
-            console.log(`✅ Found ${filteredImages.length} real images`);
+            console.log(`✅ Found ${filteredImages.length} hotel images`);
             setHotelImages(filteredImages.map((img: any, i: number) => ({
-              id: `${item.id}-${i}`,
+              id: `${item.id}-img-${i}`,
               url: typeof img === 'string' ? img : img.url,
               caption: typeof img === 'object' ? (img.type || img.attribution || item.title) : item.title,
               type: 'api'
             })));
-          } else {
-            if (hotelImages.length === 0) {
-              setHotelImages(getFallbackImages());
-            }
-          }
-        } else {
-          if (hotelImages.length === 0) {
+          } else if (hotelImages.length === 0) {
             setHotelImages(getFallbackImages());
           }
+        } else if (hotelImages.length === 0) {
+          setHotelImages(getFallbackImages());
           setImageError(true);
         }
-
-        // Handle details
-        if (detailsRes.status === 'fulfilled') {
-          const resValue = detailsRes.value;
-          if (resValue?.success) {
-            setFullDetails(resValue.data || resValue);
-          } else if (resValue && typeof resValue === 'object' && !resValue.statusCode) {
-            setFullDetails(resValue);
-          }
+  
+        // ============ Handle Hotel Ratings ============
+        if (ratingsRes.status === 'fulfilled' && ratingsRes.value?.success && ratingsRes.value.data) {
+          const ratings = ratingsRes.value.data;
+          console.log('✅ Hotel ratings loaded:', ratings);
+          // You can use ratings data to display scores
         }
-
-        // Handle usage stats
+  
+        // ============ Handle Usage Stats (Admin only) ============
         if (isAdmin) {
           const statsResult = statsRes as PromiseSettledResult<any>;
           if (statsResult.status === 'fulfilled' && statsResult.value) {
@@ -494,10 +521,12 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             setStatsError(true);
           }
         }
-
+  
       } catch (err) {
         console.error('Error fetching hotel data:', err);
-        setHotelImages(getFallbackImages());
+        if (hotelImages.length === 0) {
+          setHotelImages(getFallbackImages());
+        }
         setImageError(true);
       } finally {
         setLoadingImages(false);
@@ -505,10 +534,10 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
         setLoadingStats(false);
       }
     };
-
+  
     fetchData();
-  }, [item?.id, item?.title, getFallbackImages]);
-
+  }, [item?.id, item?.title, getFallbackImages, user?.role]);
+  
   // Debounced search effect
   useEffect(() => {
     const debounceTimer = setTimeout(() => {
