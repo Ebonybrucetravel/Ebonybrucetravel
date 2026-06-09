@@ -459,39 +459,49 @@ export class AmadeusService {
     }
   }
 
-  // ==================== HOTEL SEARCH API (v3) ====================
+// ==================== HOTEL SEARCH API (v3) ====================
   
-  async searchHotels(params: {
-    hotelIds: string[];
-    checkInDate: string;
-    checkOutDate: string;
-    adults?: number;
-    roomQuantity?: number;
-    currency?: string;
-    bestRateOnly?: boolean;
-  }): Promise<any> {
-    if (!params.hotelIds?.length) {
-      throw new HttpException('hotelIds is required', HttpStatus.BAD_REQUEST);
-    }
-    
-    const queryParams: Record<string, string> = {
-      checkInDate: params.checkInDate,
-      checkOutDate: params.checkOutDate,
-      hotelIds: params.hotelIds.join(','),
-    };
-    if (params.adults) queryParams.adults = params.adults.toString();
-    if (params.roomQuantity) queryParams.roomQuantity = params.roomQuantity.toString();
-    if (params.currency) queryParams.currency = params.currency;
-    if (params.bestRateOnly !== undefined) queryParams.bestRateOnly = params.bestRateOnly.toString();
-    
-    return this.makeRequest('/v3/shopping/hotel-offers', { method: 'GET', params: queryParams });
+async searchHotels(params: {
+  hotelIds?: string[];
+  cityCode?: string;
+  checkInDate: string;
+  checkOutDate: string;
+  adults?: number;
+  roomQuantity?: number;
+  currency?: string;
+  bestRateOnly?: boolean;
+}): Promise<any> {
+  // Validate that at least one search method is provided
+  const hasHotelIds = params.hotelIds && params.hotelIds.length > 0;
+  const hasCityCode = params.cityCode && params.cityCode.trim() !== '';
+  
+  if (!hasHotelIds && !hasCityCode) {
+    throw new HttpException(
+      'Either hotelIds or cityCode is required for hotel search.',
+      HttpStatus.BAD_REQUEST,
+    );
   }
-
-  async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<any> {
-    const queryParams: Record<string, string> = {};
-    if (params.lang) queryParams.lang = params.lang;
-    return this.makeRequest(`/v3/shopping/hotel-offers/${params.offerId}`, { method: 'GET', params: queryParams });
+  
+  const queryParams: Record<string, string> = {
+    checkInDate: params.checkInDate,
+    checkOutDate: params.checkOutDate,
+  };
+  
+  if (hasHotelIds) {
+    queryParams.hotelIds = params.hotelIds.join(',');
   }
+  
+  if (hasCityCode) {
+    queryParams.cityCode = params.cityCode;
+  }
+  
+  if (params.adults) queryParams.adults = params.adults.toString();
+  if (params.roomQuantity) queryParams.roomQuantity = params.roomQuantity.toString();
+  if (params.currency) queryParams.currency = params.currency;
+  if (params.bestRateOnly !== undefined) queryParams.bestRateOnly = params.bestRateOnly.toString();
+  
+  return this.makeRequest('/v3/shopping/hotel-offers', { method: 'GET', params: queryParams });
+}
 
   // ==================== HOTEL BOOKING API (v2) ====================
   
