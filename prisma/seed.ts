@@ -1,3 +1,20 @@
+import * as dns from 'dns';
+const originalLookup = dns.lookup;
+dns.lookup = (hostname: string, options: any, callback?: any) => {
+  if (typeof options === 'function') {
+    callback = options;
+    options = {};
+  }
+  if (typeof options === 'object') {
+    options.family = 4;
+  } else {
+    options = { family: 4 };
+  }
+  return originalLookup(hostname, options, callback as any);
+};
+console.log('✅ IPv4 forced for database connection');
+
+
 import 'dotenv/config';
 import { PrismaClient, UserRole, ProductType } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
