@@ -22,6 +22,8 @@ export class SearchAmadeusHotelsUseCase {
   async execute(searchParams: SearchAmadeusHotelsDto) {
     const {
       hotelIds,
+      cityCode,
+      geographicCoordinates,
       checkInDate,
       checkOutDate,
       adults = 1,
@@ -34,16 +36,20 @@ export class SearchAmadeusHotelsUseCase {
       bestRateOnly = true,
       countryOfResidence,
       lang,
+      radius = 10,
+      radiusUnit = 'KM',
       limit = 20,
       page = 1,
     } = searchParams;
 
-    // ✅ V3.5.0 REQUIRES hotelIds - no exceptions
-    if (!hotelIds || hotelIds.length === 0) {
+    
+    const hasHotelIds = hotelIds && hotelIds.length > 0;
+    const hasCityCode = cityCode && cityCode.trim() !== '';
+    const hasGeographicCoordinates = geographicCoordinates !== undefined;
+
+    if (!hasHotelIds && !hasCityCode && !hasGeographicCoordinates) {
       throw new BadRequestException(
-        'hotelIds are required for Hotel Search API v3.5.0. ' +
-        'Please provide Amadeus property codes (8-character hotel IDs). ' +
-        'Example: ["WHLON464", "XKLON321"]'
+        'Either hotelIds, cityCode, or geographicCoordinates must be provided for hotel search.',
       );
     }
 
@@ -68,7 +74,75 @@ export class SearchAmadeusHotelsUseCase {
       );
     }
 
-    // Check cache first
+    // ✅ If cityCode provided but no hotelIds, get hotel IDs from Amadeus first
+    let finalHotelIds = hotelIds;
+    
+    if (hasCityCode && !hasHotelIds) {
+      this.logger.log(`Fetching hotels for city code: ${cityCode}`);
+      
+      const hotelsList = await this.amadeusService.getHotelsByCity({
+        cityCode: cityCode,
+        radius: radius,
+        radiusUnit: radiusUnit,
+      });
+      
+      if (!hotelsList?.data || hotelsList.data.length === 0) {
+        throw new BadRequestException(
+          `No hotels found for city code: ${cityCode}. Please try a different city or use hotelIds directly.`,
+        );
+      }
+      
+      finalHotelIds = hotelsList.data
+        .map((hotel: any) => hotel.hotelId)
+        .filter((id: string) => id && id.length === 8);
+      
+      if (finalHotelIds.length === 0) {
+        throw new BadRequestException(
+          `No valid hotel IDs found for city code: ${cityCode}. Please try a different city.`,
+        );
+      }
+      
+      this.logger.log(`Found ${finalHotelIds.length} hotels for city code: ${cityCode}`);
+    }
+
+    // ✅ If geographicCoordinates provided, get hotel IDs by geocode
+    if (hasGeographicCoordinates && !hasHotelIds && !hasCityCode) {
+      this.logger.log(`Fetching hotels near coordinates: ${geographicCoordinates.latitude}, ${geographicCoordinates.longitude}`);
+      
+      const hotelsList = await this.amadeusService.getHotelsByGeocode({
+        latitude: geographicCoordinates.latitude,
+        longitude: geographicCoordinates.longitude,
+        radius: radius,
+        radiusUnit: radiusUnit,
+      });
+      
+      if (!hotelsList?.data || hotelsList.data.length === 0) {
+        throw new BadRequestException(
+          `No hotels found near the provided coordinates. Please try different coordinates or use hotelIds directly.`,
+        );
+      }
+      
+      finalHotelIds = hotelsList.data
+        .map((hotel: any) => hotel.hotelId)
+        .filter((id: string) => id && id.length === 8);
+      
+      if (finalHotelIds.length === 0) {
+        throw new BadRequestException(
+          `No valid hotel IDs found near the provided coordinates. Please try a different location.`,
+        );
+      }
+      
+      this.logger.log(`Found ${finalHotelIds.length} hotels near the provided coordinates`);
+    }
+
+    // ✅ Validate we have hotelIds to search
+    if (!finalHotelIds || finalHotelIds.length === 0) {
+      throw new BadRequestException(
+        'No hotel IDs available for search. Please provide valid hotelIds, a cityCode with available hotels, or geographic coordinates.',
+      );
+    }
+
+    // Check cache
     const cacheKey = this.generateCacheKey(searchParams);
     const cached = this.cacheService.get<any>(cacheKey);
 
@@ -77,11 +151,11 @@ export class SearchAmadeusHotelsUseCase {
     }
 
     try {
-      // ✅ Apply pagination to hotel IDs (client-side pagination)
-      const totalHotels = hotelIds.length;
+      // Apply pagination to hotel IDs
+      const totalHotels = finalHotelIds.length;
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + limit;
-      const paginatedHotelIds = hotelIds.slice(startIndex, endIndex);
+      const paginatedHotelIds = finalHotelIds.slice(startIndex, endIndex);
 
       if (paginatedHotelIds.length === 0) {
         throw new BadRequestException(
@@ -91,7 +165,7 @@ export class SearchAmadeusHotelsUseCase {
 
       this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelIds.join(', ')}`);
 
-      // ✅ Search hotels using hotelIds (v3.5.0 compliant)
+      // Search hotels using hotelIds
       const response = await this.amadeusService.searchHotels({
         hotelIds: paginatedHotelIds,
         checkInDate,
@@ -118,7 +192,7 @@ export class SearchAmadeusHotelsUseCase {
       }
 
       // Fetch markup configuration
-      let markupPercentage = 2.5; // Default markup
+      let markupPercentage = 2.5;
       let serviceFeeAmount = 0;
       try {
         const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
@@ -140,13 +214,9 @@ export class SearchAmadeusHotelsUseCase {
         response.data.map(async (hotelOffer: any) => {
           const processedOffers = await Promise.all(
             (hotelOffer.offers || []).map(async (offer: any) => {
-              // Get original price from Amadeus
               const originalPriceAmount = parseFloat(offer.price?.total || offer.price?.base || '0');
               const originalCurrency = offer.price?.currency || 'EUR';
               
-              this.logger.debug(`Processing offer: ${originalPriceAmount} ${originalCurrency} → ${targetCurrency}`);
-
-              // Convert currency if needed
               let convertedBasePrice: number;
               let conversionFee: number;
               let conversionFeePercentage: number;
@@ -175,46 +245,22 @@ export class SearchAmadeusHotelsUseCase {
                 priceAfterConversion = originalPriceAmount;
               }
 
-              // Apply markup percentage
               const markupAmount = (priceAfterConversion * markupPercentage) / 100;
-              
-              // Apply service fee (flat amount)
               const finalPrice = priceAfterConversion + markupAmount + serviceFeeAmount;
-
-              this.logger.debug(`Price breakdown for ${hotelOffer.hotel?.hotelId}:`, {
-                original: `${originalPriceAmount} ${originalCurrency}`,
-                converted: `${convertedBasePrice.toFixed(2)} ${targetCurrency}`,
-                conversionFee: `${conversionFee.toFixed(2)}`,
-                priceAfterConversion: `${priceAfterConversion.toFixed(2)}`,
-                markupAmount: `${markupAmount.toFixed(2)} (${markupPercentage}%)`,
-                serviceFee: serviceFeeAmount,
-                finalPrice: `${finalPrice.toFixed(2)}`
-              });
 
               return {
                 ...offer,
-                // Original price info
                 original_price: originalPriceAmount.toString(),
                 original_currency: originalCurrency,
-                
-                // Converted price (without fees)
                 base_price: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
                 currency: targetCurrency,
-                
-                // Conversion fees
                 conversion_fee: this.currencyService.formatAmount(conversionFee, targetCurrency),
                 conversion_fee_percentage: conversionFeePercentage,
                 price_after_conversion: this.currencyService.formatAmount(priceAfterConversion, targetCurrency),
-                
-                // Markup and service fees
                 markup_percentage: markupPercentage,
                 markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
                 service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
-                
-                // Final price (what customer pays)
                 final_price: this.currencyService.formatAmount(finalPrice, targetCurrency),
-                
-                // Update price object for backward compatibility
                 price: {
                   ...offer.price,
                   currency: targetCurrency,
@@ -222,9 +268,6 @@ export class SearchAmadeusHotelsUseCase {
                   total: this.currencyService.formatAmount(finalPrice, targetCurrency),
                   original_total: originalPriceAmount.toString(),
                   original_currency: originalCurrency,
-                  conversion_fee: this.currencyService.formatAmount(conversionFee, targetCurrency),
-                  markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
-                  service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
                 },
               };
             }),
@@ -286,14 +329,13 @@ export class SearchAmadeusHotelsUseCase {
     } catch (error) {
       this.logger.error('Error searching Amadeus hotels:', error);
       
-      // Handle specific Amadeus error codes
       if (error.response?.data?.errors) {
         const amadeusError = error.response.data.errors[0];
         if (amadeusError.code === '38190' || amadeusError.code === '701') {
           throw new HttpException(
             {
               success: false,
-              message: 'Amadeus API authentication failed. Please check your API credentials and ensure Hotel Search API v3.5.0 is enabled for your Enterprise account.',
+              message: 'Amadeus API authentication failed. Please check your API credentials.',
               error: amadeusError.title,
               code: amadeusError.code,
             },
@@ -311,7 +353,6 @@ export class SearchAmadeusHotelsUseCase {
           success: false,
           message: 'Unable to search hotels at this time. Please check your search parameters and try again.',
           error: 'Search failed',
-          details: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.message : 'Unknown error') : undefined,
         },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
@@ -321,6 +362,8 @@ export class SearchAmadeusHotelsUseCase {
   private generateCacheKey(searchParams: SearchAmadeusHotelsDto): string {
     const {
       hotelIds,
+      cityCode,
+      geographicCoordinates,
       checkInDate,
       checkOutDate,
       adults,
@@ -328,12 +371,18 @@ export class SearchAmadeusHotelsUseCase {
       currency,
       page,
       limit,
+      radius,
+      radiusUnit,
     } = searchParams;
 
     let key = `amadeus_hotel_search_v3:${checkInDate}-${checkOutDate}-${adults}-${roomQuantity}-${currency}-p${page}-l${limit}`;
 
     if (hotelIds && hotelIds.length > 0) {
       key += `:hotels-${[...hotelIds].sort().join(',')}`;
+    } else if (cityCode) {
+      key += `:city-${cityCode}`;
+    } else if (geographicCoordinates) {
+      key += `:geo-${geographicCoordinates.latitude.toFixed(4)}-${geographicCoordinates.longitude.toFixed(4)}-r${radius || 10}-${radiusUnit || 'KM'}`;
     }
 
     return key;
