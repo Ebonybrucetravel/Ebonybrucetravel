@@ -404,12 +404,7 @@ export class AmadeusService {
     }
   }
 
-  /**
-   * Get complete hotel details with images (content + images combined)
-   * This is the main method to use for hotel detail pages
-   * @param hotelId - The hotel ID
-   * @returns Complete hotel details including content and images
-   */
+ 
   async getCompleteHotelDetails(hotelId: string): Promise<any> {
     try {
       this.logger.log(`Fetching complete hotel details for ${hotelId}`);
@@ -471,7 +466,7 @@ async searchHotels(params: {
   currency?: string;
   bestRateOnly?: boolean;
 }): Promise<any> {
-  // Validate that at least one search method is provided
+ 
   const hasHotelIds = params.hotelIds && params.hotelIds.length > 0;
   const hasCityCode = params.cityCode && params.cityCode.trim() !== '';
   
@@ -503,8 +498,17 @@ async searchHotels(params: {
   return this.makeRequest('/v3/shopping/hotel-offers', { method: 'GET', params: queryParams });
 }
 
-  // ==================== HOTEL BOOKING API (v2) ====================
-  
+
+async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<any> {
+  const queryParams: Record<string, string> = {};
+  if (params.lang) queryParams.lang = params.lang;
+  return this.makeRequest(`/v3/shopping/hotel-offers/${params.offerId}`, { 
+    method: 'GET', 
+    params: queryParams 
+  });
+}
+
+// ==================== HOTEL BOOKING API (v2) ====================  
   async createHotelBooking(params: {
     hotelOfferId: string;
     guests: Array<{ title: string; firstName: string; lastName: string; phone: string; email: string }>;
