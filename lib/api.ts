@@ -48,7 +48,8 @@ export interface User {
 }
 
 export interface HotelSearchParams {
-  hotelIds: string[];  // ✅ REQUIRED for Amadeus v3.5.0
+  hotelIds?: string[];  
+  cityCode?: string;    
   checkInDate: string;
   checkOutDate: string;
   adults: number;
@@ -786,7 +787,6 @@ const getHotelEndpointPrefix = (hotelId?: string): string => {
   return "/api/v1/bookings";
 };
 
-// Hotel Search API - Amadeus Endpoint
 // Hotel Search API - Amadeus Endpoint (v3.5.0 Enterprise)
 export const searchHotelsAmadeus = async (
   searchParams: HotelSearchParams,
@@ -794,12 +794,27 @@ export const searchHotelsAmadeus = async (
   try {
     console.log("🏨 Starting Amadeus hotel search with params:", searchParams);
 
-    // Validate required parameters for v3.5.0
-    if (!searchParams.hotelIds || searchParams.hotelIds.length === 0) {
+    const requestBody: any = {
+      checkInDate: searchParams.checkInDate,
+      checkOutDate: searchParams.checkOutDate,
+      adults: searchParams.adults,
+      roomQuantity: searchParams.roomQuantity,
+      currency: searchParams.currency || "NGN",
+      bestRateOnly: searchParams.bestRateOnly ?? true,
+      page: searchParams.page || 1,
+      limit: searchParams.limit || 20,
+    };
+
+    // ✅ Support both hotelIds and cityCode
+    if (searchParams.hotelIds && searchParams.hotelIds.length > 0) {
+      requestBody.hotelIds = searchParams.hotelIds;
+    } else if (searchParams.cityCode) {
+      requestBody.cityCode = searchParams.cityCode;
+    } else {
       throw new ApiError(
-        "hotelIds are required for Amadeus Hotel Search API v3.5.0. Please provide Amadeus property codes (8-character hotel IDs). Example: ['WHLON464', 'XKLON321']",
+        "Either hotelIds or cityCode is required for hotel search.",
         400,
-        "MISSING_HOTEL_IDS",
+        "MISSING_SEARCH_CRITERIA",
       );
     }
 
@@ -807,21 +822,11 @@ export const searchHotelsAmadeus = async (
       "/api/v1/bookings/search/hotels/amadeus",
       {
         method: "POST",
-        body: JSON.stringify({
-          hotelIds: searchParams.hotelIds,  // ✅ Send hotelIds instead of cityCode
-          checkInDate: searchParams.checkInDate,
-          checkOutDate: searchParams.checkOutDate,
-          adults: searchParams.adults,
-          roomQuantity: searchParams.roomQuantity,
-          currency: searchParams.currency || "NGN",
-          bestRateOnly: searchParams.bestRateOnly ?? true,
-          page: searchParams.page || 1,
-          limit: searchParams.limit || 20,
-        }),
+        body: JSON.stringify(requestBody),
       },
     );
 
-    console.log("✅ Hotel search response structure:", {
+    console.log("✅ Hotel search response:", {
       success: response.success,
       message: response.message,
       hasData: !!response.data,
@@ -831,23 +836,6 @@ export const searchHotelsAmadeus = async (
     return response;
   } catch (error: any) {
     console.error("❌ Hotel search failed:", error);
-
-    if (error.message?.includes("hotelIds")) {
-      throw new ApiError(
-        "Hotel IDs are required for Amadeus search. Please provide valid hotel IDs.",
-        400,
-        "INVALID_HOTEL_IDS",
-      );
-    }
-
-    if (error.message?.includes("checkInDate")) {
-      throw new ApiError(
-        "Invalid check-in date. Date must be in the future.",
-        400,
-        "INVALID_CHECK_IN_DATE",
-      );
-    }
-
     throw error;
   }
 };
@@ -1464,7 +1452,6 @@ function getHotelImage(chainCode?: string, index: number = 0): string {
 }
 
 // Format hotel search parameters
-// Format hotel search parameters
 export async function formatHotelSearchParams(
   location: string,
   checkInDate?: string,
@@ -1472,13 +1459,6 @@ export async function formatHotelSearchParams(
   guests?: number,
   rooms?: number,
 ): Promise<HotelSearchParams> {
-  // Get city code from location
-  const cityCode = getCityCode(location);
-  
-  // You need to have a mapping from cityCode to hotelIds
-  // For now, return empty array - the caller must provide hotelIds
-  // Or you can maintain a mapping of hotel IDs per city
-  
   // Set default dates if not provided
   const today = new Date();
   const tomorrow = new Date(today);
@@ -1494,10 +1474,8 @@ export async function formatHotelSearchParams(
       return checkOutDate.toISOString().split("T")[0];
     })();
 
-  // ⚠️ IMPORTANT: You must provide hotelIds. This function now returns empty array
-  // The caller should provide hotelIds, or you need to implement city to hotel mapping
   return {
-    hotelIds: [], // ❗ MUST be provided by caller or mapped from cityCode
+    hotelIds: [],  // Empty array - will use cityCode from location
     checkInDate: checkIn,
     checkOutDate: checkOut,
     adults: Math.max(1, guests || 2),
@@ -1569,22 +1547,8 @@ export async function searchAndTransformHotels(
         isRealData: true,
       };
     } else {
-      // Amadeus flow - FIXED for v3.5.0
-      // Make sure we have hotelIds
-      let hotelIds = searchParams.hotelIds;
-      
-      if (!hotelIds || hotelIds.length === 0) {
-        return {
-          success: false,
-          results: [],
-          message: "hotelIds are required for Amadeus Hotel Search API v3.5.0. Please provide hotel IDs.",
-          total: 0,
-          isRealData: false,
-        };
-      }
-      
-      const response = await searchHotelsAmadeus({
-        hotelIds: hotelIds,
+      // Amadeus flow - Supports both cityCode and hotelIds
+      const requestBody: any = {
         checkInDate: searchParams.checkInDate,
         checkOutDate: searchParams.checkOutDate,
         adults: searchParams.adults,
@@ -1592,9 +1556,31 @@ export async function searchAndTransformHotels(
         currency: searchParams.currency || "NGN",
         page: searchParams.page || 1,
         limit: searchParams.limit || 20,
-      });
+      };
     
-      // Handle case where API returns success but no data
+      // ✅ Support both search methods
+      if (searchParams.cityCode) {
+        requestBody.cityCode = searchParams.cityCode;
+      } else if (searchParams.hotelIds && searchParams.hotelIds.length > 0) {
+        requestBody.hotelIds = searchParams.hotelIds;
+      } else {
+        return {
+          success: false,
+          results: [],
+          message: "Either cityCode or hotelIds is required for hotel search.",
+          total: 0,
+          isRealData: false,
+        };
+      }
+    
+      const response = await publicRequest<HotelSearchResponse>(
+        "/api/v1/bookings/search/hotels/amadeus",
+        {
+          method: "POST",
+          body: JSON.stringify(requestBody),
+        },
+      );
+    
       if (!response.data?.data || response.data.data.length === 0) {
         return {
           success: false,

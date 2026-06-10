@@ -309,7 +309,6 @@ const AIRPORT_COUNTRY_MAP: Record<string, string> = {
 const getCountryCodeFromAirport = (airportCode: string): string | null => {
   if (!airportCode) return null;
   
-  // Extract 3-letter code from various formats
   const normalizedCode = airportCode.toUpperCase().trim();
   const match = normalizedCode.match(/\b([A-Z]{3})\b/);
   const code = match ? match[1] : normalizedCode.substring(0, 3);
@@ -324,23 +323,16 @@ const isDomesticFlightGlobal = (origin: string, destination: string): boolean =>
   const originCountry = getCountryCodeFromAirport(origin);
   const destCountry = getCountryCodeFromAirport(destination);
   
-  console.log(`✈️ Domestic check: ${origin} → ${destination}`, {
-    originCountry,
-    destCountry,
-    isDomestic: originCountry && destCountry && originCountry === destCountry
-  });
-  
   if (originCountry && destCountry) {
     return originCountry === destCountry;
   }
   
-  // Fallback: check if first 3 letters are the same
   const normalizedOrigin = origin.toUpperCase().substring(0, 3);
   const normalizedDest = destination.toUpperCase().substring(0, 3);
   return normalizedOrigin === normalizedDest;
 };
 
-// ─── Mock fallback data (only used when API fails) ─────────────────────────────
+// Mock fallback data (only used when API fails)
 const MOCK: Record<string, SearchResult[]> = {
   flights: [
     { id: 'f-1', provider: 'Air Peace', title: 'Air Peace P47121', subtitle: 'Lagos (LOS) → Abuja (ABV)', price: '£85', time: '08:00 AM', duration: '1h 15m', type: 'flights', image: 'https://logos-world.net/wp-content/uploads/2023/03/Air-Peace-Logo.png' },
@@ -384,7 +376,6 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const [airlines, setAirlines] = useState<Airline[]>([]);
   const [isLoadingAirlines, setIsLoadingAirlines] = useState(false);
 
-  // Get currency and conversion functions from LanguageContext
   const { currency, convertPrice, formatPrice, isLoadingRates } = useLanguage();
 
   useEffect(() => {
@@ -411,21 +402,16 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     }
   }, [searchParams?.type, fetchAirlines]);
 
-  // Ref that always holds the latest search dispatch so the stable `search` callback
-  // doesn't capture stale closures over currency/conversion helpers.
   const searchDispatchRef = React.useRef<(params: SearchParams) => Promise<void>>(async () => {});
 
-  // Helper function to calculate total service fee (markup + conversion fee + taxes)
   const calculateTotalServiceFee = (markupAmount: number, conversionFee: number, taxes: number): number => {
     return markupAmount + conversionFee + taxes;
   };
 
-  // Helper function to format price in user's currency
   const formatPriceInUserCurrency = useCallback(async (amount: number, fromCurrency: string = 'NGN'): Promise<string> => {
     try {
       let finalAmount = amount;
       if (fromCurrency !== currency.code) {
-        // Convert to user's currency first
         finalAmount = await convertPrice(amount, fromCurrency);
       }
       return formatPrice(finalAmount);
@@ -436,18 +422,40 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     }
   }, [currency.code, convertPrice, formatPrice]);
 
-  // Helper function to get display price in user's currency as number
   const getDisplayPriceInUserCurrency = useCallback(async (amount: number, fromCurrency: string = 'NGN'): Promise<number> => {
     try {
       if (fromCurrency === currency.code) return amount;
       return await convertPrice(amount, fromCurrency);
     } catch (error) {
       console.error('Failed to convert price:', error);
-      return amount; // Return original amount as fallback
+      return amount;
     }
   }, [currency.code, convertPrice]);
 
-  // ==================== CAR RENTAL SEARCH WITH MERGED SERVICE FEE ====================
+ // Helper function to safely get adults count from params
+const getAdultsCount = (params: SearchParams): number => {
+  // Direct number check
+  if (typeof params.adults === 'number') {
+    return params.adults;
+  }
+  // Check if adults is an object with adults property
+  if (params.adults && typeof params.adults === 'object') {
+    const adultsObj = params.adults as Record<string, unknown>;
+    if (typeof adultsObj.adults === 'number') {
+      return adultsObj.adults;
+    }
+  }
+  // Check travellers
+  if (params.travellers && typeof params.travellers === 'object') {
+    const travellersObj = params.travellers as Record<string, unknown>;
+    if (typeof travellersObj.adults === 'number') {
+      return travellersObj.adults;
+    }
+  }
+  return 1;
+};
+
+  // ==================== CAR RENTAL SEARCH ====================
   const searchCars = async (params: SearchParams) => {
     try {
       if (!params.pickupLocationCode || !params.dropoffLocationCode ||
@@ -476,7 +484,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         pickupDateTime: params.pickupDateTime,
         dropoffDateTime: params.dropoffDateTime,
         passengers: passengerCount,
-        currency: 'NGN', // Always request in NGN
+        currency: 'NGN',
       };
 
       const response = await api.carApi.searchCarRentals(carParams);
@@ -499,25 +507,21 @@ export function SearchProvider({ children }: { children: ReactNode }) {
             displayType = 'Long Transfer';
           }
 
-          // Extract pricing components (all in NGN from API)
           const basePrice = parseFloat(item.base_price || item.original_price || item.price?.base || '0');
           const markupAmount = parseFloat(item.markup_amount) || 0;
           const conversionFee = parseFloat(item.conversion_fee) || 0;
           const taxes = 0;
           const serviceFeeFromBackend = parseFloat(item.service_fee) || 0;
           
-          // Calculate total service fee (combine all fees)
           const totalServiceFee = calculateTotalServiceFee(markupAmount, conversionFee, taxes);
           const finalServiceFee = serviceFeeFromBackend > 0 ? serviceFeeFromBackend : totalServiceFee;
           const finalPriceNGN = parseFloat(item.final_price || item.price?.total || item.converted?.monetaryAmount || '0');
           
-          // Calculate service fee percentage
           let serviceFeePercentage = 0;
           if (basePrice > 0 && finalServiceFee > 0) {
             serviceFeePercentage = (finalServiceFee / basePrice) * 100;
           }
 
-          // Get display price in user's currency
           const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalPriceNGN, 'NGN');
           const formattedDisplayPrice = await formatPriceInUserCurrency(finalPriceNGN, 'NGN');
 
@@ -542,7 +546,6 @@ export function SearchProvider({ children }: { children: ReactNode }) {
             requestedDays: daysDiff,
             isMultiDay: daysDiff >= 1,
             isTransfer: daysDiff < 1,
-            // ALL PRICES STORED IN NGN
             original_amount: basePrice.toString(),
             original_currency: 'NGN',
             markup_amount: markupAmount.toString(),
@@ -553,7 +556,6 @@ export function SearchProvider({ children }: { children: ReactNode }) {
             final_amount: finalPriceNGN.toString(),
             currency: 'NGN',
             rawPrice: finalPriceNGN,
-            // Display price in user's currency
             price: formattedDisplayPrice,
             totalPrice: formattedDisplayPrice,
             displayPriceRaw: displayPriceInUserCurrency,
@@ -572,97 +574,59 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // ==================== HOTEL SEARCH WITH MERGED SERVICE FEE ====================
-  const getHotelIdsForCity = (cityCode: string): string[] => {
-  const cityHotelMap: Record<string, string[]> = {
-    'LON': ['WHLON464', 'XKLON321', 'WHLON462', 'WHLON463'],
-    'LOS': ['WHLOS001', 'WHLOS002', 'WHLOS003'],
-    'PAR': ['WHPAR001', 'WHPAR002'],
-    'NYC': ['WHNYC001', 'WHNYC002', 'WHNYC003'],
-    'DXB': ['WHDXB001', 'WHDXB002'],
-    // Add more cities as needed
-  };
-  
-  return cityHotelMap[cityCode.toUpperCase()] || [];
-};
-
-
+// ==================== HOTEL SEARCH - FIXED VERSION ====================
 const searchHotels = async (params: SearchParams) => {
   try {
-    // ✅ You need to have a mapping from city to hotel IDs
-    // For London, the hotel IDs should be provided
-    let hotelIds = params.hotelIds;
-    
-    // If no hotelIds provided but we have cityCode, map it
-    if ((!hotelIds || hotelIds.length === 0) && params.cityCode) {
-      // This mapping should come from your backend or a configuration
-      // For now, let's use the hotelId from your API response: "WHLON464"
-      const cityHotelMap: Record<string, string[]> = {
-        'LON': ['WHLON464'], // W London Leicester Square
-        'LOS': ['WHLOS001'], // Add Lagos hotel IDs
-        'PAR': ['WHPAR001'],
-        'NYC': ['WHNYC001'],
-        'DXB': ['WHDXB001'],
-      };
-      
-      hotelIds = cityHotelMap[params.cityCode.toUpperCase()] || [];
-      
-      if (hotelIds.length === 0) {
-        console.error(`❌ No hotel IDs mapped for city code: ${params.cityCode}`);
-        setSearchError(`No hotels found for ${params.cityCode}. Please try a different location.`);
-        setSearchResults([]);
-        return;
-      }
-    }
-    
-    // ✅ Ensure we have hotelIds
-    if (!hotelIds || hotelIds.length === 0) {
-      setSearchError('Please provide a valid hotel location.');
+    // Validate required parameters
+    if (!params.cityCode && !params.location) {
+      setSearchError('Please provide a hotel location.');
       setSearchResults([]);
       return;
     }
-    
+
+    // ✅ Send cityCode directly - backend will fetch hotel IDs
     const hotelParams = {
-      hotelIds: hotelIds, // ✅ Send hotelIds array
+      cityCode: params.cityCode,
       checkInDate: params.checkInDate || new Date().toISOString().split('T')[0],
       checkOutDate: params.checkOutDate || new Date(Date.now() + 86400000).toISOString().split('T')[0],
-      adults: params.adults || 1,
+      adults: getAdultsCount(params),
       roomQuantity: params.rooms || 1,
       currency: 'NGN',
       page: params.page || 1,
       limit: params.limit || 20,
     };
 
-    console.log('🏨 Sending hotel search request:', hotelParams);
+    console.log('🏨 Sending hotel search request with cityCode:', hotelParams);
 
-    // ✅ Use the correct API method
-    const result = await api.searchAndTransformHotels(hotelParams, params.location || 'London');
+    // ✅ Use the API method that handles cityCode correctly
+    const result = await api.searchAndTransformHotels(hotelParams, params.location || params.cityCode || 'Hotel');
 
     if (result.success && result.results && result.results.length > 0) {
-      const hotelsWithBestOffers: SearchResult[] = [];
+      // Process results with pricing
+      const processedResults = [];
       
       for (const hotel of result.results) {
-        // Get all offers
+        // Get the best offer (lowest price)
         const offers = hotel.offers || [];
+        let bestOffer = offers[0];
         
-        if (offers.length === 0) {
-          console.warn(`⚠️ No offers for hotel: ${hotel.title}`);
-          continue;
+        if (offers.length > 1) {
+          bestOffer = offers.reduce((best: any, current: any) => {
+            const bestPrice = parseFloat(best.final_price || best.price?.total || '0');
+            const currentPrice = parseFloat(current.final_price || current.price?.total || '0');
+            return currentPrice < bestPrice ? current : best;
+          }, offers[0]);
         }
         
-        // Find best offer (lowest price)
-        const bestOffer = offers.reduce((best: any, current: any) => {
-          const bestPrice = parseFloat(best.final_price || best.price?.total || '0');
-          const currentPrice = parseFloat(current.final_price || current.price?.total || '0');
-          return currentPrice < bestPrice ? current : best;
-        }, offers[0]);
+        if (!bestOffer) {
+          continue;
+        }
         
         // Extract pricing
         const basePrice = parseFloat(bestOffer.base_price || bestOffer.price?.base || '0');
         const finalPriceNGN = parseFloat(bestOffer.final_price || bestOffer.price?.total || '0');
         
         if (finalPriceNGN === 0) {
-          console.warn(`⚠️ No valid price for hotel: ${hotel.title}`);
           continue;
         }
         
@@ -674,7 +638,6 @@ const searchHotels = async (params: SearchParams) => {
         
         const totalServiceFee = markupAmount + conversionFee + serviceFee;
         
-        // Get display prices
         const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalPriceNGN, 'NGN');
         const formattedDisplayPrice = await formatPriceInUserCurrency(finalPriceNGN, 'NGN');
         
@@ -683,7 +646,6 @@ const searchHotels = async (params: SearchParams) => {
         const checkOut = new Date(params.checkOutDate || new Date(Date.now() + 86400000));
         const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
         
-        // Calculate price per night
         const pricePerNightNGN = finalPriceNGN / nights;
         const formattedPricePerNight = await formatPriceInUserCurrency(pricePerNightNGN, 'NGN');
         
@@ -691,18 +653,9 @@ const searchHotels = async (params: SearchParams) => {
         const bedType = bestOffer.room?.typeEstimated?.bedType || 'King';
         const beds = bestOffer.room?.typeEstimated?.beds || 1;
         
-        console.log(`🏨 Hotel: ${hotel.title}`, {
-          nights,
-          pricePerNight: formattedPricePerNight,
-          finalPrice: formattedDisplayPrice,
-          roomType,
-          bedType
-        });
-        
-        // Create hotel result
-        const hotelResult: SearchResult = {
-          id: hotel.id || `hotel-${Date.now()}-${hotelsWithBestOffers.length}`,
-          type: 'hotels',
+        processedResults.push({
+          id: hotel.id || `hotel-${Date.now()}`,
+          type: 'hotels' as const,
           provider: hotel.provider || 'Amadeus Hotels',
           title: hotel.title,
           subtitle: `${hotel.subtitle} • ${nights} night${nights > 1 ? 's' : ''}`,
@@ -741,17 +694,15 @@ const searchHotels = async (params: SearchParams) => {
           hotel: hotel.hotel || hotel,
           checkInDate: params.checkInDate,
           checkOutDate: params.checkOutDate,
-          adults: params.adults || 1,
+          adults: getAdultsCount(params),
           rooms: params.rooms || 1,
-        };
-        
-        hotelsWithBestOffers.push(hotelResult);
+        });
       }
       
-      setSearchResults(hotelsWithBestOffers);
-      console.log(`✅ Processed ${hotelsWithBestOffers.length} hotels with best offers`);
+      setSearchResults(processedResults);
+      console.log(`✅ Processed ${processedResults.length} hotels`);
       
-      if (hotelsWithBestOffers.length === 0) {
+      if (processedResults.length === 0) {
         setSearchError('No hotels found with valid offers. Please try different dates.');
       }
     } else {
@@ -765,6 +716,7 @@ const searchHotels = async (params: SearchParams) => {
     setSearchError(err.message || 'Failed to search hotels. Please try again.');
   }
 };
+
   const formatDateForWakanow = (dateStr: string): string => {
     const date = new Date(dateStr);
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
@@ -773,7 +725,8 @@ const searchHotels = async (params: SearchParams) => {
     return `${month}/${day}/${year}`;
   };
 
-  // ==================== FLIGHT TRANSFORMATION WITH PROPER CURRENCY ====================
+  // ==================== FLIGHT TRANSFORMATION FUNCTIONS ====================
+  
   const transformWakanowOffers = async (
     offers: any[], 
     returnDate?: string, 
@@ -786,9 +739,7 @@ const searchHotels = async (params: SearchParams) => {
     const results: SearchResult[] = [];
     
     for (let offer of offers) {
-      // Handle raw Wakanow format
       if (!offer.slices && (offer.FlightLegs || offer.flightLegs || offer.legs || offer.DepartureCode)) {
-        console.log('🔄 Normalizing raw Wakanow offer');
         offer = transformWakanowToDuffelFormat(offer);
       }
   
@@ -796,16 +747,12 @@ const searchHotels = async (params: SearchParams) => {
       const outboundSlice = slices[0];
       const returnSlice = slices.length > 1 ? slices[1] : null;
       
-      if (!outboundSlice) {
-        console.warn('⚠️ No outbound slice, skipping offer');
-        continue;
-      }
+      if (!outboundSlice) continue;
       
       const outboundSegments = outboundSlice.segments || [];
       const firstOutboundSegment = outboundSegments[0] || {};
       const lastOutboundSegment = outboundSegments[outboundSegments.length - 1] || firstOutboundSegment;
       
-      // ✅ EXTRACT ALL FLIGHT DETAILS - THIS IS WHERE THE PROBLEM WAS
       const outboundDepartureTime = outboundSlice.departure_time || firstOutboundSegment.departing_at || firstOutboundSegment.start_time || '';
       const outboundArrivalTime = outboundSlice.arrival_time || lastOutboundSegment.arriving_at || lastOutboundSegment.end_time || '';
       
@@ -818,16 +765,13 @@ const searchHotels = async (params: SearchParams) => {
       const outboundDuration = outboundSlice.duration || '';
       const outboundStopCount = outboundSegments.length > 0 ? outboundSegments.length - 1 : 0;
       
-      // ✅ EXTRACT AIRLINE INFO
       const airline = outboundSlice.airline || offer.airline || firstOutboundSegment.airline || firstOutboundSegment.operating_carrier || {};
       const airlineName = airline.name || offer.marketing_carrier_name || firstOutboundSegment.airline_name || 'Airline';
       const airlineCode = airline.code || offer.marketing_carrier || firstOutboundSegment.airline_code || '';
       const airlineLogo = airline.logo_url || `https://images.wakanow.com/Images/flight-logos/${airlineCode}.gif`;
       
-      // ✅ EXTRACT FLIGHT NUMBER
       const flightNumber = firstOutboundSegment.flight_number || firstOutboundSegment.marketing_carrier_flight_number || '';
       
-      // ✅ EXTRACT BAGGAGE
       const freeBaggage = outboundSlice.free_baggage || {};
       const baggageCount = freeBaggage.BagCount || 0;
       const baggageWeight = freeBaggage.Weight || 0;
@@ -835,7 +779,6 @@ const searchHotels = async (params: SearchParams) => {
       const baggageText = baggageCount > 0 ? `${baggageCount} checked bag${baggageCount > 1 ? 's' : ''}` : 
                           (baggageWeight > 0 ? `${baggageWeight}${baggageUnit} baggage` : '');
       
-      // ✅ EXTRACT PRICE
       const rawOriginalAmount = offer.original_amount || offer.Price?.Amount || offer.price?.amount || offer.TotalAmount || '0';
       const originalAmountNGN = parseFloat(rawOriginalAmount.toString());
       const serviceFeeNGN = originalAmountNGN * (SERVICE_FEE_PERCENTAGE / 100);
@@ -846,7 +789,6 @@ const searchHotels = async (params: SearchParams) => {
       const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalAmountNGN, 'NGN');
       const formattedDisplayPrice = await formatPriceInUserCurrency(finalAmountNGN, 'NGN');
       
-      // ✅ FORMAT DURATION
       let durationDisplay = outboundDuration;
       if (durationDisplay && typeof durationDisplay === 'string') {
         if (durationDisplay.includes(':')) {
@@ -859,7 +801,6 @@ const searchHotels = async (params: SearchParams) => {
             else if (minutes > 0) durationDisplay = `${minutes}m`;
           }
         } else {
-          // Handle PT format
           const hoursMatch = durationDisplay.match(/(\d+)H/);
           const minutesMatch = durationDisplay.match(/(\d+)M/);
           const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
@@ -870,10 +811,8 @@ const searchHotels = async (params: SearchParams) => {
         }
       }
       
-      // ✅ FORMAT TIME FOR DISPLAY
       const formattedTime = outboundDepartureTime ? new Date(outboundDepartureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--';
       
-      // ✅ PROCESS RETURN FLIGHT
       let returnFlightData = null;
       if (returnSlice) {
         const returnSegments = returnSlice.segments || [];
@@ -913,27 +852,11 @@ const searchHotels = async (params: SearchParams) => {
         };
       }
       
-      // ✅ GENERATE IDS
       const offerId = offer.id || offer.offer_id || `wakanow-${Date.now()}-${results.length}`;
       const selectDataValue = offer.select_data || offer.token || offer.session_id || offer.booking_token || offer.connection_code || '';
       const offerRequestId = offer.offer_request_id || `wakanow-req-${offerId}`;
       
-      // ✅ LOG WHAT WE'RE BUILDING - IMPORTANT FOR DEBUGGING
-      console.log(`✈️ BUILDING WAKANOW FLIGHT:`, {
-        id: offerId,
-        airlineName,
-        airlineCode,
-        flightNumber,
-        departureAirport: outboundOrigin,
-        arrivalAirport: outboundDestination,
-        departureTime: outboundDepartureTime,
-        arrivalTime: outboundArrivalTime,
-        duration: durationDisplay,
-        stopCount: outboundStopCount,
-        price: formattedDisplayPrice,
-      });
-      
-      const flightResult: SearchResult = {
+      results.push({
         id: offerId,
         provider: 'wakanow',
         title: `${airlineName} ${flightNumber}`.trim() || 'Flight',
@@ -942,32 +865,25 @@ const searchHotels = async (params: SearchParams) => {
         totalPrice: formattedDisplayPrice,
         time: formattedTime,
         duration: durationDisplay || '--:--',
-        type: 'flights',
+        type: 'flights' as const,
         image: airlineLogo,
         isRefundable: offer.is_refundable || false,
         baggage: baggageText,
-        
-        // ✅ CRITICAL FIELDS FOR DISPLAY
         airlineCode: airlineCode,
         airlineName: airlineName,
         airlineLogo: airlineLogo,
         flightNumber: flightNumber,
-        
         departureAirport: outboundOrigin,
         arrivalAirport: outboundDestination,
         departureCity: outboundOriginCity,
         arrivalCity: outboundDestinationCity,
-        
         departureTime: outboundDepartureTime,
         arrivalTime: outboundArrivalTime,
-        
         stopCount: outboundStopCount,
         stopText: outboundStopCount === 0 ? 'Direct' : outboundStopCount === 1 ? '1 Stop' : `${outboundStopCount} Stops`,
         cabin: cabinClass,
-        
         displayPrice: formattedDisplayPrice,
         rawPrice: displayPriceInUserCurrency,
-        
         original_amount: originalAmountNGN.toString(),
         original_currency: 'NGN',
         markup_amount: serviceFeeNGN.toString(),
@@ -979,7 +895,6 @@ const searchHotels = async (params: SearchParams) => {
         service_fee_percentage: SERVICE_FEE_PERCENTAGE,
         final_amount: finalAmountNGN.toString(),
         currency: 'NGN',
-        
         isRoundTrip: !!returnSlice,
         rating: 4,
         amenities: ['Seat Selection', 'Cabin Baggage'],
@@ -988,29 +903,23 @@ const searchHotels = async (params: SearchParams) => {
           durationDisplay || '--:--',
           cabinClass.charAt(0).toUpperCase() + cabinClass.slice(1)
         ],
-        
         isWakanow: true,
         isWakanowDomestic: isDomesticRoute,
         selectData: selectDataValue,
         offer_request_id: offerRequestId,
         offer_id: offerId,
         connection_code: offer.connection_code,
-        
         slices: slices,
         returnFlight: returnFlightData,
         fareRules: offer.fare_rules || [],
         penaltyRules: offer.penalty_rules || null,
         terms_and_conditions: offer.terms_and_conditions || null,
-        
         _normalizedAirline: airlineName.toLowerCase().trim(),
         _normalizedDepartureTime: outboundDepartureTime,
         _normalizedArrivalAirport: outboundDestination,
-      };
-      
-      results.push(flightResult);
+      });
     }
     
-    console.log(`✅ Transformed ${results.length} Wakanow flights`);
     return results;
   };
 
@@ -1067,11 +976,9 @@ const searchHotels = async (params: SearchParams) => {
       const m = totalDurMin % 60;
       const durationDisplay = `${h}h ${String(m).padStart(2, '0')}m`;
       
-      // Extract pricing components (Duffel returns in GBP typically)
       const totalAmountOriginal = parseFloat(offer.total_amount || offer.original_amount || '0');
       const originalCurrency = offer.total_currency || offer.original_currency || 'GBP';
       
-      // Convert to user's currency
       let finalAmountInUserCurrency = totalAmountOriginal;
       let formattedDisplayPrice = '';
       
@@ -1140,7 +1047,7 @@ const searchHotels = async (params: SearchParams) => {
         };
       }
       
-      const flightResult: SearchResult = {
+      results.push({
         id: offer.id ?? `duffel-${results.length}`,
         provider: 'duffel',
         title: `${airlineName} ${flightNumber}`.trim() || 'Flight',
@@ -1200,9 +1107,7 @@ const searchHotels = async (params: SearchParams) => {
         _normalizedAirline: airlineName.toLowerCase().trim(),
         _normalizedDepartureTime: outboundDepartureTime,
         _normalizedArrivalAirport: outboundArrivalAirport,
-      };
-      
-      results.push(flightResult);
+      });
     }
     
     return results;
@@ -1238,15 +1143,12 @@ const searchHotels = async (params: SearchParams) => {
       }
     }
   
-    // ✅ USE GLOBAL DOMESTIC DETECTION (works for ALL countries)
     const isDomestic = isDomesticFlightGlobal(origin, destination);
     
     const BASE = config.apiBaseUrl;
   
-    // ✅ For ALL flights (domestic AND international), fetch from BOTH providers
     console.log(`✈️ Fetching flights for ${origin} → ${destination} (${isDomestic ? 'DOMESTIC' : 'INTERNATIONAL'}) from Wakanow + Duffel`);
   
-    // Deduplication function
     const deduplicateFlights = (flights: SearchResult[]): SearchResult[] => {
       const seen = new Map<string, SearchResult>();
       
@@ -1264,8 +1166,6 @@ const searchHotels = async (params: SearchParams) => {
           if (newPrice < existingPrice && newPrice > 0) {
             seen.set(uniqueKey, flight);
             console.log(`🔄 Deduplicated: Keeping cheaper ${uniqueKey}`);
-          } else {
-            console.log(`🔄 Deduplicated: Removing duplicate ${uniqueKey}`);
           }
         }
       }
@@ -1280,7 +1180,6 @@ const searchHotels = async (params: SearchParams) => {
       let wakanowResults: SearchResult[] = [];
       let duffelResults: SearchResult[] = [];
   
-      // Wakanow fetch for ALL flights (same API for both domestic and international)
       const wakanowFetchPromise = (async (): Promise<SearchResult[]> => {
         try {
           const { wakanowService } = await import('@/lib/wakanow.service');
@@ -1293,8 +1192,6 @@ const searchHotels = async (params: SearchParams) => {
             targetCurrency: 'NGN',
           };
           
-          // ✅ Use the same searchDomesticFlights method for all routes
-          // Wakanow's API handles both domestic and international
           const result = await wakanowService.searchDomesticFlights(wakanowParams);
           
           const offers = result.offers || result.normalizedFlights || [];
@@ -1305,7 +1202,6 @@ const searchHotels = async (params: SearchParams) => {
         }
       })();
   
-      // Duffel fetch for ALL flights
       const duffelFetchPromise = (async (): Promise<SearchResult[]> => {
         try {
           const requestBody: any = {
@@ -1356,7 +1252,6 @@ const searchHotels = async (params: SearchParams) => {
         }
       })();
   
-      // Show results as they come in (with deduplication)
       wakanowFetchPromise.then(results => {
         wakanowResults = results;
         if (results.length > 0) {
@@ -1380,7 +1275,6 @@ const searchHotels = async (params: SearchParams) => {
       await Promise.allSettled([wakanowFetchPromise, duffelFetchPromise]);
       clearTimeout(timeoutId);
   
-      // Final deduplication of all results
       const allFlights = [...wakanowResults, ...duffelResults];
       const uniqueFlights = deduplicateFlights(allFlights);
   
@@ -1404,9 +1298,6 @@ const searchHotels = async (params: SearchParams) => {
     }
   };
 
-
-  // Update the ref on every render so the stable `search` callback always calls
-  // the latest version (with up-to-date currency helpers, exchange rates, etc.)
   const _searchImpl = async (params: SearchParams) => {
     console.log('🔍 Search called with params:', params);
     setSearchParams(params);
@@ -1434,35 +1325,17 @@ const searchHotels = async (params: SearchParams) => {
     }
   };
 
-  // Keep the ref current on every render (no deps needed — runs every render)
   searchDispatchRef.current = _searchImpl;
 
-  // Stable callback — safe to pass as prop without re-rendering consumers
   const search = useCallback((params: SearchParams) => {
     return searchDispatchRef.current(params);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectItem = useCallback((item: SearchResult) => {
-    console.log('📦 Item selected with service fee breakdown (NGN base):', {
+    console.log('📦 Item selected:', {
       id: item.id,
       provider: item.provider,
       type: item.type,
-      isWakanowDomestic: item.isWakanowDomestic,
-      hasSelectData: !!item.selectData,
-      selectDataValue: item.selectData,
-      hasOfferRequestId: !!item.offer_request_id,
-      hasOfferId: !!item.offer_id,
-      original_amount_NGN: item.original_amount,
-      original_currency: item.original_currency,
-      markup_amount_NGN: item.markup_amount,
-      conversion_fee_NGN: item.conversion_fee,
-      taxes_NGN: item.taxes,
-      service_fee_NGN: item.service_fee,
-      service_fee_percentage: item.service_fee_percentage,
-      final_amount_NGN: item.final_amount,
-      internal_currency: item.currency,
-      display_price: item.price
     });
     setSelectedItem(item);
   }, []);
@@ -1486,7 +1359,6 @@ const searchHotels = async (params: SearchParams) => {
       sessionStorage.removeItem(BOOKING_REVIEW_SELECTION_KEY);
     }
   }, [selectedItem, searchParams]);
-
 
   return (
     <SearchContext.Provider
