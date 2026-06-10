@@ -122,7 +122,7 @@ export class HotelImageCacheService {
       this.logger.log(`✅ Found Amadeus image for hotel ${hotelId}: ${primaryImageUrl}`);
 
       // Upload to Cloudinary for consistent CDN delivery
-      const cloudinaryResult = await this.cloudinaryService.uploadImageFromUrl(
+      const cloudinaryResult = await this.cloudinaryService.uploadImage(
         primaryImageUrl,
         'ebony-bruce-travels/hotels',
         `hotel_${hotelId}_amadeus`,
