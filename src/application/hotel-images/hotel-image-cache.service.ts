@@ -42,10 +42,6 @@ export class HotelImageCacheService {
     private imageFallbackService: ImageFallbackService,
   ) {}
 
-  /**
-   * Get hotel images with caching
-   * Priority: Cache → Amadeus Content API → Google Places → Fallback
-   */
   async getHotelImages(
     hotelId: string,
     hotelName: string,
@@ -74,7 +70,7 @@ export class HotelImageCacheService {
       };
     }
 
-    // Step 2: Try Amadeus Content API first (Enterprise)
+    // Step 2: Try Amadeus Content API first
     const amadeusResult = await this.fetchFromAmadeus(hotelId, hotelName);
     if (amadeusResult && amadeusResult.images.length > 0) {
       this.logger.log(`✅ Amadeus images found for hotel ${hotelId}`);
@@ -101,9 +97,6 @@ export class HotelImageCacheService {
     return await this.getFallbackImages(hotelId, hotelName);
   }
 
-  /**
-   * Fetch images from Amadeus Content API
-   */
   private async fetchFromAmadeus(
     hotelId: string,
     hotelName: string,
@@ -111,7 +104,6 @@ export class HotelImageCacheService {
     try {
       this.logger.log(`Fetching images from Amadeus for hotel: ${hotelId}`);
 
-      // Get primary image URL from Amadeus
       const primaryImageUrl = await this.amadeusService.getHotelPrimaryImageUrl(hotelId);
 
       if (!primaryImageUrl) {
@@ -119,16 +111,14 @@ export class HotelImageCacheService {
         return null;
       }
 
-      this.logger.log(`✅ Found Amadeus image for hotel ${hotelId}: ${primaryImageUrl}`);
+      this.logger.log(`✅ Found Amadeus image for hotel ${hotelId}`);
 
-      // Upload to Cloudinary for consistent CDN delivery
       const cloudinaryResult = await this.cloudinaryService.uploadImage(
         primaryImageUrl,
         'ebony-bruce-travels/hotels',
         `hotel_${hotelId}_amadeus`,
       );
 
-      // Store in database cache
       await this.prisma.hotelImage.create({
         data: {
           hotelId,
@@ -141,7 +131,6 @@ export class HotelImageCacheService {
         },
       });
 
-      // Track Cloudinary storage
       const estimatedSizeGB = 0.0002;
       await this.usageTracking.incrementUsage('cloudinary', 'storage_gb', estimatedSizeGB);
 
@@ -165,9 +154,6 @@ export class HotelImageCacheService {
     }
   }
 
-  /**
-   * Fetch images from Google Places (fallback)
-   */
   private async fetchFromGooglePlaces(
     hotelId: string,
     hotelName: string,
@@ -271,9 +257,6 @@ export class HotelImageCacheService {
     return null;
   }
 
-  /**
-   * Get fallback images when both Amadeus and Google Places are unavailable
-   */
   private async getFallbackImages(
     hotelId: string,
     hotelName: string,
@@ -307,9 +290,6 @@ export class HotelImageCacheService {
     }
   }
 
-  /**
-   * Get primary (first) image URL per hotel from cache only
-   */
   async getPrimaryImageUrls(hotelIds: string[]): Promise<Record<string, string>> {
     if (!hotelIds.length) return {};
     const now = new Date();
@@ -328,9 +308,6 @@ export class HotelImageCacheService {
     return map;
   }
 
-  /**
-   * Check if Google Places API is available and configured
-   */
   private async isGooglePlacesAvailable(): Promise<boolean> {
     try {
       return (
@@ -343,9 +320,6 @@ export class HotelImageCacheService {
     }
   }
 
-  /**
-   * Determine image type based on position
-   */
   private determineImageType(index: number, total: number): string {
     if (index === 0) return 'exterior';
     if (index === 1) return 'interior';
@@ -354,9 +328,6 @@ export class HotelImageCacheService {
     return 'other';
   }
 
-  /**
-   * Clean up expired images (should be called by scheduled job)
-   */
   async cleanupExpiredImages(): Promise<number> {
     const expiredImages = await this.prisma.hotelImage.findMany({
       where: {
