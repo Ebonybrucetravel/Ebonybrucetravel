@@ -4,6 +4,7 @@ import { GooglePlacesModule } from '@infrastructure/external-apis/google-places/
 import { CloudinaryModule } from '@infrastructure/cloudinary/cloudinary.module';
 import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracking.module';
 import { ImageFallbackModule } from '@infrastructure/external-apis/image-fallback/image-fallback.module';
+import { AmadeusModule } from '@infrastructure/external-apis/amadeus/amadeus.module'; 
 import { HotelImageCacheService } from './hotel-image-cache.service';
 import { CleanupHotelImagesJob } from './cleanup-hotel-images.job';
 
@@ -14,9 +15,9 @@ import { CleanupHotelImagesJob } from './cleanup-hotel-images.job';
     CloudinaryModule,
     UsageTrackingModule,
     ImageFallbackModule,
+    AmadeusModule, 
   ],
   providers: [HotelImageCacheService, CleanupHotelImagesJob],
   exports: [HotelImageCacheService],
 })
 export class HotelImagesModule {}
-
