@@ -22,6 +22,7 @@ interface HotelDestination {
   city: string;
   country: string;
   cityCode: string;
+  image?: string;
 }
 
 const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
@@ -69,6 +70,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
   const [showHotelDropdown, setShowHotelDropdown] = useState(false);
   const [hotelSuggestions, setHotelSuggestions] = useState<HotelDestination[]>([]);
   const [loadingHotelSuggestions, setLoadingHotelSuggestions] = useState(false);
+  const [selectedCityCode, setSelectedCityCode] = useState<string | null>(null);
   
   // Car states
   const [carPickup, setCarPickup] = useState('');
@@ -94,13 +96,15 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
   ], []);
 
   const popularHotelDestinations = useMemo<HotelDestination[]>(() => [
-    { name: 'Lagos', city: 'Lagos', country: 'Nigeria', cityCode: 'LOS' },
-    { name: 'London', city: 'London', country: 'United Kingdom', cityCode: 'LON' },
-    { name: 'New York', city: 'New York', country: 'USA', cityCode: 'NYC' },
-    { name: 'Dubai', city: 'Dubai', country: 'UAE', cityCode: 'DXB' },
-    { name: 'Paris', city: 'Paris', country: 'France', cityCode: 'PAR' },
-    { name: 'Tokyo', city: 'Tokyo', country: 'Japan', cityCode: 'TYO' },
-    { name: 'Singapore', city: 'Singapore', country: 'Singapore', cityCode: 'SIN' },
+    { name: 'Lagos', city: 'Lagos', country: 'Nigeria', cityCode: 'LOS', image: 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?auto=format&fit=crop&q=80&w=400' },
+    { name: 'London', city: 'London', country: 'United Kingdom', cityCode: 'LON', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
+    { name: 'New York', city: 'New York', country: 'USA', cityCode: 'NYC', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Dubai', city: 'Dubai', country: 'UAE', cityCode: 'DXB', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Paris', city: 'Paris', country: 'France', cityCode: 'PAR', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Tokyo', city: 'Tokyo', country: 'Japan', cityCode: 'TYO', image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Singapore', city: 'Singapore', country: 'Singapore', cityCode: 'SIN', image: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Accra', city: 'Accra', country: 'Ghana', cityCode: 'ACC', image: 'https://images.unsplash.com/photo-1587496679742-bad502958c4a?auto=format&fit=crop&q=80&w=400' },
+    { name: 'Cape Town', city: 'Cape Town', country: 'South Africa', cityCode: 'CPT', image: 'https://images.unsplash.com/photo-1596394516093-9ba7b6146eba?auto=format&fit=crop&q=80&w=400' },
   ], []);
 
   // Debounce function
@@ -124,17 +128,80 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     return anyCode ? anyCode[1] : displayValue;
   }, []);
 
-  // Memoize passenger display text
-  const passengerDisplayText = useMemo(() => {
-    const total = passengers.adults + passengers.children + passengers.infants;
-    const cabinLabels: { [key: string]: string } = {
-      economy: 'Economy',
-      'premium-economy': 'Premium Economy',
-      business: 'Business',
-      first: 'First Class'
+  // Extract city code from hotel location
+  const getCityCodeFromLocation = useCallback((location: string): string => {
+    if (!location) return 'LOS';
+    if (selectedCityCode) return selectedCityCode;
+    
+    const cityCodeMap: Record<string, string> = {
+      'lagos': 'LOS', 'london': 'LON', 'new york': 'NYC',
+      'dubai': 'DXB', 'paris': 'PAR', 'tokyo': 'TYO',
+      'singapore': 'SIN', 'accra': 'ACC', 'cape town': 'CPT',
+      'madrid': 'MAD', 'barcelona': 'BCN', 'rome': 'ROM',
+      'amsterdam': 'AMS', 'berlin': 'BER', 'istanbul': 'IST'
     };
-    return `${total} Passenger${total !== 1 ? 's' : ''}, ${cabinLabels[cabinClass] || 'Economy'}`;
-  }, [passengers.adults, passengers.children, passengers.infants, cabinClass]);
+    
+    const lowerLoc = location.toLowerCase().trim();
+    for (const [cityName, code] of Object.entries(cityCodeMap)) {
+      if (lowerLoc.includes(cityName)) return code;
+    }
+    
+    const matchedDest = popularHotelDestinations.find(d =>
+      lowerLoc.includes(d.city.toLowerCase()) ||
+      lowerLoc.includes(d.name.toLowerCase())
+    );
+    if (matchedDest) return matchedDest.cityCode;
+    
+    const anyCode = location.match(/\b([A-Z]{3})\b/);
+    return anyCode ? anyCode[1] : 'LOS';
+  }, [selectedCityCode, popularHotelDestinations]);
+
+  // Fetch hotel suggestions from Amadeus API
+  const fetchHotelSuggestions = useCallback(async (query: string): Promise<HotelDestination[]> => {
+    if (!query || query.length < 2) {
+      return popularHotelDestinations.slice(0, 6);
+    }
+
+    try {
+      setLoadingHotelSuggestions(true);
+      
+      // Call Amadeus API via backend for destination suggestions
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ebony-bruce-production.up.railway.app'}/api/v1/bookings/hotels/destinations/suggestions?query=${encodeURIComponent(query)}`
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+          return result.data.slice(0, 10);
+        }
+      }
+      
+      // Fallback to local popular destinations
+      const lowerQuery = query.toLowerCase();
+      const filtered = popularHotelDestinations.filter(dest =>
+        dest.city.toLowerCase().includes(lowerQuery) ||
+        dest.country.toLowerCase().includes(lowerQuery) ||
+        dest.name.toLowerCase().includes(lowerQuery) ||
+        dest.cityCode.toLowerCase().includes(lowerQuery)
+      );
+      
+      return filtered.length > 0 ? filtered.slice(0, 8) : [];
+
+    } catch (error) {
+      console.error('Error fetching hotel suggestions from Amadeus:', error);
+      const lowerQuery = query.toLowerCase();
+      const filtered = popularHotelDestinations.filter(dest =>
+        dest.city.toLowerCase().includes(lowerQuery) ||
+        dest.country.toLowerCase().includes(lowerQuery) ||
+        dest.name.toLowerCase().includes(lowerQuery) ||
+        dest.cityCode.toLowerCase().includes(lowerQuery)
+      );
+      return filtered.length > 0 ? filtered.slice(0, 8) : [];
+    } finally {
+      setLoadingHotelSuggestions(false);
+    }
+  }, [popularHotelDestinations]);
 
   // Fetch airport suggestions
   const fetchAirportSuggestions = useCallback(async (query: string): Promise<Airport[]> => {
@@ -189,30 +256,6 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
       setLoadingSuggestions(false);
     }
   }, [popularAirports]);
-
-  // Fetch hotel suggestions
-  const fetchHotelSuggestions = useCallback(async (query: string): Promise<HotelDestination[]> => {
-    if (!query || query.length < 2) {
-      return popularHotelDestinations.slice(0, 6);
-    }
-
-    try {
-      setLoadingHotelSuggestions(true);
-      const lowerQuery = query.toLowerCase();
-      const filtered = popularHotelDestinations.filter(dest =>
-        dest.city.toLowerCase().includes(lowerQuery) ||
-        dest.country.toLowerCase().includes(lowerQuery) ||
-        dest.name.toLowerCase().includes(lowerQuery)
-      );
-      await new Promise(resolve => setTimeout(resolve, 200));
-      return filtered.slice(0, 8);
-    } catch (error) {
-      console.error('Error fetching hotel suggestions:', error);
-      return [];
-    } finally {
-      setLoadingHotelSuggestions(false);
-    }
-  }, [popularHotelDestinations]);
 
   // Debounced handlers
   const debouncedFromChange = useMemo(
@@ -296,6 +339,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
 
   const handleHotelChange = useCallback((value: string) => {
     setHotelLocation(value);
+    setSelectedCityCode(null);
     debouncedHotelChange(value);
   }, [debouncedHotelChange]);
 
@@ -323,6 +367,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
 
   const handleHotelSelect = useCallback((destination: HotelDestination) => {
     setHotelLocation(`${destination.city}, ${destination.country}`);
+    setSelectedCityCode(destination.cityCode);
     setShowHotelDropdown(false);
   }, []);
 
@@ -348,6 +393,18 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
       return { ...prev, [type]: newValue };
     });
   }, []);
+
+  // Memoize passenger display text
+  const passengerDisplayText = useMemo(() => {
+    const total = passengers.adults + passengers.children + passengers.infants;
+    const cabinLabels: { [key: string]: string } = {
+      economy: 'Economy',
+      'premium-economy': 'Premium Economy',
+      business: 'Business',
+      first: 'First Class'
+    };
+    return `${total} Passenger${total !== 1 ? 's' : ''}, ${cabinLabels[cabinClass] || 'Economy'}`;
+  }, [passengers.adults, passengers.children, passengers.infants, cabinClass]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -413,6 +470,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
         if (initialParams.location) setHotelLocation(initialParams.location);
         if (initialParams.checkInDate) setCheckIn(initialParams.checkInDate);
         if (initialParams.checkOutDate) setCheckOut(initialParams.checkOutDate);
+        if (initialParams.cityCode) setSelectedCityCode(initialParams.cityCode);
       }
       if (initialParams.type === 'cars') {
         if (initialParams.pickupLocationCode) setCarPickup(initialParams.pickupLocationCode);
@@ -458,15 +516,19 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
       console.log('✈️ Flight Search Data:', searchData);
       
     } else if (activeTab === 'hotels') {
+      const cityCode = getCityCodeFromLocation(hotelLocation);
+      
       searchData = {
         type: 'hotels',
         location: hotelLocation,
+        cityCode: cityCode,
         checkInDate: checkIn,
         checkOutDate: checkOut,
         travellers: { adults: parseInt(guests), children: 0 },
         rooms: 1,
+        provider: 'amadeus'
       };
-      console.log('🏨 Hotel Search Data:', searchData);
+      console.log('🏨 Hotel Search Data (Amadeus):', searchData);
       
     } else if (activeTab === 'cars') {
       const pickupCode = extractCode(carPickup);
@@ -484,7 +546,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     }
     
     onSearch(searchData);
-  }, [activeTab, extractCode, flightFrom, flightTo, flightDate, tripType, returnDate, passengers, cabinClass, hotelLocation, checkIn, checkOut, guests, carPickup, carDropoff, carPickupDate, carDropoffDate, onSearch]);
+  }, [activeTab, extractCode, getCityCodeFromLocation, flightFrom, flightTo, flightDate, tripType, returnDate, passengers, cabinClass, hotelLocation, checkIn, checkOut, guests, carPickup, carDropoff, carPickupDate, carDropoffDate, onSearch]);
 
   const renderDropdown = useCallback((suggestions: Airport[], onSelect: (airport: Airport) => void, isLoading: boolean) => (
     <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 max-h-64 overflow-y-auto z-50">
@@ -523,22 +585,29 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
       {loadingHotelSuggestions ? (
         <div className="px-4 py-4 text-center text-gray-500">
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#33a8da] mx-auto"></div>
-          <p className="text-xs mt-2">Loading...</p>
+          <p className="text-xs mt-2">Loading destinations...</p>
         </div>
       ) : hotelSuggestions.length === 0 ? (
         <div className="px-4 py-4 text-center text-gray-500 text-sm">No destinations found</div>
       ) : (
         hotelSuggestions.map((dest, idx) => (
           <button
-            key={`${dest.cityCode}-${idx}`}
+            key={`${dest.cityCode}-${dest.name}-${idx}`}
             type="button"
             className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0"
             onClick={() => handleHotelSelect(dest)}
           >
             <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-10 h-10 bg-green-50 text-green-600 rounded-xl flex items-center justify-center text-sm font-bold">
-                {dest.cityCode}
-              </div>
+              {dest.image && (
+                <div className="flex-shrink-0 w-10 h-10 rounded-xl overflow-hidden">
+                  <img src={dest.image} alt={dest.city} className="w-full h-full object-cover" />
+                </div>
+              )}
+              {!dest.image && (
+                <div className="flex-shrink-0 w-10 h-10 bg-green-50 text-green-600 rounded-xl flex items-center justify-center text-sm font-bold">
+                  {dest.cityCode}
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="font-semibold text-gray-900 text-sm">{dest.city}, {dest.country}</div>
                 <div className="text-xs text-gray-400 truncate">{dest.name}</div>
@@ -550,7 +619,6 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     </div>
   ), [hotelSuggestions, loadingHotelSuggestions, handleHotelSelect]);
 
-  // Memoized render functions
   const renderFlightCompact = useMemo(() => (
     <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">
       <div className="flex flex-col gap-1.5 min-w-[100px]">
@@ -710,7 +778,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     </div>
   ), [tripType, flightFrom, flightTo, flightDate, returnDate, showFromDropdown, showToDropdown, fromSuggestions, toSuggestions, loadingSuggestions, showPassengerDropdown, passengerDisplayText, passengers.adults, passengers.children, passengers.infants, cabinClass, loading, handleFromChange, handleToChange, handleAirportSelect, renderDropdown, updatePassengers, popularAirports]);
 
-  const renderHotelCompactMemo = useMemo(() => (
+  const renderHotelCompact = useMemo(() => (
     <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">
       <div className="flex-1 min-w-[180px] relative" ref={hotelLocationRef}>
         <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">DESTINATION</label>
@@ -759,7 +827,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     </div>
   ), [hotelLocation, checkIn, checkOut, guests, showHotelDropdown, loading, handleHotelChange, renderHotelDropdown, popularHotelDestinations]);
 
-  const renderCarCompactMemo = useMemo(() => (
+  const renderCarCompact = useMemo(() => (
     <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">
       <div className="flex-1 min-w-[130px] relative" ref={carPickupRef}>
         <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">PICKUP</label>
@@ -795,8 +863,8 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
   return (
     <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
       {activeTab === 'flights' && renderFlightCompact}
-      {activeTab === 'hotels' && renderHotelCompactMemo}
-      {activeTab === 'cars' && renderCarCompactMemo}
+      {activeTab === 'hotels' && renderHotelCompact}
+      {activeTab === 'cars' && renderCarCompact}
     </form>
   );
 };

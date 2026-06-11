@@ -100,6 +100,7 @@ export interface SearchResult {
   taxes?: string;
   service_fee_percentage?: number;
   final_amount?: string;
+  final_price?: string | number;
   currency?: string;
 
   // ✅ DISPLAY FIELDS

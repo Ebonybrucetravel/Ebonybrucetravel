@@ -4999,7 +4999,7 @@ export function validateFlightSearchParams(params: FlightSearchParams): {
   };
 }
 
-// Hotel booking helper function - FIXED with cancellation fields
+
 export async function createAmadeusHotelBooking(
   offerId: string,
   hotelData: any,
@@ -5016,154 +5016,103 @@ export async function createAmadeusHotelBooking(
     securityCode?: string;
   },
   isGuest: boolean = true,
-  voucherCode?: string, // ← ADD THIS LINE (optional parameter)
+  voucherCode?: string,
 ): Promise<HotelBookingResponse> {
   try {
     console.log("🏨 Creating Amadeus hotel booking...");
 
-    // Validate hotel data
-    if (!hotelData || !hotelData.realData) {
-      throw new ApiError("Invalid hotel data", 400, "INVALID_HOTEL_DATA");
+    // Validate required data
+    if (!offerId) {
+      throw new ApiError("Missing offer ID", 400, "MISSING_OFFER_ID");
     }
 
-    const realData = hotelData.realData;
+    const realData = hotelData.realData || hotelData;
 
-    // Get cancellation deadline from realData or calculate a default
+    // Get cancellation deadline and policy
     let cancellationDeadline = realData.cancellationDeadline;
     if (!cancellationDeadline) {
-      // Default to 24 hours before check-in
-      const checkInDate =
-        realData.checkInDate || new Date().toISOString().split("T")[0];
+      const checkInDate = realData.checkInDate || new Date().toISOString().split("T")[0];
       const deadline = new Date(checkInDate);
       deadline.setDate(deadline.getDate() - 1);
       deadline.setHours(23, 59, 0, 0);
       cancellationDeadline = deadline.toISOString();
     }
 
-    // Get cancellation policy
-    const cancellationPolicySnapshot =
-      realData.cancellationPolicy ||
+    const cancellationPolicySnapshot = realData.cancellationPolicy ||
       "Free cancellation until 24 hours before check-in. After that, full stay amount may be charged.";
 
-    // Prepare booking data with ALL required fields
-    const bookingData: HotelBookingRequest & {
-      cancellationDeadline: string;
-      cancellationPolicySnapshot: string;
-      policyAccepted: boolean;
-    } = {
+    // ✅ CORRECTED: Build payload with provider field
+    const bookingPayload = {
+      productType: "HOTEL",
+      provider: "AMADEUS",  // ← CRITICAL: This is what the backend expects
       hotelOfferId: offerId,
-      offerPrice: realData.finalPrice ?? realData.price,
+      offerPrice: realData.finalPrice ?? realData.price ?? 0,
       currency: (realData.currency || "GBP").toUpperCase(),
-      guests: [
-        {
-          name: {
-            title: "MR",
-            firstName: guestInfo.firstName,
-            lastName: guestInfo.lastName,
-          },
-          contact: {
-            phone: guestInfo.phone,
-            email: guestInfo.email,
-          },
-        },
-      ],
-      roomAssociations: [
-        {
-          hotelOfferId: offerId,
-          guestReferences: [
-            {
-              guestReference: "1",
-            },
-          ],
-        },
-      ],
-      payment: {
-        method: "CREDIT_CARD",
-        paymentCard: {
-          paymentCardInfo: paymentInfo
-            ? {
-              vendorCode: getVendorCodeFromCardNumber(
-                paymentInfo.cardNumber || "",
-              ),
-              cardNumber: paymentInfo.cardNumber || "",
-              expiryDate: paymentInfo.expiryDate || "",
-              holderName: paymentInfo.holderName || "",
-              securityCode: paymentInfo.securityCode || "",
-            }
-            : {
-              vendorCode: "VI",
-              cardNumber: "4242424242424242",
-              expiryDate: "2026-12",
-              holderName: "TEST USER",
-              securityCode: "123",
-            },
-        },
-      },
-      // ✅ ADD THESE REQUIRED FIELDS
+      checkInDate: realData.checkInDate,
+      checkOutDate: realData.checkOutDate,
+      guests: realData.guests || 1,
+      rooms: realData.rooms || 1,
+      basePrice: realData.finalPrice ?? realData.price ?? 0,
+      totalAmount: realData.finalPrice ?? realData.price ?? 0,
       cancellationDeadline: cancellationDeadline,
       cancellationPolicySnapshot: cancellationPolicySnapshot,
       policyAccepted: true,
+      passengerInfo: {
+        firstName: guestInfo.firstName,
+        lastName: guestInfo.lastName,
+        email: guestInfo.email,
+        phone: guestInfo.phone,
+      },
+      ...(voucherCode && { voucherCode }),
+      // Payment info is optional (will use test card if not provided)
+      ...(paymentInfo && {
+        paymentInfo: {
+          cardNumber: paymentInfo.cardNumber,
+          expiryDate: paymentInfo.expiryDate,
+          holderName: paymentInfo.holderName,
+          securityCode: paymentInfo.securityCode,
+        }
+      }),
     };
 
-    // Validate booking data
-    const validation = validateHotelBookingData(bookingData);
-    if (!validation.isValid) {
-      throw new ApiError(
-        `Booking validation failed: ${validation.errors.join(", ")}`,
-        400,
-        "BOOKING_VALIDATION_FAILED",
-      );
-    }
+    console.log("📦 Amadeus hotel booking payload:", JSON.stringify(bookingPayload, null, 2));
 
-    // Use different endpoints for guest vs authenticated users
-    let response: HotelBookingResponse;
+    // Use the correct endpoint based on authentication status
+    const endpoint = isGuest 
+      ? "/api/v1/bookings/hotels/amadeus/guest"
+      : "/api/v1/bookings/hotels/amadeus";
 
-    if (isGuest) {
-      // Use publicRequest for guest bookings (no auth required)
-      console.log("📝 Creating guest Amadeus hotel booking...");
-      console.log(
-        "📦 Guest booking payload:",
-        JSON.stringify(bookingData, null, 2),
-      );
-
-      response = await publicRequest<HotelBookingResponse>(
-        "/api/v1/bookings/hotels/bookings/amadeus/guest",
-        {
-          method: "POST",
-          body: JSON.stringify(bookingData),
-        },
-      );
-    } else {
-      // Use authenticated endpoint for logged-in users
-      console.log("📝 Creating authenticated Amadeus hotel booking...");
-      response = await bookingApi.createHotelBookingAmadeus(bookingData);
-    }
+    const response = await publicRequest<HotelBookingResponse>(endpoint, {
+      method: "POST",
+      body: JSON.stringify(bookingPayload),
+    });
 
     if (!response.success) {
       throw new ApiError(
         response.message || "Hotel booking failed",
-        response.status || 500,
+        400,
         "HOTEL_BOOKING_FAILED",
+        response
       );
     }
 
-    console.log("✅ Hotel booking created successfully:", response);
+    console.log("✅ Amadeus hotel booking created successfully:", response);
     return response;
   } catch (error: any) {
-    console.error("❌ Hotel booking failed:", error);
-
+    console.error("❌ Amadeus hotel booking failed:", error);
+    
     if (error instanceof ApiError) {
       throw error;
     }
-
+    
     throw new ApiError(
       error.message || "Failed to create hotel booking",
       error.status || 500,
       "HOTEL_BOOKING_ERROR",
+      error
     );
   }
 }
-
 /** Card brand to Amadeus vendor code. Export for Amadeus hotel booking flow. */
 export function getVendorCodeFromCardNumber(cardNumber: string): string {
   if (!cardNumber) return "VI";

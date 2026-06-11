@@ -683,63 +683,121 @@ export function useBooking() {
       passenger: PassengerInfo,
       card:
         | {
-          cardNumber: string;
-          expiryMonth: string;
-          expiryYear: string;
-          cvc: string;
-          holderName?: string;
-        }
+            cardNumber: string;
+            expiryMonth: string;
+            expiryYear: string;
+            cvc: string;
+            holderName?: string;
+          }
         | undefined,
       isGuest: boolean,
     ): Promise<Booking> => {
       setIsCreating(true);
       setError(null);
-
+  
       try {
         const offerId = item.realData?.offerId ?? item.id;
         if (!offerId) throw new Error("Missing offer ID");
-
-        const paymentInfo = card
-          ? {
-            cardNumber: card.cardNumber.replace(/\s+/g, ""),
-            expiryDate: `${card.expiryYear}-${card.expiryMonth.padStart(2, "0")}`,
-            holderName: card.holderName || `${passenger.firstName} ${passenger.lastName}`,
-            securityCode: card.cvc,
-          }
-          : undefined;
-
-        const basePrice = item.realData?.price || 0;
-        const markupAmount = parseFloat(item.markup_amount || "0");
-        const taxes = markupAmount;
-
-        const response = await api.createAmadeusHotelBooking(
-          offerId,
-          {
-            ...item,
-            basePrice,
-            taxes,
-            totalAmount: basePrice + taxes,
-          },
-          {
-            firstName: passenger.firstName,
-            lastName: passenger.lastName,
-            email: passenger.email,
-            phone: passenger.phone,
-          },
-          paymentInfo,
-          isGuest,
-        );
-
-        if (!response.success) {
-          throw new Error(response.message || "Booking failed");
+  
+        const realData = item.realData || item;
+        
+        // Calculate price
+        const basePrice = typeof realData.finalPrice === 'number' ? realData.finalPrice : 
+                          typeof realData.price === 'number' ? realData.price : 100;
+        const markupAmount = typeof item.markup_amount === 'string' ? parseFloat(item.markup_amount) : 0;
+        const serviceFee = typeof item.service_fee === 'string' ? parseFloat(item.service_fee) : 0;
+        const totalAmount = basePrice + markupAmount + serviceFee;
+        const validTotalAmount = isNaN(totalAmount) || totalAmount <= 0 ? 100 : totalAmount;
+  
+        const token = getStoredAuthToken();
+  
+        // ✅ Build payload WITHOUT paymentInfo - use payment structure instead
+        const bookingPayload: any = {
+          hotelOfferId: offerId,
+          offerPrice: validTotalAmount,
+          currency: (realData.currency || item.currency || "GBP").toUpperCase(),
+          guests: [
+            {
+              name: {
+                title: "MR",
+                firstName: passenger.firstName,
+                lastName: passenger.lastName,
+              },
+              contact: {
+                phone: passenger.phone,
+                email: passenger.email,
+              },
+            },
+          ],
+          roomAssociations: [
+            {
+              hotelOfferId: offerId,
+              guestReferences: [{ guestReference: "1" }],
+            },
+          ],
+          cancellationDeadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          cancellationPolicySnapshot: "Free cancellation until 24 hours before check-in.",
+          policyAccepted: true,
+        };
+  
+        // ✅ Add payment card if provided (using correct structure)
+        if (card) {
+          bookingPayload.payment = {
+            method: "CREDIT_CARD",
+            paymentCard: {
+              paymentCardInfo: {
+                vendorCode: "VI",
+                cardNumber: card.cardNumber.replace(/\s+/g, ""),
+                expiryDate: `${card.expiryYear}-${card.expiryMonth.padStart(2, "0")}`,
+                holderName: card.holderName || `${passenger.firstName} ${passenger.lastName}`,
+                securityCode: card.cvc,
+              },
+            },
+          };
         }
-
-        const raw = response.data?.booking ?? response.booking ?? response.data ?? response;
-
+  
+        console.log("📦 Amadeus hotel booking payload:", JSON.stringify(bookingPayload, null, 2));
+  
+        const endpoint = isGuest 
+          ? "/api/v1/bookings/hotels/bookings/amadeus/guest"
+          : "/api/v1/bookings/hotels/bookings/amadeus";
+  
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        };
+  
+        if (!isGuest && token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+  
+        const response = await fetch(`${BASE}${endpoint}`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(bookingPayload),
+        });
+  
+        let data: any;
+        try {
+          data = await response.json();
+        } catch (e) {
+          const text = await response.text();
+          console.error("Non-JSON response:", text);
+          throw new Error(`Server returned ${response.status}: ${text.substring(0, 100)}`);
+        }
+  
+        if (!response.ok) {
+          const msg = data.message || data.error || "Booking creation failed";
+          console.error("Booking creation failed:", data);
+          throw new Error(msg);
+        }
+  
+        const raw = data.data?.booking ?? data.booking ?? data.data ?? data;
+  
         if (!raw?.id) {
           throw new Error("Invalid response from server - missing booking ID");
         }
-
+  
         const booking: Booking = {
           id: raw.id,
           reference: raw.reference,
@@ -748,15 +806,16 @@ export function useBooking() {
           productType: "HOTEL",
           provider: "AMADEUS",
           basePrice: basePrice,
-          totalAmount: basePrice + taxes,
-          currency: raw.currency || (item.realData?.currency ?? "GBP").toUpperCase(),
+          totalAmount: validTotalAmount,
+          currency: bookingPayload.currency,
           bookingData: {
             ...raw,
-            taxes: taxes,
-            markup_amount: item.markup_amount,
-            markup_percentage: item.markup_percentage,
-            basePrice: basePrice,
-            finalAmount: basePrice + taxes,
+            hotelId: item.id,
+            hotelName: item.title,
+            checkInDate: realData.checkInDate,
+            checkOutDate: realData.checkOutDate,
+            guests: realData.guests || 1,
+            rooms: realData.rooms || 1,
           },
           passengerInfo: {
             firstName: passenger.firstName,
@@ -766,12 +825,12 @@ export function useBooking() {
           },
           createdAt: raw.createdAt || new Date().toISOString(),
         };
-
-        console.log("✅ Booking created successfully:", booking);
+  
+        console.log("✅ Amadeus hotel booking created successfully:", booking);
         setBooking(booking);
         return booking;
       } catch (err: any) {
-        console.error("❌ Booking creation failed:", err);
+        console.error("❌ Amadeus hotel booking creation failed:", err);
         setError(err.message);
         throw err;
       } finally {
@@ -780,7 +839,6 @@ export function useBooking() {
     },
     [BASE],
   );
-
   const chargeMarginAmadeusHotel = useCallback(
     async (booking: Booking, isGuest: boolean): Promise<Booking> => {
       setError(null);

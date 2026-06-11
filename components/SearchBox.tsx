@@ -381,6 +381,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
     }
   }, []);
 
+  // ✅ UPDATED: Fetch hotel suggestions from Amadeus API via backend
   const fetchHotelLocationSuggestions = useCallback(async (query: string): Promise<HotelDestination[]> => {
     if (!query || query.length < 2) {
       return popularHotelDestinations.slice(0, 6);
@@ -388,6 +389,20 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
     try {
       setLoadingHotelSuggestions(true);
+      
+      // Call the new backend endpoint that searches Amadeus
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ebony-bruce-production.up.railway.app'}/api/v1/bookings/hotels/destinations/suggestions?query=${encodeURIComponent(query)}`
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+          return result.data.slice(0, 10);
+        }
+      }
+      
+      // Fallback to local popular destinations if API fails
       const lowerQuery = query.toLowerCase();
       const filtered = popularHotelDestinations.filter(dest =>
         dest.city.toLowerCase().includes(lowerQuery) ||
@@ -395,12 +410,22 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         dest.name.toLowerCase().includes(lowerQuery) ||
         dest.cityCode.toLowerCase().includes(lowerQuery)
       );
-      await new Promise(resolve => setTimeout(resolve, 200));
+      
       return filtered.length > 0 ? filtered.slice(0, 8) : [];
 
     } catch (error) {
-      console.error('Error fetching hotel suggestions:', error);
-      return [];
+      console.error('Error fetching hotel suggestions from Amadeus:', error);
+      
+      // Fallback to local filtering
+      const lowerQuery = query.toLowerCase();
+      const filtered = popularHotelDestinations.filter(dest =>
+        dest.city.toLowerCase().includes(lowerQuery) ||
+        dest.country.toLowerCase().includes(lowerQuery) ||
+        dest.name.toLowerCase().includes(lowerQuery) ||
+        dest.cityCode.toLowerCase().includes(lowerQuery)
+      );
+      
+      return filtered.length > 0 ? filtered.slice(0, 8) : [];
     } finally {
       setLoadingHotelSuggestions(false);
     }
@@ -852,7 +877,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
         return;
       }
 
-      // Using Amadeus only (Hotelbeds removed)
+     
       const data = {
         type: 'hotels',
         location: hotelLocation,
@@ -1107,9 +1132,9 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
               <div className="text-xs font-bold text-gray-500">{t('search.popularDestinations')}</div>
             </div>
-            {hotelLocationSuggestions.map((dest) => (
+            {hotelLocationSuggestions.map((dest, index) => (
               <button
-                key={`hotel-${dest.cityCode}`}
+                key={`hotel-${dest.cityCode}-${dest.name}-${index}`}
                 type="button"
                 className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
                 onClick={() => handleHotelDestinationSelect(dest)}
