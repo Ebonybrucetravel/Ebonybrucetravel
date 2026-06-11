@@ -184,219 +184,227 @@ export class CreateAmadeusHotelBookingUseCase {
   }
 
   /**
- * Step 2: Create actual Amadeus booking (after payment succeeds)
- * This is called from the Stripe webhook handler after payment confirmation.
- */
-async createAmadeusBookingAfterPayment(bookingId: string): Promise<{ orderId: string; orderData: any }> {
-  try {
-    // Get booking from database
-    const booking = await this.prisma.booking.findUnique({
-      where: { id: bookingId },
-    });
+   * Step 2: Create actual Amadeus booking (after payment succeeds)
+   * This is called from the Stripe webhook handler after payment confirmation.
+   */
+  async createAmadeusBookingAfterPayment(bookingId: string): Promise<{ orderId: string; orderData: any }> {
+    try {
+      // Get booking from database
+      const booking = await this.prisma.booking.findUnique({
+        where: { id: bookingId },
+      });
 
-    if (!booking) {
-      throw new NotFoundException(`Booking with ID ${bookingId} not found`);
-    }
+      if (!booking) {
+        throw new NotFoundException(`Booking with ID ${bookingId} not found`);
+      }
 
-    if (booking.provider !== Provider.AMADEUS) {
-      throw new BadRequestException('Booking is not an Amadeus booking');
-    }
+      if (booking.provider !== Provider.AMADEUS) {
+        throw new BadRequestException('Booking is not an Amadeus booking');
+      }
 
-    if (booking.providerBookingId) {
-      this.logger.warn(`Booking ${bookingId} already has Amadeus order ID: ${booking.providerBookingId}`);
-      const orderData = await this.amadeusService.getHotelBooking(booking.providerBookingId);
-      return {
-        orderId: booking.providerBookingId,
-        orderData: orderData.data,
+      if (booking.providerBookingId) {
+        this.logger.warn(`Booking ${bookingId} already has Amadeus order ID: ${booking.providerBookingId}`);
+        const orderData = await this.amadeusService.getHotelBooking(booking.providerBookingId);
+        return {
+          orderId: booking.providerBookingId,
+          orderData: orderData.data,
+        };
+      }
+
+      const bookingData = booking.bookingData as any;
+      const passengerInfo = booking.passengerInfo as any;
+
+      const offerId = bookingData.amadeus_offer_id || bookingData.offerId;
+      if (!offerId) {
+        throw new BadRequestException('Booking missing Amadeus offer ID (amadeus_offer_id or offerId)');
+      }
+
+      // Reconstruct guests
+      let guests = bookingData.guests || passengerInfo?.guests || [];
+      if (guests.length === 0 && passengerInfo) {
+        const p = passengerInfo;
+        guests = [
+          {
+            title: (p as any).title || 'MR',
+            firstName: p.firstName,
+            lastName: p.lastName,
+            email: p.email,
+            phone: p.phone || '',
+          },
+        ];
+      }
+
+      // Reconstruct room associations
+      let roomAssociations = bookingData.room_associations || [];
+      if (roomAssociations.length === 0 && guests.length > 0) {
+        roomAssociations = [
+          { hotelOfferId: offerId, guestReferences: [{ guestReference: '1' }] },
+        ];
+      }
+
+      // Card for Amadeus
+      let cardDetails: {
+        vendorCode: string;
+        cardNumber: string;
+        expiryDate: string;
+        holderName?: string;
+        securityCode?: string;
+      } | null = null;
+
+      if (bookingData.payment_card_info?.encrypted) {
+        try {
+          cardDetails = this.encryptionService.decryptCardDetails(bookingData.payment_card_info.encrypted);
+        } catch (error) {
+          this.logger.error(`Failed to decrypt card details for booking ${bookingId}`);
+          throw new BadRequestException('Failed to decrypt card details. Booking cannot be completed.');
+        }
+      } else {
+        cardDetails = this.agencyCardService.getAmadeusAgencyCard();
+        if (!cardDetails) {
+          throw new BadRequestException(
+            'Amadeus order not created: no payment method. ' +
+              'Set AMADEUS_AGENCY_CARD_ENCRYPTED and PAYMENT_MODEL=merchant, or create booking with guest payment card.',
+          );
+        }
+      }
+
+      // ✅ FIX: Convert Decimal to number properly
+      const totalAmount = typeof booking.totalAmount === 'number' 
+        ? booking.totalAmount 
+        : booking.totalAmount && typeof (booking.totalAmount as any).toNumber === 'function'
+          ? (booking.totalAmount as any).toNumber()
+          : parseFloat(String(booking.totalAmount) || '0');
+      
+      const currency = booking.currency;
+      const markupConfig = bookingData.markup_config_used || {};
+      const markupPercentage = markupConfig.markupPercentage || 0;
+      const serviceFee = typeof markupConfig.serviceFee === 'number'
+        ? markupConfig.serviceFee
+        : parseFloat(String(markupConfig.serviceFee) || '0');
+      
+      const basePrice = typeof booking.basePrice === 'number'
+        ? booking.basePrice
+        : booking.basePrice && typeof (booking.basePrice as any).toNumber === 'function'
+          ? (booking.basePrice as any).toNumber()
+          : parseFloat(String(booking.basePrice) || '0');
+
+      // Calculate the markup amount with proper numbers
+      const markupAmount = totalAmount - basePrice - serviceFee;
+
+      // ✅ FIX: Amadeus does NOT accept 'markups' array
+      // Send ONLY the total and base price in the hotel's local currency
+      // The markup is your profit - store it in your database but don't send to Amadeus
+      
+      // IMPORTANT: Convert currency if needed (e.g., NGN → GBP/EUR)
+      // You need to implement currency conversion here using your conversion API
+      const hotelLocalCurrency = 'GBP'; // or get from hotel's location
+      const conversionRate = 1; // Replace with your actual conversion API call
+      
+      const convertedTotal = totalAmount / conversionRate;
+      const convertedBase = basePrice / conversionRate;
+      
+      // ✅ CORRECT: Send ONLY total and base (no markups array)
+      const priceForAmadeus = {
+        currency: hotelLocalCurrency, // Use local currency, not NGN
+        total: convertedTotal.toFixed(2),
+        base: convertedBase.toFixed(2),
+        // ❌ REMOVED: markups array - Amadeus doesn't accept this
+        // ✅ Keep taxes if needed, but simplify
+        taxes: [
+          {
+            code: "TAX",
+            amount: "0.00",
+            included: true,
+          },
+        ],
       };
-    }
 
-    const bookingData = booking.bookingData as any;
-    const passengerInfo = booking.passengerInfo as any;
+      this.logger.log(`💰 Sending price to Amadeus (${hotelLocalCurrency}): ${JSON.stringify(priceForAmadeus)}`);
+      this.logger.log(`📊 Your markup (profit) stored in DB - Amount: ${markupAmount.toFixed(2)} ${currency}, Percentage: ${markupPercentage}%`);
 
-    const offerId = bookingData.amadeus_offer_id || bookingData.offerId;
-    if (!offerId) {
-      throw new BadRequestException('Booking missing Amadeus offer ID (amadeus_offer_id or offerId)');
-    }
-
-    // Reconstruct guests
-    let guests = bookingData.guests || passengerInfo?.guests || [];
-    if (guests.length === 0 && passengerInfo) {
-      const p = passengerInfo;
-      guests = [
-        {
-          title: (p as any).title || 'MR',
-          firstName: p.firstName,
-          lastName: p.lastName,
-          email: p.email,
-          phone: p.phone || '',
-        },
-      ];
-    }
-
-    // Reconstruct room associations
-    let roomAssociations = bookingData.room_associations || [];
-    if (roomAssociations.length === 0 && guests.length > 0) {
-      roomAssociations = [
-        { hotelOfferId: offerId, guestReferences: [{ guestReference: '1' }] },
-      ];
-    }
-
-    // Card for Amadeus
-    let cardDetails: {
-      vendorCode: string;
-      cardNumber: string;
-      expiryDate: string;
-      holderName?: string;
-      securityCode?: string;
-    } | null = null;
-
-    if (bookingData.payment_card_info?.encrypted) {
-      try {
-        cardDetails = this.encryptionService.decryptCardDetails(bookingData.payment_card_info.encrypted);
-      } catch (error) {
-        this.logger.error(`Failed to decrypt card details for booking ${bookingId}`);
-        throw new BadRequestException('Failed to decrypt card details. Booking cannot be completed.');
-      }
-    } else {
-      cardDetails = this.agencyCardService.getAmadeusAgencyCard();
-      if (!cardDetails) {
-        throw new BadRequestException(
-          'Amadeus order not created: no payment method. ' +
-            'Set AMADEUS_AGENCY_CARD_ENCRYPTED and PAYMENT_MODEL=merchant, or create booking with guest payment card.',
-        );
-      }
-    }
-
-    // ✅ FIX: Convert Decimal to number properly
-    const totalAmount = typeof booking.totalAmount === 'number' 
-      ? booking.totalAmount 
-      : booking.totalAmount && typeof (booking.totalAmount as any).toNumber === 'function'
-        ? (booking.totalAmount as any).toNumber()
-        : parseFloat(String(booking.totalAmount) || '0');
-    
-    const currency = booking.currency;
-    const markupConfig = bookingData.markup_config_used || {};
-    const markupPercentage = markupConfig.markupPercentage || 0;
-    const serviceFee = typeof markupConfig.serviceFee === 'number'
-      ? markupConfig.serviceFee
-      : parseFloat(String(markupConfig.serviceFee) || '0');
-    
-    const basePrice = typeof booking.basePrice === 'number'
-      ? booking.basePrice
-      : booking.basePrice && typeof (booking.basePrice as any).toNumber === 'function'
-        ? (booking.basePrice as any).toNumber()
-        : parseFloat(String(booking.basePrice) || '0');
-
-    // Calculate the markup amount with proper numbers
-    const markupAmount = totalAmount - basePrice - serviceFee;
-
-    // Build the price object with markup for Amadeus
-    const priceWithMarkup = {
-      currency: currency,
-      total: totalAmount.toFixed(2),
-      base: basePrice.toFixed(2),
-      markups: [
-        {
-          amount: markupAmount.toFixed(2),
-          description: `Markup (${markupPercentage}%)`,
-        },
-        {
-          amount: serviceFee.toFixed(2),
-          description: 'Service Fee',
-        },
-      ],
-      taxes: [
-        {
-          code: "SERVICE_FEE",
-          description: "Service Fee",
-          amount: serviceFee.toFixed(2),
-          included: true,
-        },
-        {
-          code: "MARKUP",
-          description: `Markup (${markupPercentage}%)`,
-          amount: markupAmount.toFixed(2),
-          included: true,
-        },
-      ],
-    };
-
-    this.logger.log(`💰 Sending marked-up price to Amadeus: ${JSON.stringify(priceWithMarkup)}`);
-
-    // Create Amadeus booking with marked-up price
-    const amadeusBooking = await this.amadeusService.createHotelBooking({
-      hotelOfferId: offerId,
-      guests: guests.map((g: any) => ({
-        title: g.name?.title || g.title,
-        firstName: g.name?.firstName || g.firstName,
-        lastName: g.name?.lastName || g.lastName,
-        phone: g.contact?.phone || g.phone,
-        email: g.contact?.email || g.email,
-      })),
-      roomAssociations: roomAssociations.map((ra: any) => ({
-        hotelOfferId: ra.hotelOfferId,
-        guestReferences: ra.guestReferences,
-      })),
-      payment: {
-        method: 'CREDIT_CARD',
-        paymentCard: {
-          paymentCardInfo: {
-            vendorCode: cardDetails.vendorCode,
-            cardNumber: cardDetails.cardNumber,
-            expiryDate: cardDetails.expiryDate,
-            holderName: cardDetails.holderName,
-            securityCode: cardDetails.securityCode,
+      // Create Amadeus booking with simplified price (no markups)
+      const amadeusBooking = await this.amadeusService.createHotelBooking({
+        hotelOfferId: offerId,
+        guests: guests.map((g: any) => ({
+          title: g.name?.title || g.title,
+          firstName: g.name?.firstName || g.firstName,
+          lastName: g.name?.lastName || g.lastName,
+          phone: g.contact?.phone || g.phone,
+          email: g.contact?.email || g.email,
+        })),
+        roomAssociations: roomAssociations.map((ra: any) => ({
+          hotelOfferId: ra.hotelOfferId,
+          guestReferences: ra.guestReferences,
+        })),
+        payment: {
+          method: 'CREDIT_CARD',
+          paymentCard: {
+            paymentCardInfo: {
+              vendorCode: cardDetails.vendorCode,
+              cardNumber: cardDetails.cardNumber,
+              expiryDate: cardDetails.expiryDate,
+              holderName: cardDetails.holderName,
+              securityCode: cardDetails.securityCode,
+            },
           },
         },
-      },
-      travelAgentEmail: bookingData.travel_agent_email,
-      accommodationSpecialRequests: bookingData.accommodation_special_requests,
-      price: priceWithMarkup,
-    });
+        travelAgentEmail: bookingData.travel_agent_email,
+        accommodationSpecialRequests: bookingData.accommodation_special_requests,
+        price: priceForAmadeus, // Using simplified price object
+      });
 
-    // Update booking with Amadeus order ID
-    const updatedBookingData = { ...bookingData };
-    if (bookingData.payment_card_info) {
-      updatedBookingData.payment_card_info = {
-        ...bookingData.payment_card_info,
-        encrypted: null,
-        cardLast4: bookingData.payment_card_info.cardLast4,
+      // Update booking with Amadeus order ID
+      const updatedBookingData = { ...bookingData };
+      if (bookingData.payment_card_info) {
+        updatedBookingData.payment_card_info = {
+          ...bookingData.payment_card_info,
+          encrypted: null,
+          cardLast4: bookingData.payment_card_info.cardLast4,
+        };
+      }
+      
+      // Store the markup information for your records (not sent to Amadeus)
+      updatedBookingData.markup_applied = {
+        amount: markupAmount,
+        percentage: markupPercentage,
+        serviceFee: serviceFee,
+        originalCurrency: currency,
+        convertedCurrency: hotelLocalCurrency,
+        convertedTotal: convertedTotal,
       };
-    }
-    
-    await this.prisma.booking.update({
-      where: { id: bookingId },
-      data: {
-        providerBookingId: amadeusBooking.data.id,
-        providerData: amadeusBooking.data,
-        status: BookingStatus.CONFIRMED,
-        bookingData: updatedBookingData,
-      },
-    });
+      
+      await this.prisma.booking.update({
+        where: { id: bookingId },
+        data: {
+          providerBookingId: amadeusBooking.data.id,
+          providerData: amadeusBooking.data,
+          status: BookingStatus.CONFIRMED,
+          bookingData: updatedBookingData,
+        },
+      });
 
-    this.logger.log(`✅ Successfully created Amadeus hotel order ${amadeusBooking.data.id} with marked-up price`);
+      this.logger.log(`✅ Successfully created Amadeus hotel order ${amadeusBooking.data.id} with marked-up price (markup stored locally)`);
 
-    return {
-      orderId: amadeusBooking.data.id,
-      orderData: amadeusBooking.data,
-    };
-  } catch (error: any) {
-    const errResponse = error?.getResponse?.();
-    const status = error?.getStatus?.() ?? error?.statusCode;
-    const amadeusMessage =
-      typeof errResponse === 'object' && errResponse?.message
-        ? errResponse.message
-        : typeof errResponse === 'string'
-          ? errResponse
-          : error?.message;
-    this.logger.error(
-      `Failed to create Amadeus booking for booking ${bookingId}: status=${status} message=${amadeusMessage}`,
-    );
-    if (errResponse && typeof errResponse === 'object' && errResponse.errors) {
-      this.logger.error(`Amadeus errors: ${JSON.stringify(redactCardData(errResponse.errors))}`);
+      return {
+        orderId: amadeusBooking.data.id,
+        orderData: amadeusBooking.data,
+      };
+    } catch (error: any) {
+      const errResponse = error?.getResponse?.();
+      const status = error?.getStatus?.() ?? error?.statusCode;
+      const amadeusMessage =
+        typeof errResponse === 'object' && errResponse?.message
+          ? errResponse.message
+          : typeof errResponse === 'string'
+            ? errResponse
+            : error?.message;
+      this.logger.error(
+        `Failed to create Amadeus booking for booking ${bookingId}: status=${status} message=${amadeusMessage}`,
+      );
+      if (errResponse && typeof errResponse === 'object' && errResponse.errors) {
+        this.logger.error(`Amadeus errors: ${JSON.stringify(redactCardData(errResponse.errors))}`);
+      }
+      throw error;
     }
-    throw error;
   }
-}
 }
