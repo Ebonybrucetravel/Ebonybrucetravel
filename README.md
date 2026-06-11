@@ -2,7 +2,7 @@
 
 **A Modern Online Travel Agency (OTA) Platform**
 
----
+
 
 ## Contact Information
 
@@ -12,7 +12,7 @@
 **Date:** December 17, 2025  
 **Estimated Project Duration:** 8 Weeks
 
----
+
 
 ## 1. Executive Summary
 
