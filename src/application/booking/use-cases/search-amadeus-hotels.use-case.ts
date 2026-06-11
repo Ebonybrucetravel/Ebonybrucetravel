@@ -74,7 +74,7 @@ export class SearchAmadeusHotelsUseCase {
       );
     }
 
-    // ✅ If cityCode provided but no hotelIds, get hotel IDs from Amadeus first
+ 
     let finalHotelIds = hotelIds;
     
     if (hasCityCode && !hasHotelIds) {
@@ -92,20 +92,35 @@ export class SearchAmadeusHotelsUseCase {
         );
       }
       
+    
       finalHotelIds = hotelsList.data
         .map((hotel: any) => hotel.hotelId)
-        .filter((id: string) => id && id.length === 8);
+        .filter((id: string) => this.isValidHotelId(id, cityCode));
+    
+      if (finalHotelIds.length === 0 && radius) {
+        this.logger.warn(`No valid hotel IDs found with radius ${radius}km for ${cityCode}, retrying without radius...`);
+        
+        const retryHotelsList = await this.amadeusService.getHotelsByCity({
+          cityCode: cityCode,
+        });
+        
+        if (retryHotelsList?.data) {
+          finalHotelIds = retryHotelsList.data
+            .map((hotel: any) => hotel.hotelId)
+            .filter((id: string) => this.isValidHotelId(id, cityCode));
+        }
+      }
       
       if (finalHotelIds.length === 0) {
         throw new BadRequestException(
-          `No valid hotel IDs found for city code: ${cityCode}. Please try a different city.`,
+          `No valid hotel IDs found for city code: ${cityCode}. Please try a different city or use hotelIds directly.`,
         );
       }
       
-      this.logger.log(`Found ${finalHotelIds.length} hotels for city code: ${cityCode}`);
+      this.logger.log(`Found ${finalHotelIds.length} valid hotels for city code: ${cityCode}`);
     }
 
-    // ✅ If geographicCoordinates provided, get hotel IDs by geocode
+
     if (hasGeographicCoordinates && !hasHotelIds && !hasCityCode) {
       this.logger.log(`Fetching hotels near coordinates: ${geographicCoordinates.latitude}, ${geographicCoordinates.longitude}`);
       
@@ -124,7 +139,7 @@ export class SearchAmadeusHotelsUseCase {
       
       finalHotelIds = hotelsList.data
         .map((hotel: any) => hotel.hotelId)
-        .filter((id: string) => id && id.length === 8);
+        .filter((id: string) => this.isValidHotelId(id));
       
       if (finalHotelIds.length === 0) {
         throw new BadRequestException(
@@ -132,10 +147,10 @@ export class SearchAmadeusHotelsUseCase {
         );
       }
       
-      this.logger.log(`Found ${finalHotelIds.length} hotels near the provided coordinates`);
+      this.logger.log(`Found ${finalHotelIds.length} valid hotels near the provided coordinates`);
     }
 
-    // ✅ Validate we have hotelIds to search
+  
     if (!finalHotelIds || finalHotelIds.length === 0) {
       throw new BadRequestException(
         'No hotel IDs available for search. Please provide valid hotelIds, a cityCode with available hotels, or geographic coordinates.',
@@ -329,8 +344,23 @@ export class SearchAmadeusHotelsUseCase {
     } catch (error) {
       this.logger.error('Error searching Amadeus hotels:', error);
       
+      // Handle specific Amadeus errors
       if (error.response?.data?.errors) {
         const amadeusError = error.response.data.errors[0];
+        
+        // Handle VERIFY CHAIN/REP CODE error
+        if (amadeusError.code === '1351' || amadeusError.detail?.includes('VERIFY CHAIN/REP CODE')) {
+          throw new HttpException(
+            {
+              success: false,
+              message: 'Some hotel IDs are invalid or not available for search. Please try a different city or search with specific hotel IDs.',
+              error: amadeusError.detail || amadeusError.title,
+              code: amadeusError.code,
+            },
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+        
         if (amadeusError.code === '38190' || amadeusError.code === '701') {
           throw new HttpException(
             {
@@ -357,6 +387,39 @@ export class SearchAmadeusHotelsUseCase {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+
+  private isValidHotelId(hotelId: string, cityCode?: string): boolean {
+    // Basic validation: must be 8 characters
+    if (!hotelId || hotelId.length !== 8) {
+      return false;
+    }
+    
+    // Skip known invalid patterns
+    const invalidPatterns = ['FGDX', 'XXXX', 'TEST', '0000', '9999'];
+    if (invalidPatterns.some(pattern => hotelId.includes(pattern))) {
+      return false;
+    }
+    
+    // City-specific validation patterns
+    const cityPatterns: Record<string, RegExp> = {
+      'DXB': /^(DXB|DHD|CPD|YHD|MKD|ROD|UID|RTD|IMD|HSD|MCD|WVD|OND|TJD)/,
+      'LON': /^(HPL|PIL|RTL|CQL|EDL|IAL|AZL|HLL|TIL|DSL|SBL|XKL|RDL|MRL|WHL)/,
+      'PAR': /^(ACP|BWP|OIP|HIP|AZP|LXP|CXL|RTP|UIP|MKP|YRP|YYP|XKP|DHP)/,
+      'LOS': /^(SIL|FGL|ICL|PRL|HSL|RDL|SUL|OIL|IRL|ONL|BWL)/,
+    };
+    
+    // Apply city-specific validation if city code is provided and has a pattern
+    if (cityCode && cityPatterns[cityCode]) {
+      return cityPatterns[cityCode].test(hotelId);
+    }
+    
+    // General validation: must contain letters and numbers
+    const hasLetters = /[A-Z]/.test(hotelId);
+    const hasNumbers = /\d/.test(hotelId);
+    
+    return hasLetters && hasNumbers;
   }
 
   private generateCacheKey(searchParams: SearchAmadeusHotelsDto): string {
