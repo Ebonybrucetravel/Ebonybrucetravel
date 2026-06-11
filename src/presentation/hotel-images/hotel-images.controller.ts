@@ -7,14 +7,7 @@ export class HotelImagesController {
 
   constructor(private readonly amadeusService: AmadeusService) {}
 
-  /**
-   * Get hotel images by hotel ID
-   * GET /api/v1/bookings/hotels/:hotelId/images
-   * 
-   * @param hotelId - The hotel ID (e.g., "WHLON464")
-   * @param hotelName - Optional hotel name for fallback
-   * @returns Hotel images including primary image and all available images
-   */
+  
   @Get(':hotelId/images')
   async getHotelImages(
     @Param('hotelId') hotelId: string,
@@ -302,6 +295,244 @@ export class HotelImagesController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /**
+   * Search hotel destinations by city name (for autocomplete)
+   * GET /api/v1/bookings/hotels/destinations/suggestions?query=london
+   * 
+   * @param query - City name to search for
+   * @returns List of matching hotel destinations
+   */
+  @Get('destinations/suggestions')
+  async getHotelDestinationSuggestions(@Query('query') query: string) {
+    try {
+      this.logger.log(`Searching hotel destinations for: ${query}`);
+      
+      if (!query || query.length < 2) {
+        return {
+          success: true,
+          data: [],
+          message: 'Please enter at least 2 characters'
+        };
+      }
+
+      // Get city code from query
+      const cityCode = this.getCityCodeFromQuery(query);
+      
+      if (!cityCode) {
+        this.logger.warn(`Could not determine city code for query: ${query}`);
+        return {
+          success: true,
+          data: [],
+          message: 'No destinations found. Try another city name.'
+        };
+      }
+
+      // Search for hotels in that city using Amadeus API
+      const hotelsList = await this.amadeusService.getHotelsByCity({
+        cityCode: cityCode,
+        radius: 20,
+        radiusUnit: 'KM'
+      });
+      
+      if (!hotelsList?.data || hotelsList.data.length === 0) {
+        this.logger.warn(`No hotels found for city code: ${cityCode}`);
+        return {
+          success: true,
+          data: [],
+          message: 'No destinations found. Try another city name.'
+        };
+      }
+
+      // Extract unique city names from hotels
+      const citiesMap = new Map();
+      
+      for (const hotel of hotelsList.data) {
+        const cityName = hotel.address?.cityName;
+        const countryCode = hotel.address?.countryCode;
+        
+        if (cityName && !citiesMap.has(cityName)) {
+          citiesMap.set(cityName, {
+            name: cityName,
+            city: cityName,
+            country: countryCode || '',
+            cityCode: cityCode,
+            image: this.getCityImage(cityName)
+          });
+        }
+      }
+      
+      const destinations = Array.from(citiesMap.values());
+      
+      this.logger.log(`Found ${destinations.length} destinations for city code: ${cityCode}`);
+      
+      return {
+        success: true,
+        data: destinations.slice(0, 10),
+        message: 'Destinations found successfully'
+      };
+      
+    } catch (error) {
+      this.logger.error('Error fetching hotel destination suggestions:', error);
+      return {
+        success: false,
+        data: [],
+        message: 'Failed to fetch destinations. Please try again.'
+      };
+    }
+  }
+
+  /**
+   * Helper to convert query string to city code
+   */
+  private getCityCodeFromQuery(query: string): string | null {
+    const cityCodeMap: Record<string, string> = {
+      'london': 'LON',
+      'paris': 'PAR', 
+      'new york': 'NYC',
+      'dubai': 'DXB',
+      'lagos': 'LOS',
+      'tokyo': 'TYO',
+      'singapore': 'SIN',
+      'rome': 'ROM',
+      'madrid': 'MAD',
+      'barcelona': 'BCN',
+      'amsterdam': 'AMS',
+      'berlin': 'BER',
+      'milan': 'MIL',
+      'prague': 'PRG',
+      'vienna': 'VIE',
+      'dublin': 'DUB',
+      'brussels': 'BRU',
+      'lisbon': 'LIS',
+      'athens': 'ATH',
+      'stockholm': 'STO',
+      'copenhagen': 'CPH',
+      'helsinki': 'HEL',
+      'oslo': 'OSL',
+      'warsaw': 'WAW',
+      'budapest': 'BUD',
+      'bangkok': 'BKK',
+      'hong kong': 'HKG',
+      'seoul': 'SEL',
+      'mumbai': 'BOM',
+      'delhi': 'DEL',
+      'cape town': 'CPT',
+      'cairo': 'CAI',
+      'nairobi': 'NBO',
+      'accra': 'ACC',
+      'abuja': 'ABV',
+      'port harcourt': 'PHC',
+      'kano': 'KAN',
+      'los angeles': 'LAX',
+      'chicago': 'CHI',
+      'miami': 'MIA',
+      'san francisco': 'SFO',
+      'boston': 'BOS',
+      'washington': 'WAS',
+      'orlando': 'MCO',
+      'las vegas': 'LAS',
+      'seattle': 'SEA',
+      'denver': 'DEN',
+      'phoenix': 'PHX',
+      'dallas': 'DFW',
+      'houston': 'IAH',
+      'atlanta': 'ATL',
+      'toronto': 'YYZ',
+      'vancouver': 'YVR',
+      'montreal': 'YUL',
+      'mexico city': 'MEX',
+      'sao paulo': 'GRU',
+      'rio de janeiro': 'GIG',
+      'buenos aires': 'EZE',
+      'lima': 'LIM',
+      'santiago': 'SCL',
+      'bogota': 'BOG',
+      'shanghai': 'PVG',
+      'beijing': 'PEK',
+      'hongkong': 'HKG',
+      'taipei': 'TPE',
+      'kuala lumpur': 'KUL',
+      'jakarta': 'CGK',
+      'manila': 'MNL',
+      'ho chi minh': 'SGN',
+      'hanoi': 'HAN',
+      'mumbai': 'BOM',
+      'bangalore': 'BLR',
+      'chennai': 'MAA',
+      'kolkata': 'CCU',
+      'hyderabad': 'HYD',
+      'auckland': 'AKL',
+      'sydney': 'SYD',
+      'melbourne': 'MEL',
+      'perth': 'PER',
+      'brisbane': 'BNE',
+      'adelaide': 'ADL',
+      'cairns': 'CNS'
+    };
+    
+    const lowerQuery = query.toLowerCase().trim();
+    
+    // Check exact matches first
+    if (cityCodeMap[lowerQuery]) {
+      return cityCodeMap[lowerQuery];
+    }
+    
+    // Check partial matches
+    for (const [cityName, code] of Object.entries(cityCodeMap)) {
+      if (lowerQuery.includes(cityName) || cityName.includes(lowerQuery)) {
+        return code;
+      }
+    }
+    
+    // If query is 3 uppercase letters, treat as city code
+    if (/^[A-Z]{3}$/.test(query.toUpperCase())) {
+      return query.toUpperCase();
+    }
+    
+    return null;
+  }
+
+  /**
+   * Get city image for display
+   */
+  private getCityImage(cityName: string): string {
+    const images: Record<string, string> = {
+      'Lagos': 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?auto=format&fit=crop&q=80&w=400',
+      'London': 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400',
+      'New York': 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400',
+      'Dubai': 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400',
+      'Paris': 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400',
+      'Tokyo': 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&q=80&w=400',
+      'Singapore': 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?auto=format&fit=crop&q=80&w=400',
+      'Cape Town': 'https://images.unsplash.com/photo-1596394516093-9ba7b6146eba?auto=format&fit=crop&q=80&w=400',
+      'Accra': 'https://images.unsplash.com/photo-1587496679742-bad502958c4a?auto=format&fit=crop&q=80&w=400',
+      'Abuja': 'https://images.unsplash.com/photo-1585584114963-d5031a12738e?auto=format&fit=crop&q=80&w=400',
+      'Port Harcourt': 'https://images.unsplash.com/photo-1588262187741-6e6d6050d2e8?auto=format&fit=crop&q=80&w=400',
+      'Kano': 'https://images.unsplash.com/photo-1585584114963-d5031a12738e?auto=format&fit=crop&q=80&w=400',
+      'Bangkok': 'https://images.unsplash.com/photo-1508009603885-50cf7c579365?auto=format&fit=crop&q=80&w=400',
+      'Hong Kong': 'https://images.unsplash.com/photo-1534432586043-ead5b99229f3?auto=format&fit=crop&q=80&w=400',
+      'Seoul': 'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?auto=format&fit=crop&q=80&w=400',
+      'Mumbai': 'https://images.unsplash.com/photo-1566563815982-6be20405e4b3?auto=format&fit=crop&q=80&w=400',
+      'Delhi': 'https://images.unsplash.com/photo-1587474260584-136574528ed5?auto=format&fit=crop&q=80&w=400',
+      'Cairo': 'https://images.unsplash.com/photo-1572252009286-268acec5ca0a?auto=format&fit=crop&q=80&w=400',
+      'Nairobi': 'https://images.unsplash.com/photo-1572375887613-939efb4367b6?auto=format&fit=crop&q=80&w=400',
+      'Sydney': 'https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?auto=format&fit=crop&q=80&w=400',
+      'Melbourne': 'https://images.unsplash.com/photo-1545044846-351ff102b0b5?auto=format&fit=crop&q=80&w=400',
+      'Rome': 'https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&q=80&w=400',
+      'Madrid': 'https://images.unsplash.com/photo-1539037116277-4db20889f2d4?auto=format&fit=crop&q=80&w=400',
+      'Barcelona': 'https://images.unsplash.com/photo-1583422409516-2895a77efded?auto=format&fit=crop&q=80&w=400',
+      'Amsterdam': 'https://images.unsplash.com/photo-1534351590666-13e3e96b5017?auto=format&fit=crop&q=80&w=400',
+      'Berlin': 'https://images.unsplash.com/photo-1560969184-10fe8719e047?auto=format&fit=crop&q=80&w=400',
+      'Vienna': 'https://images.unsplash.com/photo-1563346448-4b8b9b5b6f9c?auto=format&fit=crop&q=80&w=400',
+      'Prague': 'https://images.unsplash.com/photo-1541845157-a6d2d100c731?auto=format&fit=crop&q=80&w=400',
+      'Lisbon': 'https://images.unsplash.com/photo-1544109158-032f6d5f5d8c?auto=format&fit=crop&q=80&w=400',
+      'Athens': 'https://images.unsplash.com/photo-1533577116850-9cc66cad8a9b?auto=format&fit=crop&q=80&w=400',
+      'Istanbul': 'https://images.unsplash.com/photo-1524231757912-21f4fe3a7200?auto=format&fit=crop&q=80&w=400'
+    };
+    
+    return images[cityName] || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400';
   }
 
   /**
