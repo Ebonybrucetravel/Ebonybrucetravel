@@ -40,71 +40,53 @@ import { BookingController } from './presentation/booking/booking.controller';
 import { PaymentController } from './presentation/payment/payment.controller';
 import { MarkupController } from './presentation/markup/markup.controller';
 import { DashboardController } from './presentation/dashboard/dashboard.controller';
-import { BookingHotelbedsController } from './presentation/booking/booking-hotelbeds.controller';
 import { BookingWakanowController } from './presentation/booking/booking-wakanow.controller';
 import { CurrencyController } from './presentation/currency/currency.controller';
 import { CurrencyModule } from './infrastructure/currency/currency.module';
-
-// ✅ ADD THIS IMPORT
 import { HotelImagesController } from './presentation/hotel-images/hotel-images.controller';
 
 @Module({
   imports: [
-    // Configuration
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
       validate,
     }),
-
-    // Rate limiting
     ThrottlerModule.forRoot([
       {
-        ttl: 60000, // 1 minute
-        limit: 100, // 100 requests per minute
+        ttl: 60000,
+        limit: 100,
       },
     ]),
-
-    // Scheduled jobs
     ScheduleModule.forRoot(),
-
-    // Infrastructure
     DatabaseModule,
     ExternalApisModule,
     CacheModule,
     HotelImagesModule,
     UsageTrackingModule,
     CurrencyModule,
-
-    // Domains
     BookingModule,
     PaymentModule,
     MarkupModule,
     LoyaltyModule,
     SavedItemsModule,
     SavedTravelersModule,
-
-    // Application
     BookingApplicationModule,
     PaymentApplicationModule,
-
-    // Presentation
     AuthModule,
     AdminModule,
     UserModule,
     HealthModule,
     ContactModule,
   ],
-  // HotelImagesController to the controllers array
   controllers: [
     BookingController,
     PaymentController,
     MarkupController,
     DashboardController,
-    BookingHotelbedsController,
     BookingWakanowController,
     CurrencyController,
-    HotelImagesController,  
+    HotelImagesController,
   ],
   providers: [
     {

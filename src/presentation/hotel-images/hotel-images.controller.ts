@@ -1,13 +1,12 @@
 import { Controller, Get, Param, Query, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { AmadeusService } from '@infrastructure/external-apis/amadeus/amadeus.service';
 
-@Controller('api/v1/bookings/hotels')
+@Controller('bookings/hotels')
 export class HotelImagesController {
   private readonly logger = new Logger(HotelImagesController.name);
 
   constructor(private readonly amadeusService: AmadeusService) {}
 
-  
   @Get(':hotelId/images')
   async getHotelImages(
     @Param('hotelId') hotelId: string,
@@ -16,11 +15,9 @@ export class HotelImagesController {
     try {
       this.logger.log(`Fetching images for hotel: ${hotelId}`);
       
-      // Fetch images from Amadeus
       const images = await this.amadeusService.getHotelImageUrls(hotelId);
       const primaryImage = await this.amadeusService.getHotelPrimaryImageUrl(hotelId);
       
-      // If no images found, return fallback images
       if (images.length === 0) {
         this.logger.warn(`No images found for hotel ${hotelId}, using fallback`);
         return {
@@ -54,7 +51,6 @@ export class HotelImagesController {
     } catch (error) {
       this.logger.error(`Error fetching hotel images for ${hotelId}:`, error);
       
-      // Return fallback images instead of error
       return {
         success: true,
         data: {
@@ -71,14 +67,6 @@ export class HotelImagesController {
     }
   }
 
-  /**
-   * Get complete hotel content (images, description, amenities, policies)
-   * GET /api/v1/bookings/hotels/:hotelId/content
-   * 
-   * @param hotelId - The hotel ID (e.g., "WHLON464")
-   * @param view - Either "LIGHT" or "FULL" (default: FULL)
-   * @returns Complete hotel details
-   */
   @Get(':hotelId/content')
   async getHotelContent(
     @Param('hotelId') hotelId: string,
@@ -103,13 +91,6 @@ export class HotelImagesController {
     }
   }
 
-  /**
-   * Get hotel basic information only (name, address, contact)
-   * GET /api/v1/bookings/hotels/:hotelId/basic
-   * 
-   * @param hotelId - The hotel ID
-   * @returns Basic hotel information
-   */
   @Get(':hotelId/basic')
   async getHotelBasicInfo(@Param('hotelId') hotelId: string) {
     try {
@@ -135,13 +116,6 @@ export class HotelImagesController {
     }
   }
 
-  /**
-   * Get hotel primary image only (fast endpoint for listings)
-   * GET /api/v1/bookings/hotels/:hotelId/primary-image
-   * 
-   * @param hotelId - The hotel ID
-   * @returns Primary image URL only
-   */
   @Get(':hotelId/primary-image')
   async getHotelPrimaryImage(@Param('hotelId') hotelId: string) {
     try {
@@ -170,13 +144,6 @@ export class HotelImagesController {
     }
   }
 
-  /**
-   * Get hotel complete details (alias for /content)
-   * GET /api/v1/bookings/hotels/:hotelId/details
-   * 
-   * @param hotelId - The hotel ID
-   * @returns Complete hotel details
-   */
   @Get(':hotelId/details')
   async getHotelDetails(@Param('hotelId') hotelId: string) {
     try {
@@ -198,13 +165,6 @@ export class HotelImagesController {
     }
   }
 
-  /**
-   * Get hotel ratings and sentiment analysis
-   * GET /api/v1/bookings/hotels/:hotelId/ratings
-   * 
-   * @param hotelId - The hotel ID
-   * @returns Hotel ratings and reviews summary
-   */
   @Get(':hotelId/ratings')
   async getHotelRatings(@Param('hotelId') hotelId: string) {
     try {
@@ -220,7 +180,6 @@ export class HotelImagesController {
     } catch (error) {
       this.logger.error(`Error fetching ratings for ${hotelId}:`, error);
       
-      // Return default ratings instead of error
       return {
         success: true,
         data: {
@@ -235,13 +194,6 @@ export class HotelImagesController {
     }
   }
 
-  /**
-   * Get multiple hotels images in batch (for search results)
-   * GET /api/v1/bookings/hotels/images/batch
-   * 
-   * @param hotelIds - Comma-separated list of hotel IDs
-   * @returns Images for multiple hotels
-   */
   @Get('images/batch')
   async getBatchHotelImages(@Query('hotelIds') hotelIds: string) {
     try {
@@ -259,7 +211,6 @@ export class HotelImagesController {
       
       const results: Record<string, any> = {};
       
-      // Process in parallel with limited concurrency
       const promises = ids.map(async (hotelId) => {
         try {
           const primaryImage = await this.amadeusService.getHotelPrimaryImageUrl(hotelId);
@@ -297,13 +248,6 @@ export class HotelImagesController {
     }
   }
 
-  /**
-   * Search hotel destinations by city name (for autocomplete)
-   * GET /api/v1/bookings/hotels/destinations/suggestions?query=london
-   * 
-   * @param query - City name to search for
-   * @returns List of matching hotel destinations
-   */
   @Get('destinations/suggestions')
   async getHotelDestinationSuggestions(@Query('query') query: string) {
     try {
@@ -317,7 +261,6 @@ export class HotelImagesController {
         };
       }
 
-      // Get city code from query
       const cityCode = this.getCityCodeFromQuery(query);
       
       if (!cityCode) {
@@ -329,7 +272,6 @@ export class HotelImagesController {
         };
       }
 
-      // Search for hotels in that city using Amadeus API
       const hotelsList = await this.amadeusService.getHotelsByCity({
         cityCode: cityCode,
         radius: 20,
@@ -345,7 +287,6 @@ export class HotelImagesController {
         };
       }
 
-      // Extract unique city names from hotels
       const citiesMap = new Map();
       
       for (const hotel of hotelsList.data) {
@@ -383,9 +324,6 @@ export class HotelImagesController {
     }
   }
 
-  /**
-   * Helper to convert query string to city code
-   */
   private getCityCodeFromQuery(query: string): string | null {
     const cityCodeMap: Record<string, string> = {
       'london': 'LON',
@@ -473,19 +411,16 @@ export class HotelImagesController {
     
     const lowerQuery = query.toLowerCase().trim();
     
-    // Check exact matches first
     if (cityCodeMap[lowerQuery]) {
       return cityCodeMap[lowerQuery];
     }
     
-    // Check partial matches
     for (const [cityName, code] of Object.entries(cityCodeMap)) {
       if (lowerQuery.includes(cityName) || cityName.includes(lowerQuery)) {
         return code;
       }
     }
     
-    // If query is 3 uppercase letters, treat as city code
     if (/^[A-Z]{3}$/.test(query.toUpperCase())) {
       return query.toUpperCase();
     }
@@ -493,9 +428,6 @@ export class HotelImagesController {
     return null;
   }
 
-  /**
-   * Get city image for display
-   */
   private getCityImage(cityName: string): string {
     const images: Record<string, string> = {
       'Lagos': 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?auto=format&fit=crop&q=80&w=400',
@@ -534,9 +466,6 @@ export class HotelImagesController {
     return images[cityName] || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400';
   }
 
-  /**
-   * Get fallback images for when Amadeus doesn't return any
-   */
   private getFallbackImages(hotelId: string, hotelName?: string): Array<{ url: string; type: string; source: string }> {
     const fallbackImages = [
       {
@@ -559,11 +488,7 @@ export class HotelImagesController {
     return fallbackImages;
   }
 
-  /**
-   * Get fallback primary image for a hotel
-   */
   private getFallbackPrimaryImage(hotelId: string): string {
-    // Use a deterministic but unique fallback based on hotel ID
     const hash = hotelId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     const fallbacks = [
       'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400',
