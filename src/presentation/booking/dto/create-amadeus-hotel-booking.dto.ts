@@ -9,6 +9,7 @@ import {
   Matches,
   IsNumber,
   IsBoolean,
+  IsDateString,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -244,7 +245,6 @@ export class CreateAmadeusHotelBookingDto {
   @IsString()
   accommodationSpecialRequests?: string;
 
-  // BOOKING_OPERATIONS_AND_RISK: required at checkout for dispute defense
   @ApiProperty({
     description: 'Cancellation deadline in UTC (ISO 8601). e.g. "2026-02-14T23:59:00.000Z"',
     example: '2026-02-14T23:59:00.000Z',
@@ -282,5 +282,20 @@ export class CreateAmadeusHotelBookingDto {
   @IsOptional()
   @IsString()
   userAgent?: string;
-}
 
+  @ApiProperty({
+    description: 'Check-in date (ISO 8601 format YYYY-MM-DD)',
+    example: '2026-06-15',
+  })
+  @IsDateString()
+  @IsNotEmpty()
+  checkInDate: string;
+
+  @ApiProperty({
+    description: 'Check-out date (ISO 8601 format YYYY-MM-DD)',
+    example: '2026-06-18',
+  })
+  @IsDateString()
+  @IsNotEmpty()
+  checkOutDate: string;
+}

@@ -31,7 +31,17 @@ export class CreateAmadeusHotelBookingUseCase {
    */
   async execute(dto: CreateAmadeusHotelBookingDto, userId: string) {
     try {
-      const { offerPrice, currency, cancellationDeadline, cancellationPolicySnapshot, policyAccepted, clientIp, userAgent } = dto;
+      const { 
+        offerPrice, 
+        currency, 
+        cancellationDeadline, 
+        cancellationPolicySnapshot, 
+        policyAccepted, 
+        clientIp, 
+        userAgent,
+        checkInDate,
+        checkOutDate
+      } = dto;
 
       // BOOKING_OPERATIONS_AND_RISK: require explicit policy acceptance for dispute defense
       if (!policyAccepted) {
@@ -155,6 +165,9 @@ export class CreateAmadeusHotelBookingUseCase {
             total: frontendTotalAmount.toString(),
             base: calculatedBasePrice.toString(),
           },
+          // ✅ Save the check-in and check-out dates
+          checkInDate: checkInDate,
+          checkOutDate: checkOutDate,
         },
         passengerInfo,
         status: BookingStatus.PENDING,
@@ -167,6 +180,7 @@ export class CreateAmadeusHotelBookingUseCase {
       });
 
       this.logger.log(`Created local booking ${booking.id} for Amadeus hotel offer ${dto.hotelOfferId} with total amount ${pricing.totalAmount}`);
+      this.logger.log(`📅 Saved dates - Check-in: ${checkInDate}, Check-out: ${checkOutDate}`);
 
       return {
         booking,
@@ -268,7 +282,7 @@ export class CreateAmadeusHotelBookingUseCase {
         }
       }
 
-      // ✅ FIX: Convert Decimal to number properly
+      // Convert Decimal to number properly
       const totalAmount = typeof booking.totalAmount === 'number' 
         ? booking.totalAmount 
         : booking.totalAmount && typeof (booking.totalAmount as any).toNumber === 'function'
@@ -291,25 +305,17 @@ export class CreateAmadeusHotelBookingUseCase {
       // Calculate the markup amount with proper numbers
       const markupAmount = totalAmount - basePrice - serviceFee;
 
-      // ✅ FIX: Amadeus does NOT accept 'markups' array
       // Send ONLY the total and base price in the hotel's local currency
-      // The markup is your profit - store it in your database but don't send to Amadeus
-      
-      // IMPORTANT: Convert currency if needed (e.g., NGN → GBP/EUR)
-      // You need to implement currency conversion here using your conversion API
-      const hotelLocalCurrency = 'GBP'; // or get from hotel's location
-      const conversionRate = 1; // Replace with your actual conversion API call
+      const hotelLocalCurrency = 'GBP';
+      const conversionRate = 1;
       
       const convertedTotal = totalAmount / conversionRate;
       const convertedBase = basePrice / conversionRate;
       
-      // ✅ CORRECT: Send ONLY total and base (no markups array)
       const priceForAmadeus = {
-        currency: hotelLocalCurrency, // Use local currency, not NGN
+        currency: hotelLocalCurrency,
         total: convertedTotal.toFixed(2),
         base: convertedBase.toFixed(2),
-        // ❌ REMOVED: markups array - Amadeus doesn't accept this
-        // ✅ Keep taxes if needed, but simplify
         taxes: [
           {
             code: "TAX",
@@ -350,7 +356,7 @@ export class CreateAmadeusHotelBookingUseCase {
         },
         travelAgentEmail: bookingData.travel_agent_email,
         accommodationSpecialRequests: bookingData.accommodation_special_requests,
-        price: priceForAmadeus, // Using simplified price object
+        price: priceForAmadeus,
       });
 
       // Update booking with Amadeus order ID
