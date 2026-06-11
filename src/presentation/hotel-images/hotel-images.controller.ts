@@ -416,7 +416,6 @@ export class HotelImagesController {
       'bangkok': 'BKK',
       'hong kong': 'HKG',
       'seoul': 'SEL',
-      'mumbai': 'BOM',
       'delhi': 'DEL',
       'cape town': 'CPT',
       'cairo': 'CAI',
