@@ -234,7 +234,7 @@ export class SearchAmadeusHotelsUseCase {
               let convertedBasePrice: number;
               let conversionFee: number = 0;
               let conversionFeePercentage: number = 0;
-      
+          
               if (originalCurrency !== targetCurrency) {
                 convertedBasePrice = await this.currencyService.convert(
                   originalBasePrice,
@@ -253,14 +253,14 @@ export class SearchAmadeusHotelsUseCase {
               } else {
                 convertedBasePrice = originalBasePrice;
               }
-      
+          
               // ✅ Apply markup on the converted BASE price (BEFORE adding conversion fee)
               const markupAmount = (convertedBasePrice * markupPercentage) / 100;
               // ✅ Final price = base + markup + service fee + conversion fee (all added together)
               const finalPrice = convertedBasePrice + markupAmount + serviceFeeAmount + conversionFee;
-      
+          
               this.logger.debug(`Price calculation: Base=${convertedBasePrice}, Markup(${markupPercentage}%)=${markupAmount}, ServiceFee=${serviceFeeAmount}, ConvFee=${conversionFee}, Final=${finalPrice}`);
-      
+          
               return {
                 ...offer,
                 original_price: originalBasePrice.toString(),
@@ -273,6 +273,7 @@ export class SearchAmadeusHotelsUseCase {
                 markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
                 service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
                 final_price: this.currencyService.formatAmount(finalPrice, targetCurrency),
+                final_amount: this.currencyService.formatAmount(finalPrice, targetCurrency), // ← ADD THIS
                 price: {
                   ...offer.price,
                   currency: targetCurrency,
