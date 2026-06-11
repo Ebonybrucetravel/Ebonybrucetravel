@@ -129,9 +129,8 @@ export class BookingController {
   })
   async searchFlights(@Body() searchFlightsDto: SearchFlightsDto) {
     try {
-      // Don't return offers immediately - use pagination endpoint instead
       const results = await this.searchFlightsUseCase.execute(searchFlightsDto, {
-        returnOffers: false, // Only return offer_request_id
+        returnOffers: false,
       });
       return {
         success: true,
@@ -139,15 +138,10 @@ export class BookingController {
         message: 'Flight search completed. Use /bookings/offers endpoint to paginate offers.',
       };
     } catch (error: any) {
-      // Re-throw HttpException as-is (already properly formatted)
       if (error instanceof HttpException) {
         throw error;
       }
-
-      // Convert other errors to proper HTTP exceptions
       const errorMessage = error?.message || 'An unexpected error occurred while searching for flights';
-
-      // Check for common error patterns
       if (errorMessage.includes('currency') || errorMessage.includes('Currency')) {
         throw new BadRequestException({
           success: false,
@@ -155,7 +149,6 @@ export class BookingController {
           error: 'Invalid currency',
         });
       }
-
       if (errorMessage.includes('Duffel') || errorMessage.includes('API')) {
         throw new HttpException(
           {
@@ -167,8 +160,6 @@ export class BookingController {
           HttpStatus.SERVICE_UNAVAILABLE,
         );
       }
-
-      // Generic error
       throw new HttpException(
         {
           success: false,
@@ -193,11 +184,9 @@ export class BookingController {
   })
   async listOffers(@Query() query: ListOffersQueryDto) {
     const { offer_request_id, ...pagination } = query;
-
     if (!offer_request_id) {
       throw new NotFoundException('offer_request_id is required');
     }
-
     const results = await this.listOffersUseCase.execute(offer_request_id, pagination);
     return {
       success: true,
@@ -241,9 +230,7 @@ export class BookingController {
   @ApiResponse({ status: 200, description: 'Bookings retrieved successfully' })
   async findAll(@Request() req, @Query() query: any) {
     const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
-
     if (isAdmin) {
-      // Admin sees all bookings
       const bookings = await this.bookingService.getAllBookings();
       return {
         success: true,
@@ -251,7 +238,6 @@ export class BookingController {
         message: 'Bookings retrieved successfully',
       };
     } else {
-      // Customer sees only their bookings
       const bookings = await this.bookingService.getUserBookings(req.user.id);
       return {
         success: true,
@@ -266,8 +252,7 @@ export class BookingController {
   @ApiOperation({
     summary: 'Get booking by reference (public)',
     description:
-      'For success page or email links. No auth required. Requires both reference and email for verification. ' +
-      'Success page should use ref and email in URL (e.g. ?ref=EBT-2...&email=user@example.com) and call this endpoint.',
+      'For success page or email links. No auth required. Requires both reference and email for verification.',
   })
   @ApiQuery({ name: 'email', required: true, description: 'Lead guest or booking owner email' })
   @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
@@ -283,7 +268,6 @@ export class BookingController {
     if (!booking) {
       throw new NotFoundException('Booking not found');
     }
-    // Verify the email matches the booking owner
     const bookingWithUser = await this.prisma.booking.findUnique({
       where: { id: booking.id, deletedAt: null },
       include: { user: { select: { email: true } } },
@@ -306,9 +290,9 @@ export class BookingController {
   @ApiOperation({
     summary: 'Get booking by ID (guest – reference + email required)',
     description:
-      'For guest checkout success page when you have booking id. No auth. Provide reference and email to verify access. Returns 404 if booking not found or credentials do not match.',
+      'For guest checkout success page when you have booking id. No auth. Provide reference and email to verify access.',
   })
-  @ApiQuery({ name: 'reference', required: true, description: 'Booking reference (e.g. EBT-20260214-507846)' })
+  @ApiQuery({ name: 'reference', required: true, description: 'Booking reference' })
   @ApiQuery({ name: 'email', required: true, description: 'Lead guest email' })
   @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Booking not found or invalid reference/email' })
@@ -349,17 +333,13 @@ export class BookingController {
   @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
   async findOne(@Param('id') id: string, @Request() req) {
     const booking = await this.bookingService.getBookingById(id);
-
     if (!booking) {
       throw new NotFoundException('Booking not found');
     }
-
-    // Check access: Admin can see all, customer can only see their own
     const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
     if (!isAdmin && booking.userId !== req.user.id) {
       throw new ForbiddenException('You do not have access to this booking');
     }
-
     return {
       success: true,
       data: booking,
@@ -374,17 +354,13 @@ export class BookingController {
   @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
   async findByReference(@Param('reference') reference: string, @Request() req) {
     const booking = await this.bookingService.getBookingByReference(reference);
-
     if (!booking) {
       throw new NotFoundException('Booking not found');
     }
-
-    // Check access
     const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
     if (!isAdmin && booking.userId !== req.user.id) {
       throw new ForbiddenException('You do not have access to this booking');
     }
-
     return {
       success: true,
       data: booking,
@@ -399,7 +375,7 @@ export class BookingController {
   @ApiOperation({
     summary: 'Manually create Duffel order for a booking (recovery/retry endpoint)',
     description:
-      'Creates a Duffel order for a booking that has completed payment but order creation failed. Use this to retry order creation or recover from webhook failures. Requires payment to be completed first.',
+      'Creates a Duffel order for a booking that has completed payment but order creation failed.',
   })
   @ApiResponse({ status: 200, description: 'Duffel order created successfully' })
   @ApiResponse({ status: 400, description: 'Booking not ready for order creation' })
@@ -407,17 +383,12 @@ export class BookingController {
   async createDuffelOrder(@Param('id') id: string, @Request() req) {
     try {
       const booking = await this.bookingService.getBookingById(id);
-
       if (!booking) {
         throw new NotFoundException('Booking not found');
       }
-
-      // Check if user owns the booking or is admin
       if (booking.userId !== req.user.id && req.user.role !== 'ADMIN' && req.user.role !== 'SUPER_ADMIN') {
         throw new ForbiddenException('You do not have permission to create orders for this booking');
       }
-
-      // Check if order already exists
       if (booking.providerBookingId) {
         return {
           success: true,
@@ -429,7 +400,6 @@ export class BookingController {
           message: 'Order already created',
         };
       }
-
       const result = await this.createDuffelOrderUseCase.execute(id);
       return {
         success: true,
@@ -437,11 +407,9 @@ export class BookingController {
         message: 'Duffel order created successfully',
       };
     } catch (error: any) {
-      // Re-throw HttpException as-is
       if (error instanceof HttpException) {
         throw error;
       }
-
       throw new HttpException(
         {
           success: false,
@@ -471,31 +439,22 @@ export class BookingController {
   })
   async cancel(@Param('id') id: string, @Request() req) {
     const booking = await this.bookingService.getBookingById(id);
-
     if (!booking) {
       throw new NotFoundException('Booking not found');
     }
-
-    // Only admins can cancel - enforced by @Roles decorator above
-
-    // Only allow cancellation of Duffel flight bookings
     if (booking.provider !== 'DUFFEL') {
       throw new BadRequestException(
         'This endpoint only supports cancellation of Duffel flight bookings.',
       );
     }
-
     if (
       booking.productType !== 'FLIGHT_INTERNATIONAL' &&
       booking.productType !== 'FLIGHT_DOMESTIC'
     ) {
       throw new BadRequestException('This endpoint only supports cancellation of flight bookings.');
     }
-
-    // Only admins can cancel - pass isAdmin flag
     const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
     const result = await this.cancelDuffelOrderUseCase.execute(id, req.user.id, isAdmin);
-
     return {
       success: true,
       data: {
@@ -506,7 +465,7 @@ export class BookingController {
         hasAirlineCredits: result.hasAirlineCredits,
         airlineCredits: result.airlineCredits,
         message: result.hasAirlineCredits
-          ? 'Booking cancelled. The airline has issued travel credits (vouchers) instead of a cash refund. You can use these credits directly with the airline for future bookings.'
+          ? 'Booking cancelled. The airline has issued travel credits (vouchers) instead of a cash refund.'
           : result.refundTo === 'balance'
             ? 'Booking cancelled. Refund will be processed to your original payment method.'
             : 'Booking cancelled successfully',
@@ -537,14 +496,10 @@ export class BookingController {
         message: 'Hotels retrieved successfully',
       };
     } catch (error: any) {
-      // Re-throw HttpException as-is (already properly formatted)
       if (error instanceof HttpException) {
         throw error;
       }
-
-      // Convert other errors to proper HTTP exceptions
       const errorMessage = error?.message || 'An unexpected error occurred while searching for hotels';
-
       throw new HttpException(
         {
           success: false,
@@ -562,9 +517,7 @@ export class BookingController {
   @ApiOperation({
     summary: 'Get comprehensive hotel details (Amadeus)',
     description:
-      'Returns comprehensive hotel information including basic info, ratings, offers, and images. ' +
-      'This is the recommended endpoint for building hotel details pages. ' +
-      'Supports optional filtering and selective data inclusion.',
+      'Returns comprehensive hotel information including basic info, ratings, offers, and images.',
   })
   @ApiResponse({
     status: 200,
@@ -592,78 +545,10 @@ export class BookingController {
   @Throttle(20, 60000)
   @ApiOperation({
     summary: 'Search for hotels using Amadeus API (no authentication required)',
-    description: 'Searches for hotels using Amadeus Self-Service API. Supports search by city code or specific hotel IDs. Returns hotel offers with pricing, policies, and availability.',
+    description: 'Searches for hotels using Amadeus Self-Service API. Supports search by city code or specific hotel IDs.',
   })
-  @ApiResponse({
-    status: 200,
-    description: 'Hotel search results from Amadeus',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean', example: true },
-        data: {
-          type: 'object',
-          properties: {
-            data: {
-              type: 'array',
-              description: 'Array of hotel offers',
-              items: {
-                type: 'object',
-                properties: {
-                  type: { type: 'string', example: 'hotel-offers' },
-                  hotel: {
-                    type: 'object',
-                    properties: {
-                      hotelId: { type: 'string', example: 'MCLONGHM' },
-                      name: { type: 'string', example: 'JW Marriott Grosvenor House London' },
-                      cityCode: { type: 'string', example: 'LON' },
-                      chainCode: { type: 'string', example: 'MC' },
-                    },
-                  },
-                  available: { type: 'boolean', example: true },
-                  offers: {
-                    type: 'array',
-                    description: 'Array of available offers for this hotel',
-                  },
-                },
-              },
-            },
-            currency: { type: 'string', example: 'GBP' },
-            conversion_note: { type: 'string' },
-          },
-        },
-        message: { type: 'string', example: 'Hotels retrieved successfully' },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid search parameters. Common errors: missing cityCode/hotelIds, invalid dates, invalid currency code.',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean', example: false },
-        statusCode: { type: 'number', example: 400 },
-        message: { type: 'string', example: 'Either hotelIds or cityCode must be provided' },
-        error: { type: 'string', example: 'Bad Request' },
-        errors: {
-          type: 'array',
-          description: 'Detailed Amadeus error information',
-          items: {
-            type: 'object',
-            properties: {
-              status: { type: 'number' },
-              code: { type: 'number', example: 383 },
-              title: { type: 'string', example: 'INVALID CITY CODE' },
-              detail: { type: 'string' },
-              source: { type: 'object' },
-              documentation: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-  })
+  @ApiResponse({ status: 200, description: 'Hotel search results from Amadeus' })
+  @ApiResponse({ status: 400, description: 'Invalid search parameters' })
   @ApiResponse({ status: 401, description: 'Authentication failed - invalid Amadeus API credentials' })
   @ApiResponse({ status: 500, description: 'Internal server error or Amadeus API unavailable' })
   async searchAmadeusHotels(@Body() searchDto: SearchAmadeusHotelsDto) {
@@ -675,14 +560,10 @@ export class BookingController {
         message: 'Hotels retrieved successfully',
       };
     } catch (error: any) {
-      // Re-throw HttpException as-is (already properly formatted with Amadeus error details)
       if (error instanceof HttpException) {
         throw error;
       }
-
-      // Convert other errors to proper HTTP exceptions
       const errorMessage = error?.message || 'An unexpected error occurred while searching for hotels';
-
       throw new HttpException(
         {
           success: false,
@@ -744,13 +625,9 @@ export class BookingController {
   @ApiOperation({
     summary: 'Create an Amadeus hotel booking (guest, no authentication)',
     description:
-      'Same as POST /hotels/bookings/amadeus but for guests. Creates a guest user by lead guest email if needed, then creates the booking. ' +
-      'Use the returned booking reference and lead guest email to pay via POST /payments/amadeus-hotel/charge-margin/guest or POST /payments/stripe/create-intent/guest.',
+      'Same as POST /hotels/bookings/amadeus but for guests. Creates a guest user by lead guest email if needed.',
   })
-  @ApiResponse({
-    status: 201,
-    description: 'Hotel booking created. Proceed to payment with bookingReference + email.',
-  })
+  @ApiResponse({ status: 201, description: 'Hotel booking created. Proceed to payment.' })
   @ApiResponse({ status: 400, description: 'Invalid booking data or offer price' })
   async createGuestAmadeusHotelBooking(@Body() bookingDto: CreateAmadeusHotelBookingDto, @Request() req: any) {
     try {
@@ -782,8 +659,7 @@ export class BookingController {
   @ApiOperation({
     summary: 'Create an Amadeus hotel booking',
     description:
-      'Creates a local booking for an Amadeus hotel offer. After payment succeeds, the actual Amadeus booking will be created. ' +
-      'Use the booking ID to create a payment intent, then complete payment. The booking will be confirmed automatically after payment.',
+      'Creates a local booking for an Amadeus hotel offer. After payment succeeds, the actual Amadeus booking will be created.',
   })
   @ApiResponse({ status: 201, description: 'Hotel booking created successfully. Proceed to payment.' })
   @ApiResponse({ status: 400, description: 'Invalid booking data or offer price' })
@@ -792,7 +668,6 @@ export class BookingController {
     @Request() req: any,
   ) {
     try {
-      // Set server-side for dispute evidence (BOOKING_OPERATIONS_AND_RISK)
       const dto = { ...bookingDto, clientIp: req.ip || req.headers?.['x-forwarded-for']?.split(',')[0]?.trim(), userAgent: req.headers?.['user-agent'] };
       const result = await this.createAmadeusHotelBookingUseCase.execute(dto, req.user.id);
       return {
@@ -858,7 +733,7 @@ export class BookingController {
   @ApiOperation({
     summary: 'Request cancellation of your Amadeus hotel booking',
     description:
-      'Before cancellation deadline: cancels with Amadeus, refunds margin via Stripe, sends email. After deadline: submits request for admin review (3–5 business days).',
+      'Before cancellation deadline: cancels with Amadeus, refunds margin via Stripe, sends email. After deadline: submits request for admin review.',
   })
   @ApiResponse({ status: 200, description: 'Cancellation processed or request submitted' })
   async requestHotelCancellation(@Param('bookingId') bookingId: string, @Request() req: any) {
@@ -935,7 +810,7 @@ export class BookingController {
   @ApiOperation({
     summary: 'Search for place suggestions (airports/cities) - for flight search autocomplete',
     description:
-      'Use this endpoint to provide autocomplete suggestions for origin and destination fields in flight search. Supports searching by airport/city name or IATA code, with optional location-based filtering.',
+      'Use this endpoint to provide autocomplete suggestions for origin and destination fields in flight search.',
   })
   @ApiResponse({ status: 200, description: 'Place suggestions (airports and cities)' })
   async searchPlaceSuggestions(@Query() dto: PlaceSuggestionsDto) {
@@ -951,7 +826,7 @@ export class BookingController {
   @Get('flights/airlines')
   @ApiOperation({
     summary: 'List airlines',
-    description: 'Retrieve a paginated list of all airlines. Useful for displaying airline information in flight results.',
+    description: 'Retrieve a paginated list of all airlines.',
   })
   @ApiResponse({ status: 200, description: 'List of airlines' })
   async listAirlines(
@@ -978,65 +853,32 @@ export class BookingController {
   @ApiOperation({ summary: 'Duffel webhook endpoint (handles order updates)' })
   @ApiResponse({ status: 200, description: 'Webhook received successfully' })
   async handleDuffelWebhook(@Body() body: any) {
-    // Duffel webhooks don't require signature verification like Stripe
-    // but you can add verification if Duffel provides it
     await this.handleDuffelWebhookUseCase.execute(body);
     return { received: true };
   }
 
+  // ==================== HOTEL IMAGES ENDPOINT (UPDATED - NO GOOGLE PLACE ID) ====================
+
   @Public()
   @Get('hotels/:hotelId/images')
   @ApiOperation({
-    summary: 'Get hotel images with caching and fallback support',
+    summary: 'Get hotel images with caching (Amadeus only)',
     description:
-      'Fetches hotel images from Google Places API (if configured) and caches them in Cloudinary. ' +
-      'If Google Places API is unavailable, missing, or rate-limited, automatically falls back to ' +
-      'free image services (Unsplash/Placeholder). Images are cached for 60 days. ' +
-      'This endpoint will always return images (either from Google Places or fallback) and never crashes.',
+      'Fetches hotel images from Amadeus Content API and caches them in Cloudinary. ' +
+      'Images are cached for 60 days. If no Amadeus images are available, returns fallback images from Unsplash. ' +
+      'This endpoint will always return images and never crashes.',
   })
   @ApiResponse({
     status: 200,
-    description: 'Hotel images retrieved successfully (may be from Google Places or fallback)',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean', example: true },
-        data: {
-          type: 'object',
-          properties: {
-            hotelId: { type: 'string', example: 'MCLONGHM' },
-            hotelName: { type: 'string', example: 'JW Marriott Grosvenor House London' },
-            images: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  url: { type: 'string' },
-                  type: { type: 'string', example: 'exterior' },
-                  source: { type: 'string', example: 'google_places' },
-                  attribution: { type: 'string' },
-                },
-              },
-            },
-            cached: { type: 'boolean' },
-            fallbackUsed: { type: 'boolean', example: false },
-            message: { type: 'string' },
-          },
-        },
-        message: { type: 'string' },
-      },
-    },
+    description: 'Hotel images retrieved successfully (from Amadeus or fallback)',
   })
   async getHotelImages(
     @Param('hotelId') hotelId: string,
     @Query('hotelName') hotelName?: string,
-    @Query('googlePlaceId') googlePlaceId?: string,
   ) {
-    // This endpoint never throws - always returns images (either from Google or fallback)
     const result = await this.hotelImageCacheService.getHotelImages(
       hotelId,
       hotelName || 'Unknown Hotel',
-      googlePlaceId,
     );
 
     return {
@@ -1058,7 +900,7 @@ export class BookingController {
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Get API usage statistics (Admin Only)',
-    description: 'Returns current usage statistics for Google Places API and Cloudinary to monitor free tier limits.',
+    description: 'Returns current usage statistics for monitoring free tier limits.',
   })
   @ApiResponse({ status: 200, description: 'Usage statistics retrieved successfully' })
   async getUsageStats() {
@@ -1079,7 +921,7 @@ export class BookingController {
     summary: 'Search for car rentals',
     description:
       'Search for car rental/transfer options using Amadeus API. Returns available vehicles with pricing, ' +
-      'applies currency conversion and markup automatically. Supports filtering by vehicle type, location, and dates.',
+      'applies currency conversion and markup automatically.',
   })
   @ApiResponse({ status: 200, description: 'Car rental search results' })
   @ApiResponse({ status: 400, description: 'Invalid search parameters' })
@@ -1098,8 +940,7 @@ export class BookingController {
   @ApiOperation({
     summary: 'Create a car rental booking',
     description:
-      'Creates a local booking for a car rental/transfer offer. After payment succeeds, the actual Amadeus transfer order will be created automatically. ' +
-      'Use the booking ID to create a payment intent, then complete payment. The booking will be confirmed automatically after payment.',
+      'Creates a local booking for a car rental/transfer offer. After payment succeeds, the actual Amadeus transfer order will be created automatically.',
   })
   @ApiResponse({ status: 201, description: 'Car rental booking created successfully. Proceed to payment.' })
   async createCarRentalBooking(@Body() dto: CreateCarRentalBookingDto, @Request() req) {
@@ -1116,7 +957,7 @@ export class BookingController {
   @ApiOperation({
     summary: 'Create a car rental booking (guest, no auth)',
     description:
-      'Same body as authenticated. Include payment card to use one-step payment (POST /payments/amadeus-car-rental/charge-margin/guest with reference + email). No Stripe modal.',
+      'Same body as authenticated. Include payment card to use one-step payment.',
   })
   @ApiResponse({ status: 201, description: 'Car rental booking created. Proceed to payment.' })
   async createGuestCarRentalBooking(@Body() dto: CreateCarRentalBookingDto) {
