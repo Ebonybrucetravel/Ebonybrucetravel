@@ -224,22 +224,20 @@ export class SearchAmadeusHotelsUseCase {
         this.logger.warn(`Could not fetch markup config, using default ${markupPercentage}%:`, error);
       }
 
-      // Process results with currency conversion and markup
       const processedResults = await Promise.all(
         response.data.map(async (hotelOffer: any) => {
           const processedOffers = await Promise.all(
             (hotelOffer.offers || []).map(async (offer: any) => {
-              const originalPriceAmount = parseFloat(offer.price?.total || offer.price?.base || '0');
+              const originalBasePrice = parseFloat(offer.price?.total || offer.price?.base || '0');
               const originalCurrency = offer.price?.currency || 'EUR';
               
               let convertedBasePrice: number;
-              let conversionFee: number;
-              let conversionFeePercentage: number;
-              let priceAfterConversion: number;
-
+              let conversionFee: number = 0;
+              let conversionFeePercentage: number = 0;
+      
               if (originalCurrency !== targetCurrency) {
                 convertedBasePrice = await this.currencyService.convert(
-                  originalPriceAmount,
+                  originalBasePrice,
                   originalCurrency,
                   targetCurrency,
                 );
@@ -252,26 +250,25 @@ export class SearchAmadeusHotelsUseCase {
                 
                 conversionFee = conversionDetails.conversionFee;
                 conversionFeePercentage = this.currencyService.getConversionBuffer();
-                priceAfterConversion = conversionDetails.totalWithFee;
               } else {
-                convertedBasePrice = originalPriceAmount;
-                conversionFee = 0;
-                conversionFeePercentage = 0;
-                priceAfterConversion = originalPriceAmount;
+                convertedBasePrice = originalBasePrice;
               }
-
-              const markupAmount = (priceAfterConversion * markupPercentage) / 100;
-              const finalPrice = priceAfterConversion + markupAmount + serviceFeeAmount;
-
+      
+              // ✅ Apply markup on the converted BASE price (BEFORE adding conversion fee)
+              const markupAmount = (convertedBasePrice * markupPercentage) / 100;
+              // ✅ Final price = base + markup + service fee + conversion fee (all added together)
+              const finalPrice = convertedBasePrice + markupAmount + serviceFeeAmount + conversionFee;
+      
+              this.logger.debug(`Price calculation: Base=${convertedBasePrice}, Markup(${markupPercentage}%)=${markupAmount}, ServiceFee=${serviceFeeAmount}, ConvFee=${conversionFee}, Final=${finalPrice}`);
+      
               return {
                 ...offer,
-                original_price: originalPriceAmount.toString(),
+                original_price: originalBasePrice.toString(),
                 original_currency: originalCurrency,
                 base_price: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
                 currency: targetCurrency,
                 conversion_fee: this.currencyService.formatAmount(conversionFee, targetCurrency),
                 conversion_fee_percentage: conversionFeePercentage,
-                price_after_conversion: this.currencyService.formatAmount(priceAfterConversion, targetCurrency),
                 markup_percentage: markupPercentage,
                 markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
                 service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
@@ -281,13 +278,13 @@ export class SearchAmadeusHotelsUseCase {
                   currency: targetCurrency,
                   base: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
                   total: this.currencyService.formatAmount(finalPrice, targetCurrency),
-                  original_total: originalPriceAmount.toString(),
+                  original_total: originalBasePrice.toString(),
                   original_currency: originalCurrency,
                 },
               };
             }),
           );
-
+      
           return {
             ...hotelOffer,
             hotel: hotelOffer.hotel,
