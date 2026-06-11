@@ -509,6 +509,11 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
 }
 
 // ==================== HOTEL BOOKING API (v2) ====================  
+
+  /**
+   * Create a hotel booking with Amadeus
+   * Supports optional price parameter for markup inclusion
+   */
   async createHotelBooking(params: {
     hotelOfferId: string;
     guests: Array<{ title: string; firstName: string; lastName: string; phone: string; email: string }>;
@@ -519,13 +524,14 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
     };
     travelAgentEmail?: string;
     accommodationSpecialRequests?: string;
+    price?: { currency: string; total: string; base: string; markups?: any[]; taxes?: any[] };
   }): Promise<any> {
     const travelAgentEmail = params.travelAgentEmail || this.configService.get<string>('AMADEUS_TRAVEL_AGENT_EMAIL');
     if (!travelAgentEmail?.trim()) {
       throw new HttpException('Travel agent email is required', HttpStatus.BAD_REQUEST);
     }
     
-    const requestBody = {
+    const requestBody: any = {
       data: {
         type: 'hotel-order',
         guests: params.guests.map((guest, index) => ({ tid: index + 1, ...guest })),
@@ -534,6 +540,16 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
         travelAgent: { contact: { email: travelAgentEmail.trim() } },
       },
     };
+
+    // ✅ Add price to the request body if provided (for markup)
+    if (params.price) {
+      requestBody.data.price = params.price;
+      this.logger.log(`💰 Adding marked-up price to Amadeus booking: ${JSON.stringify(params.price)}`);
+    }
+
+    if (params.accommodationSpecialRequests) {
+      requestBody.data.accommodationSpecialRequests = params.accommodationSpecialRequests;
+    }
     
     return this.makeRequest('/v2/booking/hotel-orders', { method: 'POST', body: requestBody });
   }
