@@ -584,7 +584,7 @@ const searchHotels = async (params: SearchParams) => {
       return;
     }
 
-    // ✅ Send cityCode directly - backend will fetch hotel IDs
+    // Send cityCode directly - backend will fetch hotel IDs
     const hotelParams = {
       cityCode: params.cityCode,
       checkInDate: params.checkInDate || new Date().toISOString().split('T')[0],
@@ -598,15 +598,12 @@ const searchHotels = async (params: SearchParams) => {
 
     console.log('🏨 Sending hotel search request with cityCode:', hotelParams);
 
-    // ✅ Use the API method that handles cityCode correctly
     const result = await api.searchAndTransformHotels(hotelParams, params.location || params.cityCode || 'Hotel');
 
     if (result.success && result.results && result.results.length > 0) {
-      // Process results with pricing
       const processedResults = [];
       
       for (const hotel of result.results) {
-        // Get the best offer (lowest price)
         const offers = hotel.offers || [];
         let bestOffer = offers[0];
         
@@ -618,17 +615,13 @@ const searchHotels = async (params: SearchParams) => {
           }, offers[0]);
         }
         
-        if (!bestOffer) {
-          continue;
-        }
+        if (!bestOffer) continue;
         
-        // Extract pricing
+        // Extract pricing - USE THE EXACT VALUES FROM BACKEND
         const basePrice = parseFloat(bestOffer.base_price || bestOffer.price?.base || '0');
         const finalPriceNGN = parseFloat(bestOffer.final_price || bestOffer.price?.total || '0');
         
-        if (finalPriceNGN === 0) {
-          continue;
-        }
+        if (finalPriceNGN === 0) continue;
         
         const markupAmount = parseFloat(bestOffer.markup_amount || '0');
         const markupPercentage = parseFloat(bestOffer.markup_percentage || '0');
@@ -641,7 +634,6 @@ const searchHotels = async (params: SearchParams) => {
         const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalPriceNGN, 'NGN');
         const formattedDisplayPrice = await formatPriceInUserCurrency(finalPriceNGN, 'NGN');
         
-        // Calculate nights
         const checkIn = new Date(params.checkInDate || new Date());
         const checkOut = new Date(params.checkOutDate || new Date(Date.now() + 86400000));
         const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
@@ -653,6 +645,7 @@ const searchHotels = async (params: SearchParams) => {
         const bedType = bestOffer.room?.typeEstimated?.bedType || 'King';
         const beds = bestOffer.room?.typeEstimated?.beds || 1;
         
+        // ✅ CRITICAL FIX: Include ALL price fields for the review page
         processedResults.push({
           id: hotel.id || `hotel-${Date.now()}`,
           type: 'hotels' as const,
@@ -679,6 +672,8 @@ const searchHotels = async (params: SearchParams) => {
           roomDescription: bestOffer.room?.description?.text || '',
           roomType: roomType,
           cancellationDeadline: bestOffer.policies?.cancellations?.[0]?.deadline,
+          
+          // ✅ CRITICAL: These fields MUST be preserved for the review page
           original_amount: basePrice.toString(),
           original_currency: bestOffer.original_currency || 'NGN',
           markup_amount: markupAmount.toString(),
@@ -688,8 +683,11 @@ const searchHotels = async (params: SearchParams) => {
           taxes: '0',
           service_fee: totalServiceFee.toString(),
           service_fee_percentage: markupPercentage + conversionFeePercentage,
-          final_amount: finalPriceNGN.toString(),
+          final_amount: finalPriceNGN.toString(),  // ← This is the key field!
+          final_price: finalPriceNGN.toString(),   // ← Also set final_price for compatibility
           currency: 'NGN',
+          
+          // Additional metadata
           offer: bestOffer,
           hotel: hotel.hotel || hotel,
           checkInDate: params.checkInDate,
@@ -700,7 +698,17 @@ const searchHotels = async (params: SearchParams) => {
       }
       
       setSearchResults(processedResults);
-      console.log(`✅ Processed ${processedResults.length} hotels`);
+      console.log(`✅ Processed ${processedResults.length} hotels with preserved final_amount`);
+      
+      // Debug log to verify final_amount
+      if (processedResults.length > 0) {
+        console.log('🏨 First hotel in search results:', {
+          title: processedResults[0].title,
+          final_amount: processedResults[0].final_amount,
+          final_price: processedResults[0].final_price,
+          currency: processedResults[0].currency
+        });
+      }
       
       if (processedResults.length === 0) {
         setSearchError('No hotels found with valid offers. Please try different dates.');
@@ -716,7 +724,6 @@ const searchHotels = async (params: SearchParams) => {
     setSearchError(err.message || 'Failed to search hotels. Please try again.');
   }
 };
-
   const formatDateForWakanow = (dateStr: string): string => {
     const date = new Date(dateStr);
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
@@ -1336,6 +1343,8 @@ const searchHotels = async (params: SearchParams) => {
       id: item.id,
       provider: item.provider,
       type: item.type,
+      final_amount: (item as any).final_amount,
+      final_price: (item as any).final_price,
     });
     setSelectedItem(item);
   }, []);

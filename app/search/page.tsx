@@ -18,39 +18,78 @@ export default function SearchPage() {
     isLoadingAirlines,
     searchError,
     searchCompleted,
-    search, // Add this - we need to call search directly
+    search,
   } = useSearch();
 
-  // Debug only - remove in production
+  // Debug - log search results when they arrive
   useEffect(() => {
     console.log('🔍 Search page - search type:', searchParams?.type);
     console.log('🔍 Search page - results count:', searchResults?.length);
+    
+    // Log first hotel result if any
+    if (searchResults && searchResults.length > 0 && searchParams?.type === 'hotels') {
+      console.log('🏨 SEARCH PAGE - First hotel in results:', {
+        title: searchResults[0]?.title,
+        final_amount: (searchResults[0] as any)?.final_amount,
+        final_price: (searchResults[0] as any)?.final_price,
+        original_amount: (searchResults[0] as any)?.original_amount,
+        price: searchResults[0]?.price
+      });
+    }
   }, [searchResults, searchParams]);
 
   const handleSelect = (item: any) => {
-    console.log('📦 Flight selected in SearchPage:', {
+    console.log('📦 ITEM SELECTED IN SEARCH PAGE:', {
       id: item.id,
-      provider: item.provider,
-      isWakanow: item.isWakanow,
-      hasTerms: !!(item as any).terms_and_conditions,
-      termsLength: (item as any).terms_and_conditions?.TermsAndConditions?.length
+      type: item.type,
+      title: item.title,
+      final_amount: item.final_amount,
+      final_price: item.final_price,
+      original_amount: item.original_amount,
+      currency: item.currency
     });
     
     selectItem(item);
     
-    // For Wakanow flights (terms already fetched), go directly to booking review
+    // ✅ FOR HOTELS: Go directly to booking review
+    if (item.type === 'hotels') {
+      const offerPrice = parseFloat(item.final_amount || item.final_price || '0');
+      console.log('🏨 Hotel selected - price check:', {
+        final_amount: item.final_amount,
+        final_price: item.final_price,
+        parsed_offerPrice: offerPrice,
+        will_send_to_booking: offerPrice
+      });
+      
+      // Store the complete hotel data in sessionStorage
+      const hotelData = {
+        ...item,
+        offerPrice: offerPrice,
+        final_amount: item.final_amount,
+        final_price: item.final_price,
+        currency: item.currency || 'NGN'
+      };
+      
+      console.log('💾 Storing in sessionStorage:', {
+        final_amount: hotelData.final_amount,
+        offerPrice: hotelData.offerPrice
+      });
+      
+      sessionStorage.setItem('selectedHotel', JSON.stringify(hotelData));
+      router.push('/booking/review');
+      return;
+    }
+    
+    // For Wakanow flights
     if (item.isWakanow && (item as any).selectData) {
       console.log('🚀 Wakanow flight - navigating directly to booking review');
       router.push('/booking/review');
       return;
     }
     
-    // For other flights, go to flight details page
+    // For other items (flights, cars)
     let route = '/';
     switch (item.type) {
-      case 'hotels':
-        route = `/hotels/${item.id}`;
-        break;
       case 'car-rentals':
         route = `/cars/${item.id}`;
         break;
@@ -72,10 +111,8 @@ export default function SearchPage() {
   const handleNewSearch = async (searchData: any) => {
     console.log('🔄 New search from compact box:', searchData);
     
-    // Perform the search directly without navigating away
     try {
       await search(searchData);
-      // Update URL parameters without full navigation
       const params = new URLSearchParams();
       params.set('type', searchData.type);
       
@@ -101,7 +138,6 @@ export default function SearchPage() {
         params.set('dropoffDate', searchData.dropoffDateTime.split('T')[0]);
       }
       
-      // Update URL without refreshing the page
       window.history.pushState({}, '', `/search?${params.toString()}`);
     } catch (error) {
       console.error('New search failed:', error);
@@ -167,7 +203,7 @@ export default function SearchPage() {
     );
   }
 
-  // Show results - pass raw searchResults, let SearchResults handle all transformations
+  // Show results
   return (
     <Suspense fallback={<div>Loading...</div>}>
       <SearchResults

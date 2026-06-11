@@ -115,7 +115,6 @@ export default function BookingSuccessPage() {
         throw new Error('No authentication token found');
       }
       
-      // ✅ FIX: Use BASE_URL from config instead of api.defaults.baseURL
       const response = await fetch(`${BASE_URL}/api/v1/bookings/${id}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -247,7 +246,6 @@ export default function BookingSuccessPage() {
         console.log('👤 Guest user fetching by reference:', bookingRef);
         setIsGuest(true);
         
-        // Try to fetch with email from param or storage
         const storedEmail = localStorage.getItem('guestEmail') || sessionStorage.getItem('guestEmail');
         const urlEmail = emailParam;
         
@@ -341,6 +339,158 @@ export default function BookingSuccessPage() {
     }
   };
 
+// ==================== RENDER HOTEL DETAILS ====================
+const renderHotelDetails = () => {
+  if (!booking) return null;
+  
+  const isHotel = booking.productType === 'HOTEL';
+  if (!isHotel) return null;
+  
+  const bookingData = booking.bookingData as any;
+  
+  // Extract hotel details from bookingData
+  const hotelName = bookingData?.hotelName || bookingData?.hotel?.name || 'Hotel';
+  const hotelId = bookingData?.hotelId || bookingData?.hotel?.hotelId || booking.id;
+  const hotelOfferId = bookingData?.amadeus_offer_id || bookingData?.offerId || bookingData?.hotelOfferId || 'N/A';
+  const checkInDate = bookingData?.checkInDate || bookingData?.check_in_date;
+  const checkOutDate = bookingData?.checkOutDate || bookingData?.check_out_date;
+  
+  // ✅ FIX: guests might be an object, not a number
+  let guestsCount = 1;
+  if (bookingData?.guests) {
+    if (typeof bookingData.guests === 'number') {
+      guestsCount = bookingData.guests;
+    } else if (typeof bookingData.guests === 'object' && !Array.isArray(bookingData.guests)) {
+      // If it's an object with adults property
+      guestsCount = bookingData.guests.adults || bookingData.guests.guests || 1;
+    } else if (Array.isArray(bookingData.guests)) {
+      guestsCount = bookingData.guests.length;
+    }
+  } else if (bookingData?.adults && typeof bookingData.adults === 'number') {
+    guestsCount = bookingData.adults;
+  }
+  
+  // ✅ FIX: rooms might be an object too
+  let roomsCount = 1;
+  if (bookingData?.rooms) {
+    if (typeof bookingData.rooms === 'number') {
+      roomsCount = bookingData.rooms;
+    } else if (typeof bookingData.rooms === 'object') {
+      roomsCount = bookingData.rooms.rooms || 1;
+    }
+  } else if (bookingData?.roomQuantity && typeof bookingData.roomQuantity === 'number') {
+    roomsCount = bookingData.roomQuantity;
+  }
+  
+  const nights = calculateNights(checkInDate, checkOutDate);
+  
+  // Get provider order ID from providerData
+  const providerOrderId = (booking.providerData as any)?.id || (booking.providerData as any)?.orderId || 'N/A';
+  const providerConfirmationNumber = (booking.providerData as any)?.hotelBookings?.[0]?.hotelProviderInformation?.[0]?.confirmationNumber || 'N/A';
+  
+  return (
+    <div className="space-y-6">
+      {/* Provider Badge */}
+      <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm opacity-90">Powered by</p>
+            <p className="font-bold text-xl">Amadeus Hotels</p>
+          </div>
+          <div className="text-3xl">🏨</div>
+        </div>
+      </div>
+      
+      {/* Hotel Name */}
+      <div className="border-b border-gray-200 pb-4">
+        <h3 className="text-xl font-bold text-gray-900">{hotelName}</h3>
+        {hotelId && <p className="text-sm text-gray-500 mt-1">Hotel ID: {hotelId}</p>}
+      </div>
+      
+      {/* Hotel Offer ID - Important */}
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <p className="text-sm text-gray-500">Hotel Offer ID</p>
+            <p className="font-mono font-bold text-md text-blue-600 break-all">{hotelOfferId}</p>
+          </div>
+          {providerOrderId !== 'N/A' && (
+            <div>
+              <p className="text-sm text-gray-500">Amadeus Order ID</p>
+              <p className="font-mono font-bold text-md break-all">{providerOrderId}</p>
+            </div>
+          )}
+          {providerConfirmationNumber !== 'N/A' && (
+            <div>
+              <p className="text-sm text-gray-500">Confirmation Number</p>
+              <p className="font-mono font-bold text-md">{providerConfirmationNumber}</p>
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* Stay Details */}
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <h4 className="font-semibold text-gray-900 mb-3">Stay Details</h4>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-sm text-gray-500">Check-in</p>
+            <p className="font-medium">{formatDate(checkInDate)}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Check-out</p>
+            <p className="font-medium">{formatDate(checkOutDate)}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Nights</p>
+            <p className="font-medium">{nights} night{nights > 1 ? 's' : ''}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Guests</p>
+            <p className="font-medium">{guestsCount} guest{guestsCount > 1 ? 's' : ''}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Rooms</p>
+            <p className="font-medium">{roomsCount} room{roomsCount > 1 ? 's' : ''}</p>
+          </div>
+        </div>
+      </div>
+      
+      {/* Room Details if available */}
+      {bookingData?.roomType && (
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="font-semibold text-gray-900 mb-3">Room Details</h4>
+          <p className="text-gray-700">{bookingData.roomType}</p>
+          {bookingData.roomDescription && (
+            <p className="text-sm text-gray-500 mt-2">{bookingData.roomDescription}</p>
+          )}
+        </div>
+      )}
+      
+      {/* Cancellation Policy */}
+      {booking.cancellationPolicySnapshot && (
+        <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+          <div className="flex items-start gap-2">
+            <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <p className="font-medium text-yellow-800">Cancellation Policy</p>
+              <p className="text-sm text-yellow-700 mt-1">{booking.cancellationPolicySnapshot}</p>
+              {booking.cancellationDeadline && (
+                <p className="text-xs text-yellow-600 mt-2">
+                  Cancel by: {formatDate(booking.cancellationDeadline)}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+  // ==================== RENDER WAKANOW FLIGHT DETAILS ====================
   const renderWakanowDetails = () => {
     if (!booking) return null;
     
@@ -532,6 +682,7 @@ export default function BookingSuccessPage() {
   };
 
   const isWakanow = booking?.provider === 'WAKANOW';
+  const isHotelBooking = booking?.productType === 'HOTEL';
   const productType = booking?.productType || '';
   const isConfirmed = ['CONFIRMED', 'COMPLETED', 'PAID'].includes(booking?.status || '');
   const isPending = ['PENDING', 'PROCESSING'].includes(booking?.status || '');
@@ -801,11 +952,11 @@ export default function BookingSuccessPage() {
         </div>
       </div>
 
-      {/* Trip details */}
+      {/* Trip details - Hotel OR Flight */}
       {booking && (
         <div className="bg-white rounded-xl shadow p-6 mb-8 border border-gray-100">
           <h3 className="text-xl font-bold mb-4">Trip Details</h3>
-          {renderWakanowDetails()}
+          {isHotelBooking ? renderHotelDetails() : renderWakanowDetails()}
         </div>
       )}
 

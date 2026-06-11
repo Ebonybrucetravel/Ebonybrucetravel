@@ -308,19 +308,37 @@ export default function BookingReviewPage() {
         let displayCurrency = item.currency || currency.code || 'NGN';
         let originalCurrency = item.original_currency || 'EUR';
         
-        // PRIORITY 1: Use backend's final_price
+        // ✅ LOG THE INCOMING PRICE FIELDS
+        console.log('💰 PROCESSING ITEM - Raw price fields:', {
+          final_price: item.final_price,
+          final_amount: item.final_amount,
+          price_after_conversion: item.price_after_conversion,
+          original_amount: item.original_amount,
+          item_currency: item.currency,
+          item_type: item.type
+        });
+        
+        // PRIORITY 1: Use backend's final_price (string)
         if (item.final_price && typeof item.final_price === 'string') {
           finalPrice = parseFloat(item.final_price);
         } 
-        // PRIORITY 2: Use final_amount
+        // PRIORITY 2: Use final_price as number
+        else if (item.final_price && typeof item.final_price === 'number') {
+          finalPrice = item.final_price;
+        }
+        // PRIORITY 3: Use final_amount
         else if (item.final_amount && typeof item.final_amount === 'string') {
           finalPrice = parseFloat(item.final_amount);
         }
-        // PRIORITY 3: Use price_after_conversion
+        // PRIORITY 4: Use final_amount as number
+        else if (item.final_amount && typeof item.final_amount === 'number') {
+          finalPrice = item.final_amount;
+        }
+        // PRIORITY 5: Use price_after_conversion
         else if (item.price_after_conversion && typeof item.price_after_conversion === 'string') {
           finalPrice = parseFloat(item.price_after_conversion);
         }
-        // PRIORITY 4: Handle price as object with total property
+        // PRIORITY 6: Handle price as object with total property
         else if (item.price && typeof item.price === 'object') {
           const priceObj = item.price as { total?: string; amount?: string; currency?: string };
           if (priceObj.total && typeof priceObj.total === 'string') {
@@ -329,14 +347,21 @@ export default function BookingReviewPage() {
             finalPrice = parseFloat(priceObj.amount);
           }
         }
-        // PRIORITY 5: If price is a string directly
+        // PRIORITY 7: If price is a string directly
         else if (item.price && typeof item.price === 'string') {
           finalPrice = parseFloat(item.price);
         }
-        // PRIORITY 6: Use original_amount as fallback
+        // PRIORITY 8: Use totalPrice
+        else if (item.totalPrice && typeof item.totalPrice === 'string') {
+          finalPrice = parseFloat(item.totalPrice);
+        }
+        // PRIORITY 9: Use original_amount as fallback
         else if (item.original_amount && typeof item.original_amount === 'string') {
           finalPrice = parseFloat(item.original_amount);
         }
+        
+        // ✅ LOG THE EXTRACTED FINAL PRICE
+        console.log('💰 PROCESSING ITEM - Extracted finalPrice:', finalPrice);
         
         // Get original price
         if (item.original_price && typeof item.original_price === 'string') {
@@ -357,6 +382,13 @@ export default function BookingReviewPage() {
         
         // Format the final price for display
         const formattedPrice = await formatPrice(finalPrice, displayCurrency);
+        
+        // ✅ LOG THE FINAL VALUES BEING SET
+        console.log('💰 PROCESSING ITEM - Setting final values:', {
+          finalPrice,
+          displayCurrency,
+          formattedPrice
+        });
         
         const updatedItem: ExtendedSearchResult = {
           ...item,
@@ -459,68 +491,100 @@ export default function BookingReviewPage() {
       willUseAmadeusHotel: isHotel && !isCar && isMerchantPaymentModel,
     });
   
-   // ==================== HOTEL BOOKING FLOW ====================
-if (isHotel && !isCar) {
-  // Hotelbeds flow
-  const isHotelbeds = extendedItem.provider?.toLowerCase() === "hotelbeds";
-  if (isHotelbeds) {
-    try {
-      console.log("🏨 Creating Hotelbeds hotel booking...");
-      const newBooking = await createHotelbedsBooking(
-        extendedItem,
-        cleanedPassengerInfo,
-        isGuest,
-        hbxMetadata,
-      );
-      setBooking(newBooking);
-      setAppliedVoucherCode(voucherCode);
-      setShowPayment(true);
-    } catch (err: any) {
-      toast.error(err?.message ?? "We couldn't create your Hotelbeds booking. Please try again.");
-    }
-    return;
-  }
-  
-  // Amadeus Hotel with merchant payment model
-  if (isMerchantPaymentModel) {
-    try {
-      console.log("🏨 Creating Amadeus hotel booking with merchant payment model...");
+    // ==================== HOTEL BOOKING FLOW ====================
+    if (isHotel && !isCar) {
+      // Hotelbeds flow
+      const isHotelbeds = extendedItem.provider?.toLowerCase() === "hotelbeds";
+      if (isHotelbeds) {
+        try {
+          console.log("🏨 Creating Hotelbeds hotel booking...");
+          const newBooking = await createHotelbedsBooking(
+            extendedItem,
+            cleanedPassengerInfo,
+            isGuest,
+            hbxMetadata,
+          );
+          setBooking(newBooking);
+          setAppliedVoucherCode(voucherCode);
+          setShowPayment(true);
+        } catch (err: any) {
+          toast.error(err?.message ?? "We couldn't create your Hotelbeds booking. Please try again.");
+        }
+        return;
+      }
       
-      // ✅ Add test card for merchant payment model
-      const testCard = {
-        cardNumber: "4242424242424242",
-        expiryMonth: "12",
-        expiryYear: "2026",
-        cvc: "123",
-        holderName: `${cleanedPassengerInfo.firstName} ${cleanedPassengerInfo.lastName}`,
-      };
+      // Amadeus Hotel with merchant payment model
+      if (isMerchantPaymentModel) {
+        try {
+          console.log("🏨 Creating Amadeus hotel booking with merchant payment model...");
+          
+          // ✅ Get the correct price from the item
+          const correctPrice = parseFloat(extendedItem.final_amount || extendedItem.final_price || '0');
+          console.log("💰 Amadeus hotel price check:", {
+            final_amount: extendedItem.final_amount,
+            final_price: extendedItem.final_price,
+            correctPrice: correctPrice
+          });
+          
+          // If the price is too low (less than 500k NGN), try to restore from sessionStorage
+          let finalItem = extendedItem;
+          if (correctPrice < 500000 && typeof window !== 'undefined') {
+            const stored = sessionStorage.getItem('selectedHotel');
+            if (stored) {
+              try {
+                const hotelData = JSON.parse(stored);
+                const storedPrice = parseFloat(hotelData.final_amount || hotelData.final_price || '0');
+                if (storedPrice > correctPrice && storedPrice > 0) {
+                  console.log("💰 Restoring correct price from sessionStorage:", storedPrice);
+                  finalItem = {
+                    ...extendedItem,
+                    final_amount: hotelData.final_amount,
+                    final_price: hotelData.final_price,
+                  };
+                }
+              } catch (e) {}
+            }
+          }
+          
+          // ✅ Use the corrected price
+          const finalPrice = parseFloat(finalItem.final_amount || finalItem.final_price || '0');
+          console.log("💰 Final price being sent to createAmadeusHotelBooking:", finalPrice);
+          
+          // Add test card for merchant payment model
+          const testCard = {
+            cardNumber: "4242424242424242",
+            expiryMonth: "12",
+            expiryYear: "2026",
+            cvc: "123",
+            holderName: `${cleanedPassengerInfo.firstName} ${cleanedPassengerInfo.lastName}`,
+          };
+          
+          const newBooking = await createAmadeusHotelBooking(
+            finalItem,
+            cleanedPassengerInfo,
+            testCard,
+            isGuest,
+          );
+          setBooking(newBooking);
+          setAppliedVoucherCode(voucherCode);
+          setShowPayment(true);
+        } catch (err: any) {
+          console.error("Amadeus hotel booking error:", err);
+          toast.error(err?.message ?? "We couldn't create your booking. Please try again.");
+        }
+        return;
+      }
       
-      const newBooking = await createAmadeusHotelBooking(
-        extendedItem,
-        cleanedPassengerInfo,
-        testCard,
-        isGuest,
-      );
-      setBooking(newBooking);
+      // Amadeus Hotel with other payment model (standard)
+      console.log("🏨 Setting up Amadeus hotel payment modal...");
+      setPendingPassengerInfo(cleanedPassengerInfo);
       setAppliedVoucherCode(voucherCode);
-      setShowPayment(true);
-    } catch (err: any) {
-      toast.error(err?.message ?? "We couldn't create your booking. Please try again.");
+      setShowAmadeusPayment(true);
+      return;
     }
-    return;
-  }
-  
-  // Amadeus Hotel with other payment model (standard)
-  console.log("🏨 Setting up Amadeus hotel payment modal...");
-  setPendingPassengerInfo(cleanedPassengerInfo);
-  setAppliedVoucherCode(voucherCode);
-  setShowAmadeusPayment(true);
-  return;
-}
   
     // ==================== CAR RENTAL BOOKING FLOW ====================
     if (isCar) {
-      // For cars, use the generic createBooking with provider AMADEUS
       try {
         console.log("🚗 Creating car rental booking...");
         const correctedItem = {
@@ -549,7 +613,6 @@ if (isHotel && !isCar) {
     }
   
     // ==================== FLIGHT BOOKING FLOW ====================
-    // For flights, keep the original passengerInfo with all fields
     try {
       let bookingItem = extendedItem;
       
@@ -609,7 +672,7 @@ if (isHotel && !isCar) {
       const newBooking = await createBooking(
         correctedItem,
         searchParams,
-        passengerInfo, // Use original passengerInfo for flights
+        passengerInfo,
         isGuest,
         {
           taxes: serviceFee,

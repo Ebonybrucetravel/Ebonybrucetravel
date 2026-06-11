@@ -141,7 +141,75 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 }) => {
   const { currency, convertPrice, formatPrice: formatPriceWithCurrency, isLoadingRates } = useLanguage();
 
-  if (!item) {
+  // ========== FIX: Restore hotel price from sessionStorage ==========
+  const [fixedItem, setFixedItem] = useState<SearchResult | null>(null);
+  
+  useEffect(() => {
+    // If no item, nothing to do
+    if (!item) {
+      setFixedItem(null);
+      return;
+    }
+    
+    console.log('🟡 REVIEW PAGE - Original item:', {
+      id: item.id,
+      title: item.title,
+      type: item.type,
+      final_amount: (item as any)?.final_amount,
+      final_price: (item as any)?.final_price,
+      original_amount: (item as any)?.original_amount,
+    });
+    
+    // Check sessionStorage for hotel data
+    if (typeof window !== 'undefined') {
+      const storedHotel = sessionStorage.getItem('selectedHotel');
+      if (storedHotel) {
+        try {
+          const hotelData = JSON.parse(storedHotel);
+          console.log('🟡 REVIEW PAGE - SessionStorage hotel:', {
+            final_amount: hotelData.final_amount,
+            final_price: hotelData.final_price,
+            offerPrice: hotelData.offerPrice
+          });
+          
+          // If stored price is higher (correct), use it
+          const currentPrice = parseFloat((item as any)?.final_amount || (item as any)?.final_price || '0');
+          const storedPrice = parseFloat(hotelData.final_amount || hotelData.final_price || '0');
+          
+          if (storedPrice > currentPrice && storedPrice > 0) {
+            console.log('🟡 FIX: Using stored price', storedPrice, 'instead of', currentPrice);
+            
+            // Create a new item with the correct price
+            const correctedItem = {
+              ...item,
+              final_amount: hotelData.final_amount,
+              final_price: hotelData.final_price,
+              price: hotelData.final_amount,
+              totalPrice: hotelData.final_amount,
+            };
+            setFixedItem(correctedItem);
+          } else {
+            setFixedItem(item);
+          }
+          
+          // Clear sessionStorage after use
+          sessionStorage.removeItem('selectedHotel');
+        } catch (error) {
+          console.error('Failed to parse stored hotel:', error);
+          setFixedItem(item);
+        }
+      } else {
+        setFixedItem(item);
+      }
+    } else {
+      setFixedItem(item);
+    }
+  }, [item]);
+
+  // Use fixedItem instead of item for the rest of the component
+  const actualItem = fixedItem || item;
+  
+  if (!actualItem) {
     return (
       <div className="bg-[#f8fbfe] min-h-screen py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -154,9 +222,9 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     );
   }
 
-  const extendedItem = item as ExtendedSearchResult;
+  const extendedItem = actualItem as ExtendedSearchResult;
 
-  const rawType = (item.type || searchParams?.type || 'flights').toLowerCase();
+  const rawType = (actualItem.type || searchParams?.type || 'flights').toLowerCase();
   const isHotel = rawType.includes('hotel');
   const isCar = rawType.includes('car');
   const isFlight = !isHotel && !isCar;
@@ -173,7 +241,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
   const offerCurrency = createdBooking?.currency ||
     firstOffer?.price?.currency ||
-    item?.realData?.currency ||
+    actualItem?.realData?.currency ||
     extendedItem?.currency ||
     currency.code ||
     'GBP';
@@ -218,10 +286,10 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [isCheckingPassport, setIsCheckingPassport] = useState(false);
   const [passportError, setPassportError] = useState<string | null>(null);
 
-  const isWakanow = (item as any)?.provider?.toUpperCase() === 'WAKANOW' ||
-    (item as any)?.type?.toLowerCase().includes('wakanow');
+  const isWakanow = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+    (actualItem as any)?.type?.toLowerCase().includes('wakanow');
   
-  const isDomesticFlight = (item as any)?.productType === 'FLIGHT_DOMESTIC';
+  const isDomesticFlight = (actualItem as any)?.productType === 'FLIGHT_DOMESTIC';
   
   const showPassportSection = isFlight && !isDomesticFlight && isWakanow;
   const isPassportMandatory = isFlight && isNorthAmericanDestination(extendedItem, searchParams);
@@ -358,10 +426,10 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   useEffect(() => {
     if (extendedItem?.terms_and_conditions?.TermsAndConditions) {
       setDisplayedTerms(extendedItem.terms_and_conditions.TermsAndConditions);
-    } else if ((item as any)?.terms_and_conditions?.TermsAndConditions) {
-      setDisplayedTerms((item as any).terms_and_conditions.TermsAndConditions);
+    } else if ((actualItem as any)?.terms_and_conditions?.TermsAndConditions) {
+      setDisplayedTerms((actualItem as any).terms_and_conditions.TermsAndConditions);
     }
-  }, [extendedItem, item]);
+  }, [extendedItem, actualItem]);
 
   // ==================== PRICE CALCULATION - FIXED FOR HOTELS ====================
   let basePrice = 0;
@@ -377,6 +445,12 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     const finalAmountValue = extendedItem.final_amount || 
                              (extendedItem.final_price !== undefined ? String(extendedItem.final_price) : '0');
     totalDue = parseFloat(finalAmountValue);
+
+    console.log('🏨 Hotel price calculation:', {
+      final_amount: extendedItem.final_amount,
+      final_price: extendedItem.final_price,
+      totalDue: totalDue
+    });
 
     // If we have a created booking, use its totalAmount
     if (createdBooking && createdBooking.totalAmount) {
@@ -651,7 +725,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         const firstOfferData = quoteData?.offers?.[0];
         hbxMetadata = {
           totalAmount: totalDue,
-          currency: (firstOfferData?.price?.currency || item.currency || 'GBP').toUpperCase(),
+          currency: (firstOfferData?.price?.currency || actualItem.currency || 'GBP').toUpperCase(),
           cancellationPolicySnapshot: "Standard policy",
           cancellationDeadline: firstOfferData?.policies?.cancellations?.[0]?.deadline || new Date().toISOString(),
           policyAccepted: true
@@ -794,7 +868,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
         <div className="flex flex-col lg:flex-row gap-8">
           <div className="flex-1 space-y-6">
-            {/* Your details section - unchanged */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900">Your details</h2>
@@ -823,9 +896,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                   <input value={phone} onChange={e => setPhone(e.target.value)} className={inputCls} placeholder="+44 7911 123456" readOnly={!!createdBooking} />
                 </div>
               </div>
-
-              {/* Rest of your existing JSX remains exactly the same */}
-              {/* ... */}
             </div>
 
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
@@ -841,9 +911,9 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                   )}
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900">{item.title}</h3>
-                  <p className="text-sm text-gray-500">{item.subtitle}</p>
-                  <p className="text-xs text-gray-400 mt-1">{item.provider}</p>
+                  <h3 className="font-semibold text-gray-900">{actualItem.title}</h3>
+                  <p className="text-sm text-gray-500">{actualItem.subtitle}</p>
+                  <p className="text-xs text-gray-400 mt-1">{actualItem.provider}</p>
                 </div>
               </div>
 
@@ -902,7 +972,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
             </div>
           </div>
 
-          {/* Price Sidebar - UPDATED */}
+          {/* Price Sidebar */}
           <aside className="w-full lg:w-[380px]">
             <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-24 border border-gray-100">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Price details</h3>

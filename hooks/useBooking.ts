@@ -701,21 +701,49 @@ export function useBooking() {
   
         const realData = item.realData || item;
         
-        // Calculate price
-        const basePrice = typeof realData.finalPrice === 'number' ? realData.finalPrice : 
-                          typeof realData.price === 'number' ? realData.price : 100;
-        const markupAmount = typeof item.markup_amount === 'string' ? parseFloat(item.markup_amount) : 0;
-        const serviceFee = typeof item.service_fee === 'string' ? parseFloat(item.service_fee) : 0;
-        const totalAmount = basePrice + markupAmount + serviceFee;
-        const validTotalAmount = isNaN(totalAmount) || totalAmount <= 0 ? 100 : totalAmount;
+        // Get the correct price from the item
+        let validTotalAmount = 0;
+        
+        if (item.final_amount && typeof item.final_amount === 'string') {
+          validTotalAmount = parseFloat(item.final_amount);
+        } else if (item.final_amount && typeof item.final_amount === 'number') {
+          validTotalAmount = item.final_amount;
+        } else if (item.final_price && typeof item.final_price === 'string') {
+          validTotalAmount = parseFloat(item.final_price);
+        } else if (item.final_price && typeof item.final_price === 'number') {
+          validTotalAmount = item.final_price;
+        } else if (item.price_after_conversion && typeof item.price_after_conversion === 'string') {
+          validTotalAmount = parseFloat(item.price_after_conversion);
+        } else if (item.totalPrice && typeof item.totalPrice === 'string') {
+          validTotalAmount = parseFloat(item.totalPrice);
+        } else if (item.rawPrice && typeof item.rawPrice === 'number') {
+          validTotalAmount = item.rawPrice;
+        } else if (item.calculatedTotal && typeof item.calculatedTotal === 'number') {
+          validTotalAmount = item.calculatedTotal;
+        }
+        
+        validTotalAmount = isNaN(validTotalAmount) || validTotalAmount <= 0 ? 100 : validTotalAmount;
+        
+        // ✅ Get check-in and check-out dates from the item
+        const checkInDate = item.checkInDate || item.check_in_date || realData.checkInDate;
+        const checkOutDate = item.checkOutDate || item.check_out_date || realData.checkOutDate;
+        
+        console.log("💰 Amadeus hotel price breakdown:", {
+          final_amount_from_item: item.final_amount,
+          final_price_from_item: item.final_price,
+          validTotalAmount: validTotalAmount,
+          checkInDate: checkInDate,
+          checkOutDate: checkOutDate
+        });
   
         const token = getStoredAuthToken();
   
-        // ✅ Build payload WITHOUT paymentInfo - use payment structure instead
         const bookingPayload: any = {
           hotelOfferId: offerId,
           offerPrice: validTotalAmount,
           currency: (realData.currency || item.currency || "GBP").toUpperCase(),
+          checkInDate: checkInDate,      // ✅ ADD THIS
+          checkOutDate: checkOutDate,    // ✅ ADD THIS
           guests: [
             {
               name: {
@@ -740,7 +768,7 @@ export function useBooking() {
           policyAccepted: true,
         };
   
-        // ✅ Add payment card if provided (using correct structure)
+        // Add payment card if provided
         if (card) {
           bookingPayload.payment = {
             method: "CREDIT_CARD",
@@ -805,15 +833,15 @@ export function useBooking() {
           paymentStatus: raw.paymentStatus || "PENDING",
           productType: "HOTEL",
           provider: "AMADEUS",
-          basePrice: basePrice,
+          basePrice: validTotalAmount,
           totalAmount: validTotalAmount,
           currency: bookingPayload.currency,
           bookingData: {
             ...raw,
             hotelId: item.id,
             hotelName: item.title,
-            checkInDate: realData.checkInDate,
-            checkOutDate: realData.checkOutDate,
+            checkInDate: checkInDate,      // ✅ SAVE DATES
+            checkOutDate: checkOutDate,    // ✅ SAVE DATES
             guests: realData.guests || 1,
             rooms: realData.rooms || 1,
           },
