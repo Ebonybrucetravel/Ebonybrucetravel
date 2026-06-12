@@ -286,21 +286,22 @@ export class CreateAmadeusHotelBookingUseCase {
       this.logger.log(`💰 Sending ORIGINAL price to Amadeus: ${JSON.stringify(priceForAmadeus)}`);
       this.logger.log(`🏨 Hotel Offer ID: ${offerId}, Currency: ${originalCurrency}, Price: ${originalTotal}`);
 
-      // ✅ FIXED: Transform roomAssociations into the correct Amadeus structure
-      const transformedGuests = guests.map((g: any, index: number) => ({
-        id: index + 1,  // Required by Amadeus
-        title: g.name?.title || g.title,
-        firstName: g.name?.firstName || g.firstName,
-        lastName: g.name?.lastName || g.lastName,
-        phone: g.contact?.phone || g.phone,
-        email: g.contact?.email || g.email,
-      }));
+      // ✅ FIXED: Transform guests with 'tid' field (Amadeus requirement)
+const transformedGuests = guests.map((g: any, index: number) => ({
+  tid: (index + 1).toString(),  // Amadeus requires 'tid' as string
+  id: index + 1,                  // Optional but good to keep
+  title: g.name?.title || g.title,
+  firstName: g.name?.firstName || g.firstName,
+  lastName: g.name?.lastName || g.lastName,
+  phone: g.contact?.phone || g.phone,
+  email: g.contact?.email || g.email,
+}));
 
-     // ✅ FIXED: Build the complete request body with hotelBookings wrapper
+  // ✅ FIXED: Build the complete request body with hotelBookings wrapper
 const amadeusRequestPayload = {
   data: {
     type: "hotel-order",
-    guests: transformedGuests,
+    guests: transformedGuests,  // Now includes 'tid'
     hotelBookings: [
       {
         roomAssociations: roomAssociations.map((ra: any) => ({
