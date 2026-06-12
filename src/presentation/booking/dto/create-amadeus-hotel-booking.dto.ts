@@ -193,9 +193,9 @@ export class CreateAmadeusHotelBookingDto {
   offerPrice: number;
 
   @ApiProperty({
-    description: 'Currency code (ISO 4217)',
-    enum: ['GBP', 'USD', 'EUR', 'NGN', 'JPY', 'CNY', 'GHS', 'KES', 'ZAR'],
-    example: 'GBP',
+    description: 'Currency code (ISO 4217) - Amadeus expects EUR, GBP, or USD for hotel bookings',
+    enum: ['EUR', 'GBP', 'USD', 'NGN'],
+    example: 'EUR',  
   })
   @IsString()
   @IsNotEmpty()
