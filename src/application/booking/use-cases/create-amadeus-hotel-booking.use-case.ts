@@ -141,6 +141,7 @@ export class CreateAmadeusHotelBookingUseCase {
           ...(paymentCardInfo && { payment_card_info: paymentCardInfo }),
           travel_agent_email: dto.travelAgentEmail,
           accommodation_special_requests: dto.accommodationSpecialRequests,
+          // Customer-facing price in NGN
           offer_price: dto.offerPrice,
           frontend_total: frontendTotalAmount,
           markup_config_used: {
@@ -148,10 +149,11 @@ export class CreateAmadeusHotelBookingUseCase {
             serviceFee,
             currency,
           },
+          // Store the original price and currency for Amadeus
           original_offer_price: {
-            currency: currency,
-            total: frontendTotalAmount.toString(),
-            base: calculatedBasePrice.toString(),
+            currency: dto.currency,  // This should be GBP, USD, EUR
+            total: dto.offerPrice.toString(),
+            base: (dto.offerPrice / (1 + markupPercentage / 100)).toString(),
           },
           checkInDate: checkInDate,
           checkOutDate: checkOutDate,
@@ -168,6 +170,7 @@ export class CreateAmadeusHotelBookingUseCase {
 
       this.logger.log(`Created local booking ${booking.id} for Amadeus hotel offer ${dto.hotelOfferId} with total amount ${pricing.totalAmount}`);
       this.logger.log(`📅 Saved dates - Check-in: ${checkInDate}, Check-out: ${checkOutDate}`);
+      this.logger.log(`💰 Original price for Amadeus: ${dto.offerPrice} ${dto.currency}`);
 
       return {
         booking,
@@ -265,28 +268,21 @@ export class CreateAmadeusHotelBookingUseCase {
         }
       }
 
-      // ✅ FIX: Map hotel offer ID to correct local currency
-      const hotelCurrencyMap: Record<string, string> = {
-        'SBLONSOF': 'GBP',   // London hotel
-        'WHLON464': 'GBP',   // London hotel
-        'SILOS188': 'NGN',   // Lagos hotel (may accept NGN)
-        'UXNYC000': 'USD',   // New York hotel
-        'ADPAR001': 'EUR',   // Paris hotel
-      };
-      
-      // Get the correct currency for this hotel
-      const hotelLocalCurrency = hotelCurrencyMap[offerId] || 'EUR';
-      
-      // ✅ For testing: Use a simple test price in the correct currency
-      // Once this works, replace with proper conversion
-      const priceForAmadeus = {
-        currency: hotelLocalCurrency,
-        base: '100.00',
-        total: '100.00',
+      // ✅ Get the original price and currency from bookingData
+      const originalOfferPrice = bookingData.original_offer_price || {};
+      const originalCurrency = originalOfferPrice.currency || 'GBP';
+      const originalTotal = parseFloat(originalOfferPrice.total || '0');
+      const originalBase = parseFloat(originalOfferPrice.base || '0');
+
+      // ✅ Use the actual original price, not a test price
+      const priceForAmadeus: any = {
+        currency: originalCurrency,
+        base: originalBase.toFixed(2),
+        total: originalTotal.toFixed(2),
       };
 
-      this.logger.log(`💰 Sending test price to Amadeus (${hotelLocalCurrency}): ${JSON.stringify(priceForAmadeus)}`);
-      this.logger.log(`🏨 Hotel Offer ID: ${offerId}, Mapped Currency: ${hotelLocalCurrency}`);
+      this.logger.log(`💰 Sending ORIGINAL price to Amadeus: ${JSON.stringify(priceForAmadeus)}`);
+      this.logger.log(`🏨 Hotel Offer ID: ${offerId}, Currency: ${originalCurrency}, Price: ${originalTotal}`);
 
       const amadeusBooking = await this.amadeusService.createHotelBooking({
         hotelOfferId: offerId,
@@ -327,8 +323,8 @@ export class CreateAmadeusHotelBookingUseCase {
         };
       }
       
-      updatedBookingData.test_booking_details = {
-        currency_used: hotelLocalCurrency,
+      updatedBookingData.amadeus_booking_details = {
+        currency_used: originalCurrency,
         price_sent: priceForAmadeus,
         hotel_offer_id: offerId,
         created_at: new Date().toISOString(),
@@ -344,7 +340,7 @@ export class CreateAmadeusHotelBookingUseCase {
         },
       });
 
-      this.logger.log(`✅ Successfully created Amadeus hotel order ${amadeusBooking.data.id} with currency ${hotelLocalCurrency}`);
+      this.logger.log(`✅ Successfully created Amadeus hotel order ${amadeusBooking.data.id} with original price ${originalTotal} ${originalCurrency}`);
 
       return {
         orderId: amadeusBooking.data.id,
