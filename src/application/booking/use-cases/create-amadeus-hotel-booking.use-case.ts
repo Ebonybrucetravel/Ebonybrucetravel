@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config'; 
 import { redactCardData } from '@common/utils/pci-redaction.util';
 import { AmadeusService } from '@infrastructure/external-apis/amadeus/amadeus.service';
 import { BookingService } from '@domains/booking/services/booking.service';
@@ -15,6 +16,7 @@ export class CreateAmadeusHotelBookingUseCase {
   private readonly logger = new Logger(CreateAmadeusHotelBookingUseCase.name);
 
   constructor(
+    private readonly configService: ConfigService,  
     private readonly amadeusService: AmadeusService,
     private readonly bookingService: BookingService,
     private readonly markupRepository: MarkupRepository,
@@ -294,43 +296,42 @@ export class CreateAmadeusHotelBookingUseCase {
         email: g.contact?.email || g.email,
       }));
 
-      // ✅ FIXED: Build the complete request body with hotelBookings wrapper
-      const amadeusRequestPayload = {
-        data: {
-          type: "hotel-order",
-          guests: transformedGuests,
-          hotelBookings: [
-            {
-              roomAssociations: roomAssociations.map((ra: any) => ({
-                hotelOfferId: ra.hotelOfferId,
-                guestReferences: ra.guestReferences,
-              })),
-            }
-          ],
-          payment: {
-            method: 'CREDIT_CARD',
-            paymentCard: {
-              paymentCardInfo: {
-                vendorCode: cardDetails.vendorCode,
-                cardNumber: cardDetails.cardNumber,
-                expiryDate: cardDetails.expiryDate,
-                holderName: cardDetails.holderName,
-                securityCode: cardDetails.securityCode,
-              },
-            },
-          },
-          ...(bookingData.travel_agent_email && {
-            travelAgent: {
-              contact: {
-                email: bookingData.travel_agent_email,
-              },
-            },
-          }),
-          ...(bookingData.accommodation_special_requests && {
-            accommodationSpecialRequests: bookingData.accommodation_special_requests,
-          }),
-        }
-      };
+     // ✅ FIXED: Build the complete request body with hotelBookings wrapper
+const amadeusRequestPayload = {
+  data: {
+    type: "hotel-order",
+    guests: transformedGuests,
+    hotelBookings: [
+      {
+        roomAssociations: roomAssociations.map((ra: any) => ({
+          hotelOfferId: ra.hotelOfferId,
+          guestReferences: ra.guestReferences,
+        })),
+      }
+    ],
+    payment: {
+      method: 'CREDIT_CARD',
+      paymentCard: {
+        paymentCardInfo: {
+          vendorCode: cardDetails.vendorCode,
+          cardNumber: cardDetails.cardNumber,
+          expiryDate: cardDetails.expiryDate,
+          holderName: cardDetails.holderName,
+          securityCode: cardDetails.securityCode,
+        },
+      },
+    },
+    // ✅ Use your configured travel agent email
+    travelAgent: {
+      contact: {
+        email: this.configService.get<string>('AMADEUS_TRAVEL_AGENT_EMAIL') || 'info@ebonybrucetravels.com',
+      },
+    },
+    ...(bookingData.accommodation_special_requests && {
+      accommodationSpecialRequests: bookingData.accommodation_special_requests,
+    }),
+  }
+};
 
       // ✅ Add price to the request if Amadeus requires it
       if (priceForAmadeus && priceForAmadeus.total > 0) {
