@@ -6,25 +6,31 @@ import { AmadeusService } from './amadeus/amadeus.service';
 import { WakanowService } from './wakanow/wakanow.service';
 import { GooglePlacesModule } from './google-places/google-places.module';
 import { HotelbedsModule } from './hotelbeds/hotelbeds.module';
+import { CurrencyModule } from '@infrastructure/currency/currency.module'; 
 
 @Module({
-  imports: [GooglePlacesModule, HotelbedsModule],
+  imports: [
+    GooglePlacesModule,
+    HotelbedsModule,
+    CurrencyModule, 
+  ],
   controllers: [],
   providers: [
-    DuffelService, 
-    TripsAfricaService, 
-    BookingComService, 
-    AmadeusService, 
-    WakanowService
+    DuffelService,
+    TripsAfricaService,
+    BookingComService,
+    AmadeusService,
+    WakanowService,
   ],
   exports: [
-    DuffelService, 
-    TripsAfricaService, 
-    BookingComService, 
-    AmadeusService, 
-    WakanowService, 
-    GooglePlacesModule, 
-    HotelbedsModule
+    DuffelService,
+    TripsAfricaService,
+    BookingComService,
+    AmadeusService,
+    WakanowService,
+    GooglePlacesModule,
+    HotelbedsModule,
+    CurrencyModule, 
   ],
 })
 export class ExternalApisModule { }
