@@ -546,8 +546,104 @@ const TravelDocumentsTab: React.FC<TravelDocumentsTabProps> = ({ user }) => {
 };
 
 // Helper function to extract flight details from booking
+// Helper function to extract details from booking (supports HOTELS, FLIGHTS, CARS)
 const extractFlightDetails = (booking: Booking) => {
   const providerData = booking.providerData as any;
+  const bookingData = booking.bookingData as any;
+  
+  // ✅ CHECK FOR HOTEL BOOKING FIRST
+  const isHotel = booking.productType === 'HOTEL';
+  
+  if (isHotel) {
+    // Extract hotel details from bookingData
+    const hotelName = bookingData?.hotelName || bookingData?.hotel?.name || 
+                      bookingData?.hotel_name || 'Hotel';
+    const hotelId = bookingData?.hotelId || bookingData?.hotel?.hotelId || booking.id;
+    const hotelOfferId = bookingData?.amadeus_offer_id || bookingData?.offerId || 'N/A';
+    
+    // Get check-in/out dates from multiple possible locations
+    let checkInDate = bookingData?.checkInDate;
+    let checkOutDate = bookingData?.checkOutDate;
+    
+    if (!checkInDate && bookingData?.offer?.checkInDate) {
+      checkInDate = bookingData.offer.checkInDate;
+    }
+    if (!checkOutDate && bookingData?.offer?.checkOutDate) {
+      checkOutDate = bookingData.offer.checkOutDate;
+    }
+    if (!checkInDate && bookingData?.hotel?.offer?.checkInDate) {
+      checkInDate = bookingData.hotel.offer.checkInDate;
+    }
+    if (!checkOutDate && bookingData?.hotel?.offer?.checkOutDate) {
+      checkOutDate = bookingData.hotel.offer.checkOutDate;
+    }
+    
+    const nights = checkInDate && checkOutDate 
+      ? Math.max(1, Math.ceil((new Date(checkOutDate).getTime() - new Date(checkInDate).getTime()) / (1000 * 60 * 60 * 24)))
+      : 1;
+    
+    // ✅ FIX: Safely get guests count (handle object or number)
+    let guestsCount = 1;
+    if (bookingData?.guests) {
+      if (typeof bookingData.guests === 'number') {
+        guestsCount = bookingData.guests;
+      } else if (typeof bookingData.guests === 'object' && !Array.isArray(bookingData.guests)) {
+        guestsCount = bookingData.guests.adults || bookingData.guests.guests || 1;
+      } else if (Array.isArray(bookingData.guests)) {
+        guestsCount = bookingData.guests.length;
+      }
+    } else if (bookingData?.adults && typeof bookingData.adults === 'number') {
+      guestsCount = bookingData.adults;
+    }
+    
+    // ✅ FIX: Safely get rooms count
+    let roomsCount = 1;
+    if (bookingData?.rooms) {
+      if (typeof bookingData.rooms === 'number') {
+        roomsCount = bookingData.rooms;
+      } else if (typeof bookingData.rooms === 'object') {
+        roomsCount = bookingData.rooms.rooms || 1;
+      }
+    } else if (bookingData?.roomQuantity && typeof bookingData.roomQuantity === 'number') {
+      roomsCount = bookingData.roomQuantity;
+    }
+    
+    // Get provider order ID from providerData
+    const orderId = providerData?.id || providerData?.orderId || 'N/A';
+    const confirmationNumber = providerData?.hotelBookings?.[0]?.hotelProviderInformation?.[0]?.confirmationNumber || 'N/A';
+    
+    return {
+      type: 'hotel',
+      hotelName,
+      hotelId,
+      hotelOfferId,
+      checkInDate,
+      checkOutDate,
+      nights,
+      guests: guestsCount,
+      rooms: roomsCount,
+      orderId,
+      confirmationNumber,
+      origin: hotelName,
+      destination: '',
+      originName: hotelName,
+      destinationName: '',
+      flightNumber: '',
+      airline: '',
+      departureDate: checkInDate || booking.createdAt,
+      arrivalDate: checkOutDate || '',
+      duration: `${nights} night${nights > 1 ? 's' : ''}`,
+      stops: 0,
+      cabinClass: '',
+      pnrNumber: booking.pnrNumber,
+      passengers: guestsCount,
+      price: booking.totalAmount,
+      currency: booking.currency,
+      status: booking.status,
+      reference: booking.reference,
+      isWakanow: false,
+    };
+  }
   
   // For Wakanow flights
   if (booking.provider === 'WAKANOW' && providerData) {
@@ -560,17 +656,18 @@ const extractFlightDetails = (booking: Booking) => {
     const lastLeg = flightLegs[flightLegs.length - 1] || firstLeg;
     
     return {
-      origin: firstLeg?.DepartureCode || booking.bookingData?.origin || 'N/A',
-      destination: lastLeg?.DestinationCode || booking.bookingData?.destination || 'N/A',
+      type: 'flight',
+      origin: firstLeg?.DepartureCode || bookingData?.origin || 'N/A',
+      destination: lastLeg?.DestinationCode || bookingData?.destination || 'N/A',
       originName: firstLeg?.DepartureName || '',
       destinationName: lastLeg?.DestinationName || '',
-      flightNumber: firstLeg?.FlightNumber || booking.bookingData?.flightNumber || 'N/A',
-      airline: outboundFlight?.AirlineName || outboundFlight?.Airline || booking.bookingData?.airline || booking.provider,
-      departureDate: firstLeg?.StartTime || booking.bookingData?.departureDate || booking.createdAt,
+      flightNumber: firstLeg?.FlightNumber || bookingData?.flightNumber || 'N/A',
+      airline: outboundFlight?.AirlineName || outboundFlight?.Airline || bookingData?.airline || booking.provider,
+      departureDate: firstLeg?.StartTime || bookingData?.departureDate || booking.createdAt,
       arrivalDate: lastLeg?.EndTime || '',
       duration: outboundFlight?.TripDuration || '',
       stops: outboundFlight?.Stops || 0,
-      cabinClass: firstLeg?.CabinClassName || booking.bookingData?.cabinClass || 'Economy',
+      cabinClass: firstLeg?.CabinClassName || bookingData?.cabinClass || 'Economy',
       pnrNumber: providerData?.FlightBookingSummary?.PnrReferenceNumber || booking.pnrNumber,
       passengers: flightCombination?.Adults || 1,
       price: booking.totalAmount,
@@ -583,21 +680,22 @@ const extractFlightDetails = (booking: Booking) => {
   
   // For Duffel/other flights
   return {
-    origin: booking.bookingData?.origin || 'N/A',
-    destination: booking.bookingData?.destination || 'N/A',
+    type: 'flight',
+    origin: bookingData?.origin || 'N/A',
+    destination: bookingData?.destination || 'N/A',
     originName: '',
     destinationName: '',
-    flightNumber: booking.bookingData?.flightNumber || 'N/A',
-    airline: booking.bookingData?.airline || booking.provider,
-    departureDate: booking.bookingData?.departureDate || booking.createdAt,
+    flightNumber: bookingData?.flightNumber || 'N/A',
+    airline: bookingData?.airline || booking.provider,
+    departureDate: bookingData?.departureDate || booking.createdAt,
     arrivalDate: '',
     duration: '',
     stops: 0,
-    cabinClass: booking.bookingData?.cabinClass || 'Economy',
+    cabinClass: bookingData?.cabinClass || 'Economy',
     pnrNumber: booking.pnrNumber,
-    passengers: typeof booking.bookingData?.passengers === 'object' 
-      ? (booking.bookingData.passengers as any).adults || 1 
-      : booking.bookingData?.passengers || 1,
+    passengers: typeof bookingData?.passengers === 'object' 
+      ? (bookingData.passengers as any).adults || 1 
+      : bookingData?.passengers || 1,
     price: booking.totalAmount,
     currency: booking.currency,
     status: booking.status,
@@ -1472,6 +1570,9 @@ const Profile: React.FC<ProfileProps> = ({
     } else if (booking.status === 'FAILED') {
       displayStatus = 'Failed';
       statusColor = 'bg-red-50 text-red-500';
+    } else if (booking.status === 'PENDING') {
+      displayStatus = 'Pending';
+      statusColor = 'bg-yellow-100 text-yellow-700';
     } else {
       displayStatus = 'Active';
       statusColor = 'bg-green-100 text-green-600';
@@ -1482,50 +1583,199 @@ const Profile: React.FC<ProfileProps> = ({
     
     const formattedPrice = booking.totalAmount?.toFixed(2) || '0.00';
     
-    // Extract flight details using the helper function
-    const flightDetails = extractFlightDetails(booking);
-    const routeText = flightDetails.origin && flightDetails.destination 
-      ? `${flightDetails.origin} → ${flightDetails.destination}`
-      : booking.reference;
+    // Extract details using the helper function
+    const details = extractFlightDetails(booking);
     
-    return (
-      <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow">
-        <div className={`w-16 h-16 rounded-full flex items-center justify-center shrink-0 ${
-          bookingType === 'flight' ? 'bg-blue-50' : 
-          bookingType === 'hotel' ? 'bg-yellow-50' : 'bg-purple-50'
-        }`}>
-          {bookingType === 'flight' && <svg className="w-8 h-8 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>}
-          {bookingType === 'hotel' && <svg className="w-8 h-8 text-orange-500" fill="currentColor" viewBox="0 0 24 24"><path d="M19 9H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V11a2 2 0 00-2-2zm-6 4h-2v-2h2v2zm6 0h-4v-2h4v2zM5 13h4v2H5v-2z"/></svg>}
-          {bookingType === 'car' && <svg className="w-8 h-8 text-purple-600" fill="currentColor" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z"/></svg>}
+   // ✅ HOTEL BOOKING CARD
+if (bookingType === 'hotel') {
+  // Safe access with fallbacks
+  const guestsCount = details.guests ?? 1;
+  const roomsCount = details.rooms ?? 1;
+  
+  return (
+    <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow">
+      <div className="w-16 h-16 rounded-full bg-yellow-50 flex items-center justify-center shrink-0">
+        <svg className="w-8 h-8 text-orange-500" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M19 9H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V11a2 2 0 00-2-2zm-6 4h-2v-2h2v2zm6 0h-4v-2h4v2zM5 13h4v2H5v-2z"/>
+        </svg>
+      </div>
+      <div className="flex-1 text-center md:text-left min-w-0">
+        <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
+          <h4 className="text-lg font-black text-gray-900 truncate tracking-tight">
+            {details.hotelName || 'Hotel'}
+          </h4>
+          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${statusColor}`}>
+            {displayStatus}
+          </span>
         </div>
-        <div className="flex-1 text-center md:text-left min-w-0">
-          <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
-            <h4 className="text-lg font-black text-gray-900 truncate tracking-tight">
-              {routeText}
-            </h4>
-            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${statusColor}`}>
-              {displayStatus}
-            </span>
-          </div>
-          <p className="text-[11px] font-bold text-gray-400 mb-3">
-            {flightDetails.airline} 
-            {flightDetails.flightNumber !== 'N/A' && ` • Flight ${flightDetails.flightNumber}`}
-          </p>
-          <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] font-black text-gray-400 uppercase tracking-tight">
+        <p className="text-[11px] font-bold text-gray-400 mb-3">
+          Booking Reference: {booking.reference}
+        </p>
+        <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] font-black text-gray-400 uppercase tracking-tight">
+          {details.checkInDate && (
             <div className="flex items-center gap-1.5">
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              {flightDetails.departureDate ? new Date(flightDetails.departureDate).toLocaleDateString() : new Date(booking.createdAt).toLocaleDateString()}
+              In: {new Date(details.checkInDate).toLocaleDateString()}
             </div>
-            {flightDetails.cabinClass && (
+          )}
+          {details.checkOutDate && (
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Out: {new Date(details.checkOutDate).toLocaleDateString()}
+            </div>
+          )}
+          {details.duration && (
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {details.duration}
+            </div>
+          )}
+          <div className="flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            {guestsCount} Guest{guestsCount > 1 ? 's' : ''}
+          </div>
+          {roomsCount > 1 && (
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" />
+              </svg>
+              {roomsCount} Room{roomsCount > 1 ? 's' : ''}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="text-center md:text-right shrink-0">
+        <p className="text-xs font-black text-[#33a8da] mb-4">
+          {booking.currency} <span className="text-lg">{formattedPrice}</span>
+        </p>
+        <div className="flex items-center justify-center md:justify-end gap-5">
+          <button 
+            onClick={() => handleManageBooking(booking)} 
+            className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition"
+          >
+            Details
+          </button>
+          <button 
+            onClick={() => handleManageBooking(booking)} 
+            className="px-8 py-3 bg-[#33a8da] text-white rounded-xl text-[11px] font-black uppercase hover:bg-[#2c98c7] transition shadow-lg active:scale-95"
+          >
+            Manage
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+    
+    // ✅ FLIGHT BOOKING CARD
+    if (bookingType === 'flight') {
+      const routeText = details.origin && details.destination 
+        ? `${details.origin} → ${details.destination}`
+        : booking.reference;
+      
+      return (
+        <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow">
+          <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+            <svg className="w-8 h-8 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+            </svg>
+          </div>
+          <div className="flex-1 text-center md:text-left min-w-0">
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
+              <h4 className="text-lg font-black text-gray-900 truncate tracking-tight">{routeText}</h4>
+              <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${statusColor}`}>{displayStatus}</span>
+            </div>
+            <p className="text-[11px] font-bold text-gray-400 mb-3">{details.airline} {details.flightNumber !== 'N/A' && `• Flight ${details.flightNumber}`}</p>
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] font-black text-gray-400 uppercase tracking-tight">
               <div className="flex items-center gap-1.5">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                {flightDetails.cabinClass}
+                {details.departureDate ? new Date(details.departureDate).toLocaleDateString() : new Date(booking.createdAt).toLocaleDateString()}
               </div>
-            )}
+              {details.cabinClass && (
+                <div className="flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  {details.cabinClass}
+                </div>
+              )}
+              {details.stops !== undefined && details.stops === 0 && (
+                <div className="flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Direct
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="text-center md:text-right shrink-0">
+            <p className="text-xs font-black text-[#33a8da] mb-4">
+              {booking.currency} <span className="text-lg">{formattedPrice}</span>
+            </p>
+            <div className="flex items-center justify-center md:justify-end gap-5">
+              <button 
+                onClick={() => handleManageBooking(booking)} 
+                className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition"
+              >
+                Details
+              </button>
+              <button 
+                onClick={() => handleManageBooking(booking)} 
+                className="px-8 py-3 bg-[#33a8da] text-white rounded-xl text-[11px] font-black uppercase hover:bg-[#2c98c7] transition shadow-lg active:scale-95"
+              >
+                Manage
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    // ✅ CAR RENTAL BOOKING CARD
+    const bookingData = booking.bookingData as any;
+    const vehicleType = bookingData?.vehicleType || bookingData?.vehicle?.description || 'Car Rental';
+    const pickupLocation = bookingData?.pickupLocationCode || bookingData?.pickupLocation || 'N/A';
+    const dropoffLocation = bookingData?.dropoffLocationCode || bookingData?.dropoffLocation || 'N/A';
+    
+    return (
+      <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow">
+        <div className="w-16 h-16 rounded-full bg-purple-50 flex items-center justify-center shrink-0">
+          <svg className="w-8 h-8 text-purple-600" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z"/>
+          </svg>
+        </div>
+        <div className="flex-1 text-center md:text-left min-w-0">
+          <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
+            <h4 className="text-lg font-black text-gray-900 truncate tracking-tight">{vehicleType}</h4>
+            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${statusColor}`}>{displayStatus}</span>
+          </div>
+          <p className="text-[11px] font-bold text-gray-400 mb-3">Booking Reference: {booking.reference}</p>
+          <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] font-black text-gray-400 uppercase tracking-tight">
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Pickup: {pickupLocation}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Dropoff: {dropoffLocation}
+            </div>
           </div>
         </div>
         <div className="text-center md:text-right shrink-0">
