@@ -41,7 +41,7 @@ Built on the latest web technologies (Next.js 14, TypeScript, Tailwind CSS), the
 - **Higher margins** through flexible markup controls
 - **AI-powered customer care widget** for instant support
 
----
+
 
 ## 2. Platform Overview
 
