@@ -575,6 +575,202 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
     });
   }
 
+  // ==================== HOTEL BOOKING UPDATE API (v2) ====================
+  
+  /**
+   * Extract hotel order ID and booking ID from provider data
+   * 
+   * The Amadeus response structure typically looks like:
+   * {
+   *   data: {
+   *     id: "RINTMIZQLzlwMJUtMDYtMDI=",  // This is the hotelOrderId
+   *     hotelBookings: [{
+   *       id: "MS81NDYzWkpQNTAwLzkwNzQOMTc2",  // This is the hotelBookingId
+   *       ...
+   *     }]
+   *   }
+   * }
+   */
+  async extractHotelBookingIds(providerData: any): Promise<{ hotelOrderId: string; hotelBookingId: string } | null> {
+    try {
+      const data = providerData?.data || providerData;
+      const hotelOrderId = data?.id;
+      const hotelBookingId = data?.hotelBookings?.[0]?.id;
+      
+      if (hotelOrderId && hotelBookingId) {
+        this.logger.log(`Extracted hotel IDs - Order: ${hotelOrderId}, Booking: ${hotelBookingId}`);
+        return { hotelOrderId, hotelBookingId };
+      }
+      this.logger.warn('Could not extract hotel booking IDs from provider data');
+      return null;
+    } catch (error) {
+      this.logger.error('Failed to extract hotel booking IDs:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Update a hotel booking (special requests, dates, payment, loyalty ID)
+   * 
+   * According to Amadeus API documentation:
+   * PATCH /booking/hotel-orders/{hotelOrderId}/hotel-bookings/{hotelBookingId}
+   * 
+   * Can update:
+   * 1. Check-in date
+   * 2. Check-out date
+   * 3. Form of Payment (Credit Card only)
+   * 4. Customer ID (for Hotel Loyalty programs)
+   * 5. Special requests (Supplementary Information)
+   * 
+   * @param hotelOrderId - The Amadeus hotel order ID (e.g., "RINTMIZQLzlwMJUtMDYtMDI=")
+   * @param hotelBookingId - The hotel booking ID within the order (e.g., "MS81NDYzWkpQNTAwLzkwNzQOMTc2")
+   * @param updateData - Object containing the fields to update
+   */
+  async updateHotelBooking(
+    hotelOrderId: string,
+    hotelBookingId: string,
+    updateData: {
+      specialRequest?: string;
+      checkInDate?: string;
+      checkOutDate?: string;
+      loyaltyId?: string;
+      paymentCard?: {
+        vendorCode: string;
+        cardNumber: string;
+        expiryDate: string;
+        holderName?: string;
+        securityCode?: string;
+      };
+    }
+  ): Promise<any> {
+    if (!hotelOrderId) {
+      throw new HttpException('Hotel order ID is required', HttpStatus.BAD_REQUEST);
+    }
+    if (!hotelBookingId) {
+      throw new HttpException('Hotel booking ID is required', HttpStatus.BAD_REQUEST);
+    }
+
+    const requestBody: any = {
+      data: {
+        hotelBooking: {}
+      }
+    };
+
+    // Add special request if provided
+    if (updateData.specialRequest) {
+      requestBody.data.hotelBooking.roomAssociation = {
+        specialRequest: updateData.specialRequest
+      };
+    }
+
+    // Add date changes if provided
+    if (updateData.checkInDate || updateData.checkOutDate) {
+      requestBody.data.hotelBooking.hotelOffer = {
+        product: {}
+      };
+      if (updateData.checkInDate) {
+        requestBody.data.hotelBooking.hotelOffer.product.checkInDate = updateData.checkInDate;
+      }
+      if (updateData.checkOutDate) {
+        requestBody.data.hotelBooking.hotelOffer.product.checkOutDate = updateData.checkOutDate;
+      }
+    }
+
+    // Add loyalty ID if provided
+    if (updateData.loyaltyId) {
+      if (!requestBody.data.hotelBooking.roomAssociation) {
+        requestBody.data.hotelBooking.roomAssociation = {};
+      }
+      requestBody.data.hotelBooking.roomAssociation.guestReferences = [{
+        guestReference: "1",
+        hotelLoyaltyId: updateData.loyaltyId
+      }];
+    }
+
+    // Add payment card if provided
+    if (updateData.paymentCard) {
+      requestBody.data.hotelBooking.payment = {
+        paymentCard: {
+          paymentCardInfo: {
+            vendorCode: updateData.paymentCard.vendorCode,
+            cardNumber: updateData.paymentCard.cardNumber,
+            expiryDate: updateData.paymentCard.expiryDate,
+            holderName: updateData.paymentCard.holderName,
+          }
+        }
+      };
+      
+      if (updateData.paymentCard.securityCode) {
+        requestBody.data.hotelBooking.payment.paymentCard.paymentCardInfo.securityCode = updateData.paymentCard.securityCode;
+      }
+    }
+
+    this.logger.log(`Updating hotel booking: orderId=${hotelOrderId}, bookingId=${hotelBookingId}`);
+    this.logger.debug(`Update payload: ${JSON.stringify(requestBody)}`);
+
+    // Amadeus endpoint: PATCH /booking/hotel-orders/{hotelOrderId}/hotel-bookings/{hotelBookingId}
+    const endpoint = `/v2/booking/hotel-orders/${hotelOrderId}/hotel-bookings/${hotelBookingId}`;
+    
+    return this.makeRequest(endpoint, { method: 'PATCH', body: requestBody });
+  }
+
+  /**
+   * Update only the special request for a hotel booking
+   * Convenience method for common use case
+   */
+  async updateHotelBookingSpecialRequest(
+    hotelOrderId: string,
+    hotelBookingId: string,
+    specialRequest: string
+  ): Promise<any> {
+    return this.updateHotelBooking(hotelOrderId, hotelBookingId, { specialRequest });
+  }
+
+  /**
+   * Update check-in/check-out dates for a hotel booking
+   */
+  async updateHotelBookingDates(
+    hotelOrderId: string,
+    hotelBookingId: string,
+    checkInDate: string,
+    checkOutDate: string
+  ): Promise<any> {
+    return this.updateHotelBooking(hotelOrderId, hotelBookingId, { checkInDate, checkOutDate });
+  }
+
+  /**
+   * Update loyalty ID for a hotel booking
+   */
+  async updateHotelBookingLoyaltyId(
+    hotelOrderId: string,
+    hotelBookingId: string,
+    loyaltyId: string
+  ): Promise<any> {
+    return this.updateHotelBooking(hotelOrderId, hotelBookingId, { loyaltyId });
+  }
+
+  /**
+   * Cancel a specific hotel booking within an order
+   * POST /booking/hotel-orders/{hotelOrderId}/hotel-bookings/{hotelBookingId}/cancel
+   */
+  async cancelHotelBookingItem(
+    hotelOrderId: string,
+    hotelBookingId: string
+  ): Promise<any> {
+    if (!hotelOrderId) {
+      throw new HttpException('Hotel order ID is required', HttpStatus.BAD_REQUEST);
+    }
+    if (!hotelBookingId) {
+      throw new HttpException('Hotel booking ID is required', HttpStatus.BAD_REQUEST);
+    }
+
+    this.logger.log(`Cancelling hotel booking: orderId=${hotelOrderId}, bookingId=${hotelBookingId}`);
+    
+    const endpoint = `/v2/booking/hotel-orders/${hotelOrderId}/hotel-bookings/${hotelBookingId}/cancel`;
+    
+    return this.makeRequest(endpoint, { method: 'POST', body: { data: {} } });
+  }
+
   // ==================== TRANSFERS / CAR RENTAL API (v1) ====================
   
   async searchTransfers(params: {

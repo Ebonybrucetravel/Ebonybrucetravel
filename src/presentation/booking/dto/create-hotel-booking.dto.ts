@@ -7,103 +7,320 @@ import {
   IsEnum,
   IsInt,
   Min,
+  IsDateString,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
-// Define PaymentDto first (used by CreateHotelBookingDto)
-export class PaymentDto {
+// ==================== UPDATE HOTEL BOOKING DTOs ====================
+
+/**
+ * Payment card information for updating a hotel booking
+ */
+export class UpdatePaymentCardInfoDto {
   @ApiPropertyOptional({
-    description: '3D Secure session ID for card payments',
-    example: '3ds_0000AWr2XsTRIF1Vp34gh5',
+    description: 'Card vendor code',
+    enum: ['VI', 'MC', 'AX', 'CA', 'DC', 'DI', 'JC', 'TP'],
+    example: 'VI',
   })
   @IsOptional()
   @IsString()
-  three_d_secure_session_id?: string;
+  vendorCode?: string;
+
+  @ApiPropertyOptional({
+    description: 'Card number',
+    example: '4242424242424242',
+  })
+  @IsOptional()
+  @IsString()
+  cardNumber?: string;
+
+  @ApiPropertyOptional({
+    description: 'Card expiry date (YYYY-MM format)',
+    example: '2026-12',
+  })
+  @IsOptional()
+  @IsString()
+  expiryDate?: string;
+
+  @ApiPropertyOptional({
+    description: 'Card holder name',
+    example: 'John Doe',
+  })
+  @IsOptional()
+  @IsString()
+  holderName?: string;
+
+  @ApiPropertyOptional({
+    description: 'Card security code (CVV)',
+    example: '123',
+  })
+  @IsOptional()
+  @IsString()
+  securityCode?: string;
 }
 
-export class HotelGuestDto {
-  @ApiProperty({ description: 'Guest first name', example: 'John' })
-  @IsString()
-  @IsNotEmpty()
-  given_name: string;
-
-  @ApiProperty({ description: 'Guest last name', example: 'Doe' })
-  @IsString()
-  @IsNotEmpty()
-  family_name: string;
-
-  @ApiProperty({ enum: ['adult', 'child'], description: 'Guest type' })
-  @IsEnum(['adult', 'child'])
-  type: 'adult' | 'child';
-
+/**
+ * Payment card for updating a hotel booking
+ */
+export class UpdatePaymentCardDto {
   @ApiPropertyOptional({
-    description: 'Age of the guest (required for child type)',
-    minimum: 0,
-    maximum: 17,
-  })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  age?: number;
-}
-
-export class CreateHotelBookingDto {
-  @ApiProperty({
-    description: 'Quote ID from create quote endpoint',
-    example: 'quo_0000BTVRuKZTavzrZDJ4cb',
-  })
-  @IsString()
-  @IsNotEmpty()
-  quote_id: string;
-
-  @ApiProperty({
-    description: 'Lead guest email address',
-    example: 'john.doe@example.com',
-  })
-  @IsString()
-  @IsNotEmpty()
-  email: string;
-
-  @ApiProperty({
-    description: 'Lead guest phone number in E.164 format',
-    example: '+442080160509',
-  })
-  @IsString()
-  @IsNotEmpty()
-  phone_number: string;
-
-  @ApiProperty({
-    description: 'List of guests for the booking',
-    type: [HotelGuestDto],
-  })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => HotelGuestDto)
-  guests: HotelGuestDto[];
-
-  @ApiPropertyOptional({
-    description: 'Special requests for the accommodation',
-    example: 'Late check-in requested',
-  })
-  @IsOptional()
-  @IsString()
-  accommodation_special_requests?: string;
-
-  @ApiPropertyOptional({
-    description: 'Payment object (for card payments with 3D Secure)',
-    example: { three_d_secure_session_id: '3ds_0000AWr2XsTRIF1Vp34gh5' },
+    description: 'Payment card information',
+    type: UpdatePaymentCardInfoDto,
   })
   @IsOptional()
   @ValidateNested()
-  @Type(() => PaymentDto)
-  payment?: PaymentDto;
-
-  @ApiPropertyOptional({
-    description: 'Metadata key-value pairs (max 50 pairs)',
-    example: { customer_reference_number: 'DLXYYZ5' },
-  })
-  @IsOptional()
-  metadata?: Record<string, string>;
+  @Type(() => UpdatePaymentCardInfoDto)
+  paymentCardInfo?: UpdatePaymentCardInfoDto;
 }
 
+/**
+ * Payment for updating a hotel booking
+ */
+export class UpdatePaymentDto {
+  @ApiPropertyOptional({
+    description: 'Payment method',
+    enum: ['CREDIT_CARD'],
+    example: 'CREDIT_CARD',
+  })
+  @IsOptional()
+  @IsString()
+  method?: string;
+
+  @ApiPropertyOptional({
+    description: 'Payment card details',
+    type: UpdatePaymentCardDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdatePaymentCardDto)
+  paymentCard?: UpdatePaymentCardDto;
+}
+
+/**
+ * Loyalty guest reference for hotel booking update
+ */
+export class UpdateGuestReferenceDto {
+  @ApiProperty({
+    description: 'Guest reference (1-based index)',
+    example: '1',
+  })
+  @IsString()
+  @IsNotEmpty()
+  guestReference: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel loyalty program ID',
+    example: '3081031320523260',
+  })
+  @IsOptional()
+  @IsString()
+  hotelLoyaltyId?: string;
+}
+
+/**
+ * Room association for updating a hotel booking
+ */
+export class UpdateRoomAssociationDto {
+  @ApiPropertyOptional({
+    description: 'Special request text',
+    example: 'I will arrive at midnight',
+  })
+  @IsOptional()
+  @IsString()
+  specialRequest?: string;
+
+  @ApiPropertyOptional({
+    description: 'Guest references with loyalty IDs',
+    type: [UpdateGuestReferenceDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateGuestReferenceDto)
+  guestReferences?: UpdateGuestReferenceDto[];
+}
+
+/**
+ * Product dates for updating a hotel booking
+ */
+export class UpdateProductDto {
+  @ApiPropertyOptional({
+    description: 'New check-in date (YYYY-MM-DD)',
+    example: '2026-07-27',
+  })
+  @IsOptional()
+  @IsDateString()
+  checkInDate?: string;
+
+  @ApiPropertyOptional({
+    description: 'New check-out date (YYYY-MM-DD)',
+    example: '2026-07-28',
+  })
+  @IsOptional()
+  @IsDateString()
+  checkOutDate?: string;
+}
+
+/**
+ * Hotel offer for updating a hotel booking
+ */
+export class UpdateHotelOfferDto {
+  @ApiPropertyOptional({
+    description: 'Product dates',
+    type: UpdateProductDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdateProductDto)
+  product?: UpdateProductDto;
+}
+
+/**
+ * Hotel booking update payload
+ */
+export class UpdateHotelBookingPayloadDto {
+  @ApiPropertyOptional({
+    description: 'Room association updates',
+    type: UpdateRoomAssociationDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdateRoomAssociationDto)
+  roomAssociation?: UpdateRoomAssociationDto;
+
+  @ApiPropertyOptional({
+    description: 'Hotel offer updates (for date changes)',
+    type: UpdateHotelOfferDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdateHotelOfferDto)
+  hotelOffer?: UpdateHotelOfferDto;
+
+  @ApiPropertyOptional({
+    description: 'Payment card updates',
+    type: UpdatePaymentDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdatePaymentDto)
+  payment?: UpdatePaymentDto;
+}
+
+// ==================== MAIN UPDATE HOTEL BOOKING DTO ====================
+
+/**
+ * DTO for updating a hotel booking via our backend
+ * This is used by the PATCH endpoint /api/v1/bookings/hotels/:bookingId/update
+ */
+export class UpdateHotelBookingDto {
+  @ApiProperty({
+    description: 'Booking ID in our system',
+    example: 'cmq9srl8n00060cprolc82n6w',
+  })
+  @IsString()
+  @IsNotEmpty()
+  bookingId: string;
+
+  @ApiProperty({
+    description: 'Amadeus provider booking ID (hotelOrderId)',
+    example: 'RINTMIZQLzlwMJUtMDYtMDI=',
+  })
+  @IsString()
+  @IsNotEmpty()
+  providerBookingId: string;
+
+  @ApiPropertyOptional({
+    description: 'Update type: dates, special, or loyalty',
+    enum: ['dates', 'special', 'loyalty', 'payment'],
+  })
+  @IsOptional()
+  @IsString()
+  updateType?: 'dates' | 'special' | 'loyalty' | 'payment';
+
+  @ApiPropertyOptional({
+    description: 'Special request text',
+    example: 'I will arrive at midnight, please prepare extra pillows',
+  })
+  @IsOptional()
+  @IsString()
+  specialRequest?: string;
+
+  @ApiPropertyOptional({
+    description: 'New check-in date (YYYY-MM-DD)',
+    example: '2026-07-27',
+  })
+  @IsOptional()
+  @IsDateString()
+  checkInDate?: string;
+
+  @ApiPropertyOptional({
+    description: 'New check-out date (YYYY-MM-DD)',
+    example: '2026-07-28',
+  })
+  @IsOptional()
+  @IsDateString()
+  checkOutDate?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel loyalty program ID',
+    example: '3081031320523260',
+  })
+  @IsOptional()
+  @IsString()
+  loyaltyId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Updated payment information',
+    type: UpdatePaymentDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdatePaymentDto)
+  payment?: UpdatePaymentDto;
+
+  @ApiPropertyOptional({
+    description: 'Complete update payload (alternative to individual fields)',
+    type: UpdateHotelBookingPayloadDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdateHotelBookingPayloadDto)
+  payload?: UpdateHotelBookingPayloadDto;
+}
+
+/**
+ * Simple DTO for the PATCH endpoint that the frontend will call
+ */
+export class UpdateHotelBookingRequestDto {
+  @ApiProperty({
+    description: 'Type of update being performed',
+    enum: ['dates', 'special', 'loyalty', 'payment'],
+  })
+  @IsString()
+  @IsNotEmpty()
+  updateType: 'dates' | 'special' | 'loyalty' | 'payment';
+
+  @ApiProperty({
+    description: 'Update payload containing the changes',
+    type: 'object',
+    example: {
+      hotelBooking: {
+        roomAssociation: {
+          specialRequest: 'Guest will arrive at midnight'
+        }
+      }
+    },
+  })
+  @IsOptional()
+  payload?: any;
+
+  @ApiProperty({
+    description: 'Amadeus provider booking ID',
+    example: 'RINTMIZQLzlwMJUtMDYtMDI=',
+  })
+  @IsString()
+  @IsNotEmpty()
+  providerBookingId: string;
+}

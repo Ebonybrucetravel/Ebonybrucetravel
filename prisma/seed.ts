@@ -16,8 +16,8 @@ async function main() {
   console.log('🌱 Starting database seed...\n');
 
   // 1. Create Super Admin User (default: dedicated admin email so it doesn't clash with customer accounts)
-  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'justtargetseyi@gmail.com';
-  const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'Admin@123!';
+  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'ebonybruce10@gmail.com';
+  const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'Admin@1000!';
   const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
 
   const existingSuperAdmin = await prisma.user.findUnique({
@@ -64,9 +64,9 @@ async function main() {
   }
 
   // 2. Create Admin User (Optional)
-  const adminEmail = process.env.ADMIN_EMAIL || 'justtargetseyi@gmail.com';
+  const adminEmail = process.env.ADMIN_EMAIL || 'ebonybruce10@gmail.com';
   if (adminEmail !== superAdminEmail) {
-    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123!';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@1000!';
     const adminHashedPassword = await bcrypt.hash(adminPassword, 10);
 
     const existingAdmin = await prisma.user.findUnique({

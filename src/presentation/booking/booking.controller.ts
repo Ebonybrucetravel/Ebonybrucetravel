@@ -13,6 +13,7 @@ import {
   HttpCode,
   HttpStatus,
   HttpException,
+  Patch,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
@@ -29,7 +30,6 @@ import { SearchHotelsUseCase } from '@application/booking/use-cases/search-hotel
 import { SearchAmadeusHotelsUseCase } from '@application/booking/use-cases/search-amadeus-hotels.use-case';
 import { FetchHotelRatesUseCase } from '@application/booking/use-cases/fetch-hotel-rates.use-case';
 import { CreateHotelQuoteUseCase } from '@application/booking/use-cases/create-hotel-quote.use-case';
-import { CreateHotelBookingUseCase } from '@application/booking/use-cases/create-hotel-booking.use-case';
 import { CreateAmadeusHotelBookingUseCase } from '@application/booking/use-cases/create-amadeus-hotel-booking.use-case';
 import { CreateGuestAmadeusHotelBookingUseCase } from '@application/booking/use-cases/create-guest-amadeus-hotel-booking.use-case';
 import { GetHotelBookingUseCase } from '@application/booking/use-cases/get-hotel-booking.use-case';
@@ -54,7 +54,6 @@ import { PaginationQueryDto, ListOffersQueryDto } from './dto/pagination.dto';
 import { SearchHotelsDto } from './dto/search-hotels.dto';
 import { SearchAmadeusHotelsDto } from './dto/search-amadeus-hotels.dto';
 import { CreateHotelQuoteDto } from './dto/create-hotel-quote.dto';
-import { CreateHotelBookingDto } from './dto/create-hotel-booking.dto';
 import { CreateAmadeusHotelBookingDto } from './dto/create-amadeus-hotel-booking.dto';
 import { AccommodationSuggestionsDto } from './dto/accommodation-suggestions.dto';
 import { PlaceSuggestionsDto } from './dto/place-suggestions.dto';
@@ -66,6 +65,8 @@ import { CreateCarRentalBookingUseCase } from '@application/booking/use-cases/cr
 import { CreateGuestCarRentalBookingUseCase } from '@application/booking/use-cases/create-guest-car-rental-booking.use-case';
 import { CancelCarRentalBookingUseCase } from '@application/booking/use-cases/cancel-car-rental-booking.use-case';
 import { RequestHotelCancellationUseCase } from '@application/booking/use-cases/request-hotel-cancellation.use-case';
+import { UpdateAmadeusHotelBookingUseCase } from '@application/booking/use-cases/update-amadeus-hotel-booking.use-case';
+import { UpdateHotelBookingRequestDto, UpdateHotelBookingDto } from './dto/update-hotel-booking.dto';
 import { Throttle } from '@common/decorators/throttle.decorator';
 
 @ApiTags('Bookings')
@@ -82,7 +83,6 @@ export class BookingController {
     private readonly searchAmadeusHotelsUseCase: SearchAmadeusHotelsUseCase,
     private readonly fetchHotelRatesUseCase: FetchHotelRatesUseCase,
     private readonly createHotelQuoteUseCase: CreateHotelQuoteUseCase,
-    private readonly createHotelBookingUseCase: CreateHotelBookingUseCase,
     private readonly createAmadeusHotelBookingUseCase: CreateAmadeusHotelBookingUseCase,
     private readonly createGuestAmadeusHotelBookingUseCase: CreateGuestAmadeusHotelBookingUseCase,
     private readonly getHotelBookingUseCase: GetHotelBookingUseCase,
@@ -103,8 +103,11 @@ export class BookingController {
     private readonly createGuestCarRentalBookingUseCase: CreateGuestCarRentalBookingUseCase,
     private readonly cancelCarRentalBookingUseCase: CancelCarRentalBookingUseCase,
     private readonly requestHotelCancellationUseCase: RequestHotelCancellationUseCase,
+    private readonly updateAmadeusHotelBookingUseCase: UpdateAmadeusHotelBookingUseCase,
     private readonly prisma: PrismaService,
   ) { }
+
+  // ==================== FLIGHT ENDPOINTS ====================
 
   @Public()
   @Post('search/flights')
@@ -606,19 +609,7 @@ export class BookingController {
     };
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Post('hotels/bookings')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a hotel booking (Duffel)' })
-  @ApiResponse({ status: 201, description: 'Hotel booking created successfully' })
-  async createHotelBooking(@Body() bookingDto: CreateHotelBookingDto, @Request() req: any) {
-    const result = await this.createHotelBookingUseCase.execute(bookingDto, req.user.id);
-    return {
-      success: true,
-      data: result,
-      message: 'Hotel booking created successfully',
-    };
-  }
+  // ❌ DUFFEL HOTEL BOOKING ENDPOINT REMOVED - Not needed
 
   @Public()
   @Post('hotels/bookings/amadeus/guest')
@@ -757,6 +748,48 @@ export class BookingController {
     };
   }
 
+  // ==================== HOTEL BOOKING UPDATE ENDPOINT ====================
+
+  @Patch('hotels/:bookingId/update')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Update a hotel booking (special request, dates, loyalty ID)',
+    description:
+      'Updates an existing hotel booking. Can update special requests, check-in/out dates, or loyalty program ID.',
+  })
+  @ApiResponse({ status: 200, description: 'Hotel booking updated successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid update data' })
+  @ApiResponse({ status: 404, description: 'Booking not found' })
+  async updateHotelBooking(
+    @Param('bookingId') bookingId: string,
+    @Body() body: UpdateHotelBookingRequestDto,
+    @Request() req: any,
+  ) {
+    const dto = new UpdateHotelBookingDto();
+    dto.bookingId = bookingId;
+    dto.providerBookingId = body.providerBookingId;
+    dto.updateType = body.updateType;
+    dto.payload = body.payload;
+    
+    // Extract specific fields from payload based on update type
+    if (body.updateType === 'special') {
+      dto.specialRequest = body.payload?.hotelBooking?.roomAssociation?.specialRequest;
+    } else if (body.updateType === 'dates') {
+      dto.checkInDate = body.payload?.hotelBooking?.hotelOffer?.product?.checkInDate;
+      dto.checkOutDate = body.payload?.hotelBooking?.hotelOffer?.product?.checkOutDate;
+    } else if (body.updateType === 'loyalty') {
+      dto.loyaltyId = body.payload?.hotelBooking?.roomAssociation?.guestReferences?.[0]?.hotelLoyaltyId;
+    }
+    
+    const result = await this.updateAmadeusHotelBookingUseCase.execute(dto, req.user.id);
+    return {
+      success: true,
+      data: result,
+      message: 'Booking updated successfully',
+    };
+  }
+
   @Public()
   @Get('hotels/accommodation/:accommodationId')
   @ApiOperation({ summary: 'Get accommodation details by ID' })
@@ -857,7 +890,7 @@ export class BookingController {
     return { received: true };
   }
 
-  // ==================== HOTEL IMAGES ENDPOINT (UPDATED - NO GOOGLE PLACE ID) ====================
+  // ==================== HOTEL IMAGES ENDPOINT ====================
 
   @Public()
   @Get('hotels/:hotelId/images')
