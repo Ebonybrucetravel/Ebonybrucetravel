@@ -58,7 +58,7 @@ export class AmadeusGuestContactDto {
 }
 
 export class AmadeusGuestDto {
-  @ApiProperty({ description: 'Guest title', type: AmadeusGuestNameDto })
+  @ApiProperty({ description: 'Guest name information', type: AmadeusGuestNameDto })
   @ValidateNested()
   @Type(() => AmadeusGuestNameDto)
   name: AmadeusGuestNameDto;
@@ -91,6 +91,7 @@ export class AmadeusRoomAssociationDto {
   @ApiProperty({
     description: 'Guest references for this room',
     type: [AmadeusRoomGuestReferenceDto],
+    example: [{ guestReference: "1" }]
   })
   @IsArray()
   @ValidateNested({ each: true })
@@ -271,6 +272,7 @@ export class CreateAmadeusHotelBookingDto {
 
   @ApiPropertyOptional({
     description: 'Client IP (set by server from request; used for dispute evidence)',
+    example: '192.168.1.1',
   })
   @IsOptional()
   @IsString()
@@ -278,6 +280,7 @@ export class CreateAmadeusHotelBookingDto {
 
   @ApiPropertyOptional({
     description: 'User agent (set by server from request; used for dispute evidence)',
+    example: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
   })
   @IsOptional()
   @IsString()

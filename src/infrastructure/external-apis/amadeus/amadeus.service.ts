@@ -480,53 +480,90 @@ export class AmadeusService {
     });
   }
 
-  // ==================== HOTEL BOOKING API (v2) ====================  
+ // ==================== HOTEL BOOKING API (v2) ====================  
 
-  /**
-   * Create a hotel booking with Amadeus
-   * ✅ Uses CurrencyService for accurate conversion
-   * ✅ Properly formats price with markups as object, not array
-   */
-  async createHotelBooking(params: {
-    hotelOfferId: string;
-    guests: Array<{ title: string; firstName: string; lastName: string; phone: string; email: string }>;
-    roomAssociations: Array<{ hotelOfferId: string; guestReferences: Array<{ guestReference: string }> }>;
-    payment: {
-      method: 'CREDIT_CARD';
-      paymentCard: { paymentCardInfo: { vendorCode: string; cardNumber: string; expiryDate: string; holderName?: string; securityCode?: string } };
-    };
-    travelAgentEmail?: string;
-    accommodationSpecialRequests?: string;
-    price?: { currency: string; total: string; base: string; markups?: any[]; taxes?: any[] };
-  }): Promise<any> {
+/**
+ * Create a hotel booking with Amadeus
+ * ✅ Supports both legacy flat structure and new Amadeus structure
+ */
+async createHotelBooking(params: {
+  // Legacy flat structure (backward compatible)
+  hotelOfferId?: string;
+  guests?: Array<{ title: string; firstName: string; lastName: string; phone: string; email: string }>;
+  roomAssociations?: Array<{ hotelOfferId: string; guestReferences: Array<{ guestReference: string }> }>;
+  payment?: { method: 'CREDIT_CARD'; paymentCard: { paymentCardInfo: any } };
+  travelAgentEmail?: string;
+  accommodationSpecialRequests?: string;
+  price?: { currency: string; total: string; base: string; markups?: any; taxes?: any[] };
+  
+  // New structure (full payload)
+  data?: any;
+}): Promise<any> {
+  let requestBody: any;
+  
+  // ✅ Check if this is the new format (has data wrapper)
+  if (params.data) {
+    // New format - use as-is
+    requestBody = params;
+    this.logger.log('Using new Amadeus request format with data wrapper');
+  } 
+  // ✅ Check if this is the legacy flat format
+  else if (params.hotelOfferId && params.guests && params.roomAssociations && params.payment) {
+    // Legacy format - transform to correct Amadeus structure
+    this.logger.log('Transforming legacy format to Amadeus structure');
+    
     const travelAgentEmail = params.travelAgentEmail || this.configService.get<string>('AMADEUS_TRAVEL_AGENT_EMAIL');
     if (!travelAgentEmail?.trim()) {
       throw new HttpException('Travel agent email is required', HttpStatus.BAD_REQUEST);
     }
     
-    const requestBody: any = {
+    requestBody = {
       data: {
         type: 'hotel-order',
-        guests: params.guests.map((guest, index) => ({ tid: index + 1, ...guest })),
-        roomAssociations: params.roomAssociations,
+        guests: params.guests.map((guest, index) => ({ 
+          id: index + 1,  // ✅ Use 'id' not 'tid'
+          title: guest.title,
+          firstName: guest.firstName,
+          lastName: guest.lastName,
+          phone: guest.phone,
+          email: guest.email,
+        })),
+        hotelBookings: [  // ✅ Wrap roomAssociations in hotelBookings array
+          {
+            roomAssociations: params.roomAssociations,
+          }
+        ],
         payment: params.payment,
-        travelAgent: { contact: { email: travelAgentEmail.trim() } },
+        travelAgent: { 
+          contact: { 
+            email: travelAgentEmail.trim() 
+          } 
+        },
       },
     };
-
-    // ✅ FIX: Restructure price for Amadeus with proper currency conversion
+    
+    // ✅ Add accommodation special requests if provided
+    if (params.accommodationSpecialRequests) {
+      requestBody.data.accommodationSpecialRequests = params.accommodationSpecialRequests;
+    }
+    
+    // ✅ Add price if provided (with proper currency conversion)
     if (params.price) {
       let currency = params.price.currency;
       let baseAmount = parseFloat(params.price.base);
       let totalAmount = parseFloat(params.price.total);
       
-      // Calculate total markup amount from array to single amount
+      // Calculate total markup amount
       let totalMarkupAmount = 0;
-      if (params.price.markups && Array.isArray(params.price.markups)) {
-        totalMarkupAmount = params.price.markups.reduce(
-          (sum, markup) => sum + parseFloat(markup.amount || '0'),
-          0
-        );
+      if (params.price.markups) {
+        if (Array.isArray(params.price.markups)) {
+          totalMarkupAmount = params.price.markups.reduce(
+            (sum, markup) => sum + parseFloat(markup.amount || '0'),
+            0
+          );
+        } else if (typeof params.price.markups === 'object' && params.price.markups.amount) {
+          totalMarkupAmount = parseFloat(params.price.markups.amount);
+        }
       }
       
       // ✅ Convert to EUR using CurrencyService (Amadeus expects EUR for hotel bookings)
@@ -573,13 +610,18 @@ export class AmadeusService {
       requestBody.data.price = priceForAmadeus;
       this.logger.log(`💰 Sending price to Amadeus: ${JSON.stringify(priceForAmadeus)}`);
     }
-
-    if (params.accommodationSpecialRequests) {
-      requestBody.data.accommodationSpecialRequests = params.accommodationSpecialRequests;
-    }
-    
-    return this.makeRequest('/v2/booking/hotel-orders', { method: 'POST', body: requestBody });
+  } 
+  else {
+    throw new HttpException(
+      'Invalid parameters for createHotelBooking. Provide either { data: {...} } or { hotelOfferId, guests, roomAssociations, payment }',
+      HttpStatus.BAD_REQUEST,
+    );
   }
+  
+  this.logger.log(`📤 Sending to Amadeus: ${JSON.stringify(requestBody, null, 2)}`);
+  
+  return this.makeRequest('/v2/booking/hotel-orders', { method: 'POST', body: requestBody });
+}
 
   async getHotelBooking(orderId: string): Promise<any> {
     if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
