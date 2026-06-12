@@ -1,6 +1,7 @@
 import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { redactCardFromString } from '@common/utils/pci-redaction.util';
+import { CurrencyService } from '@infrastructure/currency/currency.service';
 
 @Injectable()
 export class AmadeusService {
@@ -14,7 +15,10 @@ export class AmadeusService {
   private accessToken: string | null = null;
   private tokenExpiresAt: number = 0;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly currencyService: CurrencyService,
+  ) {
     // Enterprise credentials
     this.apiKey = this.configService.get<string>('AMADEUS_API_KEY') || '';
     this.apiSecret = this.configService.get<string>('AMADEUS_API_SECRET') || '';
@@ -270,12 +274,6 @@ export class AmadeusService {
 
   // ==================== HOTEL CONTENT & IMAGES API (v3) ====================
   
-  /**
-   * Get hotel content including images, descriptions, amenities, etc.
-   * @param hotelId - The hotel ID (e.g., "WHLON464")
-   * @param fields - Optional categories to retrieve
-   * @param view - Either "LIGHT" or "FULL"
-   */
   async getHotelContent(
     hotelId: string,
     fields?: Array<'promotions' | 'awards' | 'policies' | 'rooms' | 'facilities' | 'pointOfInterest' | 'hotel' | 'basic'>,
@@ -305,25 +303,14 @@ export class AmadeusService {
     });
   }
 
-  /**
-   * Get hotel basic information only
-   */
   async getHotelBasicInfo(hotelId: string): Promise<any> {
     return this.getHotelContent(hotelId, ['basic'], 'LIGHT');
   }
 
-  /**
-   * Get complete hotel details including all content (descriptions, amenities, etc.)
-   */
   async getHotelFullDetails(hotelId: string): Promise<any> {
     return this.getHotelContent(hotelId, undefined, 'FULL');
   }
 
-  /**
-   * Extract and return all image URLs from hotel content
-   * @param hotelId - The hotel ID
-   * @returns Array of image URLs
-   */
   async getHotelImageUrls(hotelId: string): Promise<string[]> {
     try {
       const response = await this.getHotelContent(hotelId, undefined, 'FULL');
@@ -332,7 +319,6 @@ export class AmadeusService {
       if (response?.data?.basic?.media && Array.isArray(response.data.basic.media)) {
         for (const media of response.data.basic.media) {
           if (media.mediaScales && Array.isArray(media.mediaScales) && media.mediaScales.length > 0) {
-            // Get the largest image from mediaScales
             const largestImage = media.mediaScales.sort((a: any, b: any) => {
               const aSize = (a.dimensions?.height || 0) * (a.dimensions?.width || 0);
               const bSize = (b.dimensions?.height || 0) * (b.dimensions?.width || 0);
@@ -354,18 +340,11 @@ export class AmadeusService {
     }
   }
 
-  /**
-   * Get the primary image URL for a hotel (best representative image)
-   * Priority: EXTERIOR_VIEW > LOBBY_VIEW > LOGO > RESTAURANT > BAR_OR_LOUNGE > any
-   * @param hotelId - The hotel ID
-   * @returns Primary image URL or null
-   */
   async getHotelPrimaryImageUrl(hotelId: string): Promise<string | null> {
     try {
       const response = await this.getHotelContent(hotelId, undefined, 'FULL');
       
       if (response?.data?.basic?.media && Array.isArray(response.data.basic.media)) {
-        // Priority order for primary image
         const priorityCategories = ['EXTERIOR_VIEW', 'LOBBY_VIEW', 'LOGO', 'RESTAURANT', 'BAR_OR_LOUNGE'];
         
         for (const category of priorityCategories) {
@@ -374,7 +353,6 @@ export class AmadeusService {
           );
           
           if (mediaItem?.mediaScales?.length > 0) {
-            // Get the largest image
             const largest = mediaItem.mediaScales.sort((a: any, b: any) => {
               const aSize = (a.dimensions?.height || 0) * (a.dimensions?.width || 0);
               const bSize = (b.dimensions?.height || 0) * (b.dimensions?.width || 0);
@@ -388,7 +366,6 @@ export class AmadeusService {
           }
         }
         
-        // Fallback: return first image from any category
         const firstMedia = response.data.basic.media.find((m: any) => m.mediaScales?.length > 0);
         if (firstMedia?.mediaScales?.[0]?.href) {
           this.logger.log(`Primary image fallback for ${hotelId}`);
@@ -404,19 +381,16 @@ export class AmadeusService {
     }
   }
 
- 
   async getCompleteHotelDetails(hotelId: string): Promise<any> {
     try {
       this.logger.log(`Fetching complete hotel details for ${hotelId}`);
       
-      // Fetch content and images in parallel
       const [contentResponse, imageUrls, primaryImage] = await Promise.all([
         this.getHotelFullDetails(hotelId),
         this.getHotelImageUrls(hotelId),
         this.getHotelPrimaryImageUrl(hotelId),
       ]);
       
-      // Extract the basic hotel data
       const hotelData = contentResponse?.data?.basic || contentResponse?.data || contentResponse;
       
       return {
@@ -454,65 +428,64 @@ export class AmadeusService {
     }
   }
 
-// ==================== HOTEL SEARCH API (v3) ====================
+  // ==================== HOTEL SEARCH API (v3) ====================
   
-async searchHotels(params: {
-  hotelIds?: string[];
-  cityCode?: string;
-  checkInDate: string;
-  checkOutDate: string;
-  adults?: number;
-  roomQuantity?: number;
-  currency?: string;
-  bestRateOnly?: boolean;
-}): Promise<any> {
- 
-  const hasHotelIds = params.hotelIds && params.hotelIds.length > 0;
-  const hasCityCode = params.cityCode && params.cityCode.trim() !== '';
-  
-  if (!hasHotelIds && !hasCityCode) {
-    throw new HttpException(
-      'Either hotelIds or cityCode is required for hotel search.',
-      HttpStatus.BAD_REQUEST,
-    );
+  async searchHotels(params: {
+    hotelIds?: string[];
+    cityCode?: string;
+    checkInDate: string;
+    checkOutDate: string;
+    adults?: number;
+    roomQuantity?: number;
+    currency?: string;
+    bestRateOnly?: boolean;
+  }): Promise<any> {
+    const hasHotelIds = params.hotelIds && params.hotelIds.length > 0;
+    const hasCityCode = params.cityCode && params.cityCode.trim() !== '';
+    
+    if (!hasHotelIds && !hasCityCode) {
+      throw new HttpException(
+        'Either hotelIds or cityCode is required for hotel search.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    
+    const queryParams: Record<string, string> = {
+      checkInDate: params.checkInDate,
+      checkOutDate: params.checkOutDate,
+    };
+    
+    if (hasHotelIds) {
+      queryParams.hotelIds = params.hotelIds.join(',');
+    }
+    
+    if (hasCityCode) {
+      queryParams.cityCode = params.cityCode;
+    }
+    
+    if (params.adults) queryParams.adults = params.adults.toString();
+    if (params.roomQuantity) queryParams.roomQuantity = params.roomQuantity.toString();
+    if (params.currency) queryParams.currency = params.currency;
+    if (params.bestRateOnly !== undefined) queryParams.bestRateOnly = params.bestRateOnly.toString();
+    
+    return this.makeRequest('/v3/shopping/hotel-offers', { method: 'GET', params: queryParams });
   }
-  
-  const queryParams: Record<string, string> = {
-    checkInDate: params.checkInDate,
-    checkOutDate: params.checkOutDate,
-  };
-  
-  if (hasHotelIds) {
-    queryParams.hotelIds = params.hotelIds.join(',');
+
+  async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<any> {
+    const queryParams: Record<string, string> = {};
+    if (params.lang) queryParams.lang = params.lang;
+    return this.makeRequest(`/v3/shopping/hotel-offers/${params.offerId}`, { 
+      method: 'GET', 
+      params: queryParams 
+    });
   }
-  
-  if (hasCityCode) {
-    queryParams.cityCode = params.cityCode;
-  }
-  
-  if (params.adults) queryParams.adults = params.adults.toString();
-  if (params.roomQuantity) queryParams.roomQuantity = params.roomQuantity.toString();
-  if (params.currency) queryParams.currency = params.currency;
-  if (params.bestRateOnly !== undefined) queryParams.bestRateOnly = params.bestRateOnly.toString();
-  
-  return this.makeRequest('/v3/shopping/hotel-offers', { method: 'GET', params: queryParams });
-}
 
-
-async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<any> {
-  const queryParams: Record<string, string> = {};
-  if (params.lang) queryParams.lang = params.lang;
-  return this.makeRequest(`/v3/shopping/hotel-offers/${params.offerId}`, { 
-    method: 'GET', 
-    params: queryParams 
-  });
-}
-
-// ==================== HOTEL BOOKING API (v2) ====================  
+  // ==================== HOTEL BOOKING API (v2) ====================  
 
   /**
    * Create a hotel booking with Amadeus
-   * Supports optional price parameter for markup inclusion
+   * ✅ Uses CurrencyService for accurate conversion
+   * ✅ Properly formats price with markups as object, not array
    */
   async createHotelBooking(params: {
     hotelOfferId: string;
@@ -541,10 +514,64 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
       },
     };
 
-    // ✅ Add price to the request body if provided (for markup)
+    // ✅ FIX: Restructure price for Amadeus with proper currency conversion
     if (params.price) {
-      requestBody.data.price = params.price;
-      this.logger.log(`💰 Adding marked-up price to Amadeus booking: ${JSON.stringify(params.price)}`);
+      let currency = params.price.currency;
+      let baseAmount = parseFloat(params.price.base);
+      let totalAmount = parseFloat(params.price.total);
+      
+      // Calculate total markup amount from array to single amount
+      let totalMarkupAmount = 0;
+      if (params.price.markups && Array.isArray(params.price.markups)) {
+        totalMarkupAmount = params.price.markups.reduce(
+          (sum, markup) => sum + parseFloat(markup.amount || '0'),
+          0
+        );
+      }
+      
+      // ✅ Convert to EUR using CurrencyService (Amadeus expects EUR for hotel bookings)
+      const targetCurrency = 'EUR';
+      
+      if (currency !== targetCurrency) {
+        try {
+          this.logger.log(`💰 Converting ${currency} to ${targetCurrency} using CurrencyService...`);
+          
+          const convertedBase = await this.currencyService.convert(baseAmount, currency, targetCurrency);
+          const convertedTotal = await this.currencyService.convert(totalAmount, currency, targetCurrency);
+          const convertedMarkup = await this.currencyService.convert(totalMarkupAmount, currency, targetCurrency);
+          
+          baseAmount = convertedBase;
+          totalAmount = convertedTotal;
+          totalMarkupAmount = convertedMarkup;
+          currency = targetCurrency;
+          
+          this.logger.log(`✅ Converted: ${params.price.base} ${params.price.currency} → ${baseAmount.toFixed(2)} ${currency}`);
+        } catch (error) {
+          this.logger.error(`Currency conversion failed: ${error.message}`);
+          throw new HttpException(
+            `Currency conversion from ${currency} to ${targetCurrency} failed. Please ensure your conversion API is working.`,
+            HttpStatus.BAD_REQUEST
+          );
+        }
+      }
+      
+      // ✅ Build correct Amadeus price structure
+      const priceForAmadeus: any = {
+        currency: currency,
+        base: baseAmount.toFixed(2),
+        total: totalAmount.toFixed(2),
+      };
+      
+      // ✅ Add markups as an OBJECT (not array) if there is markup
+      if (totalMarkupAmount > 0) {
+        priceForAmadeus.markups = {
+          amount: totalMarkupAmount.toFixed(2)
+        };
+        this.logger.log(`💰 Adding markup: ${totalMarkupAmount.toFixed(2)} ${currency}`);
+      }
+      
+      requestBody.data.price = priceForAmadeus;
+      this.logger.log(`💰 Sending price to Amadeus: ${JSON.stringify(priceForAmadeus)}`);
     }
 
     if (params.accommodationSpecialRequests) {
@@ -577,20 +604,6 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
 
   // ==================== HOTEL BOOKING UPDATE API (v2) ====================
   
-  /**
-   * Extract hotel order ID and booking ID from provider data
-   * 
-   * The Amadeus response structure typically looks like:
-   * {
-   *   data: {
-   *     id: "RINTMIZQLzlwMJUtMDYtMDI=",  // This is the hotelOrderId
-   *     hotelBookings: [{
-   *       id: "MS81NDYzWkpQNTAwLzkwNzQOMTc2",  // This is the hotelBookingId
-   *       ...
-   *     }]
-   *   }
-   * }
-   */
   async extractHotelBookingIds(providerData: any): Promise<{ hotelOrderId: string; hotelBookingId: string } | null> {
     try {
       const data = providerData?.data || providerData;
@@ -609,23 +622,6 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
     }
   }
 
-  /**
-   * Update a hotel booking (special requests, dates, payment, loyalty ID)
-   * 
-   * According to Amadeus API documentation:
-   * PATCH /booking/hotel-orders/{hotelOrderId}/hotel-bookings/{hotelBookingId}
-   * 
-   * Can update:
-   * 1. Check-in date
-   * 2. Check-out date
-   * 3. Form of Payment (Credit Card only)
-   * 4. Customer ID (for Hotel Loyalty programs)
-   * 5. Special requests (Supplementary Information)
-   * 
-   * @param hotelOrderId - The Amadeus hotel order ID (e.g., "RINTMIZQLzlwMJUtMDYtMDI=")
-   * @param hotelBookingId - The hotel booking ID within the order (e.g., "MS81NDYzWkpQNTAwLzkwNzQOMTc2")
-   * @param updateData - Object containing the fields to update
-   */
   async updateHotelBooking(
     hotelOrderId: string,
     hotelBookingId: string,
@@ -656,14 +652,12 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
       }
     };
 
-    // Add special request if provided
     if (updateData.specialRequest) {
       requestBody.data.hotelBooking.roomAssociation = {
         specialRequest: updateData.specialRequest
       };
     }
 
-    // Add date changes if provided
     if (updateData.checkInDate || updateData.checkOutDate) {
       requestBody.data.hotelBooking.hotelOffer = {
         product: {}
@@ -676,7 +670,6 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
       }
     }
 
-    // Add loyalty ID if provided
     if (updateData.loyaltyId) {
       if (!requestBody.data.hotelBooking.roomAssociation) {
         requestBody.data.hotelBooking.roomAssociation = {};
@@ -687,7 +680,6 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
       }];
     }
 
-    // Add payment card if provided
     if (updateData.paymentCard) {
       requestBody.data.hotelBooking.payment = {
         paymentCard: {
@@ -708,16 +700,11 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
     this.logger.log(`Updating hotel booking: orderId=${hotelOrderId}, bookingId=${hotelBookingId}`);
     this.logger.debug(`Update payload: ${JSON.stringify(requestBody)}`);
 
-    // Amadeus endpoint: PATCH /booking/hotel-orders/{hotelOrderId}/hotel-bookings/{hotelBookingId}
     const endpoint = `/v2/booking/hotel-orders/${hotelOrderId}/hotel-bookings/${hotelBookingId}`;
     
     return this.makeRequest(endpoint, { method: 'PATCH', body: requestBody });
   }
 
-  /**
-   * Update only the special request for a hotel booking
-   * Convenience method for common use case
-   */
   async updateHotelBookingSpecialRequest(
     hotelOrderId: string,
     hotelBookingId: string,
@@ -726,9 +713,6 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
     return this.updateHotelBooking(hotelOrderId, hotelBookingId, { specialRequest });
   }
 
-  /**
-   * Update check-in/check-out dates for a hotel booking
-   */
   async updateHotelBookingDates(
     hotelOrderId: string,
     hotelBookingId: string,
@@ -738,9 +722,6 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
     return this.updateHotelBooking(hotelOrderId, hotelBookingId, { checkInDate, checkOutDate });
   }
 
-  /**
-   * Update loyalty ID for a hotel booking
-   */
   async updateHotelBookingLoyaltyId(
     hotelOrderId: string,
     hotelBookingId: string,
@@ -749,10 +730,6 @@ async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<
     return this.updateHotelBooking(hotelOrderId, hotelBookingId, { loyaltyId });
   }
 
-  /**
-   * Cancel a specific hotel booking within an order
-   * POST /booking/hotel-orders/{hotelOrderId}/hotel-bookings/{hotelBookingId}/cancel
-   */
   async cancelHotelBookingItem(
     hotelOrderId: string,
     hotelBookingId: string
