@@ -430,50 +430,76 @@ export class AmadeusService {
 
   // ==================== HOTEL SEARCH API (v3) ====================
   
-async searchHotels(params: {
-  hotelIds?: string[];
-  cityCode?: string;
-  checkInDate: string;
-  checkOutDate: string;
-  adults?: number;
-  roomQuantity?: number;
-  currency?: string;
-  bestRateOnly?: boolean;
-}): Promise<any> {
-  // ... existing code
-}
-
-async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<any> {
-  const queryParams: Record<string, string> = {};
-  if (params.lang) queryParams.lang = params.lang;
-  return this.makeRequest(`/v3/shopping/hotel-offers/${params.offerId}`, { 
-    method: 'GET', 
-    params: queryParams 
-  });
-}
-
-// ✅ ADD THIS METHOD HERE
-async repriceHotelOffer(offerId: string): Promise<any> {
-  try {
-    this.logger.log(`🔄 Re-pricing hotel offer: ${offerId}`);
+  async searchHotels(params: {
+    hotelIds?: string[];
+    cityCode?: string;
+    checkInDate: string;
+    checkOutDate: string;
+    adults?: number;
+    roomQuantity?: number;
+    currency?: string;
+    bestRateOnly?: boolean;
+  }): Promise<any> {
+    const hasHotelIds = params.hotelIds && params.hotelIds.length > 0;
+    const hasCityCode = params.cityCode && params.cityCode.trim() !== '';
     
-    const response = await this.makeRequest(`/v3/shopping/hotel-offers/${offerId}`, {
-      method: 'GET',
-      params: {
-        currency: 'GBP'
-      }
-    });
+    if (!hasHotelIds && !hasCityCode) {
+      throw new HttpException(
+        'Either hotelIds or cityCode is required for hotel search.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     
-    this.logger.log(`✅ Re-pricing successful for offer: ${offerId}`);
-    return response;
-  } catch (error) {
-    this.logger.error(`❌ Failed to re-price offer: ${offerId}`, error);
-    throw error;
+    const queryParams: Record<string, string> = {
+      checkInDate: params.checkInDate,
+      checkOutDate: params.checkOutDate,
+    };
+    
+    if (hasHotelIds) {
+      queryParams.hotelIds = params.hotelIds.join(',');
+    }
+    
+    if (hasCityCode) {
+      queryParams.cityCode = params.cityCode;
+    }
+    
+    if (params.adults) queryParams.adults = params.adults.toString();
+    if (params.roomQuantity) queryParams.roomQuantity = params.roomQuantity.toString();
+    if (params.currency) queryParams.currency = params.currency;
+    if (params.bestRateOnly !== undefined) queryParams.bestRateOnly = params.bestRateOnly.toString();
+    
+    return this.makeRequest('/v3/shopping/hotel-offers', { method: 'GET', params: queryParams });
   }
-}
 
-// ==================== HOTEL BOOKING API (v2) ====================   
-
+  async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<any> {
+    const queryParams: Record<string, string> = {};
+    if (params.lang) queryParams.lang = params.lang;
+    return this.makeRequest(`/v3/shopping/hotel-offers/${params.offerId}`, { 
+      method: 'GET', 
+      params: queryParams 
+    });
+  }
+  
+  async repriceHotelOffer(offerId: string): Promise<any> {
+    try {
+      this.logger.log(`🔄 Re-pricing hotel offer: ${offerId}`);
+      
+      const response = await this.makeRequest(`/v3/shopping/hotel-offers/${offerId}`, {
+        method: 'GET',
+        params: {
+          currency: 'GBP'
+        }
+      });
+      
+      this.logger.log(`✅ Re-pricing successful for offer: ${offerId}`);
+      return response;
+    } catch (error) {
+      this.logger.error(`❌ Failed to re-price offer: ${offerId}`, error);
+      throw error;
+    }
+  }
+  
+  // ==================== HOTEL BOOKING API (v2) ====================  
 /**
  * Create a hotel booking with Amadeus
  * ✅ Supports both legacy flat structure and new Amadeus structure
@@ -902,4 +928,4 @@ async createHotelBooking(params: {
     
     return this.makeRequest('/v1/ordering/transfer-orders', { method: 'GET', params: queryParams });
   }
-}
+} 
