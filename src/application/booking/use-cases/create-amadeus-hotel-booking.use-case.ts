@@ -353,36 +353,43 @@ export class CreateAmadeusHotelBookingUseCase {
 
       this.logger.log(`📤 Sending to Amadeus: ${JSON.stringify(amadeusRequestPayload, null, 2)}`);
 
-      // Call Amadeus service
-      const amadeusBooking = await this.amadeusService.createHotelBooking(amadeusRequestPayload);
+     // Call Amadeus service
+const amadeusBooking = await this.amadeusService.createHotelBooking(amadeusRequestPayload);
 
-      const updatedBookingData = { ...bookingData };
-      if (bookingData.payment_card_info) {
-        updatedBookingData.payment_card_info = {
-          ...bookingData.payment_card_info,
-          encrypted: null,
-          cardLast4: bookingData.payment_card_info.cardLast4,
-        };
-      }
-      
-      updatedBookingData.amadeus_booking_details = {
-        currency_used: originalCurrency,
-        price_sent: priceForAmadeus,
-        hotel_offer_id: offerId,
-        created_at: new Date().toISOString(),
-        request_payload: amadeusRequestPayload,
-      };
-      
-      await this.prisma.booking.update({
-        where: { id: bookingId },
-        data: {
-          providerBookingId: amadeusBooking.data.id,
-          providerData: amadeusBooking.data,
-          status: BookingStatus.CONFIRMED,
-          bookingData: updatedBookingData,
-        },
-      });
+// ✅ Extract the IDs
+const hotelOrderId = amadeusBooking.data?.id;
+const hotelBookingId = amadeusBooking.data?.hotelBookings?.[0]?.id;
 
+this.logger.log(`✅ Amadeus response - Order ID: ${hotelOrderId}, Booking ID: ${hotelBookingId}`);
+
+const updatedBookingData = { ...bookingData };
+if (bookingData.payment_card_info) {
+  updatedBookingData.payment_card_info = {
+    ...bookingData.payment_card_info,
+    encrypted: null,
+    cardLast4: bookingData.payment_card_info.cardLast4,
+  };
+}
+
+updatedBookingData.amadeus_booking_details = {
+  currency_used: originalCurrency,
+  price_sent: priceForAmadeus,
+  hotel_offer_id: offerId,
+  hotel_order_id: hotelOrderId,      
+  hotel_booking_id: hotelBookingId,  
+  created_at: new Date().toISOString(),
+  request_payload: amadeusRequestPayload,
+};
+
+await this.prisma.booking.update({
+  where: { id: bookingId },
+  data: {
+    providerBookingId: hotelOrderId,  
+    providerData: amadeusBooking.data,
+    status: BookingStatus.CONFIRMED,
+    bookingData: updatedBookingData,
+  },
+});
       this.logger.log(`✅ Successfully created Amadeus hotel order ${amadeusBooking.data.id} with price ${priceForAmadeus.total} ${priceForAmadeus.currency}`);
 
       return {
