@@ -286,10 +286,9 @@ export class CreateAmadeusHotelBookingUseCase {
       this.logger.log(`💰 Sending ORIGINAL price to Amadeus: ${JSON.stringify(priceForAmadeus)}`);
       this.logger.log(`🏨 Hotel Offer ID: ${offerId}, Currency: ${originalCurrency}, Price: ${originalTotal}`);
 
-      // ✅ FIXED: Transform guests with 'tid' field (Amadeus requirement)
+// ✅ FIXED: Transform guests with 'tid' field (Amadeus requirement)
 const transformedGuests = guests.map((g: any, index: number) => ({
-  tid: (index + 1).toString(),  // Amadeus requires 'tid' as string
-  id: index + 1,                  // Optional but good to keep
+  tid: (index + 1).toString(),
   title: g.name?.title || g.title,
   firstName: g.name?.firstName || g.firstName,
   lastName: g.name?.lastName || g.lastName,
@@ -297,19 +296,15 @@ const transformedGuests = guests.map((g: any, index: number) => ({
   email: g.contact?.email || g.email,
 }));
 
-  // ✅ FIXED: Build the complete request body with hotelBookings wrapper
+// ✅ CORRECTED: Build request body matching Amadeus sample (NO hotelBookings wrapper)
 const amadeusRequestPayload = {
   data: {
     type: "hotel-order",
-    guests: transformedGuests,  // Now includes 'tid'
-    hotelBookings: [
-      {
-        roomAssociations: roomAssociations.map((ra: any) => ({
-          hotelOfferId: ra.hotelOfferId,
-          guestReferences: ra.guestReferences,
-        })),
-      }
-    ],
+    guests: transformedGuests,
+    roomAssociations: roomAssociations.map((ra: any) => ({
+      hotelOfferId: ra.hotelOfferId,
+      guestReferences: ra.guestReferences,
+    })),
     payment: {
       method: 'CREDIT_CARD',
       paymentCard: {
@@ -322,7 +317,6 @@ const amadeusRequestPayload = {
         },
       },
     },
-    // ✅ Use your configured travel agent email
     travelAgent: {
       contact: {
         email: this.configService.get<string>('AMADEUS_TRAVEL_AGENT_EMAIL') || 'info@ebonybrucetravels.com',
@@ -331,18 +325,14 @@ const amadeusRequestPayload = {
     ...(bookingData.accommodation_special_requests && {
       accommodationSpecialRequests: bookingData.accommodation_special_requests,
     }),
+    price: priceForAmadeus,
   }
 };
 
-      // ✅ Add price to the request if Amadeus requires it
-      if (priceForAmadeus && priceForAmadeus.total > 0) {
-        amadeusRequestPayload.data['price'] = priceForAmadeus;
-      }
+this.logger.log(`📤 Sending to Amadeus: ${JSON.stringify(amadeusRequestPayload, null, 2)}`);
 
-      this.logger.log(`📤 Sending to Amadeus: ${JSON.stringify(amadeusRequestPayload, null, 2)}`);
-
-      // ✅ Call Amadeus service with the corrected payload
-      const amadeusBooking = await this.amadeusService.createHotelBooking(amadeusRequestPayload);
+// Call Amadeus service
+const amadeusBooking = await this.amadeusService.createHotelBooking(amadeusRequestPayload);
 
       const updatedBookingData = { ...bookingData };
       if (bookingData.payment_card_info) {
