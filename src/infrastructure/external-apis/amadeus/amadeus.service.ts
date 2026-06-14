@@ -132,6 +132,7 @@ export class AmadeusService {
       'X-User-Id': this.userId,
     };
   
+    // ✅ Only add Content-Type for non-GET requests that have a body
     if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
       headers['Content-Type'] = 'application/json';
     }
@@ -145,7 +146,7 @@ export class AmadeusService {
         body: body ? JSON.stringify(body) : undefined,
       });
   
-      // ✅ If 401, retry once with fresh token
+      // If 401, retry once with fresh token
       if (response.status === 401) {
         this.logger.warn('Token expired, refreshing and retrying...');
         this.accessToken = null;
@@ -161,42 +162,17 @@ export class AmadeusService {
   
       if (!response.ok) {
         const errorText = await response.text();
-        this.logger.warn(`Amadeus API error ${response.status} ${endpoint}: ${redactCardFromString(errorText, 500)}`);
+        this.logger.warn(`Amadeus API error ${response.status} ${endpoint}: ${errorText}`);
         
         let errorMessage = `Amadeus API error: ${response.status}`;
-        let errorDetails: any[] = [];
-        
         try {
           const errorJson = JSON.parse(errorText);
-          if (errorJson.errors && Array.isArray(errorJson.errors) && errorJson.errors.length > 0) {
-            errorDetails = errorJson.errors;
-            const firstError = errorJson.errors[0];
-            errorMessage = firstError.detail || firstError.title || errorMessage;
-          } else if (errorJson.message) {
-            errorMessage = errorJson.message;
+          if (errorJson.errors && errorJson.errors.length > 0) {
+            errorMessage = errorJson.errors[0].detail || errorJson.errors[0].title || errorMessage;
           }
-        } catch {
-          // Use default error message
-        }
+        } catch { }
   
-        let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
-        if (response.status === 401 || response.status === 403) {
-          httpStatus = HttpStatus.UNAUTHORIZED;
-          this.accessToken = null;
-        } else if (response.status === 400 || response.status === 422) {
-          httpStatus = HttpStatus.BAD_REQUEST;
-        } else if (response.status === 404) {
-          httpStatus = HttpStatus.NOT_FOUND;
-        }
-  
-        throw new HttpException(
-          {
-            message: errorMessage,
-            statusCode: httpStatus,
-            errors: errorDetails,
-          },
-          httpStatus,
-        );
+        throw new HttpException(errorMessage, response.status);
       }
   
       if (response.status === 204) {
@@ -205,16 +181,10 @@ export class AmadeusService {
       
       return await response.json();
     } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      throw new HttpException(
-        `Amadeus API request failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      if (error instanceof HttpException) throw error;
+      throw new HttpException('Amadeus API request failed', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
-
   // ==================== HOTEL LIST API (v1) ====================
   
   async searchHotelNames(params: {
@@ -754,30 +724,11 @@ async createHotelBooking(params: {
       }];
     }
   
-    if (updateData.paymentCard) {
-      requestBody.data.hotelBooking.payment = {
-        paymentCard: {
-          paymentCardInfo: {
-            vendorCode: updateData.paymentCard.vendorCode,
-            cardNumber: updateData.paymentCard.cardNumber,
-            expiryDate: updateData.paymentCard.expiryDate,
-            holderName: updateData.paymentCard.holderName,
-          }
-        }
-      };
-      
-      if (updateData.paymentCard.securityCode) {
-        requestBody.data.hotelBooking.payment.paymentCard.paymentCardInfo.securityCode = updateData.paymentCard.securityCode;
-      }
-    }
-  
     this.logger.log(`Updating hotel booking: orderId=${hotelOrderId}, bookingId=${hotelBookingId}`);
     this.logger.debug(`Update payload: ${JSON.stringify(requestBody)}`);
   
-    // ✅ URL encode the IDs (they contain = signs)
-    const encodedOrderId = encodeURIComponent(hotelOrderId);
-    const encodedBookingId = encodeURIComponent(hotelBookingId);
-    const endpoint = `/v2/booking/hotel-orders/${encodedOrderId}/hotel-bookings/${encodedBookingId}`;
+    // ✅ DO NOT URL encode - use the IDs as-is (like the Amadeus sample)
+    const endpoint = `/v2/booking/hotel-orders/${hotelOrderId}/hotel-bookings/${hotelBookingId}`;
     
     this.logger.log(`PATCH endpoint: ${endpoint}`);
     
