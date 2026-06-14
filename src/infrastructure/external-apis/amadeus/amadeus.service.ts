@@ -49,59 +49,63 @@ export class AmadeusService {
       this.logger.debug('Using cached access token');
       return this.accessToken;
     }
-
+  
     if (!this.apiKey || !this.apiSecret) {
       throw new HttpException(
-        'Amadeus API credentials not configured. Set AMADEUS_API_KEY and AMADEUS_API_SECRET.',
+        'Amadeus API credentials not configured.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-
+  
     try {
       this.logger.log('Requesting Amadeus OAuth token...');
       this.logger.debug(`Token endpoint: ${this.baseUrl}/v1/security/oauth2/token`);
+      
+      // ✅ For Enterprise API, you need to include office_id
+      const params = new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: this.apiKey,
+        client_secret: this.apiSecret,
+        office_id: this.officeId,  // ✅ ADD THIS - Required for Enterprise API
+      });
       
       const response = await fetch(`${this.baseUrl}/v1/security/oauth2/token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: new URLSearchParams({
-          grant_type: 'client_credentials',
-          client_id: this.apiKey,
-          client_secret: this.apiSecret,
-        }),
+        body: params,
       });
-
+  
       if (!response.ok) {
         const errorText = await response.text();
         this.logger.error(`OAuth failed: ${response.status} - ${errorText}`);
         
         if (response.status === 401) {
           throw new HttpException(
-            'Invalid Amadeus credentials. Please check your AMADEUS_API_KEY and AMADEUS_API_SECRET.',
+            'Invalid Amadeus credentials.',
             HttpStatus.UNAUTHORIZED,
           );
         }
         
         throw new HttpException(
-          `Failed to get Amadeus access token: ${response.status} - ${errorText}`,
+          `Failed to get Amadeus access token: ${response.status}`,
           HttpStatus.UNAUTHORIZED,
         );
       }
-
+  
       const data = await response.json();
       this.accessToken = data.access_token;
       this.tokenExpiresAt = Date.now() + (data.expires_in - 300) * 1000;
       
       this.logger.log('Amadeus OAuth token obtained successfully');
+      this.logger.debug(`Token expires at: ${new Date(this.tokenExpiresAt).toISOString()}`);
+      
       return this.accessToken;
     } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
-        `Failed to authenticate with Amadeus: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to authenticate with Amadeus`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
