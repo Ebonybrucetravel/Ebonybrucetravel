@@ -61,14 +61,15 @@ export class AmadeusService {
       this.logger.log('Requesting Amadeus OAuth token...');
       this.logger.debug(`Token endpoint: ${this.baseUrl}/v1/security/oauth2/token`);
       
-      
+      // ✅ Add SAP (Service Account Principal) - THIS IS CRITICAL!
       const params = new URLSearchParams({
         grant_type: 'client_credentials',
         client_id: this.apiKey,
         client_secret: this.apiSecret,
-        office_id: this.officeId,           
-        organization_id: this.orgId,        
-        user_id: this.userId,              
+        sap: '1ASIUTCHE9BAQC',           // ✅ ADD YOUR SAP VALUE HERE
+        office_id: this.officeId,         // LOSN8250A
+        organization_id: this.orgId,      // NMC-NIGERI
+        user_id: this.userId,             // USE9BAQC
       });
       
       const response = await fetch(`${this.baseUrl}/v1/security/oauth2/token`, {
@@ -79,19 +80,18 @@ export class AmadeusService {
         body: params,
       });
   
+      const responseText = await response.text();
+      this.logger.log(`Token response status: ${response.status}`);
+      this.logger.log(`Token response: ${responseText}`);
+  
       if (!response.ok) {
-        const errorText = await response.text();
-        this.logger.error(`OAuth failed: ${response.status} - ${errorText}`);
-        
         throw new HttpException(
           `Failed to get Amadeus access token: ${response.status}`,
           HttpStatus.UNAUTHORIZED,
         );
       }
   
-      const data = await response.json();
-      this.logger.log(`Token response: ${JSON.stringify(data)}`);
-      
+      const data = JSON.parse(responseText);
       this.accessToken = data.access_token;
       this.tokenExpiresAt = Date.now() + (data.expires_in - 300) * 1000;
       
@@ -102,7 +102,7 @@ export class AmadeusService {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
-        `Failed to authenticate with Amadeus`,
+        `Failed to authenticate with Amadeus: ${error}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
