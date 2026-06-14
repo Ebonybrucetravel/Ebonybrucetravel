@@ -61,12 +61,14 @@ export class AmadeusService {
       this.logger.log('Requesting Amadeus OAuth token...');
       this.logger.debug(`Token endpoint: ${this.baseUrl}/v1/security/oauth2/token`);
       
-      // ✅ For Enterprise API, you need to include office_id
+      
       const params = new URLSearchParams({
         grant_type: 'client_credentials',
         client_id: this.apiKey,
         client_secret: this.apiSecret,
-        office_id: this.officeId,  // ✅ ADD THIS - Required for Enterprise API
+        office_id: this.officeId,           
+        organization_id: this.orgId,        
+        user_id: this.userId,              
       });
       
       const response = await fetch(`${this.baseUrl}/v1/security/oauth2/token`, {
@@ -81,13 +83,6 @@ export class AmadeusService {
         const errorText = await response.text();
         this.logger.error(`OAuth failed: ${response.status} - ${errorText}`);
         
-        if (response.status === 401) {
-          throw new HttpException(
-            'Invalid Amadeus credentials.',
-            HttpStatus.UNAUTHORIZED,
-          );
-        }
-        
         throw new HttpException(
           `Failed to get Amadeus access token: ${response.status}`,
           HttpStatus.UNAUTHORIZED,
@@ -95,6 +90,8 @@ export class AmadeusService {
       }
   
       const data = await response.json();
+      this.logger.log(`Token response: ${JSON.stringify(data)}`);
+      
       this.accessToken = data.access_token;
       this.tokenExpiresAt = Date.now() + (data.expires_in - 300) * 1000;
       
