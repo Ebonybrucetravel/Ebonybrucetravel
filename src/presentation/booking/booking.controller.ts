@@ -748,48 +748,76 @@ export class BookingController {
     };
   }
 
-  // ==================== HOTEL BOOKING UPDATE ENDPOINT ====================
+ // ==================== HOTEL BOOKING UPDATE ENDPOINT ====================
 
-  @Patch('hotels/:bookingId/update')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Update a hotel booking (special request, dates, loyalty ID)',
-    description:
-      'Updates an existing hotel booking. Can update special requests, check-in/out dates, or loyalty program ID.',
-  })
-  @ApiResponse({ status: 200, description: 'Hotel booking updated successfully' })
-  @ApiResponse({ status: 400, description: 'Invalid update data' })
-  @ApiResponse({ status: 404, description: 'Booking not found' })
-  async updateHotelBooking(
-    @Param('bookingId') bookingId: string,
-    @Body() body: UpdateHotelBookingRequestDto,
-    @Request() req: any,
-  ) {
-    const dto = new UpdateHotelBookingDto();
-    dto.bookingId = bookingId;
-    dto.providerBookingId = body.providerBookingId;
-    dto.updateType = body.updateType;
-    dto.payload = body.payload;
-    
-    // Extract specific fields from payload based on update type
-    if (body.updateType === 'special') {
-      dto.specialRequest = body.payload?.hotelBooking?.roomAssociation?.specialRequest;
-    } else if (body.updateType === 'dates') {
-      dto.checkInDate = body.payload?.hotelBooking?.hotelOffer?.product?.checkInDate;
-      dto.checkOutDate = body.payload?.hotelBooking?.hotelOffer?.product?.checkOutDate;
-    } else if (body.updateType === 'loyalty') {
-      dto.loyaltyId = body.payload?.hotelBooking?.roomAssociation?.guestReferences?.[0]?.hotelLoyaltyId;
-    }
-    
-    const result = await this.updateAmadeusHotelBookingUseCase.execute(dto, req.user.id);
-    return {
-      success: true,
-      data: result,
-      message: 'Booking updated successfully',
+@Patch('hotels/:bookingId/update')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+@ApiOperation({
+  summary: 'Update a hotel booking (special request, dates, loyalty ID)',
+  description:
+    'Updates an existing hotel booking. Can update special requests, check-in/out dates, or loyalty program ID.',
+})
+@ApiResponse({ status: 200, description: 'Hotel booking updated successfully' })
+@ApiResponse({ status: 400, description: 'Invalid update data' })
+@ApiResponse({ status: 404, description: 'Booking not found' })
+async updateHotelBooking(
+  @Param('bookingId') bookingId: string,
+  @Body() body: {
+    updateType: 'dates' | 'special' | 'loyalty';
+    hotelOrderId?: string;      // Frontend sends this
+    hotelBookingId?: string;    // Frontend sends this
+    providerBookingId?: string; // Alternative field name
+    payload: {
+      checkInDate?: string;
+      checkOutDate?: string;
+      specialRequest?: string;
+      loyaltyId?: string;
+      hotelBooking?: {
+        roomAssociation?: {
+          specialRequest?: string;
+          guestReferences?: Array<{ hotelLoyaltyId?: string }>;
+        };
+        hotelOffer?: {
+          product?: {
+            checkInDate?: string;
+            checkOutDate?: string;
+          };
+        };
+      };
     };
+  },
+  @Request() req: any,
+) {
+  const dto = new UpdateHotelBookingDto();
+  dto.bookingId = bookingId;
+  
+  // ✅ Accept both field names
+  dto.providerBookingId = body.hotelOrderId || body.providerBookingId;
+  dto.updateType = body.updateType;
+  dto.payload = body.payload;
+  
+  // Extract specific fields from payload based on update type
+  if (body.updateType === 'special') {
+    dto.specialRequest = body.payload?.specialRequest || 
+                         body.payload?.hotelBooking?.roomAssociation?.specialRequest;
+  } else if (body.updateType === 'dates') {
+    dto.checkInDate = body.payload?.checkInDate || 
+                      body.payload?.hotelBooking?.hotelOffer?.product?.checkInDate;
+    dto.checkOutDate = body.payload?.checkOutDate || 
+                       body.payload?.hotelBooking?.hotelOffer?.product?.checkOutDate;
+  } else if (body.updateType === 'loyalty') {
+    dto.loyaltyId = body.payload?.loyaltyId || 
+                    body.payload?.hotelBooking?.roomAssociation?.guestReferences?.[0]?.hotelLoyaltyId;
   }
-
+  
+  const result = await this.updateAmadeusHotelBookingUseCase.execute(dto, req.user.id);
+  return {
+    success: true,
+    data: result,
+    message: 'Booking updated successfully',
+  };
+}
   @Public()
   @Get('hotels/accommodation/:accommodationId')
   @ApiOperation({ summary: 'Get accommodation details by ID' })

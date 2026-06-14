@@ -115,7 +115,7 @@ export class AmadeusService {
       params?: Record<string, string>;
     } = {},
   ): Promise<any> {
-    const token = await this.getAccessToken();
+    let token = await this.getAccessToken();
     const { method = 'GET', body, params } = options;
     
     let url = `${this.baseUrl}${endpoint}`;
@@ -123,7 +123,7 @@ export class AmadeusService {
       const searchParams = new URLSearchParams(params);
       url += `?${searchParams.toString()}`;
     }
-
+  
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${token}`,
       'Accept': 'application/json',
@@ -131,20 +131,34 @@ export class AmadeusService {
       'X-Organization-Id': this.orgId,
       'X-User-Id': this.userId,
     };
-
+  
     if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
       headers['Content-Type'] = 'application/json';
     }
-
-    this.logger.debug(`Amadeus API ${method} ${endpoint}`);
-
+  
+    this.logger.debug(`Amadeus API ${method} ${url}`);
+  
     try {
-      const response = await fetch(url, {
+      let response = await fetch(url, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
       });
-
+  
+      // ✅ If 401, retry once with fresh token
+      if (response.status === 401) {
+        this.logger.warn('Token expired, refreshing and retrying...');
+        this.accessToken = null;
+        token = await this.getAccessToken();
+        headers['Authorization'] = `Bearer ${token}`;
+        
+        response = await fetch(url, {
+          method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+        });
+      }
+  
       if (!response.ok) {
         const errorText = await response.text();
         this.logger.warn(`Amadeus API error ${response.status} ${endpoint}: ${redactCardFromString(errorText, 500)}`);
@@ -164,7 +178,7 @@ export class AmadeusService {
         } catch {
           // Use default error message
         }
-
+  
         let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
         if (response.status === 401 || response.status === 403) {
           httpStatus = HttpStatus.UNAUTHORIZED;
@@ -174,7 +188,7 @@ export class AmadeusService {
         } else if (response.status === 404) {
           httpStatus = HttpStatus.NOT_FOUND;
         }
-
+  
         throw new HttpException(
           {
             message: errorMessage,
@@ -184,7 +198,7 @@ export class AmadeusService {
           httpStatus,
         );
       }
-
+  
       if (response.status === 204) {
         return { success: true };
       }
@@ -705,19 +719,19 @@ async createHotelBooking(params: {
     if (!hotelBookingId) {
       throw new HttpException('Hotel booking ID is required', HttpStatus.BAD_REQUEST);
     }
-
+  
     const requestBody: any = {
       data: {
         hotelBooking: {}
       }
     };
-
+  
     if (updateData.specialRequest) {
       requestBody.data.hotelBooking.roomAssociation = {
         specialRequest: updateData.specialRequest
       };
     }
-
+  
     if (updateData.checkInDate || updateData.checkOutDate) {
       requestBody.data.hotelBooking.hotelOffer = {
         product: {}
@@ -729,7 +743,7 @@ async createHotelBooking(params: {
         requestBody.data.hotelBooking.hotelOffer.product.checkOutDate = updateData.checkOutDate;
       }
     }
-
+  
     if (updateData.loyaltyId) {
       if (!requestBody.data.hotelBooking.roomAssociation) {
         requestBody.data.hotelBooking.roomAssociation = {};
@@ -739,7 +753,7 @@ async createHotelBooking(params: {
         hotelLoyaltyId: updateData.loyaltyId
       }];
     }
-
+  
     if (updateData.paymentCard) {
       requestBody.data.hotelBooking.payment = {
         paymentCard: {
@@ -756,11 +770,16 @@ async createHotelBooking(params: {
         requestBody.data.hotelBooking.payment.paymentCard.paymentCardInfo.securityCode = updateData.paymentCard.securityCode;
       }
     }
-
+  
     this.logger.log(`Updating hotel booking: orderId=${hotelOrderId}, bookingId=${hotelBookingId}`);
     this.logger.debug(`Update payload: ${JSON.stringify(requestBody)}`);
-
-    const endpoint = `/v2/booking/hotel-orders/${hotelOrderId}/hotel-bookings/${hotelBookingId}`;
+  
+    // ✅ URL encode the IDs (they contain = signs)
+    const encodedOrderId = encodeURIComponent(hotelOrderId);
+    const encodedBookingId = encodeURIComponent(hotelBookingId);
+    const endpoint = `/v2/booking/hotel-orders/${encodedOrderId}/hotel-bookings/${encodedBookingId}`;
+    
+    this.logger.log(`PATCH endpoint: ${endpoint}`);
     
     return this.makeRequest(endpoint, { method: 'PATCH', body: requestBody });
   }
