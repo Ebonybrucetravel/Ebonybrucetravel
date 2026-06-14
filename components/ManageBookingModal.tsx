@@ -22,7 +22,6 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
 }) => {
   const router = useRouter();
 
-  // State for hotel booking updates
   const [specialRequest, setSpecialRequest] = useState('');
   const [newCheckInDate, setNewCheckInDate] = useState('');
   const [newCheckOutDate, setNewCheckOutDate] = useState('');
@@ -30,92 +29,85 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateSuccess, setUpdateSuccess] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
-  const [isEditingSpecialRequest, setIsEditingSpecialRequest] = useState(false);
-  const [isEditingDates, setIsEditingDates] = useState(false);
-  const [isEditingLoyalty, setIsEditingLoyalty] = useState(false);
   const [bookingDetails, setBookingDetails] = useState<any>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [activeTab, setActiveTab] = useState<'dates' | 'special' | 'loyalty'>('special');
-  const [providerBookingId, setProviderBookingId] = useState<string | null>(null);
+  const [hotelOrderId, setHotelOrderId] = useState<string | null>(null);
+  const [hotelBookingId, setHotelBookingId] = useState<string | null>(null);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
-  // Debug: Log full booking when modal opens
+  // ✅ FIXED: Extract provider IDs from booking data with correct priority
   useEffect(() => {
     if (isOpen && booking) {
-      console.log('📋 Full booking object for extraction:', JSON.stringify(booking, null, 2));
-      console.log('📋 providerData structure:', booking.providerData);
-      console.log('📋 providerData.data?.id:', (booking.providerData as any)?.data?.id);
-    }
-  }, [isOpen, booking]);
-
-  // Fetch booking details when modal opens
-  useEffect(() => {
-    if (isOpen && booking) {
-      fetchBookingDetails();
-      // Load existing special request if any
+      console.log('📋 Full booking object:', JSON.stringify(booking, null, 2));
+      
+      let extractedOrderId = null;
+      let extractedBookingId = null;
+      
+      // ✅ PRIORITY 1: From providerData.data.id (MOST IMPORTANT - this is the Amadeus Order ID)
+      if (booking.providerData?.data?.id) {
+        extractedOrderId = booking.providerData.data.id;
+        console.log('✅ Found Order ID in providerData.data.id:', extractedOrderId);
+      }
+      
+      // ✅ PRIORITY 2: From providerBookingId field
+      if (!extractedOrderId && booking.providerBookingId) {
+        extractedOrderId = booking.providerBookingId;
+        console.log('✅ Found providerBookingId:', extractedOrderId);
+      }
+      
+      // ✅ PRIORITY 3: From providerData.id (fallback)
+      if (!extractedOrderId && booking.providerData?.id) {
+        extractedOrderId = booking.providerData.id;
+        console.log('✅ Found providerData.id:', extractedOrderId);
+      }
+      
+      // ✅ Extract Booking ID from providerData.data.hotelBookings[0].id
+      if (booking.providerData?.data?.hotelBookings?.[0]?.id) {
+        extractedBookingId = booking.providerData.data.hotelBookings[0].id;
+        console.log('✅ Found Booking ID in providerData.data.hotelBookings[0].id:', extractedBookingId);
+      }
+      
+      // Fallback: Try from bookingData if not found
+      if (!extractedBookingId && booking.bookingData) {
+        const bookingData = booking.bookingData as any;
+        if (bookingData.hotelBookingId) {
+          extractedBookingId = bookingData.hotelBookingId;
+          console.log('✅ Found in bookingData.hotelBookingId:', extractedBookingId);
+        }
+        if (bookingData.amadeus_booking_details?.hotel_booking_id) {
+          extractedBookingId = bookingData.amadeus_booking_details.hotel_booking_id;
+          console.log('✅ Found in amadeus_booking_details.hotel_booking_id:', extractedBookingId);
+        }
+      }
+      
+      setHotelOrderId(extractedOrderId);
+      setHotelBookingId(extractedBookingId);
+      
+      // Load existing data from booking
       const existingRequest = booking.bookingData?.specialRequest || 
-                              booking.providerData?.specialRequest || '';
+                             booking.bookingData?.accommodation_special_requests || '';
       setSpecialRequest(existingRequest);
       
-      // Load existing dates
       const bookingData = booking.bookingData || {};
-      setNewCheckInDate(bookingData.checkInDate || '');
-      setNewCheckOutDate(bookingData.checkOutDate || '');
+      setNewCheckInDate(bookingData.checkInDate || bookingData.check_in_date || '');
+      setNewCheckOutDate(bookingData.checkOutDate || bookingData.check_out_date || '');
       
-      // Load loyalty ID if exists
       const existingLoyaltyId = booking.bookingData?.loyaltyId || '';
       setLoyaltyId(existingLoyaltyId);
       
-      // ✅ IMPROVED: Extract providerBookingId from multiple possible locations
-      let extractedProviderId = null;
-      
-      // Source 1: Direct providerBookingId
-      if (booking.providerBookingId) {
-        extractedProviderId = booking.providerBookingId;
-      }
-      // Source 2: From providerData (Amadeus response structure)
-      else if (booking.providerData) {
-        const providerData = booking.providerData as any;
-        // Amadeus stores the order ID in data.id (most common)
-        if (providerData.data?.id) {
-          extractedProviderId = providerData.data.id;
-          console.log('✅ Found in providerData.data.id:', extractedProviderId);
-        }
-        // Fallback to other possible locations
-        else if (providerData.id) {
-          extractedProviderId = providerData.id;
-          console.log('✅ Found in providerData.id:', extractedProviderId);
-        }
-        else if (providerData.orderId) {
-          extractedProviderId = providerData.orderId;
-          console.log('✅ Found in providerData.orderId:', extractedProviderId);
-        }
-        // Check hotelBookings array
-        else if (providerData.data?.hotelBookings?.[0]?.id) {
-          extractedProviderId = providerData.data.hotelBookings[0].id;
-          console.log('✅ Found in providerData.data.hotelBookings[0].id:', extractedProviderId);
-        }
-      }
-      // Source 3: From bookingData
-      else if (booking.bookingData) {
-        const bookingDataObj = booking.bookingData as any;
-        if (bookingDataObj.providerBookingId) {
-          extractedProviderId = bookingDataObj.providerBookingId;
-        }
-        else if (bookingDataObj.orderId) {
-          extractedProviderId = bookingDataObj.orderId;
-        }
-      }
-      
-      setProviderBookingId(extractedProviderId);
-      
-      console.log('🔍 Final extracted providerBookingId:', extractedProviderId);
-      console.log('🔍 booking.providerBookingId value:', booking.providerBookingId);
-      
       setUpdateSuccess(false);
       setUpdateError(null);
-      setIsEditingSpecialRequest(false);
-      setIsEditingDates(false);
-      setIsEditingLoyalty(false);
+      setDataLoaded(true);
+      
+      console.log('🔍 Final extraction result:', {
+        hotelOrderId: extractedOrderId,
+        hotelBookingId: extractedBookingId,
+        bookingId: booking.id,
+        bookingStatus: booking.status
+      });
+    } else {
+      setDataLoaded(false);
     }
   }, [isOpen, booking]);
 
@@ -137,42 +129,19 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
         const bookingData = result?.data?.booking || result?.data || result;
         setBookingDetails(bookingData);
         
-        // ✅ IMPROVED: Extract providerBookingId from fresh data
-        let extractedId = null;
-        
-        // Check providerBookingId field
-        if (bookingData.providerBookingId) {
-          extractedId = bookingData.providerBookingId;
-        }
-        // Check providerData for Amadeus structure
-        else if (bookingData.providerData) {
-          const providerData = bookingData.providerData;
-          if (providerData.data?.id) {
-            extractedId = providerData.data.id;
-          } else if (providerData.id) {
-            extractedId = providerData.id;
-          }
+        // Re-extract IDs from fresh data with correct priority
+        if (bookingData.providerData?.data?.id) {
+          setHotelOrderId(bookingData.providerData.data.id);
+        } else if (bookingData.providerBookingId) {
+          setHotelOrderId(bookingData.providerBookingId);
         }
         
-        if (extractedId) {
-          setProviderBookingId(extractedId);
-          console.log('✅ Extracted providerBookingId from fresh data:', extractedId);
+        if (bookingData.providerData?.data?.hotelBookings?.[0]?.id) {
+          setHotelBookingId(bookingData.providerData.data.hotelBookings[0].id);
         }
-        
-        // Extract data from fresh response
-        const existingRequest = bookingData?.bookingData?.specialRequest || 
-                                bookingData?.providerData?.specialRequest || '';
-        setSpecialRequest(existingRequest);
-        
-        const checkIn = bookingData?.bookingData?.checkInDate || 
-                        bookingData?.offer?.checkInDate || '';
-        const checkOut = bookingData?.bookingData?.checkOutDate || 
-                         bookingData?.offer?.checkOutDate || '';
-        setNewCheckInDate(checkIn);
-        setNewCheckOutDate(checkOut);
-        
-        const existingLoyaltyId = bookingData?.bookingData?.loyaltyId || '';
-        setLoyaltyId(existingLoyaltyId);
+        if (bookingData.bookingData?.amadeus_booking_details?.hotel_booking_id) {
+          setHotelBookingId(bookingData.bookingData.amadeus_booking_details.hotel_booking_id);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch booking details:', error);
@@ -184,16 +153,16 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
   const handleUpdateBooking = async (updateType: 'dates' | 'special' | 'loyalty') => {
     if (!booking) return;
     
-    // ✅ Validate providerBookingId exists
-    if (!providerBookingId) {
-      console.error('Missing providerBookingId:', {
-        bookingId: booking.id,
-        providerBookingId,
-        bookingProviderBookingId: booking.providerBookingId,
-        providerData: booking.providerData,
-        providerDataDataId: (booking.providerData as any)?.data?.id
-      });
-      setUpdateError('Unable to update: Missing provider booking ID. Please contact support.');
+    // Validate we have both required IDs
+    if (!hotelOrderId) {
+      console.error('Missing hotelOrderId');
+      setUpdateError('Unable to update: Missing hotel order ID. Please contact support.');
+      return;
+    }
+    
+    if (!hotelBookingId) {
+      console.error('Missing hotelBookingId');
+      setUpdateError('Unable to update: Missing hotel booking ID. Please contact support.');
       return;
     }
     
@@ -204,39 +173,31 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
     try {
       const token = getStoredAuthToken();
       
-      // Build update payload based on what's being updated
-      const updatePayload: any = {
-        hotelBooking: {}
-      };
+      let updatePayload: any = {};
       
       if (updateType === 'dates' && newCheckInDate && newCheckOutDate) {
-        updatePayload.hotelBooking.hotelOffer = {
-          product: {
-            checkInDate: newCheckInDate,
-            checkOutDate: newCheckOutDate,
-          }
+        updatePayload = {
+          checkInDate: newCheckInDate,
+          checkOutDate: newCheckOutDate,
         };
       }
       
       if (updateType === 'special' && specialRequest) {
-        updatePayload.hotelBooking.roomAssociation = {
-          specialRequest: specialRequest
+        updatePayload = {
+          specialRequest: specialRequest,
         };
       }
       
       if (updateType === 'loyalty' && loyaltyId) {
-        updatePayload.hotelBooking.roomAssociation = {
-          ...(updatePayload.hotelBooking.roomAssociation || {}),
-          guestReferences: [{
-            guestReference: "1",
-            hotelLoyaltyId: loyaltyId
-          }]
+        updatePayload = {
+          loyaltyId: loyaltyId,
         };
       }
       
       console.log('📤 Sending update request:', {
         bookingId: booking.id,
-        providerBookingId,
+        hotelOrderId,
+        hotelBookingId,
         updateType,
         payload: updatePayload
       });
@@ -249,8 +210,8 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
         },
         body: JSON.stringify({
           updateType,
+          providerBookingId: hotelOrderId,
           payload: updatePayload,
-          providerBookingId: providerBookingId,
         }),
       });
       
@@ -261,14 +222,7 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
       }
       
       setUpdateSuccess(true);
-      
-      // Refresh booking details
       await fetchBookingDetails();
-      
-      // Close edit modes and auto-hide success message
-      setIsEditingDates(false);
-      setIsEditingSpecialRequest(false);
-      setIsEditingLoyalty(false);
       
       setTimeout(() => {
         setUpdateSuccess(false);
@@ -285,7 +239,6 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
     onClose();
     
     if (!booking?.id) {
-      console.error('Booking ID is missing');
       alert('Unable to cancel: Booking ID is missing');
       return;
     }
@@ -358,16 +311,6 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
     const symbols: Record<string, string> = { 'GBP': '£', 'USD': '$', 'EUR': '€', 'NGN': '₦' };
     const symbol = symbols[currency] || '£';
     return `${symbol}${amount.toFixed(2)}`;
-  };
-
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return 'Date TBD';
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    } catch {
-      return dateStr;
-    }
   };
 
   const getBookingTitle = () => {
@@ -443,13 +386,13 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
 
   if (!isOpen || !booking) return null;
 
-  // If providerBookingId is missing, show a message instead of the update form
-  const isUpdateDisabled = !providerBookingId;
+  // Check if we have the required IDs for updates
+  const hasRequiredIds = !!(hotelOrderId && hotelBookingId);
+  const showEditOptions = isHotel() && hasRequiredIds && dataLoaded;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-white w-full max-w-lg rounded-[20px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="px-6 py-5 flex justify-between items-center border-b border-gray-100 sticky top-0 bg-white z-10">
           <h2 className="text-xl font-bold text-gray-900">Manage Booking</h2>
           <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 transition">
@@ -459,7 +402,6 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6 space-y-6">
           <div>
             <h3 className="text-base font-bold text-gray-900">
@@ -470,14 +412,14 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
             </p>
           </div>
 
-          {/* Warning if providerBookingId missing */}
-          {isUpdateDisabled && (
+          {/* Show warning if IDs are missing */}
+          {!hasRequiredIds && isHotel() && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
               <div className="flex items-center gap-2 text-yellow-700">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                <span className="font-medium">Updates Temporarily Unavailable</span>
+                <span className="font-medium">Updates Unavailable</span>
               </div>
               <p className="text-sm text-yellow-600 mt-2">
                 This booking cannot be modified online. Please contact our support team for assistance with changes.
@@ -485,6 +427,18 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
               <p className="text-xs text-yellow-500 mt-2">
                 Booking ID: {booking.id}
               </p>
+            </div>
+          )}
+
+          {/* Show loading state */}
+          {isHotel() && !dataLoaded && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-blue-700">
+                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span className="font-medium">Loading booking details...</span>
+              </div>
             </div>
           )}
 
@@ -508,8 +462,8 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
             </div>
           </div>
 
-          {/* Hotel Modification Tabs - only show if providerBookingId exists */}
-          {isHotel() && !isUpdateDisabled && (
+          {/* Hotel Modification Tabs - only show when IDs are available */}
+          {showEditOptions && (
             <div>
               <div className="flex border-b border-gray-200 mb-4">
                 <button

@@ -7,7 +7,6 @@ import api, {
   getStoredAuthToken,
   getVendorCodeFromCardNumber,
   publicRequest,
-  bookHotelHBX,
 } from "@/lib/api";
 import { selectWakanowFlight, bookWakanowFlight } from "@/lib/wakanow-api";
 
@@ -48,6 +47,10 @@ interface ExtendedSearchResult {
   token?: string;
   session_id?: string;
   booking_token?: string;
+  original_price?: string | number;
+  original_currency?: string;
+  checkInDate?: string;
+  checkOutDate?: string;
   realData?: {
     offerId?: string;
     finalPrice?: number;
@@ -60,6 +63,8 @@ interface ExtendedSearchResult {
     pickupDateTime?: string;
     dropoffDateTime?: string;
     vehicleType?: string;
+    original_price?: number;
+    original_currency?: string;
     [key: string]: any;
   };
   [key: string]: any;
@@ -137,6 +142,32 @@ const getActualProvider = (item: ExtendedSearchResult): string => {
     return 'WAKANOW';
   }
   return 'DUFFEL';
+};
+
+// ✅ Helper function to validate if an offer ID is real or fake
+const isValidAmadeusOfferId = (offerId: string | number): boolean => {
+  if (!offerId) return false;
+  
+  // Convert to string if it's a number
+  const idString = offerId.toString();
+  
+  // Fake/test patterns that Amadeus will reject
+  const fakePatterns = [
+    /^UXNYC\d{3}$/i,      // UXNYC000
+    /^YRPARRAF$/i,        // YRPARRAF
+    /^SBLONSOF$/i,        // SBLONSOF
+    /^[A-Z]{3,8}\d{3}$/i, // Any 3-8 letters followed by 3 digits
+    /^hotel-\d+$/i,       // hotel-1234567890 pattern
+  ];
+  
+  for (const pattern of fakePatterns) {
+    if (pattern.test(idString)) {
+      return false;
+    }
+  }
+  
+  // Real Amadeus offer IDs are typically longer alphanumeric strings
+  return idString.length >= 8 && /^[A-Z0-9]{8,}$/i.test(idString);
 };
 
 export function useBooking() {
@@ -677,6 +708,7 @@ export function useBooking() {
     [BASE],
   );
 
+  // ✅ UPDATED: createAmadeusHotelBooking with validation for fake offer IDs
   const createAmadeusHotelBooking = useCallback(
     async (
       item: ExtendedSearchResult,
@@ -699,55 +731,79 @@ export function useBooking() {
         const offerId = item.realData?.offerId ?? item.id;
         if (!offerId) throw new Error("Missing offer ID");
   
+        // ✅ VALIDATION: Check if this is a fake/hardcoded offer ID
+        if (!isValidAmadeusOfferId(offerId)) {
+          console.error("❌ Invalid/Fake offer ID detected:", offerId);
+          throw new Error(
+            "Invalid hotel offer. Please go back and search for hotels again. " +
+            "Hotel offers expire quickly and cannot be reused from previous searches."
+          );
+        }
+  
         const realData = item.realData || item;
         
-        // Get the correct price from the item
-        let validTotalAmount = 0;
+        // ✅ Get the ORIGINAL price and currency from the search result
+        const originalCurrency = item.original_currency || item.originalPriceCurrency || realData.original_currency || 'GBP';
+        let originalPrice: number = 0;
         
-        if (item.final_amount && typeof item.final_amount === 'string') {
-          validTotalAmount = parseFloat(item.final_amount);
-        } else if (item.final_amount && typeof item.final_amount === 'number') {
-          validTotalAmount = item.final_amount;
-        } else if (item.final_price && typeof item.final_price === 'string') {
-          validTotalAmount = parseFloat(item.final_price);
-        } else if (item.final_price && typeof item.final_price === 'number') {
-          validTotalAmount = item.final_price;
-        } else if (item.price_after_conversion && typeof item.price_after_conversion === 'string') {
-          validTotalAmount = parseFloat(item.price_after_conversion);
-        } else if (item.totalPrice && typeof item.totalPrice === 'string') {
-          validTotalAmount = parseFloat(item.totalPrice);
-        } else if (item.rawPrice && typeof item.rawPrice === 'number') {
-          validTotalAmount = item.rawPrice;
-        } else if (item.calculatedTotal && typeof item.calculatedTotal === 'number') {
-          validTotalAmount = item.calculatedTotal;
+        if (item.original_price && typeof item.original_price === 'string') {
+          originalPrice = parseFloat(item.original_price);
+        } else if (item.original_price && typeof item.original_price === 'number') {
+          originalPrice = item.original_price;
+        } else if (item.originalPriceAmount && typeof item.originalPriceAmount === 'number') {
+          originalPrice = item.originalPriceAmount;
+        } else if (realData.original_price) {
+          originalPrice = typeof realData.original_price === 'number' ? realData.original_price : parseFloat(realData.original_price);
         }
         
-        validTotalAmount = isNaN(validTotalAmount) || validTotalAmount <= 0 ? 100 : validTotalAmount;
+        // Get customer-facing price (for display only, not sent to Amadeus)
+        let customerPrice: number = 0;
+        if (item.final_amount && typeof item.final_amount === 'string') {
+          customerPrice = parseFloat(item.final_amount);
+        } else if (item.final_amount && typeof item.final_amount === 'number') {
+          customerPrice = item.final_amount;
+        } else if (item.final_price && typeof item.final_price === 'string') {
+          customerPrice = parseFloat(item.final_price);
+        } else if (item.final_price && typeof item.final_price === 'number') {
+          customerPrice = item.final_price;
+        }
         
-        // ✅ Get check-in and check-out dates from the item
+        // Get check-in and check-out dates
         const checkInDate = item.checkInDate || item.check_in_date || realData.checkInDate;
         const checkOutDate = item.checkOutDate || item.check_out_date || realData.checkOutDate;
         
         console.log("💰 Amadeus hotel price breakdown:", {
-          final_amount_from_item: item.final_amount,
-          final_price_from_item: item.final_price,
-          validTotalAmount: validTotalAmount,
+          offerId: offerId,
+          original_currency: originalCurrency,
+          original_price: originalPrice,
+          customer_currency: item.currency,
+          customer_price: customerPrice,
           checkInDate: checkInDate,
-          checkOutDate: checkOutDate
+          checkOutDate: checkOutDate,
         });
+        
+        // ✅ Validate we have the original price
+        if (originalPrice <= 0) {
+          console.error("❌ Missing original price! This offer may be expired.");
+          throw new Error(
+            "Hotel offer has expired or is missing pricing information. " +
+            "Please search for hotels again to get current offers."
+          );
+        }
   
         const token = getStoredAuthToken();
   
+        // ✅ IMPORTANT: Send ORIGINAL currency and ORIGINAL price to backend
         const bookingPayload: any = {
-          hotelOfferId: offerId,
-          offerPrice: validTotalAmount,
-          currency: (realData.currency || item.currency || "GBP").toUpperCase(),
-          checkInDate: checkInDate,      // ✅ ADD THIS
-          checkOutDate: checkOutDate,    // ✅ ADD THIS
+          hotelOfferId: offerId.toString(),
+          offerPrice: originalPrice,
+          currency: originalCurrency,
+          checkInDate: checkInDate,
+          checkOutDate: checkOutDate,
           guests: [
             {
               name: {
-                title: "MR",
+                title: passenger.title?.toUpperCase() || "MR",
                 firstName: passenger.firstName,
                 lastName: passenger.lastName,
               },
@@ -759,7 +815,7 @@ export function useBooking() {
           ],
           roomAssociations: [
             {
-              hotelOfferId: offerId,
+              hotelOfferId: offerId.toString(),
               guestReferences: [{ guestReference: "1" }],
             },
           ],
@@ -774,7 +830,7 @@ export function useBooking() {
             method: "CREDIT_CARD",
             paymentCard: {
               paymentCardInfo: {
-                vendorCode: "VI",
+                vendorCode: getVendorCodeFromCardNumber(card.cardNumber) || "VI",
                 cardNumber: card.cardNumber.replace(/\s+/g, ""),
                 expiryDate: `${card.expiryYear}-${card.expiryMonth.padStart(2, "0")}`,
                 holderName: card.holderName || `${passenger.firstName} ${passenger.lastName}`,
@@ -784,7 +840,13 @@ export function useBooking() {
           };
         }
   
-        console.log("📦 Amadeus hotel booking payload:", JSON.stringify(bookingPayload, null, 2));
+        console.log("📦 Amadeus hotel booking payload:", JSON.stringify({
+          hotelOfferId: bookingPayload.hotelOfferId,
+          offerPrice: bookingPayload.offerPrice,
+          currency: bookingPayload.currency,
+          checkInDate: bookingPayload.checkInDate,
+          checkOutDate: bookingPayload.checkOutDate,
+        }, null, 2));
   
         const endpoint = isGuest 
           ? "/api/v1/bookings/hotels/bookings/amadeus/guest"
@@ -817,6 +879,13 @@ export function useBooking() {
         if (!response.ok) {
           const msg = data.message || data.error || "Booking creation failed";
           console.error("Booking creation failed:", data);
+          
+          // ✅ Check for offer expired error
+          if (msg.includes("INVALID OFFER ID") || msg.includes("offer id") || msg.includes("expired")) {
+            throw new Error(
+              "Hotel offer has expired. Please go back and search for hotels again to get current offers."
+            );
+          }
           throw new Error(msg);
         }
   
@@ -833,17 +902,21 @@ export function useBooking() {
           paymentStatus: raw.paymentStatus || "PENDING",
           productType: "HOTEL",
           provider: "AMADEUS",
-          basePrice: validTotalAmount,
-          totalAmount: validTotalAmount,
-          currency: bookingPayload.currency,
+          basePrice: customerPrice,
+          totalAmount: customerPrice,
+          currency: item.currency || "NGN",
           bookingData: {
             ...raw,
             hotelId: item.id,
             hotelName: item.title,
-            checkInDate: checkInDate,      // ✅ SAVE DATES
-            checkOutDate: checkOutDate,    // ✅ SAVE DATES
+            checkInDate: checkInDate,
+            checkOutDate: checkOutDate,
             guests: realData.guests || 1,
             rooms: realData.rooms || 1,
+            original_price_sent: originalPrice,
+            original_currency_sent: originalCurrency,
+            customer_price: customerPrice,
+            customer_currency: item.currency,
           },
           passengerInfo: {
             firstName: passenger.firstName,
@@ -854,7 +927,7 @@ export function useBooking() {
           createdAt: raw.createdAt || new Date().toISOString(),
         };
   
-        console.log("✅ Amadeus hotel booking created successfully:", booking);
+        console.log("✅ Amadeus hotel booking created successfully!");
         setBooking(booking);
         return booking;
       } catch (err: any) {
@@ -867,6 +940,7 @@ export function useBooking() {
     },
     [BASE],
   );
+
   const chargeMarginAmadeusHotel = useCallback(
     async (booking: Booking, isGuest: boolean): Promise<Booking> => {
       setError(null);
@@ -999,103 +1073,12 @@ export function useBooking() {
     setError(null);
   }, []);
 
-  const createHotelbedsBooking = useCallback(
-    async (
-      item: ExtendedSearchResult,
-      passenger: PassengerInfo,
-      isGuest: boolean,
-      hbxMetadata?: {
-        totalAmount: number;
-        currency: string;
-        cancellationPolicySnapshot: string;
-        cancellationDeadline: string;
-        policyAccepted: boolean;
-      }
-    ): Promise<Booking> => {
-      setIsCreating(true);
-      setError(null);
-      try {
-        const rateKey = item.realData?.rateKey;
-        if (!rateKey) throw new Error("Missing rate key for Hotelbeds booking");
-
-        let guests = [];
-
-        if (passenger.guests && passenger.guests.length > 0) {
-          guests = passenger.guests.map((g, index) => ({
-            title: (g.name?.title || passenger.title || "MR").toUpperCase(),
-            firstName: g.name?.firstName || passenger.firstName,
-            lastName: g.name?.lastName || passenger.lastName,
-            roomIdx: g.travelerId || 1,
-          }));
-        } else {
-          guests = [
-            {
-              title: (passenger.title || "MR").toUpperCase(),
-              firstName: passenger.firstName,
-              lastName: passenger.lastName,
-              roomIdx: 1,
-            },
-          ];
-        }
-
-        const response = await bookHotelHBX({
-          rateKey,
-          totalAmount: hbxMetadata?.totalAmount || parseFloat(item.final_price || "0"),
-          currency: hbxMetadata?.currency || (item.currency || "GBP").toUpperCase(),
-          guests,
-          policyAccepted: hbxMetadata?.policyAccepted || true,
-          cancellationPolicySnapshot: hbxMetadata?.cancellationPolicySnapshot || "Standard cancellation policy applies.",
-          cancellationDeadline: hbxMetadata?.cancellationDeadline || new Date().toISOString(),
-        });
-
-        if (!response.success) {
-          throw new Error(response.message || "Hotelbeds booking failed");
-        }
-
-        const booking: Booking = {
-          id: response.bookingId,
-          reference: response.bookingId,
-          status: (response.status as any) || "PENDING",
-          paymentStatus: "PENDING",
-          productType: "HOTEL",
-          provider: "HOTELBEDS",
-          basePrice: parseFloat(item.original_price || item.original_amount || "0"),
-          totalAmount: parseFloat(item.final_price || item.final_amount || "0"),
-          currency: (item.currency || "GBP").toUpperCase(),
-          bookingData: {
-            ...response,
-            hotelName: item.title,
-            rateKey,
-          },
-          passengerInfo: {
-            firstName: passenger.firstName,
-            lastName: passenger.lastName,
-            email: passenger.email,
-            phone: passenger.phone,
-          },
-          createdAt: new Date().toISOString(),
-        };
-
-        setBooking(booking);
-        return booking;
-      } catch (err: any) {
-        console.error("❌ Hotelbeds booking failed:", err);
-        setError(err.message);
-        throw err;
-      } finally {
-        setIsCreating(false);
-      }
-    },
-    [BASE],
-  );
-
   return {
     booking,
     isCreating,
     error,
     createBooking,
     createAmadeusHotelBooking,
-    createHotelbedsBooking,
     chargeMarginAmadeusHotel,
     createPaymentIntent,
     pollBookingStatus,

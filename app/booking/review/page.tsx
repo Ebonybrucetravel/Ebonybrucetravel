@@ -69,14 +69,11 @@ function isAmadeusHotel(item: ExtendedSearchResult): boolean {
   const isHotelType = rawType.includes("hotel");
   if (!isHotelType) return false;
   
-  // Not Hotelbeds
-  const isNotHotelbeds = item.provider?.toLowerCase() !== 'hotelbeds';
-  
   // Has offer ID or basic hotel ID
   const hasOfferId = !!item.realData?.offerId;
   const hasHotelId = !!item.id;
   
-  return isNotHotelbeds && (hasOfferId || hasHotelId);
+  return (hasOfferId || hasHotelId);
 }
 
 // ==================== AIRPORT COUNTRY MAPPING ====================
@@ -233,7 +230,7 @@ export default function BookingReviewPage() {
   const router = useRouter();
   const { selectedItem, searchParams, persistSelectionForReturn } = useSearch();
   const { isLoggedIn, user } = useAuth();
-  const { createBooking, createAmadeusHotelBooking, createHotelbedsBooking, isCreating } = useBooking();
+  const { createBooking, createAmadeusHotelBooking, isCreating } = useBooking();
   const { currency, formatPrice, isLoadingRates } = useLanguage();
   const isMerchantPaymentModel = config.paymentModel === "merchant";
 
@@ -308,7 +305,6 @@ export default function BookingReviewPage() {
         let displayCurrency = item.currency || currency.code || 'NGN';
         let originalCurrency = item.original_currency || 'EUR';
         
-        // ✅ LOG THE INCOMING PRICE FIELDS
         console.log('💰 PROCESSING ITEM - Raw price fields:', {
           final_price: item.final_price,
           final_amount: item.final_amount,
@@ -360,7 +356,6 @@ export default function BookingReviewPage() {
           finalPrice = parseFloat(item.original_amount);
         }
         
-        // ✅ LOG THE EXTRACTED FINAL PRICE
         console.log('💰 PROCESSING ITEM - Extracted finalPrice:', finalPrice);
         
         // Get original price
@@ -383,7 +378,6 @@ export default function BookingReviewPage() {
         // Format the final price for display
         const formattedPrice = await formatPrice(finalPrice, displayCurrency);
         
-        // ✅ LOG THE FINAL VALUES BEING SET
         console.log('💰 PROCESSING ITEM - Setting final values:', {
           finalPrice,
           displayCurrency,
@@ -431,14 +425,10 @@ export default function BookingReviewPage() {
   const isHotel = getProductType(extendedItem) === "hotel";
   const isCar = getProductType(extendedItem) === "car";
   const isFlight = !isHotel && !isCar;
-  
-  // Check if it's an Amadeus hotel (not Hotelbeds)
-  const isAmadeusHotelItem = isHotel && extendedItem.provider?.toLowerCase() !== 'hotelbeds';
 
   const handleProceedToPayment = async (
     passengerInfo: PassengerInfo,
     voucherCode?: string,
-    hbxMetadata?: any,
   ) => {
     const isGuest = !isLoggedIn;
   
@@ -473,7 +463,6 @@ export default function BookingReviewPage() {
     }
   
     // ============ CLEAN PASSENGER INFO ============
-    // For Hotels and Cars - ONLY basic contact info
     const cleanedPassengerInfo: PassengerInfo = {
       firstName: passengerInfo.firstName,
       lastName: passengerInfo.lastName,
@@ -485,40 +474,17 @@ export default function BookingReviewPage() {
       isHotel,
       isCar,
       isFlight,
-      isAmadeusHotelItem,
       provider: extendedItem?.provider,
       isMerchantPaymentModel,
-      willUseAmadeusHotel: isHotel && !isCar && isMerchantPaymentModel,
     });
   
     // ==================== HOTEL BOOKING FLOW ====================
     if (isHotel && !isCar) {
-      // Hotelbeds flow
-      const isHotelbeds = extendedItem.provider?.toLowerCase() === "hotelbeds";
-      if (isHotelbeds) {
-        try {
-          console.log("🏨 Creating Hotelbeds hotel booking...");
-          const newBooking = await createHotelbedsBooking(
-            extendedItem,
-            cleanedPassengerInfo,
-            isGuest,
-            hbxMetadata,
-          );
-          setBooking(newBooking);
-          setAppliedVoucherCode(voucherCode);
-          setShowPayment(true);
-        } catch (err: any) {
-          toast.error(err?.message ?? "We couldn't create your Hotelbeds booking. Please try again.");
-        }
-        return;
-      }
-      
       // Amadeus Hotel with merchant payment model
       if (isMerchantPaymentModel) {
         try {
           console.log("🏨 Creating Amadeus hotel booking with merchant payment model...");
           
-          // ✅ Get the correct price from the item
           const correctPrice = parseFloat(extendedItem.final_amount || extendedItem.final_price || '0');
           console.log("💰 Amadeus hotel price check:", {
             final_amount: extendedItem.final_amount,
@@ -526,7 +492,6 @@ export default function BookingReviewPage() {
             correctPrice: correctPrice
           });
           
-          // If the price is too low (less than 500k NGN), try to restore from sessionStorage
           let finalItem = extendedItem;
           if (correctPrice < 500000 && typeof window !== 'undefined') {
             const stored = sessionStorage.getItem('selectedHotel');
@@ -546,11 +511,9 @@ export default function BookingReviewPage() {
             }
           }
           
-          // ✅ Use the corrected price
           const finalPrice = parseFloat(finalItem.final_amount || finalItem.final_price || '0');
           console.log("💰 Final price being sent to createAmadeusHotelBooking:", finalPrice);
           
-          // Add test card for merchant payment model
           const testCard = {
             cardNumber: "4242424242424242",
             expiryMonth: "12",
