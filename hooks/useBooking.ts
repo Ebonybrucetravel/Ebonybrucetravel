@@ -708,7 +708,6 @@ export function useBooking() {
     [BASE],
   );
 
-  // ✅ UPDATED: createAmadeusHotelBooking with validation for fake offer IDs
   const createAmadeusHotelBooking = useCallback(
     async (
       item: ExtendedSearchResult,
@@ -772,6 +771,33 @@ export function useBooking() {
         const checkInDate = item.checkInDate || item.check_in_date || realData.checkInDate;
         const checkOutDate = item.checkOutDate || item.check_out_date || realData.checkOutDate;
         
+        // ✅ Extract hotel details from the item
+        const hotelName = item.title || realData.title || item.name || realData.name || 'Hotel';
+        const hotelAddress = item.address || realData.address || item.subtitle || '';
+        const hotelCity = item.city || realData.city || item.location || '';
+        const hotelCountry = item.country || realData.country || item.countryCode || '';
+        const hotelRating = item.rating || realData.rating || item.starRating || null;
+        const hotelDescription = item.description || realData.description || '';
+        const hotelCheckInTime = item.checkInTime || realData.checkInTime || '15:00';
+        const hotelCheckOutTime = item.checkOutTime || realData.checkOutTime || '12:00';
+        const hotelPhone = item.phone || realData.phone || '';
+        const hotelAmenities = item.amenities || realData.amenities || [];
+        const hotelImages = item.images || realData.images || [];
+        const roomType = item.roomType || realData.roomType || 'Standard Room';
+        const numberOfRooms = item.rooms || realData.rooms || 1;
+        const boardType = item.boardType || realData.boardType || 'Room Only';
+        
+        console.log("🏨 Hotel details being sent:", {
+          hotelName,
+          hotelAddress,
+          hotelCity,
+          hotelCountry,
+          hotelRating,
+          roomType,
+          checkInDate,
+          checkOutDate
+        });
+        
         console.log("💰 Amadeus hotel price breakdown:", {
           offerId: offerId,
           original_currency: originalCurrency,
@@ -793,7 +819,7 @@ export function useBooking() {
   
         const token = getStoredAuthToken();
   
-        // ✅ IMPORTANT: Send ORIGINAL currency and ORIGINAL price to backend
+        // ✅ IMPORTANT: Send ALL hotel details to backend
         const bookingPayload: any = {
           hotelOfferId: offerId.toString(),
           offerPrice: originalPrice,
@@ -822,6 +848,23 @@ export function useBooking() {
           cancellationDeadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           cancellationPolicySnapshot: "Free cancellation until 24 hours before check-in.",
           policyAccepted: true,
+          
+          // ✅ ADD HOTEL DETAILS HERE - THIS IS THE CRITICAL FIX
+          hotelId: item.id || realData.id || '',
+          hotelName: hotelName, // ← This will show in the email
+          hotelAddress: hotelAddress,
+          hotelCity: hotelCity,
+          hotelCountry: hotelCountry,
+          hotelRating: hotelRating,
+          hotelDescription: hotelDescription,
+          hotelCheckInTime: hotelCheckInTime,
+          hotelCheckOutTime: hotelCheckOutTime,
+          hotelPhone: hotelPhone,
+          hotelAmenities: hotelAmenities,
+          hotelImages: hotelImages,
+          roomType: roomType,
+          numberOfRooms: numberOfRooms,
+          boardType: boardType,
         };
   
         // Add payment card if provided
@@ -846,6 +889,10 @@ export function useBooking() {
           currency: bookingPayload.currency,
           checkInDate: bookingPayload.checkInDate,
           checkOutDate: bookingPayload.checkOutDate,
+          hotelName: bookingPayload.hotelName,
+          hotelAddress: bookingPayload.hotelAddress,
+          hotelCity: bookingPayload.hotelCity,
+          hotelCountry: bookingPayload.hotelCountry,
         }, null, 2));
   
         const endpoint = isGuest 
@@ -908,7 +955,10 @@ export function useBooking() {
           bookingData: {
             ...raw,
             hotelId: item.id,
-            hotelName: item.title,
+            hotelName: hotelName, // ✅ Store the hotel name
+            hotelAddress: hotelAddress,
+            hotelCity: hotelCity,
+            hotelCountry: hotelCountry,
             checkInDate: checkInDate,
             checkOutDate: checkOutDate,
             guests: realData.guests || 1,
@@ -927,7 +977,7 @@ export function useBooking() {
           createdAt: raw.createdAt || new Date().toISOString(),
         };
   
-        console.log("✅ Amadeus hotel booking created successfully!");
+        console.log("✅ Amadeus hotel booking created successfully with hotel name:", hotelName);
         setBooking(booking);
         return booking;
       } catch (err: any) {

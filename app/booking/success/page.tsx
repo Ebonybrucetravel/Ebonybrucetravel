@@ -348,12 +348,92 @@ const renderHotelDetails = () => {
   
   const bookingData = booking.bookingData as any;
   
-  // Extract hotel details from bookingData
-  const hotelName = bookingData?.hotelName || bookingData?.hotel?.name || 'Hotel';
-  const hotelId = bookingData?.hotelId || bookingData?.hotel?.hotelId || booking.id;
-  const hotelOfferId = bookingData?.amadeus_offer_id || bookingData?.offerId || bookingData?.hotelOfferId || 'N/A';
-  const checkInDate = bookingData?.checkInDate || bookingData?.check_in_date;
-  const checkOutDate = bookingData?.checkOutDate || bookingData?.check_out_date;
+  // ✅ FIX: Extract hotel details from the correct location
+  // The backend stores hotel details in bookingData.hotelDetails
+  const hotelDetails = bookingData?.hotelDetails || {};
+  
+  // Extract hotel name from multiple possible locations
+  const hotelName = 
+    hotelDetails?.hotelName || 
+    bookingData?.hotelName || 
+    bookingData?.hotel?.name || 
+    'Hotel';
+  
+  // Extract other hotel details
+  const hotelAddress = 
+    hotelDetails?.hotelAddress || 
+    bookingData?.hotelAddress || 
+    '';
+  
+  const hotelCity = 
+    hotelDetails?.hotelCity || 
+    bookingData?.hotelCity || 
+    '';
+  
+  const hotelCountry = 
+    hotelDetails?.hotelCountry || 
+    bookingData?.hotelCountry || 
+    '';
+  
+  const hotelRating = 
+    hotelDetails?.hotelRating || 
+    bookingData?.hotelRating || 
+    null;
+  
+  const hotelDescription = 
+    hotelDetails?.hotelDescription || 
+    bookingData?.hotelDescription || 
+    '';
+  
+  const hotelPhone = 
+    hotelDetails?.hotelPhone || 
+    bookingData?.hotelPhone || 
+    '';
+  
+  const roomType = 
+    hotelDetails?.roomType || 
+    bookingData?.roomType || 
+    'Standard Room';
+  
+  const boardType = 
+    hotelDetails?.boardType || 
+    bookingData?.boardType || 
+    'Room Only';
+  
+  const numberOfRooms = 
+    hotelDetails?.numberOfRooms || 
+    bookingData?.numberOfRooms || 
+    1;
+  
+  const hotelCheckInTime = 
+    hotelDetails?.hotelCheckInTime || 
+    bookingData?.hotelCheckInTime || 
+    '15:00';
+  
+  const hotelCheckOutTime = 
+    hotelDetails?.hotelCheckOutTime || 
+    bookingData?.hotelCheckOutTime || 
+    '12:00';
+  
+  const hotelId = 
+    hotelDetails?.hotelId || 
+    bookingData?.hotelId || 
+    bookingData?.hotel?.hotelId || 
+    booking.id;
+  
+  const hotelOfferId = 
+    bookingData?.amadeus_offer_id || 
+    bookingData?.offerId || 
+    bookingData?.hotelOfferId || 
+    'N/A';
+  
+  const checkInDate = 
+    bookingData?.checkInDate || 
+    bookingData?.check_in_date;
+  
+  const checkOutDate = 
+    bookingData?.checkOutDate || 
+    bookingData?.check_out_date;
   
   // ✅ FIX: guests might be an object, not a number
   let guestsCount = 1;
@@ -361,7 +441,6 @@ const renderHotelDetails = () => {
     if (typeof bookingData.guests === 'number') {
       guestsCount = bookingData.guests;
     } else if (typeof bookingData.guests === 'object' && !Array.isArray(bookingData.guests)) {
-      // If it's an object with adults property
       guestsCount = bookingData.guests.adults || bookingData.guests.guests || 1;
     } else if (Array.isArray(bookingData.guests)) {
       guestsCount = bookingData.guests.length;
@@ -388,6 +467,11 @@ const renderHotelDetails = () => {
   const providerOrderId = (booking.providerData as any)?.id || (booking.providerData as any)?.orderId || 'N/A';
   const providerConfirmationNumber = (booking.providerData as any)?.hotelBookings?.[0]?.hotelProviderInformation?.[0]?.confirmationNumber || 'N/A';
   
+  // Build full address
+  const fullAddress = hotelAddress || 
+    (hotelCity && hotelCountry ? `${hotelCity}, ${hotelCountry}` : 
+    hotelCity || hotelCountry || '');
+  
   return (
     <div className="space-y-6">
       {/* Provider Badge */}
@@ -401,10 +485,18 @@ const renderHotelDetails = () => {
         </div>
       </div>
       
-      {/* Hotel Name */}
+      {/* ✅ Hotel Name - Now displays correctly */}
       <div className="border-b border-gray-200 pb-4">
-        <h3 className="text-xl font-bold text-gray-900">{hotelName}</h3>
-        {hotelId && <p className="text-sm text-gray-500 mt-1">Hotel ID: {hotelId}</p>}
+        <h3 className="text-2xl font-bold text-gray-900">{hotelName}</h3>
+        {fullAddress && (
+          <p className="text-sm text-gray-600 mt-1">{fullAddress}</p>
+        )}
+        {hotelRating && (
+          <p className="text-sm text-gray-500 mt-1">
+            {'⭐'.repeat(Math.round(hotelRating))} {hotelRating}/5
+          </p>
+        )}
+        {hotelId && <p className="text-sm text-gray-400 mt-1">Hotel ID: {hotelId}</p>}
       </div>
       
       {/* Hotel Offer ID - Important */}
@@ -436,10 +528,12 @@ const renderHotelDetails = () => {
           <div>
             <p className="text-sm text-gray-500">Check-in</p>
             <p className="font-medium">{formatDate(checkInDate)}</p>
+            <p className="text-xs text-gray-400">From {hotelCheckInTime}</p>
           </div>
           <div>
             <p className="text-sm text-gray-500">Check-out</p>
             <p className="font-medium">{formatDate(checkOutDate)}</p>
+            <p className="text-xs text-gray-400">Until {hotelCheckOutTime}</p>
           </div>
           <div>
             <p className="text-sm text-gray-500">Nights</p>
@@ -453,17 +547,37 @@ const renderHotelDetails = () => {
             <p className="text-sm text-gray-500">Rooms</p>
             <p className="font-medium">{roomsCount} room{roomsCount > 1 ? 's' : ''}</p>
           </div>
+          {boardType && (
+            <div>
+              <p className="text-sm text-gray-500">Board Type</p>
+              <p className="font-medium">{boardType}</p>
+            </div>
+          )}
         </div>
       </div>
       
       {/* Room Details if available */}
-      {bookingData?.roomType && (
+      {roomType && (
         <div className="bg-gray-50 p-4 rounded-lg">
           <h4 className="font-semibold text-gray-900 mb-3">Room Details</h4>
-          <p className="text-gray-700">{bookingData.roomType}</p>
-          {bookingData.roomDescription && (
-            <p className="text-sm text-gray-500 mt-2">{bookingData.roomDescription}</p>
+          <p className="text-gray-700 font-medium">{roomType}</p>
+          {boardType && (
+            <p className="text-sm text-gray-500 mt-1">Board: {boardType}</p>
           )}
+          {numberOfRooms > 1 && (
+            <p className="text-sm text-gray-500">Number of Rooms: {numberOfRooms}</p>
+          )}
+          {hotelDescription && (
+            <p className="text-sm text-gray-600 mt-2 border-t border-gray-200 pt-2">{hotelDescription}</p>
+          )}
+        </div>
+      )}
+      
+      {/* Hotel Phone */}
+      {hotelPhone && (
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="font-semibold text-gray-900 mb-2">Contact</h4>
+          <p className="text-gray-700">📞 {hotelPhone}</p>
         </div>
       )}
       
