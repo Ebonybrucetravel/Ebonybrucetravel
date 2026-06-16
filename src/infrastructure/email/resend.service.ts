@@ -72,20 +72,27 @@ export interface BookingConfirmationEmailData {
     guests?: number;
     adults?: number;
     children?: number;
-    address?: string;
-    city?: string;
-    country?: string;
-    checkInTime?: string;
-    checkOutTime?: string;
-    phone?: string;
-    rating?: number;
+    // ✅ Enhanced hotel fields
+    hotelAddress?: string;
+    hotelCity?: string;
+    hotelCountry?: string;
+    hotelCheckInTime?: string;
+    hotelCheckOutTime?: string;
+    hotelPhone?: string;
+    hotelRating?: number;
     hotelDescription?: string;
     numberOfRooms?: number;
     boardType?: string;
     latitude?: number;
     longitude?: number;
-    amenities?: string[];
-    images?: string[];
+    hotelAmenities?: string[];
+    hotelImages?: string[];
+    hotelEmail?: string;
+    hotelWebsite?: string;
+    starRating?: number;
+    checkInInstructions?: string;
+    specialFeatures?: string[];
+    languagesSpoken?: string[];
   };
   pricing: {
     basePrice: number;
@@ -281,8 +288,8 @@ export class ResendService {
       if (data.productType === 'HOTEL') {
         this.logger.log(`📧 Sending hotel confirmation email for: ${data.bookingReference}`);
         this.logger.log(`🏨 Hotel Name: ${data.bookingDetails?.hotelName || 'NOT PROVIDED'}`);
-        this.logger.log(`📍 Hotel Address: ${data.bookingDetails?.address || 'NOT PROVIDED'}`);
-        this.logger.log(`🌆 Hotel City: ${data.bookingDetails?.city || 'NOT PROVIDED'}`);
+        this.logger.log(`📍 Hotel Address: ${data.bookingDetails?.hotelAddress || 'NOT PROVIDED'}`);
+        this.logger.log(`🌆 Hotel City: ${data.bookingDetails?.hotelCity || 'NOT PROVIDED'}`);
       }
 
       const subject = `Booking Confirmed - ${data.bookingReference}`;
@@ -924,8 +931,22 @@ export class ResendService {
           ? 'Car Rental' 
           : 'Booking';
 
-    // Log the hotel name being used in the template
+    // Get hotel details
     const hotelName = data.bookingDetails?.hotelName || 'Hotel';
+    const hotelAddress = data.bookingDetails?.hotelAddress || '';
+    const hotelCity = data.bookingDetails?.hotelCity || '';
+    const hotelCountry = data.bookingDetails?.hotelCountry || '';
+    const hotelRating = data.bookingDetails?.hotelRating || null;
+    const hotelDescription = data.bookingDetails?.hotelDescription || '';
+    const hotelCheckInTime = data.bookingDetails?.hotelCheckInTime || '15:00';
+    const hotelCheckOutTime = data.bookingDetails?.hotelCheckOutTime || '12:00';
+    const hotelPhone = data.bookingDetails?.hotelPhone || '';
+    const hotelAmenities = data.bookingDetails?.hotelAmenities || [];
+    const hotelImages = data.bookingDetails?.hotelImages || [];
+    const roomType = data.bookingDetails?.roomType || 'Standard Room';
+    const numberOfRooms = data.bookingDetails?.numberOfRooms || 1;
+    const boardType = data.bookingDetails?.boardType || 'Room Only';
+
     this.logger.log(`📝 Email template using hotel name: "${hotelName}"`);
 
     // Hotel details section
@@ -936,54 +957,54 @@ export class ResendService {
         <table style="width: 100%; border-collapse: collapse;">
           <tr>
             <td style="padding: 8px 0; font-weight: bold; width: 35%;">Hotel Name:</td>
-            <td style="padding: 8px 0; width: 65%; color: #2c3e50; font-weight: 500;">${data.bookingDetails.hotelName}</td>
+            <td style="padding: 8px 0; width: 65%; color: #2c3e50; font-weight: 500;">${hotelName}</td>
           </tr>
-          ${data.bookingDetails?.rating ? `
+          ${hotelRating ? `
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Rating:</td>
-              <td style="padding: 8px 0;">${'⭐'.repeat(Math.round(data.bookingDetails.rating))} ${data.bookingDetails.rating}/5</td>
+              <td style="padding: 8px 0;">${'⭐'.repeat(Math.round(hotelRating))} ${hotelRating}/5</td>
             </tr>` : ''}
-          ${data.bookingDetails?.address ? `
+          ${hotelAddress ? `
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Address:</td>
-              <td style="padding: 8px 0;">${data.bookingDetails.address}</td>
+              <td style="padding: 8px 0;">${hotelAddress}</td>
             </tr>` : ''}
-          ${data.bookingDetails?.city && data.bookingDetails?.country ? `
+          ${hotelCity && hotelCountry ? `
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Location:</td>
-              <td style="padding: 8px 0;">${data.bookingDetails.city}, ${data.bookingDetails.country}</td>
+              <td style="padding: 8px 0;">${hotelCity}, ${hotelCountry}</td>
             </tr>` : ''}
-          ${data.bookingDetails?.phone ? `
+          ${hotelPhone ? `
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Phone:</td>
-              <td style="padding: 8px 0;">${data.bookingDetails.phone}</td>
+              <td style="padding: 8px 0;">${hotelPhone}</td>
             </tr>` : ''}
-          ${data.bookingDetails?.roomType ? `
+          ${roomType ? `
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Room Type:</td>
-              <td style="padding: 8px 0;">${data.bookingDetails.roomType}</td>
+              <td style="padding: 8px 0;">${roomType}</td>
             </tr>` : ''}
-          ${data.bookingDetails?.boardType ? `
+          ${boardType ? `
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Board Type:</td>
-              <td style="padding: 8px 0;">${data.bookingDetails.boardType}</td>
+              <td style="padding: 8px 0;">${boardType}</td>
             </tr>` : ''}
-          ${data.bookingDetails?.numberOfRooms ? `
+          ${numberOfRooms ? `
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Number of Rooms:</td>
-              <td style="padding: 8px 0;">${data.bookingDetails.numberOfRooms}</td>
+              <td style="padding: 8px 0;">${numberOfRooms}</td>
             </tr>` : ''}
           ${data.bookingDetails?.checkInDate ? `
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Check-in:</td>
               <td style="padding: 8px 0;">${new Date(data.bookingDetails.checkInDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} 
-              ${data.bookingDetails?.checkInTime ? `(from ${data.bookingDetails.checkInTime})` : ''}</td>
+              ${hotelCheckInTime ? `(from ${hotelCheckInTime})` : ''}</td>
             </tr>` : ''}
           ${data.bookingDetails?.checkOutDate ? `
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Check-out:</td>
               <td style="padding: 8px 0;">${new Date(data.bookingDetails.checkOutDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              ${data.bookingDetails?.checkOutTime ? `(until ${data.bookingDetails.checkOutTime})` : ''}</td>
+              ${hotelCheckOutTime ? `(until ${hotelCheckOutTime})` : ''}</td>
             </tr>` : ''}
           ${data.bookingDetails?.guests ? `
             <tr>
@@ -1000,21 +1021,21 @@ export class ResendService {
               <td style="padding: 8px 0; font-weight: bold;">Children:</td>
               <td style="padding: 8px 0;">${data.bookingDetails.children}</td>
             </tr>` : ''}
-          ${data.bookingDetails?.amenities && data.bookingDetails.amenities.length > 0 ? `
+          ${hotelAmenities && hotelAmenities.length > 0 ? `
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Amenities:</td>
-              <td style="padding: 8px 0;">${data.bookingDetails.amenities.join(', ')}</td>
+              <td style="padding: 8px 0;">${hotelAmenities.join(', ')}</td>
             </tr>` : ''}
         </table>
-        ${data.bookingDetails?.hotelDescription ? `
+        ${hotelDescription ? `
           <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
-            <p style="margin: 5px 0; font-style: italic; color: #666; line-height: 1.5;">${data.bookingDetails.hotelDescription}</p>
+            <p style="margin: 5px 0; font-style: italic; color: #666; line-height: 1.5;">${hotelDescription}</p>
           </div>` : ''}
-        ${data.bookingDetails?.images && data.bookingDetails.images.length > 0 ? `
+        ${hotelImages && hotelImages.length > 0 ? `
           <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd; text-align: center;">
             <p style="margin: 5px 0; font-weight: bold;">Hotel Images:</p>
             <div style="display: flex; flex-wrap: wrap; gap: 5px; justify-content: center;">
-              ${data.bookingDetails.images.slice(0, 3).map(image => `
+              ${hotelImages.slice(0, 3).map(image => `
                 <img src="${image}" alt="Hotel image" style="width: 100px; height: 100px; object-fit: cover; border-radius: 5px;">
               `).join('')}
             </div>

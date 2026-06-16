@@ -10,6 +10,9 @@ import {
   IsNumber,
   IsBoolean,
   IsDateString,
+  Min,
+  Max,
+  IsInt,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -176,6 +179,216 @@ export class AmadeusPaymentDto {
   paymentCard: AmadeusPaymentCardDto;
 }
 
+// ==================== HOTEL DETAILS DTO ====================
+
+export class AmadeusHotelDetailsDto {
+  @ApiPropertyOptional({
+    description: 'Hotel ID from Amadeus',
+    example: 'MCDXBAEM',
+  })
+  @IsOptional()
+  @IsString()
+  hotelId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel name',
+    example: 'Marriott Hotel Dubai',
+  })
+  @IsOptional()
+  @IsString()
+  hotelName?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel address',
+    example: '1 Sheikh Zayed Road, Dubai',
+  })
+  @IsOptional()
+  @IsString()
+  hotelAddress?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel city',
+    example: 'Dubai',
+  })
+  @IsOptional()
+  @IsString()
+  hotelCity?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel country code (ISO 3166-1 alpha-2)',
+    example: 'AE',
+  })
+  @IsOptional()
+  @IsString()
+  hotelCountry?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel rating (0-5)',
+    example: 4.5,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  hotelRating?: number;
+
+  @ApiPropertyOptional({
+    description: 'Hotel description',
+    example: 'Luxury hotel in the heart of Dubai with stunning views',
+  })
+  @IsOptional()
+  @IsString()
+  hotelDescription?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel check-in time (HH:mm format)',
+    example: '15:00',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/, {
+    message: 'Check-in time must be in HH:mm format',
+  })
+  hotelCheckInTime?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel check-out time (HH:mm format)',
+    example: '12:00',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/, {
+    message: 'Check-out time must be in HH:mm format',
+  })
+  hotelCheckOutTime?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel phone number',
+    example: '+971 4 123 4567',
+  })
+  @IsOptional()
+  @IsString()
+  hotelPhone?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel email',
+    example: 'reservations@hotel.com',
+  })
+  @IsOptional()
+  @IsEmail()
+  hotelEmail?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel website',
+    example: 'https://www.hotel.com',
+  })
+  @IsOptional()
+  @IsString()
+  hotelWebsite?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel amenities',
+    example: ['WiFi', 'Swimming Pool', 'Restaurant', 'Fitness Center'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  hotelAmenities?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Hotel image URLs',
+    example: ['https://example.com/image1.jpg', 'https://example.com/image2.jpg'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  hotelImages?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Room type',
+    example: 'Deluxe King Room',
+  })
+  @IsOptional()
+  @IsString()
+  roomType?: string;
+
+  @ApiPropertyOptional({
+    description: 'Number of rooms',
+    example: 2,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  numberOfRooms?: number;
+
+  @ApiPropertyOptional({
+    description: 'Board type',
+    enum: ['Room Only', 'Breakfast Included', 'Half Board', 'Full Board', 'All Inclusive'],
+    example: 'Breakfast Included',
+  })
+  @IsOptional()
+  @IsString()
+  boardType?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel latitude',
+    example: 51.5074,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitude?: number;
+
+  @ApiPropertyOptional({
+    description: 'Hotel longitude',
+    example: -0.1278,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitude?: number;
+
+  @ApiPropertyOptional({
+    description: 'Hotel star rating (1-5)',
+    example: 5,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  starRating?: number;
+
+  @ApiPropertyOptional({
+    description: 'Hotel check-in instructions',
+    example: 'Please present ID and credit card at check-in',
+  })
+  @IsOptional()
+  @IsString()
+  checkInInstructions?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel special features',
+    example: ['Sea view', 'Pet friendly', 'Family rooms'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  specialFeatures?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Hotel languages spoken',
+    example: ['English', 'French', 'Spanish'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  languagesSpoken?: string[];
+}
+
+// ==================== MAIN CREATE HOTEL BOOKING DTO ====================
+
 export class CreateAmadeusHotelBookingDto {
   @ApiProperty({
     description: 'Hotel offer ID from search results (e.g., from Search Hotels Amadeus endpoint)',
@@ -191,6 +404,7 @@ export class CreateAmadeusHotelBookingDto {
   })
   @IsNumber()
   @IsNotEmpty()
+  @Min(0)
   offerPrice: number;
 
   @ApiProperty({
@@ -301,4 +515,221 @@ export class CreateAmadeusHotelBookingDto {
   @IsDateString()
   @IsNotEmpty()
   checkOutDate: string;
+
+  // ==================== HOTEL DETAILS FIELDS ====================
+
+  @ApiPropertyOptional({
+    description: 'Complete hotel details object',
+    type: AmadeusHotelDetailsDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AmadeusHotelDetailsDto)
+  hotelDetails?: AmadeusHotelDetailsDto;
+
+  // Individual hotel fields for convenience (these will be merged with hotelDetails)
+
+  @ApiPropertyOptional({
+    description: 'Hotel ID from Amadeus',
+    example: 'MCDXBAEM',
+  })
+  @IsOptional()
+  @IsString()
+  hotelId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel name',
+    example: 'Marriott Hotel Dubai',
+  })
+  @IsOptional()
+  @IsString()
+  hotelName?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel address',
+    example: '1 Sheikh Zayed Road, Dubai',
+  })
+  @IsOptional()
+  @IsString()
+  hotelAddress?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel city',
+    example: 'Dubai',
+  })
+  @IsOptional()
+  @IsString()
+  hotelCity?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel country code (ISO 3166-1 alpha-2)',
+    example: 'AE',
+  })
+  @IsOptional()
+  @IsString()
+  hotelCountry?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel rating (0-5)',
+    example: 4.5,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  hotelRating?: number;
+
+  @ApiPropertyOptional({
+    description: 'Hotel description',
+    example: 'Luxury hotel in the heart of Dubai with stunning views',
+  })
+  @IsOptional()
+  @IsString()
+  hotelDescription?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel check-in time (HH:mm format)',
+    example: '15:00',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/, {
+    message: 'Check-in time must be in HH:mm format',
+  })
+  hotelCheckInTime?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel check-out time (HH:mm format)',
+    example: '12:00',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/, {
+    message: 'Check-out time must be in HH:mm format',
+  })
+  hotelCheckOutTime?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel phone number',
+    example: '+971 4 123 4567',
+  })
+  @IsOptional()
+  @IsString()
+  hotelPhone?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel email',
+    example: 'reservations@hotel.com',
+  })
+  @IsOptional()
+  @IsEmail()
+  hotelEmail?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel website',
+    example: 'https://www.hotel.com',
+  })
+  @IsOptional()
+  @IsString()
+  hotelWebsite?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel amenities',
+    example: ['WiFi', 'Swimming Pool', 'Restaurant', 'Fitness Center'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  hotelAmenities?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Hotel image URLs',
+    example: ['https://example.com/image1.jpg', 'https://example.com/image2.jpg'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  hotelImages?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Room type',
+    example: 'Deluxe King Room',
+  })
+  @IsOptional()
+  @IsString()
+  roomType?: string;
+
+  @ApiPropertyOptional({
+    description: 'Number of rooms',
+    example: 2,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  numberOfRooms?: number;
+
+  @ApiPropertyOptional({
+    description: 'Board type',
+    enum: ['Room Only', 'Breakfast Included', 'Half Board', 'Full Board', 'All Inclusive'],
+    example: 'Breakfast Included',
+  })
+  @IsOptional()
+  @IsString()
+  boardType?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel latitude',
+    example: 51.5074,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitude?: number;
+
+  @ApiPropertyOptional({
+    description: 'Hotel longitude',
+    example: -0.1278,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitude?: number;
+
+  @ApiPropertyOptional({
+    description: 'Hotel star rating (1-5)',
+    example: 5,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  starRating?: number;
+
+  @ApiPropertyOptional({
+    description: 'Hotel check-in instructions',
+    example: 'Please present ID and credit card at check-in',
+  })
+  @IsOptional()
+  @IsString()
+  checkInInstructions?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hotel special features',
+    example: ['Sea view', 'Pet friendly', 'Family rooms'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  specialFeatures?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Hotel languages spoken',
+    example: ['English', 'French', 'Spanish'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  languagesSpoken?: string[];
 }

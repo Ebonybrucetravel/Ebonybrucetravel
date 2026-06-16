@@ -3,6 +3,7 @@ import { DuffelService } from '@infrastructure/external-apis/duffel/duffel.servi
 import { AmadeusService } from '@infrastructure/external-apis/amadeus/amadeus.service';
 import { PrismaService } from '@infrastructure/database/prisma.service';
 import { BookingStatus, Provider } from '@prisma/client';
+import { ResendService } from '@infrastructure/email/resend.service';
 
 @Injectable()
 export class CancelHotelBookingUseCase {
@@ -12,13 +13,17 @@ export class CancelHotelBookingUseCase {
     private readonly duffelService: DuffelService,
     private readonly amadeusService: AmadeusService,
     private readonly prisma: PrismaService,
+    private readonly resendService: ResendService,
   ) {}
 
   async execute(bookingId: string, userId: string, userRole: string = 'USER') {
     try {
-      // Get booking from our database
+      // Get booking from our database with user details
       const booking = await this.prisma.booking.findUnique({
         where: { id: bookingId },
+        include: {
+          user: true,
+        }
       });
 
       if (!booking) {
@@ -48,6 +53,16 @@ export class CancelHotelBookingUseCase {
         }
       }
 
+      // ✅ Extract hotel details for the cancellation email
+      const bookingData = booking.bookingData as any;
+      const hotelDetails = bookingData?.hotelDetails || {};
+      
+      const hotelName = hotelDetails?.hotelName || 
+                        bookingData?.hotelName || 
+                        'Hotel';
+      
+      this.logger.log(`🏨 Cancelling booking for hotel: "${hotelName}"`);
+
       // Cancel booking in provider (Duffel or Amadeus)
       let cancellationResult = null;
       
@@ -61,7 +76,6 @@ export class CancelHotelBookingUseCase {
           else if (booking.provider === Provider.AMADEUS) {
             this.logger.log(`Cancelling Amadeus hotel booking ${booking.providerBookingId}`);
             
-            // ✅ IMPROVED: Try multiple locations for the IDs
             const providerData = booking.providerData as any;
             
             let hotelOrderId = null;
@@ -81,7 +95,6 @@ export class CancelHotelBookingUseCase {
               hotelOrderId = providerData.orderId;
               this.logger.log(`Found hotelOrderId in providerData.orderId: ${hotelOrderId}`);
             } else if (booking.providerBookingId) {
-              // Fallback: use the providerBookingId
               hotelOrderId = booking.providerBookingId;
               this.logger.log(`Using providerBookingId as hotelOrderId: ${hotelOrderId}`);
             }
@@ -103,7 +116,6 @@ export class CancelHotelBookingUseCase {
             
             // Also check bookingData for the IDs
             if (!hotelOrderId || !hotelBookingId) {
-              const bookingData = booking.bookingData as any;
               if (bookingData?.amadeus_booking_details?.hotel_order_id) {
                 hotelOrderId = bookingData.amadeus_booking_details.hotel_order_id;
                 this.logger.log(`Found hotelOrderId in amadeus_booking_details: ${hotelOrderId}`);
@@ -123,7 +135,6 @@ export class CancelHotelBookingUseCase {
             
             this.logger.log(`Amadeus IDs - Order: ${hotelOrderId}, Booking: ${hotelBookingId}`);
             
-            // Call the correct method with both IDs
             const amadeusResponse = await this.amadeusService.cancelHotelBookingItem(
               hotelOrderId,
               hotelBookingId,
@@ -135,11 +146,9 @@ export class CancelHotelBookingUseCase {
           }
         } catch (error) {
           this.logger.error(`Failed to cancel booking in ${booking.provider}:`, error);
-          // If the error is from Amadeus, re-throw it
           if (error instanceof BadRequestException || error instanceof ForbiddenException) {
             throw error;
           }
-          // Continue with database update even if provider cancellation fails
         }
       }
 
@@ -173,6 +182,11 @@ export class CancelHotelBookingUseCase {
 
       this.logger.log(`Successfully cancelled hotel booking ${bookingId} (${booking.provider})`);
 
+      // ✅ Send cancellation email after successful cancellation
+      if (updatedBooking.status === BookingStatus.CANCELLED) {
+        await this.sendCancellationEmail(updatedBooking, cancellationResult, hotelDetails);
+      }
+
       return {
         booking: updatedBooking,
         cancellation: cancellationResult,
@@ -185,6 +199,142 @@ export class CancelHotelBookingUseCase {
       }
       this.logger.error('Error cancelling hotel booking:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Send cancellation confirmation email with hotel details
+   */
+  private async sendCancellationEmail(booking: any, cancellationResult: any, hotelDetails: any) {
+    try {
+      const bookingData = booking.bookingData as any;
+      const passengerInfo = booking.passengerInfo as any;
+      
+      // Get customer email
+      const customerEmail = passengerInfo?.email || 
+                            bookingData?.guests?.[0]?.contact?.email ||
+                            bookingData?.guests?.[0]?.email ||
+                            booking.user?.email;
+
+      if (!customerEmail) {
+        this.logger.warn(`⚠️ No customer email found for booking ${booking.id}`);
+        return;
+      }
+
+      // Get customer name
+      const customerName = passengerInfo?.firstName && passengerInfo?.lastName
+        ? `${passengerInfo.firstName} ${passengerInfo.lastName}`
+        : bookingData?.guests?.[0]?.name?.firstName && bookingData?.guests?.[0]?.name?.lastName
+          ? `${bookingData.guests[0].name.firstName} ${bookingData.guests[0].name.lastName}`
+          : 'Valued Customer';
+
+      // ✅ Get hotel name from stored details
+      const hotelName = hotelDetails?.hotelName || 
+                        bookingData?.hotelName || 
+                        'Hotel';
+      
+      const bookingReference = booking.bookingReference || `EBT-${booking.id.slice(-8)}`;
+      
+      const refundAmount = booking.totalAmount || 0;
+      const refundCurrency = booking.currency || 'USD';
+      const hasAirlineCredits = false;
+      const cancellationDate = booking.cancelledAt || new Date();
+
+      this.logger.log(`📧 Sending cancellation email for hotel: "${hotelName}"`);
+
+      // Send cancellation email with hotel details
+      await this.sendCustomCancellationEmail(
+        customerEmail, 
+        customerName, 
+        bookingReference, 
+        hotelName,
+        cancellationDate,
+        refundAmount,
+        refundCurrency
+      );
+
+      this.logger.log(`✅ Cancellation email sent to ${customerEmail} for booking ${booking.id}`);
+    } catch (error) {
+      this.logger.error(`Failed to send cancellation email:`, error);
+    }
+  }
+
+  /**
+   * Custom cancellation email with hotel details
+   */
+  private async sendCustomCancellationEmail(
+    to: string, 
+    customerName: string, 
+    bookingReference: string, 
+    hotelName: string,
+    cancellationDate: Date,
+    refundAmount: number,
+    refundCurrency: string
+  ) {
+    try {
+      const subject = `Booking Cancellation Confirmation - ${bookingReference}`;
+      const html = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Booking Cancellation Confirmation</title>
+          </head>
+          <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
+              <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
+            </div>
+            
+            <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
+              <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
+                Booking Cancellation Confirmation
+              </h2>
+              
+              <p>Dear ${customerName || 'Valued Customer'},</p>
+              
+              <p>We're writing to confirm that your booking has been cancelled.</p>
+              
+              <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
+                <p style="margin: 5px 0;"><strong>Booking Reference:</strong> ${bookingReference}</p>
+                <p style="margin: 5px 0;"><strong>Hotel Name:</strong> ${hotelName}</p>
+                <p style="margin: 5px 0;"><strong>Cancellation Date:</strong> ${cancellationDate.toLocaleDateString()}</p>
+              </div>
+              
+              <div style="background-color: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #0c5460;">Refund Information</h3>
+                <p><strong>Refund Amount:</strong> ${refundAmount} ${refundCurrency}</p>
+                <p>Your refund will be processed to your original payment method. Please allow 5-10 business days for the refund to appear in your account.</p>
+              </div>
+              
+              <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+                <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
+                <p>Thank you for choosing Ebony Bruce Travels.</p>
+                <p style="margin-top: 20px;">
+                  Best regards,<br>
+                  <strong>The Ebony Bruce Travels Team</strong>
+                </p>
+              </div>
+            </div>
+            
+            <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+              <p>This is an automated email. Please do not reply to this message.</p>
+            </div>
+          </body>
+        </html>
+      `;
+
+      // Use the ResendService's internal resend instance
+      await this.resendService['resend'].emails.send({
+        from: this.resendService['fromEmail'],
+        to: to,
+        subject: subject,
+        html: html,
+      });
+
+      this.logger.log(`✅ Custom cancellation email sent with hotel name: "${hotelName}"`);
+    } catch (error) {
+      this.logger.error(`Failed to send custom cancellation email:`, error);
     }
   }
 }

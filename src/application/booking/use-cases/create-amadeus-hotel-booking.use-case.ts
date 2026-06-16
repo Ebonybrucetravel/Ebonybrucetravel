@@ -10,6 +10,7 @@ import { AgencyCardService } from '@infrastructure/security/agency-card.service'
 import { CreateAmadeusHotelBookingDto } from '@presentation/booking/dto/create-amadeus-hotel-booking.dto';
 import { BookingStatus, Provider } from '@prisma/client';
 import { PrismaService } from '@infrastructure/database/prisma.service';
+import { ResendService } from '@infrastructure/email/resend.service';
 
 @Injectable()
 export class CreateAmadeusHotelBookingUseCase {
@@ -24,6 +25,7 @@ export class CreateAmadeusHotelBookingUseCase {
     private readonly encryptionService: EncryptionService,
     private readonly agencyCardService: AgencyCardService,
     private readonly prisma: PrismaService,
+    private readonly resendService: ResendService,
   ) {}
 
   /**
@@ -42,7 +44,25 @@ export class CreateAmadeusHotelBookingUseCase {
         clientIp, 
         userAgent,
         checkInDate,
-        checkOutDate
+        checkOutDate,
+        hotelName,
+        hotelAddress,
+        hotelCity,
+        hotelCountry,
+        hotelRating,
+        hotelDescription,
+        hotelCheckInTime,
+        hotelCheckOutTime,
+        hotelPhone,
+        hotelAmenities,
+        hotelImages,
+        roomType,
+        numberOfRooms,
+        boardType,
+        starRating,
+        checkInInstructions,
+        specialFeatures,
+        languagesSpoken,
       } = dto;
 
       if (!policyAccepted) {
@@ -126,6 +146,35 @@ export class CreateAmadeusHotelBookingUseCase {
         );
       }
 
+      // ✅ Build hotel details object
+      const hotelDetailsObj = {
+        hotelName: hotelName || 'Hotel',
+        hotelAddress: hotelAddress || '',
+        hotelCity: hotelCity || '',
+        hotelCountry: hotelCountry || '',
+        hotelRating: hotelRating || null,
+        hotelDescription: hotelDescription || '',
+        hotelCheckInTime: hotelCheckInTime || '15:00',
+        hotelCheckOutTime: hotelCheckOutTime || '12:00',
+        hotelPhone: hotelPhone || '',
+        hotelAmenities: hotelAmenities || [],
+        hotelImages: hotelImages || [],
+        roomType: roomType || 'Standard Room',
+        numberOfRooms: numberOfRooms || 1,
+        boardType: boardType || 'Room Only',
+        starRating: starRating || null,
+        checkInInstructions: checkInInstructions || '',
+        specialFeatures: specialFeatures || [],
+        languagesSpoken: languagesSpoken || [],
+      };
+
+      this.logger.log(`🏨 Storing hotel details:`, {
+        hotelName: hotelDetailsObj.hotelName,
+        hotelAddress: hotelDetailsObj.hotelAddress,
+        hotelCity: hotelDetailsObj.hotelCity,
+        hotelCountry: hotelDetailsObj.hotelCountry,
+      });
+
       const booking = await this.bookingService.createBooking({
         userId,
         productType: 'HOTEL',
@@ -157,6 +206,8 @@ export class CreateAmadeusHotelBookingUseCase {
           },
           checkInDate: checkInDate,
           checkOutDate: checkOutDate,
+          // ✅ STORE HOTEL DETAILS
+          hotelDetails: hotelDetailsObj,
         },
         passengerInfo,
         status: BookingStatus.PENDING,
@@ -168,7 +219,7 @@ export class CreateAmadeusHotelBookingUseCase {
         ...(userAgent && { userAgent }),
       });
 
-      this.logger.log(`Created local booking ${booking.id} for Amadeus hotel offer ${dto.hotelOfferId} with total amount ${pricing.totalAmount}`);
+      this.logger.log(`✅ Booking created with hotel name: ${hotelDetailsObj.hotelName}`);
       this.logger.log(`📅 Saved dates - Check-in: ${checkInDate}, Check-out: ${checkOutDate}`);
       this.logger.log(`💰 Original price for Amadeus: ${dto.offerPrice} ${dto.currency}`);
 
@@ -195,6 +246,9 @@ export class CreateAmadeusHotelBookingUseCase {
     try {
       const booking = await this.prisma.booking.findUnique({
         where: { id: bookingId },
+        include: {
+          user: true,
+        }
       });
 
       if (!booking) {
@@ -268,13 +322,11 @@ export class CreateAmadeusHotelBookingUseCase {
         }
       }
 
-      // ✅ Get the original price and currency from bookingData
       const originalOfferPrice = bookingData.original_offer_price || {};
       const originalCurrency = originalOfferPrice.currency || 'GBP';
       const originalTotal = parseFloat(originalOfferPrice.total || '0');
       const originalBase = parseFloat(originalOfferPrice.base || '0');
 
-      // ✅ Use the actual original price, not a test price
       const priceForAmadeus: any = {
         currency: originalCurrency,
         base: originalBase.toFixed(2),
@@ -284,7 +336,6 @@ export class CreateAmadeusHotelBookingUseCase {
       this.logger.log(`💰 Sending ORIGINAL price to Amadeus: ${JSON.stringify(priceForAmadeus)}`);
       this.logger.log(`🏨 Hotel Offer ID: ${offerId}, Currency: ${originalCurrency}, Price: ${originalTotal}`);
 
-      // ✅ ADD THIS: Re-price the offer before booking to avoid cancellation discrepancy
       try {
         this.logger.log(`🔄 Re-pricing offer ${offerId} before booking...`);
         const repricedOffer = await this.amadeusService.repriceHotelOffer(offerId);
@@ -308,7 +359,6 @@ export class CreateAmadeusHotelBookingUseCase {
         this.logger.warn(`⚠️ Repricing failed (continuing with original prices): ${repricingError.message}`);
       }
 
-      // ✅ Transform guests with 'tid' field (Amadeus requirement)
       const transformedGuests = guests.map((g: any, index: number) => ({
         tid: (index + 1).toString(),
         title: g.name?.title || g.title,
@@ -318,7 +368,6 @@ export class CreateAmadeusHotelBookingUseCase {
         email: g.contact?.email || g.email,
       }));
 
-      // ✅ Build request body matching Amadeus sample (NO hotelBookings wrapper)
       const amadeusRequestPayload = {
         data: {
           type: "hotel-order",
@@ -353,44 +402,48 @@ export class CreateAmadeusHotelBookingUseCase {
 
       this.logger.log(`📤 Sending to Amadeus: ${JSON.stringify(amadeusRequestPayload, null, 2)}`);
 
-     // Call Amadeus service
-const amadeusBooking = await this.amadeusService.createHotelBooking(amadeusRequestPayload);
+      const amadeusBooking = await this.amadeusService.createHotelBooking(amadeusRequestPayload);
 
-// ✅ Extract the IDs
-const hotelOrderId = amadeusBooking.data?.id;
-const hotelBookingId = amadeusBooking.data?.hotelBookings?.[0]?.id;
+      const hotelOrderId = amadeusBooking.data?.id;
+      const hotelBookingId = amadeusBooking.data?.hotelBookings?.[0]?.id;
 
-this.logger.log(`✅ Amadeus response - Order ID: ${hotelOrderId}, Booking ID: ${hotelBookingId}`);
+      this.logger.log(`✅ Amadeus response - Order ID: ${hotelOrderId}, Booking ID: ${hotelBookingId}`);
 
-const updatedBookingData = { ...bookingData };
-if (bookingData.payment_card_info) {
-  updatedBookingData.payment_card_info = {
-    ...bookingData.payment_card_info,
-    encrypted: null,
-    cardLast4: bookingData.payment_card_info.cardLast4,
-  };
-}
+      const updatedBookingData = { ...bookingData };
+      if (bookingData.payment_card_info) {
+        updatedBookingData.payment_card_info = {
+          ...bookingData.payment_card_info,
+          encrypted: null,
+          cardLast4: bookingData.payment_card_info.cardLast4,
+        };
+      }
 
-updatedBookingData.amadeus_booking_details = {
-  currency_used: originalCurrency,
-  price_sent: priceForAmadeus,
-  hotel_offer_id: offerId,
-  hotel_order_id: hotelOrderId,      
-  hotel_booking_id: hotelBookingId,  
-  created_at: new Date().toISOString(),
-  request_payload: amadeusRequestPayload,
-};
+      updatedBookingData.amadeus_booking_details = {
+        currency_used: originalCurrency,
+        price_sent: priceForAmadeus,
+        hotel_offer_id: offerId,
+        hotel_order_id: hotelOrderId,      
+        hotel_booking_id: hotelBookingId,  
+        created_at: new Date().toISOString(),
+        request_payload: amadeusRequestPayload,
+      };
 
-await this.prisma.booking.update({
-  where: { id: bookingId },
-  data: {
-    providerBookingId: hotelOrderId,  
-    providerData: amadeusBooking.data,
-    status: BookingStatus.CONFIRMED,
-    bookingData: updatedBookingData,
-  },
-});
+      await this.prisma.booking.update({
+        where: { id: bookingId },
+        data: {
+          providerBookingId: hotelOrderId,  
+          providerData: amadeusBooking.data,
+          status: BookingStatus.CONFIRMED,
+          bookingData: updatedBookingData,
+        },
+      });
+
       this.logger.log(`✅ Successfully created Amadeus hotel order ${amadeusBooking.data.id} with price ${priceForAmadeus.total} ${priceForAmadeus.currency}`);
+
+      // ✅ Send confirmation email after successful booking
+      if (amadeusBooking?.data?.id) {
+        await this.sendHotelConfirmationEmail(booking, amadeusBooking.data);
+      }
 
       return {
         orderId: amadeusBooking.data.id,
@@ -432,6 +485,104 @@ await this.prisma.booking.update({
         this.logger.error(`Amadeus errors: ${JSON.stringify(redactCardData(errResponse.errors))}`);
       }
       throw error;
+    }
+  }
+
+  /**
+   * Send hotel confirmation email with complete details
+   */
+  private async sendHotelConfirmationEmail(booking: any, amadeusResponse: any) {
+    try {
+      const bookingData = booking.bookingData as any;
+      const passengerInfo = booking.passengerInfo as any;
+      
+      // ✅ Extract hotel details from bookingData
+      const hotelDetails = bookingData.hotelDetails || {};
+      
+      this.logger.log(`📤 Extracting hotel details from booking:`, {
+        hotelName: hotelDetails.hotelName,
+        hotelAddress: hotelDetails.hotelAddress,
+        hotelCity: hotelDetails.hotelCity,
+      });
+
+      // Get customer email
+      const customerEmail = passengerInfo?.email || 
+                            bookingData?.guests?.[0]?.contact?.email ||
+                            bookingData?.guests?.[0]?.email ||
+                            booking.user?.email;
+
+      if (!customerEmail) {
+        this.logger.warn(`⚠️ No customer email found for booking ${booking.id}`);
+        return;
+      }
+
+      // Get customer name
+      const customerName = passengerInfo?.firstName && passengerInfo?.lastName
+        ? `${passengerInfo.firstName} ${passengerInfo.lastName}`
+        : bookingData?.guests?.[0]?.name?.firstName && bookingData?.guests?.[0]?.name?.lastName
+          ? `${bookingData.guests[0].name.firstName} ${bookingData.guests[0].name.lastName}`
+          : 'Valued Customer';
+
+      // ✅ Get the hotel name with proper fallback
+      const hotelName = hotelDetails.hotelName || 
+                        bookingData.hotelName || 
+                        'Hotel';
+      
+      this.logger.log(`🏨 Sending email with hotel name: "${hotelName}"`);
+
+      const bookingReference = booking.bookingReference || `EBT-${booking.id.slice(-8)}`;
+
+      const pricing = {
+        basePrice: booking.basePrice,
+        markupAmount: booking.markupAmount,
+        serviceFee: booking.serviceFee,
+        totalAmount: booking.totalAmount,
+        currency: booking.currency,
+      };
+
+      const guests = bookingData.guests || [];
+      const adults = guests.filter((g: any) => g.type === 'ADULT' || g.name?.title).length || guests.length || 1;
+      const children = guests.filter((g: any) => g.type === 'CHILD').length || 0;
+
+      // ✅ Send email with all hotel details
+      await this.resendService.sendBookingConfirmationEmail({
+        to: customerEmail,
+        customerName: customerName,
+        bookingReference: bookingReference,
+        productType: 'HOTEL',
+        provider: 'Amadeus',
+        bookingDetails: {
+          checkInDate: bookingData.checkInDate,
+          checkOutDate: bookingData.checkOutDate,
+          guests: guests.length || 1,
+          adults: adults,
+          children: children,
+          hotelName: hotelName,
+          hotelAddress: hotelDetails.hotelAddress || '',
+          hotelCity: hotelDetails.hotelCity || '',
+          hotelCountry: hotelDetails.hotelCountry || '',
+          hotelRating: hotelDetails.hotelRating || null,
+          hotelDescription: hotelDetails.hotelDescription || '',
+          hotelCheckInTime: hotelDetails.hotelCheckInTime || '15:00',
+          hotelCheckOutTime: hotelDetails.hotelCheckOutTime || '12:00',
+          hotelPhone: hotelDetails.hotelPhone || '',
+          hotelAmenities: hotelDetails.hotelAmenities || [],
+          hotelImages: hotelDetails.hotelImages || [],
+          roomType: hotelDetails.roomType || 'Standard Room',
+          numberOfRooms: hotelDetails.numberOfRooms || 1,
+          boardType: hotelDetails.boardType || 'Room Only',
+        },
+        pricing: pricing,
+        confirmationDate: new Date(),
+        bookingId: booking.id,
+        cancellationDeadline: booking.cancellationDeadline || null,
+        cancellationPolicySummary: booking.cancellationPolicySnapshot || 'Free cancellation until 24 hours before check-in.',
+        noShowWording: 'In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.',
+      });
+
+      this.logger.log(`✅ Hotel confirmation email sent to ${customerEmail} with hotel name: "${hotelName}"`);
+    } catch (error) {
+      this.logger.error(`❌ Failed to send hotel confirmation email:`, error);
     }
   }
 }
