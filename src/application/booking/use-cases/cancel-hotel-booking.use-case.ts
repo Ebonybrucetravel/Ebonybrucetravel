@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { DuffelService } from '@infrastructure/external-apis/duffel/duffel.service';
 import { AmadeusService } from '@infrastructure/external-apis/amadeus/amadeus.service';
 import { PrismaService } from '@infrastructure/database/prisma.service';
@@ -14,7 +14,7 @@ export class CancelHotelBookingUseCase {
     private readonly prisma: PrismaService,
   ) {}
 
-  async execute(bookingId: string) {
+  async execute(bookingId: string, userId: string, userRole: string = 'USER') {
     try {
       // Get booking from our database
       const booking = await this.prisma.booking.findUnique({
@@ -25,30 +25,72 @@ export class CancelHotelBookingUseCase {
         throw new NotFoundException(`Booking with ID ${bookingId} not found`);
       }
 
+      // ✅ Check if user has permission to cancel this booking
+      const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+      
+      if (!isAdmin && booking.userId !== userId) {
+        throw new ForbiddenException('You do not have permission to cancel this booking');
+      }
+
       // Check if booking can be cancelled
       if (booking.status === BookingStatus.CANCELLED) {
         throw new BadRequestException('Booking is already cancelled');
       }
 
+      // Check if cancellation deadline has passed (skip for admins)
+      if (!isAdmin && booking.cancellationDeadline) {
+        const now = new Date();
+        const deadline = new Date(booking.cancellationDeadline);
+        if (now > deadline) {
+          throw new BadRequestException(
+            'Cancellation deadline has passed. You can no longer cancel this booking.'
+          );
+        }
+      }
+
       // Cancel booking in provider (Duffel or Amadeus)
       let cancellationResult = null;
+      
       if (booking.providerBookingId) {
         try {
           if (booking.provider === Provider.DUFFEL) {
             this.logger.log(`Cancelling Duffel hotel booking ${booking.providerBookingId}`);
             const duffelResponse = await this.duffelService.cancelHotelBooking(booking.providerBookingId);
             cancellationResult = duffelResponse.data;
-          } else if (booking.provider === Provider.AMADEUS) {
+          } 
+          else if (booking.provider === Provider.AMADEUS) {
             this.logger.log(`Cancelling Amadeus hotel booking ${booking.providerBookingId}`);
-            const amadeusResponse = await this.amadeusService.cancelHotelBooking(booking.providerBookingId);
-            cancellationResult = amadeusResponse.data;
-          } else {
+            
+            // Extract both IDs from providerData
+            const providerData = booking.providerData as any;
+            const hotelOrderId = providerData?.data?.id || providerData?.id;
+            const hotelBookingId = providerData?.data?.hotelBookings?.[0]?.id;
+            
+            if (!hotelOrderId || !hotelBookingId) {
+              throw new BadRequestException(
+                'Unable to cancel: Missing Amadeus booking identifiers. Please contact support.'
+              );
+            }
+            
+            this.logger.log(`Amadeus IDs - Order: ${hotelOrderId}, Booking: ${hotelBookingId}`);
+            
+            // Call the correct method with both IDs
+            const amadeusResponse = await this.amadeusService.cancelHotelBookingItem(
+              hotelOrderId,
+              hotelBookingId,
+            );
+            cancellationResult = amadeusResponse;
+          } 
+          else {
             this.logger.warn(`Unsupported provider for hotel cancellation: ${booking.provider}`);
           }
         } catch (error) {
           this.logger.error(`Failed to cancel booking in ${booking.provider}:`, error);
+          // If the error is from Amadeus, re-throw it
+          if (error instanceof BadRequestException) {
+            throw error;
+          }
           // Continue with database update even if provider cancellation fails
-          // This allows us to mark the booking as cancelled locally even if provider API fails
         }
       }
 
@@ -57,10 +99,7 @@ export class CancelHotelBookingUseCase {
       if (booking.provider === Provider.DUFFEL) {
         refundStatus = cancellationResult?.refund_status === 'COMPLETED' ? 'REFUNDED' : 'PENDING';
       } else if (booking.provider === Provider.AMADEUS) {
-        // Amadeus cancellation response structure may differ
-        // Check if cancellation was successful and refund status
         if (cancellationResult?.data?.bookingStatus === 'CANCELLED') {
-          // Check for refund information in Amadeus response
           refundStatus = cancellationResult?.data?.refundStatus || 'PENDING';
         }
       }
@@ -71,11 +110,13 @@ export class CancelHotelBookingUseCase {
         data: {
           status: BookingStatus.CANCELLED,
           cancelledAt: new Date(),
+          cancelledBy: userId,
           paymentStatus: refundStatus === 'REFUNDED' ? 'REFUNDED' : booking.paymentStatus,
           bookingData: {
             ...(booking.bookingData as any),
             cancellation: cancellationResult,
             cancelledAt: new Date().toISOString(),
+            cancelledBy: userId,
             cancellationProvider: booking.provider,
           },
         },
@@ -88,12 +129,13 @@ export class CancelHotelBookingUseCase {
         cancellation: cancellationResult,
       };
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (error instanceof NotFoundException || 
+          error instanceof BadRequestException || 
+          error instanceof ForbiddenException) {
         throw error;
       }
-      console.error('Error cancelling hotel booking:', error);
+      this.logger.error('Error cancelling hotel booking:', error);
       throw error;
     }
   }
 }
-

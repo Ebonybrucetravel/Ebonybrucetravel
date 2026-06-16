@@ -732,21 +732,35 @@ export class BookingController {
     return { success: true, data: result };
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @Post('hotels/bookings/:bookingId/cancel')
-  @ApiBearerAuth()
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Cancel a hotel booking (Admin only)' })
-  @ApiResponse({ status: 200, description: 'Hotel booking cancelled successfully' })
-  async cancelHotelBooking(@Param('bookingId') bookingId: string) {
-    const result = await this.cancelHotelBookingUseCase.execute(bookingId);
-    return {
-      success: true,
-      data: result,
-      message: 'Hotel booking cancelled successfully',
-    };
-  }
+ // ==================== HOTEL CANCELLATION ENDPOINT ====================
+
+@UseGuards(JwtAuthGuard)
+@Post('hotels/bookings/:bookingId/cancel')
+@ApiBearerAuth()
+@HttpCode(HttpStatus.OK)
+@ApiOperation({ 
+  summary: 'Cancel a hotel booking', 
+  description: 'Users can cancel their own bookings if within cancellation deadline. Admins can cancel any booking.' 
+})
+@ApiResponse({ status: 200, description: 'Hotel booking cancelled successfully' })
+@ApiResponse({ status: 400, description: 'Cancellation not allowed (deadline passed or already cancelled)' })
+@ApiResponse({ status: 403, description: 'You do not have permission to cancel this booking' })
+@ApiResponse({ status: 404, description: 'Booking not found' })
+async cancelHotelBooking(
+  @Param('bookingId') bookingId: string,
+  @Request() req: any,
+) {
+  const userId = req.user.id;
+  const userRole = req.user.role;
+  
+  const result = await this.cancelHotelBookingUseCase.execute(bookingId, userId, userRole);
+  
+  return {
+    success: true,
+    data: result,
+    message: 'Booking cancelled successfully',
+  };
+}
 
  // ==================== HOTEL BOOKING UPDATE ENDPOINT ====================
 
