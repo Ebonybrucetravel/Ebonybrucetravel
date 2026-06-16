@@ -25,7 +25,7 @@ export class CancelHotelBookingUseCase {
         throw new NotFoundException(`Booking with ID ${bookingId} not found`);
       }
 
-      // ✅ Check if user has permission to cancel this booking
+      // Check if user has permission to cancel this booking
       const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
       
       if (!isAdmin && booking.userId !== userId) {
@@ -61,12 +61,61 @@ export class CancelHotelBookingUseCase {
           else if (booking.provider === Provider.AMADEUS) {
             this.logger.log(`Cancelling Amadeus hotel booking ${booking.providerBookingId}`);
             
-            // Extract both IDs from providerData
+            // ✅ IMPROVED: Try multiple locations for the IDs
             const providerData = booking.providerData as any;
-            const hotelOrderId = providerData?.data?.id || providerData?.id;
-            const hotelBookingId = providerData?.data?.hotelBookings?.[0]?.id;
+            
+            let hotelOrderId = null;
+            let hotelBookingId = null;
+            
+            // Log the providerData structure for debugging
+            this.logger.log(`ProviderData structure: ${JSON.stringify(providerData, null, 2)}`);
+            
+            // Try to find hotelOrderId in various locations
+            if (providerData?.data?.id) {
+              hotelOrderId = providerData.data.id;
+              this.logger.log(`Found hotelOrderId in providerData.data.id: ${hotelOrderId}`);
+            } else if (providerData?.id) {
+              hotelOrderId = providerData.id;
+              this.logger.log(`Found hotelOrderId in providerData.id: ${hotelOrderId}`);
+            } else if (providerData?.orderId) {
+              hotelOrderId = providerData.orderId;
+              this.logger.log(`Found hotelOrderId in providerData.orderId: ${hotelOrderId}`);
+            } else if (booking.providerBookingId) {
+              // Fallback: use the providerBookingId
+              hotelOrderId = booking.providerBookingId;
+              this.logger.log(`Using providerBookingId as hotelOrderId: ${hotelOrderId}`);
+            }
+            
+            // Try to find hotelBookingId in various locations
+            if (providerData?.data?.hotelBookings?.[0]?.id) {
+              hotelBookingId = providerData.data.hotelBookings[0].id;
+              this.logger.log(`Found hotelBookingId in providerData.data.hotelBookings[0].id: ${hotelBookingId}`);
+            } else if (providerData?.hotelBookings?.[0]?.id) {
+              hotelBookingId = providerData.hotelBookings[0].id;
+              this.logger.log(`Found hotelBookingId in providerData.hotelBookings[0].id: ${hotelBookingId}`);
+            } else if (providerData?.data?.hotelBookingId) {
+              hotelBookingId = providerData.data.hotelBookingId;
+              this.logger.log(`Found hotelBookingId in providerData.data.hotelBookingId: ${hotelBookingId}`);
+            } else if (providerData?.hotelBookingId) {
+              hotelBookingId = providerData.hotelBookingId;
+              this.logger.log(`Found hotelBookingId in providerData.hotelBookingId: ${hotelBookingId}`);
+            }
+            
+            // Also check bookingData for the IDs
+            if (!hotelOrderId || !hotelBookingId) {
+              const bookingData = booking.bookingData as any;
+              if (bookingData?.amadeus_booking_details?.hotel_order_id) {
+                hotelOrderId = bookingData.amadeus_booking_details.hotel_order_id;
+                this.logger.log(`Found hotelOrderId in amadeus_booking_details: ${hotelOrderId}`);
+              }
+              if (bookingData?.amadeus_booking_details?.hotel_booking_id) {
+                hotelBookingId = bookingData.amadeus_booking_details.hotel_booking_id;
+                this.logger.log(`Found hotelBookingId in amadeus_booking_details: ${hotelBookingId}`);
+              }
+            }
             
             if (!hotelOrderId || !hotelBookingId) {
+              this.logger.error('Failed to extract Amadeus IDs. providerData:', JSON.stringify(providerData, null, 2));
               throw new BadRequestException(
                 'Unable to cancel: Missing Amadeus booking identifiers. Please contact support.'
               );
@@ -87,7 +136,7 @@ export class CancelHotelBookingUseCase {
         } catch (error) {
           this.logger.error(`Failed to cancel booking in ${booking.provider}:`, error);
           // If the error is from Amadeus, re-throw it
-          if (error instanceof BadRequestException) {
+          if (error instanceof BadRequestException || error instanceof ForbiddenException) {
             throw error;
           }
           // Continue with database update even if provider cancellation fails
