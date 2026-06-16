@@ -67,19 +67,45 @@ export class UpdateAmadeusHotelBookingUseCase {
             // ✅ STEP 2: Re-price with new dates
             const repricedOffer = await this.amadeusService.repriceHotelOffer(offerId);
             
-            if (repricedOffer?.data) {
-              const newPrice = repricedOffer.data.price;
+            // ✅ STEP 3: Extract price from different possible response structures
+            let newPrice = null;
+            
+            // Structure 1: repricedOffer.data.price
+            if (repricedOffer?.data?.price) {
+              newPrice = repricedOffer.data.price;
+              this.logger.log(`✅ Found price in data.price: ${newPrice.total} ${newPrice.currency}`);
+            }
+            // Structure 2: repricedOffer.price (direct)
+            else if (repricedOffer?.price) {
+              newPrice = repricedOffer.price;
+              this.logger.log(`✅ Found price in price: ${newPrice.total} ${newPrice.currency}`);
+            }
+            // Structure 3: repricedOffer.included.price (from error response)
+            else if (repricedOffer?.included?.price) {
+              newPrice = repricedOffer.included.price;
+              this.logger.log(`✅ Found price in included.price: ${newPrice.total} ${newPrice.currency}`);
+            }
+            // Structure 4: repricedOffer.data (direct)
+            else if (repricedOffer?.data && typeof repricedOffer.data === 'object' && repricedOffer.data.total) {
+              newPrice = repricedOffer.data;
+              this.logger.log(`✅ Found price in data (direct): ${newPrice.total} ${newPrice.currency}`);
+            }
+            
+            if (newPrice) {
               this.logger.log(`✅ Re-priced successfully: ${newPrice.total} ${newPrice.currency}`);
               
-              // ✅ STEP 3: Store the new price in booking data
+              // ✅ STEP 3b: Store the new price in booking data
               bookingData.updated_price = {
                 total: newPrice.total,
-                base: newPrice.base,
+                base: newPrice.base || newPrice.total,
                 currency: newPrice.currency,
                 checkInDate: checkInDate,
                 checkOutDate: checkOutDate,
                 updated_at: new Date().toISOString(),
               };
+            } else {
+              this.logger.warn('⚠️ Re-pricing succeeded but no price data found in response');
+              this.logger.debug(`Response structure: ${JSON.stringify(repricedOffer, null, 2)}`);
             }
           } catch (repricingError: any) {
             this.logger.warn(`⚠️ Repricing failed: ${repricingError.message}`);

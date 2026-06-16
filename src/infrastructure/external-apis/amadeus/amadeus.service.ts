@@ -457,7 +457,7 @@ export class AmadeusService {
     });
   }
 
-  // ✅ REPRICE HOTEL OFFER
+  // ✅ REPRICE HOTEL OFFER - Improved to handle different response structures
   async repriceHotelOffer(offerId: string): Promise<any> {
     try {
       this.logger.log(`🔄 Re-pricing hotel offer: ${offerId}`);
@@ -470,7 +470,16 @@ export class AmadeusService {
       });
       
       this.logger.log(`✅ Re-pricing successful for offer: ${offerId}`);
-      return response;
+      
+      // ✅ Return in a consistent format
+      return {
+        data: {
+          price: response?.data?.price || response?.price || response?.included?.price,
+          id: response?.data?.id || response?.id || response?.included?.id,
+          checkInDate: response?.data?.checkInDate || response?.checkInDate || response?.included?.checkInDate,
+          checkOutDate: response?.data?.checkOutDate || response?.checkOutDate || response?.included?.checkOutDate,
+        }
+      };
     } catch (error) {
       this.logger.error(`❌ Failed to re-price offer: ${offerId}`, error);
       throw error;
