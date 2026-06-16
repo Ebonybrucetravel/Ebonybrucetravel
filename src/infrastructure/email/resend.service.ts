@@ -72,7 +72,6 @@ export interface BookingConfirmationEmailData {
     guests?: number;
     adults?: number;
     children?: number;
-    // Enhanced hotel fields
     address?: string;
     city?: string;
     country?: string;
@@ -167,9 +166,6 @@ export class ResendService {
       'Ebony Bruce Travels <noreply@ebonybrucetravels.com>';
   }
 
-  /**
-   * Send cancellation confirmation email
-   */
   async sendCancellationEmail(data: CancellationEmailData): Promise<void> {
     try {
       const subject = `Booking Cancellation Confirmation - ${data.bookingReference}`;
@@ -188,9 +184,6 @@ export class ResendService {
     }
   }
 
-  /**
-   * Send refund processed email
-   */
   async sendRefundEmail(data: RefundEmailData): Promise<void> {
     try {
       const subject = `Refund Processed - ${data.bookingReference}`;
@@ -209,9 +202,6 @@ export class ResendService {
     }
   }
 
-  /**
-   * Send airline-initiated change notification email
-   */
   async sendAirlineChangeEmail(data: AirlineChangeEmailData): Promise<void> {
     try {
       const subject = data.actionRequired
@@ -232,9 +222,6 @@ export class ResendService {
     }
   }
 
-  /**
-   * Send registration welcome email
-   */
   async sendRegistrationEmail(data: RegistrationEmailData): Promise<void> {
     try {
       const subject = 'Welcome to Ebony Bruce Travels!';
@@ -253,9 +240,6 @@ export class ResendService {
     }
   }
 
-  /**
-   * Send password reset email
-   */
   async sendPasswordResetEmail(data: PasswordResetEmailData): Promise<void> {
     try {
       const subject = 'Reset Your Password - Ebony Bruce Travels';
@@ -274,9 +258,6 @@ export class ResendService {
     }
   }
 
-  /**
-   * Send login notification email (delayed security notification)
-   */
   async sendLoginNotificationEmail(data: LoginNotificationEmailData): Promise<void> {
     try {
       const subject = 'New Sign-In Detected - Ebony Bruce Travels';
@@ -295,17 +276,13 @@ export class ResendService {
     }
   }
 
-  /**
-   * Send booking confirmation email
-   */
   async sendBookingConfirmationEmail(data: BookingConfirmationEmailData): Promise<void> {
     try {
-      // Log the hotel details for debugging
       if (data.productType === 'HOTEL') {
-        this.logger.log(`Sending hotel confirmation email for: ${data.bookingReference}`);
-        this.logger.log(`Hotel Name: ${data.bookingDetails?.hotelName || 'Not provided'}`);
-        this.logger.log(`Hotel Address: ${data.bookingDetails?.address || 'Not provided'}`);
-        this.logger.log(`Hotel City: ${data.bookingDetails?.city || 'Not provided'}`);
+        this.logger.log(`📧 Sending hotel confirmation email for: ${data.bookingReference}`);
+        this.logger.log(`🏨 Hotel Name: ${data.bookingDetails?.hotelName || 'NOT PROVIDED'}`);
+        this.logger.log(`📍 Hotel Address: ${data.bookingDetails?.address || 'NOT PROVIDED'}`);
+        this.logger.log(`🌆 Hotel City: ${data.bookingDetails?.city || 'NOT PROVIDED'}`);
       }
 
       const subject = `Booking Confirmed - ${data.bookingReference}`;
@@ -318,15 +295,12 @@ export class ResendService {
         html,
       });
 
-      this.logger.log(`Booking confirmation email sent to ${data.to} for booking ${data.bookingReference}`);
+      this.logger.log(`✅ Booking confirmation email sent to ${data.to} for booking ${data.bookingReference}`);
     } catch (error) {
-      this.logger.error(`Failed to send booking confirmation email to ${data.to}:`, error);
+      this.logger.error(`❌ Failed to send booking confirmation email to ${data.to}:`, error);
     }
   }
 
-  /**
-   * Send payment receipt/invoice email
-   */
   async sendPaymentReceiptEmail(data: PaymentReceiptEmailData): Promise<void> {
     try {
       const subject = `Payment Receipt - ${data.bookingReference}`;
@@ -345,9 +319,6 @@ export class ResendService {
     }
   }
 
-  /**
-   * Send contact form confirmation to the person who submitted (auto-reply)
-   */
   async sendContactConfirmationEmail(data: ContactConfirmationEmailData): Promise<void> {
     try {
       const subject = 'We received your message - Ebony Bruce Travels';
@@ -364,9 +335,6 @@ export class ResendService {
     }
   }
 
-  /**
-   * Send notification when payment succeeds but order creation fails
-   */
   async sendBookingFailureEmail(data: BookingFailureEmailData): Promise<void> {
     try {
       const subject = `Action Required: Issue with Booking ${data.bookingReference}`;
@@ -385,9 +353,6 @@ export class ResendService {
     }
   }
 
-  /**
-   * Notify admin(s) that a new Contact Us form was submitted
-   */
   async sendContactSubmissionNotification(data: ContactSubmissionNotificationData): Promise<void> {
     if (!data.to || data.to.length === 0) return;
     try {
@@ -959,90 +924,93 @@ export class ResendService {
           ? 'Car Rental' 
           : 'Booking';
 
-    // Hotel details section - COMPLETE
-    const bookingDetailsSection = data.bookingDetails.hotelName
+    // Log the hotel name being used in the template
+    const hotelName = data.bookingDetails?.hotelName || 'Hotel';
+    this.logger.log(`📝 Email template using hotel name: "${hotelName}"`);
+
+    // Hotel details section
+    const bookingDetailsSection = data.bookingDetails?.hotelName
       ? `
       <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #3498db;">
         <h3 style="margin-top: 0; color: #2c3e50;">🏨 Hotel Details</h3>
         <table style="width: 100%; border-collapse: collapse;">
-          ${data.bookingDetails.hotelName ? `
+          <tr>
+            <td style="padding: 8px 0; font-weight: bold; width: 35%;">Hotel Name:</td>
+            <td style="padding: 8px 0; width: 65%; color: #2c3e50; font-weight: 500;">${data.bookingDetails.hotelName}</td>
+          </tr>
+          ${data.bookingDetails?.rating ? `
             <tr>
-              <td style="padding: 5px 0; font-weight: bold; width: 35%;">Hotel Name:</td>
-              <td style="padding: 5px 0; width: 65%;">${data.bookingDetails.hotelName}</td>
+              <td style="padding: 8px 0; font-weight: bold;">Rating:</td>
+              <td style="padding: 8px 0;">${'⭐'.repeat(Math.round(data.bookingDetails.rating))} ${data.bookingDetails.rating}/5</td>
             </tr>` : ''}
-          ${data.bookingDetails.rating ? `
+          ${data.bookingDetails?.address ? `
             <tr>
-              <td style="padding: 5px 0; font-weight: bold;">Rating:</td>
-              <td style="padding: 5px 0;">${'⭐'.repeat(Math.round(data.bookingDetails.rating))} ${data.bookingDetails.rating}/5</td>
+              <td style="padding: 8px 0; font-weight: bold;">Address:</td>
+              <td style="padding: 8px 0;">${data.bookingDetails.address}</td>
             </tr>` : ''}
-          ${data.bookingDetails.address ? `
+          ${data.bookingDetails?.city && data.bookingDetails?.country ? `
             <tr>
-              <td style="padding: 5px 0; font-weight: bold;">Address:</td>
-              <td style="padding: 5px 0;">${data.bookingDetails.address}</td>
+              <td style="padding: 8px 0; font-weight: bold;">Location:</td>
+              <td style="padding: 8px 0;">${data.bookingDetails.city}, ${data.bookingDetails.country}</td>
             </tr>` : ''}
-          ${data.bookingDetails.city && data.bookingDetails.country ? `
+          ${data.bookingDetails?.phone ? `
             <tr>
-              <td style="padding: 5px 0; font-weight: bold;">Location:</td>
-              <td style="padding: 5px 0;">${data.bookingDetails.city}, ${data.bookingDetails.country}</td>
+              <td style="padding: 8px 0; font-weight: bold;">Phone:</td>
+              <td style="padding: 8px 0;">${data.bookingDetails.phone}</td>
             </tr>` : ''}
-          ${data.bookingDetails.phone ? `
+          ${data.bookingDetails?.roomType ? `
             <tr>
-              <td style="padding: 5px 0; font-weight: bold;">Phone:</td>
-              <td style="padding: 5px 0;">${data.bookingDetails.phone}</td>
+              <td style="padding: 8px 0; font-weight: bold;">Room Type:</td>
+              <td style="padding: 8px 0;">${data.bookingDetails.roomType}</td>
             </tr>` : ''}
-          ${data.bookingDetails.roomType ? `
+          ${data.bookingDetails?.boardType ? `
             <tr>
-              <td style="padding: 5px 0; font-weight: bold;">Room Type:</td>
-              <td style="padding: 5px 0;">${data.bookingDetails.roomType}</td>
+              <td style="padding: 8px 0; font-weight: bold;">Board Type:</td>
+              <td style="padding: 8px 0;">${data.bookingDetails.boardType}</td>
             </tr>` : ''}
-          ${data.bookingDetails.boardType ? `
+          ${data.bookingDetails?.numberOfRooms ? `
             <tr>
-              <td style="padding: 5px 0; font-weight: bold;">Board Type:</td>
-              <td style="padding: 5px 0;">${data.bookingDetails.boardType}</td>
+              <td style="padding: 8px 0; font-weight: bold;">Number of Rooms:</td>
+              <td style="padding: 8px 0;">${data.bookingDetails.numberOfRooms}</td>
             </tr>` : ''}
-          ${data.bookingDetails.numberOfRooms ? `
+          ${data.bookingDetails?.checkInDate ? `
             <tr>
-              <td style="padding: 5px 0; font-weight: bold;">Number of Rooms:</td>
-              <td style="padding: 5px 0;">${data.bookingDetails.numberOfRooms}</td>
+              <td style="padding: 8px 0; font-weight: bold;">Check-in:</td>
+              <td style="padding: 8px 0;">${new Date(data.bookingDetails.checkInDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} 
+              ${data.bookingDetails?.checkInTime ? `(from ${data.bookingDetails.checkInTime})` : ''}</td>
             </tr>` : ''}
-          ${data.bookingDetails.checkInDate ? `
+          ${data.bookingDetails?.checkOutDate ? `
             <tr>
-              <td style="padding: 5px 0; font-weight: bold;">Check-in:</td>
-              <td style="padding: 5px 0;">${new Date(data.bookingDetails.checkInDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} 
-              ${data.bookingDetails.checkInTime ? `(from ${data.bookingDetails.checkInTime})` : ''}</td>
+              <td style="padding: 8px 0; font-weight: bold;">Check-out:</td>
+              <td style="padding: 8px 0;">${new Date(data.bookingDetails.checkOutDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              ${data.bookingDetails?.checkOutTime ? `(until ${data.bookingDetails.checkOutTime})` : ''}</td>
             </tr>` : ''}
-          ${data.bookingDetails.checkOutDate ? `
+          ${data.bookingDetails?.guests ? `
             <tr>
-              <td style="padding: 5px 0; font-weight: bold;">Check-out:</td>
-              <td style="padding: 5px 0;">${new Date(data.bookingDetails.checkOutDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              ${data.bookingDetails.checkOutTime ? `(until ${data.bookingDetails.checkOutTime})` : ''}</td>
+              <td style="padding: 8px 0; font-weight: bold;">Total Guests:</td>
+              <td style="padding: 8px 0;">${data.bookingDetails.guests}</td>
             </tr>` : ''}
-          ${data.bookingDetails.guests ? `
+          ${data.bookingDetails?.adults ? `
             <tr>
-              <td style="padding: 5px 0; font-weight: bold;">Total Guests:</td>
-              <td style="padding: 5px 0;">${data.bookingDetails.guests}</td>
+              <td style="padding: 8px 0; font-weight: bold;">Adults:</td>
+              <td style="padding: 8px 0;">${data.bookingDetails.adults}</td>
             </tr>` : ''}
-          ${data.bookingDetails.adults ? `
+          ${data.bookingDetails?.children ? `
             <tr>
-              <td style="padding: 5px 0; font-weight: bold;">Adults:</td>
-              <td style="padding: 5px 0;">${data.bookingDetails.adults}</td>
+              <td style="padding: 8px 0; font-weight: bold;">Children:</td>
+              <td style="padding: 8px 0;">${data.bookingDetails.children}</td>
             </tr>` : ''}
-          ${data.bookingDetails.children ? `
+          ${data.bookingDetails?.amenities && data.bookingDetails.amenities.length > 0 ? `
             <tr>
-              <td style="padding: 5px 0; font-weight: bold;">Children:</td>
-              <td style="padding: 5px 0;">${data.bookingDetails.children}</td>
-            </tr>` : ''}
-          ${data.bookingDetails.amenities && data.bookingDetails.amenities.length > 0 ? `
-            <tr>
-              <td style="padding: 5px 0; font-weight: bold;">Amenities:</td>
-              <td style="padding: 5px 0;">${data.bookingDetails.amenities.join(', ')}</td>
+              <td style="padding: 8px 0; font-weight: bold;">Amenities:</td>
+              <td style="padding: 8px 0;">${data.bookingDetails.amenities.join(', ')}</td>
             </tr>` : ''}
         </table>
-        ${data.bookingDetails.hotelDescription ? `
-          <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd;">
-            <p style="margin: 5px 0; font-style: italic; color: #666;">${data.bookingDetails.hotelDescription}</p>
+        ${data.bookingDetails?.hotelDescription ? `
+          <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+            <p style="margin: 5px 0; font-style: italic; color: #666; line-height: 1.5;">${data.bookingDetails.hotelDescription}</p>
           </div>` : ''}
-        ${data.bookingDetails.images && data.bookingDetails.images.length > 0 ? `
+        ${data.bookingDetails?.images && data.bookingDetails.images.length > 0 ? `
           <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd; text-align: center;">
             <p style="margin: 5px 0; font-weight: bold;">Hotel Images:</p>
             <div style="display: flex; flex-wrap: wrap; gap: 5px; justify-content: center;">
@@ -1053,7 +1021,7 @@ export class ResendService {
           </div>` : ''}
       </div>
     `
-      : data.bookingDetails.origin && data.bookingDetails.destination
+      : data.bookingDetails?.origin && data.bookingDetails?.destination
         ? `
         <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
           <h3 style="margin-top: 0;">✈️ Flight Details</h3>
@@ -1071,10 +1039,10 @@ export class ResendService {
       data.productType === 'HOTEL' && (data.cancellationDeadline || data.cancellationPolicySummary || noShowText);
     const hotelPolicySection = hasHotelPolicy
       ? `
-        <div style="background-color: #fff3cd; border-left: 4px solid #856404; padding: 15px; margin: 20px 0;">
+        <div style="background-color: #fff3cd; border-left: 4px solid #856404; padding: 15px; margin: 20px 0; border-radius: 5px;">
           <h3 style="margin-top: 0; color: #856404;">📋 Cancellation & No-Show Policy</h3>
           ${data.cancellationDeadline ? `<p style="margin: 5px 0;"><strong>Cancellation deadline (UTC):</strong> ${typeof data.cancellationDeadline === 'string' ? data.cancellationDeadline : new Date(data.cancellationDeadline).toISOString().replace('T', ' ').slice(0, 19)} UTC</p>` : ''}
-          ${data.cancellationPolicySummary ? `<p style="margin: 5px 0;"><strong>Policy:</strong> ${data.cancellationPolicySummary}</p>` : ''}
+          ${data.cancellationPolicySummary ? `<p style="margin: 5px 0; margin-top: 8px;"><strong>Policy:</strong> ${data.cancellationPolicySummary}</p>` : ''}
           ${noShowText ? `<p style="margin: 10px 0 0 0;"><strong>No-show:</strong> ${noShowText}</p>` : ''}
         </div>
       `
@@ -1089,12 +1057,12 @@ export class ResendService {
           <title>Booking Confirmed - ${data.bookingReference}</title>
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
-            <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
+          <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px; border-radius: 8px;">
+            <h1 style="color: #2c3e50; margin: 0; font-size: 28px;">Ebony Bruce Travels</h1>
           </div>
           
-          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
-            <h2 style="color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 10px;">
+          <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 10px; margin-top: 0;">
               Booking Confirmed! 🎉
             </h2>
             
@@ -1102,7 +1070,7 @@ export class ResendService {
             
             <p>We're excited to confirm that your ${productTypeLabel.toLowerCase()} booking has been successfully confirmed!</p>
             
-            <div style="background-color: #d4edda; border-left: 4px solid #27ae60; padding: 15px; margin: 20px 0;">
+            <div style="background-color: #d4edda; border-left: 4px solid #27ae60; padding: 15px; margin: 20px 0; border-radius: 5px;">
               <h3 style="margin-top: 0; color: #155724;">Booking Reference</h3>
               <p style="margin: 5px 0; font-size: 24px; font-weight: bold; color: #155724;">${data.bookingReference}</p>
               <p style="margin: 5px 0; font-size: 12px; color: #666;">Please keep this reference number for your records</p>
@@ -1112,7 +1080,7 @@ export class ResendService {
             ${hotelPolicySection}
             
             <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
-              <h3 style="margin-top: 0;">💰 Pricing Summary</h3>
+              <h3 style="margin-top: 0; color: #2c3e50;">💰 Pricing Summary</h3>
               <table style="width: 100%; border-collapse: collapse;">
                 <tr>
                   <td style="padding: 8px 0; border-bottom: 1px solid #ddd;">Base Price:</td>
@@ -1133,7 +1101,7 @@ export class ResendService {
               </table>
             </div>
             
-            <div style="background-color: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin: 20px 0;">
+            <div style="background-color: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin: 20px 0; border-radius: 5px;">
               <h3 style="margin-top: 0; color: #0c5460;">What's Next?</h3>
               <p>Your booking is confirmed and you should receive a separate payment receipt shortly.</p>
               <p>You can view your booking details and manage your reservation by logging into your account.</p>
