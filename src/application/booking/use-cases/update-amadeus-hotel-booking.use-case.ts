@@ -104,10 +104,18 @@ export class UpdateAmadeusHotelBookingUseCase {
                 updated_at: new Date().toISOString(),
               };
             } else {
-              this.logger.warn('⚠️ Re-pricing succeeded but no price data found in response');
-              this.logger.debug(`Response structure: ${JSON.stringify(repricedOffer, null, 2)}`);
+              // ✅ If no price data, the offer is not available for these dates
+              this.logger.warn(`⚠️ Offer ${offerId} is not available for dates ${checkInDate} - ${checkOutDate}`);
+              throw new BadRequestException(
+                `This hotel is not available for the selected dates (${checkInDate} to ${checkOutDate}). ` +
+                'Please choose different dates or search for hotels again.'
+              );
             }
           } catch (repricingError: any) {
+            // ✅ If it's a BadRequestException, re-throw it
+            if (repricingError instanceof BadRequestException) {
+              throw repricingError;
+            }
             this.logger.warn(`⚠️ Repricing failed: ${repricingError.message}`);
             // Continue with the update anyway - Amadeus will handle it
           }
