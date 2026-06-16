@@ -42,7 +42,7 @@ export interface PasswordResetEmailData {
   to: string;
   customerName: string;
   resetUrl: string;
-  expiresIn: string; // e.g., "1 hour"
+  expiresIn: string;
 }
 
 export interface LoginNotificationEmailData {
@@ -72,6 +72,21 @@ export interface BookingConfirmationEmailData {
     guests?: number;
     adults?: number;
     children?: number;
+    // Enhanced hotel fields
+    address?: string;
+    city?: string;
+    country?: string;
+    checkInTime?: string;
+    checkOutTime?: string;
+    phone?: string;
+    rating?: number;
+    hotelDescription?: string;
+    numberOfRooms?: number;
+    boardType?: string;
+    latitude?: number;
+    longitude?: number;
+    amenities?: string[];
+    images?: string[];
   };
   pricing: {
     basePrice: number;
@@ -82,11 +97,8 @@ export interface BookingConfirmationEmailData {
   };
   confirmationDate: Date;
   bookingId?: string;
-  /** For hotels: cancellation deadline (UTC) for dispute evidence and customer clarity */
   cancellationDeadline?: Date | string | null;
-  /** For hotels: policy text shown at booking (snapshot) */
   cancellationPolicySummary?: string | null;
-  /** No-show policy wording per BOOKING_OPERATIONS_AND_RISK */
   noShowWording?: string | null;
 }
 
@@ -173,7 +185,6 @@ export class ResendService {
       this.logger.log(`Cancellation email sent to ${data.to} for booking ${data.bookingReference}`);
     } catch (error) {
       this.logger.error(`Failed to send cancellation email to ${data.to}:`, error);
-      // Don't throw - email failure shouldn't break the cancellation flow
     }
   }
 
@@ -195,7 +206,6 @@ export class ResendService {
       this.logger.log(`Refund email sent to ${data.to} for booking ${data.bookingReference}`);
     } catch (error) {
       this.logger.error(`Failed to send refund email to ${data.to}:`, error);
-      // Don't throw - email failure shouldn't break the refund flow
     }
   }
 
@@ -219,7 +229,6 @@ export class ResendService {
       this.logger.log(`Airline change email sent to ${data.to} for booking ${data.bookingReference}`);
     } catch (error) {
       this.logger.error(`Failed to send airline change email to ${data.to}:`, error);
-      // Don't throw - email failure shouldn't break the webhook flow
     }
   }
 
@@ -241,7 +250,6 @@ export class ResendService {
       this.logger.log(`Registration email sent to ${data.to}`);
     } catch (error) {
       this.logger.error(`Failed to send registration email to ${data.to}:`, error);
-      // Don't throw - email failure shouldn't break the registration flow
     }
   }
 
@@ -263,7 +271,6 @@ export class ResendService {
       this.logger.log(`Password reset email sent to ${data.to}`);
     } catch (error) {
       this.logger.error(`Failed to send password reset email to ${data.to}:`, error);
-      // Don't throw - email failure shouldn't break the flow
     }
   }
 
@@ -285,7 +292,6 @@ export class ResendService {
       this.logger.log(`Login notification email sent to ${data.to}`);
     } catch (error) {
       this.logger.error(`Failed to send login notification email to ${data.to}:`, error);
-      // Don't throw - email failure shouldn't break the login flow
     }
   }
 
@@ -294,6 +300,14 @@ export class ResendService {
    */
   async sendBookingConfirmationEmail(data: BookingConfirmationEmailData): Promise<void> {
     try {
+      // Log the hotel details for debugging
+      if (data.productType === 'HOTEL') {
+        this.logger.log(`Sending hotel confirmation email for: ${data.bookingReference}`);
+        this.logger.log(`Hotel Name: ${data.bookingDetails?.hotelName || 'Not provided'}`);
+        this.logger.log(`Hotel Address: ${data.bookingDetails?.address || 'Not provided'}`);
+        this.logger.log(`Hotel City: ${data.bookingDetails?.city || 'Not provided'}`);
+      }
+
       const subject = `Booking Confirmed - ${data.bookingReference}`;
       const html = this.getBookingConfirmationEmailTemplate(data);
 
@@ -307,7 +321,6 @@ export class ResendService {
       this.logger.log(`Booking confirmation email sent to ${data.to} for booking ${data.bookingReference}`);
     } catch (error) {
       this.logger.error(`Failed to send booking confirmation email to ${data.to}:`, error);
-      // Don't throw - email failure shouldn't break the booking flow
     }
   }
 
@@ -329,7 +342,6 @@ export class ResendService {
       this.logger.log(`Payment receipt email sent to ${data.to} for booking ${data.bookingReference}`);
     } catch (error) {
       this.logger.error(`Failed to send payment receipt email to ${data.to}:`, error);
-      // Don't throw - email failure shouldn't break the payment flow
     }
   }
 
@@ -394,6 +406,8 @@ export class ResendService {
       this.logger.error('Failed to send contact submission notification to admin:', error);
     }
   }
+
+  // ==================== TEMPLATE METHODS ====================
 
   private getBookingFailureEmailTemplate(data: BookingFailureEmailData): string {
     const productTypeLabel =
@@ -525,9 +539,6 @@ export class ResendService {
     `;
   }
 
-  /**
-   * Cancellation email template
-   */
   private getCancellationEmailTemplate(data: CancellationEmailData): string {
     const refundSection = data.hasAirlineCredits
       ? `
@@ -615,9 +626,6 @@ export class ResendService {
     `;
   }
 
-  /**
-   * Refund processed email template
-   */
   private getRefundEmailTemplate(data: RefundEmailData): string {
     return `
       <!DOCTYPE html>
@@ -668,9 +676,6 @@ export class ResendService {
     `;
   }
 
-  /**
-   * Airline change email template
-   */
   private getAirlineChangeEmailTemplate(data: AirlineChangeEmailData): string {
     const actionSection = data.actionRequired
       ? `
@@ -734,9 +739,6 @@ export class ResendService {
     `;
   }
 
-  /**
-   * Registration welcome email template
-   */
   private getRegistrationEmailTemplate(data: RegistrationEmailData): string {
     return `
       <!DOCTYPE html>
@@ -805,9 +807,6 @@ export class ResendService {
     `;
   }
 
-  /**
-   * Login notification email template (security alert)
-   */
   private getLoginNotificationEmailTemplate(data: LoginNotificationEmailData): string {
     const loginTime = data.loginTime.toLocaleString('en-US', {
       weekday: 'long',
@@ -889,9 +888,6 @@ export class ResendService {
     `;
   }
 
-  /**
-   * Password reset email template
-   */
   private getPasswordResetEmailTemplate(data: PasswordResetEmailData): string {
     return `
       <!DOCTYPE html>
@@ -952,28 +948,115 @@ export class ResendService {
   }
 
   /**
-   * Booking confirmation email template
+   * Booking confirmation email template with complete hotel details
    */
   private getBookingConfirmationEmailTemplate(data: BookingConfirmationEmailData): string {
-    const productTypeLabel = data.productType === 'HOTEL' ? 'Hotel' : data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC' ? 'Flight' : data.productType === 'CAR_RENTAL' ? 'Car Rental' : 'Booking';
+    const productTypeLabel = data.productType === 'HOTEL' 
+      ? 'Hotel' 
+      : data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC' 
+        ? 'Flight' 
+        : data.productType === 'CAR_RENTAL' 
+          ? 'Car Rental' 
+          : 'Booking';
 
+    // Hotel details section - COMPLETE
     const bookingDetailsSection = data.bookingDetails.hotelName
       ? `
-        <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
-          <h3 style="margin-top: 0;">Hotel Details</h3>
-          <p style="margin: 5px 0;"><strong>Hotel:</strong> ${data.bookingDetails.hotelName}</p>
-          ${data.bookingDetails.roomType ? `<p style="margin: 5px 0;"><strong>Room Type:</strong> ${data.bookingDetails.roomType}</p>` : ''}
-          ${data.bookingDetails.checkInDate ? `<p style="margin: 5px 0;"><strong>Check-in:</strong> ${new Date(data.bookingDetails.checkInDate).toLocaleDateString()}</p>` : ''}
-          ${data.bookingDetails.checkOutDate ? `<p style="margin: 5px 0;"><strong>Check-out:</strong> ${new Date(data.bookingDetails.checkOutDate).toLocaleDateString()}</p>` : ''}
-          ${data.bookingDetails.guests ? `<p style="margin: 5px 0;"><strong>Guests:</strong> ${data.bookingDetails.guests}</p>` : ''}
-          ${data.bookingDetails.adults ? `<p style="margin: 5px 0;"><strong>Adults:</strong> ${data.bookingDetails.adults}</p>` : ''}
-          ${data.bookingDetails.children ? `<p style="margin: 5px 0;"><strong>Children:</strong> ${data.bookingDetails.children}</p>` : ''}
-        </div>
-      `
+      <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #3498db;">
+        <h3 style="margin-top: 0; color: #2c3e50;">🏨 Hotel Details</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          ${data.bookingDetails.hotelName ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold; width: 35%;">Hotel Name:</td>
+              <td style="padding: 5px 0; width: 65%;">${data.bookingDetails.hotelName}</td>
+            </tr>` : ''}
+          ${data.bookingDetails.rating ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold;">Rating:</td>
+              <td style="padding: 5px 0;">${'⭐'.repeat(Math.round(data.bookingDetails.rating))} ${data.bookingDetails.rating}/5</td>
+            </tr>` : ''}
+          ${data.bookingDetails.address ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold;">Address:</td>
+              <td style="padding: 5px 0;">${data.bookingDetails.address}</td>
+            </tr>` : ''}
+          ${data.bookingDetails.city && data.bookingDetails.country ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold;">Location:</td>
+              <td style="padding: 5px 0;">${data.bookingDetails.city}, ${data.bookingDetails.country}</td>
+            </tr>` : ''}
+          ${data.bookingDetails.phone ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold;">Phone:</td>
+              <td style="padding: 5px 0;">${data.bookingDetails.phone}</td>
+            </tr>` : ''}
+          ${data.bookingDetails.roomType ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold;">Room Type:</td>
+              <td style="padding: 5px 0;">${data.bookingDetails.roomType}</td>
+            </tr>` : ''}
+          ${data.bookingDetails.boardType ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold;">Board Type:</td>
+              <td style="padding: 5px 0;">${data.bookingDetails.boardType}</td>
+            </tr>` : ''}
+          ${data.bookingDetails.numberOfRooms ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold;">Number of Rooms:</td>
+              <td style="padding: 5px 0;">${data.bookingDetails.numberOfRooms}</td>
+            </tr>` : ''}
+          ${data.bookingDetails.checkInDate ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold;">Check-in:</td>
+              <td style="padding: 5px 0;">${new Date(data.bookingDetails.checkInDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} 
+              ${data.bookingDetails.checkInTime ? `(from ${data.bookingDetails.checkInTime})` : ''}</td>
+            </tr>` : ''}
+          ${data.bookingDetails.checkOutDate ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold;">Check-out:</td>
+              <td style="padding: 5px 0;">${new Date(data.bookingDetails.checkOutDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              ${data.bookingDetails.checkOutTime ? `(until ${data.bookingDetails.checkOutTime})` : ''}</td>
+            </tr>` : ''}
+          ${data.bookingDetails.guests ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold;">Total Guests:</td>
+              <td style="padding: 5px 0;">${data.bookingDetails.guests}</td>
+            </tr>` : ''}
+          ${data.bookingDetails.adults ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold;">Adults:</td>
+              <td style="padding: 5px 0;">${data.bookingDetails.adults}</td>
+            </tr>` : ''}
+          ${data.bookingDetails.children ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold;">Children:</td>
+              <td style="padding: 5px 0;">${data.bookingDetails.children}</td>
+            </tr>` : ''}
+          ${data.bookingDetails.amenities && data.bookingDetails.amenities.length > 0 ? `
+            <tr>
+              <td style="padding: 5px 0; font-weight: bold;">Amenities:</td>
+              <td style="padding: 5px 0;">${data.bookingDetails.amenities.join(', ')}</td>
+            </tr>` : ''}
+        </table>
+        ${data.bookingDetails.hotelDescription ? `
+          <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd;">
+            <p style="margin: 5px 0; font-style: italic; color: #666;">${data.bookingDetails.hotelDescription}</p>
+          </div>` : ''}
+        ${data.bookingDetails.images && data.bookingDetails.images.length > 0 ? `
+          <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd; text-align: center;">
+            <p style="margin: 5px 0; font-weight: bold;">Hotel Images:</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 5px; justify-content: center;">
+              ${data.bookingDetails.images.slice(0, 3).map(image => `
+                <img src="${image}" alt="Hotel image" style="width: 100px; height: 100px; object-fit: cover; border-radius: 5px;">
+              `).join('')}
+            </div>
+          </div>` : ''}
+      </div>
+    `
       : data.bookingDetails.origin && data.bookingDetails.destination
         ? `
         <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
-          <h3 style="margin-top: 0;">Flight Details</h3>
+          <h3 style="margin-top: 0;">✈️ Flight Details</h3>
           <p style="margin: 5px 0;"><strong>Route:</strong> ${data.bookingDetails.origin} → ${data.bookingDetails.destination}</p>
           ${data.bookingDetails.departureDate ? `<p style="margin: 5px 0;"><strong>Departure:</strong> ${new Date(data.bookingDetails.departureDate).toLocaleDateString()}</p>` : ''}
           ${data.bookingDetails.arrivalDate ? `<p style="margin: 5px 0;"><strong>Arrival:</strong> ${new Date(data.bookingDetails.arrivalDate).toLocaleDateString()}</p>` : ''}
@@ -989,7 +1072,7 @@ export class ResendService {
     const hotelPolicySection = hasHotelPolicy
       ? `
         <div style="background-color: #fff3cd; border-left: 4px solid #856404; padding: 15px; margin: 20px 0;">
-          <h3 style="margin-top: 0; color: #856404;">Cancellation & No-Show Policy</h3>
+          <h3 style="margin-top: 0; color: #856404;">📋 Cancellation & No-Show Policy</h3>
           ${data.cancellationDeadline ? `<p style="margin: 5px 0;"><strong>Cancellation deadline (UTC):</strong> ${typeof data.cancellationDeadline === 'string' ? data.cancellationDeadline : new Date(data.cancellationDeadline).toISOString().replace('T', ' ').slice(0, 19)} UTC</p>` : ''}
           ${data.cancellationPolicySummary ? `<p style="margin: 5px 0;"><strong>Policy:</strong> ${data.cancellationPolicySummary}</p>` : ''}
           ${noShowText ? `<p style="margin: 10px 0 0 0;"><strong>No-show:</strong> ${noShowText}</p>` : ''}
@@ -1003,7 +1086,7 @@ export class ResendService {
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Booking Confirmed</title>
+          <title>Booking Confirmed - ${data.bookingReference}</title>
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
@@ -1029,7 +1112,7 @@ export class ResendService {
             ${hotelPolicySection}
             
             <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
-              <h3 style="margin-top: 0;">Pricing Summary</h3>
+              <h3 style="margin-top: 0;">💰 Pricing Summary</h3>
               <table style="width: 100%; border-collapse: collapse;">
                 <tr>
                   <td style="padding: 8px 0; border-bottom: 1px solid #ddd;">Base Price:</td>
@@ -1054,10 +1137,10 @@ export class ResendService {
               <h3 style="margin-top: 0; color: #0c5460;">What's Next?</h3>
               <p>Your booking is confirmed and you should receive a separate payment receipt shortly.</p>
               <p>You can view your booking details and manage your reservation by logging into your account.</p>
+              <p style="margin-top: 10px;">If you have any questions, please don't hesitate to contact our support team.</p>
             </div>
             
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-              <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
               <p>Thank you for choosing Ebony Bruce Travels!</p>
               <p style="margin-top: 20px;">
                 Best regards,<br>
@@ -1075,9 +1158,6 @@ export class ResendService {
     `;
   }
 
-  /**
-   * Payment receipt/invoice email template
-   */
   private getPaymentReceiptEmailTemplate(data: PaymentReceiptEmailData): string {
     const productTypeLabel = data.productType === 'HOTEL' ? 'Hotel' : data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC' ? 'Flight' : data.productType === 'CAR_RENTAL' ? 'Car Rental' : 'Booking';
 
@@ -1171,4 +1251,3 @@ export class ResendService {
     `;
   }
 }
-
