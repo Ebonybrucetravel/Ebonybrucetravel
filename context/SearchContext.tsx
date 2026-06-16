@@ -577,14 +577,12 @@ const getAdultsCount = (params: SearchParams): number => {
 // ==================== HOTEL SEARCH - FIXED VERSION ====================
 const searchHotels = async (params: SearchParams) => {
   try {
-    // Validate required parameters
     if (!params.cityCode && !params.location) {
       setSearchError('Please provide a hotel location.');
       setSearchResults([]);
       return;
     }
 
-    // Send cityCode directly - backend will fetch hotel IDs
     const hotelParams = {
       cityCode: params.cityCode,
       checkInDate: params.checkInDate || new Date().toISOString().split('T')[0],
@@ -617,7 +615,15 @@ const searchHotels = async (params: SearchParams) => {
         
         if (!bestOffer) continue;
         
-        // Extract pricing - USE THE EXACT VALUES FROM BACKEND
+        // ✅ CRITICAL: Get the REAL offer ID from Amadeus
+        const realOfferId = bestOffer.id || bestOffer.offer_id;
+        
+        // Skip if no real offer ID
+        if (!realOfferId || realOfferId.startsWith('hotel-') || realOfferId.includes('Date')) {
+          console.warn('⚠️ Skipping hotel without valid offer ID:', { realOfferId, hotelTitle: hotel.title });
+          continue;
+        }
+        
         const basePrice = parseFloat(bestOffer.base_price || bestOffer.price?.base || '0');
         const finalPriceNGN = parseFloat(bestOffer.final_price || bestOffer.price?.total || '0');
         
@@ -645,16 +651,38 @@ const searchHotels = async (params: SearchParams) => {
         const bedType = bestOffer.room?.typeEstimated?.bedType || 'King';
         const beds = bestOffer.room?.typeEstimated?.beds || 1;
         
-        // ✅ CRITICAL FIX: Include ALL price fields for the review page
+        // ✅ Use REAL offer ID from Amadeus
         processedResults.push({
-          id: hotel.id || `hotel-${Date.now()}`,
+          id: realOfferId,
+          offerId: realOfferId,
           type: 'hotels' as const,
           provider: hotel.provider || 'Amadeus Hotels',
           title: hotel.title,
           subtitle: `${hotel.subtitle} • ${nights} night${nights > 1 ? 's' : ''}`,
+          
           price: formattedDisplayPrice,
           totalPrice: formattedDisplayPrice,
           pricePerNight: formattedPricePerNight,
+          final_amount: finalPriceNGN.toString(),
+          final_price: finalPriceNGN.toString(),
+          currency: 'NGN',
+          rawPrice: displayPriceInUserCurrency,
+          displayPrice: formattedDisplayPrice,
+          displayPriceRaw: displayPriceInUserCurrency,
+          
+          original_amount: bestOffer.original_price?.toString() || basePrice.toString(),
+          original_currency: bestOffer.original_currency || 'GBP',
+          original_price: bestOffer.original_price,
+          originalPriceAmount: parseFloat(bestOffer.original_price || '0'),
+          originalPriceCurrency: bestOffer.original_currency || 'GBP',
+          
+          markup_amount: markupAmount.toString(),
+          markup_percentage: markupPercentage,
+          conversion_fee: conversionFee.toString(),
+          conversion_fee_percentage: conversionFeePercentage,
+          service_fee: totalServiceFee.toString(),
+          service_fee_percentage: markupPercentage + conversionFeePercentage,
+          
           nights: nights,
           rating: hotel.rating || 4.0,
           image: hotel.image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=800',
@@ -666,28 +694,17 @@ const searchHotels = async (params: SearchParams) => {
             bestOffer.boardType || 'Room Only'
           ],
           isRefundable: bestOffer.policies?.refundable?.cancellationRefund === 'REFUNDABLE_UP_TO_DEADLINE',
-          rawPrice: displayPriceInUserCurrency,
-          displayPrice: formattedDisplayPrice,
-          displayPriceRaw: displayPriceInUserCurrency,
           roomDescription: bestOffer.room?.description?.text || '',
           roomType: roomType,
           cancellationDeadline: bestOffer.policies?.cancellations?.[0]?.deadline,
           
-          // ✅ CRITICAL: These fields MUST be preserved for the review page
-          original_amount: basePrice.toString(),
-          original_currency: bestOffer.original_currency || 'NGN',
-          markup_amount: markupAmount.toString(),
-          markup_percentage: markupPercentage,
-          conversion_fee: conversionFee.toString(),
-          conversion_fee_percentage: conversionFeePercentage,
-          taxes: '0',
-          service_fee: totalServiceFee.toString(),
-          service_fee_percentage: markupPercentage + conversionFeePercentage,
-          final_amount: finalPriceNGN.toString(),  // ← This is the key field!
-          final_price: finalPriceNGN.toString(),   // ← Also set final_price for compatibility
-          currency: 'NGN',
+          // ✅ Store REAL data for booking
+          realData: {
+            offerId: realOfferId,
+            original_price: parseFloat(bestOffer.original_price || '0'),
+            original_currency: bestOffer.original_currency || 'GBP',
+          },
           
-          // Additional metadata
           offer: bestOffer,
           hotel: hotel.hotel || hotel,
           checkInDate: params.checkInDate,
@@ -698,17 +715,7 @@ const searchHotels = async (params: SearchParams) => {
       }
       
       setSearchResults(processedResults);
-      console.log(`✅ Processed ${processedResults.length} hotels with preserved final_amount`);
-      
-      // Debug log to verify final_amount
-      if (processedResults.length > 0) {
-        console.log('🏨 First hotel in search results:', {
-          title: processedResults[0].title,
-          final_amount: processedResults[0].final_amount,
-          final_price: processedResults[0].final_price,
-          currency: processedResults[0].currency
-        });
-      }
+      console.log(`✅ Processed ${processedResults.length} hotels with REAL offer IDs`);
       
       if (processedResults.length === 0) {
         setSearchError('No hotels found with valid offers. Please try different dates.');

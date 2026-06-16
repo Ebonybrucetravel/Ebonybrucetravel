@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Booking } from '@/lib/types';
+import toast from 'react-hot-toast'; 
 import { getStoredAuthToken } from '@/lib/api';
 import { config } from '@/lib/config';
 
@@ -35,6 +36,7 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
   const [hotelOrderId, setHotelOrderId] = useState<string | null>(null);
   const [hotelBookingId, setHotelBookingId] = useState<string | null>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // ✅ FIXED: Extract provider IDs from booking data with correct priority
   useEffect(() => {
@@ -235,28 +237,72 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
     }
   };
 
-  const handleCancelClick = () => {
-    onClose();
-    
+  // ✅ UPDATED: handleCancelClick with API call and confirmation
+  const handleCancelClick = async () => {
     if (!booking?.id) {
-      alert('Unable to cancel: Booking ID is missing');
+      toast.error('Booking ID is missing');
       return;
     }
 
-    const typeMap: Record<string, string> = {
-      'FLIGHT_INTERNATIONAL': 'flight',
-      'FLIGHT_DOMESTIC': 'flight',
-      'HOTEL': 'hotel',
-      'CAR_RENTAL': 'car'
-    };
-    
-    const productType = booking.productType || 'FLIGHT_INTERNATIONAL';
-    const type = typeMap[productType] || 'flight';
-    
-    localStorage.setItem(`cancelling_${booking.id}`, JSON.stringify(booking));
-    localStorage.setItem('currentCancellingBooking', JSON.stringify(booking));
-    
-    router.push(`/cancel/${type}/${booking.id}`);
+    // Show confirmation dialog
+    if (!window.confirm('Are you sure you want to cancel this booking? This action cannot be undone.')) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const token = getStoredAuthToken();
+      
+      // For Amadeus hotel bookings
+      if (booking.provider === 'AMADEUS' && booking.productType === 'HOTEL') {
+        const response = await fetch(`${BASE_URL}/api/v1/bookings/hotels/bookings/${booking.id}/cancel`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Cancellation failed');
+        }
+
+        toast.success('Booking cancelled successfully!');
+        
+        // Refresh the booking details
+        await fetchBookingDetails();
+        
+        // Close the modal after successful cancellation
+        setTimeout(() => {
+          onClose();
+          // Refresh the page to update the bookings list
+          window.location.reload();
+        }, 1500);
+      } else {
+        // For other booking types (flights, car rentals)
+        const typeMap: Record<string, string> = {
+          'FLIGHT_INTERNATIONAL': 'flight',
+          'FLIGHT_DOMESTIC': 'flight',
+          'HOTEL': 'hotel',
+          'CAR_RENTAL': 'car'
+        };
+        
+        const productType = booking.productType || 'FLIGHT_INTERNATIONAL';
+        const type = typeMap[productType] || 'flight';
+        
+        localStorage.setItem(`cancelling_${booking.id}`, JSON.stringify(booking));
+        localStorage.setItem('currentCancellingBooking', JSON.stringify(booking));
+        
+        router.push(`/cancel/${type}/${booking.id}`);
+      }
+    } catch (error: any) {
+      console.error('Cancellation error:', error);
+      toast.error(error.message || 'Failed to cancel booking. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const isHotel = () => booking?.productType === 'HOTEL';
@@ -654,9 +700,9 @@ const ManageBookingModal: React.FC<ManageBookingModalProps> = ({
           <button 
             onClick={handleCancelClick}
             className="px-6 py-3 border border-red-500 text-red-500 font-bold rounded-xl text-sm hover:bg-red-50 transition active:scale-95 disabled:opacity-50"
-            disabled={isCancelDisabled()}
+            disabled={isCancelDisabled() || isLoading}
           >
-            Cancel Booking
+            {isLoading ? 'Cancelling...' : 'Cancel Booking'}
           </button>
           <button 
             onClick={onClose}
