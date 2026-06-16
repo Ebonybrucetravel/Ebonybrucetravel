@@ -19,57 +19,50 @@ export class AmadeusService {
     private readonly configService: ConfigService,
     private readonly currencyService: CurrencyService,
   ) {
-    // Enterprise credentials
     this.apiKey = this.configService.get<string>('AMADEUS_API_KEY') || '';
     this.apiSecret = this.configService.get<string>('AMADEUS_API_SECRET') || '';
-    
-    // Enterprise Office credentials (from TestSAP)
     this.officeId = this.configService.get<string>('AMADEUS_OFFICE_ID') || 'LOSN8250A';
     this.orgId = this.configService.get<string>('AMADEUS_ORG_ID') || 'NMC-NIGERI';
     this.userId = this.configService.get<string>('AMADEUS_USER_ID') || 'USE9BAQC';
     
-    // Enterprise base URL (includes "travel." for Enterprise APIs)
     const env = this.configService.get<string>('AMADEUS_ENV') || 'test';
     this.baseUrl = env === 'production' 
-      ? 'https://travel.api.amadeus.com'       // Enterprise production
-      : 'https://test.travel.api.amadeus.com';  // Enterprise test
+      ? 'https://travel.api.amadeus.com'
+      : 'https://test.travel.api.amadeus.com';
     
     if (!this.apiKey || !this.apiSecret) {
-      this.logger.warn('Amadeus API credentials not configured. Features will not work.');
+      this.logger.warn('Amadeus API credentials not configured.');
     }
     
     this.logger.log(`AmadeusService initialized with base URL: ${this.baseUrl}`);
     this.logger.log(`Office ID: ${this.officeId}, Org ID: ${this.orgId}, User ID: ${this.userId}`);
   }
 
-  // ==================== AUTHENTICATION ====================
-  
   private async getAccessToken(): Promise<string> {
     if (this.accessToken && Date.now() < this.tokenExpiresAt) {
       this.logger.debug('Using cached access token');
       return this.accessToken;
     }
-  
+
     if (!this.apiKey || !this.apiSecret) {
       throw new HttpException(
         'Amadeus API credentials not configured.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-  
+
     try {
       this.logger.log('Requesting Amadeus OAuth token...');
       this.logger.debug(`Token endpoint: ${this.baseUrl}/v1/security/oauth2/token`);
       
-      // ✅ Add SAP (Service Account Principal) - THIS IS CRITICAL!
       const params = new URLSearchParams({
         grant_type: 'client_credentials',
         client_id: this.apiKey,
         client_secret: this.apiSecret,
-        sap: '1ASIUTCHE9BAQC',           // ✅ ADD YOUR SAP VALUE HERE
-        office_id: this.officeId,         // LOSN8250A
-        organization_id: this.orgId,      // NMC-NIGERI
-        user_id: this.userId,             // USE9BAQC
+        sap: '1ASIUTCHE9BAQC',
+        office_id: this.officeId,
+        organization_id: this.orgId,
+        user_id: this.userId,
       });
       
       const response = await fetch(`${this.baseUrl}/v1/security/oauth2/token`, {
@@ -79,18 +72,18 @@ export class AmadeusService {
         },
         body: params,
       });
-  
+
       const responseText = await response.text();
       this.logger.log(`Token response status: ${response.status}`);
       this.logger.log(`Token response: ${responseText}`);
-  
+
       if (!response.ok) {
         throw new HttpException(
           `Failed to get Amadeus access token: ${response.status}`,
           HttpStatus.UNAUTHORIZED,
         );
       }
-  
+
       const data = JSON.parse(responseText);
       this.accessToken = data.access_token;
       this.tokenExpiresAt = Date.now() + (data.expires_in - 300) * 1000;
@@ -124,7 +117,7 @@ export class AmadeusService {
       const searchParams = new URLSearchParams(params);
       url += `?${searchParams.toString()}`;
     }
-  
+
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${token}`,
       'Accept': 'application/json',
@@ -132,22 +125,20 @@ export class AmadeusService {
       'X-Organization-Id': this.orgId,
       'X-User-Id': this.userId,
     };
-  
-    // ✅ Only add Content-Type for non-GET requests that have a body
+
     if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
       headers['Content-Type'] = 'application/json';
     }
-  
+
     this.logger.debug(`Amadeus API ${method} ${url}`);
-  
+
     try {
       let response = await fetch(url, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
       });
-  
-      // If 401, retry once with fresh token
+
       if (response.status === 401) {
         this.logger.warn('Token expired, refreshing and retrying...');
         this.accessToken = null;
@@ -160,7 +151,7 @@ export class AmadeusService {
           body: body ? JSON.stringify(body) : undefined,
         });
       }
-  
+
       if (!response.ok) {
         const errorText = await response.text();
         this.logger.warn(`Amadeus API error ${response.status} ${endpoint}: ${errorText}`);
@@ -172,10 +163,10 @@ export class AmadeusService {
             errorMessage = errorJson.errors[0].detail || errorJson.errors[0].title || errorMessage;
           }
         } catch { }
-  
+
         throw new HttpException(errorMessage, response.status);
       }
-  
+
       if (response.status === 204) {
         return { success: true };
       }
@@ -186,6 +177,7 @@ export class AmadeusService {
       throw new HttpException('Amadeus API request failed', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
+
   // ==================== HOTEL LIST API (v1) ====================
   
   async searchHotelNames(params: {
@@ -464,7 +456,8 @@ export class AmadeusService {
       params: queryParams 
     });
   }
-  
+
+  // ✅ REPRICE HOTEL OFFER
   async repriceHotelOffer(offerId: string): Promise<any> {
     try {
       this.logger.log(`🔄 Re-pricing hotel offer: ${offerId}`);
@@ -483,148 +476,76 @@ export class AmadeusService {
       throw error;
     }
   }
-  
-  // ==================== HOTEL BOOKING API (v2) ====================  
-/**
- * Create a hotel booking with Amadeus
- * ✅ Supports both legacy flat structure and new Amadeus structure
- */
-async createHotelBooking(params: {
-  // Legacy flat structure (backward compatible)
-  hotelOfferId?: string;
-  guests?: Array<{ title: string; firstName: string; lastName: string; phone: string; email: string }>;
-  roomAssociations?: Array<{ hotelOfferId: string; guestReferences: Array<{ guestReference: string }> }>;
-  payment?: { method: 'CREDIT_CARD'; paymentCard: { paymentCardInfo: any } };
-  travelAgentEmail?: string;
-  accommodationSpecialRequests?: string;
-  price?: { currency: string; total: string; base: string; markups?: any; taxes?: any[] };
-  
-  // New structure (full payload)
-  data?: any;
-}): Promise<any> {
-  let requestBody: any;
-  
-  // ✅ Check if this is the new format (has data wrapper)
-  if (params.data) {
-    // New format - use as-is
-    requestBody = params;
-    this.logger.log('Using new Amadeus request format with data wrapper');
-  } 
-  // ✅ Check if this is the legacy flat format
-  else if (params.hotelOfferId && params.guests && params.roomAssociations && params.payment) {
-    // Legacy format - transform to correct Amadeus structure
-    this.logger.log('Transforming legacy format to Amadeus structure');
+
+  // ==================== HOTEL BOOKING API (v2) ====================
+
+  async createHotelBooking(params: {
+    hotelOfferId?: string;
+    guests?: Array<{ title: string; firstName: string; lastName: string; phone: string; email: string }>;
+    roomAssociations?: Array<{ hotelOfferId: string; guestReferences: Array<{ guestReference: string }> }>;
+    payment?: { method: 'CREDIT_CARD'; paymentCard: { paymentCardInfo: any } };
+    travelAgentEmail?: string;
+    accommodationSpecialRequests?: string;
+    price?: { currency: string; total: string; base: string; markups?: any; taxes?: any[] };
+    data?: any;
+  }): Promise<any> {
+    let requestBody: any;
     
-    const travelAgentEmail = params.travelAgentEmail || this.configService.get<string>('AMADEUS_TRAVEL_AGENT_EMAIL');
-    if (!travelAgentEmail?.trim()) {
-      throw new HttpException('Travel agent email is required', HttpStatus.BAD_REQUEST);
-    }
-    
-    requestBody = {
-      data: {
-        type: 'hotel-order',
-        guests: params.guests.map((guest, index) => ({ 
-          id: index + 1,  // ✅ Use 'id' not 'tid'
-          title: guest.title,
-          firstName: guest.firstName,
-          lastName: guest.lastName,
-          phone: guest.phone,
-          email: guest.email,
-        })),
-        hotelBookings: [  // ✅ Wrap roomAssociations in hotelBookings array
-          {
-            roomAssociations: params.roomAssociations,
-          }
-        ],
-        payment: params.payment,
-        travelAgent: { 
-          contact: { 
-            email: travelAgentEmail.trim() 
-          } 
+    if (params.data) {
+      requestBody = params;
+      this.logger.log('Using new Amadeus request format with data wrapper');
+    } 
+    else if (params.hotelOfferId && params.guests && params.roomAssociations && params.payment) {
+      this.logger.log('Transforming legacy format to Amadeus structure');
+      
+      const travelAgentEmail = params.travelAgentEmail || this.configService.get<string>('AMADEUS_TRAVEL_AGENT_EMAIL');
+      if (!travelAgentEmail?.trim()) {
+        throw new HttpException('Travel agent email is required', HttpStatus.BAD_REQUEST);
+      }
+      
+      requestBody = {
+        data: {
+          type: 'hotel-order',
+          guests: params.guests.map((guest, index) => ({ 
+            tid: (index + 1).toString(),
+            title: guest.title,
+            firstName: guest.firstName,
+            lastName: guest.lastName,
+            phone: guest.phone,
+            email: guest.email,
+          })),
+          roomAssociations: params.roomAssociations,
+          payment: params.payment,
+          travelAgent: { 
+            contact: { 
+              email: travelAgentEmail.trim() 
+            } 
+          },
         },
-      },
-    };
-    
-    // ✅ Add accommodation special requests if provided
-    if (params.accommodationSpecialRequests) {
-      requestBody.data.accommodationSpecialRequests = params.accommodationSpecialRequests;
-    }
-    
-    // ✅ Add price if provided (with proper currency conversion)
-    if (params.price) {
-      let currency = params.price.currency;
-      let baseAmount = parseFloat(params.price.base);
-      let totalAmount = parseFloat(params.price.total);
-      
-      // Calculate total markup amount
-      let totalMarkupAmount = 0;
-      if (params.price.markups) {
-        if (Array.isArray(params.price.markups)) {
-          totalMarkupAmount = params.price.markups.reduce(
-            (sum, markup) => sum + parseFloat(markup.amount || '0'),
-            0
-          );
-        } else if (typeof params.price.markups === 'object' && params.price.markups.amount) {
-          totalMarkupAmount = parseFloat(params.price.markups.amount);
-        }
-      }
-      
-      // ✅ Convert to EUR using CurrencyService (Amadeus expects EUR for hotel bookings)
-      const targetCurrency = 'EUR';
-      
-      if (currency !== targetCurrency) {
-        try {
-          this.logger.log(`💰 Converting ${currency} to ${targetCurrency} using CurrencyService...`);
-          
-          const convertedBase = await this.currencyService.convert(baseAmount, currency, targetCurrency);
-          const convertedTotal = await this.currencyService.convert(totalAmount, currency, targetCurrency);
-          const convertedMarkup = await this.currencyService.convert(totalMarkupAmount, currency, targetCurrency);
-          
-          baseAmount = convertedBase;
-          totalAmount = convertedTotal;
-          totalMarkupAmount = convertedMarkup;
-          currency = targetCurrency;
-          
-          this.logger.log(`✅ Converted: ${params.price.base} ${params.price.currency} → ${baseAmount.toFixed(2)} ${currency}`);
-        } catch (error) {
-          this.logger.error(`Currency conversion failed: ${error.message}`);
-          throw new HttpException(
-            `Currency conversion from ${currency} to ${targetCurrency} failed. Please ensure your conversion API is working.`,
-            HttpStatus.BAD_REQUEST
-          );
-        }
-      }
-      
-      // ✅ Build correct Amadeus price structure
-      const priceForAmadeus: any = {
-        currency: currency,
-        base: baseAmount.toFixed(2),
-        total: totalAmount.toFixed(2),
       };
       
-      // ✅ Add markups as an OBJECT (not array) if there is markup
-      if (totalMarkupAmount > 0) {
-        priceForAmadeus.markups = {
-          amount: totalMarkupAmount.toFixed(2)
-        };
-        this.logger.log(`💰 Adding markup: ${totalMarkupAmount.toFixed(2)} ${currency}`);
+      if (params.accommodationSpecialRequests) {
+        requestBody.data.accommodationSpecialRequests = params.accommodationSpecialRequests;
       }
       
-      requestBody.data.price = priceForAmadeus;
-      this.logger.log(`💰 Sending price to Amadeus: ${JSON.stringify(priceForAmadeus)}`);
+      if (params.price) {
+        requestBody.data.price = {
+          currency: params.price.currency,
+          base: params.price.base,
+          total: params.price.total,
+        };
+      }
+    } 
+    else {
+      throw new HttpException(
+        'Invalid parameters for createHotelBooking',
+        HttpStatus.BAD_REQUEST,
+      );
     }
-  } 
-  else {
-    throw new HttpException(
-      'Invalid parameters for createHotelBooking. Provide either { data: {...} } or { hotelOfferId, guests, roomAssociations, payment }',
-      HttpStatus.BAD_REQUEST,
-    );
+    
+    this.logger.log(`📤 Sending to Amadeus: ${JSON.stringify(requestBody, null, 2)}`);
+    return this.makeRequest('/v2/booking/hotel-orders', { method: 'POST', body: requestBody });
   }
-  
-  this.logger.log(`📤 Sending to Amadeus: ${JSON.stringify(requestBody, null, 2)}`);
-  
-  return this.makeRequest('/v2/booking/hotel-orders', { method: 'POST', body: requestBody });
-}
 
   async getHotelBooking(orderId: string): Promise<any> {
     if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
@@ -647,8 +568,6 @@ async createHotelBooking(params: {
     });
   }
 
-  // ==================== HOTEL BOOKING UPDATE API (v2) ====================
-  
   async extractHotelBookingIds(providerData: any): Promise<{ hotelOrderId: string; hotelBookingId: string } | null> {
     try {
       const data = providerData?.data || providerData;
@@ -690,19 +609,19 @@ async createHotelBooking(params: {
     if (!hotelBookingId) {
       throw new HttpException('Hotel booking ID is required', HttpStatus.BAD_REQUEST);
     }
-  
+
     const requestBody: any = {
       data: {
         hotelBooking: {}
       }
     };
-  
+
     if (updateData.specialRequest) {
       requestBody.data.hotelBooking.roomAssociation = {
         specialRequest: updateData.specialRequest
       };
     }
-  
+
     if (updateData.checkInDate || updateData.checkOutDate) {
       requestBody.data.hotelBooking.hotelOffer = {
         product: {}
@@ -714,7 +633,7 @@ async createHotelBooking(params: {
         requestBody.data.hotelBooking.hotelOffer.product.checkOutDate = updateData.checkOutDate;
       }
     }
-  
+
     if (updateData.loyaltyId) {
       if (!requestBody.data.hotelBooking.roomAssociation) {
         requestBody.data.hotelBooking.roomAssociation = {};
@@ -724,14 +643,28 @@ async createHotelBooking(params: {
         hotelLoyaltyId: updateData.loyaltyId
       }];
     }
-  
+
+    if (updateData.paymentCard) {
+      requestBody.data.hotelBooking.payment = {
+        paymentCard: {
+          paymentCardInfo: {
+            vendorCode: updateData.paymentCard.vendorCode,
+            cardNumber: updateData.paymentCard.cardNumber,
+            expiryDate: updateData.paymentCard.expiryDate,
+            holderName: updateData.paymentCard.holderName,
+          }
+        }
+      };
+      
+      if (updateData.paymentCard.securityCode) {
+        requestBody.data.hotelBooking.payment.paymentCard.paymentCardInfo.securityCode = updateData.paymentCard.securityCode;
+      }
+    }
+
     this.logger.log(`Updating hotel booking: orderId=${hotelOrderId}, bookingId=${hotelBookingId}`);
     this.logger.debug(`Update payload: ${JSON.stringify(requestBody)}`);
-  
-    // ✅ DO NOT URL encode - use the IDs as-is (like the Amadeus sample)
+
     const endpoint = `/v2/booking/hotel-orders/${hotelOrderId}/hotel-bookings/${hotelBookingId}`;
-    
-    this.logger.log(`PATCH endpoint: ${endpoint}`);
     
     return this.makeRequest(endpoint, { method: 'PATCH', body: requestBody });
   }
@@ -780,7 +713,7 @@ async createHotelBooking(params: {
   }
 
   // ==================== TRANSFERS / CAR RENTAL API (v1) ====================
-  
+
   async searchTransfers(params: {
     startLocationCode?: string;
     endLocationCode?: string;
@@ -899,4 +832,4 @@ async createHotelBooking(params: {
     
     return this.makeRequest('/v1/ordering/transfer-orders', { method: 'GET', params: queryParams });
   }
-} 
+}

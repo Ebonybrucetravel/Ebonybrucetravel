@@ -44,20 +44,61 @@ export class UpdateAmadeusHotelBookingUseCase {
 
     // 3. Prepare update data based on update type
     const updateData: any = {};
+    const bookingData = booking.bookingData as any || {};
     
+    // Handle Special Request updates
     if (dto.updateType === 'special' || dto.specialRequest) {
       updateData.specialRequest = dto.specialRequest || dto.payload?.hotelBooking?.roomAssociation?.specialRequest;
     }
     
+    // ✅ Handle Date updates with re-pricing
     if (dto.updateType === 'dates' || dto.checkInDate || dto.checkOutDate) {
-      updateData.checkInDate = dto.checkInDate || dto.payload?.hotelBooking?.hotelOffer?.product?.checkInDate;
-      updateData.checkOutDate = dto.checkOutDate || dto.payload?.hotelBooking?.hotelOffer?.product?.checkOutDate;
+      const checkInDate = dto.checkInDate || dto.payload?.hotelBooking?.hotelOffer?.product?.checkInDate;
+      const checkOutDate = dto.checkOutDate || dto.payload?.hotelBooking?.hotelOffer?.product?.checkOutDate;
+      
+      if (checkInDate && checkOutDate) {
+        // ✅ STEP 1: Get the offer ID from booking data
+        const offerId = bookingData.amadeus_offer_id || bookingData.offerId;
+        
+        if (offerId) {
+          try {
+            this.logger.log(`🔄 Re-pricing offer ${offerId} for new dates: ${checkInDate} - ${checkOutDate}`);
+            
+            // ✅ STEP 2: Re-price with new dates
+            const repricedOffer = await this.amadeusService.repriceHotelOffer(offerId);
+            
+            if (repricedOffer?.data) {
+              const newPrice = repricedOffer.data.price;
+              this.logger.log(`✅ Re-priced successfully: ${newPrice.total} ${newPrice.currency}`);
+              
+              // ✅ STEP 3: Store the new price in booking data
+              bookingData.updated_price = {
+                total: newPrice.total,
+                base: newPrice.base,
+                currency: newPrice.currency,
+                checkInDate: checkInDate,
+                checkOutDate: checkOutDate,
+                updated_at: new Date().toISOString(),
+              };
+            }
+          } catch (repricingError: any) {
+            this.logger.warn(`⚠️ Repricing failed: ${repricingError.message}`);
+            // Continue with the update anyway - Amadeus will handle it
+          }
+        }
+        
+        // ✅ STEP 4: Update dates
+        updateData.checkInDate = checkInDate;
+        updateData.checkOutDate = checkOutDate;
+      }
     }
     
+    // Handle Loyalty ID updates
     if (dto.updateType === 'loyalty' || dto.loyaltyId) {
       updateData.loyaltyId = dto.loyaltyId || dto.payload?.hotelBooking?.roomAssociation?.guestReferences?.[0]?.hotelLoyaltyId;
     }
     
+    // Handle Payment updates
     if (dto.updateType === 'payment' || dto.payment) {
       const paymentCard = dto.payment?.paymentCard?.paymentCardInfo;
       if (paymentCard) {
@@ -87,16 +128,17 @@ export class UpdateAmadeusHotelBookingUseCase {
       this.logger.log(`Successfully updated Amadeus hotel booking ${dto.bookingId}`);
 
       // 5. Update local booking data
-      const bookingData = booking.bookingData as any;
-      
       if (updateData.specialRequest) {
         bookingData.specialRequest = updateData.specialRequest;
+        bookingData.accommodation_special_requests = updateData.specialRequest;
       }
       if (updateData.checkInDate) {
         bookingData.checkInDate = updateData.checkInDate;
+        bookingData.check_in_date = updateData.checkInDate;
       }
       if (updateData.checkOutDate) {
         bookingData.checkOutDate = updateData.checkOutDate;
+        bookingData.check_out_date = updateData.checkOutDate;
       }
       if (updateData.loyaltyId) {
         bookingData.loyaltyId = updateData.loyaltyId;
@@ -121,6 +163,20 @@ export class UpdateAmadeusHotelBookingUseCase {
       };
     } catch (error: any) {
       this.logger.error(`Failed to update Amadeus hotel booking: ${error.message}`);
+      
+      // ✅ Provide more user-friendly error message for pricing changes
+      if (error.message.includes('PRICING CONDITIONS HAVE CHANGED')) {
+        throw new BadRequestException(
+          'The price for the new dates has changed. Please search for the hotel again to get the latest rates and try again.'
+        );
+      }
+      
+      if (error.message.includes('INVALID OR MISSING DATA')) {
+        throw new BadRequestException(
+          'The selected dates are invalid. Please ensure the check-in date is in the future and before check-out.'
+        );
+      }
+      
       throw new BadRequestException(
         error.message || 'Failed to update booking with hotel provider'
       );
