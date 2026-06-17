@@ -1,3 +1,5 @@
+// src/application/booking/use-cases/select-wakanow-flight.use-case.ts
+
 import { Injectable, Logger, HttpException, HttpStatus, GoneException, BadRequestException } from '@nestjs/common';
 import { WakanowService } from '@infrastructure/external-apis/wakanow/wakanow.service';
 import { SelectWakanowFlightDto } from '@presentation/booking/dto/wakanow-flights.dto';
@@ -22,6 +24,9 @@ export class SelectWakanowFlightUseCase {
     if (selectData.length < 10) {
       throw new BadRequestException('Invalid selectData (too short). Please search for flights again.');
     }
+
+    // ✅ Log a preview of the selectData for debugging
+    this.logger.log(`SelectData preview: ${selectData.substring(0, 50)}...`);
 
     try {
       const selectResponse = await this.wakanowService.selectFlight({
@@ -66,51 +71,51 @@ export class SelectWakanowFlightUseCase {
       // ✅ Return with camelCase properties for frontend compatibility
       return {
         provider: 'WAKANOW',
-        bookingId: selectResponse.BookingId || null,        // ✅ camelCase
-        selectData: selectResponse.SelectData || selectData, // ✅ camelCase
-        isPriceMatched: selectResponse.IsPriceMatched || false, // ✅ camelCase
-        isPassportRequired: selectResponse.IsPassportRequired || false, // ✅ camelCase
-        flightSummary: {                                     // ✅ camelCase
+        bookingId: selectResponse.BookingId || null,
+        selectData: selectResponse.SelectData || selectData,
+        isPriceMatched: selectResponse.IsPriceMatched || false,
+        isPassportRequired: selectResponse.IsPassportRequired || false,
+        flightSummary: {
           slices: (combo.FlightModels || []).map((fm) => ({
             airline: fm.AirlineName || fm.Airline || '',
-            airlineCode: fm.Airline || '',                   // ✅ camelCase
-            airlineLogo: fm.AirlineLogoUrl || '',            // ✅ camelCase
-            departureCode: fm.DepartureCode || '',           // ✅ camelCase
-            departureName: fm.DepartureName || '',           // ✅ camelCase
-            departureTime: fm.DepartureTime || '',           // ✅ camelCase
-            arrivalCode: fm.ArrivalCode || '',               // ✅ camelCase
-            arrivalName: fm.ArrivalName || '',               // ✅ camelCase
-            arrivalTime: fm.ArrivalTime || '',               // ✅ camelCase
+            airlineCode: fm.Airline || '',
+            airlineLogo: fm.AirlineLogoUrl || '',
+            departureCode: fm.DepartureCode || '',
+            departureName: fm.DepartureName || '',
+            departureTime: fm.DepartureTime || '',
+            arrivalCode: fm.ArrivalCode || '',
+            arrivalName: fm.ArrivalName || '',
+            arrivalTime: fm.ArrivalTime || '',
             stops: fm.Stops || 0,
-            tripDuration: fm.TripDuration || '',             // ✅ camelCase
+            tripDuration: fm.TripDuration || '',
             segments: (fm.FlightLegs || []).map((leg) => ({
-              flightNumber: leg.FlightNumber || '',          // ✅ camelCase
-              departureCode: leg.DepartureCode || '',        // ✅ camelCase
-              departureName: leg.DepartureName || '',        // ✅ camelCase
-              destinationCode: leg.DestinationCode || '',    // ✅ camelCase
-              destinationName: leg.DestinationName || '',    // ✅ camelCase
-              startTime: leg.StartTime || '',                // ✅ camelCase
-              endTime: leg.EndTime || '',                    // ✅ camelCase
+              flightNumber: leg.FlightNumber || '',
+              departureCode: leg.DepartureCode || '',
+              departureName: leg.DepartureName || '',
+              destinationCode: leg.DestinationCode || '',
+              destinationName: leg.DestinationName || '',
+              startTime: leg.StartTime || '',
+              endTime: leg.EndTime || '',
               duration: leg.Duration || '',
-              cabinClass: leg.CabinClassName || '',          // ✅ camelCase
-              operatingCarrier: leg.OperatingCarrierName || '', // ✅ camelCase
+              cabinClass: leg.CabinClassName || '',
+              operatingCarrier: leg.OperatingCarrierName || '',
               aircraft: leg.Aircraft || '',
               layover: leg.Layover || null,
-              layoverDuration: leg.LayoverDuration || '',    // ✅ camelCase
+              layoverDuration: leg.LayoverDuration || '',
             })),
-            freeBaggage: fm.FreeBaggage || null,             // ✅ camelCase
+            freeBaggage: fm.FreeBaggage || null,
           })),
           price: combo.Price || { Amount: 0, CurrencyCode: targetCurrency },
-          priceDetails: combo.PriceDetails || [],            // ✅ camelCase
-          isRefundable: combo.IsRefundable || false,         // ✅ camelCase
+          priceDetails: combo.PriceDetails || [],
+          isRefundable: combo.IsRefundable || false,
         },
-        fareRules: combo.FareRules || [],                    // ✅ camelCase
-        penaltyRules: combo.PenaltyRules || null,            // ✅ camelCase
-        termsAndConditions: selectResponse.ProductTermsAndConditions || { // ✅ camelCase
+        fareRules: combo.FareRules || [],
+        penaltyRules: combo.PenaltyRules || null,
+        termsAndConditions: selectResponse.ProductTermsAndConditions || {
           TermsAndConditions: [],
           TermsAndConditionImportantNotice: '',
         },
-        customMessages: selectResponse.CustomMessages || [],  // ✅ camelCase
+        customMessages: selectResponse.CustomMessages || [],
         message: 'Flight pricing confirmed',
       };
 
@@ -124,6 +129,13 @@ export class SelectWakanowFlightUseCase {
 
       // ✅ Check for expired token or invalid selectData
       const errorMsg = error?.message?.toLowerCase() || '';
+      
+      // ✅ Check if it's a 400 Bad Request from Wakanow (expired selectData)
+      if (error.status === 400 || errorMsg.includes('bad request') || errorMsg.includes('invalid')) {
+        this.logger.warn(`Wakanow select rejected with 400: ${error.message}`);
+        throw new GoneException('Your flight selection has expired. Please search for flights again.');
+      }
+
       if (
         errorMsg.includes('expired') ||
         errorMsg.includes('invalid') ||
