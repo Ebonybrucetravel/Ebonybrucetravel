@@ -1,5 +1,3 @@
-// src/application/booking/use-cases/select-wakanow-flight.use-case.ts
-
 import { Injectable, Logger, HttpException, HttpStatus, GoneException, BadRequestException } from '@nestjs/common';
 import { WakanowService } from '@infrastructure/external-apis/wakanow/wakanow.service';
 import { SelectWakanowFlightDto } from '@presentation/booking/dto/wakanow-flights.dto';
