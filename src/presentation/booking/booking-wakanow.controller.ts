@@ -11,6 +11,7 @@ import {
   HttpStatus,
   HttpException,
   BadRequestException,
+  GoneException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
@@ -30,6 +31,7 @@ import {
   BookWakanowFlightDto,
   TicketWakanowFlightDto,
 } from './dto/wakanow-flights.dto';
+
 @ApiTags('Wakanow Flights')
 @Controller('bookings/wakanow')
 export class BookingWakanowController {
@@ -41,6 +43,7 @@ export class BookingWakanowController {
     private readonly ticketWakanowFlightUseCase: TicketWakanowFlightUseCase,
     private readonly wakanowService: WakanowService,
   ) {}
+
   @Public()
   @Post('search')
   @Throttle(20, 60000)
@@ -77,6 +80,7 @@ export class BookingWakanowController {
       );
     }
   }
+
   @Public()
   @Post('select')
   @HttpCode(HttpStatus.OK)
@@ -88,21 +92,61 @@ export class BookingWakanowController {
       'The price may differ from the search result — this is the confirmed price.',
   })
   @ApiResponse({ status: 200, description: 'Flight pricing confirmed' })
-  @ApiResponse({ status: 410, description: 'Flight no longer available' })
+  @ApiResponse({ status: 410, description: 'Flight no longer available or expired' })
   async selectFlight(@Body() selectDto: SelectWakanowFlightDto) {
     try {
+      // ✅ Validate selectData
+      if (!selectDto.selectData || selectDto.selectData.length < 10) {
+        throw new BadRequestException('Invalid or expired flight selection. Please search again.');
+      }
+
       const result = await this.selectWakanowFlightUseCase.execute(selectDto);
+      
+      // ✅ Check if result has the expected data
+      if (!result || !result.selectData) {
+        throw new GoneException('Selected flight is no longer available. Please search again.');
+      }
+
+      // ✅ Return in the format your frontend expects
       return {
         success: true,
-        data: result,
+        data: {
+          provider: 'WAKANOW',
+          booking_id: result.bookingId || null,
+          select_data: result.selectData,
+          is_price_matched: result.isPriceMatched || false,
+          is_passport_required: result.isPassportRequired || false,
+          flight_summary: result.flightSummary || null,
+          fare_rules: result.fareRules || [],
+          penalty_rules: result.penaltyRules || null,
+          terms_and_conditions: result.termsAndConditions || {
+            TermsAndConditions: [],
+            TermsAndConditionImportantNotice: '',
+          },
+          custom_messages: result.customMessages || [],
+          message: result.message || 'Flight pricing confirmed',
+        },
         message: 'Flight pricing confirmed. Use the returned selectData and bookingId to book.',
       };
     } catch (error: any) {
+      // ✅ Better error handling
       if (error instanceof HttpException) throw error;
+      
+      // Check for specific error messages
+      const errorMsg = error?.message?.toLowerCase() || '';
+      if (
+        errorMsg.includes('expired') || 
+        errorMsg.includes('no longer available') ||
+        errorMsg.includes('not found') ||
+        errorMsg.includes('invalid')
+      ) {
+        throw new GoneException('Your flight selection has expired. Please search again.');
+      }
+      
       throw new HttpException(
         {
           success: false,
-          message: 'Failed to confirm flight pricing. Please search again.',
+          message: error?.message || 'Failed to confirm flight pricing. Please search again.',
           error: 'Select failed',
           details: process.env.NODE_ENV === 'development' ? error?.message : undefined,
         },
@@ -110,6 +154,7 @@ export class BookingWakanowController {
       );
     }
   }
+
   @UseGuards(JwtAuthGuard)
   @Post('book')
   @ApiBearerAuth()
@@ -124,7 +169,19 @@ export class BookingWakanowController {
   @ApiResponse({ status: 409, description: 'Fare no longer available' })
   async bookFlight(@Body() bookDto: BookWakanowFlightDto, @Request() req: any) {
     try {
+      // ✅ Validate required fields
+      if (!bookDto.selectData) {
+        throw new BadRequestException('SelectData is required');
+      }
+      if (!bookDto.bookingId) {
+        throw new BadRequestException('BookingId is required');
+      }
+      if (!bookDto.passengers || bookDto.passengers.length === 0) {
+        throw new BadRequestException('At least one passenger is required');
+      }
+
       const result = await this.bookWakanowFlightUseCase.execute(bookDto, req.user.id);
+      
       return {
         success: true,
         data: result,
@@ -132,6 +189,20 @@ export class BookingWakanowController {
       };
     } catch (error: any) {
       if (error instanceof HttpException) throw error;
+      
+      // Check for specific error messages
+      const errorMsg = error?.message?.toLowerCase() || '';
+      if (errorMsg.includes('expired') || errorMsg.includes('no longer available')) {
+        throw new HttpException(
+          {
+            success: false,
+            message: 'Your booking session has expired. Please search again.',
+            error: 'Session expired',
+          },
+          HttpStatus.GONE,
+        );
+      }
+      
       throw new HttpException(
         {
           success: false,
@@ -142,6 +213,7 @@ export class BookingWakanowController {
       );
     }
   }
+
   @Public()
   @Post('book/guest')
   @ApiOperation({
@@ -154,7 +226,19 @@ export class BookingWakanowController {
   @ApiResponse({ status: 400, description: 'Invalid booking data' })
   async bookFlightGuest(@Body() bookDto: BookWakanowFlightDto) {
     try {
+      // ✅ Validate required fields
+      if (!bookDto.selectData) {
+        throw new BadRequestException('SelectData is required');
+      }
+      if (!bookDto.bookingId) {
+        throw new BadRequestException('BookingId is required');
+      }
+      if (!bookDto.passengers || bookDto.passengers.length === 0) {
+        throw new BadRequestException('At least one passenger is required');
+      }
+
       const result = await this.bookWakanowFlightGuestUseCase.execute(bookDto);
+      
       return {
         success: true,
         data: result,
@@ -162,6 +246,19 @@ export class BookingWakanowController {
       };
     } catch (error: any) {
       if (error instanceof HttpException) throw error;
+      
+      const errorMsg = error?.message?.toLowerCase() || '';
+      if (errorMsg.includes('expired') || errorMsg.includes('no longer available')) {
+        throw new HttpException(
+          {
+            success: false,
+            message: 'Your booking session has expired. Please search again.',
+            error: 'Session expired',
+          },
+          HttpStatus.GONE,
+        );
+      }
+      
       throw new HttpException(
         {
           success: false,
@@ -172,6 +269,7 @@ export class BookingWakanowController {
       );
     }
   }
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @Post('ticket')
@@ -188,7 +286,16 @@ export class BookingWakanowController {
   @ApiResponse({ status: 404, description: 'Booking not found' })
   async ticketFlight(@Body() ticketDto: TicketWakanowFlightDto) {
     try {
+      // ✅ Validate required fields
+      if (!ticketDto.localBookingId) {
+        throw new BadRequestException('localBookingId is required');
+      }
+      if (!ticketDto.pnrNumber) {
+        throw new BadRequestException('PNR number is required');
+      }
+
       const result = await this.ticketWakanowFlightUseCase.execute(ticketDto, ticketDto.localBookingId);
+      
       return {
         success: true,
         data: result,
@@ -196,6 +303,31 @@ export class BookingWakanowController {
       };
     } catch (error: any) {
       if (error instanceof HttpException) throw error;
+      
+      // Check for specific error messages
+      const errorMsg = error?.message?.toLowerCase() || '';
+      if (errorMsg.includes('insufficient') || errorMsg.includes('credit limit')) {
+        throw new HttpException(
+          {
+            success: false,
+            message: 'Insufficient wallet balance to issue ticket.',
+            error: 'Insufficient balance',
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+      
+      if (errorMsg.includes('not found')) {
+        throw new HttpException(
+          {
+            success: false,
+            message: 'Booking not found. Please check the booking ID.',
+            error: 'Booking not found',
+          },
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      
       throw new HttpException(
         {
           success: false,
@@ -206,6 +338,7 @@ export class BookingWakanowController {
       );
     }
   }
+
   @Public()
   @Get('airports')
   @ApiOperation({
@@ -222,6 +355,7 @@ export class BookingWakanowController {
     try {
       const all = await this.wakanowService.getAirports();
       let results = all;
+      
       if (query && query.trim().length > 0) {
         const q = query.trim().toLowerCase();
         results = all.filter(
@@ -236,6 +370,7 @@ export class BookingWakanowController {
         const cap = limit ? parseInt(limit, 10) : 100;
         results = all.slice(0, Number.isFinite(cap) && cap > 0 ? cap : 100);
       }
+      
       return {
         success: true,
         data: results,
@@ -254,6 +389,7 @@ export class BookingWakanowController {
       );
     }
   }
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @Get('wallet-balance')
