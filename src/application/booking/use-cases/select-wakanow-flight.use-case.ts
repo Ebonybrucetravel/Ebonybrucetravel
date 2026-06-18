@@ -1,4 +1,4 @@
-import { Injectable, Logger, HttpException, HttpStatus, GoneException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus, BadRequestException } from '@nestjs/common';
 import { WakanowService } from '@infrastructure/external-apis/wakanow/wakanow.service';
 import { SelectWakanowFlightDto } from '@presentation/booking/dto/wakanow-flights.dto';
 
@@ -34,18 +34,18 @@ export class SelectWakanowFlightUseCase {
 
       // ✅ Check if response is valid
       if (!selectResponse) {
-        throw new GoneException('No response from Wakanow. Please search again.');
+        throw new BadRequestException('No response from Wakanow. Please search again.');
       }
 
       // ✅ Check if flight is still available
       if (!selectResponse.HasResult) {
-        throw new GoneException('Selected flight is no longer available. Please search again.');
+        throw new BadRequestException('Selected flight is no longer available. Please search again.');
       }
 
       // ✅ Check if we have the required data
       if (!selectResponse.FlightSummaryModel) {
         this.logger.error('Missing FlightSummaryModel in response:', JSON.stringify(selectResponse));
-        throw new GoneException('Invalid response from Wakanow. Please search again.');
+        throw new BadRequestException('Invalid response from Wakanow. Please search again.');
       }
 
       const combo = selectResponse.FlightSummaryModel.FlightCombination;
@@ -53,13 +53,13 @@ export class SelectWakanowFlightUseCase {
       // ✅ Check if combo exists
       if (!combo) {
         this.logger.error('Missing FlightCombination in response:', JSON.stringify(selectResponse));
-        throw new GoneException('Flight data is incomplete. Please search again.');
+        throw new BadRequestException('Flight data is incomplete. Please search again.');
       }
 
       // ✅ Check if FlightModels exist
       if (!combo.FlightModels || combo.FlightModels.length === 0) {
         this.logger.error('No FlightModels in response:', JSON.stringify(combo));
-        throw new GoneException('No flight segments found. Please search again.');
+        throw new BadRequestException('No flight segments found. Please search again.');
       }
 
       this.logger.log(
@@ -121,7 +121,7 @@ export class SelectWakanowFlightUseCase {
       this.logger.error('Error selecting Wakanow flight:', error);
 
       // ✅ Handle specific errors
-      if (error instanceof BadRequestException || error instanceof GoneException) {
+      if (error instanceof BadRequestException) {
         throw error;
       }
 
@@ -131,7 +131,7 @@ export class SelectWakanowFlightUseCase {
       // ✅ Check if it's a 400 Bad Request from Wakanow (expired selectData)
       if (error.status === 400 || errorMsg.includes('bad request') || errorMsg.includes('invalid')) {
         this.logger.warn(`Wakanow select rejected with 400: ${error.message}`);
-        throw new GoneException('Your flight selection has expired. Please search for flights again.');
+        throw new BadRequestException('Your flight selection has expired. Please search for flights again.');
       }
 
       if (
@@ -141,7 +141,7 @@ export class SelectWakanowFlightUseCase {
         errorMsg.includes('not found') ||
         errorMsg.includes('unauthorized')
       ) {
-        throw new GoneException('Your flight selection has expired. Please search again.');
+        throw new BadRequestException('Your flight selection has expired. Please search again.');
       }
 
       // ✅ Check for network errors

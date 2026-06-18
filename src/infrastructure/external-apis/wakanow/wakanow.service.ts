@@ -1,4 +1,4 @@
-import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 export interface WakanowTokenResponse {
@@ -591,57 +591,71 @@ export class WakanowService {
   async selectFlight(request: WakanowSelectRequest): Promise<WakanowSelectResponse> {
     this.logger.log('Wakanow flight select...');
     this.logger.log(`SelectData length: ${request.SelectData?.length || 0}`);
-
+  
     // ✅ Validate selectData
     if (!request.SelectData || request.SelectData.length < 10) {
-      throw new HttpException(
-        'Invalid or expired flight selection. Please search again.',
-        HttpStatus.BAD_REQUEST,
-      );
+      this.logger.warn(`Invalid selectData: length ${request.SelectData?.length || 0}`);
+      throw new BadRequestException('Invalid or expired flight selection. Please search again.');
     }
-
+  
+    // ✅ Log preview for debugging
+    this.logger.log(`SelectData preview: ${request.SelectData.substring(0, 50)}...`);
+  
     const headers = await this.getAuthHeaders();
-
+  
     try {
       const response = await this.fetchWithRetry(`${this.serviceUrl}/api/flight/select`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(request),
+        body: JSON.stringify({
+          SelectData: request.SelectData,
+          TargetCurrency: request.TargetCurrency || 'NGN',
+        }),
       });
-
+  
       if (!response.ok) {
         const errorText = await response.text();
+        this.logger.warn(`Wakanow select failed: ${response.status} - ${errorText.substring(0, 200)}`);
+        
+        // ✅ If it's a 400 Bad Request, it's likely expired
+        if (response.status === 400) {
+          throw new BadRequestException('Your flight selection has expired. Please search for flights again.');
+        }
+        
         this.handleApiError(response, errorText, 'Flight select');
       }
-
+  
       const data: WakanowSelectResponse = await response.json();
-
+  
       // ✅ Check if the response indicates no results
       if (!data.HasResult) {
-        throw new HttpException(
-          'Selected flight is no longer available. Please search again.',
-          HttpStatus.GONE,
-        );
+        this.logger.warn('Wakanow select: No results found');
+        throw new BadRequestException('Selected flight is no longer available. Please search again.');
       }
-
+  
       this.logger.log(
-        `Wakanow flight selected. BookingId: ${data.BookingId}, Price: ${data.FlightSummaryModel?.FlightCombination?.Price?.Amount || 0} ${data.FlightSummaryModel?.FlightCombination?.Price?.CurrencyCode || 'NGN'}`,
+        `✅ Wakanow flight selected. BookingId: ${data.BookingId}, Price: ${data.FlightSummaryModel?.FlightCombination?.Price?.Amount || 0} ${data.FlightSummaryModel?.FlightCombination?.Price?.CurrencyCode || 'NGN'}`,
       );
-
+  
       return data;
     } catch (error: any) {
-      if (error instanceof HttpException) throw error;
-
-      this.logger.error('Wakanow flight select failed:', error);
-
-      // ✅ Check for specific error messages
-      if (error.message?.includes('expired') || error.message?.includes('invalid')) {
-        throw new HttpException(
-          'Your flight selection has expired. Please search again.',
-          HttpStatus.GONE,
-        );
+      // ✅ If it's already a BadRequestException, re-throw it
+      if (error instanceof BadRequestException) {
+        throw error;
       }
-
+      
+      if (error instanceof HttpException && error.getStatus() === HttpStatus.GONE) {
+        throw new BadRequestException('Your flight selection has expired. Please search for flights again.');
+      }
+  
+      this.logger.error('Wakanow flight select failed:', error);
+  
+      // ✅ Check for specific error messages
+      const errorMsg = error.message?.toLowerCase() || '';
+      if (errorMsg.includes('expired') || errorMsg.includes('invalid') || errorMsg.includes('no itinerary')) {
+        throw new BadRequestException('Your flight selection has expired. Please search for flights again.');
+      }
+  
       throw new HttpException(
         'Failed to confirm flight pricing with Wakanow',
         HttpStatus.SERVICE_UNAVAILABLE,
