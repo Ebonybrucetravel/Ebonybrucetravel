@@ -19,3 +19,4 @@ export interface BookingRepository {
     endDate?: Date;
   }): Promise<Booking[]>;
 }
+ 
