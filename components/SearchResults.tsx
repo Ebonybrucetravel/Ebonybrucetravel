@@ -1803,30 +1803,29 @@ const hotelAndCarResults = useMemo(() => {
 
       let finalFlight = flight;
 
-      // For Wakanow flights, fetch terms before proceeding
-      if (flight.isWakanow && flight.selectData) {
-        try {
-          console.log('🔄 Fetching terms for Wakanow flight from search results...');
-          const { wakanowService } = await import('@/lib/wakanow.service');
-          const flightDetails = await wakanowService.getFlightDetails(
-            flight.selectData,
-            'NGN'
-          );
+    // For Wakanow flights, fetch terms before proceeding
+if (flight.isWakanow && flight.selectData) {
+  try {
+    console.log('🔄 Fetching terms for Wakanow flight from search results...');
+    const { selectWakanowFlight } = await import('@/lib/wakanow-api');
+    const selectResult = await selectWakanowFlight(flight.selectData, 'NGN');
+    
+    const termsAndConditions = selectResult?.terms_and_conditions?.TermsAndConditions || [];
 
-          finalFlight = {
-            ...flight,
-            terms_and_conditions: flightDetails.termsAndConditions ? {
-              TermsAndConditions: flightDetails.termsAndConditions,
-              TermsAndConditionImportantNotice: ''
-            } : null,
-            bookingId: flightDetails.bookingId,
-          };
+    finalFlight = {
+      ...flight,
+      terms_and_conditions: termsAndConditions.length > 0 ? {
+        TermsAndConditions: termsAndConditions,
+        TermsAndConditionImportantNotice: selectResult?.terms_and_conditions?.TermsAndConditionImportantNotice || ''
+      } : null,
+      bookingId: selectResult?.booking_id || flight.bookingId,
+    };
 
-          console.log('✅ Terms loaded:', flightDetails.termsAndConditions?.length);
-        } catch (error) {
-          console.error('Failed to get flight terms:', error);
-        }
-      }
+    console.log('✅ Terms loaded:', termsAndConditions.length);
+  } catch (error) {
+    console.error('Failed to get flight terms:', error);
+  }
+}
 
       onSelect?.(finalFlight);
       setBookingFlightId(null);

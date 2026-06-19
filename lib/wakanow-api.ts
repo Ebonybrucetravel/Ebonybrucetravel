@@ -1,5 +1,5 @@
 // lib/wakanow-api.ts
-// Wakanow API client - NOW ROUTING THROUGH YOUR BACKEND
+// Wakanow API client - ROUTING THROUGH YOUR BACKEND
 
 import { config } from './config';
 
@@ -111,7 +111,6 @@ export interface WakanowFlight {
   ConnectionCode: string;
 }
 
-// Updated to handle your backend's response format
 export interface WakanowSearchResponse {
   provider?: string;
   offers?: any[];
@@ -133,7 +132,6 @@ export interface WakanowSearchResponse {
   [key: string]: any;
 }
 
-// Updated to match your backend's actual response structure
 export interface WakanowSelectResponse {
   provider?: string;
   booking_id?: string;
@@ -171,7 +169,7 @@ export interface WakanowPassenger {
   PassportIssuingAuthority: string;
   PassportIssueCountryCode?: string;
   Gender: 'Male' | 'Female';
-  Title: 'Mr' | 'Mrs' | 'Miss' | 'Ms' | 'Dr' | 'Prof';
+  Title: string;
   Email: string;
   Address: string;
   Country: string;
@@ -193,7 +191,28 @@ export interface WakanowPassenger {
     BaggageStatus: string;
   }>;
   WakaPointId?: string;
-  IsWakapointRegister?: boolean;
+}
+
+// ✅ NEW: Backend passenger interface (snake_case)
+export interface WakanowBackendPassenger {
+  passengerType: string;
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  dateOfBirth: string;
+  phoneNumber: string;
+  passportNumber?: string;
+  expiryDate?: string;
+  passportIssuingAuthority?: string;
+  passportIssueCountryCode?: string;
+  gender: string;
+  title: string;
+  email: string;
+  address: string;
+  country: string;
+  countryCode: string;
+  city: string;
+  postalCode: string;
 }
 
 export interface WakanowBookingRequest {
@@ -262,11 +281,11 @@ export interface WakanowWalletBalanceResponse {
 }
 
 // ============ BACKEND CONFIGURATION ============
-// ✅ NOW USING YOUR BACKEND ENDPOINTS INSTEAD OF DIRECT WAKANOW CALLS
 
 const BACKEND_BASE_URL = 'https://ebony-bruce-production.up.railway.app/api/v1/bookings/wakanow';
 
-// Helper function to call your backend
+// ============ HELPER FUNCTION WITH IMPROVED ERROR HANDLING ============
+
 async function backendFetch<T>(
   endpoint: string,
   options?: { method?: string; body?: object; authToken?: string }
@@ -275,10 +294,11 @@ async function backendFetch<T>(
     'Content-Type': 'application/json',
   };
 
-  // Add auth token if provided (for authenticated user endpoints)
   if (options?.authToken) {
     headers['Authorization'] = `Bearer ${options.authToken}`;
   }
+
+  console.log(`📡 Backend request: ${endpoint}`);
 
   const response = await fetch(`${BACKEND_BASE_URL}${endpoint}`, {
     method: options?.method ?? 'POST',
@@ -286,21 +306,62 @@ async function backendFetch<T>(
     body: options?.body ? JSON.stringify(options.body) : undefined,
   });
 
+  console.log(`📡 Backend response: ${endpoint} - ${response.status}`);
+
   if (!response.ok) {
-    let errorMessage = `Backend API error: ${response.status}`;
+    let errorMessage = `Request failed with status ${response.status}`;
+    let errorData: any = null;
+    
     try {
-      const errorData = await response.json();
-      errorMessage = errorData.message || errorData.error || errorMessage;
-    } catch {
-      // Use default error message
+      errorData = await response.json();
+      console.error('📦 Backend error response:', errorData);
+      
+      if (errorData.message) {
+        errorMessage = errorData.message;
+      } else if (errorData.error) {
+        errorMessage = errorData.error;
+      } else if (errorData.statusCode && errorData.message) {
+        errorMessage = errorData.message;
+      } else if (typeof errorData === 'string') {
+        errorMessage = errorData;
+      } else if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+        const firstError = errorData.errors[0];
+        errorMessage = firstError.message || firstError.msg || firstError;
+      }
+      
+      if (response.status === 400 && errorMessage.toLowerCase().includes('selectdata')) {
+        errorMessage = 'Your flight selection has expired. Please go back and search again.';
+      } else if (response.status === 401 || response.status === 403) {
+        errorMessage = 'Your session has expired. Please login again.';
+      } else if (response.status === 404) {
+        errorMessage = 'The requested resource was not found. Please try again.';
+      }
+    } catch (e) {
+      console.error('Failed to parse error response:', e);
+      try {
+        const textError = await response.text();
+        if (textError) {
+          errorMessage = textError.substring(0, 200);
+        }
+      } catch (textErr) {
+        // Use default error message
+      }
     }
+    
+    console.error(`❌ Backend error (${response.status}): ${errorMessage}`);
     throw new Error(errorMessage);
   }
 
   const data = await response.json();
   
-  // Extract the actual data from your backend response format
-  // Your backend returns { success: true, data: {...} } or just the data directly
+  if (data && typeof data === 'object') {
+    if (data.success === false) {
+      const errorMsg = data.message || data.error || 'Backend operation failed';
+      console.error('❌ Backend operation failed:', errorMsg);
+      throw new Error(errorMsg);
+    }
+  }
+  
   if (data && typeof data === 'object' && 'success' in data && 'data' in data) {
     return data.data as T;
   }
@@ -308,21 +369,134 @@ async function backendFetch<T>(
   return data as T;
 }
 
-// ============ Public API Functions (Updated to use your backend) ============
+// ============ HELPER FUNCTIONS (EXPORTED) ============
 
-// Cache for airports (still cached locally)
+/**
+ * Format title to match Wakanow API expectations
+ * Valid titles: Mr, Mrs, Miss, Ms, Dr, Prof
+ */
+export function formatWakanowTitle(title: string | undefined): string {
+  if (!title) return 'Mr';
+  
+  let formatted = title.charAt(0).toUpperCase() + title.slice(1).toLowerCase();
+  
+  const titleMap: Record<string, string> = {
+    'mr': 'Mr',
+    'mrs': 'Mrs',
+    'miss': 'Miss',
+    'ms': 'Ms',
+    'dr': 'Dr',
+    'prof': 'Prof',
+    'mr.': 'Mr',
+    'mrs.': 'Mrs',
+    'miss.': 'Miss',
+    'ms.': 'Ms',
+    'dr.': 'Dr',
+    'prof.': 'Prof',
+  };
+  
+  const lowerTitle = formatted.toLowerCase();
+  if (titleMap[lowerTitle]) {
+    return titleMap[lowerTitle];
+  }
+  
+  return 'Mr';
+}
+
+/**
+ * Format gender to match Wakanow API expectations
+ */
+export function formatWakanowGender(gender: string | undefined): 'Male' | 'Female' {
+  if (!gender) return 'Male';
+  
+  const lower = gender.toLowerCase();
+  if (lower === 'm' || lower === 'male') return 'Male';
+  if (lower === 'f' || lower === 'female') return 'Female';
+  
+  return 'Male';
+}
+
+/**
+ * Format phone number to E.164 format with +
+ */
+export function formatWakanowPhone(phone: string | undefined): string {
+  if (!phone) return '+2348000000000';
+  
+  let cleaned = phone.replace(/[\s\-()]/g, '');
+  
+  if (!cleaned.startsWith('+')) {
+    if (cleaned.startsWith('0')) {
+      cleaned = '+234' + cleaned.slice(1);
+    } else if (cleaned.startsWith('234')) {
+      cleaned = '+' + cleaned;
+    } else {
+      cleaned = '+' + cleaned;
+    }
+  }
+  
+  return cleaned;
+}
+
+/**
+ * Format date to YYYY-MM-DD
+ */
+export function formatWakanowDate(date: string | undefined): string {
+  if (!date) return '1990-01-01';
+  
+  if (date.includes('T')) {
+    return date.split('T')[0];
+  }
+  
+  try {
+    const d = new Date(date);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().split('T')[0];
+    }
+  } catch {
+    // If parsing fails, return as is
+  }
+  
+  return date;
+}
+
+/**
+ * Create a properly formatted Wakanow passenger from frontend passenger data
+ */
+export function createWakanowPassenger(p: any): WakanowPassenger {
+  return {
+    PassengerType: p.PassengerType || p.passengerType || 'Adult',
+    FirstName: p.FirstName || p.firstName || '',
+    MiddleName: p.MiddleName || p.middleName || '',
+    LastName: p.LastName || p.lastName || '',
+    DateOfBirth: formatWakanowDate(p.DateOfBirth || p.dateOfBirth),
+    PhoneNumber: formatWakanowPhone(p.PhoneNumber || p.phone),
+    PassportNumber: p.PassportNumber || p.passportNumber || '',
+    ExpiryDate: formatWakanowDate(p.ExpiryDate || p.passportExpiry),
+    PassportIssuingAuthority: p.PassportIssuingAuthority || p.passportIssuingAuthority || '',
+    PassportIssueCountryCode: p.PassportIssueCountryCode || p.passportIssueCountry || '',
+    Gender: formatWakanowGender(p.Gender || p.gender),
+    Title: formatWakanowTitle(p.Title || p.title),
+    Email: p.Email || p.email || '',
+    Address: p.Address || p.address || '123 Fake Street',
+    Country: p.Country || p.country || 'Nigeria',
+    CountryCode: p.CountryCode || p.countryCode || 'NG',
+    City: p.City || p.city || 'Lagos',
+    PostalCode: p.PostalCode || p.postalCode || '100001',
+  };
+}
+
+// ============ Public API Functions ============
+
 let cachedAirports: WakanowAirport[] | null = null;
 
 export async function getWakanowAirports(): Promise<WakanowAirport[]> {
   if (cachedAirports) return cachedAirports;
   
   try {
-    // ✅ Call your backend endpoint instead of Wakanow directly
     const response = await backendFetch<any>('/airports', {
       method: 'GET'
     });
     
-    // Handle different response formats
     let airports: WakanowAirport[] = [];
     
     if (Array.isArray(response)) {
@@ -332,7 +506,6 @@ export async function getWakanowAirports(): Promise<WakanowAirport[]> {
     } else if (response && response.data && Array.isArray(response.data)) {
       airports = response.data;
     } else {
-      // If no airports found, use fallback
       throw new Error('No airports data in response');
     }
     
@@ -341,7 +514,6 @@ export async function getWakanowAirports(): Promise<WakanowAirport[]> {
   } catch (error) {
     console.error('Failed to fetch airports from backend, using fallback:', error);
     
-    // Fallback mock airports
     cachedAirports = [
       { AirportCode: 'LOS', AirportName: 'Murtala Muhammed International Airport', CityCountry: 'Lagos, Nigeria', City: 'Lagos', Country: 'Nigeria' },
       { AirportCode: 'ABV', AirportName: 'Nnamdi Azikiwe International Airport', CityCountry: 'Abuja, Nigeria', City: 'Abuja', Country: 'Nigeria' },
@@ -359,10 +531,25 @@ export async function getWakanowAirports(): Promise<WakanowAirport[]> {
   }
 }
 
+// ✅ FIXED: searchWakanowFlights with proper date format conversion
 export async function searchWakanowFlights(params: WakanowFlightSearchParams): Promise<WakanowSearchResponse> {
   console.log('🔍 Search flights via backend:', params);
   
-  // ✅ Convert params to match your backend's expected format
+  // ✅ Format dates to MM/DD/YYYY for Wakanow API
+  const formattedItineraries = params.Itineraries.map(itin => {
+    let departureDate = itin.DepartureDate;
+    // If date is in YYYY-MM-DD format, convert to MM/DD/YYYY
+    if (departureDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const parts = departureDate.split('-');
+      departureDate = `${parts[1]}/${parts[2]}/${parts[0]}`;
+    }
+    return {
+      Departure: itin.Departure,
+      Destination: itin.Destination,
+      DepartureDate: departureDate
+    };
+  });
+  
   const backendParams = {
     flightSearchType: params.FlightSearchType === 'Oneway' ? 'Oneway' : 
                       params.FlightSearchType === 'Return' ? 'Return' : 'Multicity',
@@ -372,11 +559,7 @@ export async function searchWakanowFlights(params: WakanowFlightSearchParams): P
     ticketClass: params.Ticketclass,
     targetCurrency: params.TargetCurrency,
     currency: 'GBP',
-    itineraries: params.Itineraries.map(itin => ({
-      Departure: itin.Departure,
-      Destination: itin.Destination,
-      DepartureDate: itin.DepartureDate
-    }))
+    itineraries: formattedItineraries
   };
   
   const result = await backendFetch<WakanowSearchResponse>('/search', {
@@ -393,56 +576,78 @@ export async function searchWakanowFlights(params: WakanowFlightSearchParams): P
   return result;
 }
 
-// ✅ FIXED: Updated to properly handle your backend's response format
 export async function selectWakanowFlight(selectData: string, targetCurrency: string = 'NGN'): Promise<WakanowSelectResponse> {
   console.log('🛫 Select flight via backend');
-  console.log('📝 Request payload:', { selectDataLength: selectData?.length, targetCurrency });
+  console.log('📝 SelectData length:', selectData?.length);
   
-  // ✅ Call your backend select endpoint
-  const result = await backendFetch<any>('/select', {
-    method: 'POST',
-    body: {
-      selectData: selectData,
-      targetCurrency: targetCurrency
-    },
-  });
+  if (!selectData) {
+    throw new Error('Missing selectData. Please search for flights again.');
+  }
   
-  console.log('📦 Select response from backend:', {
-    hasData: !!result,
-    dataKeys: result ? Object.keys(result) : [],
-    hasBookingId: !!result?.booking_id,
-    hasFlightSummary: !!result?.flight_summary,
-    hasTerms: !!result?.terms_and_conditions,
-    termsLength: result?.terms_and_conditions?.TermsAndConditions?.length
-  });
+  if (selectData.length < 10) {
+    throw new Error('Invalid selectData (too short). Please search for flights again.');
+  }
   
-  // The response is already the data object (unwrapped by backendFetch)
-  // Structure: { provider, booking_id, select_data, flight_summary, terms_and_conditions, ... }
-  return result as WakanowSelectResponse;
+  try {
+    const result = await backendFetch<any>('/select', {
+      method: 'POST',
+      body: {
+        selectData: selectData,
+        targetCurrency: targetCurrency
+      },
+    });
+    
+    console.log('📦 Select response from backend:', {
+      hasData: !!result,
+      dataKeys: result ? Object.keys(result) : [],
+      hasBookingId: !!result?.booking_id,
+      hasSelectData: !!result?.select_data,
+    });
+    
+    if (!result || (typeof result === 'object' && Object.keys(result).length === 0)) {
+      throw new Error('No data received from Wakanow. Please try searching again.');
+    }
+    
+    if (result.success === false) {
+      throw new Error(result.message || 'Wakanow selection failed. Please try again.');
+    }
+    
+    if (!result.select_data && result.SelectData) {
+      result.select_data = result.SelectData;
+    }
+    
+    return result as WakanowSelectResponse;
+  } catch (error: any) {
+    console.error('❌ Wakanow select failed:', error.message);
+    
+    if (error.message?.includes('expired') || error.message?.includes('session')) {
+      throw new Error('Your flight selection has expired. Please go back and search again.');
+    }
+    
+    if (error.message?.includes('404') || error.message?.includes('not found')) {
+      throw new Error('Flight not found. Please search again.');
+    }
+    
+    throw error;
+  }
 }
 
-export async function bookWakanowFlight(bookingData: WakanowBookingRequest, authToken?: string): Promise<WakanowBookingResponse> {
+// ✅ UPDATED: bookWakanowFlight with proper typing
+export async function bookWakanowFlight(
+  bookingData: {
+    BookingId: string;
+    BookingData: string;
+    TargetCurrency: string;
+    PassengerDetails: WakanowBackendPassenger[]; // ✅ Accepts snake_case
+  }, 
+  authToken?: string
+): Promise<WakanowBookingResponse> {
   console.log('📝 Book flight via backend:', { bookingId: bookingData.BookingId });
   
-  // ✅ Convert to your backend's guest booking format
-  const passengers = bookingData.PassengerDetails.map(passenger => ({
-    passengerType: passenger.PassengerType,
-    firstName: passenger.FirstName,
-    lastName: passenger.LastName,
-    dateOfBirth: passenger.DateOfBirth,
-    phoneNumber: passenger.PhoneNumber,
-    email: passenger.Email,
-    gender: passenger.Gender,
-    title: passenger.Title,
-    address: passenger.Address,
-    country: passenger.Country,
-    countryCode: passenger.CountryCode,
-    city: passenger.City,
-    postalCode: passenger.PostalCode
-  }));
+  // ✅ Passengers are already in snake_case format for the backend
+  const passengers = bookingData.PassengerDetails;
   
-  // Use guest booking endpoint (as shown in your backend examples)
-  const result = await backendFetch<WakanowBookingResponse>('/book/guest', {
+  const result = await backendFetch<any>('/book/guest', {
     method: 'POST',
     body: {
       bookingId: bookingData.BookingId,
@@ -452,18 +657,82 @@ export async function bookWakanowFlight(bookingData: WakanowBookingRequest, auth
     authToken: authToken
   });
   
-  console.log('📦 Book response from backend:', {
-    success: result?.success,
-    hasBookingId: !!result?.BookingId
+  console.log('📦 Raw book response:', JSON.stringify(result, null, 2));
+  
+  // ✅ Extract BookingId from multiple possible locations
+  let bookingId = result?.BookingId || 
+                  result?.bookingId || 
+                  result?.data?.BookingId || 
+                  result?.data?.bookingId ||
+                  result?.id ||
+                  result?.data?.id ||
+                  result?.booking?.id ||
+                  null;
+  
+  // ✅ If still no bookingId, check if the response has a data wrapper
+  if (!bookingId && result?.data && typeof result.data === 'object') {
+    bookingId = result.data.BookingId || result.data.bookingId || result.data.id;
+  }
+  
+  // ✅ Extract PNR from multiple possible locations
+  let pnrNumber = result?.FlightBookingResult?.FlightBookingSummaryModel?.PnReferenceNumber ||
+                  result?.FlightBookingResult?.PnReferenceNumber ||
+                  result?.FlightBookingResult?.FlightBookingSummaryModel?.PnrReferenceNumber ||
+                  result?.pnrNumber ||
+                  result?.PnrNumber ||
+                  result?.data?.pnrNumber ||
+                  result?.data?.PnrNumber ||
+                  null;
+  
+  // ✅ If still no pnr, check in data wrapper
+  if (!pnrNumber && result?.data && typeof result.data === 'object') {
+    pnrNumber = result.data.pnrNumber || result.data.PnrNumber || result.data.PnReferenceNumber;
+  }
+  
+  console.log('📦 Extracted booking data:', {
+    bookingId,
+    pnrNumber,
+    hasBookingId: !!bookingId,
+    hasPnr: !!pnrNumber
   });
   
-  return result;
+  if (!bookingId) {
+    console.error('❌ No booking ID found. Full response:', JSON.stringify(result, null, 2));
+    throw new Error('Wakanow booking failed: No booking ID in response');
+  }
+  
+  // ✅ Build response in the expected format
+  const response: WakanowBookingResponse = {
+    BookingId: bookingId,
+    CustomerId: result?.CustomerId || result?.customerId || result?.data?.CustomerId || '',
+    ProductType: 'Flight',
+    TargetCurrency: result?.TargetCurrency || result?.targetCurrency || result?.data?.TargetCurrency || 'NGN',
+    FlightBookingResult: {
+      PnReferenceNumber: pnrNumber || '',
+      PnDate: result?.PnDate || result?.pnrDate || result?.data?.pnrDate || new Date().toISOString(),
+      FlightSummaryModel: result?.FlightSummaryModel || result?.flightSummary || result?.data?.flightSummary || {},
+      PnStatus: result?.PnStatus || result?.pnrStatus || result?.data?.pnrStatus || 'PENDING',
+      TicketStatus: result?.TicketStatus || result?.ticketStatus || result?.data?.ticketStatus || 'PENDING',
+    },
+    ProductTermsAndConditions: {
+      TermsAndConditions: result?.ProductTermsAndConditions?.TermsAndConditions || result?.data?.ProductTermsAndConditions?.TermsAndConditions || [],
+    },
+    success: true,
+    message: result?.message || result?.data?.message || 'Booking successful',
+  };
+  
+  console.log('📦 Final book response:', {
+    success: response.success,
+    bookingId: response.BookingId,
+    pnr: response.FlightBookingResult?.PnReferenceNumber
+  });
+  
+  return response;
 }
 
 export async function ticketWakanowPNR(bookingId: string, pnrNumber: string): Promise<WakanowTicketResponse> {
   console.log('🎫 Get ticket via backend:', { bookingId, pnrNumber });
   
-  // ✅ Call your backend ticket endpoint
   const result = await backendFetch<WakanowTicketResponse>('/ticket', {
     method: 'POST',
     body: {
@@ -483,20 +752,17 @@ export async function ticketWakanowPNR(bookingId: string, pnrNumber: string): Pr
 export async function getWakanowWalletBalance(authToken?: string): Promise<{ Balance: number; Currency: string }> {
   console.log('💰 Get wallet balance via backend');
   
-  // ✅ Call your backend wallet endpoint
   const result = await backendFetch<{ balance: number; currency: string }>('/wallet-balance', {
     method: 'GET',
     authToken: authToken
   });
   
-  // Convert to the expected format
   return {
     Balance: result.balance || 0,
     Currency: result.currency || 'NGN'
   };
 }
 
-// ============ Optional: Clear cache function ============
 export function clearWakanowCache() {
   cachedAirports = null;
 }

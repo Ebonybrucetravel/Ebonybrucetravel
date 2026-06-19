@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
+import toast from 'react-hot-toast';
 import { useLanguage } from '@/context/LanguageContext';
 
 interface FlightDetailsProps {
@@ -422,7 +423,6 @@ const transformedItem = useMemo(() => {
 
   const handleBookClick = async () => {
     try {
-      // For Wakanow flights, ensure we have selectData
       let finalItem = { ...transformedItem };
       
       console.log('📦 handleBookClick - Flight data:', {
@@ -430,28 +430,30 @@ const transformedItem = useMemo(() => {
         provider: transformedItem.provider,
         isWakanow: transformedItem.isWakanow,
         hasSelectData: !!(transformedItem as any).selectData,
-        hasOfferRequestId: !!(transformedItem as any).offer_request_id,
       });
       
       if (transformedItem.isWakanow && (transformedItem as any).selectData) {
         setIsConverting(true);
         
-        const { wakanowService } = await import('@/lib/wakanow.service');
-        const flightDetails = await wakanowService.getFlightDetails(
+        // ✅ FIXED: Use selectWakanowFlight from wakanow-api
+        const { selectWakanowFlight } = await import('@/lib/wakanow-api');
+        const selectResult = await selectWakanowFlight(
           (transformedItem as any).selectData,
           'NGN'
         );
         
+        const termsAndConditions = selectResult?.terms_and_conditions?.TermsAndConditions || [];
+        
         finalItem = {
           ...transformedItem,
-          terms_and_conditions: flightDetails.termsAndConditions ? {
-            TermsAndConditions: flightDetails.termsAndConditions,
-            TermsAndConditionImportantNotice: ''
+          terms_and_conditions: termsAndConditions.length > 0 ? {
+            TermsAndConditions: termsAndConditions,
+            TermsAndConditionImportantNotice: selectResult?.terms_and_conditions?.TermsAndConditionImportantNotice || ''
           } : null,
-          bookingId: flightDetails.bookingId,
+          bookingId: selectResult?.booking_id,
         };
         
-        console.log('✅ Terms loaded for Wakanow flight:', flightDetails.termsAndConditions?.length);
+        console.log('✅ Terms loaded for Wakanow flight:', termsAndConditions.length);
       }
       
       const completeBooking = {
@@ -462,14 +464,20 @@ const transformedItem = useMemo(() => {
       };
       
       selectItem(completeBooking);
-      
-      // Store in sessionStorage for recovery
       sessionStorage.setItem('selectedBooking', JSON.stringify(completeBooking));
-      
       router.push('/booking/review');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to prepare booking:', error);
-      // Still proceed with basic item
+      
+      if (error.message?.toLowerCase().includes('expired') || 
+          error.message?.toLowerCase().includes('search again')) {
+        toast.error('Your flight selection has expired. Please search for flights again.');
+        setTimeout(() => {
+          router.push('/search');
+        }, 2000);
+        return;
+      }
+      
       const completeBooking = {
         ...transformedItem,
         id: transformedItem.id || `flight-${Date.now()}`,

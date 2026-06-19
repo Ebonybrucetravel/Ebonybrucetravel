@@ -8,7 +8,15 @@ import api, {
   getVendorCodeFromCardNumber,
   publicRequest,
 } from "@/lib/api";
-import { selectWakanowFlight, bookWakanowFlight } from "@/lib/wakanow-api";
+import { 
+  selectWakanowFlight, 
+  bookWakanowFlight,
+  createWakanowPassenger,
+  formatWakanowTitle,
+  formatWakanowGender,
+  formatWakanowPhone,
+  formatWakanowDate
+} from "@/lib/wakanow-api";
 
 // Extend the SearchResult type locally to include pricing fields
 interface ExtendedSearchResult {
@@ -51,6 +59,8 @@ interface ExtendedSearchResult {
   original_currency?: string;
   checkInDate?: string;
   checkOutDate?: string;
+  airlineName?: string;
+  airlineCode?: string;
   realData?: {
     offerId?: string;
     finalPrice?: number;
@@ -144,20 +154,18 @@ const getActualProvider = (item: ExtendedSearchResult): string => {
   return 'DUFFEL';
 };
 
-// ✅ Helper function to validate if an offer ID is real or fake
+// Helper function to validate if an offer ID is real or fake
 const isValidAmadeusOfferId = (offerId: string | number): boolean => {
   if (!offerId) return false;
   
-  // Convert to string if it's a number
   const idString = offerId.toString();
   
-  // Fake/test patterns that Amadeus will reject
   const fakePatterns = [
-    /^UXNYC\d{3}$/i,      // UXNYC000
-    /^YRPARRAF$/i,        // YRPARRAF
-    /^SBLONSOF$/i,        // SBLONSOF
-    /^[A-Z]{3,8}\d{3}$/i, // Any 3-8 letters followed by 3 digits
-    /^hotel-\d+$/i,       // hotel-1234567890 pattern
+    /^UXNYC\d{3}$/i,
+    /^YRPARRAF$/i,
+    /^SBLONSOF$/i,
+    /^[A-Z]{3,8}\d{3}$/i,
+    /^hotel-\d+$/i,
   ];
   
   for (const pattern of fakePatterns) {
@@ -166,7 +174,6 @@ const isValidAmadeusOfferId = (offerId: string | number): boolean => {
     }
   }
   
-  // Real Amadeus offer IDs are typically longer alphanumeric strings
   return idString.length >= 8 && /^[A-Z0-9]{8,}$/i.test(idString);
 };
 
@@ -409,187 +416,252 @@ export function useBooking() {
 
         const token = getStoredAuthToken();
 
-        // ✅ SPECIALIZED WAKANOW FLOW (Both Domestic AND International)
-        if (provider === 'WAKANOW' && (productType === 'FLIGHT_DOMESTIC' || productType === 'FLIGHT_INTERNATIONAL')) {
-          console.log("🚀 STARTING SPECIALIZED WAKANOW FLOW");
-          
-          const selectData = getSelectData(item);
-          console.log("🔑 Original selectData:", { 
-            selectData: selectData?.substring(0, 100),
-            length: selectData?.length 
-          });
-          
-          if (!selectData) {
-            throw new Error("Missing booking token for this flight. Please go back and select the flight again.");
-          }
-          
-          // ✅ Validate selectData length - if too long, it's likely wrong
-          if (selectData.length > 5000) {
-            console.warn("⚠️ selectData is very long:", selectData.length);
-          }
-          
-          // Step 1: Select the flight with Wakanow
-          const selectResult = await selectWakanowFlight(selectData, offerCurrency);
-          
-          console.log("📦 Select result from Wakanow:", {
-            hasBookingId: !!selectResult?.booking_id,
-            selectDataResponseLength: selectResult?.select_data?.length,
-            selectDataResponsePreview: selectResult?.select_data?.substring(0, 50),
-            hasTerms: !!selectResult?.terms_and_conditions,
-          });
-          
-          if (!selectResult?.booking_id) {
-            throw new Error(selectResult.message || "Failed to confirm flight availability with Wakanow.");
-          }
 
-          const wakanowBookingId = selectResult.booking_id;
-          // ✅ Use the select_data from the response (should be a short token)
-          let wakanowSelectData = selectResult.select_data || selectData;
-          
-          // ✅ Validate the new selectData length
-          if (wakanowSelectData && wakanowSelectData.length > 5000) {
-            console.error("❌ Response selectData is still too long:", wakanowSelectData.length);
-            // Try to extract a shorter token
-            if (selectResult.token) {
-              wakanowSelectData = selectResult.token;
-            } else if (selectResult.booking_token) {
-              wakanowSelectData = selectResult.booking_token;
-            } else if (selectResult.session_id) {
-              wakanowSelectData = selectResult.session_id;
-            } else {
-              throw new Error("Invalid response from Wakanow. The booking token format is incorrect.");
-            }
-          }
-          
-          console.log("✅ Using selectData for booking:", {
-            bookingId: wakanowBookingId,
-            selectDataLength: wakanowSelectData.length,
-            selectDataPreview: wakanowSelectData?.substring(0, 50)
-          });
 
-          // Step 2: Transform passengers
-          const allPassengers: PassengerInfo[] = [
-            passenger,
-            ...(passenger.travellers || [])
-          ];
+// ✅ WAKANOW FLOW - FIXED
+if (provider === 'WAKANOW' && (productType === 'FLIGHT_DOMESTIC' || productType === 'FLIGHT_INTERNATIONAL')) {
+  console.log("🚀 STARTING WAKANOW FLOW");
 
-          const formattedPassengers = allPassengers.map(p => ({
-            passengerType: (p.type === 'child' ? 'Child' : p.type === 'infant' ? 'Infant' : 'Adult'),
-            firstName: p.firstName,
-            lastName: p.lastName,
-            dateOfBirth: p.dateOfBirth || "1990-01-01",
-            phoneNumber: p.phone || passenger.phone,
-            email: p.email || passenger.email,
-            gender: (p.gender === 'm' ? 'Male' : p.gender === 'f' ? 'Female' : 'Male'),
-            title: (p.title || 'Mr').charAt(0).toUpperCase() + (p.title || 'Mr').slice(1).toLowerCase(),
-            address: p.address || passenger.address || "123 Fake Street",
-            country: p.country || passenger.country || "Nigeria",
-            countryCode: p.countryCode || passenger.countryCode || "NG",
-            city: p.city || passenger.city || "Lagos",
-            postalCode: p.postalCode || passenger.postalCode || "100001",
-          }));
+  // STEP 1: Get the original selectData from the search result
+  const originalSelectData = getSelectData(item);
+  if (!originalSelectData) {
+    throw new Error("Missing booking token. Please search again.");
+  }
 
-          // Step 3: Create booking with Wakanow
-          const bookingRequest = {
-            bookingId: wakanowBookingId,
-            selectData: wakanowSelectData,
-            targetCurrency: offerCurrency,
-            passengers: formattedPassengers
-          };
+  // STEP 2: SELECT - Confirm pricing and get NEW selectData
+  console.log("📤 Step 1: Selecting flight...");
+  const selectResult = await selectWakanowFlight(originalSelectData, offerCurrency);
+  
+  const wakanowBookingId = selectResult?.booking_id;
+  const newSelectData = selectResult?.select_data;
+  
+  if (!wakanowBookingId || !newSelectData) {
+    throw new Error("Failed to confirm flight pricing");
+  }
 
-          console.log("📤 Sending Wakanow booking request to:", `${BASE}/api/v1/bookings/wakanow/book`);
-          console.log("📤 Request payload:", {
-            bookingId: bookingRequest.bookingId,
-            selectDataLength: bookingRequest.selectData.length,
-            selectDataPreview: bookingRequest.selectData.substring(0, 50),
-            targetCurrency: bookingRequest.targetCurrency,
-            passengersCount: bookingRequest.passengers.length
-          });
+  // ✅ Extract the ACTUAL price from the select result
+  const wakanowPrice = selectResult?.flight_summary?.price?.Amount || 0;
+  const wakanowCurrency = selectResult?.flight_summary?.price?.CurrencyCode || offerCurrency;
+  
+  console.log("💰 Wakanow price from select:", {
+    wakanowPrice,
+    wakanowCurrency,
+    originalBasePrice: basePrice,
+  });
 
-          const headers: Record<string, string> = {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          };
+  // ✅ Calculate markup and service fees
+  let markupPercentage = 10; // Default 10% markup
+  let serviceFeePercentage = 5; // ✅ Fixed at 5% service fee
+  let serviceFee = 0;
+  
+  // Try to get markup from the item first
+  if (item.markup_percentage) {
+    markupPercentage = item.markup_percentage;
+  }
 
-          if (token) {
-            headers["Authorization"] = `Bearer ${token}`;
-            console.log("🔐 Using auth token for Wakanow booking");
-          }
+  // Calculate the correct amounts
+  const markupAmount = (wakanowPrice * markupPercentage) / 100;
+  // ✅ Calculate service fee as 5% of base price
+  serviceFee = (wakanowPrice * serviceFeePercentage) / 100;
+  const totalAmount = wakanowPrice + markupAmount + serviceFee;
+  
+  console.log("💰 Price breakdown after markup:", {
+    wakanowPrice,
+    markupPercentage,
+    markupAmount,
+    serviceFeePercentage,
+    serviceFee,
+    totalAmount,
+    currency: wakanowCurrency,
+  });
 
-          const endpoint = isGuest ? "/api/v1/bookings/wakanow/book/guest" : "/api/v1/bookings/wakanow/book";
-          const response = await fetch(`${BASE}${endpoint}`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(bookingRequest),
-          });
+  // STEP 3: Prepare passengers
+  const allPassengers: PassengerInfo[] = [
+    passenger,
+    ...(passenger.travellers || [])
+  ];
 
-          const result = await response.json();
-          
-          console.log("📦 Raw Wakanow booking response:", JSON.stringify(result, null, 2));
-          
-          if (!response.ok) {
-            console.error("Wakanow booking failed:", result);
-            const errorMsg = result.message || result.error || "Wakanow booking failed";
-            if (result.statusCode === 400) {
-              throw new Error("Invalid booking request. The booking token may have expired. Please go back and search again.");
-            }
-            throw new Error(errorMsg);
-          }
-          
-          let bookingId: string | undefined;
-          let bookingData = result.data || result;
-          
-          bookingId = bookingData.id || bookingData.bookingId || result.id || result.bookingId;
-          
-          if (!bookingId) {
-            console.error("Failed to extract booking ID from response:", result);
-            throw new Error("Wakanow booking failed: No booking ID in response");
-          }
-          
-          console.log("✅ Wakanow booking successful! Booking ID:", bookingId);
+  const formattedPassengers = allPassengers.map((p) => {
+    let passengerType = 'Adult';
+    if (p.type === 'child') passengerType = 'Child';
+    else if (p.type === 'infant') passengerType = 'Infant';
+    
+    return {
+      passengerType: passengerType,
+      firstName: p.firstName || '',
+      middleName: (p as any).middleName || '',
+      lastName: p.lastName || '',
+      dateOfBirth: formatWakanowDate(p.dateOfBirth),
+      phoneNumber: formatWakanowPhone(p.phone || passenger.phone),
+      passportNumber: (p as any).passportNumber || '',
+      expiryDate: formatWakanowDate((p as any).passportExpiry),
+      passportIssuingAuthority: (p as any).passportIssuingAuthority || '',
+      passportIssueCountryCode: (p as any).passportIssueCountry || '',
+      gender: formatWakanowGender(p.gender),
+      title: formatWakanowTitle(p.title || 'Mr'),
+      email: p.email || passenger.email || '',
+      address: p.address || passenger.address || '123 Fake Street',
+      country: p.country || passenger.country || 'Nigeria',
+      countryCode: p.countryCode || passenger.countryCode || 'NG',
+      city: p.city || passenger.city || 'Lagos',
+      postalCode: p.postalCode || passenger.postalCode || '100001',
+    };
+  });
 
-          const created: Booking = {
-            id: bookingId,
-            reference: bookingData.reference || result.reference || `WAK-${bookingId}`,
-            status: "PENDING",
-            paymentStatus: result.paymentStatus || "PENDING",
-            productType: productType,
-            provider: "WAKANOW",
-            basePrice: basePrice,
-            totalAmount: finalAmount,
-            currency: offerCurrency,
-            bookingData: {
-              wakanowBookingId: wakanowBookingId,
-              selectData: wakanowSelectData,
-              pnrNumber: result.pnrNumber || bookingData.pnrNumber,
-              rawResponse: result
-            },
-            passengerInfo: {
-              firstName: passenger.firstName,
-              lastName: passenger.lastName,
-              email: passenger.email,
-              phone: passenger.phone,
-              address: passenger.address || "123 Fake Street",
-              city: passenger.city || "Lagos",
-              country: passenger.country || "Nigeria",
-              countryCode: passenger.countryCode || "NG",
-              postalCode: passenger.postalCode || "100001",
-            },
-            createdAt: new Date().toISOString(),
-          };
-          
-          setBooking(created);
-          sessionStorage.setItem(`booking_${bookingId}`, JSON.stringify(created));
-          sessionStorage.setItem('current_booking', JSON.stringify({
-            id: bookingId,
-            type: 'wakanow',
-            timestamp: Date.now()
-          }));
-          
-          console.log("✅ Wakanow booking ready for payment");
-          return created;
-        }
+  // STEP 4: BOOK - Create booking with Wakanow (NO PAYMENT YET)
+  console.log("📖 Step 2: Booking flight with Wakanow...");
+  const bookResponse = await bookWakanowFlight({
+    BookingId: wakanowBookingId,
+    BookingData: newSelectData,
+    TargetCurrency: offerCurrency,
+    PassengerDetails: formattedPassengers,
+  });
 
+  if (!bookResponse?.BookingId) {
+    throw new Error("Wakanow booking failed");
+  }
+
+  const pnrNumber = bookResponse.FlightBookingResult?.PnReferenceNumber || 'PENDING';
+
+  // STEP 5: Create booking in YOUR system (PAYMENT_PENDING status)
+  console.log("💾 Step 3: Saving booking in our system...");
+  
+  const bookingHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+
+  if (!isGuest && token) {
+    bookingHeaders["Authorization"] = `Bearer ${token}`;
+  }
+
+  // ✅ ONLY send the fields the backend expects
+  const bookingPayload = {
+    bookingId: wakanowBookingId,
+    selectData: newSelectData,
+    passengers: formattedPassengers,
+    targetCurrency: offerCurrency,
+  };
+
+  console.log("📤 Booking payload:", JSON.stringify(bookingPayload, null, 2));
+
+  const response = await fetch(`${BASE}/api/v1/bookings/wakanow/book${isGuest ? '/guest' : ''}`, {
+    method: "POST",
+    headers: bookingHeaders,
+    body: JSON.stringify(bookingPayload),
+  });
+
+  const result = await response.json();
+  if (!response.ok) {
+    console.error("❌ Booking creation failed:", result);
+    throw new Error(result.message || "Failed to create booking");
+  }
+
+  const createdBooking = result.data || result;
+
+  // STEP 6: SHOW PAYMENT MODAL with CORRECT price
+console.log("💳 Step 4: Payment required!");
+
+// ✅ Use the prices from the backend response or fallback to calculated values
+const finalBasePrice = createdBooking.basePrice || createdBooking.base_price || wakanowPrice;
+const finalMarkupAmount = createdBooking.markupAmount || createdBooking.markup_amount || markupAmount;
+const finalServiceFee = createdBooking.serviceFee || createdBooking.service_fee || serviceFee;
+const finalTotalAmount = createdBooking.totalAmount || createdBooking.total_amount || totalAmount;
+const finalCurrency = createdBooking.currency || wakanowCurrency;
+
+console.log("💰 Final booking prices:", {
+  basePrice: finalBasePrice,
+  markupAmount: finalMarkupAmount,
+  serviceFee: finalServiceFee,
+  totalAmount: finalTotalAmount,
+  currency: finalCurrency,
+  markupPercentage: markupPercentage,
+  serviceFeePercentage: serviceFeePercentage,
+});
+
+// ✅ Create the booking object with ALL price fields - MUST match what PaymentModal expects
+const bookingWithPaymentInfo = {
+  id: createdBooking.id,
+  reference: createdBooking.reference,
+  status: createdBooking.status || "PENDING",
+  paymentStatus: createdBooking.paymentStatus || "PENDING",
+  productType: productType as any,
+  provider: "WAKANOW",
+  // ✅ CRITICAL: These are the fields PaymentModal reads
+  basePrice: finalBasePrice,
+  markupAmount: finalMarkupAmount,
+  serviceFee: finalServiceFee,
+  totalAmount: finalTotalAmount,
+  amount: finalTotalAmount, // ✅ Add this for payment modal
+  currency: finalCurrency,
+  bookingData: {
+    wakanowBookingId: bookResponse.BookingId,
+    pnrNumber: pnrNumber,
+    selectData: newSelectData,
+    rawResponse: bookResponse,
+    passengers: formattedPassengers,
+    priceBreakdown: {
+      basePrice: finalBasePrice,
+      markupAmount: finalMarkupAmount,
+      serviceFee: finalServiceFee,
+      totalAmount: finalTotalAmount,
+      currency: finalCurrency,
+      markupPercentage: markupPercentage,
+      serviceFeePercentage: serviceFeePercentage,
+    },
+  },
+  passengerInfo: {
+    firstName: passenger.firstName,
+    lastName: passenger.lastName,
+    email: passenger.email,
+    phone: passenger.phone,
+  },
+  createdAt: createdBooking.createdAt || new Date().toISOString(),
+};
+
+// ✅ Store booking with payment flag and correct price in session
+sessionStorage.setItem('current_booking', JSON.stringify({
+  id: createdBooking.id,
+  wakanowBookingId: wakanowBookingId,
+  pnrNumber: pnrNumber,
+  type: 'wakanow',
+  requiresPayment: true,
+  price: {
+    basePrice: finalBasePrice,
+    markupAmount: finalMarkupAmount,
+    serviceFee: finalServiceFee,
+    totalAmount: finalTotalAmount,
+    currency: finalCurrency,
+    markupPercentage: markupPercentage,
+    serviceFeePercentage: serviceFeePercentage,
+  },
+  timestamp: Date.now()
+}));
+
+// ✅ Store the price breakdown separately for the payment modal
+sessionStorage.setItem('booking_price_breakdown', JSON.stringify({
+  basePrice: finalBasePrice,
+  markupAmount: finalMarkupAmount,
+  serviceFee: finalServiceFee,
+  totalAmount: finalTotalAmount,
+  currency: finalCurrency,
+  markupPercentage: markupPercentage,
+  serviceFeePercentage: serviceFeePercentage,
+}));
+
+// ✅ Also store in session for the payment modal to read
+sessionStorage.setItem('payment_booking_data', JSON.stringify({
+  id: createdBooking.id,
+  amount: finalTotalAmount,
+  currency: finalCurrency,
+  basePrice: finalBasePrice,
+  serviceFee: finalServiceFee,
+  markupAmount: finalMarkupAmount,
+}));
+
+setBooking(bookingWithPaymentInfo as Booking);
+return bookingWithPaymentInfo as Booking;
+}
         // ✅ GENERIC FLOW (DUFFEL, HOTELS, CARS)
         const endpoint = isGuest ? "/api/v1/bookings/guest" : "/api/v1/bookings";
         const headers: Record<string, string> = {
@@ -643,6 +715,8 @@ export function useBooking() {
     [BASE],
   );
 
+  // ============ REST OF THE FUNCTIONS (UNCHANGED) ============
+  
   const createPaymentIntent = useCallback(
     async (
       bookingId: string,
@@ -662,7 +736,25 @@ export function useBooking() {
   
       if (provider === 'WAKANOW') {
         endpoint = "/api/v1/payments/stripe/create-intent/wakanow";
-        body = { bookingId };
+        
+        // ✅ Get the price breakdown from session if available
+        let priceBreakdown = null;
+        try {
+          const stored = sessionStorage.getItem('booking_price_breakdown');
+          if (stored) {
+            priceBreakdown = JSON.parse(stored);
+          }
+        } catch (e) {
+          console.warn('Could not parse price breakdown from session');
+        }
+        
+        body = { 
+          bookingId,
+          // ✅ Send the total amount to ensure correct payment
+          amount: priceBreakdown?.totalAmount || undefined,
+          currency: priceBreakdown?.currency || 'NGN',
+        };
+        
         const token = getStoredAuthToken();
         if (token) {
           headers["Authorization"] = `Bearer ${token}`;
@@ -684,7 +776,8 @@ export function useBooking() {
         }
       }
   
-      console.log(`Creating payment intent via ${endpoint} for booking ${bookingId}`);
+      console.log(`💰 Creating payment intent via ${endpoint} for booking ${bookingId}`);
+      console.log('💰 Payment body:', body);
       
       const res = await fetch(`${BASE}${endpoint}`, {
         method: "POST",
@@ -730,7 +823,6 @@ export function useBooking() {
         const offerId = item.realData?.offerId ?? item.id;
         if (!offerId) throw new Error("Missing offer ID");
   
-        // ✅ VALIDATION: Check if this is a fake/hardcoded offer ID
         if (!isValidAmadeusOfferId(offerId)) {
           console.error("❌ Invalid/Fake offer ID detected:", offerId);
           throw new Error(
@@ -741,7 +833,6 @@ export function useBooking() {
   
         const realData = item.realData || item;
         
-        // ✅ Get the ORIGINAL price and currency from the search result
         const originalCurrency = item.original_currency || item.originalPriceCurrency || realData.original_currency || 'GBP';
         let originalPrice: number = 0;
         
@@ -755,7 +846,6 @@ export function useBooking() {
           originalPrice = typeof realData.original_price === 'number' ? realData.original_price : parseFloat(realData.original_price);
         }
         
-        // Get customer-facing price (for display only, not sent to Amadeus)
         let customerPrice: number = 0;
         if (item.final_amount && typeof item.final_amount === 'string') {
           customerPrice = parseFloat(item.final_amount);
@@ -767,11 +857,9 @@ export function useBooking() {
           customerPrice = item.final_price;
         }
         
-        // Get check-in and check-out dates
         const checkInDate = item.checkInDate || item.check_in_date || realData.checkInDate;
         const checkOutDate = item.checkOutDate || item.check_out_date || realData.checkOutDate;
         
-        // ✅ Extract hotel details from the item
         const hotelName = item.title || realData.title || item.name || realData.name || 'Hotel';
         const hotelAddress = item.address || realData.address || item.subtitle || '';
         const hotelCity = item.city || realData.city || item.location || '';
@@ -798,17 +886,6 @@ export function useBooking() {
           checkOutDate
         });
         
-        console.log("💰 Amadeus hotel price breakdown:", {
-          offerId: offerId,
-          original_currency: originalCurrency,
-          original_price: originalPrice,
-          customer_currency: item.currency,
-          customer_price: customerPrice,
-          checkInDate: checkInDate,
-          checkOutDate: checkOutDate,
-        });
-        
-        // ✅ Validate we have the original price
         if (originalPrice <= 0) {
           console.error("❌ Missing original price! This offer may be expired.");
           throw new Error(
@@ -819,7 +896,6 @@ export function useBooking() {
   
         const token = getStoredAuthToken();
   
-        // ✅ IMPORTANT: Send ALL hotel details to backend
         const bookingPayload: any = {
           hotelOfferId: offerId.toString(),
           offerPrice: originalPrice,
@@ -849,9 +925,8 @@ export function useBooking() {
           cancellationPolicySnapshot: "Free cancellation until 24 hours before check-in.",
           policyAccepted: true,
           
-          // ✅ ADD HOTEL DETAILS HERE - THIS IS THE CRITICAL FIX
           hotelId: item.id || realData.id || '',
-          hotelName: hotelName, // ← This will show in the email
+          hotelName: hotelName,
           hotelAddress: hotelAddress,
           hotelCity: hotelCity,
           hotelCountry: hotelCountry,
@@ -867,7 +942,6 @@ export function useBooking() {
           boardType: boardType,
         };
   
-        // Add payment card if provided
         if (card) {
           bookingPayload.payment = {
             method: "CREDIT_CARD",
@@ -882,18 +956,6 @@ export function useBooking() {
             },
           };
         }
-  
-        console.log("📦 Amadeus hotel booking payload:", JSON.stringify({
-          hotelOfferId: bookingPayload.hotelOfferId,
-          offerPrice: bookingPayload.offerPrice,
-          currency: bookingPayload.currency,
-          checkInDate: bookingPayload.checkInDate,
-          checkOutDate: bookingPayload.checkOutDate,
-          hotelName: bookingPayload.hotelName,
-          hotelAddress: bookingPayload.hotelAddress,
-          hotelCity: bookingPayload.hotelCity,
-          hotelCountry: bookingPayload.hotelCountry,
-        }, null, 2));
   
         const endpoint = isGuest 
           ? "/api/v1/bookings/hotels/bookings/amadeus/guest"
@@ -927,7 +989,6 @@ export function useBooking() {
           const msg = data.message || data.error || "Booking creation failed";
           console.error("Booking creation failed:", data);
           
-          // ✅ Check for offer expired error
           if (msg.includes("INVALID OFFER ID") || msg.includes("offer id") || msg.includes("expired")) {
             throw new Error(
               "Hotel offer has expired. Please go back and search for hotels again to get current offers."
@@ -955,7 +1016,7 @@ export function useBooking() {
           bookingData: {
             ...raw,
             hotelId: item.id,
-            hotelName: hotelName, // ✅ Store the hotel name
+            hotelName: hotelName,
             hotelAddress: hotelAddress,
             hotelCity: hotelCity,
             hotelCountry: hotelCountry,

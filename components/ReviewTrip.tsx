@@ -6,6 +6,16 @@ import type { SearchResult, SearchParams, PassengerInfo, User, Booking } from '.
 import { userApi, ApiError, hotelApi } from '../lib/api';
 import { formatPrice, currencySymbol } from '../lib/utils';
 
+// ✅ Extended Booking type - adds missing price fields
+type ExtendedBooking = Booking & {
+  markupAmount?: number;
+  serviceFee?: number;
+  markupPercentage?: number;
+  serviceFeePercentage?: number;
+  total?: number;
+  [key: string]: any;
+};
+
 // Extended interface for Amadeus hotel data
 interface ExtendedSearchResult extends SearchResult {
   realData?: {
@@ -72,6 +82,11 @@ interface ExtendedSearchResult extends SearchResult {
     TermsAndConditions: string[];
     TermsAndConditionImportantNotice: string;
   };
+  basePrice?: number;
+  markupAmount?: number;
+  serviceFee?: number;
+  totalAmount?: number;
+  [key: string]: any;
 }
 
 
@@ -87,6 +102,126 @@ interface ReviewTripProps {
   productType?: 'FLIGHT_INTERNATIONAL' | 'HOTEL' | 'CAR_RENTAL';
   createdBooking?: Booking | null;
 }
+
+// ==================== AIRPORT COUNTRY MAPPING ====================
+const AIRPORT_COUNTRY_MAP: Record<string, string> = {
+  'LOS': 'NG', 'ABV': 'NG', 'PHC': 'NG', 'KAN': 'NG', 'ENU': 'NG',
+  'QOW': 'NG', 'BNI': 'NG', 'JOS': 'NG', 'KAD': 'NG', 'YOL': 'NG',
+  'ILR': 'NG', 'MDI': 'NG', 'CBQ': 'NG', 'QRW': 'NG', 'SKO': 'NG',
+  'JFK': 'US', 'LAX': 'US', 'ORD': 'US', 'DFW': 'US', 'DEN': 'US',
+  'SFO': 'US', 'SEA': 'US', 'LAS': 'US', 'MCO': 'US', 'EWR': 'US',
+  'MIA': 'US', 'BOS': 'US', 'ATL': 'US', 'IAH': 'US', 'PHX': 'US',
+  'LGA': 'US', 'DCA': 'US', 'IAD': 'US', 'CLT': 'US', 'MSP': 'US',
+  'DTW': 'US', 'FLL': 'US', 'TPA': 'US', 'SAN': 'US', 'PDX': 'US',
+  'LHR': 'GB', 'LGW': 'GB', 'MAN': 'GB', 'EDI': 'GB', 'GLA': 'GB',
+  'BHX': 'GB', 'BRS': 'GB', 'LTN': 'GB', 'STN': 'GB', 'LCY': 'GB',
+  'NCL': 'GB', 'BFS': 'GB', 'ABZ': 'GB',
+  'YYZ': 'CA', 'YVR': 'CA', 'YUL': 'CA', 'YYC': 'CA', 'YOW': 'CA',
+  'YEG': 'CA', 'YHZ': 'CA', 'YWG': 'CA',
+  'DXB': 'AE', 'AUH': 'AE', 'SHJ': 'AE',
+  'DEL': 'IN', 'BOM': 'IN', 'BLR': 'IN', 'MAA': 'IN', 'CCU': 'IN',
+  'HYD': 'IN', 'COK': 'IN', 'GOI': 'IN',
+  'PEK': 'CN', 'PVG': 'CN', 'CAN': 'CN', 'SZX': 'CN', 'CTU': 'CN',
+  'HND': 'JP', 'NRT': 'JP', 'KIX': 'JP', 'CTS': 'JP', 'FUK': 'JP',
+  'SYD': 'AU', 'MEL': 'AU', 'BNE': 'AU', 'PER': 'AU', 'ADL': 'AU',
+  'FRA': 'DE', 'MUC': 'DE', 'BER': 'DE', 'HAM': 'DE', 'CGN': 'DE',
+  'DUS': 'DE', 'STR': 'DE',
+  'CDG': 'FR', 'ORY': 'FR', 'NCE': 'FR', 'LYS': 'FR', 'MRS': 'FR',
+  'JNB': 'ZA', 'CPT': 'ZA', 'DUR': 'ZA', 'PLZ': 'ZA',
+  'NBO': 'KE', 'MBA': 'KE',
+  'CAI': 'EG', 'HRG': 'EG', 'SSH': 'EG',
+  'ACC': 'GH',
+  'ADD': 'ET',
+  'IST': 'TR', 'SAW': 'TR', 'ESB': 'TR',
+  'SIN': 'SG',
+  'KUL': 'MY', 'PEN': 'MY',
+  'BKK': 'TH', 'HKT': 'TH', 'CNX': 'TH',
+  'HAN': 'VN', 'SGN': 'VN', 'DAD': 'VN',
+  'MNL': 'PH', 'CEB': 'PH',
+  'GRU': 'BR', 'GIG': 'BR', 'BSB': 'BR',
+  'MEX': 'MX', 'CUN': 'MX', 'GDL': 'MX',
+  'MAD': 'ES', 'BCN': 'ES', 'AGP': 'ES',
+  'FCO': 'IT', 'MXP': 'IT', 'VCE': 'IT',
+  'AMS': 'NL',
+  'ZRH': 'CH', 'GVA': 'CH',
+  'BRU': 'BE',
+  'VIE': 'AT',
+  'ARN': 'SE',
+  'OSL': 'NO',
+  'CPH': 'DK',
+  'DOH': 'QA',
+  'MCT': 'OM',
+  'BAH': 'BH',
+  'KWI': 'KW',
+  'JED': 'SA', 'RUH': 'SA', 'DMM': 'SA',
+  'AMM': 'JO',
+  'TLV': 'IL',
+  'BEY': 'LB',
+  'KHI': 'PK', 'LHE': 'PK', 'ISB': 'PK',
+  'DAC': 'BD',
+  'CMB': 'LK',
+  'CGK': 'ID', 'DPS': 'ID',
+  'ICN': 'KR', 'GMP': 'KR', 'PUS': 'KR',
+  'AKL': 'NZ', 'WLG': 'NZ', 'CHC': 'NZ',
+  'EZE': 'AR', 'AEP': 'AR',
+  'SCL': 'CL',
+  'BOG': 'CO',
+  'PTY': 'PA',
+  'DUB': 'IE', 'SNN': 'IE',
+  'LIS': 'PT', 'OPO': 'PT',
+  'ATH': 'GR', 'SKG': 'GR',
+  'WAW': 'PL', 'KRK': 'PL',
+  'PRG': 'CZ',
+  'BUD': 'HU',
+  'OTP': 'RO',
+  'SOF': 'BG',
+  'ZAG': 'HR',
+  'CMN': 'MA', 'RAK': 'MA',
+  'TUN': 'TN',
+  'DSS': 'SN', 'DKR': 'SN',
+  'ABJ': 'CI',
+  'DLA': 'CM', 'NSI': 'CM',
+  'LAD': 'AO',
+  'HRE': 'ZW',
+  'LUN': 'ZM',
+  'GBE': 'BW',
+  'MRU': 'MU',
+  'SEZ': 'SC',
+  'MLE': 'MV',
+  'KTM': 'NP',
+  'TAS': 'UZ',
+  'ALA': 'KZ',
+  'GYD': 'AZ',
+  'TBS': 'GE',
+  'EVN': 'AM',
+  'BEG': 'RS',
+  'HEL': 'FI',
+};
+
+const getCountryCodeFromAirport = (airportCode: string): string | null => {
+  if (!airportCode) return null;
+  const normalizedCode = airportCode.toUpperCase().trim();
+  const match = normalizedCode.match(/\b([A-Z]{3})\b/);
+  const code = match ? match[1] : normalizedCode.substring(0, 3);
+  return AIRPORT_COUNTRY_MAP[code] || null;
+};
+
+// ✅ DOMESTIC FLIGHT DETECTION FUNCTION
+const isDomesticFlight = (origin: string, destination: string): boolean => {
+  if (!origin || !destination) return false;
+  
+  const originCountry = getCountryCodeFromAirport(origin);
+  const destinationCountry = getCountryCodeFromAirport(destination);
+  
+  if (originCountry && destinationCountry) {
+    return originCountry === destinationCountry;
+  }
+  
+  const normalizedOrigin = origin?.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 3);
+  const normalizedDest = destination?.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 3);
+  
+  return !!normalizedOrigin && !!normalizedDest && normalizedOrigin === normalizedDest;
+};
 
 // Helper function to check if destination is in North America
 const isNorthAmericanDestination = (item: ExtendedSearchResult, searchParams: SearchParams | null): boolean => {
@@ -140,6 +275,9 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   createdBooking,
 }) => {
   const { currency, convertPrice, formatPrice: formatPriceWithCurrency, isLoadingRates } = useLanguage();
+
+  // Cast createdBooking to ExtendedBooking for price fields
+  const extBooking = createdBooking as ExtendedBooking | null;
 
   // ========== FIX: Restore hotel price from sessionStorage ==========
   const [fixedItem, setFixedItem] = useState<SearchResult | null>(null);
@@ -239,27 +377,30 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         'CAR_RENTAL'
   );
 
-  const offerCurrency = createdBooking?.currency ||
+  const offerCurrency = extBooking?.currency ||
     firstOffer?.price?.currency ||
     actualItem?.realData?.currency ||
     extendedItem?.currency ||
     currency.code ||
     'GBP';
 
-  const splitName = (user?.name || createdBooking?.passengerInfo?.firstName || '').trim().split(/\s+/);
-  const defaultFirstName = createdBooking?.passengerInfo?.firstName || splitName[0] || '';
-  const defaultLastName = createdBooking?.passengerInfo?.lastName || splitName.slice(1).join(' ') || '';
+  const splitName = (user?.name || extBooking?.passengerInfo?.firstName || '').trim().split(/\s+/);
+  const defaultFirstName = extBooking?.passengerInfo?.firstName || splitName[0] || '';
+  const defaultLastName = extBooking?.passengerInfo?.lastName || splitName.slice(1).join(' ') || '';
 
   const router = useRouter();
 
   const [isBooking, setIsBooking] = useState(false);
   const [firstName, setFirstName] = useState(defaultFirstName);
   const [lastName, setLastName] = useState(defaultLastName);
-  const [email, setEmail] = useState(user?.email || createdBooking?.passengerInfo?.email || '');
-  const [phone, setPhone] = useState(user?.phone || createdBooking?.passengerInfo?.phone || '');
+  const [email, setEmail] = useState(user?.email || extBooking?.passengerInfo?.email || '');
+  const [phone, setPhone] = useState(user?.phone || extBooking?.passengerInfo?.phone || '');
+  
+  // ✅ Title, Gender, Date of Birth - ONLY for flights
   const [title, setTitle] = useState<'mr' | 'ms' | 'mrs' | 'miss' | 'dr' | ''>('');
   const [gender, setGender] = useState<'m' | 'f' | ''>('');
   const [dateOfBirth, setDateOfBirth] = useState('');
+  
   const [voucherCode, setVoucherCode] = useState('');
   const [voucherApplied, setVoucherApplied] = useState<any | null>(null);
   const [isValidatingVoucher, setIsValidatingVoucher] = useState(false);
@@ -289,15 +430,35 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const isWakanow = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
     (actualItem as any)?.type?.toLowerCase().includes('wakanow');
   
-  const isDomesticFlight = (actualItem as any)?.productType === 'FLIGHT_DOMESTIC';
+  // ✅ Get origin and destination from the item
+  const originCode = extendedItem.departureAirport || 
+                     extendedItem.origin || 
+                     searchParams?.segments?.[0]?.from ||
+                     '';
+                     
+  const destinationCode = extendedItem.arrivalAirport || 
+                          extendedItem.destination || 
+                          searchParams?.segments?.[0]?.to ||
+                          '';
+
+  // ✅ Determine if domestic using airport codes (more reliable)
+  const isDomesticByAirport = originCode && destinationCode && isDomesticFlight(originCode, destinationCode);
+
+  // ✅ Also check the productType as fallback
+  const isDomesticByProduct = (actualItem as any)?.productType === 'FLIGHT_DOMESTIC';
+
+  // ✅ Use both methods (airport code is more reliable)
+  const isDomesticFlightResult = isDomesticByAirport || isDomesticByProduct;
+
+  // ✅ Show passport section ONLY for international Wakanow flights
+  const showPassportSection = isFlight && isWakanow && !isDomesticFlightResult;
   
-  const showPassportSection = isFlight && !isDomesticFlight && isWakanow;
   const isPassportMandatory = isFlight && isNorthAmericanDestination(extendedItem, searchParams);
   const passportRequired = showPassportSection;
   const requiresPassport = isPassportMandatory;
 
   useEffect(() => {
-    if (!createdBooking) {
+    if (!extBooking) {
       let adults = 1;
       let children = 0;
       let infants = 0;
@@ -344,10 +505,10 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         setAdditionalPassengers([]);
       }
     }
-  }, [searchParams, createdBooking]);
+  }, [searchParams, extBooking]);
 
   useEffect(() => {
-    if (isHBXHotel && extendedItem?.realData?.rateKey && !createdBooking) {
+    if (isHBXHotel && extendedItem?.realData?.rateKey && !extBooking) {
       const performQuote = async () => {
         setIsQuoting(true);
         setQuoteError(null);
@@ -367,7 +528,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       };
       performQuote();
     }
-  }, [isHBXHotel, extendedItem, createdBooking]);
+  }, [isHBXHotel, extendedItem, extBooking]);
 
   useEffect(() => {
     if (user) {
@@ -378,11 +539,14 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       if (!phone) setPhone(user.phone || '');
       if (user.dateOfBirth) setDateOfBirth(user.dateOfBirth);
       if (user.gender) setGender(user.gender as 'm' | 'f');
+      if ((user as any).title) {
+        setTitle((user as any).title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr');
+      }
     }
   }, [user]);
 
   useEffect(() => {
-    if (!passportRequired || !isLoggedIn || createdBooking) return;
+    if (!passportRequired || !isLoggedIn || extBooking) return;
     const load = async () => {
       setIsCheckingPassport(true);
       try {
@@ -421,7 +585,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       }
     };
     load();
-  }, [passportRequired, isLoggedIn, createdBooking]);
+  }, [passportRequired, isLoggedIn, extBooking]);
 
   useEffect(() => {
     if (extendedItem?.terms_and_conditions?.TermsAndConditions) {
@@ -431,51 +595,170 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
   }, [extendedItem, actualItem]);
 
-  // ==================== PRICE CALCULATION - FIXED FOR HOTELS ====================
+  // ==================== PRICE CALCULATION ====================
   let basePrice = 0;
   let markupAmount = 0;
   let conversionFee = 0;
   let taxes = 0;
   let totalDue = 0;
   let serviceFee = 0;
+  let markupPercentage = 10;
+  let serviceFeePercentage = 5;
+  let combinedTaxes = 0;
+  let combinedTaxPercentage = 15;
 
-  if (isHotel) {
-    // ✅ For hotels, use final_amount directly from the item
-    // Convert to string safely before parseFloat to fix TypeScript error
-    const finalAmountValue = extendedItem.final_amount || 
-                             (extendedItem.final_price !== undefined ? String(extendedItem.final_price) : '0');
-    totalDue = parseFloat(finalAmountValue);
+  // ✅ PRIORITY 1: If we have a createdBooking with valid data, use it
+  if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
+    // ✅ Use the booking data from the backend
+    basePrice = extBooking.basePrice || 0;
+    markupAmount = extBooking.markupAmount || 0;
+    serviceFee = extBooking.serviceFee || 0;
+    totalDue = extBooking.totalAmount || 0;
+    
+    // Get percentages from booking or use defaults
+    markupPercentage = extBooking.markupPercentage || 10;
+    serviceFeePercentage = extBooking.serviceFeePercentage || 5;
+    
+    // ✅ Calculate combined taxes
+    combinedTaxes = markupAmount + serviceFee;
+    combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+    
+    console.log('💰 ReviewTrip - Using createdBooking data:', {
+      basePrice,
+      markupAmount,
+      serviceFee,
+      totalDue,
+      markupPercentage,
+      serviceFeePercentage,
+      combinedTaxes,
+      combinedTaxPercentage,
+    });
+  } 
+  // ✅ PRIORITY 2: Try to get from session storage
+  else if (typeof window !== 'undefined') {
+    try {
+      const stored = sessionStorage.getItem('booking_price_breakdown');
+      if (stored) {
+        const data = JSON.parse(stored);
+        basePrice = data.basePrice || 0;
+        markupAmount = data.markupAmount || 0;
+        serviceFee = data.serviceFee || 0;
+        totalDue = data.totalAmount || 0;
+        markupPercentage = data.markupPercentage || 10;
+        serviceFeePercentage = data.serviceFeePercentage || 5;
+        combinedTaxes = markupAmount + serviceFee;
+        combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+        
+        console.log('💰 ReviewTrip - Using session storage:', {
+          basePrice,
+          markupAmount,
+          serviceFee,
+          totalDue,
+          markupPercentage,
+          serviceFeePercentage,
+        });
+      }
+    } catch (e) {
+      console.warn('Could not parse session storage:', e);
+    }
+  } 
+  // ✅ PRIORITY 3: Use hotel data
+  else if (isHotel) {
+    // ✅ HOTEL - UNCHANGED
+    let finalAmountValue = extendedItem.final_amount || '0';
+    if (extendedItem.final_price !== undefined) {
+      finalAmountValue = typeof extendedItem.final_price === 'string' 
+        ? extendedItem.final_price 
+        : String(extendedItem.final_price);
+    }
+    totalDue = parseFloat(finalAmountValue) || 0;
+    serviceFee = parseFloat(extendedItem.service_fee || '0') || 0;
+    basePrice = totalDue - serviceFee;
+    markupAmount = serviceFee;
 
     console.log('🏨 Hotel price calculation:', {
       final_amount: extendedItem.final_amount,
       final_price: extendedItem.final_price,
-      totalDue: totalDue
+      totalDue: totalDue,
+      serviceFee: serviceFee,
+      basePrice: basePrice
     });
-
-    // If we have a created booking, use its totalAmount
-    if (createdBooking && createdBooking.totalAmount) {
-        totalDue = createdBooking.totalAmount;
+  } else {
+    // ✅ FLIGHTS - Fallback to item data
+    // Try to get base price from multiple sources
+    let rawBasePrice = parseFloat(extendedItem.base_price || '0') || 
+                       parseFloat(extendedItem.original_amount || '0') ||
+                       parseFloat(extendedItem.original_price as string || '0') ||
+                       0;
+    
+    // If basePrice is 0, try to calculate from final_amount - (markup + service fee)
+    if (rawBasePrice === 0 && extendedItem.final_amount) {
+      const finalAmt = parseFloat(extendedItem.final_amount);
+      const markupAmt = parseFloat(extendedItem.markup_amount || '0');
+      const serviceAmt = parseFloat(extendedItem.service_fee || '0');
+      if (finalAmt > 0 && (markupAmt > 0 || serviceAmt > 0)) {
+        rawBasePrice = finalAmt - markupAmt - serviceAmt;
+      }
+    }
+    
+    basePrice = rawBasePrice;
+    
+    // Get markup from backend
+    markupAmount = parseFloat(extendedItem.markup_amount || '0');
+    markupPercentage = extendedItem.markup_percentage || 10;
+    
+    // Get service fee from backend (should be 5%)
+    serviceFee = parseFloat(extendedItem.service_fee || '0');
+    serviceFeePercentage = extendedItem.service_fee_percentage || 5;
+    
+    // ✅ Combined taxes = Markup + Service Fee
+    combinedTaxes = markupAmount + serviceFee;
+    combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+    
+    // Get total from backend
+    let totalFromBackend = extendedItem.totalAmount || extendedItem.final_amount || '0';
+    if (extendedItem.final_price !== undefined) {
+      totalFromBackend = typeof extendedItem.final_price === 'string' 
+        ? extendedItem.final_price 
+        : String(extendedItem.final_price);
+    }
+    totalDue = parseFloat(totalFromBackend as string) || 0;
+    
+    // ✅ If totalDue is 0 or mismatched, calculate from basePrice + combinedTaxes
+    if (totalDue === 0 && basePrice > 0) {
+      totalDue = basePrice + combinedTaxes;
+    }
+    
+    // ✅ If service fee is 0 but we have basePrice, calculate it as 5%
+    if (serviceFee === 0 && basePrice > 0) {
+      serviceFee = (basePrice * 5) / 100;
+      combinedTaxes = markupAmount + serviceFee;
+      totalDue = basePrice + combinedTaxes;
+    }
+    
+    // ✅ If markup is 0 but we have basePrice, calculate it as 10%
+    if (markupAmount === 0 && basePrice > 0) {
+      markupAmount = (basePrice * 10) / 100;
+      combinedTaxes = markupAmount + serviceFee;
+      totalDue = basePrice + combinedTaxes;
     }
 
-    // For hotels, service fee is the markup amount from the item
-    serviceFee = parseFloat(extendedItem.service_fee || '0');
-    basePrice = totalDue - serviceFee;
-    markupAmount = serviceFee;
-  } else {
-    // For flights, use the original calculation
-    basePrice = parseFloat(extendedItem.original_amount || '0');
-    markupAmount = parseFloat(extendedItem.markup_amount || '0');
-    conversionFee = parseFloat(extendedItem.conversion_fee || '0');
-    taxes = parseFloat(extendedItem.taxes || '0');
-    totalDue = parseFloat(extendedItem.final_amount || (basePrice + markupAmount + conversionFee + taxes).toString());
-    serviceFee = extendedItem.final_amount 
-      ? (totalDue - basePrice) 
-      : (markupAmount + conversionFee + taxes);
+    console.log('💰 ReviewTrip - Flight Price Breakdown (fallback):', {
+      basePrice,
+      markupAmount,
+      markupPercentage,
+      serviceFee,
+      serviceFeePercentage,
+      combinedTaxes,
+      combinedTaxPercentage,
+      totalDue,
+    });
   }
 
   const displayBasePrice = formatPrice(basePrice, offerCurrency);
-  const displayServiceFee = formatPrice(serviceFee, offerCurrency);
+  const displayCombinedTaxes = formatPrice(combinedTaxes, offerCurrency);
   const displayTotalDue = formatPrice(totalDue, offerCurrency);
+  const displayServiceFee = formatPrice(serviceFee, offerCurrency);
   const formattedDiscountedTotal = appliedPromo?.discountAmount 
   ? formatPrice(appliedPromo.discountAmount, offerCurrency) 
   : '';
@@ -571,6 +854,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     return true;
   };
 
+  // ==================== HANDLE COMPLETE BOOKING ====================
   const handleCompleteBooking = async () => {
     if (isBooking || isCreating) return;
 
@@ -579,6 +863,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       return;
     }
 
+    // ✅ TITLE, GENDER, DOB VALIDATION - ONLY FOR FLIGHTS
     if (isFlight) {
       if (!title) {
         alert('Title is required for flight bookings.');
@@ -607,12 +892,40 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         return;
       }
       
+      // ✅ FIX: Check passport for international Wakanow flights only
+      if (isFlight && isWakanow && !isDomesticFlightResult) {
+        // Validate passport fields are filled
+        if (!passportNumber || !passportExpiry || !passportIssuingAuthority) {
+          alert('Passport details are required for international flights on Wakanow.\n\nPlease provide:\n- Passport Number\n- Passport Expiry Date\n- Passport Issuing Authority');
+          return;
+        }
+        
+        // Validate passport format
+        const passportRegex = /^[A-Za-z][0-9]{7,8}$|^[A-Za-z0-9]{6,9}$/;
+        if (!passportRegex.test(passportNumber)) {
+          alert('Please enter a valid passport number (e.g., A12345678)');
+          return;
+        }
+        
+        // Validate passport expiry
+        const expiryDate = new Date(passportExpiry);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (expiryDate < today) {
+          alert('Your passport has expired. Please renew your passport.');
+          return;
+        }
+        
+        // Validate passport issuing authority
+        if (!passportIssuingAuthority.trim()) {
+          alert('Passport Issuing Authority is required.');
+          return;
+        }
+      }
+      
+      // Also check for North America mandatory passport
       if (isPassportMandatory && !validatePassport()) {
         return;
-      }
-
-      if (showPassportSection && !isPassportMandatory && passportNumber) {
-        if (!validatePassport()) return;
       }
 
       if (displayedTerms.length > 0 && !agreedToTerms) {
@@ -652,6 +965,15 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
             return;
           }
       
+          // ✅ Check passport for additional passengers on international Wakanow flights
+          if (isFlight && isWakanow && !isDomesticFlightResult) {
+            if (!p.passportNumber || !p.passportExpiry || !p.passportIssuingAuthority) {
+              alert(`${label}: Passport details are required for international flights.`);
+              setIsBooking(false);
+              return;
+            }
+          }
+      
           if (isPassportMandatory) {
             if (!p.passportNumber || !p.passportExpiry || !p.passportIssuingAuthority) {
               alert(`${label}: Passport details are mandatory for this destination.`);
@@ -679,7 +1001,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           phone,
         };
       } else {
-        // For Flights (Duffel/Wakanow) - Keep ALL fields
+        // For Flights (Duffel/Wakanow) - Keep ALL fields including title, gender, DOB
         passengerInfo = {
           firstName,
           lastName,
@@ -708,10 +1030,12 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         }
       }
 
-      if (isFlight && showPassportSection && passportNumber) {
+      // ✅ Add passport details to passenger info for international Wakanow flights
+      if (isFlight && isWakanow && !isDomesticFlightResult) {
         (passengerInfo as any).passportNumber = passportNumber;
         (passengerInfo as any).passportExpiry = passportExpiry;
         (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
+        (passengerInfo as any).passportIssueCountry = passportIssueCountry || 'Nigeria';
       }
 
       if (isFlight && displayedTerms.length > 0) {
@@ -759,9 +1083,9 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   };
 
   const inputCls = 'w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/30 focus:border-[#33a8da] transition-all text-sm font-medium text-gray-900 placeholder-gray-400';
-  const bookingReference = createdBooking?.reference;
+  const bookingReference = extBooking?.reference;
 
-  if (isLoadingRates && !createdBooking) {
+  if (isLoadingRates && !extBooking) {
     return (
       <div className="bg-[#f8fbfe] min-h-screen py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -787,7 +1111,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         </button>
 
         <h1 className="text-3xl font-bold text-gray-900 mb-8">
-          {createdBooking ? 'Complete your payment' : 'Complete your booking'}
+          {extBooking ? 'Complete your payment' : 'Complete your booking'}
         </h1>
 
         <div className="mb-6 p-3 bg-blue-50 border border-blue-100 rounded-lg">
@@ -799,7 +1123,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           </p>
         </div>
 
-        {isPassportMandatory && !createdBooking && (
+        {isPassportMandatory && !extBooking && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-start gap-3">
               <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -816,23 +1140,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           </div>
         )}
 
-        {showPassportSection && !isPassportMandatory && !createdBooking && (
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-start gap-3">
-              <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div>
-                <p className="font-semibold text-blue-800">International Travel Recommendation</p>
-                <p className="text-sm text-blue-700">
-                  Providing your passport details now will speed up your airport check-in. If you don't have it handy, you can continue without it.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {passportRequired && isLoggedIn && isPassportIncomplete && !createdBooking && !requiresPassport && (
+        {passportRequired && isLoggedIn && isPassportIncomplete && !extBooking && !requiresPassport && (
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
             <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
@@ -868,6 +1176,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
         <div className="flex flex-col lg:flex-row gap-8">
           <div className="flex-1 space-y-6">
+            {/* ========== YOUR DETAILS ========== */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900">Your details</h2>
@@ -878,26 +1187,186 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                 )}
               </div>
 
+              {/* Passenger details with Title, Gender, DOB - ONLY for flights */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {isFlight && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Title <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr')}
+                      className={inputCls}
+                      disabled={!!extBooking}
+                      required
+                    >
+                      <option value="">Select Title</option>
+                      <option value="mr">Mr</option>
+                      <option value="ms">Ms</option>
+                      <option value="mrs">Mrs</option>
+                      <option value="miss">Miss</option>
+                      <option value="dr">Dr</option>
+                    </select>
+                  </div>
+                )}
+
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">First name</label>
-                  <input value={firstName} onChange={e => setFirstName(e.target.value)} className={inputCls} placeholder="John" readOnly={!!createdBooking} />
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    First name <span className="text-red-500">*</span>
+                  </label>
+                  <input 
+                    value={firstName} 
+                    onChange={e => setFirstName(e.target.value)} 
+                    className={inputCls} 
+                    placeholder="John" 
+                    readOnly={!!extBooking} 
+                    required
+                  />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Last name</label>
-                  <input value={lastName} onChange={e => setLastName(e.target.value)} className={inputCls} placeholder="Doe" readOnly={!!createdBooking} />
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    Last name <span className="text-red-500">*</span>
+                  </label>
+                  <input 
+                    value={lastName} 
+                    onChange={e => setLastName(e.target.value)} 
+                    className={inputCls} 
+                    placeholder="Doe" 
+                    readOnly={!!extBooking} 
+                    required
+                  />
                 </div>
+
+                {isFlight && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Gender <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value as 'm' | 'f')}
+                      className={inputCls}
+                      disabled={!!extBooking}
+                      required
+                    >
+                      <option value="">Select Gender</option>
+                      <option value="m">Male</option>
+                      <option value="f">Female</option>
+                    </select>
+                  </div>
+                )}
+
+                {isFlight && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Date of Birth <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={dateOfBirth}
+                      onChange={(e) => setDateOfBirth(e.target.value)}
+                      className={inputCls}
+                      readOnly={!!extBooking}
+                      required
+                    />
+                  </div>
+                )}
+
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
-                  <input value={email} onChange={e => setEmail(e.target.value)} className={inputCls} placeholder="john@example.com" readOnly={!!createdBooking} />
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    Email <span className="text-red-500">*</span>
+                  </label>
+                  <input 
+                    value={email} 
+                    onChange={e => setEmail(e.target.value)} 
+                    className={inputCls} 
+                    placeholder="john@example.com" 
+                    readOnly={!!extBooking} 
+                    required
+                  />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Phone</label>
-                  <input value={phone} onChange={e => setPhone(e.target.value)} className={inputCls} placeholder="+44 7911 123456" readOnly={!!createdBooking} />
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    Phone <span className="text-red-500">*</span>
+                  </label>
+                  <input 
+                    value={phone} 
+                    onChange={e => setPhone(e.target.value)} 
+                    className={inputCls} 
+                    placeholder="+44 7911 123456" 
+                    readOnly={!!extBooking} 
+                    required
+                  />
                 </div>
               </div>
             </div>
 
+            {/* ========== PASSPORT FIELDS - ONLY for international Wakanow flights ========== */}
+            {isFlight && isWakanow && !isDomesticFlightResult && !extBooking && (
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                <h3 className="text-md font-semibold text-gray-900 mb-3">Passport Details <span className="text-red-500">*</span></h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Passport details are required for international flights on Wakanow.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Passport Number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={passportNumber}
+                      onChange={(e) => setPassportNumber(e.target.value)}
+                      className={inputCls}
+                      placeholder="A12345678"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Passport Expiry <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={passportExpiry}
+                      onChange={(e) => setPassportExpiry(e.target.value)}
+                      className={inputCls}
+                      required
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Passport Issuing Authority <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={passportIssuingAuthority}
+                      onChange={(e) => setPassportIssuingAuthority(e.target.value)}
+                      className={inputCls}
+                      placeholder="e.g., Nigerian Immigration Service"
+                      required
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Passport Issue Country
+                    </label>
+                    <input
+                      type="text"
+                      value={passportIssueCountry}
+                      onChange={(e) => setPassportIssueCountry(e.target.value)}
+                      className={inputCls}
+                      placeholder="Nigeria"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========== TRIP SUMMARY ========== */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Trip summary</h2>
               <div className="flex items-start gap-4">
@@ -930,7 +1399,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                         onChange={(e) => setAgreedToPolicy(e.target.checked)}
                         className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
                         required
-                        disabled={!!createdBooking}
+                        disabled={!!extBooking}
                       />
                       <label htmlFor="cancellationPolicy" className="text-sm text-gray-700">
                         I have read and agree to the cancellation policy.
@@ -940,7 +1409,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                 </div>
               )}
 
-              {displayedTerms.length > 0 && !createdBooking && isFlight && (
+              {displayedTerms.length > 0 && !extBooking && isFlight && (
                 <div className="mt-6 pt-6 border-t border-gray-100">
                   <h3 className="text-md font-semibold text-gray-900 mb-3">Terms & Conditions</h3>
                   <div className="max-h-60 overflow-y-auto bg-gray-50 rounded-xl p-4 mb-4">
@@ -953,26 +1422,12 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                       ))}
                     </ul>
                   </div>
-                  <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-xl">
-                    <input
-                      type="checkbox"
-                      id="termsAndConditions"
-                      checked={agreedToTerms}
-                      onChange={(e) => setAgreedToTerms(e.target.checked)}
-                      className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
-                      required
-                    />
-                    <label htmlFor="termsAndConditions" className="text-sm text-gray-700">
-                      I have read and agree to the <span className="font-semibold">Terms & Conditions</span> and
-                      <span className="font-semibold"> Cancellation Policy</span>.
-                    </label>
-                  </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Price Sidebar */}
+          {/* ========== PRICE SIDEBAR ========== */}
           <aside className="w-full lg:w-[380px]">
             <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-24 border border-gray-100">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Price details</h3>
@@ -982,18 +1437,29 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
               </div>
 
               <div className="space-y-3 mb-6">
+                {/* Base Fare */}
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-medium text-gray-500">Base Fare</span>
                   <span className="text-sm font-semibold text-gray-900">{displayBasePrice}</span>
                 </div>
 
-                {serviceFee > 0 && (
+                {/* ✅ FLIGHT: Combined Taxes (Markup + Service Fee) */}
+                {isFlight && combinedTaxes > 0 && (
+                  <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+                    <span className="text-xs font-medium text-gray-500">Taxes</span>
+                    <span className="text-sm font-semibold text-gray-900">{displayCombinedTaxes}</span>
+                  </div>
+                )}
+
+                {/* ✅ HOTEL: Service Fee - UNCHANGED */}
+                {isHotel && serviceFee > 0 && (
                   <div className="flex justify-between items-center pt-1 border-t border-gray-100">
                     <span className="text-xs font-medium text-gray-500">Service Fee</span>
                     <span className="text-sm font-semibold text-gray-900">{displayServiceFee}</span>
                   </div>
                 )}
 
+                {/* Discount */}
                 {appliedPromo && (
                   <div className="flex justify-between items-center text-xs font-bold text-green-600 pt-1">
                     <span>Discount ({appliedPromo.code})</span>
@@ -1001,19 +1467,20 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                   </div>
                 )}
 
+                {/* Total */}
                 <div className="flex justify-between items-center pt-3 border-t border-gray-100">
                   <span className="text-sm font-bold text-gray-900">Total Fare</span>
                   <span className="text-xl font-black text-[#33a8da]">{displayTotalDue}</span>
                 </div>
 
-                {serviceFee > 0 && (
+                {combinedTaxes > 0 && (
                   <div className="mt-2 text-[10px] text-gray-400 border-t border-gray-50 pt-2 text-center">
-                    Service fee includes platform fee, conversion fees, and taxes
+                    
                   </div>
                 )}
               </div>
 
-              {!createdBooking && (
+              {!extBooking && (
                 <div className="pt-3 border-t border-gray-100">
                   <label className="block text-xs font-medium text-gray-500 mb-2">Voucher code</label>
                   <div className="flex gap-2">
@@ -1042,12 +1509,32 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                 </div>
               )}
 
+              {/* ========== TERMS & CONDITIONS CHECKBOX ========== */}
+              {displayedTerms.length > 0 && !extBooking && isFlight && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-xl">
+                    <input
+                      type="checkbox"
+                      id="termsAndConditions"
+                      checked={agreedToTerms}
+                      onChange={(e) => setAgreedToTerms(e.target.checked)}
+                      className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
+                      required
+                    />
+                    <label htmlFor="termsAndConditions" className="text-sm text-gray-700">
+                      I have read and agree to the <span className="font-semibold">Terms & Conditions</span> and
+                      <span className="font-semibold"> Cancellation Policy</span>.
+                    </label>
+                  </div>
+                </div>
+              )}
+
               <button
                 onClick={handleCompleteBooking}
                 disabled={
                   isBooking || isCreating ||
                   (isHotel && !agreedToPolicy) ||
-                  (isFlight && !agreedToTerms && displayedTerms.length > 0) ||
+                  (isFlight && displayedTerms.length > 0 && !agreedToTerms) ||
                   (passportRequired && isLoggedIn && isPassportIncomplete) ||
                   isCheckingPassport
                 }
@@ -1056,7 +1543,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                 {isCheckingPassport ? 'Checking passport...' :
                   isCreating ? 'Creating Booking...' :
                     isBooking ? 'Please wait...' :
-                      createdBooking ? 'Proceed to Payment' : 'Continue to payment'}
+                      extBooking ? 'Proceed to Payment' : 'Continue to payment'}
               </button>
 
               <p className="mt-4 text-xs text-gray-400 text-center flex items-center justify-center gap-1">
