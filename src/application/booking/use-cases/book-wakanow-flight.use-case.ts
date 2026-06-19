@@ -1,3 +1,5 @@
+// src/application/booking/use-cases/book-wakanow-flight.use-case.ts
+
 import { Injectable, Logger, Inject, BadRequestException, GoneException, HttpException, HttpStatus } from '@nestjs/common';
 import { WakanowService, WakanowBookRequest, WakanowPassengerDetail } from '@infrastructure/external-apis/wakanow/wakanow.service';
 import { BookingRepository } from '@domains/booking/repositories/booking.repository';
@@ -5,6 +7,8 @@ import { BOOKING_REPOSITORY } from '@domains/booking/repositories/booking.reposi
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 import { BookingStatus, PaymentStatus, ProductType, Provider } from '@prisma/client';
 import { BookWakanowFlightDto } from '@presentation/booking/dto/wakanow-flights.dto';
+
+import { MarkupCalculationService } from '@domains/markup/services/markup-calculation.service';
 
 @Injectable()
 export class BookWakanowFlightUseCase {
@@ -15,12 +19,16 @@ export class BookWakanowFlightUseCase {
     @Inject(BOOKING_REPOSITORY)
     private readonly bookingRepository: BookingRepository,
     private readonly markupRepository: MarkupRepository,
+    private readonly markupCalculationService: MarkupCalculationService,
   ) {}
 
   async execute(dto: BookWakanowFlightDto, userId: string) {
     const { passengers, bookingId, selectData, targetCurrency = 'NGN' } = dto;
 
-    this.logger.log(`Booking Wakanow flight. BookingId: ${bookingId}, Passengers: ${passengers.length}`);
+    // ✅ Log the incoming bookingId for debugging
+    this.logger.log(`Booking Wakanow flight. BookingId: ${bookingId}, Type: ${typeof bookingId}, Length: ${bookingId?.length}`);
+    this.logger.log(`Passengers: ${passengers.length}`);
+    this.logger.log(`SelectData length: ${selectData?.length || 0}`);
 
     // ✅ Validate required fields
     if (!bookingId) {
@@ -33,7 +41,15 @@ export class BookWakanowFlightUseCase {
       throw new BadRequestException('At least one passenger is required');
     }
 
-    // ✅ Check for duplicate booking - USING THE CORRECT METHOD
+    // ✅ Check if the bookingId is a Wakanow ID (numeric) or local ID
+    const isWakanowId = /^\d+$/.test(bookingId);
+    this.logger.log(`Is Wakanow BookingId: ${isWakanowId}`);
+
+    if (!isWakanowId) {
+      this.logger.warn(`⚠️ BookingId "${bookingId}" appears to be a local ID, not a Wakanow ID!`);
+    }
+
+    // ✅ Check for duplicate booking
     const existingBooking = await this.bookingRepository.findByProviderBookingId(bookingId);
     
     if (existingBooking) {
@@ -43,6 +59,9 @@ export class BookWakanowFlightUseCase {
         wakanow_booking_id: existingBooking.providerBookingId,
         pnr_reference: existingBooking.bookingData?.pnrReferenceNumber || 'Pending',
         message: 'Booking already exists',
+        requiresPayment: existingBooking.paymentStatus === PaymentStatus.PENDING,
+        paymentStatus: existingBooking.paymentStatus,
+        localBookingId: existingBooking.id,
       };
     }
 
@@ -109,6 +128,9 @@ export class BookWakanowFlightUseCase {
       BookingId: bookingId,
     };
 
+    // ✅ Log the request
+    this.logger.log(`Sending booking request to Wakanow with BookingId: ${bookingId}`);
+
     // ✅ Book with Wakanow
     let bookResponse;
     try {
@@ -117,10 +139,11 @@ export class BookWakanowFlightUseCase {
       this.logger.error('Wakanow booking failed:', error);
       
       const errorMsg = error?.message?.toLowerCase() || '';
-      // ✅ Handle "not selected by you" error (session expired)
+      
       if (errorMsg.includes('not selected by you') || 
           errorMsg.includes('session expired') ||
           errorMsg.includes('session has expired')) {
+        this.logger.error(`❌ Booking failed because flight wasn't selected by this user. BookingId: ${bookingId}`);
         throw new BadRequestException(
           'Your flight selection has expired. Please search for flights again and complete the booking promptly.'
         );
@@ -153,19 +176,78 @@ export class BookWakanowFlightUseCase {
     const isDomestic = this.isNigerianRoute(firstDep, firstArr);
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
 
-    // ✅ Calculate markup
+    // ✅ Calculate markup and service fee (percentage-based)
     let markupPercentage = 0;
+    let markupAmount = 0;
     let serviceFee = 0;
+    let totalAmount = 0;
+    let serviceFeePercentage = 0;
+
     try {
-      const markupConfig = await this.markupRepository.findActiveMarkupByProductType(productType, price.CurrencyCode);
-      markupPercentage = markupConfig?.markupPercentage || 0;
-      serviceFee = markupConfig?.serviceFeeAmount || 0;
+      // ✅ Get markup config from database
+      const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
+        productType,
+        price.CurrencyCode
+      );
+
+      if (markupConfig) {
+        // ✅ Use the calculation service
+        const result = this.markupCalculationService.calculateTotal(
+          price.Amount,
+          productType,
+          price.CurrencyCode,
+          markupConfig
+        );
+        
+        markupPercentage = markupConfig.markupPercentage;
+        markupAmount = result.markupAmount;
+        serviceFee = result.serviceFee;
+        totalAmount = result.totalAmount;
+        serviceFeePercentage = result.serviceFeePercentage;
+        
+        this.logger.log(`💰 Using markup config:`, {
+          productType,
+          currency: price.CurrencyCode,
+          markupPercentage,
+          serviceFeePercentage,
+          serviceFee,
+        });
+      } else {
+        // ✅ Fallback: Use default percentages
+        this.logger.warn(`No markup config found for ${productType} in ${price.CurrencyCode}, using defaults`);
+        
+        // Domestic: 10%, International: 15%
+        const defaultPercentage = isDomestic ? 10 : 15;
+        markupPercentage = defaultPercentage;
+        markupAmount = (price.Amount * defaultPercentage) / 100;
+        serviceFee = (price.Amount * defaultPercentage) / 100;
+        totalAmount = price.Amount + markupAmount + serviceFee;
+        serviceFeePercentage = defaultPercentage;
+      }
     } catch (error) {
       this.logger.warn('Failed to fetch markup config, using defaults:', error);
+      
+      // ✅ Fallback defaults
+      const defaultPercentage = isDomestic ? 10 : 15;
+      markupPercentage = defaultPercentage;
+      markupAmount = (price.Amount * defaultPercentage) / 100;
+      serviceFee = (price.Amount * defaultPercentage) / 100;
+      totalAmount = price.Amount + markupAmount + serviceFee;
+      serviceFeePercentage = defaultPercentage;
     }
 
-    const markupAmount = (price.Amount * markupPercentage) / 100;
-    const totalAmount = price.Amount + markupAmount + serviceFee;
+    // ✅ Log the breakdown
+    this.logger.log(`💰 Price Breakdown:`, {
+      productType,
+      currency: price.CurrencyCode,
+      basePrice: price.Amount,
+      markupPercentage,
+      markupAmount,
+      serviceFeePercentage,
+      serviceFee,
+      totalAmount,
+      breakdown: `${price.Amount} + ${markupAmount} (${markupPercentage}% markup) + ${serviceFee} (${serviceFeePercentage}% service fee) = ${totalAmount}`
+    });
 
     // ✅ Generate reference
     const date = new Date();
@@ -195,6 +277,15 @@ export class BookWakanowFlightUseCase {
         targetCurrency,
         ticketStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.TicketStatus || 'PENDING',
         pnrStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.PnrStatus || 'PENDING',
+        priceBreakdown: {
+          basePrice: price.Amount,
+          markupAmount,
+          serviceFee,
+          totalAmount,
+          currency: price.CurrencyCode,
+          markupPercentage,
+          serviceFeePercentage,
+        },
       },
       passengerInfo: passengers as any,
       paymentStatus: PaymentStatus.PENDING,
@@ -202,7 +293,7 @@ export class BookWakanowFlightUseCase {
 
     this.logger.log(`✅ Wakanow flight booked. Local booking: ${booking.id}, PNR: ${pnr}`);
 
-    // ✅ Return enriched booking
+    // ✅ Return enriched booking with payment info
     return {
       ...booking,
       wakanow_booking_id: bookResponse.BookingId,
@@ -211,6 +302,21 @@ export class BookWakanowFlightUseCase {
       flight_summary: combo,
       passengers: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.TravellerDetails,
       message: 'Flight booked successfully. Please proceed to payment.',
+      requiresPayment: true,
+      paymentStatus: PaymentStatus.PENDING,
+      localBookingId: booking.id,
+      paymentUrl: `/api/v1/payments/initiate?bookingId=${booking.id}`,
+      amount: totalAmount,
+      currency: price.CurrencyCode,
+      priceBreakdown: {
+        basePrice: price.Amount,
+        markupAmount,
+        serviceFee,
+        totalAmount,
+        currency: price.CurrencyCode,
+        markupPercentage,
+        serviceFeePercentage,
+      },
     };
   }
 

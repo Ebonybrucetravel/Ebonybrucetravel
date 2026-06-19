@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { ProductType } from '@prisma/client';
-import { MarkupConfig } from '../entities/markup-config.entity';
+
+import { MarkupConfig } from '@domains/markup/entities/markup-config.entity';
 
 @Injectable()
 export class MarkupCalculationService {
   /**
    * Calculate markup and total amount for a booking
+   * Service fee is calculated as a percentage of the base price for all products
    */
   calculateTotal(
     basePrice: number,
@@ -17,9 +19,15 @@ export class MarkupCalculationService {
     markupAmount: number;
     serviceFee: number;
     totalAmount: number;
+    serviceFeePercentage: number;
   } {
     const markupAmount = (basePrice * markupConfig.markupPercentage) / 100;
-    const serviceFee = markupConfig.serviceFeeAmount;
+    
+    // ✅ Service fee is always a percentage of the base price
+    // Use the same percentage as markupPercentage for the service fee
+    const serviceFeePercentage = markupConfig.markupPercentage || 10;
+    const serviceFee = (basePrice * serviceFeePercentage) / 100;
+    
     const totalAmount = basePrice + markupAmount + serviceFee;
 
     return {
@@ -27,6 +35,7 @@ export class MarkupCalculationService {
       markupAmount: Number(markupAmount.toFixed(2)),
       serviceFee: Number(serviceFee.toFixed(2)),
       totalAmount: Number(totalAmount.toFixed(2)),
+      serviceFeePercentage: Number(serviceFeePercentage.toFixed(2)),
     };
   }
 

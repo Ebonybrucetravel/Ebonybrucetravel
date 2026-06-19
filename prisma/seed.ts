@@ -15,7 +15,7 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('🌱 Starting database seed...\n');
 
-  // 1. Create Super Admin User (default: dedicated admin email so it doesn't clash with customer accounts)
+  // 1. Create Super Admin User
   const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'ebonybruce10@gmail.com';
   const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'Admin@1000!';
   const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
@@ -27,7 +27,6 @@ async function main() {
   if (existingSuperAdmin) {
     console.log(`⚠️  Super Admin already exists: ${superAdminEmail}`);
     
-    // Update to ensure role is SUPER_ADMIN
     if (existingSuperAdmin.role !== UserRole.SUPER_ADMIN) {
       await prisma.user.update({
         where: { id: existingSuperAdmin.id },
@@ -49,7 +48,7 @@ async function main() {
     console.log('   Password: set via env (change after first login)');
   }
 
-  // 1b. Ensure former admin emails used as customers are CUSTOMER role (no clash with dedicated admin)
+  // 1b. Ensure former admin emails used as customers are CUSTOMER role
   const customerEmails = ['obadeyi01@gmail.com', 'obadeyi04@gmail.com'];
   for (const email of customerEmails) {
     if (email === superAdminEmail) continue;
@@ -95,171 +94,172 @@ async function main() {
 
   const defaultMarkups = [
     // ==================== FLIGHT MARKUPS ====================
+    // Domestic Flights - 10% markup, 10% service fee
     {
       productType: ProductType.FLIGHT_DOMESTIC,
       markupPercentage: 10.0,
-      serviceFeeAmount: 5000.0,
+      serviceFeeAmount: 0, // Not used anymore, but kept for compatibility
       currency: 'NGN',
-      description: 'Default markup for domestic Nigerian flights (Trips Africa)',
+      description: 'Domestic flights - 10% markup + 10% service fee',
+    },
+    // International Flights - 15% markup, 15% service fee
+    {
+      productType: ProductType.FLIGHT_INTERNATIONAL,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 0,
+      currency: 'NGN',
+      description: 'International flights - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.FLIGHT_INTERNATIONAL,
-      markupPercentage: 10.0,
-      serviceFeeAmount: 10000.0,
-      currency: 'NGN',
-      description: 'Default markup for international flights (Duffel)',
-    },
-    {
-      productType: ProductType.FLIGHT_INTERNATIONAL,
-      markupPercentage: 10.0,
-      serviceFeeAmount: 50.0,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 0,
       currency: 'USD',
-      description: 'Default markup for international flights in USD (Duffel)',
+      description: 'International flights - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.FLIGHT_INTERNATIONAL,
-      markupPercentage: 10.0,
-      serviceFeeAmount: 40.0,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 0,
       currency: 'GBP',
-      description: 'Default markup for international flights in GBP (Duffel)',
+      description: 'International flights - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.FLIGHT_INTERNATIONAL,
-      markupPercentage: 10.0,
-      serviceFeeAmount: 45.0,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 0,
       currency: 'EUR',
-      description: 'Default markup for international flights in EUR (Duffel)',
+      description: 'International flights - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.FLIGHT_INTERNATIONAL,
-      markupPercentage: 10.0,
-      serviceFeeAmount: 5000.0,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 0,
       currency: 'JPY',
-      description: 'Default markup for international flights in JPY (Duffel)',
+      description: 'International flights - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.FLIGHT_INTERNATIONAL,
-      markupPercentage: 10.0,
-      serviceFeeAmount: 300.0,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 0,
       currency: 'CNY',
-      description: 'Default markup for international flights in CNY (Duffel)',
+      description: 'International flights - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.FLIGHT_INTERNATIONAL,
-      markupPercentage: 10.0,
-      serviceFeeAmount: 200.0,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 0,
       currency: 'GHS',
-      description: 'Default markup for international flights in GHS (Duffel)',
+      description: 'International flights - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.FLIGHT_INTERNATIONAL,
-      markupPercentage: 10.0,
-      serviceFeeAmount: 1000.0,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 0,
       currency: 'KES',
-      description: 'Default markup for international flights in KES (Duffel)',
+      description: 'International flights - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.FLIGHT_INTERNATIONAL,
-      markupPercentage: 10.0,
-      serviceFeeAmount: 500.0,
+      markupPercentage: 15.0,
+      serviceFeeAmount: 0,
       currency: 'ZAR',
-      description: 'Default markup for international flights in ZAR (Duffel)',
+      description: 'International flights - 15% markup + 15% service fee',
     },
     // ==================== HOTEL MARKUPS ====================
     {
       productType: ProductType.HOTEL,
       markupPercentage: 15.0,
-      serviceFeeAmount: 5000.0,
+      serviceFeeAmount: 0,
       currency: 'NGN',
-      description: 'Default markup for hotel bookings in NGN (Amadeus/Duffel)',
+      description: 'Hotels - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.HOTEL,
       markupPercentage: 15.0,
-      serviceFeeAmount: 25.0,
+      serviceFeeAmount: 0,
       currency: 'GBP',
-      description: 'Default markup for hotel bookings in GBP (Amadeus/Duffel)',
+      description: 'Hotels - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.HOTEL,
       markupPercentage: 15.0,
-      serviceFeeAmount: 30.0,
+      serviceFeeAmount: 0,
       currency: 'USD',
-      description: 'Default markup for hotel bookings in USD (Amadeus/Duffel)',
+      description: 'Hotels - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.HOTEL,
       markupPercentage: 15.0,
-      serviceFeeAmount: 28.0,
+      serviceFeeAmount: 0,
       currency: 'EUR',
-      description: 'Default markup for hotel bookings in EUR (Amadeus/Duffel)',
+      description: 'Hotels - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.HOTEL,
       markupPercentage: 15.0,
-      serviceFeeAmount: 3000.0,
+      serviceFeeAmount: 0,
       currency: 'JPY',
-      description: 'Default markup for hotel bookings in JPY (Amadeus/Duffel)',
+      description: 'Hotels - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.HOTEL,
       markupPercentage: 15.0,
-      serviceFeeAmount: 200.0,
+      serviceFeeAmount: 0,
       currency: 'CNY',
-      description: 'Default markup for hotel bookings in CNY (Amadeus/Duffel)',
+      description: 'Hotels - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.HOTEL,
       markupPercentage: 15.0,
-      serviceFeeAmount: 150.0,
+      serviceFeeAmount: 0,
       currency: 'GHS',
-      description: 'Default markup for hotel bookings in GHS (Amadeus/Duffel)',
+      description: 'Hotels - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.HOTEL,
       markupPercentage: 15.0,
-      serviceFeeAmount: 800.0,
+      serviceFeeAmount: 0,
       currency: 'KES',
-      description: 'Default markup for hotel bookings in KES (Amadeus/Duffel)',
+      description: 'Hotels - 15% markup + 15% service fee',
     },
     {
       productType: ProductType.HOTEL,
       markupPercentage: 15.0,
-      serviceFeeAmount: 400.0,
+      serviceFeeAmount: 0,
       currency: 'ZAR',
-      description: 'Default markup for hotel bookings in ZAR (Amadeus/Duffel)',
+      description: 'Hotels - 15% markup + 15% service fee',
     },
     // ==================== CAR RENTAL MARKUPS ====================
     {
       productType: ProductType.CAR_RENTAL,
       markupPercentage: 10.0,
-      serviceFeeAmount: 3000.0,
+      serviceFeeAmount: 0,
       currency: 'NGN',
-      description: 'Default markup for car rental bookings (NGN)',
+      description: 'Car rentals - 10% markup + 10% service fee',
     },
     {
       productType: ProductType.CAR_RENTAL,
       markupPercentage: 10.0,
-      serviceFeeAmount: 15.0,
+      serviceFeeAmount: 0,
       currency: 'GBP',
-      description: 'Default markup for car rental bookings in GBP (Amadeus)',
+      description: 'Car rentals - 10% markup + 10% service fee',
     },
     {
       productType: ProductType.CAR_RENTAL,
       markupPercentage: 10.0,
-      serviceFeeAmount: 20.0,
+      serviceFeeAmount: 0,
       currency: 'USD',
-      description: 'Default markup for car rental bookings in USD (Amadeus)',
+      description: 'Car rentals - 10% markup + 10% service fee',
     },
     {
       productType: ProductType.CAR_RENTAL,
       markupPercentage: 10.0,
-      serviceFeeAmount: 18.0,
+      serviceFeeAmount: 0,
       currency: 'EUR',
-      description: 'Default markup for car rental bookings in EUR (Amadeus)',
+      description: 'Car rentals - 10% markup + 10% service fee',
     },
   ];
-
   for (const markup of defaultMarkups) {
     // Check if active markup exists for this product type and currency
     const existing = await prisma.markupConfig.findFirst({
@@ -284,8 +284,12 @@ async function main() {
                             markup.currency === 'KES' ? 'KSh' :
                             markup.currency === 'ZAR' ? 'R' : markup.currency;
       
+      const serviceFeeDisplay = markup.serviceFeeAmount === 0 ? 
+        `${markup.markupPercentage}% (percentage)` : 
+        `${currencySymbol}${markup.serviceFeeAmount}`;
+      
       console.log(
-        `✅ Created markup for ${markup.productType} (${markup.currency}): ${markup.markupPercentage}% + ${currencySymbol}${markup.serviceFeeAmount}`,
+        `✅ Created markup for ${markup.productType} (${markup.currency}): ${markup.markupPercentage}% markup + ${serviceFeeDisplay} service fee`,
       );
     } else {
       console.log(
@@ -299,6 +303,12 @@ async function main() {
   console.log(`   - Super Admin login: ${superAdminEmail}`);
   console.log('   - Super Admin password: (set via SUPER_ADMIN_PASSWORD env – never logged)');
   console.log('   - Change default passwords after first login if you used defaults.\n');
+  console.log('📊 Markup Summary:');
+  console.log('   - FLIGHT_DOMESTIC (NGN): 10% markup + 10% service fee (Wakanow)');
+  console.log('   - FLIGHT_INTERNATIONAL (NGN): 15% markup + 15% service fee (Wakanow)');
+  console.log('   - FLIGHT_INTERNATIONAL (Other): 15% markup + fixed service fee (Duffel)');
+  console.log('   - HOTEL: 15% markup + fixed service fee');
+  console.log('   - CAR_RENTAL: 10% markup + fixed service fee\n');
 }
 
 main()
@@ -309,5 +319,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-
-
