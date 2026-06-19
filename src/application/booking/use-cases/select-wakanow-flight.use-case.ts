@@ -127,9 +127,16 @@ export class SelectWakanowFlightUseCase {
 
       // ✅ Check for expired token or invalid selectData
       const errorMsg = error?.message?.toLowerCase() || '';
+      const errorStatus = error?.status || error?.response?.statusCode || 0;
+      
+      // ✅ Check if it's a 500 Internal Server Error from Wakanow
+      if (errorStatus === 500 || errorMsg.includes('500') || errorMsg.includes('internal server error')) {
+        this.logger.warn(`Wakanow select rejected with 500: ${error.message}`);
+        throw new BadRequestException('Your flight selection has expired or is invalid. Please search for flights again.');
+      }
       
       // ✅ Check if it's a 400 Bad Request from Wakanow (expired selectData)
-      if (error.status === 400 || errorMsg.includes('bad request') || errorMsg.includes('invalid')) {
+      if (errorStatus === 400 || errorMsg.includes('bad request') || errorMsg.includes('invalid')) {
         this.logger.warn(`Wakanow select rejected with 400: ${error.message}`);
         throw new BadRequestException('Your flight selection has expired. Please search for flights again.');
       }
