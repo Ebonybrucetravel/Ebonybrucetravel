@@ -1,4 +1,3 @@
-// src/application/booking/use-cases/book-wakanow-flight.use-case.ts
 
 import { Injectable, Logger, Inject, BadRequestException, GoneException, HttpException, HttpStatus } from '@nestjs/common';
 import { WakanowService, WakanowBookRequest, WakanowPassengerDetail } from '@infrastructure/external-apis/wakanow/wakanow.service';
@@ -7,7 +6,6 @@ import { BOOKING_REPOSITORY } from '@domains/booking/repositories/booking.reposi
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 import { BookingStatus, PaymentStatus, ProductType, Provider } from '@prisma/client';
 import { BookWakanowFlightDto } from '@presentation/booking/dto/wakanow-flights.dto';
-
 import { MarkupCalculationService } from '@domains/markup/services/markup-calculation.service';
 
 @Injectable()
@@ -216,24 +214,29 @@ export class BookWakanowFlightUseCase {
         // ✅ Fallback: Use default percentages
         this.logger.warn(`No markup config found for ${productType} in ${price.CurrencyCode}, using defaults`);
         
-        // Domestic: 10%, International: 15%
-        const defaultPercentage = isDomestic ? 10 : 15;
-        markupPercentage = defaultPercentage;
-        markupAmount = (price.Amount * defaultPercentage) / 100;
-        serviceFee = (price.Amount * defaultPercentage) / 100;
+        // Domestic: 10% markup, International: 15% markup
+        const defaultMarkupPercentage = isDomestic ? 10 : 15;
+        // ✅ Service fee is always 5%
+        const defaultServiceFeePercentage = 5;
+        
+        markupPercentage = defaultMarkupPercentage;
+        markupAmount = (price.Amount * defaultMarkupPercentage) / 100;
+        serviceFee = (price.Amount * defaultServiceFeePercentage) / 100;
         totalAmount = price.Amount + markupAmount + serviceFee;
-        serviceFeePercentage = defaultPercentage;
+        serviceFeePercentage = defaultServiceFeePercentage;
       }
     } catch (error) {
       this.logger.warn('Failed to fetch markup config, using defaults:', error);
       
       // ✅ Fallback defaults
-      const defaultPercentage = isDomestic ? 10 : 15;
-      markupPercentage = defaultPercentage;
-      markupAmount = (price.Amount * defaultPercentage) / 100;
-      serviceFee = (price.Amount * defaultPercentage) / 100;
+      const defaultMarkupPercentage = isDomestic ? 10 : 15;
+      const defaultServiceFeePercentage = 5;
+      
+      markupPercentage = defaultMarkupPercentage;
+      markupAmount = (price.Amount * defaultMarkupPercentage) / 100;
+      serviceFee = (price.Amount * defaultServiceFeePercentage) / 100;
       totalAmount = price.Amount + markupAmount + serviceFee;
-      serviceFeePercentage = defaultPercentage;
+      serviceFeePercentage = defaultServiceFeePercentage;
     }
 
     // ✅ Log the breakdown
