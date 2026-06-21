@@ -125,18 +125,49 @@ export class SelectWakanowFlightUseCase {
         throw error;
       }
 
-      // ✅ Check for expired token or invalid selectData
+      // ✅ Check if the error is a SELECTION_EXPIRED from WakanowService
+      if (error.message === 'SELECTION_EXPIRED') {
+        this.logger.warn('Wakanow selection expired');
+        throw new BadRequestException('Your flight selection has expired. Please search for flights again.');
+      }
+
+      // ✅ Extract error details more robustly
       const errorMsg = error?.message?.toLowerCase() || '';
-      const errorStatus = error?.status || error?.response?.statusCode || 0;
+      const errorString = JSON.stringify(error)?.toLowerCase() || '';
       
+      // ✅ Try to get status from various places
+      const errorStatus = error?.status || 
+                         error?.response?.status || 
+                         error?.response?.statusCode || 
+                         error?.statusCode || 
+                         error?.code ||
+                         0;
+
+      // ✅ Check for 500 Internal Server Error from Wakanow
+      // ✅ Check for "Bad Request" in the error response
+      const isBadRequest = errorMsg.includes('bad request') || 
+                          errorString.includes('bad request') ||
+                          errorMsg.includes('selectdata') ||
+                          errorString.includes('selectdata') ||
+                          errorMsg.includes('invalid') ||
+                          errorString.includes('invalid') ||
+                          errorMsg.includes('expired') ||
+                          errorString.includes('expired');
+
+      // ✅ Check if it's a 500 or 400 error from Wakanow with "Bad Request"
+      if ((errorStatus === 500 || errorStatus === 400) && isBadRequest) {
+        this.logger.warn(`Wakanow select rejected with ${errorStatus}: ${error.message}`);
+        throw new BadRequestException('Your flight selection has expired. Please search for flights again.');
+      }
+
       // ✅ Check if it's a 500 Internal Server Error from Wakanow
-      if (errorStatus === 500 || errorMsg.includes('500') || errorMsg.includes('internal server error')) {
+      if (errorStatus === 500) {
         this.logger.warn(`Wakanow select rejected with 500: ${error.message}`);
         throw new BadRequestException('Your flight selection has expired or is invalid. Please search for flights again.');
       }
       
       // ✅ Check if it's a 400 Bad Request from Wakanow (expired selectData)
-      if (errorStatus === 400 || errorMsg.includes('bad request') || errorMsg.includes('invalid')) {
+      if (errorStatus === 400) {
         this.logger.warn(`Wakanow select rejected with 400: ${error.message}`);
         throw new BadRequestException('Your flight selection has expired. Please search for flights again.');
       }
