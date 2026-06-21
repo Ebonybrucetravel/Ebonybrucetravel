@@ -1,3 +1,4 @@
+import { CreateBookingDto } from '../booking/dto/create-booking.dto';
 import {
   Controller,
   Post,
@@ -788,30 +789,54 @@ export class AdminController {
     res.send(csv);
   }
 
-  @Post('bookings')
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiOperation({
-    summary: 'Create a booking on behalf of a customer',
-    description:
-      'Same flow as user: create booking for the given userId, then use POST /payments/stripe/create-intent (or Amadeus charge-margin) to pay on behalf. Admin pays with their own card; booking is attributed to the customer.',
-  })
-  @ApiResponse({ status: 201, description: 'Booking created' })
-  async createBookingOnBehalf(@Body() dto: CreateBookingOnBehalfDto) {
-    const { userId, ...createDto } = dto;
-    const customer = await this.prisma.user.findFirst({
-      where: { id: userId, role: UserRole.CUSTOMER, deletedAt: null },
-    });
-    if (!customer) {
-      throw new NotFoundException('Customer user not found or not a customer');
-    }
-    const booking = await this.createBookingUseCase.execute(createDto, userId);
-    return {
-      success: true,
-      data: booking,
-      message:
-        'Booking created. Use POST /payments/stripe/create-intent with this booking ID to pay on behalf.',
+
+
+@Post('bookings')
+@Roles('ADMIN', 'SUPER_ADMIN')
+@ApiOperation({
+  summary: 'Create a booking on behalf of a customer',
+  description:
+    'Same flow as user: create booking for the given userId, then use POST /payments/stripe/create-intent (or Amadeus charge-margin) to pay on behalf. Admin pays with their own card; booking is attributed to the customer.',
+})
+@ApiResponse({ status: 201, description: 'Booking created' })
+async createBookingOnBehalf(@Body() dto: CreateBookingOnBehalfDto) {
+  const { userId, ...createDto } = dto;
+  
+  const customer = await this.prisma.user.findFirst({
+    where: { id: userId, role: UserRole.CUSTOMER, deletedAt: null },
+  });
+  if (!customer) {
+    throw new NotFoundException('Customer user not found or not a customer');
+  }
+  
+  // ✅ Create a new DTO instance and copy properties
+  const bookingDto = new CreateBookingDto();
+  Object.assign(bookingDto, createDto);
+  
+  // ✅ Ensure price breakdown is properly set
+  if (!bookingDto.priceBreakdown && bookingDto.totalAmount) {
+    bookingDto.priceBreakdown = {
+      basePrice: bookingDto.basePrice || 0,
+      markupAmount: bookingDto.markupAmount || 0,
+      markupPercentage: bookingDto.markupPercentage || 10,
+      serviceFee: bookingDto.serviceFee || 0,
+      serviceFeePercentage: bookingDto.serviceFeePercentage || 5,
+      taxes: bookingDto.taxes || 0,
+      taxPercentage: bookingDto.taxPercentage || 15,
+      totalAmount: bookingDto.totalAmount,
+      currency: bookingDto.currency || 'NGN',
     };
   }
+  
+  const booking = await this.createBookingUseCase.execute(bookingDto, userId);
+  
+  return {
+    success: true,
+    data: booking,
+    message:
+      'Booking created. Use POST /payments/stripe/create-intent with this booking ID to pay on behalf.',
+  };
+}
 
   // ── Admin Search Proxy Endpoints ──────────────────────────────────────────
 

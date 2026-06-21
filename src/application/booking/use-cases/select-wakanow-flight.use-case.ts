@@ -2,6 +2,10 @@ import { Injectable, Logger, HttpException, HttpStatus, BadRequestException } fr
 import { WakanowService } from '@infrastructure/external-apis/wakanow/wakanow.service';
 import { SelectWakanowFlightDto } from '@presentation/booking/dto/wakanow-flights.dto';
 
+// ✅ Configuration constants - move these to your config file
+const MARKUP_PERCENTAGE = 10; // 10%
+const SERVICE_FEE_PERCENTAGE = 5; // 5%
+
 @Injectable()
 export class SelectWakanowFlightUseCase {
   private readonly logger = new Logger(SelectWakanowFlightUseCase.name);
@@ -62,8 +66,34 @@ export class SelectWakanowFlightUseCase {
         throw new BadRequestException('No flight segments found. Please search again.');
       }
 
+      // ✅ Get the total price from Wakanow
+      const totalAmount = combo.Price?.Amount || 0;
+      const currency = combo.Price?.CurrencyCode || targetCurrency || 'NGN';
+      
+      // ✅ Calculate price breakdown with markup and service fee as taxes
+      const markupPct = MARKUP_PERCENTAGE;
+      const servicePct = SERVICE_FEE_PERCENTAGE;
+      const totalFactor = 1 + (markupPct / 100) + (servicePct / 100);
+      
+      // Calculate base price (before markup and service fee)
+      const basePrice = totalAmount / totalFactor;
+      const markupAmount = (basePrice * markupPct) / 100;
+      const serviceFee = (basePrice * servicePct) / 100;
+      
+      // Round to 2 decimal places
+      const roundedBasePrice = Math.round(basePrice * 100) / 100;
+      const roundedMarkup = Math.round(markupAmount * 100) / 100;
+      const roundedServiceFee = Math.round(serviceFee * 100) / 100;
+      const roundedTotal = Math.round(totalAmount * 100) / 100;
+      
+      // ✅ Combined taxes = markup + service fee (displayed as one line)
+      const combinedTaxes = roundedMarkup + roundedServiceFee;
+      const combinedTaxPercentage = markupPct + servicePct;
+
       this.logger.log(
-        `✅ Wakanow flight selected. BookingId: ${selectResponse.BookingId}, Price: ${combo.Price?.Amount || 0} ${combo.Price?.CurrencyCode || 'NGN'}`,
+        `✅ Wakanow flight selected. BookingId: ${selectResponse.BookingId}, ` +
+        `Base: ${roundedBasePrice}, Markup: ${roundedMarkup}, Service: ${roundedServiceFee}, ` +
+        `Taxes: ${combinedTaxes}, Total: ${roundedTotal} ${currency}`,
       );
 
       // ✅ Return with camelCase properties for frontend compatibility
@@ -73,6 +103,20 @@ export class SelectWakanowFlightUseCase {
         selectData: selectResponse.SelectData || selectData,
         isPriceMatched: selectResponse.IsPriceMatched || false,
         isPassportRequired: selectResponse.IsPassportRequired || false,
+        
+        // ✅ Price breakdown - frontend will display these as-is
+        priceBreakdown: {
+          basePrice: roundedBasePrice,
+          markupAmount: roundedMarkup,
+          markupPercentage: markupPct,
+          serviceFee: roundedServiceFee,
+          serviceFeePercentage: servicePct,
+          taxes: combinedTaxes,        // markup + service fee combined
+          taxPercentage: combinedTaxPercentage, // markup% + service% combined
+          totalAmount: roundedTotal,
+          currency: currency,
+        },
+        
         flightSummary: {
           slices: (combo.FlightModels || []).map((fm) => ({
             airline: fm.AirlineName || fm.Airline || '',
@@ -103,7 +147,7 @@ export class SelectWakanowFlightUseCase {
             })),
             freeBaggage: fm.FreeBaggage || null,
           })),
-          price: combo.Price || { Amount: 0, CurrencyCode: targetCurrency },
+          price: combo.Price || { Amount: 0, CurrencyCode: currency },
           priceDetails: combo.PriceDetails || [],
           isRefundable: combo.IsRefundable || false,
         },
@@ -143,7 +187,6 @@ export class SelectWakanowFlightUseCase {
                          error?.code ||
                          0;
 
-      // ✅ Check for 500 Internal Server Error from Wakanow
       // ✅ Check for "Bad Request" in the error response
       const isBadRequest = errorMsg.includes('bad request') || 
                           errorString.includes('bad request') ||

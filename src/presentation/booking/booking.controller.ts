@@ -212,12 +212,52 @@ export class BookingController {
     };
   }
 
+  // ✅ UPDATED: Create booking with price breakdown
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a new booking (authenticated user)' })
+  @ApiOperation({ 
+    summary: 'Create a new booking (authenticated user)',
+    description: 'Creates a booking with full price breakdown including base price, markup, service fee, and taxes.'
+  })
   @ApiResponse({ status: 201, description: 'Booking created successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid booking data or missing price breakdown' })
   async create(@Body() createBookingDto: CreateBookingDto, @Request() req) {
+    // ✅ Validate price breakdown
+    const { priceBreakdown } = createBookingDto;
+    
+    // ✅ If priceBreakdown is provided, use it to populate individual fields
+    if (priceBreakdown) {
+      // Ensure required fields are present
+      if (!priceBreakdown.totalAmount || priceBreakdown.totalAmount <= 0) {
+        throw new BadRequestException('Total amount is required and must be greater than 0');
+      }
+      if (!priceBreakdown.currency) {
+        throw new BadRequestException('Currency is required');
+      }
+      
+      // Log the price breakdown for debugging
+      console.log('💰 Creating booking with price breakdown:', {
+        basePrice: priceBreakdown.basePrice,
+        markupAmount: priceBreakdown.markupAmount,
+        markupPercentage: priceBreakdown.markupPercentage,
+        serviceFee: priceBreakdown.serviceFee,
+        serviceFeePercentage: priceBreakdown.serviceFeePercentage,
+        taxes: priceBreakdown.taxes,
+        taxPercentage: priceBreakdown.taxPercentage,
+        totalAmount: priceBreakdown.totalAmount,
+        currency: priceBreakdown.currency,
+      });
+    } else {
+      // ✅ If no priceBreakdown, validate individual fields
+      if (!createBookingDto.totalAmount || createBookingDto.totalAmount <= 0) {
+        throw new BadRequestException('Total amount is required and must be greater than 0');
+      }
+      if (!createBookingDto.currency) {
+        throw new BadRequestException('Currency is required');
+      }
+    }
+
     const booking = await this.createBookingUseCase.execute(createBookingDto, req.user.id);
     return {
       success: true,
@@ -609,8 +649,6 @@ export class BookingController {
     };
   }
 
-  // ❌ DUFFEL HOTEL BOOKING ENDPOINT REMOVED - Not needed
-
   @Public()
   @Post('hotels/bookings/amadeus/guest')
   @ApiOperation({
@@ -732,106 +770,100 @@ export class BookingController {
     return { success: true, data: result };
   }
 
- // ==================== HOTEL CANCELLATION ENDPOINT ====================
+  @UseGuards(JwtAuthGuard)
+  @Post('hotels/bookings/:bookingId/cancel')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Cancel a hotel booking', 
+    description: 'Users can cancel their own bookings if within cancellation deadline. Admins can cancel any booking.' 
+  })
+  @ApiResponse({ status: 200, description: 'Hotel booking cancelled successfully' })
+  @ApiResponse({ status: 400, description: 'Cancellation not allowed (deadline passed or already cancelled)' })
+  @ApiResponse({ status: 403, description: 'You do not have permission to cancel this booking' })
+  @ApiResponse({ status: 404, description: 'Booking not found' })
+  async cancelHotelBooking(
+    @Param('bookingId') bookingId: string,
+    @Request() req: any,
+  ) {
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    
+    const result = await this.cancelHotelBookingUseCase.execute(bookingId, userId, userRole);
+    
+    return {
+      success: true,
+      data: result,
+      message: 'Booking cancelled successfully',
+    };
+  }
 
-@UseGuards(JwtAuthGuard)
-@Post('hotels/bookings/:bookingId/cancel')
-@ApiBearerAuth()
-@HttpCode(HttpStatus.OK)
-@ApiOperation({ 
-  summary: 'Cancel a hotel booking', 
-  description: 'Users can cancel their own bookings if within cancellation deadline. Admins can cancel any booking.' 
-})
-@ApiResponse({ status: 200, description: 'Hotel booking cancelled successfully' })
-@ApiResponse({ status: 400, description: 'Cancellation not allowed (deadline passed or already cancelled)' })
-@ApiResponse({ status: 403, description: 'You do not have permission to cancel this booking' })
-@ApiResponse({ status: 404, description: 'Booking not found' })
-async cancelHotelBooking(
-  @Param('bookingId') bookingId: string,
-  @Request() req: any,
-) {
-  const userId = req.user.id;
-  const userRole = req.user.role;
-  
-  const result = await this.cancelHotelBookingUseCase.execute(bookingId, userId, userRole);
-  
-  return {
-    success: true,
-    data: result,
-    message: 'Booking cancelled successfully',
-  };
-}
-
- // ==================== HOTEL BOOKING UPDATE ENDPOINT ====================
-
-@Patch('hotels/:bookingId/update')
-@UseGuards(JwtAuthGuard)
-@ApiBearerAuth()
-@ApiOperation({
-  summary: 'Update a hotel booking (special request, dates, loyalty ID)',
-  description:
-    'Updates an existing hotel booking. Can update special requests, check-in/out dates, or loyalty program ID.',
-})
-@ApiResponse({ status: 200, description: 'Hotel booking updated successfully' })
-@ApiResponse({ status: 400, description: 'Invalid update data' })
-@ApiResponse({ status: 404, description: 'Booking not found' })
-async updateHotelBooking(
-  @Param('bookingId') bookingId: string,
-  @Body() body: {
-    updateType: 'dates' | 'special' | 'loyalty';
-    hotelOrderId?: string;      // Frontend sends this
-    hotelBookingId?: string;    // Frontend sends this
-    providerBookingId?: string; // Alternative field name
-    payload: {
-      checkInDate?: string;
-      checkOutDate?: string;
-      specialRequest?: string;
-      loyaltyId?: string;
-      hotelBooking?: {
-        roomAssociation?: {
-          specialRequest?: string;
-          guestReferences?: Array<{ hotelLoyaltyId?: string }>;
-        };
-        hotelOffer?: {
-          product?: {
-            checkInDate?: string;
-            checkOutDate?: string;
+  @Patch('hotels/:bookingId/update')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Update a hotel booking (special request, dates, loyalty ID)',
+    description:
+      'Updates an existing hotel booking. Can update special requests, check-in/out dates, or loyalty program ID.',
+  })
+  @ApiResponse({ status: 200, description: 'Hotel booking updated successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid update data' })
+  @ApiResponse({ status: 404, description: 'Booking not found' })
+  async updateHotelBooking(
+    @Param('bookingId') bookingId: string,
+    @Body() body: {
+      updateType: 'dates' | 'special' | 'loyalty';
+      hotelOrderId?: string;
+      hotelBookingId?: string;
+      providerBookingId?: string;
+      payload: {
+        checkInDate?: string;
+        checkOutDate?: string;
+        specialRequest?: string;
+        loyaltyId?: string;
+        hotelBooking?: {
+          roomAssociation?: {
+            specialRequest?: string;
+            guestReferences?: Array<{ hotelLoyaltyId?: string }>;
+          };
+          hotelOffer?: {
+            product?: {
+              checkInDate?: string;
+              checkOutDate?: string;
+            };
           };
         };
       };
+    },
+    @Request() req: any,
+  ) {
+    const dto = new UpdateHotelBookingDto();
+    dto.bookingId = bookingId;
+    dto.providerBookingId = body.hotelOrderId || body.providerBookingId;
+    dto.updateType = body.updateType;
+    dto.payload = body.payload;
+    
+    if (body.updateType === 'special') {
+      dto.specialRequest = body.payload?.specialRequest || 
+                           body.payload?.hotelBooking?.roomAssociation?.specialRequest;
+    } else if (body.updateType === 'dates') {
+      dto.checkInDate = body.payload?.checkInDate || 
+                         body.payload?.hotelBooking?.hotelOffer?.product?.checkInDate;
+      dto.checkOutDate = body.payload?.checkOutDate || 
+                          body.payload?.hotelBooking?.hotelOffer?.product?.checkOutDate;
+    } else if (body.updateType === 'loyalty') {
+      dto.loyaltyId = body.payload?.loyaltyId || 
+                       body.payload?.hotelBooking?.roomAssociation?.guestReferences?.[0]?.hotelLoyaltyId;
+    }
+    
+    const result = await this.updateAmadeusHotelBookingUseCase.execute(dto, req.user.id);
+    return {
+      success: true,
+      data: result,
+      message: 'Booking updated successfully',
     };
-  },
-  @Request() req: any,
-) {
-  const dto = new UpdateHotelBookingDto();
-  dto.bookingId = bookingId;
-  
-  // ✅ Accept both field names
-  dto.providerBookingId = body.hotelOrderId || body.providerBookingId;
-  dto.updateType = body.updateType;
-  dto.payload = body.payload;
-  
-  // Extract specific fields from payload based on update type
-  if (body.updateType === 'special') {
-    dto.specialRequest = body.payload?.specialRequest || 
-                         body.payload?.hotelBooking?.roomAssociation?.specialRequest;
-  } else if (body.updateType === 'dates') {
-    dto.checkInDate = body.payload?.checkInDate || 
-                      body.payload?.hotelBooking?.hotelOffer?.product?.checkInDate;
-    dto.checkOutDate = body.payload?.checkOutDate || 
-                       body.payload?.hotelBooking?.hotelOffer?.product?.checkOutDate;
-  } else if (body.updateType === 'loyalty') {
-    dto.loyaltyId = body.payload?.loyaltyId || 
-                    body.payload?.hotelBooking?.roomAssociation?.guestReferences?.[0]?.hotelLoyaltyId;
   }
-  
-  const result = await this.updateAmadeusHotelBookingUseCase.execute(dto, req.user.id);
-  return {
-    success: true,
-    data: result,
-    message: 'Booking updated successfully',
-  };
-}
+
   @Public()
   @Get('hotels/accommodation/:accommodationId')
   @ApiOperation({ summary: 'Get accommodation details by ID' })

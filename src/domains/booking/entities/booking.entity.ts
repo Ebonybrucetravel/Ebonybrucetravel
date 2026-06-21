@@ -1,4 +1,4 @@
-import { BookingStatus, PaymentStatus, ProductType, Provider } from '@prisma/client';
+import { BookingStatus, PaymentStatus, ProductType, Provider, RefundStatus } from '@prisma/client';
 
 export class Booking {
   id: string;
@@ -9,21 +9,44 @@ export class Booking {
   provider: Provider;
   providerBookingId?: string;
   providerData?: any;
+  
+  // ✅ Price breakdown fields
   basePrice: number;
   markupAmount: number;
+  markupPercentage: number;
   serviceFee: number;
+  serviceFeePercentage: number;
+  taxes: number;
+  taxPercentage: number;
   totalAmount: number;
   currency: string;
+  
   bookingData: any;
   passengerInfo?: any;
   paymentInfo?: any;
   paymentStatus: PaymentStatus;
   paymentProvider?: string;
   paymentReference?: string;
+  
+  // ✅ Provider-specific fields
+  bookingId?: string;
+  selectData?: string;
+  
+  // ✅ Guest booking flag
+  isGuest?: boolean;
+  
+  // ✅ Voucher fields (for loyalty program)
+  voucherId?: string;
+  voucherCode?: string;
+  voucherDiscount?: number;
+  finalAmount?: number;
+  
+  // Cancellation/Refund
   cancelledAt?: Date;
   cancelledBy?: string;
   refundAmount?: number;
-  refundStatus?: string;
+  refundStatus?: RefundStatus;
+  
   // Dispute evidence & cancellation (BOOKING_OPERATIONS_AND_RISK)
   cancellationDeadline?: Date;
   cancellationPolicySnapshot?: string;
@@ -32,6 +55,7 @@ export class Booking {
   policyAcceptedAt?: Date;
   stripeChargeId?: string;
   confirmationEmailSentAt?: Date;
+  
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date;

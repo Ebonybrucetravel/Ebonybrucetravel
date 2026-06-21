@@ -8,6 +8,8 @@ import {
   IsEmail,
   IsArray,
   ValidateNested,
+  Min,
+  IsPositive,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -116,6 +118,62 @@ class PassengerInfoDto {
   loyaltyProgrammeAccounts?: LoyaltyProgrammeAccountDto[];
 }
 
+// ✅ Price breakdown DTO
+export class PriceBreakdownDto {
+  @ApiPropertyOptional({ description: 'Base price before any additions', example: 204028.73 })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  basePrice?: number;
+
+  @ApiPropertyOptional({ description: 'Markup amount applied', example: 20402.87 })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  markupAmount?: number;
+
+  @ApiPropertyOptional({ description: 'Markup percentage', example: 10 })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  markupPercentage?: number;
+
+  @ApiPropertyOptional({ description: 'Service fee amount', example: 10201.44 })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  serviceFee?: number;
+
+  @ApiPropertyOptional({ description: 'Service fee percentage', example: 5 })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  serviceFeePercentage?: number;
+
+  @ApiPropertyOptional({ description: 'Combined taxes (markup + service fee)', example: 30604.31 })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  taxes?: number;
+
+  @ApiPropertyOptional({ description: 'Combined tax percentage (markup% + service%)', example: 15 })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  taxPercentage?: number;
+
+  @ApiProperty({ description: 'Total amount including all fees', example: 244833.04 })
+  @IsNumber()
+  @IsNotEmpty()
+  @IsPositive()
+  totalAmount: number;
+
+  @ApiProperty({ description: 'Currency code', example: 'NGN' })
+  @IsString()
+  @IsNotEmpty()
+  currency: string;
+}
+
 /**
  * Payload to create a booking.
  *
@@ -164,6 +222,25 @@ class PassengerInfoDto {
  *     }]
  *   }
  * }
+ *
+ * @example Wakanow flight with price breakdown
+ * {
+ *   "productType": "FLIGHT_DOMESTIC",
+ *   "provider": "WAKANOW",
+ *   "bookingData": { "flightSummary": {...} },
+ *   "passengerInfo": {...},
+ *   "priceBreakdown": {
+ *     "basePrice": 204028.73,
+ *     "markupAmount": 20402.87,
+ *     "markupPercentage": 10,
+ *     "serviceFee": 10201.44,
+ *     "serviceFeePercentage": 5,
+ *     "taxes": 30604.31,
+ *     "taxPercentage": 15,
+ *     "totalAmount": 244833.04,
+ *     "currency": "NGN"
+ *   }
+ * }
  */
 export class CreateBookingDto {
   @ApiProperty({ enum: ProductType })
@@ -176,15 +253,17 @@ export class CreateBookingDto {
   @IsNotEmpty()
   provider: Provider;
 
-  @ApiProperty()
+  // ✅ Legacy fields - keep for backward compatibility (marked as optional now)
+  @ApiPropertyOptional({ description: 'Base price (legacy - use priceBreakdown instead)' })
   @IsNumber()
-  @IsNotEmpty()
-  basePrice: number;
+  @IsOptional()
+  @Min(0)
+  basePrice?: number;
 
-  @ApiProperty()
+  @ApiPropertyOptional({ description: 'Currency (legacy - use priceBreakdown instead)' })
   @IsString()
-  @IsNotEmpty()
-  currency: string;
+  @IsOptional()
+  currency?: string;
 
   @ApiProperty()
   @IsObject()
@@ -201,4 +280,104 @@ export class CreateBookingDto {
   @IsString()
   @IsOptional()
   providerBookingId?: string;
+
+  // ✅ New price breakdown field
+  @ApiPropertyOptional({
+    description: 'Complete price breakdown including base price, markup, service fee, and taxes',
+    type: PriceBreakdownDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PriceBreakdownDto)
+  priceBreakdown?: PriceBreakdownDto;
+
+  // ✅ Individual price fields (for flexibility and backward compatibility)
+  @ApiPropertyOptional({ description: 'Markup amount applied' })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  markupAmount?: number;
+
+  @ApiPropertyOptional({ description: 'Markup percentage' })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  markupPercentage?: number;
+
+  @ApiPropertyOptional({ description: 'Service fee amount' })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  serviceFee?: number;
+
+  @ApiPropertyOptional({ description: 'Service fee percentage' })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  serviceFeePercentage?: number;
+
+  @ApiPropertyOptional({ description: 'Combined taxes (markup + service fee)' })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  taxes?: number;
+
+  @ApiPropertyOptional({ description: 'Combined tax percentage (markup% + service%)' })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  taxPercentage?: number;
+
+  @ApiPropertyOptional({ description: 'Total amount including all fees' })
+  @IsNumber()
+  @IsOptional()
+  @IsPositive()
+  totalAmount?: number;
+
+  @ApiPropertyOptional({ description: 'Wakanow booking ID' })
+  @IsString()
+  @IsOptional()
+  bookingId?: string;
+
+  @ApiPropertyOptional({ description: 'Wakanow select data' })
+  @IsString()
+  @IsOptional()
+  selectData?: string;
+
+  // ✅ Helper methods to safely extract values
+  getTotalAmount(): number {
+    return this.totalAmount || this.priceBreakdown?.totalAmount || 0;
+  }
+
+  getCurrency(): string {
+    return this.currency || this.priceBreakdown?.currency || 'NGN';
+  }
+
+  getBasePrice(): number {
+    return this.basePrice || this.priceBreakdown?.basePrice || 0;
+  }
+
+  getTaxes(): number {
+    return this.taxes || this.priceBreakdown?.taxes || 0;
+  }
+
+  getMarkupAmount(): number {
+    return this.markupAmount || this.priceBreakdown?.markupAmount || 0;
+  }
+
+  getServiceFee(): number {
+    return this.serviceFee || this.priceBreakdown?.serviceFee || 0;
+  }
+
+  getMarkupPercentage(): number {
+    return this.markupPercentage || this.priceBreakdown?.markupPercentage || 10;
+  }
+
+  getServiceFeePercentage(): number {
+    return this.serviceFeePercentage || this.priceBreakdown?.serviceFeePercentage || 5;
+  }
+
+  getTaxPercentage(): number {
+    return this.taxPercentage || this.priceBreakdown?.taxPercentage || 15;
+  }
 }

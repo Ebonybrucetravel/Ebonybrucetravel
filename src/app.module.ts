@@ -17,6 +17,7 @@ import { ExternalApisModule } from './infrastructure/external-apis/external-apis
 import { CacheModule } from './infrastructure/cache/cache.module';
 import { HotelImagesModule } from './application/hotel-images/hotel-images.module';
 import { UsageTrackingModule } from './infrastructure/usage-tracking/usage-tracking.module';
+import { CurrencyModule } from './infrastructure/currency/currency.module';
 
 // Domains
 import { BookingModule } from './domains/booking/booking.module';
@@ -42,7 +43,6 @@ import { MarkupController } from './presentation/markup/markup.controller';
 import { DashboardController } from './presentation/dashboard/dashboard.controller';
 import { BookingWakanowController } from './presentation/booking/booking-wakanow.controller';
 import { CurrencyController } from './presentation/currency/currency.controller';
-import { CurrencyModule } from './infrastructure/currency/currency.module';
 import { HotelImagesController } from './presentation/hotel-images/hotel-images.controller';
 
 @Module({
