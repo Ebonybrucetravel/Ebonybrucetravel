@@ -1,4 +1,3 @@
-
 import { Injectable, Logger, Inject, BadRequestException, GoneException, HttpException, HttpStatus } from '@nestjs/common';
 import { WakanowService, WakanowBookRequest, WakanowPassengerDetail } from '@infrastructure/external-apis/wakanow/wakanow.service';
 import { BookingRepository } from '@domains/booking/repositories/booking.repository';
@@ -21,12 +20,28 @@ export class BookWakanowFlightUseCase {
   ) {}
 
   async execute(dto: BookWakanowFlightDto, userId: string) {
-    const { passengers, bookingId, selectData, targetCurrency = 'NGN' } = dto;
+    const { passengers, bookingId, selectData, targetCurrency = 'NGN', priceBreakdown } = dto;
 
     // ✅ Log the incoming bookingId for debugging
     this.logger.log(`Booking Wakanow flight. BookingId: ${bookingId}, Type: ${typeof bookingId}, Length: ${bookingId?.length}`);
     this.logger.log(`Passengers: ${passengers.length}`);
     this.logger.log(`SelectData length: ${selectData?.length || 0}`);
+
+    // ✅ Log price breakdown if provided
+    if (priceBreakdown) {
+      this.logger.log('💰 Using price breakdown from select:', {
+        basePrice: priceBreakdown.basePrice,
+        markupAmount: priceBreakdown.markupAmount,
+        markupPercentage: priceBreakdown.markupPercentage,
+        serviceFee: priceBreakdown.serviceFee,
+        serviceFeePercentage: priceBreakdown.serviceFeePercentage,
+        taxes: priceBreakdown.taxes,
+        totalAmount: priceBreakdown.totalAmount,
+        currency: priceBreakdown.currency,
+      });
+    } else {
+      this.logger.warn('⚠️ No price breakdown provided! Will use Wakanow price and recalculate.');
+    }
 
     // ✅ Validate required fields
     if (!bookingId) {
@@ -174,82 +189,119 @@ export class BookWakanowFlightUseCase {
     const isDomestic = this.isNigerianRoute(firstDep, firstArr);
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
 
-    // ✅ Calculate markup and service fee (percentage-based)
-    let markupPercentage = 0;
-    let markupAmount = 0;
-    let serviceFee = 0;
-    let totalAmount = 0;
-    let serviceFeePercentage = 0;
+    // ============================================================
+    // ✅ USE PRICE BREAKDOWN FROM SELECT (if available)
+    // ============================================================
+    let basePrice: number;
+    let markupAmount: number;
+    let markupPercentage: number;
+    let serviceFee: number;
+    let serviceFeePercentage: number;
+    let totalAmount: number;
+    let currency: string;
+    let breakdown: string;
 
-    try {
-      // ✅ Get markup config from database
-      const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
-        productType,
-        price.CurrencyCode
-      );
-
-      if (markupConfig) {
-        // ✅ Use the calculation service
-        const result = this.markupCalculationService.calculateTotal(
-          price.Amount,
+    if (priceBreakdown && priceBreakdown.totalAmount > 0) {
+      // ✅ Use the price breakdown from the select response
+      basePrice = priceBreakdown.basePrice;
+      markupAmount = priceBreakdown.markupAmount;
+      markupPercentage = priceBreakdown.markupPercentage;
+      serviceFee = priceBreakdown.serviceFee;
+      serviceFeePercentage = priceBreakdown.serviceFeePercentage;
+      totalAmount = priceBreakdown.totalAmount;
+      currency = priceBreakdown.currency || price.CurrencyCode || 'NGN';
+      breakdown = `${basePrice} + ${markupAmount} (${markupPercentage}% markup) + ${serviceFee} (${serviceFeePercentage}% service fee) = ${totalAmount}`;
+      
+      this.logger.log(`💰 Using price breakdown from select:`, {
+        basePrice,
+        markupAmount,
+        markupPercentage,
+        serviceFee,
+        serviceFeePercentage,
+        totalAmount,
+        currency,
+      });
+    } else {
+      // ✅ FALLBACK: Calculate markup and service fee (if no breakdown provided)
+      this.logger.warn('⚠️ No price breakdown provided, calculating from Wakanow price...');
+      
+      try {
+        // ✅ Get markup config from database
+        const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
           productType,
-          price.CurrencyCode,
-          markupConfig
+          price.CurrencyCode
         );
+
+        if (markupConfig) {
+          // ✅ Use the calculation service
+          const result = this.markupCalculationService.calculateTotal(
+            price.Amount,
+            productType,
+            price.CurrencyCode,
+            markupConfig
+          );
+          
+          basePrice = price.Amount;
+          markupAmount = result.markupAmount;
+          markupPercentage = markupConfig.markupPercentage;
+          serviceFee = result.serviceFee;
+          serviceFeePercentage = result.serviceFeePercentage;
+          totalAmount = result.totalAmount;
+          currency = price.CurrencyCode;
+          breakdown = `${basePrice} + ${markupAmount} (${markupPercentage}% markup) + ${serviceFee} (${serviceFeePercentage}% service fee) = ${totalAmount}`;
+          
+          this.logger.log(`💰 Calculated with markup config:`, {
+            productType,
+            currency: price.CurrencyCode,
+            markupPercentage,
+            serviceFeePercentage,
+            totalAmount,
+          });
+        } else {
+          // ✅ Fallback: Use default percentages
+          this.logger.warn(`No markup config found for ${productType} in ${price.CurrencyCode}, using defaults`);
+          
+          const defaultMarkupPercentage = isDomestic ? 10 : 15;
+          const defaultServiceFeePercentage = 5;
+          
+          basePrice = price.Amount;
+          markupPercentage = defaultMarkupPercentage;
+          markupAmount = (price.Amount * defaultMarkupPercentage) / 100;
+          serviceFee = (price.Amount * defaultServiceFeePercentage) / 100;
+          totalAmount = price.Amount + markupAmount + serviceFee;
+          serviceFeePercentage = defaultServiceFeePercentage;
+          currency = price.CurrencyCode;
+          breakdown = `${basePrice} + ${markupAmount} (${markupPercentage}% markup) + ${serviceFee} (${serviceFeePercentage}% service fee) = ${totalAmount}`;
+        }
+      } catch (error) {
+        this.logger.warn('Failed to fetch markup config, using defaults:', error);
         
-        markupPercentage = markupConfig.markupPercentage;
-        markupAmount = result.markupAmount;
-        serviceFee = result.serviceFee;
-        totalAmount = result.totalAmount;
-        serviceFeePercentage = result.serviceFeePercentage;
-        
-        this.logger.log(`💰 Using markup config:`, {
-          productType,
-          currency: price.CurrencyCode,
-          markupPercentage,
-          serviceFeePercentage,
-          serviceFee,
-        });
-      } else {
-        // ✅ Fallback: Use default percentages
-        this.logger.warn(`No markup config found for ${productType} in ${price.CurrencyCode}, using defaults`);
-        
-        // Domestic: 10% markup, International: 15% markup
+        // ✅ Fallback defaults
         const defaultMarkupPercentage = isDomestic ? 10 : 15;
-        // ✅ Service fee is always 5%
         const defaultServiceFeePercentage = 5;
         
+        basePrice = price.Amount;
         markupPercentage = defaultMarkupPercentage;
         markupAmount = (price.Amount * defaultMarkupPercentage) / 100;
         serviceFee = (price.Amount * defaultServiceFeePercentage) / 100;
         totalAmount = price.Amount + markupAmount + serviceFee;
         serviceFeePercentage = defaultServiceFeePercentage;
+        currency = price.CurrencyCode;
+        breakdown = `${basePrice} + ${markupAmount} (${markupPercentage}% markup) + ${serviceFee} (${serviceFeePercentage}% service fee) = ${totalAmount}`;
       }
-    } catch (error) {
-      this.logger.warn('Failed to fetch markup config, using defaults:', error);
-      
-      // ✅ Fallback defaults
-      const defaultMarkupPercentage = isDomestic ? 10 : 15;
-      const defaultServiceFeePercentage = 5;
-      
-      markupPercentage = defaultMarkupPercentage;
-      markupAmount = (price.Amount * defaultMarkupPercentage) / 100;
-      serviceFee = (price.Amount * defaultServiceFeePercentage) / 100;
-      totalAmount = price.Amount + markupAmount + serviceFee;
-      serviceFeePercentage = defaultServiceFeePercentage;
     }
 
-    // ✅ Log the breakdown
-    this.logger.log(`💰 Price Breakdown:`, {
+    // ✅ Log the final breakdown
+    this.logger.log(`💰 Final Price Breakdown:`, {
       productType,
-      currency: price.CurrencyCode,
-      basePrice: price.Amount,
+      currency,
+      basePrice,
       markupPercentage,
       markupAmount,
       serviceFeePercentage,
       serviceFee,
       totalAmount,
-      breakdown: `${price.Amount} + ${markupAmount} (${markupPercentage}% markup) + ${serviceFee} (${serviceFeePercentage}% service fee) = ${totalAmount}`
+      breakdown,
     });
 
     // ✅ Generate reference
@@ -258,7 +310,7 @@ export class BookWakanowFlightUseCase {
     const random = Math.floor(100000 + Math.random() * 900000);
     const reference = `EBT-${dateStr}-${random}`;
 
-    // ✅ Create local booking
+    // ✅ Create local booking with the correct prices
     const booking = await this.bookingRepository.create({
       reference,
       userId,
@@ -267,11 +319,11 @@ export class BookWakanowFlightUseCase {
       provider: Provider.WAKANOW,
       providerBookingId: bookResponse.BookingId,
       providerData: bookResponse as any,
-      basePrice: price.Amount,
-      markupAmount,
-      serviceFee,
-      totalAmount,
-      currency: price.CurrencyCode,
+      basePrice: basePrice,
+      markupAmount: markupAmount,
+      serviceFee: serviceFee,
+      totalAmount: totalAmount,
+      currency: currency,
       bookingData: {
         wakanowBookingId: bookResponse.BookingId,
         pnrReferenceNumber: pnr,
@@ -280,14 +332,16 @@ export class BookWakanowFlightUseCase {
         targetCurrency,
         ticketStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.TicketStatus || 'PENDING',
         pnrStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.PnrStatus || 'PENDING',
+        // ✅ Store the price breakdown in booking data
         priceBreakdown: {
-          basePrice: price.Amount,
+          basePrice,
           markupAmount,
-          serviceFee,
-          totalAmount,
-          currency: price.CurrencyCode,
           markupPercentage,
+          serviceFee,
           serviceFeePercentage,
+          totalAmount,
+          currency,
+          breakdown,
         },
       },
       passengerInfo: passengers as any,
@@ -310,15 +364,17 @@ export class BookWakanowFlightUseCase {
       localBookingId: booking.id,
       paymentUrl: `/api/v1/payments/initiate?bookingId=${booking.id}`,
       amount: totalAmount,
-      currency: price.CurrencyCode,
+      currency: currency,
+      // ✅ Return the price breakdown
       priceBreakdown: {
-        basePrice: price.Amount,
+        basePrice,
         markupAmount,
-        serviceFee,
-        totalAmount,
-        currency: price.CurrencyCode,
         markupPercentage,
+        serviceFee,
         serviceFeePercentage,
+        totalAmount,
+        currency,
+        breakdown,
       },
     };
   }

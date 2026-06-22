@@ -90,11 +90,27 @@ export class SelectWakanowFlightUseCase {
       const combinedTaxes = roundedMarkup + roundedServiceFee;
       const combinedTaxPercentage = markupPct + servicePct;
 
+      // ✅ Create the price breakdown object
+      const priceBreakdown = {
+        basePrice: roundedBasePrice,
+        markupAmount: roundedMarkup,
+        markupPercentage: markupPct,
+        serviceFee: roundedServiceFee,
+        serviceFeePercentage: servicePct,
+        taxes: combinedTaxes,
+        taxPercentage: combinedTaxPercentage,
+        totalAmount: roundedTotal,
+        currency: currency,
+      };
+
       this.logger.log(
         `✅ Wakanow flight selected. BookingId: ${selectResponse.BookingId}, ` +
         `Base: ${roundedBasePrice}, Markup: ${roundedMarkup}, Service: ${roundedServiceFee}, ` +
         `Taxes: ${combinedTaxes}, Total: ${roundedTotal} ${currency}`,
       );
+
+      // ✅ Log the price breakdown for debugging
+      this.logger.log('💰 Price breakdown:', priceBreakdown);
 
       // ✅ Return with camelCase properties for frontend compatibility
       return {
@@ -105,17 +121,18 @@ export class SelectWakanowFlightUseCase {
         isPassportRequired: selectResponse.IsPassportRequired || false,
         
         // ✅ Price breakdown - frontend will display these as-is
-        priceBreakdown: {
-          basePrice: roundedBasePrice,
-          markupAmount: roundedMarkup,
-          markupPercentage: markupPct,
-          serviceFee: roundedServiceFee,
-          serviceFeePercentage: servicePct,
-          taxes: combinedTaxes,        // markup + service fee combined
-          taxPercentage: combinedTaxPercentage, // markup% + service% combined
-          totalAmount: roundedTotal,
-          currency: currency,
-        },
+        priceBreakdown: priceBreakdown,
+        
+        // ✅ Also store individual fields for easier access
+        basePrice: roundedBasePrice,
+        markupAmount: roundedMarkup,
+        markupPercentage: markupPct,
+        serviceFee: roundedServiceFee,
+        serviceFeePercentage: servicePct,
+        taxes: combinedTaxes,
+        taxPercentage: combinedTaxPercentage,
+        totalAmount: roundedTotal,
+        currency: currency,
         
         flightSummary: {
           slices: (combo.FlightModels || []).map((fm) => ({

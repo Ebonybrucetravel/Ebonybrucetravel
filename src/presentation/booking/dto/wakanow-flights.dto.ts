@@ -10,6 +10,8 @@ import {
   ArrayMinSize,
   IsDateString,
   IsEmail,
+  IsNumber,
+  IsObject,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -187,6 +189,51 @@ export class WakanowPassengerDto {
   postalCode: string;
 }
 
+// ✅ NEW: Price Breakdown DTO
+export class PriceBreakdownDto {
+  @ApiProperty({ description: 'Base price (before markup and service fee)' })
+  @IsNumber()
+  basePrice: number;
+
+  @ApiProperty({ description: 'Markup amount' })
+  @IsNumber()
+  markupAmount: number;
+
+  @ApiProperty({ description: 'Markup percentage' })
+  @IsNumber()
+  markupPercentage: number;
+
+  @ApiProperty({ description: 'Service fee amount' })
+  @IsNumber()
+  serviceFee: number;
+
+  @ApiProperty({ description: 'Service fee percentage' })
+  @IsNumber()
+  serviceFeePercentage: number;
+
+  @ApiProperty({ description: 'Taxes (markup + service fee combined)' })
+  @IsNumber()
+  taxes: number;
+
+  @ApiProperty({ description: 'Tax percentage (markup% + service fee%)' })
+  @IsNumber()
+  taxPercentage: number;
+
+  @ApiProperty({ description: 'Total amount (base + markup + service fee)' })
+  @IsNumber()
+  totalAmount: number;
+
+  @ApiProperty({ description: 'Currency code', example: 'NGN' })
+  @IsString()
+  currency: string;
+
+  @ApiPropertyOptional({ description: 'Breakdown description' })
+  @IsOptional()
+  @IsString()
+  breakdown?: string;
+}
+
+// ✅ UPDATED: BookWakanowFlightDto with priceBreakdown support
 export class BookWakanowFlightDto {
   @ApiProperty({ description: 'Passenger details', type: [WakanowPassengerDto] })
   @IsArray()
@@ -207,6 +254,17 @@ export class BookWakanowFlightDto {
   @IsOptional()
   @IsString()
   targetCurrency?: string = 'NGN';
+
+  // ✅ NEW: Price breakdown from the select response
+  @ApiPropertyOptional({ 
+    description: 'Price breakdown from the select response. If provided, these prices will be used instead of recalculating.',
+    type: PriceBreakdownDto 
+  })
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => PriceBreakdownDto)
+  priceBreakdown?: PriceBreakdownDto;
 }
 
 export class TicketWakanowFlightDto {
