@@ -5,15 +5,21 @@ import { CacheService } from '@infrastructure/cache/cache.service';
 import { CurrencyService } from '@infrastructure/currency/currency.service';
 import { ProductType } from '@prisma/client';
 import { SearchWakanowFlightsDto } from '@presentation/booking/dto/wakanow-flights.dto';
+
 @Injectable()
 export class SearchWakanowFlightsUseCase {
   private readonly logger = new Logger(SearchWakanowFlightsUseCase.name);
+  
+  // ✅ Cache markup configs to avoid DB queries per offer
+  private markupConfigCache: Map<string, { markupPercentage: number; serviceFeeAmount: number }> = new Map();
+
   constructor(
     private readonly wakanowService: WakanowService,
     private readonly markupRepository: MarkupRepository,
     private readonly cacheService: CacheService,
     private readonly currencyService: CurrencyService,
   ) {}
+
   async execute(searchParams: SearchWakanowFlightsDto) {
     const {
       flightSearchType,
@@ -25,7 +31,11 @@ export class SearchWakanowFlightsUseCase {
       itineraries,
       currency = 'GBP',
     } = searchParams;
+
     const isDomestic = this.isNigerianRoute(itineraries);
+    const displayCurrency = currency.toUpperCase();
+
+    // ✅ Build request
     const wakanowRequest: WakanowSearchRequest = {
       FlightSearchType: flightSearchType,
       Ticketclass: ticketClass,
@@ -39,13 +49,18 @@ export class SearchWakanowFlightsUseCase {
         DepartureDate: it.DepartureDate,
       })),
     };
+
+    // ✅ Check cache
     const cacheKey = `wakanow:search:${JSON.stringify(wakanowRequest)}`;
     const cached = this.cacheService.get<any>(cacheKey);
     if (cached) {
       this.logger.log('Returning cached Wakanow search results');
       return cached;
     }
+
+    // ✅ Fetch from Wakanow
     const results = await this.wakanowService.searchFlights(wakanowRequest);
+    
     if (results.length === 0) {
       return {
         provider: 'WAKANOW',
@@ -54,57 +69,162 @@ export class SearchWakanowFlightsUseCase {
         message: 'No flights found for the selected route and dates',
       };
     }
-    const displayCurrency = currency.toUpperCase();
-    const normalizedOffers = await Promise.all(
-      results.map(async (result, index) => {
-        return this.normalizeOffer(result, index, isDomestic, targetCurrency, displayCurrency);
-      }),
+
+    // ✅ Get markup config ONCE (not per offer)
+    const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
+    const markupConfig = await this.getMarkupConfig(productType, displayCurrency);
+    const { markupPercentage, serviceFeeAmount } = markupConfig;
+
+    // ✅ Pre-fetch conversion rate once (not per offer)
+    let conversionRate = 1;
+    let conversionFee = 0;
+    let totalWithFee = 0;
+    let baseCurrency = 'NGN';
+
+    // Get the currency from the first result
+    if (results.length > 0 && results[0]?.FlightCombination?.Price?.CurrencyCode) {
+      baseCurrency = results[0].FlightCombination.Price.CurrencyCode;
+      
+      if (baseCurrency !== displayCurrency) {
+        const conversionResult = await this.currencyService.convert(1, baseCurrency, displayCurrency);
+        conversionRate = conversionResult;
+        const conversionDetails = this.currencyService.calculateConversionFee(1, baseCurrency, displayCurrency);
+        conversionFee = conversionDetails.conversionFee;
+        totalWithFee = conversionDetails.totalWithFee;
+      } else {
+        conversionRate = 1;
+        conversionFee = 0;
+        totalWithFee = 1;
+      }
+    }
+
+    this.logger.log(`💰 Using conversion rate: ${conversionRate}, fee: ${conversionFee}`);
+
+    // ✅ Normalize all offers in parallel with limited concurrency
+    const normalizedOffers = await this.normalizeOffersBatch(
+      results,
+      isDomestic,
+      displayCurrency,
+      markupPercentage,
+      serviceFeeAmount,
+      conversionRate,
+      conversionFee,
+      totalWithFee,
+      baseCurrency,
     );
+
     const response = {
       provider: 'WAKANOW',
       offers: normalizedOffers,
       total_offers: normalizedOffers.length,
     };
+
+    // ✅ Cache for 5 minutes
     this.cacheService.set(cacheKey, response, 5 * 60 * 1000);
+    
     return response;
   }
-  private async normalizeOffer(
+
+  /**
+   * ✅ Get markup config with caching
+   */
+  private async getMarkupConfig(productType: ProductType, currency: string) {
+    const cacheKey = `markup:${productType}:${currency}`;
+    
+    if (this.markupConfigCache.has(cacheKey)) {
+      return this.markupConfigCache.get(cacheKey)!;
+    }
+
+    try {
+      const config = await this.markupRepository.findActiveMarkupByProductType(productType, currency);
+      const result = {
+        markupPercentage: config?.markupPercentage || 0,
+        serviceFeeAmount: config?.serviceFeeAmount || 0,
+      };
+      this.markupConfigCache.set(cacheKey, result);
+      return result;
+    } catch (error) {
+      this.logger.warn(`Could not fetch markup config for ${currency}, using 0%`);
+      return { markupPercentage: 0, serviceFeeAmount: 0 };
+    }
+  }
+
+  /**
+   * ✅ Batch normalize offers with controlled concurrency
+   */
+  private async normalizeOffersBatch(
+    results: WakanowSearchResult[],
+    isDomestic: boolean,
+    displayCurrency: string,
+    markupPercentage: number,
+    serviceFeeAmount: number,
+    conversionRate: number,
+    conversionFee: number,
+    totalWithFee: number,
+    baseCurrency: string,
+  ) {
+    // ✅ Process in batches of 10 to avoid overwhelming the event loop
+    const batchSize = 10;
+    const normalizedOffers: any[] = [];
+    
+    for (let i = 0; i < results.length; i += batchSize) {
+      const batch = results.slice(i, i + batchSize);
+      const batchPromises = batch.map((result, index) =>
+        this.normalizeOfferFast(
+          result,
+          i + index,
+          isDomestic,
+          displayCurrency,
+          markupPercentage,
+          serviceFeeAmount,
+          conversionRate,
+          conversionFee,
+          totalWithFee,
+          baseCurrency,
+        )
+      );
+      const batchResults = await Promise.all(batchPromises);
+      normalizedOffers.push(...batchResults);
+    }
+    
+    return normalizedOffers;
+  }
+
+  /**
+   * ✅ Fast normalization - no async operations per offer
+   */
+  private normalizeOfferFast(
     result: WakanowSearchResult,
     index: number,
     isDomestic: boolean,
-    wakanowCurrency: string,
     displayCurrency: string,
+    markupPercentage: number,
+    serviceFeeAmount: number,
+    conversionRate: number,
+    conversionFee: number,
+    totalWithFee: number,
+    baseCurrency: string,
   ) {
     const combo = result.FlightCombination;
     const basePrice = combo.Price.Amount;
-    const priceCurrency = combo.Price.CurrencyCode || wakanowCurrency;
-    let convertedPrice = basePrice;
-    if (priceCurrency !== displayCurrency) {
-      convertedPrice = await this.currencyService.convert(basePrice, priceCurrency, displayCurrency);
-    }
-    const conversionDetails = this.currencyService.calculateConversionFee(
-      convertedPrice,
-      priceCurrency,
-      displayCurrency,
-    );
-    let markupPercentage = 0;
-    let serviceFeeAmount = 0;
-    try {
-      const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
-      const markupConfig = await this.markupRepository.findActiveMarkupByProductType(productType, displayCurrency);
-      markupPercentage = markupConfig?.markupPercentage || 0;
-      serviceFeeAmount = markupConfig?.serviceFeeAmount || 0;
-    } catch (error) {
-      this.logger.warn(`Could not fetch markup config for ${displayCurrency}, using 0%`);
-    }
-    const markupAmount = (conversionDetails.totalWithFee * markupPercentage) / 100;
-    const finalPrice = conversionDetails.totalWithFee + markupAmount + serviceFeeAmount;
+    
+    // ✅ Use pre-calculated conversion values
+    const convertedPrice = basePrice * conversionRate;
+    const convertedTotalWithFee = basePrice * totalWithFee;
+    const convertedConversionFee = basePrice * conversionFee;
+    const markupAmount = (convertedTotalWithFee * markupPercentage) / 100;
+    const finalPrice = convertedTotalWithFee + markupAmount + serviceFeeAmount;
+
+    // ✅ Calculate totals
     let totalBaseFare = 0;
     let totalTax = 0;
     for (const pd of combo.PriceDetails) {
       totalBaseFare += pd.BaseFare.Amount;
       totalTax += pd.Tax.Amount;
     }
+    const convertedTax = totalTax * conversionRate;
+
+    // ✅ Build slices
     const slices = combo.FlightModels.map((fm) => ({
       origin: {
         iata_code: fm.DepartureCode,
@@ -144,6 +264,15 @@ export class SearchWakanowFlightsUseCase {
       },
       free_baggage: fm.FreeBaggage,
     }));
+
+    // ✅ Calculate price breakdown for frontend
+    const roundedBasePrice = Math.round(convertedPrice * 100) / 100;
+    const roundedMarkup = Math.round(markupAmount * 100) / 100;
+    const roundedServiceFee = Math.round(serviceFeeAmount * 100) / 100;
+    const roundedTotal = Math.round(finalPrice * 100) / 100;
+    const roundedTaxes = Math.round((roundedMarkup + roundedServiceFee) * 100) / 100;
+    const combinedTaxPercentage = markupPercentage + 5; // 5% service fee
+
     return {
       provider: 'WAKANOW' as const,
       id: `wakanow-${index}`,
@@ -153,25 +282,37 @@ export class SearchWakanowFlightsUseCase {
       adults: combo.Adults,
       children: combo.Children,
       infants: combo.Infants,
+      
+      // ✅ Price fields
       original_amount: String(basePrice),
-      original_currency: priceCurrency,
-      base_amount: this.currencyService.formatAmount(convertedPrice, displayCurrency),
+      original_currency: baseCurrency,
+      base_amount: convertedPrice.toFixed(2),
       base_currency: displayCurrency,
-      tax_amount: totalTax > 0
-        ? this.currencyService.formatAmount(
-            await this.currencyService.convert(totalTax, priceCurrency, displayCurrency),
-            displayCurrency,
-          )
-        : '0.00',
-      conversion_fee: this.currencyService.formatAmount(conversionDetails.conversionFee, displayCurrency),
-      conversion_fee_percentage: priceCurrency !== displayCurrency ? this.currencyService.getConversionBuffer() : 0,
+      tax_amount: convertedTax.toFixed(2),
+      conversion_fee: convertedConversionFee.toFixed(2),
+      conversion_fee_percentage: baseCurrency !== displayCurrency ? 5 : 0,
       markup_percentage: markupPercentage,
-      markup_amount: this.currencyService.formatAmount(markupAmount, displayCurrency),
-      service_fee: this.currencyService.formatAmount(serviceFeeAmount, displayCurrency),
-      total_amount: this.currencyService.formatAmount(conversionDetails.totalWithFee, displayCurrency),
-      final_amount: this.currencyService.formatAmount(finalPrice, displayCurrency),
+      markup_amount: roundedMarkup.toFixed(2),
+      service_fee: roundedServiceFee.toFixed(2),
+      total_amount: convertedTotalWithFee.toFixed(2),
+      final_amount: roundedTotal.toFixed(2),
       total_currency: displayCurrency,
       currency: displayCurrency,
+      
+      // ✅ Price breakdown for frontend
+      priceBreakdown: {
+        basePrice: roundedBasePrice,
+        markupAmount: roundedMarkup,
+        markupPercentage: markupPercentage,
+        serviceFee: roundedServiceFee,
+        serviceFeePercentage: 5,
+        taxes: roundedTaxes,
+        taxPercentage: combinedTaxPercentage,
+        totalAmount: roundedTotal,
+        currency: displayCurrency,
+        breakdown: `${roundedBasePrice} + ${roundedMarkup} (${markupPercentage}% markup) + ${roundedServiceFee} (5% service fee) = ${roundedTotal}`,
+      },
+      
       price_details: combo.PriceDetails.map((pd) => ({
         passenger_type: pd.PassengerType,
         base_fare: pd.BaseFare.Amount,
@@ -184,8 +325,12 @@ export class SearchWakanowFlightsUseCase {
       connection_code: combo.ConnectionCode,
     };
   }
+
   private isNigerianRoute(itineraries: Array<{ Departure: string; Destination: string }>): boolean {
-    const nigerianAirports = ['LOS', 'ABV', 'KAN', 'PHC', 'QOW', 'ENU', 'ILR', 'JOS', 'YOL', 'CBQ', 'BNI', 'AKR', 'MIU', 'QRW'];
+    const nigerianAirports = [
+      'LOS', 'ABV', 'KAN', 'PHC', 'QOW', 'ENU', 'ILR', 'JOS', 'YOL', 
+      'CBQ', 'BNI', 'AKR', 'MIU', 'QRW'
+    ];
     return itineraries.every(
       (it) =>
         nigerianAirports.includes(it.Departure.toUpperCase()) &&
