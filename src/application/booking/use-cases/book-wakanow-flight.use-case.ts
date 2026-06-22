@@ -22,12 +22,11 @@ export class BookWakanowFlightUseCase {
   async execute(dto: BookWakanowFlightDto, userId: string) {
     const { passengers, bookingId, selectData, targetCurrency = 'NGN', priceBreakdown } = dto;
 
-    // ✅ Log the incoming bookingId for debugging
-    this.logger.log(`Booking Wakanow flight. BookingId: ${bookingId}, Type: ${typeof bookingId}, Length: ${bookingId?.length}`);
-    this.logger.log(`Passengers: ${passengers.length}`);
-    this.logger.log(`SelectData length: ${selectData?.length || 0}`);
+    this.logger.log(`📝 Booking Wakanow flight. BookingId: ${bookingId}, Type: ${typeof bookingId}, Length: ${bookingId?.length}`);
+    this.logger.log(`👤 UserId: ${userId}`);
+    this.logger.log(`👤 Passengers: ${passengers.length}`);
+    this.logger.log(`📋 SelectData length: ${selectData?.length || 0}`);
 
-    // ✅ Log price breakdown if provided
     if (priceBreakdown) {
       this.logger.log('💰 Using price breakdown from select:', {
         basePrice: priceBreakdown.basePrice,
@@ -36,6 +35,7 @@ export class BookWakanowFlightUseCase {
         serviceFee: priceBreakdown.serviceFee,
         serviceFeePercentage: priceBreakdown.serviceFeePercentage,
         taxes: priceBreakdown.taxes,
+        taxPercentage: priceBreakdown.taxPercentage,
         totalAmount: priceBreakdown.totalAmount,
         currency: priceBreakdown.currency,
       });
@@ -43,7 +43,6 @@ export class BookWakanowFlightUseCase {
       this.logger.warn('⚠️ No price breakdown provided! Will use Wakanow price and recalculate.');
     }
 
-    // ✅ Validate required fields
     if (!bookingId) {
       throw new BadRequestException('BookingId is required');
     }
@@ -54,7 +53,6 @@ export class BookWakanowFlightUseCase {
       throw new BadRequestException('At least one passenger is required');
     }
 
-    // ✅ Check if the bookingId is a Wakanow ID (numeric) or local ID
     const isWakanowId = /^\d+$/.test(bookingId);
     this.logger.log(`Is Wakanow BookingId: ${isWakanowId}`);
 
@@ -62,7 +60,6 @@ export class BookWakanowFlightUseCase {
       this.logger.warn(`⚠️ BookingId "${bookingId}" appears to be a local ID, not a Wakanow ID!`);
     }
 
-    // ✅ Check for duplicate booking
     const existingBooking = await this.bookingRepository.findByProviderBookingId(bookingId);
     
     if (existingBooking) {
@@ -78,7 +75,7 @@ export class BookWakanowFlightUseCase {
       };
     }
 
-    // ✅ Validate passenger data
+
     for (let i = 0; i < passengers.length; i++) {
       const p = passengers[i];
       if (!p.firstName) {
@@ -104,7 +101,7 @@ export class BookWakanowFlightUseCase {
       }
     }
 
-    // ✅ Map passengers to Wakanow format
+
     const wakanowPassengers: WakanowPassengerDetail[] = passengers.map((p) => ({
       PassengerType: p.passengerType || 'Adult',
       FirstName: p.firstName,
@@ -127,7 +124,7 @@ export class BookWakanowFlightUseCase {
       IsWakapointRegister: false,
     }));
 
-    // ✅ Build Wakanow request
+
     const wakanowRequest: WakanowBookRequest = {
       PassengerDetails: wakanowPassengers,
       BookingItemModels: [
@@ -141,41 +138,80 @@ export class BookWakanowFlightUseCase {
       BookingId: bookingId,
     };
 
-    // ✅ Log the request
+
     this.logger.log(`Sending booking request to Wakanow with BookingId: ${bookingId}`);
 
-    // ✅ Book with Wakanow
+
     let bookResponse;
-    try {
-      bookResponse = await this.wakanowService.bookFlight(wakanowRequest);
-    } catch (error: any) {
-      this.logger.error('Wakanow booking failed:', error);
-      
-      const errorMsg = error?.message?.toLowerCase() || '';
-      
-      if (errorMsg.includes('not selected by you') || 
-          errorMsg.includes('session expired') ||
-          errorMsg.includes('session has expired')) {
-        this.logger.error(`❌ Booking failed because flight wasn't selected by this user. BookingId: ${bookingId}`);
-        throw new BadRequestException(
-          'Your flight selection has expired. Please search for flights again and complete the booking promptly.'
-        );
+    const maxRetries = 3;
+    let attempt = 0;
+    let lastError: any = null;
+
+    while (attempt < maxRetries) {
+      try {
+        attempt++;
+        this.logger.log(`📖 Booking attempt ${attempt}/${maxRetries}...`);
+        bookResponse = await this.wakanowService.bookFlight(wakanowRequest);
+
+        break;
+      } catch (error: any) {
+        lastError = error;
+        const errorMsg = error?.message?.toLowerCase() || '';
+        const errorString = JSON.stringify(error)?.toLowerCase() || '';
+
+
+        const errorStatus = error?.status || 
+                           error?.response?.status || 
+                           error?.response?.statusCode || 
+                           error?.statusCode || 
+                           error?.code || 
+                           0;
+
+
+        if (errorMsg.includes('not selected by you') || 
+            errorMsg.includes('session expired') ||
+            errorMsg.includes('session has expired') ||
+            errorMsg.includes('expired') ||
+            errorMsg.includes('no longer available')) {
+          this.logger.error(`❌ Booking failed because flight wasn't selected by this user. BookingId: ${bookingId}`);
+          throw new BadRequestException(
+            'Your flight selection has expired. Please search for flights again and complete the booking promptly.'
+          );
+        }
+
+
+        if ((errorStatus === 500 || errorStatus === 0 || errorStatus === 502 || errorStatus === 503) && attempt < maxRetries) {
+          this.logger.warn(`⚠️ Booking attempt ${attempt} failed with ${errorStatus}, retrying in ${1000 * attempt}ms...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          continue;
+        }
+
+        if (errorStatus === 400 && attempt < 2) {
+          this.logger.warn(`⚠️ Booking attempt ${attempt} failed with 400, retrying once...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+
+   
+        throw error;
       }
-      
-      if (errorMsg.includes('expired') || errorMsg.includes('no longer available')) {
-        throw new GoneException('Your booking session has expired. Please search again.');
-      }
-      
+    }
+
+
+    if (!bookResponse) {
+      this.logger.error('❌ All booking retry attempts failed');
       throw new HttpException(
-        error?.message || 'Failed to book flight with Wakanow',
-        HttpStatus.BAD_REQUEST,
+        'Failed to book flight after multiple attempts. Please try again.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
 
-    // ✅ Extract PNR
-    const pnr = bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.PnrReferenceNumber || 'PENDING_ISSUE';
 
-    // ✅ Extract flight combination
+    const pnr = bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.PnrReferenceNumber || 
+                bookResponse.FlightBookingResult?.PnReferenceNumber ||
+                'PENDING_ISSUE';
+
+
     const combo = bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.FlightSummaryModel?.FlightCombination;
     if (!combo) {
       throw new Error('Flight booking failed: Invalid response from Wakanow (missing FlightCombination)');
@@ -185,13 +221,11 @@ export class BookWakanowFlightUseCase {
     const firstDep = combo.FlightModels[0]?.DepartureCode || '';
     const firstArr = combo.FlightModels[0]?.ArrivalCode || '';
 
-    // ✅ Determine if domestic or international
+
     const isDomestic = this.isNigerianRoute(firstDep, firstArr);
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
 
-    // ============================================================
-    // ✅ USE PRICE BREAKDOWN FROM SELECT (if available)
-    // ============================================================
+
     let basePrice: number;
     let markupAmount: number;
     let markupPercentage: number;
@@ -202,7 +236,7 @@ export class BookWakanowFlightUseCase {
     let breakdown: string;
 
     if (priceBreakdown && priceBreakdown.totalAmount > 0) {
-      // ✅ Use the price breakdown from the select response
+
       basePrice = priceBreakdown.basePrice;
       markupAmount = priceBreakdown.markupAmount;
       markupPercentage = priceBreakdown.markupPercentage;
@@ -222,18 +256,18 @@ export class BookWakanowFlightUseCase {
         currency,
       });
     } else {
-      // ✅ FALLBACK: Calculate markup and service fee (if no breakdown provided)
+    
       this.logger.warn('⚠️ No price breakdown provided, calculating from Wakanow price...');
       
       try {
-        // ✅ Get markup config from database
+
         const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
           productType,
           price.CurrencyCode
         );
 
         if (markupConfig) {
-          // ✅ Use the calculation service
+
           const result = this.markupCalculationService.calculateTotal(
             price.Amount,
             productType,
@@ -257,8 +291,7 @@ export class BookWakanowFlightUseCase {
             serviceFeePercentage,
             totalAmount,
           });
-        } else {
-          // ✅ Fallback: Use default percentages
+
           this.logger.warn(`No markup config found for ${productType} in ${price.CurrencyCode}, using defaults`);
           
           const defaultMarkupPercentage = isDomestic ? 10 : 15;
@@ -276,7 +309,6 @@ export class BookWakanowFlightUseCase {
       } catch (error) {
         this.logger.warn('Failed to fetch markup config, using defaults:', error);
         
-        // ✅ Fallback defaults
         const defaultMarkupPercentage = isDomestic ? 10 : 15;
         const defaultServiceFeePercentage = 5;
         
@@ -291,7 +323,6 @@ export class BookWakanowFlightUseCase {
       }
     }
 
-    // ✅ Log the final breakdown
     this.logger.log(`💰 Final Price Breakdown:`, {
       productType,
       currency,
@@ -304,13 +335,13 @@ export class BookWakanowFlightUseCase {
       breakdown,
     });
 
-    // ✅ Generate reference
+
     const date = new Date();
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
     const random = Math.floor(100000 + Math.random() * 900000);
     const reference = `EBT-${dateStr}-${random}`;
 
-    // ✅ Create local booking with the correct prices
+  
     const booking = await this.bookingRepository.create({
       reference,
       userId,
@@ -332,7 +363,7 @@ export class BookWakanowFlightUseCase {
         targetCurrency,
         ticketStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.TicketStatus || 'PENDING',
         pnrStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.PnrStatus || 'PENDING',
-        // ✅ Store the price breakdown in booking data
+   
         priceBreakdown: {
           basePrice,
           markupAmount,
@@ -350,7 +381,7 @@ export class BookWakanowFlightUseCase {
 
     this.logger.log(`✅ Wakanow flight booked. Local booking: ${booking.id}, PNR: ${pnr}`);
 
-    // ✅ Return enriched booking with payment info
+
     return {
       ...booking,
       wakanow_booking_id: bookResponse.BookingId,
@@ -365,7 +396,7 @@ export class BookWakanowFlightUseCase {
       paymentUrl: `/api/v1/payments/initiate?bookingId=${booking.id}`,
       amount: totalAmount,
       currency: currency,
-      // ✅ Return the price breakdown
+
       priceBreakdown: {
         basePrice,
         markupAmount,

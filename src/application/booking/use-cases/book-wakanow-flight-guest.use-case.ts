@@ -13,13 +13,13 @@ export class BookWakanowFlightGuestUseCase {
   ) {}
 
   async execute(dto: BookWakanowFlightDto) {
-    // ✅ Log the incoming request
+
     this.logger.log('📝 Booking Wakanow flight as guest...');
     this.logger.log(`👤 Passengers: ${dto.passengers?.length || 0}`);
     this.logger.log(`🆔 BookingId: ${dto.bookingId}`);
     this.logger.log(`📋 SelectData length: ${dto.selectData?.length || 0}`);
     
-    // ✅ Log price breakdown if provided
+
     if (dto.priceBreakdown) {
       this.logger.log('💰 Guest booking with price breakdown:', {
         basePrice: dto.priceBreakdown.basePrice,
@@ -36,7 +36,7 @@ export class BookWakanowFlightGuestUseCase {
       this.logger.warn('⚠️ No price breakdown provided for guest booking! Prices will be recalculated.');
     }
 
-    // ✅ Validate lead passenger
+
     const leadPassenger = dto.passengers?.[0];
     if (!leadPassenger?.email) {
       throw new BadRequestException('Lead passenger email is required for guest bookings');
@@ -44,44 +44,112 @@ export class BookWakanowFlightGuestUseCase {
 
     const email = leadPassenger.email.toLowerCase().trim();
 
-    // ✅ Find or create guest user
-    let guestUser = await this.prisma.user.findUnique({
-      where: { email },
-    });
+    let guestUser = null;
+    const maxRetries = 3;
+    let attempt = 0;
 
-    if (!guestUser) {
-      this.logger.log(`👤 Creating new guest user for ${email}`);
-      guestUser = await this.prisma.user.create({
-        data: {
-          email,
-          name: `${leadPassenger.firstName} ${leadPassenger.lastName}`.trim(),
-          phone: leadPassenger.phoneNumber,
-          role: 'CUSTOMER',
-          password: null,
-          provider: null,
-          providerId: null,
-          // ✅ Remove isGuest and emailVerified if they don't exist in your model
-          // Only include fields that exist in your User model
-        },
-      });
-      this.logger.log(`✅ Created guest user: ${guestUser.id}`);
-    } else {
-      this.logger.log(`✅ Using existing guest user: ${guestUser.id}`);
+    while (attempt < maxRetries) {
+      try {
+        attempt++;
+        this.logger.log(`Attempt ${attempt}/${maxRetries} to find/create guest user...`);
+        
+        guestUser = await this.prisma.user.findUnique({
+          where: { email },
+        });
+
+        if (!guestUser) {
+          this.logger.log(`👤 Creating new guest user for ${email}`);
+          guestUser = await this.prisma.user.create({
+            data: {
+              email,
+              name: `${leadPassenger.firstName} ${leadPassenger.lastName}`.trim(),
+              phone: leadPassenger.phoneNumber,
+              role: 'CUSTOMER',
+              password: null,
+              provider: null,
+              providerId: null,
+            },
+          });
+          this.logger.log(`✅ Created guest user: ${guestUser.id}`);
+        } else {
+          this.logger.log(`✅ Using existing guest user: ${guestUser.id}`);
+        }
+
+        break;
+        
+      } catch (error: any) {
+        const errorMsg = error?.message?.toLowerCase() || '';
+        const errorStatus = error?.status || error?.code || 0;
+
+        if ((errorMsg.includes('connection') || 
+            errorMsg.includes('timeout') ||
+            errorMsg.includes('database') ||
+            errorStatus === 500 ||
+            errorStatus === 503) && attempt < maxRetries) {
+          this.logger.warn(`Attempt ${attempt} failed, retrying in ${1000 * attempt}ms...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          continue;
+        }
+        
+        throw error;
+      }
     }
 
-    // ✅ Log that we're passing price breakdown to book use case
+    if (!guestUser) {
+      this.logger.error('❌ All retry attempts to find/create guest user failed');
+      throw new BadRequestException('Unable to create guest user. Please try again.');
+    }
+
+
     if (dto.priceBreakdown) {
       this.logger.log('💰 Passing price breakdown to BookWakanowFlightUseCase');
     }
 
-    // ✅ Execute the booking with the price breakdown
-    const result = await this.bookWakanowUseCase.execute(dto, guestUser.id);
+   
+    let result = null;
+    attempt = 0;
 
-    // ✅ Log the result
+    while (attempt < maxRetries) {
+      try {
+        attempt++;
+        this.logger.log(`📖 Booking attempt ${attempt}/${maxRetries} for guest...`);
+        result = await this.bookWakanowUseCase.execute(dto, guestUser.id);
+        break;
+      } catch (error: any) {
+        const errorMsg = error?.message?.toLowerCase() || '';
+        const errorStatus = error?.status || error?.code || 0;
+
+        if (errorMsg.includes('expired') || 
+            errorMsg.includes('SELECTION_EXPIRED') ||
+            errorMsg.includes('not selected by you') ||
+            errorMsg.includes('session expired')) {
+          this.logger.warn('⚠️ Booking failed due to expired selection, not retrying');
+          throw error;
+        }
+
+       
+        if ((errorStatus === 500 || errorStatus === 0 || errorStatus === 502 || errorStatus === 503) && attempt < maxRetries) {
+          this.logger.warn(`⚠️ Booking attempt ${attempt} failed with ${errorStatus}, retrying in ${1000 * attempt}ms...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          continue;
+        }
+
+       
+        throw error;
+      }
+    }
+
+    
+    if (!result) {
+      this.logger.error('❌ All booking retry attempts failed for guest');
+      throw new BadRequestException('Failed to book flight after multiple attempts. Please try again.');
+    }
+
+    
     this.logger.log(`✅ Guest booking completed. Booking: ${result.id}, PNR: ${result.pnr_reference}`);
     this.logger.log(`💰 Final total: ${result.totalAmount} ${result.currency}`);
 
-    // ✅ Return the result with guest flag
+
     return {
       ...result,
       isGuest: true,

@@ -472,6 +472,76 @@ export class WakanowService {
     throw new HttpException({ message, error: context }, httpStatus);
   }
 
+  /**
+   * ✅ NEW: Health check method
+   * Checks if the Wakanow API is accessible and responsive
+   */
+  async healthCheck(): Promise<boolean> {
+    try {
+      this.logger.debug('Performing Wakanow API health check');
+
+      // Try to get the token as a health check
+      // If token generation fails, the API is not healthy
+      await this.getToken();
+
+      // Try a lightweight API call - fetch just 1 airport
+      const headers = await this.getAuthHeaders();
+      
+      const response = await this.fetchWithRetry(`${this.serviceUrl}/api/flight/airports`, {
+        method: 'GET',
+        headers,
+        timeout: 5000, // 5 second timeout
+      });
+
+      if (!response.ok) {
+        this.logger.warn(`Health check failed: API returned status ${response.status}`);
+        return false;
+      }
+
+      // Check if we got a valid response
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        this.logger.warn('Health check failed: Invalid content type');
+        return false;
+      }
+
+      const data = await response.json();
+      
+      // Check if we got a valid array or object
+      const isValid = Array.isArray(data) || (typeof data === 'object' && data !== null);
+      
+      if (isValid) {
+        this.logger.debug('Wakanow API health check passed ✅');
+        return true;
+      } else {
+        this.logger.warn('Health check failed: Invalid response data');
+        return false;
+      }
+    } catch (error: any) {
+      // If it's a timeout or connection error, return false
+      if (error.code === 'ECONNABORTED' || error.name === 'TimeoutError') {
+        this.logger.error(`Wakanow API health check timed out`);
+      } else {
+        this.logger.error(`Wakanow API health check failed: ${error.message}`);
+      }
+      return false;
+    }
+  }
+
+  /**
+   * ✅ NEW: Simple ping health check (lighter than full healthCheck)
+   * Only checks token generation, no API call
+   */
+  async ping(): Promise<boolean> {
+    try {
+      await this.getToken();
+      return true;
+    } catch (error) {
+      this.logger.error(`Wakanow API ping failed: ${error.message}`);
+      return false;
+    }
+  }
+
   async getAirports(): Promise<WakanowAirport[]> {
     const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 

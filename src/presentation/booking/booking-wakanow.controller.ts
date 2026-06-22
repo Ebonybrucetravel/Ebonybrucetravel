@@ -1,9 +1,10 @@
+// src/presentation/booking/booking-wakanow.controller.ts
+
 import {
   Controller,
   Get,
   Post,
   Body,
-  Param,
   Query,
   UseGuards,
   Request,
@@ -12,6 +13,9 @@ import {
   HttpException,
   BadRequestException,
   GoneException,
+  Logger,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
@@ -35,6 +39,8 @@ import {
 @ApiTags('Wakanow Flights')
 @Controller('bookings/wakanow')
 export class BookingWakanowController {
+  private readonly logger = new Logger(BookingWakanowController.name);
+
   constructor(
     private readonly searchWakanowFlightsUseCase: SearchWakanowFlightsUseCase,
     private readonly selectWakanowFlightUseCase: SelectWakanowFlightUseCase,
@@ -48,6 +54,7 @@ export class BookingWakanowController {
   @Post('search')
   @Throttle(20, 60000)
   @HttpCode(HttpStatus.OK)
+  @UsePipes(new ValidationPipe({ transform: true }))
   @ApiOperation({
     summary: 'Search flights via Wakanow (no authentication required)',
     description:
@@ -58,8 +65,13 @@ export class BookingWakanowController {
   @ApiResponse({ status: 400, description: 'Invalid search parameters' })
   @ApiResponse({ status: 503, description: 'Wakanow API unavailable' })
   async searchFlights(@Body() searchDto: SearchWakanowFlightsDto) {
+    this.logger.log(`Searching flights: ${searchDto.itineraries?.length || 0} itinerary(s)`);
+    
     try {
       const results = await this.searchWakanowFlightsUseCase.execute(searchDto);
+      
+      this.logger.log(`Found ${results.total_offers || 0} flight offers`);
+      
       return {
         success: true,
         data: results,
@@ -68,6 +80,7 @@ export class BookingWakanowController {
           : 'No flights found for the selected route and dates',
       };
     } catch (error: any) {
+      this.logger.error(`Search failed: ${error.message}`);
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         {
@@ -84,6 +97,7 @@ export class BookingWakanowController {
   @Public()
   @Post('select')
   @HttpCode(HttpStatus.OK)
+  @UsePipes(new ValidationPipe({ transform: true }))
   @ApiOperation({
     summary: 'Select/confirm a Wakanow flight offer (no authentication required)',
     description:
@@ -94,20 +108,24 @@ export class BookingWakanowController {
   @ApiResponse({ status: 200, description: 'Flight pricing confirmed' })
   @ApiResponse({ status: 410, description: 'Flight no longer available or expired' })
   async selectFlight(@Body() selectDto: SelectWakanowFlightDto) {
+    this.logger.log('Processing flight selection');
+    
     try {
-      // ✅ Validate selectData
+      // Validate selectData
       if (!selectDto.selectData || selectDto.selectData.length < 10) {
         throw new BadRequestException('Invalid or expired flight selection. Please search again.');
       }
 
       const result = await this.selectWakanowFlightUseCase.execute(selectDto);
       
-      // ✅ Check if result has the expected data
+      // Check if result has the expected data
       if (!result || !result.selectData) {
         throw new GoneException('Selected flight is no longer available. Please search again.');
       }
 
-      // ✅ Return in the format your frontend expects
+      this.logger.log(`Flight selected successfully. Booking ID: ${result.bookingId}`);
+      
+      // Return in the format your frontend expects with price breakdown
       return {
         success: true,
         data: {
@@ -116,6 +134,19 @@ export class BookingWakanowController {
           select_data: result.selectData,
           is_price_matched: result.isPriceMatched || false,
           is_passport_required: result.isPassportRequired || false,
+          
+          // Price breakdown from select
+          priceBreakdown: result.priceBreakdown || null,
+          basePrice: result.basePrice || null,
+          markupAmount: result.markupAmount || null,
+          markupPercentage: result.markupPercentage || null,
+          serviceFee: result.serviceFee || null,
+          serviceFeePercentage: result.serviceFeePercentage || null,
+          taxes: result.taxes || null,
+          taxPercentage: result.taxPercentage || null,
+          totalAmount: result.totalAmount || null,
+          currency: result.currency || 'NGN',
+          
           flight_summary: result.flightSummary || null,
           fare_rules: result.fareRules || [],
           penalty_rules: result.penaltyRules || null,
@@ -129,7 +160,7 @@ export class BookingWakanowController {
         message: 'Flight pricing confirmed. Use the returned selectData and bookingId to book.',
       };
     } catch (error: any) {
-      // ✅ Better error handling
+      this.logger.error(`Selection failed: ${error.message}`);
       if (error instanceof HttpException) throw error;
       
       // Check for specific error messages
@@ -138,7 +169,8 @@ export class BookingWakanowController {
         errorMsg.includes('expired') || 
         errorMsg.includes('no longer available') ||
         errorMsg.includes('not found') ||
-        errorMsg.includes('invalid')
+        errorMsg.includes('invalid') ||
+        errorMsg.includes('selection_expired')
       ) {
         throw new GoneException('Your flight selection has expired. Please search again.');
       }
@@ -158,6 +190,7 @@ export class BookingWakanowController {
   @UseGuards(JwtAuthGuard)
   @Post('book')
   @ApiBearerAuth()
+  @UsePipes(new ValidationPipe({ transform: true }))
   @ApiOperation({
     summary: 'Book a Wakanow flight (authenticated user)',
     description:
@@ -168,8 +201,11 @@ export class BookingWakanowController {
   @ApiResponse({ status: 400, description: 'Invalid booking data' })
   @ApiResponse({ status: 409, description: 'Fare no longer available' })
   async bookFlight(@Body() bookDto: BookWakanowFlightDto, @Request() req: any) {
+    const userId = req.user.id;
+    this.logger.log(`User ${userId} booking flight with ${bookDto.passengers?.length || 0} passengers`);
+    
     try {
-      // ✅ Validate required fields
+      // Validate required fields
       if (!bookDto.selectData) {
         throw new BadRequestException('SelectData is required');
       }
@@ -180,7 +216,16 @@ export class BookingWakanowController {
         throw new BadRequestException('At least one passenger is required');
       }
 
-      const result = await this.bookWakanowFlightUseCase.execute(bookDto, req.user.id);
+      // Log price breakdown if provided
+      if (bookDto.priceBreakdown) {
+        this.logger.log(`💰 Booking with price breakdown: ${JSON.stringify(bookDto.priceBreakdown)}`);
+      } else {
+        this.logger.warn('⚠️ No price breakdown provided in booking request');
+      }
+
+      const result = await this.bookWakanowFlightUseCase.execute(bookDto, userId);
+      
+      this.logger.log(`Booking successful for user ${userId}: ${result.bookingId}`);
       
       return {
         success: true,
@@ -188,6 +233,7 @@ export class BookingWakanowController {
         message: 'Flight booked successfully. Please proceed to payment.',
       };
     } catch (error: any) {
+      this.logger.error(`Booking failed for user ${userId}: ${error.message}`);
       if (error instanceof HttpException) throw error;
       
       // Check for specific error messages
@@ -216,6 +262,7 @@ export class BookingWakanowController {
 
   @Public()
   @Post('book/guest')
+  @UsePipes(new ValidationPipe({ transform: true }))
   @ApiOperation({
     summary: 'Book a Wakanow flight (guest, no authentication)',
     description:
@@ -225,8 +272,10 @@ export class BookingWakanowController {
   @ApiResponse({ status: 201, description: 'Guest flight booked. Proceed to payment.' })
   @ApiResponse({ status: 400, description: 'Invalid booking data' })
   async bookFlightGuest(@Body() bookDto: BookWakanowFlightDto) {
+    this.logger.log(`Guest booking with ${bookDto.passengers?.length || 0} passengers`);
+    
     try {
-      // ✅ Validate required fields
+      // Validate required fields
       if (!bookDto.selectData) {
         throw new BadRequestException('SelectData is required');
       }
@@ -237,7 +286,16 @@ export class BookingWakanowController {
         throw new BadRequestException('At least one passenger is required');
       }
 
+      // Log price breakdown if provided
+      if (bookDto.priceBreakdown) {
+        this.logger.log(`💰 Guest booking with price breakdown: ${JSON.stringify(bookDto.priceBreakdown)}`);
+      } else {
+        this.logger.warn('⚠️ No price breakdown provided in guest booking request');
+      }
+
       const result = await this.bookWakanowFlightGuestUseCase.execute(bookDto);
+      
+      this.logger.log(`Guest booking successful: ${result.bookingId}`);
       
       return {
         success: true,
@@ -245,6 +303,7 @@ export class BookingWakanowController {
         message: 'Guest flight booked. Proceed to payment.',
       };
     } catch (error: any) {
+      this.logger.error(`Guest booking failed: ${error.message}`);
       if (error instanceof HttpException) throw error;
       
       const errorMsg = error?.message?.toLowerCase() || '';
@@ -275,6 +334,7 @@ export class BookingWakanowController {
   @Post('ticket')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
+  @UsePipes(new ValidationPipe({ transform: true }))
   @ApiOperation({
     summary: 'Issue ticket for a Wakanow booking (Admin only)',
     description:
@@ -285,16 +345,23 @@ export class BookingWakanowController {
   @ApiResponse({ status: 402, description: 'Insufficient Wakanow wallet balance' })
   @ApiResponse({ status: 404, description: 'Booking not found' })
   async ticketFlight(@Body() ticketDto: TicketWakanowFlightDto) {
+    this.logger.log(`Processing ticket for booking: ${ticketDto.bookingId}`);
+    
     try {
-      // ✅ Validate required fields
-      if (!ticketDto.localBookingId) {
-        throw new BadRequestException('localBookingId is required');
+      // Validate required fields
+      if (!ticketDto.bookingId) {
+        throw new BadRequestException('bookingId is required');
       }
       if (!ticketDto.pnrNumber) {
         throw new BadRequestException('PNR number is required');
       }
 
-      const result = await this.ticketWakanowFlightUseCase.execute(ticketDto, ticketDto.localBookingId);
+      const result = await this.ticketWakanowFlightUseCase.execute(
+        ticketDto, 
+        ticketDto.localBookingId
+      );
+      
+      this.logger.log(`Ticket issued successfully for booking: ${ticketDto.bookingId}`);
       
       return {
         success: true,
@@ -302,6 +369,7 @@ export class BookingWakanowController {
         message: 'Ticket issued successfully',
       };
     } catch (error: any) {
+      this.logger.error(`Ticketing failed for booking ${ticketDto.bookingId}: ${error.message}`);
       if (error instanceof HttpException) throw error;
       
       // Check for specific error messages
@@ -352,6 +420,8 @@ export class BookingWakanowController {
     @Query('query') query?: string,
     @Query('limit') limit?: string,
   ) {
+    this.logger.log(`Fetching airports with query: ${query || 'all'}`);
+    
     try {
       const all = await this.wakanowService.getAirports();
       let results = all;
@@ -366,9 +436,11 @@ export class BookingWakanowController {
             a.CityCountry?.toLowerCase().includes(q) ||
             a.Country?.toLowerCase().includes(q),
         );
+        this.logger.log(`Found ${results.length} airports matching query: ${query}`);
       } else {
         const cap = limit ? parseInt(limit, 10) : 100;
         results = all.slice(0, Number.isFinite(cap) && cap > 0 ? cap : 100);
+        this.logger.log(`Returning ${results.length} airports (limit: ${cap})`);
       }
       
       return {
@@ -378,6 +450,7 @@ export class BookingWakanowController {
         message: 'Airports retrieved successfully',
       };
     } catch (error: any) {
+      this.logger.error(`Airport fetch failed: ${error.message}`);
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         {
@@ -400,20 +473,81 @@ export class BookingWakanowController {
   })
   @ApiResponse({ status: 200, description: 'Wallet balance retrieved' })
   async getWalletBalance() {
+    this.logger.log('Checking Wakanow wallet balance');
+    
     try {
       const balance = await this.wakanowService.getWalletBalance();
+      this.logger.log(`Wallet balance retrieved: ${balance}`);
       return {
         success: true,
         data: balance,
         message: 'Wallet balance retrieved successfully',
       };
     } catch (error: any) {
+      this.logger.error(`Wallet balance check failed: ${error.message}`);
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         {
           success: false,
           message: 'Unable to check wallet balance',
           error: 'Wallet check failed',
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+  }
+
+  // ✅ Health check endpoint
+  @Public()
+  @Get('health')
+  @ApiOperation({
+    summary: 'Check Wakanow API health',
+    description: 'Verifies connectivity to the Wakanow API service.',
+  })
+  @ApiResponse({ status: 200, description: 'Wakanow API is healthy' })
+  @ApiResponse({ status: 503, description: 'Wakanow API is unavailable' })
+  async healthCheck() {
+    this.logger.log('Performing Wakanow API health check');
+    
+    try {
+      const isHealthy = await this.wakanowService.healthCheck();
+      
+      if (isHealthy) {
+        return {
+          success: true,
+          data: { 
+            healthy: true, 
+            status: 'operational',
+            timestamp: new Date().toISOString(),
+          },
+          message: 'Wakanow API is healthy',
+        };
+      } else {
+        throw new HttpException(
+          {
+            success: false,
+            data: { 
+              healthy: false, 
+              status: 'unavailable',
+              timestamp: new Date().toISOString(),
+            },
+            message: 'Wakanow API is unavailable',
+          },
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(`Health check failed: ${error.message}`);
+      throw new HttpException(
+        {
+          success: false,
+          data: { 
+            healthy: false, 
+            status: 'error',
+            error: error?.message || 'Unknown error',
+            timestamp: new Date().toISOString(),
+          },
+          message: 'Wakanow API health check failed',
         },
         HttpStatus.SERVICE_UNAVAILABLE,
       );
