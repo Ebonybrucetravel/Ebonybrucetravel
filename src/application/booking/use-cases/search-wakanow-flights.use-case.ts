@@ -1,3 +1,5 @@
+// application/booking/use-cases/search-wakanow-flights.use-case.ts
+
 import { Injectable, Logger } from '@nestjs/common';
 import { WakanowService, WakanowSearchRequest, WakanowSearchResult } from '@infrastructure/external-apis/wakanow/wakanow.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
@@ -10,7 +12,6 @@ import { SearchWakanowFlightsDto } from '@presentation/booking/dto/wakanow-fligh
 export class SearchWakanowFlightsUseCase {
   private readonly logger = new Logger(SearchWakanowFlightsUseCase.name);
   
-  // ✅ Cache markup configs to avoid DB queries per offer
   private markupConfigCache: Map<string, { markupPercentage: number; serviceFeeAmount: number }> = new Map();
 
   constructor(
@@ -55,33 +56,36 @@ export class SearchWakanowFlightsUseCase {
     const cached = this.cacheService.get<any>(cacheKey);
     if (cached) {
       this.logger.log('Returning cached Wakanow search results');
+      // ✅ Return the cached response directly (it should already have the right format)
       return cached;
     }
 
     // ✅ Fetch from Wakanow
     const results = await this.wakanowService.searchFlights(wakanowRequest);
     
+    this.logger.log(`Wakanow search returned ${results.length} results`);
+
     if (results.length === 0) {
+      // ✅ Return in the format the controller expects
       return {
-        provider: 'WAKANOW',
         offers: [],
         total_offers: 0,
+        selectData: null,
         message: 'No flights found for the selected route and dates',
       };
     }
 
-    // ✅ Get markup config ONCE (not per offer)
+    // ✅ Get markup config ONCE
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
     const markupConfig = await this.getMarkupConfig(productType, displayCurrency);
     const { markupPercentage, serviceFeeAmount } = markupConfig;
 
-    // ✅ Pre-fetch conversion rate once (not per offer)
+    // ✅ Pre-fetch conversion rate once
     let conversionRate = 1;
     let conversionFee = 0;
     let totalWithFee = 0;
     let baseCurrency = 'NGN';
 
-    // Get the currency from the first result
     if (results.length > 0 && results[0]?.FlightCombination?.Price?.CurrencyCode) {
       baseCurrency = results[0].FlightCombination.Price.CurrencyCode;
       
@@ -100,7 +104,7 @@ export class SearchWakanowFlightsUseCase {
 
     this.logger.log(`💰 Using conversion rate: ${conversionRate}, fee: ${conversionFee}`);
 
-    // ✅ Normalize all offers in parallel with limited concurrency
+    // ✅ Normalize all offers
     const normalizedOffers = await this.normalizeOffersBatch(
       results,
       isDomestic,
@@ -113,16 +117,16 @@ export class SearchWakanowFlightsUseCase {
       baseCurrency,
     );
 
-    // ✅ Get selectData from the first offer (for quick access)
-    const firstSelectData = normalizedOffers.length > 0 ? normalizedOffers[0].select_data : null;
+    // ✅ Get selectData from the first offer
+    const firstSelectData = normalizedOffers.length > 0 ? normalizedOffers[0].selectData : null;
 
+    this.logger.log(`📊 Normalized ${normalizedOffers.length} offers`);
+
+    // ✅ Return in the format the controller expects (NOT wrapped in data/success)
     const response = {
-      success: true,
-      data: {
-        offers: normalizedOffers,
-        total_offers: normalizedOffers.length,
-        selectData: firstSelectData, // ✅ Include at root level for easy access
-      },
+      offers: normalizedOffers,
+      total_offers: normalizedOffers.length,
+      selectData: firstSelectData,
       message: normalizedOffers.length > 0 
         ? `Found ${normalizedOffers.length} flight offers` 
         : 'No flights found for the selected route and dates',
@@ -172,7 +176,6 @@ export class SearchWakanowFlightsUseCase {
     totalWithFee: number,
     baseCurrency: string,
   ) {
-    // ✅ Process in batches of 10 to avoid overwhelming the event loop
     const batchSize = 10;
     const normalizedOffers: any[] = [];
     
@@ -200,7 +203,7 @@ export class SearchWakanowFlightsUseCase {
   }
 
   /**
-   * ✅ Fast normalization - no async operations per offer
+   * ✅ Fast normalization
    */
   private normalizeOfferFast(
     result: WakanowSearchResult,
@@ -217,14 +220,12 @@ export class SearchWakanowFlightsUseCase {
     const combo = result.FlightCombination;
     const basePrice = combo.Price.Amount;
     
-    // ✅ Use pre-calculated conversion values
     const convertedPrice = basePrice * conversionRate;
     const convertedTotalWithFee = basePrice * totalWithFee;
     const convertedConversionFee = basePrice * conversionFee;
     const markupAmount = (convertedTotalWithFee * markupPercentage) / 100;
     const finalPrice = convertedTotalWithFee + markupAmount + serviceFeeAmount;
 
-    // ✅ Calculate totals
     let totalBaseFare = 0;
     let totalTax = 0;
     for (const pd of combo.PriceDetails) {
@@ -233,7 +234,6 @@ export class SearchWakanowFlightsUseCase {
     }
     const convertedTax = totalTax * conversionRate;
 
-    // ✅ Build slices
     const slices = combo.FlightModels.map((fm) => ({
       origin: {
         iata_code: fm.DepartureCode,
@@ -274,22 +274,19 @@ export class SearchWakanowFlightsUseCase {
       free_baggage: fm.FreeBaggage,
     }));
 
-    // ✅ Calculate price breakdown for frontend
     const roundedBasePrice = Math.round(convertedPrice * 100) / 100;
     const roundedMarkup = Math.round(markupAmount * 100) / 100;
     const roundedServiceFee = Math.round(serviceFeeAmount * 100) / 100;
     const roundedTotal = Math.round(finalPrice * 100) / 100;
     const roundedTaxes = Math.round((roundedMarkup + roundedServiceFee) * 100) / 100;
-    const combinedTaxPercentage = markupPercentage + 5; // 5% service fee
+    const combinedTaxPercentage = markupPercentage + 5;
 
-    // ✅ Get selectData from the result
     const selectData = result.SelectData || '';
 
     return {
       provider: 'WAKANOW' as const,
       id: `wakanow-${index}`,
-      select_data: selectData, // ✅ Keep snake_case for backend
-      // ✅ Also add camelCase for frontend consistency
+      select_data: selectData,
       selectData: selectData,
       slices,
       marketing_carrier: combo.MarketingCarrier,
@@ -297,7 +294,6 @@ export class SearchWakanowFlightsUseCase {
       children: combo.Children,
       infants: combo.Infants,
       
-      // ✅ Price fields
       original_amount: String(basePrice),
       original_currency: baseCurrency,
       base_amount: convertedPrice.toFixed(2),
@@ -313,7 +309,6 @@ export class SearchWakanowFlightsUseCase {
       total_currency: displayCurrency,
       currency: displayCurrency,
       
-      // ✅ Price breakdown for frontend
       priceBreakdown: {
         basePrice: roundedBasePrice,
         markupAmount: roundedMarkup,
@@ -338,7 +333,6 @@ export class SearchWakanowFlightsUseCase {
       is_refundable: combo.IsRefundable,
       connection_code: combo.ConnectionCode,
       
-      // ✅ Add isDomestic flag
       isDomestic: isDomestic,
       isWakanow: true,
       isWakanowDomestic: isDomestic,
