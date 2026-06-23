@@ -13,6 +13,7 @@ export class SearchWakanowFlightsUseCase {
   private readonly logger = new Logger(SearchWakanowFlightsUseCase.name);
   
   private markupConfigCache: Map<string, { markupPercentage: number; serviceFeeAmount: number }> = new Map();
+  private readonly SELECT_DATA_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   constructor(
     private readonly wakanowService: WakanowService,
@@ -56,17 +57,37 @@ export class SearchWakanowFlightsUseCase {
     const cached = this.cacheService.get<any>(cacheKey);
     if (cached) {
       this.logger.log('Returning cached Wakanow search results');
-      // ✅ Return the cached response directly (it should already have the right format)
       return cached;
     }
 
-    // ✅ Fetch from Wakanow
-    const results = await this.wakanowService.searchFlights(wakanowRequest);
+    // ✅ Fetch from Wakanow with retry
+    let results: WakanowSearchResult[] = [];
+    let attempt = 0;
+    const maxRetries = 2;
+
+    while (attempt < maxRetries) {
+      try {
+        attempt++;
+        this.logger.log(`🔍 Wakanow search attempt ${attempt}/${maxRetries}...`);
+        results = await this.wakanowService.searchFlights(wakanowRequest);
+        break;
+      } catch (error: any) {
+        const errorMsg = error?.message?.toLowerCase() || '';
+        const errorStatus = error?.status || error?.code || 0;
+
+        if (attempt < maxRetries && 
+            (errorStatus === 500 || errorStatus === 503 || errorMsg.includes('timeout'))) {
+          this.logger.warn(`⚠️ Search attempt ${attempt} failed, retrying...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          continue;
+        }
+        throw error;
+      }
+    }
     
     this.logger.log(`Wakanow search returned ${results.length} results`);
 
     if (results.length === 0) {
-      // ✅ Return in the format the controller expects
       return {
         offers: [],
         total_offers: 0,
@@ -90,11 +111,18 @@ export class SearchWakanowFlightsUseCase {
       baseCurrency = results[0].FlightCombination.Price.CurrencyCode;
       
       if (baseCurrency !== displayCurrency) {
-        const conversionResult = await this.currencyService.convert(1, baseCurrency, displayCurrency);
-        conversionRate = conversionResult;
-        const conversionDetails = this.currencyService.calculateConversionFee(1, baseCurrency, displayCurrency);
-        conversionFee = conversionDetails.conversionFee;
-        totalWithFee = conversionDetails.totalWithFee;
+        try {
+          const conversionResult = await this.currencyService.convert(1, baseCurrency, displayCurrency);
+          conversionRate = conversionResult;
+          const conversionDetails = this.currencyService.calculateConversionFee(1, baseCurrency, displayCurrency);
+          conversionFee = conversionDetails.conversionFee;
+          totalWithFee = conversionDetails.totalWithFee;
+        } catch (error) {
+          this.logger.warn(`⚠️ Currency conversion failed, using 1:1 rate: ${error.message}`);
+          conversionRate = 1;
+          conversionFee = 0;
+          totalWithFee = 1;
+        }
       } else {
         conversionRate = 1;
         conversionFee = 0;
@@ -121,8 +149,14 @@ export class SearchWakanowFlightsUseCase {
     const firstSelectData = normalizedOffers.length > 0 ? normalizedOffers[0].selectData : null;
 
     this.logger.log(`📊 Normalized ${normalizedOffers.length} offers`);
+    
+    // ✅ Log selectData info for debugging
+    if (firstSelectData) {
+      this.logger.log(`🔑 First SelectData length: ${firstSelectData.length}`);
+      this.logger.log(`🔑 First SelectData preview: ${firstSelectData.substring(0, 50)}...`);
+    }
 
-    // ✅ Return in the format the controller expects (NOT wrapped in data/success)
+    // ✅ Return in the format the controller expects
     const response = {
       offers: normalizedOffers,
       total_offers: normalizedOffers.length,
@@ -151,14 +185,14 @@ export class SearchWakanowFlightsUseCase {
     try {
       const config = await this.markupRepository.findActiveMarkupByProductType(productType, currency);
       const result = {
-        markupPercentage: config?.markupPercentage || 0,
+        markupPercentage: config?.markupPercentage || 10, // Default 10%
         serviceFeeAmount: config?.serviceFeeAmount || 0,
       };
       this.markupConfigCache.set(cacheKey, result);
       return result;
     } catch (error) {
-      this.logger.warn(`Could not fetch markup config for ${currency}, using 0%`);
-      return { markupPercentage: 0, serviceFeeAmount: 0 };
+      this.logger.warn(`Could not fetch markup config for ${currency}, using default 10%`);
+      return { markupPercentage: 10, serviceFeeAmount: 0 };
     }
   }
 
@@ -336,6 +370,9 @@ export class SearchWakanowFlightsUseCase {
       isDomestic: isDomestic,
       isWakanow: true,
       isWakanowDomestic: isDomestic,
+      
+      // ✅ Add a timestamp for when this offer was generated (for expiration tracking)
+      _generatedAt: Date.now(),
     };
   }
 
