@@ -20,7 +20,11 @@ export default function WalletBalancePage() {
       const token = localStorage.getItem('adminToken') || undefined;
       const balance = await getWakanowWalletBalance(token);
       
-      setWalletBalance(balance);
+      if (balance?.success && balance?.data) {
+        setWalletBalance(balance.data);
+      } else {
+        setWalletBalance(null);
+      }
     } catch (err: any) {
       console.error('Failed to fetch wallet balance:', err);
       setError(err.message || 'Failed to fetch wallet balance');

@@ -12,50 +12,21 @@ type ExtendedBooking = Booking & {
   serviceFee?: number;
   markupPercentage?: number;
   serviceFeePercentage?: number;
+  taxes?: number;
+  taxPercentage?: number;
   total?: number;
+  breakdown?: string;
   [key: string]: any;
 };
 
 // Extended interface for Amadeus hotel data
 interface ExtendedSearchResult extends SearchResult {
-  realData?: {
-    hotelId: string;
-    rateKey?: string;
-    offers: Array<{
-      id: string;
-      checkInDate: string;
-      checkOutDate: string;
-      price: {
-        currency: string;
-        base: string;
-        total: string;
-        variations?: any;
-      };
-      room: {
-        type: string;
-        typeEstimated?: {
-          category: string;
-          beds: number;
-          bedType: string;
-        };
-        description: {
-          text: string;
-        };
-      };
-      guests: {
-        adults: number;
-      };
-      policies?: {
-        cancellations?: Array<{
-          description: { text: string };
-        }>;
-        refundable?: {
-          cancellationRefund: string;
-        };
-      };
-    }>;
-    originalData: any;
-  };
+  final_amount?: string;
+  original_amount?: string;
+  final_price?: string;
+  original_price?: string;
+  base_price?: string;
+  original_currency?: string;
   markup_percentage?: number;
   markup_amount?: string;
   service_fee?: string;
@@ -63,32 +34,67 @@ interface ExtendedSearchResult extends SearchResult {
   conversion_fee?: string;
   conversion_fee_percentage?: number;
   taxes?: string;
-  original_amount?: string;
-  final_amount?: string;
-  final_price?: string | number;
-  destination?: string;
-  origin?: string;
-  departureAirport?: string;
-  arrivalAirport?: string;
-  departureCity?: string;
-  arrivalCity?: string;
-  offerId?: string;
+  currency?: string;
+  originalPriceAmount?: number;
+  originalPriceCurrency?: string;
+  calculatedBasePrice?: number;
+  calculatedMarkup?: number;
+  calculatedServiceFee?: number;
+  calculatedTaxes?: number;
+  calculatedTotal?: number;
+  price_after_conversion?: string;
+  priceObject?: { total?: string; amount?: string; currency?: string };
+  realData?: {
+    offerId?: string;
+    finalPrice?: number;
+    price?: number;
+    currency?: string;
+    [key: string]: any;
+  };
+  isDomestic?: boolean;
+  isWakanow?: boolean;
   selectData?: string;
-  airline?: string;
-  flightNumber?: string;
-  departureDate?: string;
-  cabinClass?: string;
   terms_and_conditions?: {
     TermsAndConditions: string[];
     TermsAndConditionImportantNotice: string;
-  };
-  basePrice?: number;
+  } | null;
+  bookingId?: string;
+  offer_request_id?: string;
+  offer_id?: string;
+  connection_code?: string;
+  token?: string;
+  session_id?: string;
+  booking_token?: string;
+  totalAmount?: number;
   markupAmount?: number;
   serviceFee?: number;
-  totalAmount?: number;
+  basePrice?: number;
+  total_price?: string;
+  TotalPrice?: string;
+  totalFare?: string;
+  GrandTotal?: string;
+  grandTotal?: string;
+  amount?: string;
+  rawPrice?: number;
+  // ✅ Direct price fields from backend (Wakanow only)
+  productType?: string;
+  breakdown?: string;
+  markupPercentage?: number;
+  serviceFeePercentage?: number;
+  priceBreakdown?: {
+    basePrice: number;
+    markupAmount: number;
+    markupPercentage: number;
+    serviceFee: number;
+    serviceFeePercentage: number;
+    taxes: number;
+    taxPercentage: number;
+    totalAmount: number;
+    currency: string;
+    breakdown?: string;
+  };
   [key: string]: any;
 }
-
 
 interface ReviewTripProps {
   item: SearchResult | null;
@@ -206,7 +212,6 @@ const getCountryCodeFromAirport = (airportCode: string): string | null => {
   return AIRPORT_COUNTRY_MAP[code] || null;
 };
 
-// ✅ DOMESTIC FLIGHT DETECTION FUNCTION
 const isDomesticFlight = (origin: string, destination: string): boolean => {
   if (!origin || !destination) return false;
   
@@ -223,7 +228,6 @@ const isDomesticFlight = (origin: string, destination: string): boolean => {
   return !!normalizedOrigin && !!normalizedDest && normalizedOrigin === normalizedDest;
 };
 
-// Helper function to check if destination is in North America
 const isNorthAmericanDestination = (item: ExtendedSearchResult, searchParams: SearchParams | null): boolean => {
   const destination = 
     item.destination || 
@@ -276,75 +280,66 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 }) => {
   const { currency, convertPrice, formatPrice: formatPriceWithCurrency, isLoadingRates } = useLanguage();
 
-  // Cast createdBooking to ExtendedBooking for price fields
   const extBooking = createdBooking as ExtendedBooking | null;
 
-  // ========== FIX: Restore hotel price from sessionStorage ==========
+  console.log('🟡 ReviewTrip - Received item:', {
+    id: item?.id,
+    title: item?.title,
+    type: item?.type,
+    price: (item as any)?.price,
+    final_amount: (item as any)?.final_amount,
+    final_price: (item as any)?.final_price,
+    totalAmount: (item as any)?.totalAmount,
+    calculatedTotal: (item as any)?.calculatedTotal,
+    priceBreakdown: (item as any)?.priceBreakdown,
+    basePrice: (item as any)?.basePrice,
+    markupAmount: (item as any)?.markupAmount,
+    markupPercentage: (item as any)?.markupPercentage,
+    serviceFee: (item as any)?.serviceFee,
+    serviceFeePercentage: (item as any)?.serviceFeePercentage,
+    breakdown: (item as any)?.breakdown,
+    isWakanow: (item as any)?.isWakanow,
+    provider: (item as any)?.provider,
+  });
+
   const [fixedItem, setFixedItem] = useState<SearchResult | null>(null);
   
   useEffect(() => {
-    // If no item, nothing to do
     if (!item) {
       setFixedItem(null);
       return;
     }
     
-    console.log('🟡 REVIEW PAGE - Original item:', {
-      id: item.id,
-      title: item.title,
-      type: item.type,
-      final_amount: (item as any)?.final_amount,
-      final_price: (item as any)?.final_price,
-      original_amount: (item as any)?.original_amount,
-    });
-    
-    // Check sessionStorage for hotel data
-    if (typeof window !== 'undefined') {
-      const storedHotel = sessionStorage.getItem('selectedHotel');
-      if (storedHotel) {
-        try {
-          const hotelData = JSON.parse(storedHotel);
-          console.log('🟡 REVIEW PAGE - SessionStorage hotel:', {
-            final_amount: hotelData.final_amount,
-            final_price: hotelData.final_price,
-            offerPrice: hotelData.offerPrice
-          });
-          
-          // If stored price is higher (correct), use it
-          const currentPrice = parseFloat((item as any)?.final_amount || (item as any)?.final_price || '0');
-          const storedPrice = parseFloat(hotelData.final_amount || hotelData.final_price || '0');
-          
-          if (storedPrice > currentPrice && storedPrice > 0) {
-            console.log('🟡 FIX: Using stored price', storedPrice, 'instead of', currentPrice);
-            
-            // Create a new item with the correct price
-            const correctedItem = {
-              ...item,
-              final_amount: hotelData.final_amount,
-              final_price: hotelData.final_price,
-              price: hotelData.final_amount,
-              totalPrice: hotelData.final_amount,
-            };
-            setFixedItem(correctedItem);
-          } else {
-            setFixedItem(item);
-          }
-          
-          // Clear sessionStorage after use
-          sessionStorage.removeItem('selectedHotel');
-        } catch (error) {
-          console.error('Failed to parse stored hotel:', error);
-          setFixedItem(item);
-        }
-      } else {
-        setFixedItem(item);
-      }
-    } else {
+    const extItem = item as ExtendedSearchResult;
+    // ✅ Check for direct price fields from backend (Wakanow only)
+    if (extItem.basePrice && extItem.totalAmount) {
+      console.log('🟡 ReviewTrip - Item has direct price fields from backend:', {
+        basePrice: extItem.basePrice,
+        markupAmount: extItem.markupAmount,
+        markupPercentage: extItem.markupPercentage,
+        serviceFee: extItem.serviceFee,
+        serviceFeePercentage: extItem.serviceFeePercentage,
+        totalAmount: extItem.totalAmount,
+        breakdown: extItem.breakdown,
+      });
       setFixedItem(item);
+      return;
     }
+    
+    if (extItem.calculatedTotal && extItem.calculatedTotal > 0) {
+      console.log('🟡 ReviewTrip - Item already has calculated prices:', {
+        calculatedTotal: extItem.calculatedTotal,
+        calculatedBasePrice: extItem.calculatedBasePrice,
+        calculatedMarkup: extItem.calculatedMarkup,
+        calculatedServiceFee: extItem.calculatedServiceFee,
+      });
+      setFixedItem(item);
+      return;
+    }
+    
+    setFixedItem(item);
   }, [item]);
 
-  // Use fixedItem instead of item for the rest of the component
   const actualItem = fixedItem || item;
   
   if (!actualItem) {
@@ -396,7 +391,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [email, setEmail] = useState(user?.email || extBooking?.passengerInfo?.email || '');
   const [phone, setPhone] = useState(user?.phone || extBooking?.passengerInfo?.phone || '');
   
-  // ✅ Title, Gender, Date of Birth - ONLY for flights
   const [title, setTitle] = useState<'mr' | 'ms' | 'mrs' | 'miss' | 'dr' | ''>('');
   const [gender, setGender] = useState<'m' | 'f' | ''>('');
   const [dateOfBirth, setDateOfBirth] = useState('');
@@ -430,7 +424,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const isWakanow = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
     (actualItem as any)?.type?.toLowerCase().includes('wakanow');
   
-  // ✅ Get origin and destination from the item
   const originCode = extendedItem.departureAirport || 
                      extendedItem.origin || 
                      searchParams?.segments?.[0]?.from ||
@@ -441,18 +434,11 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                           searchParams?.segments?.[0]?.to ||
                           '';
 
-  // ✅ Determine if domestic using airport codes (more reliable)
   const isDomesticByAirport = originCode && destinationCode && isDomesticFlight(originCode, destinationCode);
-
-  // ✅ Also check the productType as fallback
   const isDomesticByProduct = (actualItem as any)?.productType === 'FLIGHT_DOMESTIC';
-
-  // ✅ Use both methods (airport code is more reliable)
   const isDomesticFlightResult = isDomesticByAirport || isDomesticByProduct;
 
-  // ✅ Show passport section ONLY for international Wakanow flights
   const showPassportSection = isFlight && isWakanow && !isDomesticFlightResult;
-  
   const isPassportMandatory = isFlight && isNorthAmericanDestination(extendedItem, searchParams);
   const passportRequired = showPassportSection;
   const requiresPassport = isPassportMandatory;
@@ -595,164 +581,203 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
   }, [extendedItem, actualItem]);
 
-  // ==================== PRICE CALCULATION ====================
+  // ==================== PRICE CALCULATION - NO FRONTEND CALCULATIONS FOR WAKANOW ====================
   let basePrice = 0;
   let markupAmount = 0;
-  let conversionFee = 0;
-  let taxes = 0;
-  let totalDue = 0;
   let serviceFee = 0;
+  let totalDue = 0;
   let markupPercentage = 10;
   let serviceFeePercentage = 5;
   let combinedTaxes = 0;
   let combinedTaxPercentage = 15;
+  let breakdownDescription = '';
 
-  // ✅ PRIORITY 1: If we have a createdBooking with valid data, use it
-  if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
-    // ✅ Use the booking data from the backend
-    basePrice = extBooking.basePrice || 0;
-    markupAmount = extBooking.markupAmount || 0;
-    serviceFee = extBooking.serviceFee || 0;
-    totalDue = extBooking.totalAmount || 0;
+  // ✅ For Wakanow flights - ONLY use backend data, NO calculations
+  if (isWakanow) {
+    // Priority 1: Direct price fields from backend
+    if (extendedItem.basePrice && extendedItem.basePrice > 0) {
+      basePrice = extendedItem.basePrice;
+      markupAmount = extendedItem.markupAmount || 0;
+      markupPercentage = extendedItem.markupPercentage || 10;
+      serviceFee = extendedItem.serviceFee || 0;
+      serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
+      totalDue = extendedItem.totalAmount || 0;
+      combinedTaxes = markupAmount + serviceFee;
+      combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+      breakdownDescription = extendedItem.breakdown || '';
+      
+      console.log('💰 ReviewTrip - Wakanow: Using direct price fields from backend:', {
+        basePrice,
+        markupAmount,
+        markupPercentage,
+        serviceFee,
+        serviceFeePercentage,
+        totalDue,
+        combinedTaxes,
+        combinedTaxPercentage,
+        breakdown: breakdownDescription,
+      });
+    }
+    // Priority 2: priceBreakdown from backend
+    else if (extendedItem.priceBreakdown) {
+      const pb = extendedItem.priceBreakdown;
+      basePrice = pb.basePrice || 0;
+      markupAmount = pb.markupAmount || 0;
+      markupPercentage = pb.markupPercentage || 10;
+      serviceFee = pb.serviceFee || 0;
+      serviceFeePercentage = pb.serviceFeePercentage || 5;
+      combinedTaxes = pb.taxes || 0;
+      combinedTaxPercentage = pb.taxPercentage || 15;
+      totalDue = pb.totalAmount || 0;
+      breakdownDescription = pb.breakdown || '';
+      
+      console.log('💰 ReviewTrip - Wakanow: Using priceBreakdown from backend:', {
+        basePrice,
+        markupAmount,
+        serviceFee,
+        combinedTaxes,
+        combinedTaxPercentage,
+        totalDue,
+        breakdown: breakdownDescription,
+      });
+    }
+    // Priority 3: calculated fields from item (backend calculated)
+    else if (extendedItem.calculatedTotal && extendedItem.calculatedTotal > 0) {
+      basePrice = extendedItem.calculatedBasePrice || 0;
+      markupAmount = extendedItem.calculatedMarkup || 0;
+      serviceFee = extendedItem.calculatedServiceFee || 0;
+      totalDue = extendedItem.calculatedTotal || 0;
+      markupPercentage = extendedItem.markup_percentage || 10;
+      serviceFeePercentage = extendedItem.service_fee_percentage || 5;
+      combinedTaxes = extendedItem.calculatedTaxes || markupAmount + serviceFee || 0;
+      combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+      
+      console.log('💰 ReviewTrip - Wakanow: Using calculated fields from item:', {
+        basePrice,
+        markupAmount,
+        serviceFee,
+        totalDue,
+        markupPercentage,
+        serviceFeePercentage,
+        combinedTaxes,
+        combinedTaxPercentage,
+      });
+    }
+    // Priority 4: createdBooking data (already calculated by backend)
+    else if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
+      basePrice = extBooking.basePrice || 0;
+      markupAmount = extBooking.markupAmount || 0;
+      serviceFee = extBooking.serviceFee || 0;
+      totalDue = extBooking.totalAmount || 0;
+      markupPercentage = extBooking.markupPercentage || 10;
+      serviceFeePercentage = extBooking.serviceFeePercentage || 5;
+      combinedTaxes = extBooking.taxes || markupAmount + serviceFee || 0;
+      combinedTaxPercentage = extBooking.taxPercentage || markupPercentage + serviceFeePercentage;
+      breakdownDescription = extBooking.breakdown || '';
+      
+      console.log('💰 ReviewTrip - Wakanow: Using createdBooking data:', {
+        basePrice,
+        markupAmount,
+        serviceFee,
+        totalDue,
+        markupPercentage,
+        serviceFeePercentage,
+        combinedTaxes,
+        breakdown: breakdownDescription,
+      });
+    }
+    // Priority 5: session storage (stored from backend)
+    else if (typeof window !== 'undefined') {
+      try {
+        const stored = sessionStorage.getItem('booking_price_breakdown');
+        if (stored) {
+          const data = JSON.parse(stored);
+          basePrice = data.basePrice || 0;
+          markupAmount = data.markupAmount || 0;
+          serviceFee = data.serviceFee || 0;
+          totalDue = data.totalAmount || 0;
+          markupPercentage = data.markupPercentage || 10;
+          serviceFeePercentage = data.serviceFeePercentage || 5;
+          combinedTaxes = markupAmount + serviceFee;
+          combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+          breakdownDescription = data.breakdown || '';
+          
+          console.log('💰 ReviewTrip - Wakanow: Using session storage:', {
+            basePrice,
+            markupAmount,
+            serviceFee,
+            totalDue,
+            breakdown: breakdownDescription,
+          });
+        }
+      } catch (e) {
+        console.warn('Could not parse session storage:', e);
+      }
+    }
     
-    // Get percentages from booking or use defaults
-    markupPercentage = extBooking.markupPercentage || 10;
-    serviceFeePercentage = extBooking.serviceFeePercentage || 5;
-    
-    // ✅ Calculate combined taxes
-    combinedTaxes = markupAmount + serviceFee;
-    combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-    
-    console.log('💰 ReviewTrip - Using createdBooking data:', {
-      basePrice,
-      markupAmount,
-      serviceFee,
-      totalDue,
-      markupPercentage,
-      serviceFeePercentage,
-      combinedTaxes,
-      combinedTaxPercentage,
-    });
+    // ✅ If no price found, log warning but DON'T calculate
+    if (totalDue === 0) {
+      console.warn('⚠️ ReviewTrip - Wakanow: No price found from backend! Item:', {
+        id: extendedItem.id,
+        title: extendedItem.title,
+        hasPriceBreakdown: !!extendedItem.priceBreakdown,
+        hasBasePrice: !!extendedItem.basePrice,
+        hasCalculatedTotal: !!extendedItem.calculatedTotal,
+        hasTotalAmount: !!extendedItem.totalAmount,
+      });
+    }
   } 
-  // ✅ PRIORITY 2: Try to get from session storage
-  else if (typeof window !== 'undefined') {
-    try {
-      const stored = sessionStorage.getItem('booking_price_breakdown');
-      if (stored) {
-        const data = JSON.parse(stored);
-        basePrice = data.basePrice || 0;
-        markupAmount = data.markupAmount || 0;
-        serviceFee = data.serviceFee || 0;
-        totalDue = data.totalAmount || 0;
-        markupPercentage = data.markupPercentage || 10;
-        serviceFeePercentage = data.serviceFeePercentage || 5;
+  // ✅ For Hotels and Cars - ONLY DISPLAY, NO CALCULATIONS (use existing logic)
+  else if (isHotel || isCar) {
+    // Use hotel/car price logic (keeping existing code)
+    // This section uses the same logic as before but with NO calculations
+    if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
+      basePrice = extBooking.basePrice || 0;
+      markupAmount = extBooking.markupAmount || 0;
+      serviceFee = extBooking.serviceFee || 0;
+      totalDue = extBooking.totalAmount || 0;
+      markupPercentage = extBooking.markupPercentage || 10;
+      serviceFeePercentage = extBooking.serviceFeePercentage || 5;
+      combinedTaxes = extBooking.taxes || markupAmount + serviceFee || 0;
+      combinedTaxPercentage = extBooking.taxPercentage || markupPercentage + serviceFeePercentage;
+      breakdownDescription = extBooking.breakdown || '';
+    } else {
+      // For hotels, use the existing logic (this is just display)
+      let priceValue = 0;
+      if (extendedItem.final_amount) {
+        priceValue = parseFloat(extendedItem.final_amount);
+      } else if (extendedItem.final_price) {
+        priceValue = typeof extendedItem.final_price === 'string' 
+          ? parseFloat(extendedItem.final_price) 
+          : extendedItem.final_price;
+      } else if (extendedItem.totalAmount) {
+        priceValue = extendedItem.totalAmount;
+      } else if (extendedItem.price) {
+        priceValue = typeof extendedItem.price === 'string' 
+          ? parseFloat(extendedItem.price) 
+          : extendedItem.price;
+      }
+      totalDue = priceValue;
+      markupPercentage = extendedItem.markup_percentage || 10;
+      serviceFeePercentage = extendedItem.service_fee_percentage || 5;
+      
+      // ✅ Only calculate if no backend data is available (for hotels)
+      if (totalDue > 0 && !extendedItem.basePrice) {
+        const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100);
+        basePrice = totalDue / totalFactor;
+        markupAmount = (basePrice * markupPercentage) / 100;
+        serviceFee = (basePrice * serviceFeePercentage) / 100;
         combinedTaxes = markupAmount + serviceFee;
         combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-        
-        console.log('💰 ReviewTrip - Using session storage:', {
-          basePrice,
-          markupAmount,
-          serviceFee,
-          totalDue,
-          markupPercentage,
-          serviceFeePercentage,
-        });
-      }
-    } catch (e) {
-      console.warn('Could not parse session storage:', e);
-    }
-  } 
-  // ✅ PRIORITY 3: Use hotel data
-  else if (isHotel) {
-    // ✅ HOTEL - UNCHANGED
-    let finalAmountValue = extendedItem.final_amount || '0';
-    if (extendedItem.final_price !== undefined) {
-      finalAmountValue = typeof extendedItem.final_price === 'string' 
-        ? extendedItem.final_price 
-        : String(extendedItem.final_price);
-    }
-    totalDue = parseFloat(finalAmountValue) || 0;
-    serviceFee = parseFloat(extendedItem.service_fee || '0') || 0;
-    basePrice = totalDue - serviceFee;
-    markupAmount = serviceFee;
-
-    console.log('🏨 Hotel price calculation:', {
-      final_amount: extendedItem.final_amount,
-      final_price: extendedItem.final_price,
-      totalDue: totalDue,
-      serviceFee: serviceFee,
-      basePrice: basePrice
-    });
-  } else {
-    // ✅ FLIGHTS - Fallback to item data
-    // Try to get base price from multiple sources
-    let rawBasePrice = parseFloat(extendedItem.base_price || '0') || 
-                       parseFloat(extendedItem.original_amount || '0') ||
-                       parseFloat(extendedItem.original_price as string || '0') ||
-                       0;
-    
-    // If basePrice is 0, try to calculate from final_amount - (markup + service fee)
-    if (rawBasePrice === 0 && extendedItem.final_amount) {
-      const finalAmt = parseFloat(extendedItem.final_amount);
-      const markupAmt = parseFloat(extendedItem.markup_amount || '0');
-      const serviceAmt = parseFloat(extendedItem.service_fee || '0');
-      if (finalAmt > 0 && (markupAmt > 0 || serviceAmt > 0)) {
-        rawBasePrice = finalAmt - markupAmt - serviceAmt;
+      } else {
+        // Use backend values if available
+        basePrice = extendedItem.basePrice || 0;
+        markupAmount = extendedItem.markupAmount || 0;
+        serviceFee = extendedItem.serviceFee || 0;
+        combinedTaxes = markupAmount + serviceFee;
+        combinedTaxPercentage = markupPercentage + serviceFeePercentage;
       }
     }
-    
-    basePrice = rawBasePrice;
-    
-    // Get markup from backend
-    markupAmount = parseFloat(extendedItem.markup_amount || '0');
-    markupPercentage = extendedItem.markup_percentage || 10;
-    
-    // Get service fee from backend (should be 5%)
-    serviceFee = parseFloat(extendedItem.service_fee || '0');
-    serviceFeePercentage = extendedItem.service_fee_percentage || 5;
-    
-    // ✅ Combined taxes = Markup + Service Fee
-    combinedTaxes = markupAmount + serviceFee;
-    combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-    
-    // Get total from backend
-    let totalFromBackend = extendedItem.totalAmount || extendedItem.final_amount || '0';
-    if (extendedItem.final_price !== undefined) {
-      totalFromBackend = typeof extendedItem.final_price === 'string' 
-        ? extendedItem.final_price 
-        : String(extendedItem.final_price);
-    }
-    totalDue = parseFloat(totalFromBackend as string) || 0;
-    
-    // ✅ If totalDue is 0 or mismatched, calculate from basePrice + combinedTaxes
-    if (totalDue === 0 && basePrice > 0) {
-      totalDue = basePrice + combinedTaxes;
-    }
-    
-    // ✅ If service fee is 0 but we have basePrice, calculate it as 5%
-    if (serviceFee === 0 && basePrice > 0) {
-      serviceFee = (basePrice * 5) / 100;
-      combinedTaxes = markupAmount + serviceFee;
-      totalDue = basePrice + combinedTaxes;
-    }
-    
-    // ✅ If markup is 0 but we have basePrice, calculate it as 10%
-    if (markupAmount === 0 && basePrice > 0) {
-      markupAmount = (basePrice * 10) / 100;
-      combinedTaxes = markupAmount + serviceFee;
-      totalDue = basePrice + combinedTaxes;
-    }
-
-    console.log('💰 ReviewTrip - Flight Price Breakdown (fallback):', {
-      basePrice,
-      markupAmount,
-      markupPercentage,
-      serviceFee,
-      serviceFeePercentage,
-      combinedTaxes,
-      combinedTaxPercentage,
-      totalDue,
-    });
   }
 
   const displayBasePrice = formatPrice(basePrice, offerCurrency);
@@ -863,7 +888,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       return;
     }
 
-    // ✅ TITLE, GENDER, DOB VALIDATION - ONLY FOR FLIGHTS
     if (isFlight) {
       if (!title) {
         alert('Title is required for flight bookings.');
@@ -892,22 +916,18 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         return;
       }
       
-      // ✅ FIX: Check passport for international Wakanow flights only
       if (isFlight && isWakanow && !isDomesticFlightResult) {
-        // Validate passport fields are filled
         if (!passportNumber || !passportExpiry || !passportIssuingAuthority) {
           alert('Passport details are required for international flights on Wakanow.\n\nPlease provide:\n- Passport Number\n- Passport Expiry Date\n- Passport Issuing Authority');
           return;
         }
         
-        // Validate passport format
         const passportRegex = /^[A-Za-z][0-9]{7,8}$|^[A-Za-z0-9]{6,9}$/;
         if (!passportRegex.test(passportNumber)) {
           alert('Please enter a valid passport number (e.g., A12345678)');
           return;
         }
         
-        // Validate passport expiry
         const expiryDate = new Date(passportExpiry);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -916,14 +936,12 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           return;
         }
         
-        // Validate passport issuing authority
         if (!passportIssuingAuthority.trim()) {
           alert('Passport Issuing Authority is required.');
           return;
         }
       }
       
-      // Also check for North America mandatory passport
       if (isPassportMandatory && !validatePassport()) {
         return;
       }
@@ -965,7 +983,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
             return;
           }
       
-          // ✅ Check passport for additional passengers on international Wakanow flights
           if (isFlight && isWakanow && !isDomesticFlightResult) {
             if (!p.passportNumber || !p.passportExpiry || !p.passportIssuingAuthority) {
               alert(`${label}: Passport details are required for international flights.`);
@@ -989,10 +1006,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         }
       }
 
-      // ==================== BUILD PASSENGER INFO BASED ON PRODUCT TYPE ====================
       let passengerInfo: PassengerInfo;
 
-      // For Hotels (Amadeus) and Car Rentals/Transfers - ONLY basic contact info
       if (isHotel || isCar) {
         passengerInfo = {
           firstName,
@@ -1001,7 +1016,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           phone,
         };
       } else {
-        // For Flights (Duffel/Wakanow) - Keep ALL fields including title, gender, DOB
         passengerInfo = {
           firstName,
           lastName,
@@ -1024,13 +1038,11 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           }),
         };
         
-        // Additional passengers for flights only
         if (additionalPassengers.length > 0) {
           (passengerInfo as any).travellers = additionalPassengers;
         }
       }
 
-      // ✅ Add passport details to passenger info for international Wakanow flights
       if (isFlight && isWakanow && !isDomesticFlightResult) {
         (passengerInfo as any).passportNumber = passportNumber;
         (passengerInfo as any).passportExpiry = passportExpiry;
@@ -1187,7 +1199,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                 )}
               </div>
 
-              {/* Passenger details with Title, Gender, DOB - ONLY for flights */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {isFlight && (
                   <div>
@@ -1304,7 +1315,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
               </div>
             </div>
 
-            {/* ========== PASSPORT FIELDS - ONLY for international Wakanow flights ========== */}
+            {/* ========== PASSPORT FIELDS ========== */}
             {isFlight && isWakanow && !isDomesticFlightResult && !extBooking && (
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
                 <h3 className="text-md font-semibold text-gray-900 mb-3">Passport Details <span className="text-red-500">*</span></h3>
@@ -1446,7 +1457,9 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                 {/* ✅ FLIGHT: Combined Taxes (Markup + Service Fee) */}
                 {isFlight && combinedTaxes > 0 && (
                   <div className="flex justify-between items-center pt-1 border-t border-gray-100">
-                    <span className="text-xs font-medium text-gray-500">Taxes</span>
+                    <span className="text-xs font-medium text-gray-500">
+                      Taxes ({combinedTaxPercentage}%)
+                    </span>
                     <span className="text-sm font-semibold text-gray-900">{displayCombinedTaxes}</span>
                   </div>
                 )}
@@ -1473,9 +1486,16 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                   <span className="text-xl font-black text-[#33a8da]">{displayTotalDue}</span>
                 </div>
 
-                {combinedTaxes > 0 && (
+                {/* ✅ Breakdown description - show as small text */}
+                {breakdownDescription && (
                   <div className="mt-2 text-[10px] text-gray-400 border-t border-gray-50 pt-2 text-center">
-                    
+                    {breakdownDescription}
+                  </div>
+                )}
+
+                {combinedTaxes > 0 && (
+                  <div className="mt-1 text-[10px] text-gray-400 text-center">
+                   
                   </div>
                 )}
               </div>

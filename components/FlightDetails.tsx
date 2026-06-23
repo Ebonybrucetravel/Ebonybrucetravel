@@ -421,75 +421,79 @@ const transformedItem = useMemo(() => {
     return `${hours ? hours[1] + 'h ' : ''}${minutes ? minutes[1] + 'm' : ''}`.trim() || durationStr;
   };
 
-  const handleBookClick = async () => {
-    try {
-      let finalItem = { ...transformedItem };
+ 
+
+const handleBookClick = async () => {
+  try {
+    let finalItem = { ...transformedItem };
+    
+    console.log('📦 handleBookClick - Flight data:', {
+      id: transformedItem.id,
+      provider: transformedItem.provider,
+      isWakanow: transformedItem.isWakanow,
+      hasSelectData: !!(transformedItem as any).selectData,
+    });
+    
+    if (transformedItem.isWakanow && (transformedItem as any).selectData) {
+      setIsConverting(true);
       
-      console.log('📦 handleBookClick - Flight data:', {
-        id: transformedItem.id,
-        provider: transformedItem.provider,
-        isWakanow: transformedItem.isWakanow,
-        hasSelectData: !!(transformedItem as any).selectData,
-      });
+      const { selectWakanowFlight } = await import('@/lib/wakanow-api');
+      const selectResult = await selectWakanowFlight(
+        (transformedItem as any).selectData,
+        'NGN'
+      );
       
-      if (transformedItem.isWakanow && (transformedItem as any).selectData) {
-        setIsConverting(true);
-        
-        // ✅ FIXED: Use selectWakanowFlight from wakanow-api
-        const { selectWakanowFlight } = await import('@/lib/wakanow-api');
-        const selectResult = await selectWakanowFlight(
-          (transformedItem as any).selectData,
-          'NGN'
-        );
-        
-        const termsAndConditions = selectResult?.terms_and_conditions?.TermsAndConditions || [];
-        
-        finalItem = {
-          ...transformedItem,
-          terms_and_conditions: termsAndConditions.length > 0 ? {
-            TermsAndConditions: termsAndConditions,
-            TermsAndConditionImportantNotice: selectResult?.terms_and_conditions?.TermsAndConditionImportantNotice || ''
-          } : null,
-          bookingId: selectResult?.booking_id,
-        };
-        
-        console.log('✅ Terms loaded for Wakanow flight:', termsAndConditions.length);
-      }
+      // ✅ FIXED: Access data from selectResult.data
+      const responseData = selectResult?.data;
       
-      const completeBooking = {
-        ...finalItem,
-        id: finalItem.id || `flight-${Date.now()}`,
-        type: 'flight',
-        status: 'Confirmed'
-      };
+      const termsAndConditions = responseData?.terms_and_conditions?.TermsAndConditions || [];
       
-      selectItem(completeBooking);
-      sessionStorage.setItem('selectedBooking', JSON.stringify(completeBooking));
-      router.push('/booking/review');
-    } catch (error: any) {
-      console.error('Failed to prepare booking:', error);
-      
-      if (error.message?.toLowerCase().includes('expired') || 
-          error.message?.toLowerCase().includes('search again')) {
-        toast.error('Your flight selection has expired. Please search for flights again.');
-        setTimeout(() => {
-          router.push('/search');
-        }, 2000);
-        return;
-      }
-      
-      const completeBooking = {
+      finalItem = {
         ...transformedItem,
-        id: transformedItem.id || `flight-${Date.now()}`,
-        type: 'flight',
-        status: 'Confirmed'
+        terms_and_conditions: termsAndConditions.length > 0 ? {
+          TermsAndConditions: termsAndConditions,
+          TermsAndConditionImportantNotice: responseData?.terms_and_conditions?.TermsAndConditionImportantNotice || ''
+        } : null,
+        bookingId: responseData?.booking_id,
       };
-      selectItem(completeBooking);
-      router.push('/booking/review');
-    } finally {
-      setIsConverting(false);
+      
+      console.log('✅ Terms loaded for Wakanow flight:', termsAndConditions.length);
     }
-  };
+    
+    const completeBooking = {
+      ...finalItem,
+      id: finalItem.id || `flight-${Date.now()}`,
+      type: 'flight',
+      status: 'Confirmed'
+    };
+    
+    selectItem(completeBooking);
+    sessionStorage.setItem('selectedBooking', JSON.stringify(completeBooking));
+    router.push('/booking/review');
+  } catch (error: any) {
+    console.error('Failed to prepare booking:', error);
+    
+    if (error.message?.toLowerCase().includes('expired') || 
+        error.message?.toLowerCase().includes('search again')) {
+      toast.error('Your flight selection has expired. Please search for flights again.');
+      setTimeout(() => {
+        router.push('/search');
+      }, 2000);
+      return;
+    }
+    
+    const completeBooking = {
+      ...transformedItem,
+      id: transformedItem.id || `flight-${Date.now()}`,
+      type: 'flight',
+      status: 'Confirmed'
+    };
+    selectItem(completeBooking);
+    router.push('/booking/review');
+  } finally {
+    setIsConverting(false);
+  }
+};
 
   // Render a single flight segment
   const renderSegment = (segment: any, index: number, isLast: boolean) => {

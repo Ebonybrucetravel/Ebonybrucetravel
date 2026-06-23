@@ -329,7 +329,8 @@ export default function BookingSuccessPage() {
         // Refresh booking data
         await fetchAuthBooking(bookingIdValue);
       } else {
-        alert(response.message || response.error || 'Failed to issue ticket');
+        const errorMsg = (response as any)?.error || response?.message || 'Failed to issue ticket';
+        alert(errorMsg);
       }
     } catch (error: any) {
       console.error('Issue ticket error:', error);

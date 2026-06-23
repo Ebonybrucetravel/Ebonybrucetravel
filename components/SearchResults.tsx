@@ -6,6 +6,8 @@ import { type Airline, createAirlinesMap } from "../lib/duffel-airlines";
 import { HotelListImage } from "./HotelListImage";
 import CompactSearchBox from "./CompactSearchBox";
 import { useRouter } from "next/navigation";
+import { selectWakanowFlight } from "@/lib/wakanow-api";
+import toast from "react-hot-toast";
 
 // Define baggage type
 interface Baggage {
@@ -343,6 +345,28 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
   penaltyRules?: string[] | null;
   originalPriceAmount?: number;
   originalPriceCurrency?: string;
+  _isRealData?: boolean;
+  _isBooking?: boolean;
+  priceBreakdown?: {
+    basePrice: number;
+    markupAmount: number;
+    markupPercentage: number;
+    serviceFee: number;
+    serviceFeePercentage: number;
+    taxes: number;
+    taxPercentage: number;
+    totalAmount: number;
+    currency: string;
+    breakdown?: string;
+  };
+  basePrice?: number;
+  markupAmount?: number;
+  serviceFee?: number;
+  totalAmount?: number;
+  markupPercentage?: number;
+  serviceFeePercentage?: number;
+  taxes?: string;
+  taxPercentage?: number;
 }
 
 interface SearchResultsProps {
@@ -678,6 +702,26 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           const flightModels = flightCombination?.FlightModels || [];
 
           if (flightModels.length === 0) continue;
+
+          // ✅ SKIP flights with invalid SelectData (too long or gzip compressed)
+          if (!selectData || selectData.length === 0) {
+            console.warn('⚠️ Skipping flight with empty SelectData');
+            continue;
+          }
+          
+          // ✅ Check if SelectData is valid (short format, not gzip compressed)
+          const isInvalidSelectData = selectData.length > 500 || 
+                                     selectData.startsWith('7h4AAB+LCAAAAAAABAD') ||
+                                     selectData.startsWith('H4sI');
+          
+          if (isInvalidSelectData) {
+            console.warn(`⚠️ Skipping flight with invalid SelectData: ${selectData.length} chars`);
+            console.warn(`⚠️ Preview: ${selectData.substring(0, 50)}...`);
+            continue; // Skip this flight entirely
+          }
+
+          // ✅ Valid SelectData - process the flight
+          console.log(`✅ Processing flight with valid SelectData: ${selectData.length} chars`);
 
           const outboundFlight = flightModels[0];
           const returnFlight = flightModels[1];
@@ -1022,24 +1066,21 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       const newPrices: Record<string, string> = {};
 
       for (const flight of processedFlights) {
-        if (flight.originalPriceAmount && flight.originalPriceCurrency) {
-          try {
-            const converted = await formatPriceWithCurrency(
-              flight.originalPriceAmount,
-              flight.originalPriceCurrency
-            );
-            newPrices[flight.id] = converted;
-          } catch (error) {
-            console.error('Failed to convert flight price:', error);
-            newPrices[flight.id] = `${currency.symbol} ${flight.originalPriceAmount.toFixed(0)}`;
-          }
-        } else if (flight.rawPrice) {
-          try {
-            const converted = await formatPriceWithCurrency(flight.rawPrice, 'GBP');
-            newPrices[flight.id] = converted;
-          } catch (error) {
-            newPrices[flight.id] = `${currency.symbol} ${flight.rawPrice.toFixed(0)}`;
-          }
+        // ✅ Check if we have a valid price amount
+        const priceAmount = flight.originalPriceAmount ?? flight.rawPrice ?? 0;
+        const currencyCode = flight.originalPriceCurrency ?? 'GBP';
+        
+        if (priceAmount <= 0) {
+          newPrices[flight.id] = `${currency.symbol} --`;
+          continue;
+        }
+
+        try {
+          const converted = await formatPriceWithCurrency(priceAmount, currencyCode);
+          newPrices[flight.id] = converted;
+        } catch (error) {
+          console.error('Failed to convert flight price:', error);
+          newPrices[flight.id] = `${currency.symbol} ${priceAmount.toFixed(0)}`;
         }
       }
 
@@ -1047,7 +1088,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     };
 
     convertFlightPrices();
-  }, [processedFlights, currency.code, formatPriceWithCurrency]);
+  }, [processedFlights, currency.code, formatPriceWithCurrency, currency.symbol]);
 
   // Get stop counts and cheapest prices for outbound
   const outboundStopStats = useMemo(() => {
@@ -1321,103 +1362,103 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return searchParams?.destination || (processedFlights[0]?.arrivalCity) || 'London';
   }, [searchParams, processedFlights]);
 
-// Extract hotel and car results with price conversion
-const hotelAndCarResults = useMemo(() => {
-  if (searchType === 'flights') return [];
+  // Extract hotel and car results with price conversion
+  const hotelAndCarResults = useMemo(() => {
+    if (searchType === 'flights') return [];
 
-  let items: ExtendedSearchResult[] = [];
-  
-  console.log('🔍 hotelAndCarResults - input results:', {
-    isArray: Array.isArray(results),
-    resultsType: typeof results,
-    hasResults: results && typeof results === 'object' && 'results' in results,
-    keys: results && typeof results === 'object' ? Object.keys(results) : []
-  });
-  
-  // Case 1: results is directly an array (what your SearchContext sends)
-  if (Array.isArray(results)) {
-    items = results.map((r: ExtendedSearchResult) => ({
-      ...r,
-      type: r.type || searchType
-    }));
-    console.log('✅ Extracted from direct array:', items.length);
-  }
-  // Case 2: results has a 'results' property that's an array
-  else if (results && typeof results === 'object' && 'results' in results && Array.isArray((results as any).results)) {
-    items = (results as any).results.map((r: ExtendedSearchResult) => ({
-      ...r,
-      type: r.type || searchType
-    }));
-    console.log('✅ Extracted from results.results:', items.length);
-  }
-  // Case 3: results has a 'data' property that's an array (for Amadeus raw response)
-  else if (results && typeof results === 'object' && 'data' in results && Array.isArray((results as any).data)) {
-    items = (results as any).data.map((r: ExtendedSearchResult) => ({
-      ...r,
-      type: r.type || searchType
-    }));
-    console.log('✅ Extracted from results.data:', items.length);
-  }
-  // Case 4: results is an object with numeric keys (array-like)
-  else if (results && typeof results === 'object') {
-    const possibleArray = Object.values(results);
-    if (possibleArray.length > 0 && possibleArray[0] && typeof possibleArray[0] === 'object') {
-      items = possibleArray as ExtendedSearchResult[];
-      console.log('✅ Extracted from Object.values:', items.length);
+    let items: ExtendedSearchResult[] = [];
+    
+    console.log('🔍 hotelAndCarResults - input results:', {
+      isArray: Array.isArray(results),
+      resultsType: typeof results,
+      hasResults: results && typeof results === 'object' && 'results' in results,
+      keys: results && typeof results === 'object' ? Object.keys(results) : []
+    });
+    
+    // Case 1: results is directly an array (what your SearchContext sends)
+    if (Array.isArray(results)) {
+      items = results.map((r: ExtendedSearchResult) => ({
+        ...r,
+        type: r.type || searchType
+      }));
+      console.log('✅ Extracted from direct array:', items.length);
     }
-  }
-
-  console.log('📊 Hotel results extracted:', {
-    itemsCount: items.length,
-    firstItem: items[0]?.title,
-    firstItemType: items[0]?.type,
-    firstItemId: items[0]?.id
-  });
-
-  return items.map((item: ExtendedSearchResult) => {
-    let originalPrice = 0;
-    let originalCurrency = 'GBP';
-
-    // Extract price from hotel data
-    if (item.final_amount) {
-      originalPrice = parseFloat(item.final_amount);
-      originalCurrency = item.currency || 'GBP';
-    } else if (item.original_amount) {
-      originalPrice = parseFloat(item.original_amount);
-      originalCurrency = item.original_currency || 'GBP';
-    } else if (item.final_price) {
-      originalPrice = parseFloat(item.final_price);
-      originalCurrency = item.currency || 'GBP';
-    } else if (item.price) {
-      if (typeof item.price === 'string') {
-        originalPrice = parseFloat(item.price.replace(/[^\d.]/g, '')) || 0;
-      } else if (typeof item.price === 'number') {
-        originalPrice = item.price;
-      } else if (typeof item.price === 'object' && item.price.total) {
-        originalPrice = parseFloat(item.price.total);
-        originalCurrency = item.price.currency || 'GBP';
-      }
-    } else if (item.totalPrice) {
-      const priceMatch = item.totalPrice.match(/[\d,]+\.?\d*/);
-      if (priceMatch) {
-        originalPrice = parseFloat(priceMatch[0].replace(/,/g, ''));
+    // Case 2: results has a 'results' property that's an array
+    else if (results && typeof results === 'object' && 'results' in results && Array.isArray((results as any).results)) {
+      items = (results as any).results.map((r: ExtendedSearchResult) => ({
+        ...r,
+        type: r.type || searchType
+      }));
+      console.log('✅ Extracted from results.results:', items.length);
+    }
+    // Case 3: results has a 'data' property that's an array (for Amadeus raw response)
+    else if (results && typeof results === 'object' && 'data' in results && Array.isArray((results as any).data)) {
+      items = (results as any).data.map((r: ExtendedSearchResult) => ({
+        ...r,
+        type: r.type || searchType
+      }));
+      console.log('✅ Extracted from results.data:', items.length);
+    }
+    // Case 4: results is an object with numeric keys (array-like)
+    else if (results && typeof results === 'object') {
+      const possibleArray = Object.values(results);
+      if (possibleArray.length > 0 && possibleArray[0] && typeof possibleArray[0] === 'object') {
+        items = possibleArray as ExtendedSearchResult[];
+        console.log('✅ Extracted from Object.values:', items.length);
       }
     }
 
-    console.log(`💰 Price extracted for ${item.title}:`, {
-      originalPrice,
-      originalCurrency,
-      final_amount: item.final_amount,
-      original_amount: item.original_amount
+    console.log('📊 Hotel results extracted:', {
+      itemsCount: items.length,
+      firstItem: items[0]?.title,
+      firstItemType: items[0]?.type,
+      firstItemId: items[0]?.id
     });
 
-    return {
-      ...item,
-      originalPriceAmount: originalPrice,
-      originalPriceCurrency: originalCurrency,
-    };
-  });
-}, [results, searchType]);
+    return items.map((item: ExtendedSearchResult) => {
+      let originalPrice = 0;
+      let originalCurrency = 'GBP';
+
+      // Extract price from hotel data
+      if (item.final_amount) {
+        originalPrice = parseFloat(item.final_amount);
+        originalCurrency = item.currency || 'GBP';
+      } else if (item.original_amount) {
+        originalPrice = parseFloat(item.original_amount);
+        originalCurrency = item.original_currency || 'GBP';
+      } else if (item.final_price) {
+        originalPrice = parseFloat(item.final_price);
+        originalCurrency = item.currency || 'GBP';
+      } else if (item.price) {
+        if (typeof item.price === 'string') {
+          originalPrice = parseFloat(item.price.replace(/[^\d.]/g, '')) || 0;
+        } else if (typeof item.price === 'number') {
+          originalPrice = item.price;
+        } else if (typeof item.price === 'object' && item.price.total) {
+          originalPrice = parseFloat(item.price.total);
+          originalCurrency = item.price.currency || 'GBP';
+        }
+      } else if (item.totalPrice) {
+        const priceMatch = item.totalPrice.match(/[\d,]+\.?\d*/);
+        if (priceMatch) {
+          originalPrice = parseFloat(priceMatch[0].replace(/,/g, ''));
+        }
+      }
+
+      console.log(`💰 Price extracted for ${item.title}:`, {
+        originalPrice,
+        originalCurrency,
+        final_amount: item.final_amount,
+        original_amount: item.original_amount
+      });
+
+      return {
+        ...item,
+        originalPriceAmount: originalPrice,
+        originalPriceCurrency: originalCurrency,
+      };
+    });
+  }, [results, searchType]);
 
   // Convert hotel and car prices
   useEffect(() => {
@@ -1427,19 +1468,20 @@ const hotelAndCarResults = useMemo(() => {
       const newPrices: Record<string, string> = {};
 
       for (const item of hotelAndCarResults) {
-        if (item.originalPriceAmount && item.originalPriceAmount > 0) {
-          try {
-            const converted = await formatPriceWithCurrency(
-              item.originalPriceAmount,
-              item.originalPriceCurrency || 'GBP'
-            );
-            newPrices[item.id] = converted;
-          } catch (error) {
-            console.error('Failed to convert hotel/car price:', error);
-            newPrices[item.id] = `${currency.symbol} ${item.originalPriceAmount.toFixed(0)}`;
-          }
-        } else {
+        const priceAmount = item.originalPriceAmount ?? 0;
+        const currencyCode = item.originalPriceCurrency ?? 'GBP';
+        
+        if (priceAmount <= 0) {
           newPrices[item.id] = 'Price on request';
+          continue;
+        }
+
+        try {
+          const converted = await formatPriceWithCurrency(priceAmount, currencyCode);
+          newPrices[item.id] = converted;
+        } catch (error) {
+          console.error('Failed to convert hotel/car price:', error);
+          newPrices[item.id] = `${currency.symbol} ${priceAmount.toFixed(0)}`;
         }
       }
 
@@ -1447,7 +1489,7 @@ const hotelAndCarResults = useMemo(() => {
     };
 
     convertHotelCarPrices();
-  }, [hotelAndCarResults, currency.code, formatPriceWithCurrency]);
+  }, [hotelAndCarResults, currency.code, formatPriceWithCurrency, currency.symbol]);
 
   // Filter hotel and car results
   const filteredHotelAndCarResults = useMemo(() => {
@@ -1555,6 +1597,271 @@ const hotelAndCarResults = useMemo(() => {
       <span className={`text-xs font-bold ${isChecked ? 'text-gray-900' : 'text-gray-500 group-hover:text-gray-700'}`}>{label}</span>
     </label>
   );
+
+// ==================== Refresh SelectData Helper ====================
+const refreshSelectData = useCallback(async (flight: ExtendedSearchResult): Promise<string | null> => {
+  try {
+    // Get the search params from the flight data - FIXED: only use properties that exist
+    const origin = flight.departureAirport || flight.departureCity;
+    const destination = flight.arrivalAirport || flight.arrivalCity;
+    
+    if (!origin || !destination) {
+      console.warn('Missing origin or destination for refresh');
+      return null;
+    }
+    
+    // Get departure date
+    let departureDate = '';
+    if (flight.departureTime) {
+      departureDate = new Date(flight.departureTime).toISOString().split('T')[0];
+    } else {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      departureDate = tomorrow.toISOString().split('T')[0];
+    }
+    
+    // Get return date if round trip
+    let returnDate = undefined;
+    if (flight.isRoundTrip && flight.returnFlight?.departureTime) {
+      returnDate = new Date(flight.returnFlight.departureTime).toISOString().split('T')[0];
+    }
+    
+    // Get passenger counts
+    const adults = (flight as any).adults || 1;
+    const children = (flight as any).children || 0;
+    const infants = (flight as any).infants || 0;
+    
+    // Map cabin class
+    let ticketClass: 'Y' | 'W' | 'C' | 'F' = 'Y';
+    const cabin = flight.cabin?.toLowerCase() || 'economy';
+    if (cabin === 'premium_economy') ticketClass = 'W';
+    else if (cabin === 'business') ticketClass = 'C';
+    else if (cabin === 'first') ticketClass = 'F';
+    
+    // Build search params
+    const searchParams = {
+      FlightSearchType: returnDate ? 'Return' : 'Oneway' as 'Return' | 'Oneway',
+      Ticketclass: ticketClass,
+      Adults: adults,
+      Children: children,
+      Infants: infants,
+      TargetCurrency: 'NGN',
+      Itineraries: [
+        {
+          Departure: origin,
+          Destination: destination,
+          DepartureDate: departureDate,
+        },
+      ],
+    };
+    
+    if (returnDate) {
+      searchParams.Itineraries.push({
+        Departure: destination,
+        Destination: origin,
+        DepartureDate: returnDate,
+      });
+    }
+    
+    console.log('🔄 Refreshing search with params:', searchParams);
+    
+    // ✅ Import and call search
+    const { searchWakanowFlights } = await import('@/lib/wakanow-api');
+    const searchResult = await searchWakanowFlights(searchParams);
+    
+    // Find the matching offer
+    const offers = searchResult?.data?.offers || [];
+    if (offers.length === 0) {
+      console.warn('No offers found in refresh search');
+      return null;
+    }
+    
+    // Try to find the same flight by airline and flight number
+    let matchedOffer = offers.find((offer: any) => {
+      const offerAirline = offer.airlineName || offer.airline || '';
+      const offerFlightNumber = offer.flightNumber || offer.flight_number || '';
+      return offerAirline === flight.airlineName && 
+             offerFlightNumber === flight.flightNumber;
+    });
+    
+    // If not found, use the first offer
+    if (!matchedOffer) {
+      matchedOffer = offers[0];
+      console.log('Using first offer as fallback:', matchedOffer.id);
+    }
+    
+    // Extract selectData
+    const newSelectData = matchedOffer.selectData || matchedOffer.SelectData || matchedOffer.select_data;
+    if (newSelectData && newSelectData.length > 10 && newSelectData.length < 500) {
+      console.log('✅ Refreshed selectData obtained:', newSelectData.substring(0, 50) + '...');
+      return newSelectData;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Failed to refresh selectData:', error);
+    return null;
+  }
+}, []);
+
+  // ==================== Handle Flight Booking with Real Data ====================
+  const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
+    // Prevent double clicks
+    if (flight._isBooking) return;
+    
+    // ✅ Check if selectData exists
+    if (!flight.selectData) {
+      toast.error('Missing flight selection data. Please search again.', { id: 'flight-select' });
+      return;
+    }
+    
+    // ✅ Validate selectData length
+    if (flight.selectData.length < 10) {
+      toast.error('Invalid flight selection. Please search again.', { id: 'flight-select' });
+      return;
+    }
+    
+    // ✅ Log selectData info for debugging
+    console.log('🔍 Booking flight with selectData:', {
+      id: flight.id,
+      selectDataLength: flight.selectData.length,
+      isWakanowDomestic: flight.isWakanowDomestic,
+      isRoundTrip: flight.isRoundTrip,
+      airline: flight.airlineName,
+    });
+    
+    // Set loading state on the flight
+    flight._isBooking = true;
+    setBookingFlightId(flight.id);
+    
+    try {
+      // Show loading toast
+      toast.loading('Confirming flight pricing...', { id: 'flight-select' });
+      
+      // ✅ STEP 1: Try to select the flight with retry and auto-refresh
+      let selectResult;
+      let currentSelectData = flight.selectData;
+      let retryCount = 0;
+      const maxRetries = 2;
+      
+      while (retryCount <= maxRetries) {
+        try {
+          selectResult = await selectWakanowFlight(currentSelectData, 'NGN');
+          break; // Success, exit loop
+        } catch (error: any) {
+          retryCount++;
+          
+          // ✅ If selection expired or failed, try to refresh
+          if (error.message === 'SELECTION_EXPIRED' || 
+              error.message?.includes('expired') ||
+              error.message?.includes('An error has occured') ||
+              error.message?.includes('500')) {
+            
+            console.warn(`⚠️ Selection failed (attempt ${retryCount}/${maxRetries})`);
+            
+            if (retryCount <= maxRetries) {
+              // ✅ Try to get fresh selectData from a new search
+              toast.loading('Refreshing flight selection...', { id: 'flight-select' });
+              
+              try {
+                const freshSelectData = await refreshSelectData(flight);
+                if (freshSelectData) {
+                  currentSelectData = freshSelectData;
+                  console.log('✅ Got fresh selectData, retrying...');
+                  continue; // Retry with fresh data
+                }
+              } catch (refreshError) {
+                console.error('Failed to refresh selectData:', refreshError);
+              }
+            }
+          }
+          
+          // If we can't recover, throw the error
+          throw error;
+        }
+      }
+      
+      // ✅ Check if we got a valid response
+      const responseData = selectResult?.data;
+      
+      if (!responseData?.booking_id || !responseData?.select_data) {
+        toast.error('Flight no longer available. Please search again.', { id: 'flight-select' });
+        flight._isBooking = false;
+        setBookingFlightId(null);
+        return;
+      }
+      
+      console.log('💰 Real flight data from backend:', {
+        bookingId: responseData.booking_id,
+        totalAmount: responseData.priceBreakdown?.totalAmount,
+        basePrice: responseData.priceBreakdown?.basePrice,
+        markupAmount: responseData.priceBreakdown?.markupAmount,
+        serviceFee: responseData.priceBreakdown?.serviceFee,
+      });
+      
+      // ✅ STEP 2: Build the complete flight data with real prices
+      const realFlightData: ExtendedSearchResult = {
+        ...flight,
+        bookingId: responseData.booking_id,
+        selectData: responseData.select_data,
+        priceBreakdown: responseData.priceBreakdown || undefined,
+        basePrice: responseData.priceBreakdown?.basePrice || 0,
+        markupAmount: responseData.priceBreakdown?.markupAmount || 0,
+        serviceFee: responseData.priceBreakdown?.serviceFee || 0,
+        totalAmount: responseData.priceBreakdown?.totalAmount || 0,
+        currency: responseData.priceBreakdown?.currency || 'NGN',
+        final_amount: responseData.priceBreakdown?.totalAmount?.toString() || '0',
+        final_price: responseData.priceBreakdown?.totalAmount?.toString() || '0',
+        markupPercentage: responseData.priceBreakdown?.markupPercentage || 10,
+        serviceFeePercentage: responseData.priceBreakdown?.serviceFeePercentage || 5,
+        taxes: responseData.priceBreakdown?.taxes?.toString() || '0',
+        taxPercentage: responseData.priceBreakdown?.taxPercentage || 15,
+        terms_and_conditions: responseData.terms_and_conditions || null,
+        isWakanow: true,
+        _isRealData: true,
+        _isBooking: false,
+      };
+      
+      // ✅ STEP 3: Update the flight price
+      if (realFlightData.priceBreakdown) {
+        const realTotal = realFlightData.priceBreakdown.totalAmount;
+        const realCurrency = realFlightData.priceBreakdown.currency || 'NGN';
+        try {
+          const converted = await formatPriceWithCurrency(realTotal, realCurrency);
+          setFlightPrices(prev => ({
+            ...prev,
+            [flight.id]: converted
+          }));
+        } catch (error) {
+          setFlightPrices(prev => ({
+            ...prev,
+            [flight.id]: `${currency.symbol} ${realTotal.toFixed(2)}`
+          }));
+        }
+      }
+      
+      toast.success('Price confirmed!', { id: 'flight-select' });
+      
+      // ✅ STEP 4: Navigate to review page
+      onSelect?.(realFlightData);
+      
+    } catch (error: any) {
+      console.error('Failed to select flight:', error);
+      
+      const errorMessage = error?.message || '';
+      
+      if (errorMessage === 'SELECTION_EXPIRED' || errorMessage?.includes('expired')) {
+        toast.error('Your flight selection has expired. Please search again.', { id: 'flight-select' });
+      } else if (errorMessage?.includes('500') || errorMessage?.includes('An error has occured')) {
+        toast.error('Flight pricing temporarily unavailable. Please try again.', { id: 'flight-select' });
+      } else {
+        toast.error('Failed to confirm flight pricing. Please try again.', { id: 'flight-select' });
+      }
+      
+      flight._isBooking = false;
+      setBookingFlightId(null);
+    }
+  }, [onSelect, formatPriceWithCurrency, currency.symbol, refreshSelectData]);
 
   // Render Hotel Card
   const renderHotelCard = (item: ExtendedSearchResult) => {
@@ -1782,7 +2089,7 @@ const hotelAndCarResults = useMemo(() => {
     );
   };
 
-  // ==================== UPDATED: Flight Card Component with component-level state ====================
+  // ==================== Flight Card Component ====================
   const renderFlightCard = (flight: ExtendedSearchResult) => {
     const isRefundable = flight.conditions?.refund_before_departure?.allowed;
     const baggageText = getBaggageText(flight);
@@ -1790,55 +2097,24 @@ const hotelAndCarResults = useMemo(() => {
     const displayPrice = flightPrices[flight.id] || 'Loading...';
     const isBookingThisFlight = bookingFlightId === flight.id;
 
-    // Determine flight type for badge
     const isWakanowDomestic = flight.isWakanow && (flight as any).isWakanowDomestic === true;
     const isWakanowInternational = flight.isWakanow && (flight as any).isWakanowDomestic === false;
     const isDuffelFlight = !flight.isWakanow;
 
     const handleBookClick = async (e: React.MouseEvent) => {
       e.stopPropagation();
-
       if (isBookingThisFlight) return;
-      setBookingFlightId(flight.id);
-
-      let finalFlight = flight;
-
-    // For Wakanow flights, fetch terms before proceeding
-if (flight.isWakanow && flight.selectData) {
-  try {
-    console.log('🔄 Fetching terms for Wakanow flight from search results...');
-    const { selectWakanowFlight } = await import('@/lib/wakanow-api');
-    const selectResult = await selectWakanowFlight(flight.selectData, 'NGN');
-    
-    const termsAndConditions = selectResult?.terms_and_conditions?.TermsAndConditions || [];
-
-    finalFlight = {
-      ...flight,
-      terms_and_conditions: termsAndConditions.length > 0 ? {
-        TermsAndConditions: termsAndConditions,
-        TermsAndConditionImportantNotice: selectResult?.terms_and_conditions?.TermsAndConditionImportantNotice || ''
-      } : null,
-      bookingId: selectResult?.booking_id || flight.bookingId,
-    };
-
-    console.log('✅ Terms loaded:', termsAndConditions.length);
-  } catch (error) {
-    console.error('Failed to get flight terms:', error);
-  }
-}
-
-      onSelect?.(finalFlight);
-      setBookingFlightId(null);
+      await handleBookFlight(flight);
     };
 
     return (
       <div
-      key={flight.id}
-      className="bg-white rounded-2xl ... cursor-pointer"
-      onClick={() => {
-        router.push(`/flights/${encodeURIComponent(flight.id)}`);
-      }}
-    >
+        key={flight.id}
+        className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden cursor-pointer"
+        onClick={() => {
+          router.push(`/flights/${encodeURIComponent(flight.id)}`);
+        }}
+      >
         <div className="p-6">
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
             <div className="flex items-center gap-4">
@@ -1858,7 +2134,6 @@ if (flight.isWakanow && flight.selectData) {
               )}
               <div>
                 <h4 className="font-bold text-gray-900 text-lg">{flight.airlineName}</h4>
-                {/* Badge Section */}
                 {isWakanowDomestic && (
                   <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full mt-1 inline-block">
                     Domestic Flight
@@ -1881,7 +2156,14 @@ if (flight.isWakanow && flight.selectData) {
                 onClick={handleBookClick}
                 disabled={isBookingThisFlight}
               >
-                {isBookingThisFlight ? 'Loading...' : 'Book Now'}
+                {isBookingThisFlight ? (
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block animate-spin">⟳</span>
+                    Loading...
+                  </span>
+                ) : (
+                  'Book Now'
+                )}
               </button>
             </div>
           </div>
@@ -1989,21 +2271,20 @@ if (flight.isWakanow && flight.selectData) {
               )}
             </div>
           
-<button
-  onClick={(e) => {
-    e.stopPropagation(); // Prevent triggering parent div click
-    router.push(`/flights/${encodeURIComponent(flight.id)}`);
-  }}
-  className="text-[#33a8da] text-sm font-medium hover:underline"
->
-  View Flight Details
-</button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(`/flights/${encodeURIComponent(flight.id)}`);
+              }}
+              className="text-[#33a8da] text-sm font-medium hover:underline"
+            >
+              View Flight Details
+            </button>
           </div>
         </div>
       </div>
     );
   };
-  // ==================== END UPDATED ====================
 
   // Right Sidebar Ads Component - Only for flights
   const renderRightSidebarAds = () => (
@@ -2083,9 +2364,8 @@ if (flight.isWakanow && flight.selectData) {
     </div>
   );
 
-  // Filter Sidebar for Flights
+  // Filter Sidebar for Flights (keep all your existing filter functions)
   const renderFlightFilters = () => {
-    // Helper to get cheapest price display for a category
     const getCheapestPriceDisplay = (stopCategory: string) => {
       const stats = outboundStopStats[stopCategory as keyof typeof outboundStopStats];
       if (stats.cheapestFlight && stats.cheapestFlight.id) {
@@ -2394,7 +2674,7 @@ if (flight.isWakanow && flight.selectData) {
     );
   };
 
-  // Hotel and Car Filter Sidebar
+  // Hotel and Car Filter Sidebar (keep existing)
   const renderHotelCarFilters = () => (
     <div className="bg-white rounded-[24px] p-8 shadow-sm border border-gray-100 sticky top-24">
       <div className="flex justify-between items-center mb-8">

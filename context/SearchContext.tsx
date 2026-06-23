@@ -748,6 +748,7 @@ const searchHotels = async (params: SearchParams) => {
     returnDate?: string, 
     cabinClass: string = 'economy', 
     isDomesticRoute: boolean = false
+    
   ): Promise<SearchResult[]> => {
     if (!offers || offers.length === 0) return [];
     
@@ -1189,7 +1190,7 @@ const searchFlights = async (params: SearchParams) => {
     return Array.from(seen.values());
   };
 
-  // ✅ FIXED: 60 second timeout (was 30 seconds)
+  // 60 second timeout
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
     console.warn('⏰ Search timeout after 60s, aborting...');
@@ -1200,10 +1201,9 @@ const searchFlights = async (params: SearchParams) => {
     let wakanowResults: SearchResult[] = [];
     let duffelResults: SearchResult[] = [];
 
-    // ✅ WAKANOW FETCH - UPDATED with proper typing
+    // ✅ WAKANOW FETCH - FIXED
     const wakanowFetchPromise = (async (): Promise<SearchResult[]> => {
       try {
-        // Check if already aborted
         if (controller.signal.aborted) {
           console.log('⚠️ Wakanow fetch skipped - already aborted');
           return [];
@@ -1245,15 +1245,52 @@ const searchFlights = async (params: SearchParams) => {
         
         const result = await searchWakanowFlights(wakanowSearchParams);
         
-        // Check if aborted after fetch
         if (controller.signal.aborted) {
           console.log('⚠️ Wakanow fetch completed but controller aborted');
           return [];
         }
         
-        const offers = result.offers || result.data?.offers || [];
+        // ✅ FIXED: Access offers from result.data.offers using the correct type
+        let wakanowOffers: any[] = [];
         
-        return await transformWakanowOffers(offers, returnDate, cabinClass, isDomestic);
+        // ✅ result is WakanowSearchResponse, so access data.offers
+        if (result?.data?.offers && Array.isArray(result.data.offers)) {
+          wakanowOffers = result.data.offers;
+          console.log(`📦 Wakanow offers from data.offers: ${wakanowOffers.length}`);
+        } else if (result?.data && Array.isArray(result.data)) {
+          // Sometimes the data might be an array directly
+          wakanowOffers = result.data;
+          console.log(`📦 Wakanow offers from data array: ${wakanowOffers.length}`);
+        }
+        
+        // ✅ Also check if there's a selectData in the response (for backward compatibility)
+        if (wakanowOffers.length === 0 && result?.data?.selectData) {
+          console.log('📦 No offers found, but selectData exists. This might be a direct selection response.');
+          // Try to see if the data itself is an offer
+          const dataObj = result.data as any;
+          if (dataObj.FlightCombination || dataObj.slices || dataObj.FlightLegs) {
+            wakanowOffers = [dataObj];
+            console.log('📦 Using data object as a single offer');
+          }
+        }
+        
+        // ✅ If we have offers, check if they have the right structure
+        if (wakanowOffers.length > 0) {
+          // If offers don't have slices but have FlightCombination, transform them
+          const firstOffer = wakanowOffers[0];
+          if (!firstOffer?.slices && firstOffer?.FlightCombination) {
+            wakanowOffers = wakanowOffers.map((offer: any) => ({
+              ...offer,
+              slices: offer.FlightCombination?.FlightModels || [],
+              price: offer.FlightCombination?.Price || {},
+              SelectData: offer.SelectData || offer.selectData || ''
+            }));
+          }
+        }
+        
+        console.log(`📦 Final Wakanow offers to transform: ${wakanowOffers.length}`);
+        
+        return await transformWakanowOffers(wakanowOffers, returnDate, cabinClass, isDomestic);
         
       } catch (err: any) {
         if (err.name === 'AbortError' || err.message?.includes('aborted')) {
@@ -1265,116 +1302,116 @@ const searchFlights = async (params: SearchParams) => {
       }
     })();
 
-   // ✅ DUFFEL FETCH - WITH BETTER ERROR HANDLING
-const duffelFetchPromise = (async (): Promise<SearchResult[]> => {
-  try {
-    if (controller.signal.aborted) {
-      console.log('⚠️ Duffel fetch skipped - already aborted');
-      return [];
-    }
+    // ✅ DUFFEL FETCH
+    const duffelFetchPromise = (async (): Promise<SearchResult[]> => {
+      try {
+        if (controller.signal.aborted) {
+          console.log('⚠️ Duffel fetch skipped - already aborted');
+          return [];
+        }
 
-    const requestBody: any = {
-      origin, destination, departureDate,
-      passengers: adults + children + infants,
-      cabinClass, currency: 'NGN',
-    };
-    if (returnDate) requestBody.returnDate = returnDate;
+        const requestBody: any = {
+          origin, destination, departureDate,
+          passengers: adults + children + infants,
+          cabinClass, currency: 'NGN',
+        };
+        if (returnDate) requestBody.returnDate = returnDate;
 
-    console.log('📤 Duffel search request:', requestBody);
+        console.log('📤 Duffel search request:', requestBody);
 
-    const offerRes = await fetch(`${BASE}/api/v1/bookings/search/flights`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    });
-    
-    if (!offerRes.ok) {
-      const errorText = await offerRes.text();
-      console.error('❌ Duffel offer request failed:', offerRes.status, errorText);
-      return [];
-    }
+        const offerRes = await fetch(`${BASE}/api/v1/bookings/search/flights`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+        
+        if (!offerRes.ok) {
+          const errorText = await offerRes.text();
+          console.error('❌ Duffel offer request failed:', offerRes.status, errorText);
+          return [];
+        }
 
-    const offerData = await offerRes.json();
-    console.log('📦 Duffel offer response:', {
-      success: offerData.success,
-      hasOfferRequestId: !!offerData.data?.offer_request_id,
-      dataKeys: offerData.data ? Object.keys(offerData.data) : []
-    });
-    
-    if (offerData.success === false) {
-      console.error('❌ Duffel search failed:', offerData.message || 'Unknown error');
-      return [];
-    }
-    
-    if (!offerData.data) {
-      console.error('❌ Duffel search returned no data');
-      return [];
-    }
-    
-    if (!offerData.data.offer_request_id) {
-      console.warn('⚠️ No offer_request_id in Duffel response, skipping Duffel');
-      return [];
-    }
-    
-    const offerRequestId = offerData.data.offer_request_id;
-    console.log(`🔑 Duffel offer_request_id: ${offerRequestId}`);
+        const offerData = await offerRes.json();
+        console.log('📦 Duffel offer response:', {
+          success: offerData.success,
+          hasOfferRequestId: !!offerData.data?.offer_request_id,
+          dataKeys: offerData.data ? Object.keys(offerData.data) : []
+        });
+        
+        if (offerData.success === false) {
+          console.error('❌ Duffel search failed:', offerData.message || 'Unknown error');
+          return [];
+        }
+        
+        if (!offerData.data) {
+          console.error('❌ Duffel search returned no data');
+          return [];
+        }
+        
+        if (!offerData.data.offer_request_id) {
+          console.warn('⚠️ No offer_request_id in Duffel response, skipping Duffel');
+          return [];
+        }
+        
+        const offerRequestId = offerData.data.offer_request_id;
+        console.log(`🔑 Duffel offer_request_id: ${offerRequestId}`);
 
-    let allOffers: any[] = [];
-    let cursor: string | null = null;
-    let hasMore = true;
-    let page = 1;
-    const MAX_PAGES = 2;
+        let allOffers: any[] = [];
+        let cursor: string | null = null;
+        let hasMore = true;
+        let page = 1;
+        const MAX_PAGES = 2;
 
-    while (hasMore && page <= MAX_PAGES) {
-      if (controller.signal.aborted) {
-        console.log('⚠️ Duffel pagination aborted');
-        break;
+        while (hasMore && page <= MAX_PAGES) {
+          if (controller.signal.aborted) {
+            console.log('⚠️ Duffel pagination aborted');
+            break;
+          }
+          
+          const url = new URL(`${BASE}/api/v1/bookings/offers`);
+          url.searchParams.set('offer_request_id', offerRequestId);
+          if (cursor) url.searchParams.set('cursor', cursor);
+          
+          console.log(`📤 Duffel offers page ${page}`);
+          
+          const offersRes = await fetch(url.toString(), { signal: controller.signal });
+          if (!offersRes.ok) {
+            const errorText = await offersRes.text();
+            console.error(`❌ Duffel offers page ${page} failed:`, offersRes.status, errorText);
+            break;
+          }
+          
+          const offersData = await offersRes.json();
+          console.log(`📦 Duffel offers page ${page}:`, {
+            hasOffers: !!offersData.data?.offers,
+            offersCount: offersData.data?.offers?.length || 0
+          });
+          
+          const pageOffers: any[] = offersData.data?.offers ?? offersData.data ?? offersData.offers ?? [];
+          allOffers = allOffers.concat(pageOffers);
+          hasMore = offersData.meta?.hasMore ?? false;
+          cursor = offersData.meta?.nextCursor ?? null;
+          page++;
+        }
+
+        console.log(`✅ Duffel offers fetched: ${allOffers.length} total`);
+        
+        if (allOffers.length === 0) {
+          console.log('⚠️ No Duffel offers found');
+          return [];
+        }
+
+        return await transformDuffelOffers(allOffers, cabinClass, offerRequestId);
+      } catch (err: any) {
+        if (err.name === 'AbortError' || err.message?.includes('aborted')) {
+          console.log('⚠️ Duffel fetch aborted');
+          return [];
+        }
+        console.error('❌ Duffel fetch failed:', err.message);
+        return [];
       }
-      
-      const url = new URL(`${BASE}/api/v1/bookings/offers`);
-      url.searchParams.set('offer_request_id', offerRequestId);
-      if (cursor) url.searchParams.set('cursor', cursor);
-      
-      console.log(`📤 Duffel offers page ${page}`);
-      
-      const offersRes = await fetch(url.toString(), { signal: controller.signal });
-      if (!offersRes.ok) {
-        const errorText = await offersRes.text();
-        console.error(`❌ Duffel offers page ${page} failed:`, offersRes.status, errorText);
-        break;
-      }
-      
-      const offersData = await offersRes.json();
-      console.log(`📦 Duffel offers page ${page}:`, {
-        hasOffers: !!offersData.data?.offers,
-        offersCount: offersData.data?.offers?.length || 0
-      });
-      
-      const pageOffers: any[] = offersData.data?.offers ?? offersData.data ?? offersData.offers ?? [];
-      allOffers = allOffers.concat(pageOffers);
-      hasMore = offersData.meta?.hasMore ?? false;
-      cursor = offersData.meta?.nextCursor ?? null;
-      page++;
-    }
-
-    console.log(`✅ Duffel offers fetched: ${allOffers.length} total`);
-    
-    if (allOffers.length === 0) {
-      console.log('⚠️ No Duffel offers found');
-      return [];
-    }
-
-    return await transformDuffelOffers(allOffers, cabinClass, offerRequestId);
-  } catch (err: any) {
-    if (err.name === 'AbortError' || err.message?.includes('aborted')) {
-      console.log('⚠️ Duffel fetch aborted');
-      return [];
-    }
-    console.error('❌ Duffel fetch failed:', err.message);
-    return [];
-  }
-})();
+    })();
 
     wakanowFetchPromise.then(results => {
       wakanowResults = results;

@@ -41,7 +41,6 @@ export interface SearchParams {
   pickUpDate?: string;
   dropOffDate?: string;
   maxConnections?: number;
-  // Hotelbeds specific
   occupancies?: Array<{
     rooms: number;
     adults: number;
@@ -52,7 +51,6 @@ export interface SearchParams {
   }>;
   language?: string;
   destination?: string;
-  // Allow any additional properties for flexibility
   [key: string]: any;
 }
 
@@ -168,16 +166,14 @@ export interface SearchResult {
   guests?: number;
   hotelAddress?: string;
   hotelAmenities?: string[];
-  pricePerNight?: string;        // ← ADD THIS
-  nights?: number;               // ← ADD THIS
-  roomDescription?: string;      // ← ADD THIS
-  roomType?: string;             // ← ADD THIS
-  cancellationDeadline?: string; // ← ADD THIS
+  pricePerNight?: string;
+  nights?: number;
+  roomDescription?: string;
+  roomType?: string;
+  cancellationDeadline?: string;
   offer?: any;
-hotel?: any;
-adults?: number;
-
-
+  hotel?: any;
+  adults?: number;
 
   // ✅ CAR RENTAL SPECIFIC FIELDS
   pickupLocation?: string;
@@ -198,6 +194,21 @@ adults?: number;
   // ✅ Round trip fields
   isRoundTrip?: boolean;
   returnFlightData?: any;
+
+  // ✅ WAKANOW PRICE BREAKDOWN - Direct from backend
+  breakdown?: string;
+  priceBreakdown?: {
+    basePrice: number;
+    markupAmount: number;
+    markupPercentage: number;
+    serviceFee: number;
+    serviceFeePercentage: number;
+    taxes: number;
+    taxPercentage: number;
+    totalAmount: number;
+    currency: string;
+    breakdown?: string;
+  };
 }
 
 export interface User {
@@ -330,19 +341,16 @@ export interface Booking {
   formattedDiscountedTotal?: string;
 
   // ✅ WAKANOW SPECIFIC FIELDS
-  pnrNumber?: string;  // ADDED: PNR number for Wakanow ticket issuance
+  pnrNumber?: string;
 
   bookingData: {
-    // Flight fields
     origin?: string;
     airline?: string;
     destination?: string;
     flightNumber?: string;
     departureDate?: string;
     cabinClass?: string;
-    passengers?: number | { adults: number; infants: number; children: number; } | any[]; 
-
-    // Hotel fields
+    passengers?: number | { adults: number; infants: number; children: number; } | any[];
     guests?: number;
     rooms?: number;
     checkInDate?: string;
@@ -350,29 +358,20 @@ export interface Booking {
     location?: string;
     hotelName?: string;
     hotelId?: string;
-
-    // Car rental fields
     vehicleType?: string;
     pickupDateTime?: string;
     dropoffDateTime?: string;
     pickupLocationCode?: string;
     dropoffLocationCode?: string;
-
-    // Common fields
     offerId?: string;
-
-    // ✅ PRICE FIELDS IN BOOKINGDATA
     original_amount?: string;
     markup_amount?: string;
     service_fee?: string;
     final_amount?: string;
     conversion_fee?: string;
     taxes?: number;
-
-    // ✅ WAKANOW BOOKING DATA FIELDS
-    pnrNumber?: string;  // ADDED: Can also be in bookingData
+    pnrNumber?: string;
     provider?: string;
-
     [key: string]: any;
   };
 
@@ -387,6 +386,8 @@ export interface Booking {
   paymentReference?: string;
   paymentInfo?: PaymentInfo;
   stripeChargeId?: string;
+  // ✅ WAKANOW PRICE BREAKDOWN
+  breakdown?: string;
 }
 
 export interface PassengerInfo {
@@ -399,21 +400,16 @@ export interface PassengerInfo {
   gender?: "m" | "f";
   dateOfBirth?: string;
   born_on?: string;
-  
-  // Passport fields
   passportNumber?: string;
   passportExpiry?: string;
   passportIssuingAuthority?: string;
   passportIssueCountry?: string;
   passportIssueCountryCode?: string;
-  
-  // Address fields
   address?: string;
   city?: string;
   country?: string;
   countryCode?: string;
   postalCode?: string;
-  
   travellers?: PassengerInfo[];
   guests?: Array<{
     name?: {
@@ -488,7 +484,6 @@ export interface SocialMediaLink {
   url: string;
 }
 
-// Service Page Types
 export interface ServiceSector {
   id: number;
   title: string;
@@ -533,7 +528,6 @@ export interface TimelineEvent {
   description: string;
 }
 
-// ✅ HOTELBEDS (HBX) SPECIFIC TYPES
 export interface HBXOccupancy {
   rooms: number;
   adults: number;
@@ -773,7 +767,6 @@ export interface WakanowTicketResponse {
   };
 }
 
-// Domestic flight search params (simplified for your app)
 export interface DomesticFlightSearchParams {
   from: string;
   to: string;
@@ -786,7 +779,6 @@ export interface DomesticFlightSearchParams {
   targetCurrency?: string;
 }
 
-// Normalized flight output (matches your existing SearchResult structure)
 export interface WakanowNormalizedFlight {
   id: string;
   provider: 'wakanow';
@@ -837,4 +829,18 @@ export interface WakanowNormalizedFlight {
   currency?: string;
   rawPrice?: number;
   displayPrice?: string;
+  // ✅ WAKANOW PRICE BREAKDOWN
+  breakdown?: string;
+  priceBreakdown?: {
+    basePrice: number;
+    markupAmount: number;
+    markupPercentage: number;
+    serviceFee: number;
+    serviceFeePercentage: number;
+    taxes: number;
+    taxPercentage: number;
+    totalAmount: number;
+    currency: string;
+    breakdown?: string;
+  };
 }

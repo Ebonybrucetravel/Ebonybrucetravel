@@ -80,7 +80,7 @@ interface ExtendedSearchResult {
   [key: string]: any;
 }
 
-// ==================== AIRPORT COUNTRY MAPPING (GLOBAL DOMESTIC DETECTION) ====================
+// ==================== AIRPORT COUNTRY MAPPING ====================
 const AIRPORT_COUNTRY_MAP: Record<string, string> = {
   'LOS': 'NG', 'ABV': 'NG', 'PHC': 'NG', 'KAN': 'NG', 'ENU': 'NG',
   'QOW': 'NG', 'BNI': 'NG', 'JOS': 'NG', 'KAD': 'NG', 'YOL': 'NG',
@@ -175,6 +175,12 @@ const isValidAmadeusOfferId = (offerId: string | number): boolean => {
   }
   
   return idString.length >= 8 && /^[A-Z0-9]{8,}$/i.test(idString);
+};
+
+// ✅ Helper to safely get breakdown from any priceBreakdown object
+const getBreakdown = (pb: any): string => {
+  if (!pb) return '';
+  return pb.breakdown || `${pb.basePrice || 0} + ${pb.markupAmount || 0} (${pb.markupPercentage || 10}% markup) + ${pb.serviceFee || 0} (${pb.serviceFeePercentage || 5}% service fee) = ${pb.totalAmount || 0}`;
 };
 
 export function useBooking() {
@@ -416,66 +422,69 @@ export function useBooking() {
 
         const token = getStoredAuthToken();
 
+       
 
 
-// ✅ WAKANOW FLOW - FIXED
 if (provider === 'WAKANOW' && (productType === 'FLIGHT_DOMESTIC' || productType === 'FLIGHT_INTERNATIONAL')) {
   console.log("🚀 STARTING WAKANOW FLOW");
 
-  // STEP 1: Get the original selectData from the search result
   const originalSelectData = getSelectData(item);
   if (!originalSelectData) {
     throw new Error("Missing booking token. Please search again.");
   }
 
-  // STEP 2: SELECT - Confirm pricing and get NEW selectData
-  console.log("📤 Step 1: Selecting flight...");
+  console.log("📤 Step 1: Selecting flight via backend...");
   const selectResult = await selectWakanowFlight(originalSelectData, offerCurrency);
   
-  const wakanowBookingId = selectResult?.booking_id;
-  const newSelectData = selectResult?.select_data;
+  console.log("📦 Full selectResult from backend:", JSON.stringify(selectResult, null, 2));
+  
+  // ✅ FIXED: Access data from selectResult.data
+  const responseData = selectResult?.data;
+  
+  const wakanowBookingId = responseData?.booking_id;
+  const newSelectData = responseData?.select_data;
   
   if (!wakanowBookingId || !newSelectData) {
     throw new Error("Failed to confirm flight pricing");
   }
 
-  // ✅ Extract the ACTUAL price from the select result
-  const wakanowPrice = selectResult?.flight_summary?.price?.Amount || 0;
-  const wakanowCurrency = selectResult?.flight_summary?.price?.CurrencyCode || offerCurrency;
-  
-  console.log("💰 Wakanow price from select:", {
-    wakanowPrice,
-    wakanowCurrency,
-    originalBasePrice: basePrice,
+  // ✅ Get the backend price breakdown from responseData
+  const priceBreakdown = responseData?.priceBreakdown || {
+    basePrice: responseData?.basePrice || 0,
+    markupAmount: responseData?.markupAmount || 0,
+    markupPercentage: responseData?.markupPercentage || 10,
+    serviceFee: responseData?.serviceFee || 0,
+    serviceFeePercentage: responseData?.serviceFeePercentage || 5,
+    taxes: responseData?.taxes || 0,
+    taxPercentage: responseData?.taxPercentage || 15,
+    totalAmount: responseData?.totalAmount || responseData?.flight_summary?.price?.Amount || 0,
+    currency: responseData?.currency || responseData?.flight_summary?.price?.CurrencyCode || offerCurrency,
+  };
+
+  // ✅ Use helper to get breakdown
+  const backendBreakdown = getBreakdown(priceBreakdown);
+
+  // ✅ Use the backend's calculated values directly
+  const backendBasePrice = priceBreakdown.basePrice;
+  const backendMarkupAmount = priceBreakdown.markupAmount;
+  const backendServiceFee = priceBreakdown.serviceFee;
+  const backendTotalAmount = priceBreakdown.totalAmount;
+  const backendCurrency = priceBreakdown.currency;
+  const backendMarkupPercentage = priceBreakdown.markupPercentage;
+  const backendServiceFeePercentage = priceBreakdown.serviceFeePercentage;
+
+  console.log("💰 Using backend prices:", {
+    basePrice: backendBasePrice,
+    markupAmount: backendMarkupAmount,
+    serviceFee: backendServiceFee,
+    totalAmount: backendTotalAmount,
+    currency: backendCurrency,
+    markupPercentage: backendMarkupPercentage,
+    serviceFeePercentage: backendServiceFeePercentage,
+    breakdown: backendBreakdown,
   });
 
-  // ✅ Calculate markup and service fees
-  let markupPercentage = 10; // Default 10% markup
-  let serviceFeePercentage = 5; // ✅ Fixed at 5% service fee
-  let serviceFee = 0;
-  
-  // Try to get markup from the item first
-  if (item.markup_percentage) {
-    markupPercentage = item.markup_percentage;
-  }
-
-  // Calculate the correct amounts
-  const markupAmount = (wakanowPrice * markupPercentage) / 100;
-  // ✅ Calculate service fee as 5% of base price
-  serviceFee = (wakanowPrice * serviceFeePercentage) / 100;
-  const totalAmount = wakanowPrice + markupAmount + serviceFee;
-  
-  console.log("💰 Price breakdown after markup:", {
-    wakanowPrice,
-    markupPercentage,
-    markupAmount,
-    serviceFeePercentage,
-    serviceFee,
-    totalAmount,
-    currency: wakanowCurrency,
-  });
-
-  // STEP 3: Prepare passengers
+  // STEP 2: Prepare passengers
   const allPassengers: PassengerInfo[] = [
     passenger,
     ...(passenger.travellers || [])
@@ -508,23 +517,8 @@ if (provider === 'WAKANOW' && (productType === 'FLIGHT_DOMESTIC' || productType 
     };
   });
 
-  // STEP 4: BOOK - Create booking with Wakanow (NO PAYMENT YET)
-  console.log("📖 Step 2: Booking flight with Wakanow...");
-  const bookResponse = await bookWakanowFlight({
-    BookingId: wakanowBookingId,
-    BookingData: newSelectData,
-    TargetCurrency: offerCurrency,
-    PassengerDetails: formattedPassengers,
-  });
-
-  if (!bookResponse?.BookingId) {
-    throw new Error("Wakanow booking failed");
-  }
-
-  const pnrNumber = bookResponse.FlightBookingResult?.PnReferenceNumber || 'PENDING';
-
-  // STEP 5: Create booking in YOUR system (PAYMENT_PENDING status)
-  console.log("💾 Step 3: Saving booking in our system...");
+  // STEP 3: Create booking in YOUR system with priceBreakdown
+  console.log("💾 Step 2: Saving booking in our system...");
   
   const bookingHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -535,15 +529,26 @@ if (provider === 'WAKANOW' && (productType === 'FLIGHT_DOMESTIC' || productType 
     bookingHeaders["Authorization"] = `Bearer ${token}`;
   }
 
-  // ✅ ONLY send the fields the backend expects
+  // ✅ CRITICAL FIX: Send priceBreakdown to backend
   const bookingPayload = {
     bookingId: wakanowBookingId,
     selectData: newSelectData,
     passengers: formattedPassengers,
     targetCurrency: offerCurrency,
+    priceBreakdown: {
+      basePrice: backendBasePrice,
+      markupAmount: backendMarkupAmount,
+      markupPercentage: backendMarkupPercentage,
+      serviceFee: backendServiceFee,
+      serviceFeePercentage: backendServiceFeePercentage,
+      taxes: priceBreakdown.taxes || backendMarkupAmount + backendServiceFee,
+      taxPercentage: priceBreakdown.taxPercentage || backendMarkupPercentage + backendServiceFeePercentage,
+      totalAmount: backendTotalAmount,
+      currency: backendCurrency,
+    },
   };
 
-  console.log("📤 Booking payload:", JSON.stringify(bookingPayload, null, 2));
+  console.log("📤 Booking payload WITH priceBreakdown:", JSON.stringify(bookingPayload, null, 2));
 
   const response = await fetch(`${BASE}/api/v1/bookings/wakanow/book${isGuest ? '/guest' : ''}`, {
     method: "POST",
@@ -558,109 +563,83 @@ if (provider === 'WAKANOW' && (productType === 'FLIGHT_DOMESTIC' || productType 
   }
 
   const createdBooking = result.data || result;
+  
+  console.log("📦 Created booking in our system:", JSON.stringify(createdBooking, null, 2));
 
-  // STEP 6: SHOW PAYMENT MODAL with CORRECT price
-console.log("💳 Step 4: Payment required!");
+  // STEP 4: Use backend prices from the booking response
+  const finalBasePrice = createdBooking.basePrice || createdBooking.base_price || backendBasePrice;
+  const finalMarkupAmount = createdBooking.markupAmount || createdBooking.markup_amount || backendMarkupAmount;
+  const finalServiceFee = createdBooking.serviceFee || createdBooking.service_fee || backendServiceFee;
+  const finalTotalAmount = createdBooking.totalAmount || createdBooking.total_amount || backendTotalAmount;
+  const finalCurrency = createdBooking.currency || backendCurrency;
+  const finalMarkupPercentage = createdBooking.markupPercentage || createdBooking.markup_percentage || backendMarkupPercentage;
+  const finalServiceFeePercentage = createdBooking.serviceFeePercentage || createdBooking.service_fee_percentage || backendServiceFeePercentage;
+  const finalBreakdown = createdBooking.breakdown || backendBreakdown;
 
-// ✅ Use the prices from the backend response or fallback to calculated values
-const finalBasePrice = createdBooking.basePrice || createdBooking.base_price || wakanowPrice;
-const finalMarkupAmount = createdBooking.markupAmount || createdBooking.markup_amount || markupAmount;
-const finalServiceFee = createdBooking.serviceFee || createdBooking.service_fee || serviceFee;
-const finalTotalAmount = createdBooking.totalAmount || createdBooking.total_amount || totalAmount;
-const finalCurrency = createdBooking.currency || wakanowCurrency;
-
-console.log("💰 Final booking prices:", {
-  basePrice: finalBasePrice,
-  markupAmount: finalMarkupAmount,
-  serviceFee: finalServiceFee,
-  totalAmount: finalTotalAmount,
-  currency: finalCurrency,
-  markupPercentage: markupPercentage,
-  serviceFeePercentage: serviceFeePercentage,
-});
-
-// ✅ Create the booking object with ALL price fields - MUST match what PaymentModal expects
-const bookingWithPaymentInfo = {
-  id: createdBooking.id,
-  reference: createdBooking.reference,
-  status: createdBooking.status || "PENDING",
-  paymentStatus: createdBooking.paymentStatus || "PENDING",
-  productType: productType as any,
-  provider: "WAKANOW",
-  // ✅ CRITICAL: These are the fields PaymentModal reads
-  basePrice: finalBasePrice,
-  markupAmount: finalMarkupAmount,
-  serviceFee: finalServiceFee,
-  totalAmount: finalTotalAmount,
-  amount: finalTotalAmount, // ✅ Add this for payment modal
-  currency: finalCurrency,
-  bookingData: {
-    wakanowBookingId: bookResponse.BookingId,
-    pnrNumber: pnrNumber,
-    selectData: newSelectData,
-    rawResponse: bookResponse,
-    passengers: formattedPassengers,
-    priceBreakdown: {
-      basePrice: finalBasePrice,
-      markupAmount: finalMarkupAmount,
-      serviceFee: finalServiceFee,
-      totalAmount: finalTotalAmount,
-      currency: finalCurrency,
-      markupPercentage: markupPercentage,
-      serviceFeePercentage: serviceFeePercentage,
-    },
-  },
-  passengerInfo: {
-    firstName: passenger.firstName,
-    lastName: passenger.lastName,
-    email: passenger.email,
-    phone: passenger.phone,
-  },
-  createdAt: createdBooking.createdAt || new Date().toISOString(),
-};
-
-// ✅ Store booking with payment flag and correct price in session
-sessionStorage.setItem('current_booking', JSON.stringify({
-  id: createdBooking.id,
-  wakanowBookingId: wakanowBookingId,
-  pnrNumber: pnrNumber,
-  type: 'wakanow',
-  requiresPayment: true,
-  price: {
+  console.log("💰 Final booking prices:", {
     basePrice: finalBasePrice,
     markupAmount: finalMarkupAmount,
     serviceFee: finalServiceFee,
     totalAmount: finalTotalAmount,
     currency: finalCurrency,
-    markupPercentage: markupPercentage,
-    serviceFeePercentage: serviceFeePercentage,
-  },
-  timestamp: Date.now()
-}));
+    markupPercentage: finalMarkupPercentage,
+    serviceFeePercentage: finalServiceFeePercentage,
+    breakdown: finalBreakdown,
+  });
 
-// ✅ Store the price breakdown separately for the payment modal
-sessionStorage.setItem('booking_price_breakdown', JSON.stringify({
-  basePrice: finalBasePrice,
-  markupAmount: finalMarkupAmount,
-  serviceFee: finalServiceFee,
-  totalAmount: finalTotalAmount,
-  currency: finalCurrency,
-  markupPercentage: markupPercentage,
-  serviceFeePercentage: serviceFeePercentage,
-}));
+  // ✅ Create the booking object with backend prices
+  const bookingWithPaymentInfo = {
+    id: createdBooking.id,
+    reference: createdBooking.reference,
+    status: createdBooking.status || "PENDING",
+    paymentStatus: createdBooking.paymentStatus || "PENDING",
+    productType: productType as any,
+    provider: "WAKANOW",
+    basePrice: finalBasePrice,
+    markupAmount: finalMarkupAmount,
+    serviceFee: finalServiceFee,
+    totalAmount: finalTotalAmount,
+    amount: finalTotalAmount,
+    currency: finalCurrency,
+    bookingData: {
+      wakanowBookingId: wakanowBookingId,
+      pnrNumber: createdBooking.pnr_reference || 'PENDING',
+      selectData: newSelectData,
+      rawResponse: createdBooking,
+      passengers: formattedPassengers,
+      priceBreakdown: {
+        basePrice: finalBasePrice,
+        markupAmount: finalMarkupAmount,
+        serviceFee: finalServiceFee,
+        totalAmount: finalTotalAmount,
+        currency: finalCurrency,
+        markupPercentage: finalMarkupPercentage,
+        serviceFeePercentage: finalServiceFeePercentage,
+        breakdown: finalBreakdown,
+      },
+    },
+    passengerInfo: {
+      firstName: passenger.firstName,
+      lastName: passenger.lastName,
+      email: passenger.email,
+      phone: passenger.phone,
+    },
+    createdAt: createdBooking.createdAt || new Date().toISOString(),
+  };
 
-// ✅ Also store in session for the payment modal to read
-sessionStorage.setItem('payment_booking_data', JSON.stringify({
-  id: createdBooking.id,
-  amount: finalTotalAmount,
-  currency: finalCurrency,
-  basePrice: finalBasePrice,
-  serviceFee: finalServiceFee,
-  markupAmount: finalMarkupAmount,
-}));
+  sessionStorage.setItem('booking_price_breakdown', JSON.stringify({
+    basePrice: finalBasePrice,
+    markupAmount: finalMarkupAmount,
+    serviceFee: finalServiceFee,
+    totalAmount: finalTotalAmount,
+    currency: finalCurrency,
+    markupPercentage: finalMarkupPercentage,
+    serviceFeePercentage: finalServiceFeePercentage,
+    breakdown: finalBreakdown,
+  }));
 
-setBooking(bookingWithPaymentInfo as Booking);
-return bookingWithPaymentInfo as Booking;
+  setBooking(bookingWithPaymentInfo as Booking);
+  return bookingWithPaymentInfo as Booking;
 }
         // ✅ GENERIC FLOW (DUFFEL, HOTELS, CARS)
         const endpoint = isGuest ? "/api/v1/bookings/guest" : "/api/v1/bookings";
@@ -737,7 +716,6 @@ return bookingWithPaymentInfo as Booking;
       if (provider === 'WAKANOW') {
         endpoint = "/api/v1/payments/stripe/create-intent/wakanow";
         
-        // ✅ Get the price breakdown from session if available
         let priceBreakdown = null;
         try {
           const stored = sessionStorage.getItem('booking_price_breakdown');
@@ -750,7 +728,6 @@ return bookingWithPaymentInfo as Booking;
         
         body = { 
           bookingId,
-          // ✅ Send the total amount to ensure correct payment
           amount: priceBreakdown?.totalAmount || undefined,
           currency: priceBreakdown?.currency || 'NGN',
         };
