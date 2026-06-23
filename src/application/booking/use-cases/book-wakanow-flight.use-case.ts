@@ -12,6 +12,8 @@ export class BookWakanowFlightUseCase {
   private readonly logger = new Logger(BookWakanowFlightUseCase.name);
   private readonly DEFAULT_MARKUP_PERCENTAGE = 10;
   private readonly DEFAULT_SERVICE_FEE_PERCENTAGE = 5;
+  private readonly VALID_SELECT_DATA_MAX_LENGTH = 500;
+  private readonly INVALID_SELECT_DATA_PREFIXES = ['7h4AAB+LCAAAAAAABAD', 'H4sI'];
 
   constructor(
     private readonly wakanowService: WakanowService,
@@ -28,6 +30,36 @@ export class BookWakanowFlightUseCase {
     this.logger.log(`👤 UserId: ${userId}`);
     this.logger.log(`👤 Passengers: ${passengers.length}`);
     this.logger.log(`📋 SelectData length: ${selectData?.length || 0}`);
+
+    // ✅ Validate required fields
+    if (!bookingId) {
+      throw new BadRequestException('BookingId is required');
+    }
+    if (!selectData) {
+      throw new BadRequestException('SelectData is required');
+    }
+    if (!passengers || passengers.length === 0) {
+      throw new BadRequestException('At least one passenger is required');
+    }
+
+    // ✅ Validate SelectData format (should not be gzip compressed or too long)
+    if (selectData.length > this.VALID_SELECT_DATA_MAX_LENGTH) {
+      this.logger.warn(`⚠️ SelectData too long for booking: ${selectData.length} chars`);
+      throw new BadRequestException(
+        'Invalid booking data. Please search for flights again and complete the booking promptly.'
+      );
+    }
+
+    // ✅ Check for invalid SelectData prefixes (gzip compressed data)
+    const isInvalidFormat = this.INVALID_SELECT_DATA_PREFIXES.some(prefix => 
+      selectData.startsWith(prefix)
+    );
+    if (isInvalidFormat) {
+      this.logger.warn(`⚠️ SelectData appears to be in invalid format (gzip compressed)`);
+      throw new BadRequestException(
+        'Invalid booking data. Please search for flights again and complete the booking promptly.'
+      );
+    }
 
     // ✅ Validate price breakdown if provided
     if (priceBreakdown) {
@@ -54,17 +86,6 @@ export class BookWakanowFlightUseCase {
       }
     } else {
       this.logger.warn('⚠️ No price breakdown provided! Will use Wakanow price and recalculate.');
-    }
-
-    // ✅ Validate required fields
-    if (!bookingId) {
-      throw new BadRequestException('BookingId is required');
-    }
-    if (!selectData) {
-      throw new BadRequestException('SelectData is required');
-    }
-    if (!passengers || passengers.length === 0) {
-      throw new BadRequestException('At least one passenger is required');
     }
 
     // ✅ Validate BookingId format
@@ -185,7 +206,10 @@ export class BookWakanowFlightUseCase {
             errorMsg.includes('session expired') ||
             errorMsg.includes('session has expired') ||
             errorMsg.includes('expired') ||
-            errorMsg.includes('no longer available')) {
+            errorMsg.includes('no longer available') ||
+            errorMsg.includes('bad request') ||
+            errorString.includes('expired') ||
+            errorString.includes('bad request')) {
           this.logger.error(`❌ Booking failed because flight wasn't selected by this user. BookingId: ${bookingId}`);
           throw new BadRequestException(
             'Your flight selection has expired. Please search for flights again and complete the booking promptly.'

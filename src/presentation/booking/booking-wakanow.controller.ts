@@ -40,6 +40,8 @@ import {
 @Controller('bookings/wakanow')
 export class BookingWakanowController {
   private readonly logger = new Logger(BookingWakanowController.name);
+  private readonly VALID_SELECT_DATA_MAX_LENGTH = 500;
+  private readonly INVALID_SELECT_DATA_PREFIXES = ['7h4AAB+LCAAAAAAABAD', 'H4sI'];
 
   constructor(
     private readonly searchWakanowFlightsUseCase: SearchWakanowFlightsUseCase,
@@ -49,6 +51,30 @@ export class BookingWakanowController {
     private readonly ticketWakanowFlightUseCase: TicketWakanowFlightUseCase,
     private readonly wakanowService: WakanowService,
   ) {}
+
+  /**
+   * ✅ Validate SelectData format
+   */
+  private validateSelectData(selectData: string): void {
+    if (!selectData || selectData.length < 10) {
+      throw new BadRequestException('Invalid or expired flight selection. Please search again.');
+    }
+
+    // ✅ Check if SelectData is too long (gzip compressed data)
+    if (selectData.length > this.VALID_SELECT_DATA_MAX_LENGTH) {
+      this.logger.warn(`⚠️ SelectData too long: ${selectData.length} chars`);
+      throw new BadRequestException('Your flight selection has expired or is invalid. Please search again.');
+    }
+
+    // ✅ Check for invalid prefixes (gzip compressed data)
+    const isInvalidFormat = this.INVALID_SELECT_DATA_PREFIXES.some(prefix => 
+      selectData.startsWith(prefix)
+    );
+    if (isInvalidFormat) {
+      this.logger.warn(`⚠️ SelectData appears to be in invalid format (gzip compressed)`);
+      throw new BadRequestException('Your flight selection has expired or is invalid. Please search again.');
+    }
+  }
 
   @Public()
   @Post('search')
@@ -109,12 +135,11 @@ export class BookingWakanowController {
   @ApiResponse({ status: 410, description: 'Flight no longer available or expired' })
   async selectFlight(@Body() selectDto: SelectWakanowFlightDto) {
     this.logger.log('Processing flight selection');
+    this.logger.log(`SelectData length: ${selectDto.selectData?.length || 0}`);
     
     try {
-      // Validate selectData
-      if (!selectDto.selectData || selectDto.selectData.length < 10) {
-        throw new BadRequestException('Invalid or expired flight selection. Please search again.');
-      }
+      // ✅ Validate selectData
+      this.validateSelectData(selectDto.selectData);
 
       const result = await this.selectWakanowFlightUseCase.execute(selectDto);
       
@@ -161,6 +186,16 @@ export class BookingWakanowController {
       };
     } catch (error: any) {
       this.logger.error(`Selection failed: ${error.message}`);
+      
+      // ✅ If it's a BadRequestException with expired message, return 410 Gone
+      if (error instanceof BadRequestException) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('expired') || msg.includes('invalid') || msg.includes('search again')) {
+          throw new GoneException(error.message);
+        }
+        throw error;
+      }
+      
       if (error instanceof HttpException) throw error;
       
       // Check for specific error messages
@@ -203,9 +238,10 @@ export class BookingWakanowController {
   async bookFlight(@Body() bookDto: BookWakanowFlightDto, @Request() req: any) {
     const userId = req.user.id;
     this.logger.log(`User ${userId} booking flight with ${bookDto.passengers?.length || 0} passengers`);
+    this.logger.log(`SelectData length: ${bookDto.selectData?.length || 0}`);
     
     try {
-      // Validate required fields
+      // ✅ Validate required fields
       if (!bookDto.selectData) {
         throw new BadRequestException('SelectData is required');
       }
@@ -215,6 +251,9 @@ export class BookingWakanowController {
       if (!bookDto.passengers || bookDto.passengers.length === 0) {
         throw new BadRequestException('At least one passenger is required');
       }
+
+      // ✅ Validate SelectData format
+      this.validateSelectData(bookDto.selectData);
 
       // Log price breakdown if provided
       if (bookDto.priceBreakdown) {
@@ -234,6 +273,16 @@ export class BookingWakanowController {
       };
     } catch (error: any) {
       this.logger.error(`Booking failed for user ${userId}: ${error.message}`);
+      
+      // ✅ If it's a BadRequestException with expired message, return 410 Gone
+      if (error instanceof BadRequestException) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('expired') || msg.includes('invalid') || msg.includes('search again')) {
+          throw new GoneException(error.message);
+        }
+        throw error;
+      }
+      
       if (error instanceof HttpException) throw error;
       
       // Check for specific error messages
@@ -273,9 +322,10 @@ export class BookingWakanowController {
   @ApiResponse({ status: 400, description: 'Invalid booking data' })
   async bookFlightGuest(@Body() bookDto: BookWakanowFlightDto) {
     this.logger.log(`Guest booking with ${bookDto.passengers?.length || 0} passengers`);
+    this.logger.log(`SelectData length: ${bookDto.selectData?.length || 0}`);
     
     try {
-      // Validate required fields
+      // ✅ Validate required fields
       if (!bookDto.selectData) {
         throw new BadRequestException('SelectData is required');
       }
@@ -285,6 +335,9 @@ export class BookingWakanowController {
       if (!bookDto.passengers || bookDto.passengers.length === 0) {
         throw new BadRequestException('At least one passenger is required');
       }
+
+      // ✅ Validate SelectData format
+      this.validateSelectData(bookDto.selectData);
 
       // Log price breakdown if provided
       if (bookDto.priceBreakdown) {
@@ -304,6 +357,16 @@ export class BookingWakanowController {
       };
     } catch (error: any) {
       this.logger.error(`Guest booking failed: ${error.message}`);
+      
+      // ✅ If it's a BadRequestException with expired message, return 410 Gone
+      if (error instanceof BadRequestException) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('expired') || msg.includes('invalid') || msg.includes('search again')) {
+          throw new GoneException(error.message);
+        }
+        throw error;
+      }
+      
       if (error instanceof HttpException) throw error;
       
       const errorMsg = error?.message?.toLowerCase() || '';

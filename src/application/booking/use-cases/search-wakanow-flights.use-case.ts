@@ -14,6 +14,7 @@ export class SearchWakanowFlightsUseCase {
   
   private markupConfigCache: Map<string, { markupPercentage: number; serviceFeeAmount: number }> = new Map();
   private readonly VALID_SELECT_DATA_MAX_LENGTH = 500;
+  private readonly INVALID_SELECT_DATA_PREFIXES = ['7h4AAB+LCAAAAAAABAD', 'H4sI'];
 
   constructor(
     private readonly wakanowService: WakanowService,
@@ -52,23 +53,13 @@ export class SearchWakanowFlightsUseCase {
       })),
     };
 
-    // ✅ Build cache key
-    const cacheKey = `wakanow:search:${JSON.stringify(wakanowRequest)}`;
-    
-    // ✅ Check cache - but verify the cached data has valid SelectData
-    const cached = this.cacheService.get<any>(cacheKey);
-    if (cached) {
-      // ✅ Validate cached data has valid SelectData
-      const hasValidSelectData = this.validateCachedResults(cached);
-      if (hasValidSelectData) {
-        this.logger.log('Returning cached Wakanow search results with valid SelectData');
-        return cached;
-      } else {
-        this.logger.warn('⚠️ Cached results have invalid SelectData, fetching fresh...');
-        // ✅ Clear the invalid cache
-        this.cacheService.delete(cacheKey);
-      }
-    }
+    // ❌ DISABLE CACHE - SelectData expires quickly, always fetch fresh
+    // const cacheKey = `wakanow:search:${JSON.stringify(wakanowRequest)}`;
+    // const cached = this.cacheService.get<any>(cacheKey);
+    // if (cached) {
+    //   this.logger.log('Returning cached Wakanow search results');
+    //   return cached;
+    // }
 
     // ✅ Fetch from Wakanow with retry
     let results: WakanowSearchResult[] = [];
@@ -106,15 +97,18 @@ export class SearchWakanowFlightsUseCase {
       };
     }
 
-    // ✅ Filter out invalid SelectData (too long > 500 chars)
-    // These are usually gzip compressed and cause 500 errors
+    // ✅ Filter out invalid SelectData (too long or gzip compressed)
     const validResults = results.filter((result) => {
       const selectData = result.SelectData || '';
-      const isValid = selectData.length > 0 && selectData.length < this.VALID_SELECT_DATA_MAX_LENGTH;
+      const isValid = selectData.length > 0 && 
+                      selectData.length < this.VALID_SELECT_DATA_MAX_LENGTH &&
+                      !this.INVALID_SELECT_DATA_PREFIXES.some(prefix => selectData.startsWith(prefix));
       
       if (!isValid) {
-        this.logger.warn(`⚠️ Filtering out SelectData with invalid length: ${selectData.length} chars`);
-        this.logger.warn(`⚠️ Preview: ${selectData.substring(0, 50)}...`);
+        this.logger.warn(`⚠️ Filtering out SelectData: length=${selectData.length}, startsWithInvalid=${!isValid}`);
+        if (selectData.length > 0) {
+          this.logger.warn(`⚠️ Preview: ${selectData.substring(0, 50)}...`);
+        }
       }
       
       return isValid;
@@ -123,27 +117,31 @@ export class SearchWakanowFlightsUseCase {
     this.logger.log(`✅ ${validResults.length} results with valid SelectData (out of ${results.length})`);
 
     if (validResults.length === 0) {
-      this.logger.warn('⚠️ All results had invalid SelectData. This might be a Wakanow API issue.');
+      this.logger.warn('⚠️ All results had invalid SelectData.');
       
-      // ✅ Try to get the first result and see if we can use it anyway
-      if (results.length > 0) {
-        const firstResult = results[0];
-        const selectData = firstResult.SelectData || '';
-        
-        // ✅ If it's the long format but starts with a known pattern, try to use it
-        if (selectData.startsWith('7h4AAB+LCAAAAAAABAD')) {
-          this.logger.warn('⚠️ Long SelectData detected (gzip compressed). This format is not supported by the select endpoint.');
-          this.logger.warn('⚠️ Please try a different flight or search again.');
-        }
+      // ✅ Try to get results with the short format
+      const shortResults = results.filter((result) => {
+        const selectData = result.SelectData || '';
+        return selectData.length > 0 && selectData.length < 200;
+      });
+      
+      if (shortResults.length > 0) {
+        this.logger.log(`✅ Found ${shortResults.length} results with short SelectData format`);
+        results = shortResults;
+      } else {
+        this.logger.error('❌ No valid SelectData found');
+        return {
+          offers: [],
+          total_offers: 0,
+          selectData: null,
+          message: 'No valid flight selections available. Please try again.',
+        };
       }
-      
-      return {
-        offers: [],
-        total_offers: 0,
-        selectData: null,
-        message: 'No valid flight selections available. Please try a different flight or search again.',
-      };
+    } else {
+      results = validResults;
     }
+
+    this.logger.log(`✅ Using ${results.length} results with valid SelectData`);
 
     // ✅ Get markup config ONCE
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
@@ -156,8 +154,8 @@ export class SearchWakanowFlightsUseCase {
     let totalWithFee = 0;
     let baseCurrency = 'NGN';
 
-    if (validResults.length > 0 && validResults[0]?.FlightCombination?.Price?.CurrencyCode) {
-      baseCurrency = validResults[0].FlightCombination.Price.CurrencyCode;
+    if (results.length > 0 && results[0]?.FlightCombination?.Price?.CurrencyCode) {
+      baseCurrency = results[0].FlightCombination.Price.CurrencyCode;
       
       if (baseCurrency !== displayCurrency) {
         try {
@@ -181,9 +179,9 @@ export class SearchWakanowFlightsUseCase {
 
     this.logger.log(`💰 Using conversion rate: ${conversionRate}, fee: ${conversionFee}`);
 
-    // ✅ Normalize only valid offers
+    // ✅ Normalize all offers
     const normalizedOffers = await this.normalizeOffersBatch(
-      validResults,
+      results,
       isDomestic,
       displayCurrency,
       markupPercentage,
@@ -194,10 +192,10 @@ export class SearchWakanowFlightsUseCase {
       baseCurrency,
     );
 
-    // ✅ Get selectData from the first valid offer
+    // ✅ Get selectData from the first offer (should be valid now)
     const firstSelectData = normalizedOffers.length > 0 ? normalizedOffers[0].selectData : null;
 
-    this.logger.log(`📊 Normalized ${normalizedOffers.length} offers with valid SelectData`);
+    this.logger.log(`📊 Normalized ${normalizedOffers.length} offers`);
     
     // ✅ Log selectData info for debugging
     if (firstSelectData) {
@@ -205,8 +203,8 @@ export class SearchWakanowFlightsUseCase {
       this.logger.log(`🔑 First SelectData preview: ${firstSelectData.substring(0, 50)}...`);
     }
 
-    // ✅ Return in the format the controller expects
-    const response = {
+    // ✅ Return fresh response (NO CACHING)
+    return {
       offers: normalizedOffers,
       total_offers: normalizedOffers.length,
       selectData: firstSelectData,
@@ -214,32 +212,6 @@ export class SearchWakanowFlightsUseCase {
         ? `Found ${normalizedOffers.length} flight offers` 
         : 'No flights found for the selected route and dates',
     };
-
-    // ✅ Cache for 5 minutes (only if we have valid results)
-    if (normalizedOffers.length > 0) {
-      this.cacheService.set(cacheKey, response, 5 * 60 * 1000);
-    }
-    
-    return response;
-  }
-
-  /**
-   * ✅ Validate cached results have valid SelectData
-   */
-  private validateCachedResults(cached: any): boolean {
-    if (!cached || !cached.offers || cached.offers.length === 0) {
-      return false;
-    }
-
-    // ✅ Check if any offer has valid SelectData
-    for (const offer of cached.offers) {
-      const selectData = offer.selectData || offer.select_data || '';
-      if (selectData.length > 0 && selectData.length < this.VALID_SELECT_DATA_MAX_LENGTH) {
-        return true;
-      }
-    }
-
-    return false;
   }
 
   /**

@@ -6,6 +6,8 @@ import { BookWakanowFlightDto } from '@presentation/booking/dto/wakanow-flights.
 @Injectable()
 export class BookWakanowFlightGuestUseCase {
   private readonly logger = new Logger(BookWakanowFlightGuestUseCase.name);
+  private readonly VALID_SELECT_DATA_MAX_LENGTH = 500;
+  private readonly INVALID_SELECT_DATA_PREFIXES = ['7h4AAB+LCAAAAAAABAD', 'H4sI'];
 
   constructor(
     private readonly prisma: PrismaService,
@@ -17,6 +19,36 @@ export class BookWakanowFlightGuestUseCase {
     this.logger.log(`👤 Passengers: ${dto.passengers?.length || 0}`);
     this.logger.log(`🆔 BookingId: ${dto.bookingId}`);
     this.logger.log(`📋 SelectData length: ${dto.selectData?.length || 0}`);
+
+    // ✅ Validate required fields
+    if (!dto.bookingId) {
+      throw new BadRequestException('BookingId is required');
+    }
+    if (!dto.selectData) {
+      throw new BadRequestException('SelectData is required');
+    }
+    if (!dto.passengers || dto.passengers.length === 0) {
+      throw new BadRequestException('At least one passenger is required');
+    }
+
+    // ✅ Validate SelectData format (should not be gzip compressed or too long)
+    if (dto.selectData.length > this.VALID_SELECT_DATA_MAX_LENGTH) {
+      this.logger.warn(`⚠️ SelectData too long for guest booking: ${dto.selectData.length} chars`);
+      throw new BadRequestException(
+        'Invalid booking data. Please search for flights again and complete the booking promptly.'
+      );
+    }
+
+    // ✅ Check for invalid SelectData prefixes (gzip compressed data)
+    const isInvalidFormat = this.INVALID_SELECT_DATA_PREFIXES.some(prefix => 
+      dto.selectData.startsWith(prefix)
+    );
+    if (isInvalidFormat) {
+      this.logger.warn(`⚠️ SelectData appears to be in invalid format (gzip compressed)`);
+      throw new BadRequestException(
+        'Invalid booking data. Please search for flights again and complete the booking promptly.'
+      );
+    }
 
     // ✅ Validate price breakdown if provided
     if (dto.priceBreakdown) {
@@ -162,7 +194,8 @@ export class BookWakanowFlightGuestUseCase {
             errorMsg.includes('SELECTION_EXPIRED') ||
             errorMsg.includes('not selected by you') ||
             errorMsg.includes('session expired') ||
-            errorMsg.includes('no longer available')) {
+            errorMsg.includes('no longer available') ||
+            errorMsg.includes('bad request')) {
           this.logger.warn('⚠️ Booking failed due to expired selection, not retrying');
           throw error;
         }
