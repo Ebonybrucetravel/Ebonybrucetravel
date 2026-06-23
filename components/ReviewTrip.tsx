@@ -1444,7 +1444,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Price details</h3>
 
               <div className="mb-4 text-xs text-gray-500 flex items-center gap-1">
-                <span>💰 All prices in {currency.code} ({currency.symbol})</span>
+                <span> All prices in {currency.code} ({currency.symbol})</span>
               </div>
 
               <div className="space-y-3 mb-6">
@@ -1458,7 +1458,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                 {isFlight && combinedTaxes > 0 && (
                   <div className="flex justify-between items-center pt-1 border-t border-gray-100">
                     <span className="text-xs font-medium text-gray-500">
-                      Taxes ({combinedTaxPercentage}%)
+                      Taxes 
                     </span>
                     <span className="text-sm font-semibold text-gray-900">{displayCombinedTaxes}</span>
                   </div>
@@ -1489,7 +1489,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                 {/* ✅ Breakdown description - show as small text */}
                 {breakdownDescription && (
                   <div className="mt-2 text-[10px] text-gray-400 border-t border-gray-50 pt-2 text-center">
-                    {breakdownDescription}
+                   
                   </div>
                 )}
 

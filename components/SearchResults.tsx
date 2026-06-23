@@ -682,7 +682,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     }
   };
 
-  // Process flight offers - supports Wakanow (domestic) and Duffel (international)
+  // ==================== Process flight offers - FIXED ====================
   useEffect(() => {
     const processFlights = async () => {
       if (searchType !== 'flights') return;
@@ -703,25 +703,27 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
           if (flightModels.length === 0) continue;
 
-          // ✅ SKIP flights with invalid SelectData (too long or gzip compressed)
-          if (!selectData || selectData.length === 0) {
-            console.warn('⚠️ Skipping flight with empty SelectData');
-            continue;
-          }
-          
-          // ✅ Check if SelectData is valid (short format, not gzip compressed)
-          const isInvalidSelectData = selectData.length > 500 || 
-                                     selectData.startsWith('7h4AAB+LCAAAAAAABAD') ||
-                                     selectData.startsWith('H4sI');
-          
+          // ✅ FIXED: Only keep SelectData that works with Wakanow API
+          // - Short format (148 chars) works
+          // - Compressed format (>500 chars or starting with gzip prefixes) fails with 500
+          const isInvalidSelectData = 
+            !selectData || 
+            selectData.length === 0 ||
+            selectData.length > 500 ||
+            selectData.startsWith('7h4AAB+LCAAAAAAABAD') ||
+            selectData.startsWith('H4sI');
+
           if (isInvalidSelectData) {
-            console.warn(`⚠️ Skipping flight with invalid SelectData: ${selectData.length} chars`);
-            console.warn(`⚠️ Preview: ${selectData.substring(0, 50)}...`);
-            continue; // Skip this flight entirely
+            if (selectData && selectData.length > 0) {
+              console.log(`⏭️ Skipping flight with SelectData that Wakanow rejects: ${selectData.length} chars`);
+              console.log(`⏭️ Preview: ${selectData.substring(0, 30)}...`);
+            }
+            continue; // Skip this flight
           }
 
           // ✅ Valid SelectData - process the flight
           console.log(`✅ Processing flight with valid SelectData: ${selectData.length} chars`);
+          console.log(`✅ SelectData preview: ${selectData.substring(0, 50)}...`);
 
           const outboundFlight = flightModels[0];
           const returnFlight = flightModels[1];
@@ -1692,7 +1694,7 @@ const refreshSelectData = useCallback(async (flight: ExtendedSearchResult): Prom
     
     // Extract selectData
     const newSelectData = matchedOffer.selectData || matchedOffer.SelectData || matchedOffer.select_data;
-    if (newSelectData && newSelectData.length > 10 && newSelectData.length < 500) {
+    if (newSelectData && newSelectData.length > 10) {
       console.log('✅ Refreshed selectData obtained:', newSelectData.substring(0, 50) + '...');
       return newSelectData;
     }

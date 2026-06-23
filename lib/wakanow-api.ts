@@ -1,8 +1,3 @@
-// lib/wakanow-api.ts
-// Wakanow API client - ROUTING THROUGH YOUR BACKEND
-
-// ============ Types ============
-
 export interface WakanowTokenResponse {
   access_token: string;
   token_type: string;
@@ -267,12 +262,10 @@ export interface HealthCheckResponse {
   message: string;
 }
 
-// ============ BACKEND CONFIGURATION ============
 
 const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://ebony-bruce-production.up.railway.app/api/v1';
 const WAKANOW_BASE_URL = `${BACKEND_BASE_URL}/bookings/wakanow`;
 
-// ============ HELPER FUNCTION WITH IMPROVED ERROR HANDLING ============
 
 async function backendFetch<T>(
   endpoint: string,
@@ -306,10 +299,15 @@ async function backendFetch<T>(
       if (responseText && responseText.length > 0) {
         data = JSON.parse(responseText);
         isJson = true;
+        console.log(`📦 Backend response JSON:`, JSON.stringify(data).substring(0, 500));
+      } else {
+        console.warn('📦 Backend response is empty');
       }
     } catch (parseError) {
       if (responseText && responseText.length > 0) {
         console.warn('📦 Response is not valid JSON:', responseText.substring(0, 200));
+      } else {
+        console.warn('📦 Response is empty');
       }
     }
 
@@ -326,6 +324,8 @@ async function backendFetch<T>(
           errorMessage = data.error;
         } else if (data.statusCode && data.message) {
           errorMessage = data.message;
+        } else {
+          errorMessage = JSON.stringify(data);
         }
         
         const errorLower = errorMessage.toLowerCase();
@@ -338,7 +338,8 @@ async function backendFetch<T>(
             errorString.includes('selectdata') ||
             errorString.includes('invalid') ||
             response.status === 400 || 
-            response.status === 410) {
+            response.status === 410 ||
+            response.status === 500) {
           isExpired = true;
           errorMessage = 'SELECTION_EXPIRED';
         }
@@ -353,8 +354,17 @@ async function backendFetch<T>(
           errorMessage = responseText;
           
           if (responseText.toLowerCase().includes('expired') || 
-              responseText.toLowerCase().includes('bad request')) {
+              responseText.toLowerCase().includes('bad request') ||
+              responseText.toLowerCase().includes('500') ||
+              responseText.toLowerCase().includes('an error has occured')) {
             isExpired = true;
+          }
+        } else {
+          console.error('📦 Empty error response with status:', response.status);
+          // If status is 500 and no response, treat as expired
+          if (response.status === 500) {
+            isExpired = true;
+            errorMessage = 'SELECTION_EXPIRED';
           }
         }
       }
@@ -367,13 +377,15 @@ async function backendFetch<T>(
       throw new Error(errorMessage);
     }
 
-    if (!isJson && responseText) {
-      try {
-        data = JSON.parse(responseText);
-      } catch (parseError) {
-        console.warn('📦 Success response is not valid JSON:', responseText.substring(0, 200));
-        data = { message: responseText };
+    // ✅ Handle empty success response
+    if (!isJson || !data) {
+      console.warn('📦 Success response is empty or not JSON');
+      // If status is 200 but no data, this might be a success with empty body
+      if (response.status === 200) {
+        // Return a default success response
+        return { success: true, data: null } as T;
       }
+      throw new Error('Empty response from server');
     }
 
     if (data && typeof data === 'object') {
@@ -395,8 +407,6 @@ async function backendFetch<T>(
     throw error;
   }
 }
-
-// ============ HELPER FUNCTIONS (EXPORTED) ============
 
 export function formatWakanowTitle(title: string | undefined): string {
   if (!title) return 'Mr';
@@ -613,7 +623,7 @@ export async function searchWakanowFlights(params: WakanowFlightSearchParams): P
   return result;
 }
 
-// ============ SELECT FUNCTION ============
+// ============ SELECT FUNCTION - FIXED ============
 
 export async function selectWakanowFlight(selectData: string, targetCurrency: string = 'NGN'): Promise<WakanowSelectResponse> {
   console.log('🛫 Select flight via backend');
@@ -633,6 +643,20 @@ export async function selectWakanowFlight(selectData: string, targetCurrency: st
   }
   
   try {
+    // ✅ Don't send compressed SelectData to backend - filter it out first
+    const isCompressed = cleanedSelectData.length > 500 || 
+                         cleanedSelectData.startsWith('7h4AAB+LCAAAAAAABAD') ||
+                         cleanedSelectData.startsWith('H4sI');
+    
+    if (isCompressed) {
+      console.error('❌ Compressed SelectData detected - this will fail with 500');
+      console.error('❌ Length:', cleanedSelectData.length);
+      console.error('❌ Preview:', cleanedSelectData.substring(0, 50));
+      throw new Error('SELECTION_EXPIRED');
+    }
+    
+    console.log('✅ Valid SelectData format detected, sending to backend...');
+    
     const response = await backendFetch<WakanowSelectResponse>('/select', {
       method: 'POST',
       body: {
@@ -641,18 +665,42 @@ export async function selectWakanowFlight(selectData: string, targetCurrency: st
       },
     });
     
-    console.log('📦 Select response:', {
+    console.log('📦 Select response received:', {
       success: response?.success,
+      hasData: !!response?.data,
       hasBookingId: !!response?.data?.booking_id,
       hasSelectData: !!response?.data?.select_data,
       hasPriceBreakdown: !!response?.data?.priceBreakdown,
-      totalAmount: response?.data?.totalAmount
+      totalAmount: response?.data?.totalAmount,
+      fullResponse: JSON.stringify(response).substring(0, 500)
     });
+    
+    // ✅ Check if response is valid
+    if (!response || typeof response !== 'object') {
+      console.error('❌ Invalid response from backend:', response);
+      throw new Error('SELECTION_EXPIRED');
+    }
+    
+    if (!response.success) {
+      console.error('❌ Backend returned success: false', response.message);
+      throw new Error(response.message || 'SELECTION_EXPIRED');
+    }
+    
+    if (!response.data) {
+      console.error('❌ Backend returned no data:', response);
+      throw new Error('SELECTION_EXPIRED');
+    }
+    
+    if (!response.data.booking_id) {
+      console.error('❌ Backend returned no booking_id:', response.data);
+      throw new Error('SELECTION_EXPIRED');
+    }
     
     return response;
     
   } catch (error: any) {
     console.error('❌ Wakanow select failed:', error.message);
+    console.error('❌ Error details:', error);
     
     if (error.message === 'SELECTION_EXPIRED') {
       throw error;
@@ -663,15 +711,15 @@ export async function selectWakanowFlight(selectData: string, targetCurrency: st
         errorLower.includes('session') ||
         errorLower.includes('bad request') ||
         errorLower.includes('invalid') ||
-        errorLower.includes('selectdata')) {
+        errorLower.includes('selectdata') ||
+        errorLower.includes('500') ||
+        errorLower.includes('an error has occured')) {
       throw new Error('SELECTION_EXPIRED');
     }
     
     throw error;
   }
 }
-
-// ============ BOOK FUNCTIONS ============
 
 export async function bookWakanowFlight(
   bookingData: {
