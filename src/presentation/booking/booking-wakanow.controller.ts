@@ -42,8 +42,6 @@ import {
 @Controller('bookings/wakanow')
 export class BookingWakanowController {
   private readonly logger = new Logger(BookingWakanowController.name);
-  private readonly VALID_SELECT_DATA_MAX_LENGTH = 500;
-  private readonly INVALID_SELECT_DATA_PREFIXES = ['7h4AAB+LCAAAAAAABAD', 'H4sI'];
 
   constructor(
     private readonly searchWakanowFlightsUseCase: SearchWakanowFlightsUseCase,
@@ -57,33 +55,22 @@ export class BookingWakanowController {
     private readonly wakanowService: WakanowService,
   ) {}
 
-  /**
-   * ✅ Validate SelectData format
-   */
   private validateSelectData(selectData: string): void {
-    if (!selectData || selectData.length < 10) {
-      throw new BadRequestException('Invalid or expired flight selection. Please search again.');
+  
+    if (!selectData || selectData.trim().length === 0) {
+      throw new BadRequestException('SelectData is required. Please search for flights again.');
     }
-
-    // ✅ Check if SelectData is too long (gzip compressed data)
-    if (selectData.length > this.VALID_SELECT_DATA_MAX_LENGTH) {
-      this.logger.warn(`⚠️ SelectData too long: ${selectData.length} chars`);
-      throw new BadRequestException('Your flight selection has expired or is invalid. Please search again.');
+    
+    if (selectData.trim().length < 10) {
+      this.logger.warn(`⚠️ SelectData too short: ${selectData.length} chars`);
+      throw new BadRequestException('Invalid selectData. Please search for flights again.');
     }
-
-    // ✅ Check for invalid prefixes (gzip compressed data)
-    const isInvalidFormat = this.INVALID_SELECT_DATA_PREFIXES.some(prefix => 
-      selectData.startsWith(prefix)
-    );
-    if (isInvalidFormat) {
-      this.logger.warn(`⚠️ SelectData appears to be in invalid format (gzip compressed)`);
-      throw new BadRequestException('Your flight selection has expired or is invalid. Please search again.');
-    }
+    
+    this.logger.log(`✅ SelectData validated: ${selectData.length} chars`);
+    this.logger.log(`✅ SelectData preview: ${selectData.substring(0, 50)}...`);
   }
 
-  // ============================================================
-  // 1. SEARCH FLIGHTS (Public)
-  // ============================================================
+
   @Public()
   @Post('search')
   @Throttle(20, 60000)
@@ -128,9 +115,6 @@ export class BookingWakanowController {
     }
   }
 
-  // ============================================================
-  // 2. SELECT FLIGHT (Public)
-  // ============================================================
   @Public()
   @Post('select')
   @HttpCode(HttpStatus.OK)
@@ -149,19 +133,17 @@ export class BookingWakanowController {
     this.logger.log(`SelectData length: ${selectDto.selectData?.length || 0}`);
     
     try {
-      // ✅ Validate selectData
+
       this.validateSelectData(selectDto.selectData);
 
       const result = await this.selectWakanowFlightUseCase.execute(selectDto);
       
-      // Check if result has the expected data
       if (!result || !result.selectData) {
         throw new GoneException('Selected flight is no longer available. Please search again.');
       }
 
       this.logger.log(`Flight selected successfully. Booking ID: ${result.bookingId}`);
-      
-      // Return in the format your frontend expects with price breakdown
+
       return {
         success: true,
         data: {
@@ -170,8 +152,7 @@ export class BookingWakanowController {
           select_data: result.selectData,
           is_price_matched: result.isPriceMatched || false,
           is_passport_required: result.isPassportRequired || false,
-          
-          // Price breakdown from select
+
           priceBreakdown: result.priceBreakdown || null,
           basePrice: result.basePrice || null,
           markupAmount: result.markupAmount || null,
@@ -198,7 +179,6 @@ export class BookingWakanowController {
     } catch (error: any) {
       this.logger.error(`Selection failed: ${error.message}`);
       
-      // ✅ If it's a BadRequestException with expired message, return 410 Gone
       if (error instanceof BadRequestException) {
         const msg = error.message.toLowerCase();
         if (msg.includes('expired') || msg.includes('invalid') || msg.includes('search again')) {
@@ -209,7 +189,6 @@ export class BookingWakanowController {
       
       if (error instanceof HttpException) throw error;
       
-      // Check for specific error messages
       const errorMsg = error?.message?.toLowerCase() || '';
       if (
         errorMsg.includes('expired') || 
@@ -233,9 +212,6 @@ export class BookingWakanowController {
     }
   }
 
-  // ============================================================
-  // 3. BOOK FLIGHT (Authenticated)
-  // ============================================================
   @UseGuards(JwtAuthGuard)
   @Post('book')
   @ApiBearerAuth()
@@ -255,7 +231,6 @@ export class BookingWakanowController {
     this.logger.log(`SelectData length: ${bookDto.selectData?.length || 0}`);
     
     try {
-      // ✅ Validate required fields
       if (!bookDto.selectData) {
         throw new BadRequestException('SelectData is required');
       }
@@ -266,10 +241,8 @@ export class BookingWakanowController {
         throw new BadRequestException('At least one passenger is required');
       }
 
-      // ✅ Validate SelectData format
       this.validateSelectData(bookDto.selectData);
 
-      // Log price breakdown if provided
       if (bookDto.priceBreakdown) {
         this.logger.log(`💰 Booking with price breakdown: ${JSON.stringify(bookDto.priceBreakdown)}`);
       } else {
@@ -288,7 +261,6 @@ export class BookingWakanowController {
     } catch (error: any) {
       this.logger.error(`Booking failed for user ${userId}: ${error.message}`);
       
-      // ✅ If it's a BadRequestException with expired message, return 410 Gone
       if (error instanceof BadRequestException) {
         const msg = error.message.toLowerCase();
         if (msg.includes('expired') || msg.includes('invalid') || msg.includes('search again')) {
@@ -299,7 +271,6 @@ export class BookingWakanowController {
       
       if (error instanceof HttpException) throw error;
       
-      // Check for specific error messages
       const errorMsg = error?.message?.toLowerCase() || '';
       if (errorMsg.includes('expired') || errorMsg.includes('no longer available')) {
         throw new HttpException(
@@ -323,9 +294,6 @@ export class BookingWakanowController {
     }
   }
 
-  // ============================================================
-  // 4. BOOK FLIGHT (Guest)
-  // ============================================================
   @Public()
   @Post('book/guest')
   @UsePipes(new ValidationPipe({ transform: true }))
@@ -342,7 +310,7 @@ export class BookingWakanowController {
     this.logger.log(`SelectData length: ${bookDto.selectData?.length || 0}`);
     
     try {
-      // ✅ Validate required fields
+  
       if (!bookDto.selectData) {
         throw new BadRequestException('SelectData is required');
       }
@@ -352,11 +320,8 @@ export class BookingWakanowController {
       if (!bookDto.passengers || bookDto.passengers.length === 0) {
         throw new BadRequestException('At least one passenger is required');
       }
-
-      // ✅ Validate SelectData format
       this.validateSelectData(bookDto.selectData);
 
-      // Log price breakdown if provided
       if (bookDto.priceBreakdown) {
         this.logger.log(`💰 Guest booking with price breakdown: ${JSON.stringify(bookDto.priceBreakdown)}`);
       } else {
@@ -374,8 +339,6 @@ export class BookingWakanowController {
       };
     } catch (error: any) {
       this.logger.error(`Guest booking failed: ${error.message}`);
-      
-      // ✅ If it's a BadRequestException with expired message, return 410 Gone
       if (error instanceof BadRequestException) {
         const msg = error.message.toLowerCase();
         if (msg.includes('expired') || msg.includes('invalid') || msg.includes('search again')) {
@@ -409,9 +372,6 @@ export class BookingWakanowController {
     }
   }
 
-  // ============================================================
-  // 5. CONFIRM PAYMENT (NEW)
-  // ============================================================
   @UseGuards(JwtAuthGuard)
   @Post('confirm-payment')
   @ApiBearerAuth()
@@ -471,9 +431,6 @@ export class BookingWakanowController {
     }
   }
 
-  // ============================================================
-  // 6. ISSUE TICKET (by local booking ID) (NEW)
-  // ============================================================
   @UseGuards(JwtAuthGuard)
   @Post('ticket/:localBookingId')
   @ApiBearerAuth()
@@ -566,9 +523,6 @@ export class BookingWakanowController {
     }
   }
 
-  // ============================================================
-  // 7. LEGACY TICKET (Admin only) - Keep for backward compatibility
-  // ============================================================
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @Post('ticket')
@@ -611,8 +565,7 @@ export class BookingWakanowController {
     } catch (error: any) {
       this.logger.error(`Ticketing failed for booking ${ticketDto.bookingId}: ${error.message}`);
       if (error instanceof HttpException) throw error;
-      
-      // Check for specific error messages
+     
       const errorMsg = error?.message?.toLowerCase() || '';
       if (errorMsg.includes('insufficient') || errorMsg.includes('credit limit')) {
         throw new HttpException(
@@ -647,9 +600,6 @@ export class BookingWakanowController {
     }
   }
 
-  // ============================================================
-  // 8. GET BOOKING STATUS (NEW)
-  // ============================================================
   @UseGuards(JwtAuthGuard)
   @Get('status/:localBookingId')
   @ApiBearerAuth()
@@ -695,9 +645,6 @@ export class BookingWakanowController {
     }
   }
 
-  // ============================================================
-  // 9. COMPLETE BOOKING (Pay + Ticket in one call) (NEW)
-  // ============================================================
   @UseGuards(JwtAuthGuard)
   @Post('complete/:localBookingId')
   @ApiBearerAuth()
@@ -728,14 +675,13 @@ export class BookingWakanowController {
     }
 
     try {
-      // 1. Confirm payment first
+     
       this.logger.log(`Step 1: Confirming payment for booking ${localBookingId}`);
       const paymentResult = await this.confirmWakanowPaymentUseCase.execute(
         localBookingId,
         paymentReference,
       );
 
-      // 2. Then issue ticket
       this.logger.log(`Step 2: Issuing ticket for booking ${localBookingId}`);
       const ticketResult = await this.ticketWakanowBookingUseCase.execute(localBookingId);
 
@@ -755,8 +701,7 @@ export class BookingWakanowController {
       };
     } catch (error: any) {
       this.logger.error(`Booking completion failed: ${error.message}`);
-      
-      // If payment failed, provide guidance
+ 
       if (error.message?.includes('Payment') || error.message?.includes('payment')) {
         throw new HttpException(
           {
@@ -785,9 +730,6 @@ export class BookingWakanowController {
     }
   }
 
-  // ============================================================
-  // 10. AIRPORTS (Public)
-  // ============================================================
   @Public()
   @Get('airports')
   @ApiOperation({
@@ -844,9 +786,7 @@ export class BookingWakanowController {
     }
   }
 
-  // ============================================================
-  // 11. WALLET BALANCE (Admin only)
-  // ============================================================
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @Get('wallet-balance')
@@ -881,9 +821,7 @@ export class BookingWakanowController {
     }
   }
 
-  // ============================================================
-  // 12. HEALTH CHECK (Public)
-  // ============================================================
+
   @Public()
   @Get('health')
   @ApiOperation({
