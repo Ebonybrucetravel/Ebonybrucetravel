@@ -68,6 +68,8 @@ import { RequestHotelCancellationUseCase } from '@application/booking/use-cases/
 import { UpdateAmadeusHotelBookingUseCase } from '@application/booking/use-cases/update-amadeus-hotel-booking.use-case';
 import { UpdateHotelBookingRequestDto, UpdateHotelBookingDto } from './dto/update-hotel-booking.dto';
 import { Throttle } from '@common/decorators/throttle.decorator';
+import { CancelBookingUseCase } from '@application/booking/use-cases/cancel-booking.use-case';
+import { CancelWakanowBookingUseCase } from '@application/booking/use-cases/cancel-wakanow-booking.use-case';
 
 @ApiTags('Bookings')
 @Controller('bookings')
@@ -105,6 +107,9 @@ export class BookingController {
     private readonly requestHotelCancellationUseCase: RequestHotelCancellationUseCase,
     private readonly updateAmadeusHotelBookingUseCase: UpdateAmadeusHotelBookingUseCase,
     private readonly prisma: PrismaService,
+    // ✅ NEW: Cancellation use cases
+    private readonly cancelBookingUseCase: CancelBookingUseCase,
+    private readonly cancelWakanowBookingUseCase: CancelWakanowBookingUseCase,
   ) { }
 
   // ==================== FLIGHT ENDPOINTS ====================
@@ -212,7 +217,6 @@ export class BookingController {
     };
   }
 
-  // ✅ UPDATED: Create booking with price breakdown
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth()
@@ -223,12 +227,9 @@ export class BookingController {
   @ApiResponse({ status: 201, description: 'Booking created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid booking data or missing price breakdown' })
   async create(@Body() createBookingDto: CreateBookingDto, @Request() req) {
-    // ✅ Validate price breakdown
     const { priceBreakdown } = createBookingDto;
     
-    // ✅ If priceBreakdown is provided, use it to populate individual fields
     if (priceBreakdown) {
-      // Ensure required fields are present
       if (!priceBreakdown.totalAmount || priceBreakdown.totalAmount <= 0) {
         throw new BadRequestException('Total amount is required and must be greater than 0');
       }
@@ -236,7 +237,6 @@ export class BookingController {
         throw new BadRequestException('Currency is required');
       }
       
-      // Log the price breakdown for debugging
       console.log('💰 Creating booking with price breakdown:', {
         basePrice: priceBreakdown.basePrice,
         markupAmount: priceBreakdown.markupAmount,
@@ -249,7 +249,6 @@ export class BookingController {
         currency: priceBreakdown.currency,
       });
     } else {
-      // ✅ If no priceBreakdown, validate individual fields
       if (!createBookingDto.totalAmount || createBookingDto.totalAmount <= 0) {
         throw new BadRequestException('Total amount is required and must be greater than 0');
       }
@@ -465,7 +464,46 @@ export class BookingController {
     }
   }
 
+  // ============================================================
+  // ✅ CANCELLATION ENDPOINT (USER-FACING)
+  // ============================================================
+  @UseGuards(JwtAuthGuard)
   @Post(':id/cancel')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancel a booking (user-facing)',
+    description:
+      'Allows a user to cancel their own booking if it is in a cancellable state. ' +
+      'For Wakanow bookings: can cancel PENDING, PAYMENT_PENDING, and CONFIRMED (unticketed) bookings. ' +
+      'For other bookings: only PENDING and PAYMENT_PENDING can be cancelled.',
+  })
+  @ApiResponse({ status: 200, description: 'Booking cancelled successfully' })
+  @ApiResponse({ status: 404, description: 'Booking not found' })
+  @ApiResponse({ status: 403, description: 'User does not own this booking' })
+  @ApiResponse({ status: 400, description: 'Booking cannot be cancelled' })
+  async cancelBooking(@Param('id') id: string, @Request() req) {
+    const userId = req.user.id;
+    
+    // Get the booking to check provider
+    const booking = await this.bookingService.getBookingById(id);
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+    
+    // ✅ Route to the appropriate cancellation use case
+    if (booking.provider === 'WAKANOW') {
+      return await this.cancelWakanowBookingUseCase.execute(id, userId);
+    }
+    
+    // ✅ Generic cancellation for other providers
+    return await this.cancelBookingUseCase.execute(id, userId);
+  }
+
+  // ============================================================
+  // ADMIN CANCELLATION (Existing - Keep for backward compatibility)
+  // ============================================================
+  @Post(':id/cancel-admin')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiBearerAuth()
@@ -480,7 +518,7 @@ export class BookingController {
     status: 400,
     description: 'Cancellation not allowed (time restriction or non-refundable fare)',
   })
-  async cancel(@Param('id') id: string, @Request() req) {
+  async cancelAdmin(@Param('id') id: string, @Request() req) {
     const booking = await this.bookingService.getBookingById(id);
     if (!booking) {
       throw new NotFoundException('Booking not found');

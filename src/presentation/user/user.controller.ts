@@ -36,6 +36,7 @@ import { SaveItemDto, UpdateSavedItemNotesDto, ToggleSaveItemDto, CheckSavedDto 
 import { CreateSavedTravelerDto, UpdateSavedTravelerDto, GetTravelersByIdsDto } from './dto/saved-traveler.dto';
 import { RedeemPointsDto, TransactionHistoryQueryDto, ConfirmPaymentMethodDto, ValidateVoucherDto } from './dto/loyalty.dto';
 import { ProductType } from '@prisma/client';
+import { BookingService } from '@domains/booking/services/booking.service';
 
 @ApiTags('User Profile')
 @Controller('users')
@@ -49,6 +50,7 @@ export class UserController {
     private readonly savedPaymentMethodService: SavedPaymentMethodService,
     private readonly savedItemsService: SavedItemsService,
     private readonly savedTravelersService: SavedTravelersService,
+    private readonly bookingService: BookingService,
   ) {}
 
   // =====================================================
@@ -79,7 +81,7 @@ export class UserController {
     @UploadedFile(
       new ParseFilePipe({
         validators: [
-          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }), // 5MB
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
           new FileTypeValidator({ fileType: /(jpg|jpeg|png|gif|webp)$/ }),
         ],
       }),
@@ -121,6 +123,22 @@ export class UserController {
   }
 
   // =====================================================
+  // USER BOOKINGS
+  // =====================================================
+
+  @Get('me/bookings')
+  @ApiOperation({ summary: 'Get current user\'s bookings' })
+  @ApiResponse({ status: 200, description: 'Bookings retrieved successfully' })
+  async getMyBookings(@Request() req) {
+    const bookings = await this.bookingService.getUserBookings(req.user.id);
+    return {
+      success: true,
+      data: bookings,
+      message: 'Bookings retrieved successfully',
+    };
+  }
+
+  // =====================================================
   // LOYALTY POINTS & REWARDS
   // =====================================================
 
@@ -158,7 +176,6 @@ export class UserController {
     const account = await this.loyaltyService.getOrCreateAccount(req.user.id);
     const { LoyaltyTier } = await import('@prisma/client');
 
-    // Build OR conditions with proper enum types
     const orConditions: any[] = [
       { requiredTier: null },
       { requiredTier: account.tier as any },
@@ -288,7 +305,7 @@ export class UserController {
   @Post('me/payment-methods/setup')
   @ApiOperation({
     summary: 'Create a SetupIntent to save a new card',
-    description: 'Returns a clientSecret to use with Stripe.js on the frontend. The frontend collects card details securely via Stripe Elements - we never handle raw card data.',
+    description: 'Returns a clientSecret to use with Stripe.js on the frontend.',
   })
   @ApiResponse({ status: 201, description: 'SetupIntent created' })
   async createSetupIntent(@Request() req) {
@@ -304,7 +321,6 @@ export class UserController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Confirm and save payment method after SetupIntent completion',
-    description: 'Call this after the frontend confirms the SetupIntent via Stripe.js',
   })
   @ApiResponse({ status: 200, description: 'Payment method saved' })
   async confirmPaymentMethod(@Request() req, @Body() dto: ConfirmPaymentMethodDto) {
@@ -544,25 +560,65 @@ export class UserController {
   }
 
   // =====================================================
-  // FULL PROFILE DASHBOARD (aggregate endpoint)
+  // FULL PROFILE DASHBOARD (with bookings) - FIXED
   // =====================================================
 
   @Get('me/dashboard')
   @ApiOperation({
     summary: 'Get full user profile dashboard',
-    description: 'Returns profile, loyalty summary, saved items count, travelers count, and payment methods count in a single call',
+    description: 'Returns profile, loyalty summary, saved items count, travelers count, payment methods count, and bookings summary in a single call',
   })
   @ApiResponse({ status: 200, description: 'Dashboard data retrieved' })
   async getProfileDashboard(@Request() req) {
     const userId = req.user.id;
 
-    const [profile, loyalty, savedItemsCounts, travelers, paymentMethods] = await Promise.all([
+    const [profile, loyalty, savedItemsCounts, travelers, paymentMethods, bookings] = await Promise.all([
       this.userService.getProfile(userId),
       this.loyaltyService.getLoyaltySummary(userId),
       this.savedItemsService.getSavedItemsCounts(userId),
       this.savedTravelersService.listTravelers(userId),
       this.savedPaymentMethodService.listPaymentMethods(userId),
+      this.bookingService.getUserBookings(userId),
     ]);
+
+    // Calculate booking stats
+    const totalBookings = bookings.length;
+    
+    // ✅ FIXED: Use 'CONFIRMED' instead of 'COMPLETED'
+    const upcomingBookings = bookings.filter(
+      (b) => b.status !== 'CANCELLED' && b.status !== 'FAILED' && b.status !== 'CONFIRMED'
+    ).length;
+    const cancelledBookings = bookings.filter((b) => b.status === 'CANCELLED').length;
+    const completedBookings = bookings.filter((b) => b.status === 'CONFIRMED').length;
+
+    // Get recent bookings (last 5)
+    const recentBookings = bookings
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5)
+      .map((b) => ({
+        id: b.id,
+        reference: b.reference,
+        status: b.status,
+        provider: b.provider,
+        productType: b.productType,
+        totalAmount: b.totalAmount,
+        currency: b.currency,
+        createdAt: b.createdAt,
+        // ✅ FIXED: Access pnrNumber from bookingData
+        pnrNumber: b.bookingData?.pnrReferenceNumber || b.bookingData?.pnrNumber || null,
+        bookingData: {
+          origin: b.bookingData?.origin,
+          destination: b.bookingData?.destination,
+          airline: b.bookingData?.airline,
+          flightNumber: b.bookingData?.flightNumber,
+          hotelName: b.bookingData?.hotelName,
+          checkInDate: b.bookingData?.checkInDate,
+          checkOutDate: b.bookingData?.checkOutDate,
+          vehicleType: b.bookingData?.vehicleType,
+          pickupDateTime: b.bookingData?.pickupDateTime,
+          dropoffDateTime: b.bookingData?.dropoffDateTime,
+        },
+      }));
 
     return {
       success: true,
@@ -578,6 +634,13 @@ export class UserController {
         paymentMethods: {
           count: paymentMethods.length,
           hasDefault: paymentMethods.some((m) => m.isDefault),
+        },
+        bookings: {
+          total: totalBookings,
+          upcoming: upcomingBookings,
+          cancelled: cancelledBookings,
+          completed: completedBookings,
+          recent: recentBookings,
         },
       },
       message: 'Dashboard retrieved successfully',
