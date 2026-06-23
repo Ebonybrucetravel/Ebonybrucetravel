@@ -13,7 +13,6 @@ export class SearchWakanowFlightsUseCase {
   private readonly logger = new Logger(SearchWakanowFlightsUseCase.name);
   
   private markupConfigCache: Map<string, { markupPercentage: number; serviceFeeAmount: number }> = new Map();
-  private readonly SELECT_DATA_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   constructor(
     private readonly wakanowService: WakanowService,
@@ -96,6 +95,48 @@ export class SearchWakanowFlightsUseCase {
       };
     }
 
+    // ✅ Filter out invalid SelectData (too long > 500 chars)
+    // These are usually gzip compressed and cause 500 errors
+    const validResults = results.filter((result) => {
+      const selectData = result.SelectData || '';
+      const isValid = selectData.length > 0 && selectData.length < 500;
+      
+      if (!isValid) {
+        this.logger.warn(`⚠️ Filtering out SelectData with invalid length: ${selectData.length} chars`);
+        this.logger.warn(`⚠️ Preview: ${selectData.substring(0, 50)}...`);
+      }
+      
+      return isValid;
+    });
+
+    if (validResults.length === 0) {
+      this.logger.warn('⚠️ All results had invalid SelectData. Trying to fetch fresh results...');
+      
+      // ✅ Force a fresh search without cache
+      const freshResults = await this.wakanowService.searchFlights(wakanowRequest);
+      
+      const freshValidResults = freshResults.filter((result) => {
+        const selectData = result.SelectData || '';
+        return selectData.length > 0 && selectData.length < 500;
+      });
+      
+      if (freshValidResults.length === 0) {
+        this.logger.error('❌ No valid SelectData found even after fresh search');
+        return {
+          offers: [],
+          total_offers: 0,
+          selectData: null,
+          message: 'No valid flight selections available. Please try again.',
+        };
+      }
+      
+      results = freshValidResults;
+    } else {
+      results = validResults;
+    }
+
+    this.logger.log(`✅ Using ${results.length} results with valid SelectData`);
+
     // ✅ Get markup config ONCE
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
     const markupConfig = await this.getMarkupConfig(productType, displayCurrency);
@@ -145,7 +186,7 @@ export class SearchWakanowFlightsUseCase {
       baseCurrency,
     );
 
-    // ✅ Get selectData from the first offer
+    // ✅ Get selectData from the first offer (should be valid now)
     const firstSelectData = normalizedOffers.length > 0 ? normalizedOffers[0].selectData : null;
 
     this.logger.log(`📊 Normalized ${normalizedOffers.length} offers`);
@@ -185,7 +226,7 @@ export class SearchWakanowFlightsUseCase {
     try {
       const config = await this.markupRepository.findActiveMarkupByProductType(productType, currency);
       const result = {
-        markupPercentage: config?.markupPercentage || 10, // Default 10%
+        markupPercentage: config?.markupPercentage || 10,
         serviceFeeAmount: config?.serviceFeeAmount || 0,
       };
       this.markupConfigCache.set(cacheKey, result);
@@ -371,7 +412,6 @@ export class SearchWakanowFlightsUseCase {
       isWakanow: true,
       isWakanowDomestic: isDomestic,
       
-      // ✅ Add a timestamp for when this offer was generated (for expiration tracking)
       _generatedAt: Date.now(),
     };
   }
