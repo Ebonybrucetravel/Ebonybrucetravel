@@ -113,10 +113,19 @@ export class SearchWakanowFlightsUseCase {
       baseCurrency,
     );
 
+    // ✅ Get selectData from the first offer (for quick access)
+    const firstSelectData = normalizedOffers.length > 0 ? normalizedOffers[0].select_data : null;
+
     const response = {
-      provider: 'WAKANOW',
-      offers: normalizedOffers,
-      total_offers: normalizedOffers.length,
+      success: true,
+      data: {
+        offers: normalizedOffers,
+        total_offers: normalizedOffers.length,
+        selectData: firstSelectData, // ✅ Include at root level for easy access
+      },
+      message: normalizedOffers.length > 0 
+        ? `Found ${normalizedOffers.length} flight offers` 
+        : 'No flights found for the selected route and dates',
     };
 
     // ✅ Cache for 5 minutes
@@ -273,10 +282,15 @@ export class SearchWakanowFlightsUseCase {
     const roundedTaxes = Math.round((roundedMarkup + roundedServiceFee) * 100) / 100;
     const combinedTaxPercentage = markupPercentage + 5; // 5% service fee
 
+    // ✅ Get selectData from the result
+    const selectData = result.SelectData || '';
+
     return {
       provider: 'WAKANOW' as const,
       id: `wakanow-${index}`,
-      select_data: result.SelectData,
+      select_data: selectData, // ✅ Keep snake_case for backend
+      // ✅ Also add camelCase for frontend consistency
+      selectData: selectData,
       slices,
       marketing_carrier: combo.MarketingCarrier,
       adults: combo.Adults,
@@ -323,6 +337,11 @@ export class SearchWakanowFlightsUseCase {
       penalty_rules: combo.PenaltyRules,
       is_refundable: combo.IsRefundable,
       connection_code: combo.ConnectionCode,
+      
+      // ✅ Add isDomestic flag
+      isDomestic: isDomestic,
+      isWakanow: true,
+      isWakanowDomestic: isDomestic,
     };
   }
 

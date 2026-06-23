@@ -10,6 +10,8 @@ import { MarkupCalculationService } from '@domains/markup/services/markup-calcul
 @Injectable()
 export class BookWakanowFlightUseCase {
   private readonly logger = new Logger(BookWakanowFlightUseCase.name);
+  private readonly DEFAULT_MARKUP_PERCENTAGE = 10;
+  private readonly DEFAULT_SERVICE_FEE_PERCENTAGE = 5;
 
   constructor(
     private readonly wakanowService: WakanowService,
@@ -27,6 +29,7 @@ export class BookWakanowFlightUseCase {
     this.logger.log(`👤 Passengers: ${passengers.length}`);
     this.logger.log(`📋 SelectData length: ${selectData?.length || 0}`);
 
+    // ✅ Validate price breakdown if provided
     if (priceBreakdown) {
       this.logger.log('💰 Using price breakdown from select:', {
         basePrice: priceBreakdown.basePrice,
@@ -39,10 +42,21 @@ export class BookWakanowFlightUseCase {
         totalAmount: priceBreakdown.totalAmount,
         currency: priceBreakdown.currency,
       });
+
+      // ✅ Validate price breakdown values
+      if (priceBreakdown.totalAmount <= 0) {
+        this.logger.warn('⚠️ Invalid price breakdown: totalAmount <= 0');
+        throw new BadRequestException('Invalid price breakdown provided');
+      }
+      if (priceBreakdown.basePrice <= 0) {
+        this.logger.warn('⚠️ Invalid price breakdown: basePrice <= 0');
+        throw new BadRequestException('Invalid price breakdown provided');
+      }
     } else {
       this.logger.warn('⚠️ No price breakdown provided! Will use Wakanow price and recalculate.');
     }
 
+    // ✅ Validate required fields
     if (!bookingId) {
       throw new BadRequestException('BookingId is required');
     }
@@ -53,6 +67,7 @@ export class BookWakanowFlightUseCase {
       throw new BadRequestException('At least one passenger is required');
     }
 
+    // ✅ Validate BookingId format
     const isWakanowId = /^\d+$/.test(bookingId);
     this.logger.log(`Is Wakanow BookingId: ${isWakanowId}`);
 
@@ -60,6 +75,7 @@ export class BookWakanowFlightUseCase {
       this.logger.warn(`⚠️ BookingId "${bookingId}" appears to be a local ID, not a Wakanow ID!`);
     }
 
+    // ✅ Check for existing booking
     const existingBooking = await this.bookingRepository.findByProviderBookingId(bookingId);
     
     if (existingBooking) {
@@ -75,7 +91,7 @@ export class BookWakanowFlightUseCase {
       };
     }
 
-
+    // ✅ Validate each passenger
     for (let i = 0; i < passengers.length; i++) {
       const p = passengers[i];
       if (!p.firstName) {
@@ -101,7 +117,7 @@ export class BookWakanowFlightUseCase {
       }
     }
 
-
+    // ✅ Build Wakanow passenger details
     const wakanowPassengers: WakanowPassengerDetail[] = passengers.map((p) => ({
       PassengerType: p.passengerType || 'Adult',
       FirstName: p.firstName,
@@ -124,7 +140,7 @@ export class BookWakanowFlightUseCase {
       IsWakapointRegister: false,
     }));
 
-
+    // ✅ Build Wakanow request
     const wakanowRequest: WakanowBookRequest = {
       PassengerDetails: wakanowPassengers,
       BookingItemModels: [
@@ -138,10 +154,9 @@ export class BookWakanowFlightUseCase {
       BookingId: bookingId,
     };
 
-
     this.logger.log(`Sending booking request to Wakanow with BookingId: ${bookingId}`);
 
-
+    // ✅ Retry logic
     let bookResponse;
     const maxRetries = 3;
     let attempt = 0;
@@ -152,13 +167,11 @@ export class BookWakanowFlightUseCase {
         attempt++;
         this.logger.log(`📖 Booking attempt ${attempt}/${maxRetries}...`);
         bookResponse = await this.wakanowService.bookFlight(wakanowRequest);
-
         break;
       } catch (error: any) {
         lastError = error;
         const errorMsg = error?.message?.toLowerCase() || '';
         const errorString = JSON.stringify(error)?.toLowerCase() || '';
-
 
         const errorStatus = error?.status || 
                            error?.response?.status || 
@@ -167,7 +180,7 @@ export class BookWakanowFlightUseCase {
                            error?.code || 
                            0;
 
-
+        // ✅ Check for expired session
         if (errorMsg.includes('not selected by you') || 
             errorMsg.includes('session expired') ||
             errorMsg.includes('session has expired') ||
@@ -179,24 +192,23 @@ export class BookWakanowFlightUseCase {
           );
         }
 
-
+        // ✅ Retry on 500 errors
         if ((errorStatus === 500 || errorStatus === 0 || errorStatus === 502 || errorStatus === 503) && attempt < maxRetries) {
           this.logger.warn(`⚠️ Booking attempt ${attempt} failed with ${errorStatus}, retrying in ${1000 * attempt}ms...`);
           await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
           continue;
         }
 
+        // ✅ Retry once on 400
         if (errorStatus === 400 && attempt < 2) {
           this.logger.warn(`⚠️ Booking attempt ${attempt} failed with 400, retrying once...`);
           await new Promise(resolve => setTimeout(resolve, 1000));
           continue;
         }
 
-   
         throw error;
       }
     }
-
 
     if (!bookResponse) {
       this.logger.error('❌ All booking retry attempts failed');
@@ -206,11 +218,10 @@ export class BookWakanowFlightUseCase {
       );
     }
 
-
+    // ✅ Extract PNR
     const pnr = bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.PnrReferenceNumber || 
                 bookResponse.FlightBookingResult?.PnReferenceNumber ||
                 'PENDING_ISSUE';
-
 
     const combo = bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.FlightSummaryModel?.FlightCombination;
     if (!combo) {
@@ -221,11 +232,11 @@ export class BookWakanowFlightUseCase {
     const firstDep = combo.FlightModels[0]?.DepartureCode || '';
     const firstArr = combo.FlightModels[0]?.ArrivalCode || '';
 
-
+    // ✅ Determine if domestic
     const isDomestic = this.isNigerianRoute(firstDep, firstArr);
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
 
-
+    // ✅ Calculate prices
     let basePrice: number;
     let markupAmount: number;
     let markupPercentage: number;
@@ -234,16 +245,20 @@ export class BookWakanowFlightUseCase {
     let totalAmount: number;
     let currency: string;
     let breakdown: string;
+    let taxPercentage: number;
+    let taxes: number;
 
+    // ✅ PRIORITY 1: Use price breakdown from frontend
     if (priceBreakdown && priceBreakdown.totalAmount > 0) {
-
       basePrice = priceBreakdown.basePrice;
       markupAmount = priceBreakdown.markupAmount;
-      markupPercentage = priceBreakdown.markupPercentage;
+      markupPercentage = priceBreakdown.markupPercentage || this.DEFAULT_MARKUP_PERCENTAGE;
       serviceFee = priceBreakdown.serviceFee;
-      serviceFeePercentage = priceBreakdown.serviceFeePercentage;
+      serviceFeePercentage = priceBreakdown.serviceFeePercentage || this.DEFAULT_SERVICE_FEE_PERCENTAGE;
       totalAmount = priceBreakdown.totalAmount;
       currency = priceBreakdown.currency || price.CurrencyCode || 'NGN';
+      taxPercentage = priceBreakdown.taxPercentage || markupPercentage + serviceFeePercentage;
+      taxes = priceBreakdown.taxes || markupAmount + serviceFee;
       breakdown = `${basePrice} + ${markupAmount} (${markupPercentage}% markup) + ${serviceFee} (${serviceFeePercentage}% service fee) = ${totalAmount}`;
       
       this.logger.log(`💰 Using price breakdown from select:`, {
@@ -255,19 +270,18 @@ export class BookWakanowFlightUseCase {
         totalAmount,
         currency,
       });
-    } else {
-    
+    } 
+    // ✅ PRIORITY 2: Calculate from Wakanow price with markup config
+    else {
       this.logger.warn('⚠️ No price breakdown provided, calculating from Wakanow price...');
       
       try {
-
         const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
           productType,
           price.CurrencyCode
         );
 
         if (markupConfig) {
-
           const result = this.markupCalculationService.calculateTotal(
             price.Amount,
             productType,
@@ -277,11 +291,13 @@ export class BookWakanowFlightUseCase {
           
           basePrice = price.Amount;
           markupAmount = result.markupAmount;
-          markupPercentage = markupConfig.markupPercentage;
+          markupPercentage = markupConfig.markupPercentage || this.DEFAULT_MARKUP_PERCENTAGE;
           serviceFee = result.serviceFee;
-          serviceFeePercentage = result.serviceFeePercentage;
+          serviceFeePercentage = result.serviceFeePercentage || this.DEFAULT_SERVICE_FEE_PERCENTAGE;
           totalAmount = result.totalAmount;
           currency = price.CurrencyCode;
+          taxPercentage = markupPercentage + serviceFeePercentage;
+          taxes = markupAmount + serviceFee;
           breakdown = `${basePrice} + ${markupAmount} (${markupPercentage}% markup) + ${serviceFee} (${serviceFeePercentage}% service fee) = ${totalAmount}`;
           
           this.logger.log(`💰 Calculated with markup config:`, {
@@ -291,38 +307,43 @@ export class BookWakanowFlightUseCase {
             serviceFeePercentage,
             totalAmount,
           });
-
+        } else {
           this.logger.warn(`No markup config found for ${productType} in ${price.CurrencyCode}, using defaults`);
           
-          const defaultMarkupPercentage = isDomestic ? 10 : 15;
-          const defaultServiceFeePercentage = 5;
+          const defaultMarkupPct = isDomestic ? 10 : 15;
+          const defaultServicePct = this.DEFAULT_SERVICE_FEE_PERCENTAGE;
           
           basePrice = price.Amount;
-          markupPercentage = defaultMarkupPercentage;
-          markupAmount = (price.Amount * defaultMarkupPercentage) / 100;
-          serviceFee = (price.Amount * defaultServiceFeePercentage) / 100;
+          markupPercentage = defaultMarkupPct;
+          markupAmount = (price.Amount * defaultMarkupPct) / 100;
+          serviceFeePercentage = defaultServicePct;
+          serviceFee = (price.Amount * defaultServicePct) / 100;
           totalAmount = price.Amount + markupAmount + serviceFee;
-          serviceFeePercentage = defaultServiceFeePercentage;
           currency = price.CurrencyCode;
+          taxPercentage = markupPercentage + serviceFeePercentage;
+          taxes = markupAmount + serviceFee;
           breakdown = `${basePrice} + ${markupAmount} (${markupPercentage}% markup) + ${serviceFee} (${serviceFeePercentage}% service fee) = ${totalAmount}`;
         }
       } catch (error) {
         this.logger.warn('Failed to fetch markup config, using defaults:', error);
         
-        const defaultMarkupPercentage = isDomestic ? 10 : 15;
-        const defaultServiceFeePercentage = 5;
+        const defaultMarkupPct = isDomestic ? 10 : 15;
+        const defaultServicePct = this.DEFAULT_SERVICE_FEE_PERCENTAGE;
         
         basePrice = price.Amount;
-        markupPercentage = defaultMarkupPercentage;
-        markupAmount = (price.Amount * defaultMarkupPercentage) / 100;
-        serviceFee = (price.Amount * defaultServiceFeePercentage) / 100;
+        markupPercentage = defaultMarkupPct;
+        markupAmount = (price.Amount * defaultMarkupPct) / 100;
+        serviceFeePercentage = defaultServicePct;
+        serviceFee = (price.Amount * defaultServicePct) / 100;
         totalAmount = price.Amount + markupAmount + serviceFee;
-        serviceFeePercentage = defaultServiceFeePercentage;
         currency = price.CurrencyCode;
+        taxPercentage = markupPercentage + serviceFeePercentage;
+        taxes = markupAmount + serviceFee;
         breakdown = `${basePrice} + ${markupAmount} (${markupPercentage}% markup) + ${serviceFee} (${serviceFeePercentage}% service fee) = ${totalAmount}`;
       }
     }
 
+    // ✅ Log final price breakdown
     this.logger.log(`💰 Final Price Breakdown:`, {
       productType,
       currency,
@@ -332,16 +353,17 @@ export class BookWakanowFlightUseCase {
       serviceFeePercentage,
       serviceFee,
       totalAmount,
+      taxPercentage,
+      taxes,
       breakdown,
     });
 
-
+    // ✅ Create local booking
     const date = new Date();
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
     const random = Math.floor(100000 + Math.random() * 900000);
     const reference = `EBT-${dateStr}-${random}`;
 
-  
     const booking = await this.bookingRepository.create({
       reference,
       userId,
@@ -363,13 +385,14 @@ export class BookWakanowFlightUseCase {
         targetCurrency,
         ticketStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.TicketStatus || 'PENDING',
         pnrStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.PnrStatus || 'PENDING',
-   
         priceBreakdown: {
           basePrice,
           markupAmount,
           markupPercentage,
           serviceFee,
           serviceFeePercentage,
+          taxPercentage,
+          taxes,
           totalAmount,
           currency,
           breakdown,
@@ -381,7 +404,7 @@ export class BookWakanowFlightUseCase {
 
     this.logger.log(`✅ Wakanow flight booked. Local booking: ${booking.id}, PNR: ${pnr}`);
 
-
+    // ✅ Return response with all price breakdown fields
     return {
       ...booking,
       wakanow_booking_id: bookResponse.BookingId,
@@ -396,13 +419,14 @@ export class BookWakanowFlightUseCase {
       paymentUrl: `/api/v1/payments/initiate?bookingId=${booking.id}`,
       amount: totalAmount,
       currency: currency,
-
       priceBreakdown: {
         basePrice,
         markupAmount,
         markupPercentage,
         serviceFee,
         serviceFeePercentage,
+        taxes,
+        taxPercentage,
         totalAmount,
         currency,
         breakdown,

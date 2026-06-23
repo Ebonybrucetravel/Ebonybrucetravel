@@ -1,5 +1,11 @@
+// infrastructure/external-apis/wakanow/wakanow.service.ts
+
 import { Injectable, HttpException, HttpStatus, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as zlib from 'zlib';
+import { promisify } from 'util';
+
+const gunzip = promisify(zlib.gunzip);
 
 export interface WakanowTokenResponse {
   access_token: string;
@@ -304,6 +310,8 @@ export class WakanowService {
   private tokenExpiresAt: Date | null = null;
   private airportsCache: WakanowAirport[] | null = null;
   private airportsCacheTime: Date | null = null;
+  private selectDataCache: Map<string, { response: WakanowSelectResponse; timestamp: number }> = new Map();
+  private readonly SELECT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   constructor(private configService: ConfigService) {
     this.serviceUrl = this.configService.get<string>('WAKANOW_SERVICE_URL') || '';
@@ -425,10 +433,8 @@ export class WakanowService {
       parsed = JSON.parse(body);
     } catch {}
 
-    // ✅ Extract the actual error message
     const message = parsed?.Message || parsed?.message || parsed?.error || body || `Wakanow API error: ${response.status}`;
 
-    // ✅ Check for specific error types
     if (
       message.includes('Authorization has been denied') ||
       message.includes('Invalid token') ||
@@ -449,7 +455,6 @@ export class WakanowService {
       );
     }
 
-    // ✅ Check for expired select data
     if (
       message.includes('expired') ||
       message.includes('invalid') ||
@@ -461,7 +466,6 @@ export class WakanowService {
       );
     }
 
-    // ✅ Map HTTP status codes
     let httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
     if (response.status === 400) httpStatus = HttpStatus.BAD_REQUEST;
     else if (response.status === 401 || response.status === 403) httpStatus = HttpStatus.UNAUTHORIZED;
@@ -472,25 +476,44 @@ export class WakanowService {
     throw new HttpException({ message, error: context }, httpStatus);
   }
 
-  /**
-   * ✅ NEW: Health check method
-   * Checks if the Wakanow API is accessible and responsive
-   */
+  private getCachedSelect(selectDataHash: string): WakanowSelectResponse | null {
+    const cached = this.selectDataCache.get(selectDataHash);
+    if (cached && (Date.now() - cached.timestamp) < this.SELECT_CACHE_TTL) {
+      this.logger.log(`✅ Returning cached select response for hash: ${selectDataHash.substring(0, 20)}...`);
+      return cached.response;
+    }
+    return null;
+  }
+
+  private cacheSelectResponse(selectDataHash: string, response: WakanowSelectResponse): void {
+    this.selectDataCache.set(selectDataHash, {
+      response,
+      timestamp: Date.now(),
+    });
+    if (this.selectDataCache.size > 100) {
+      const now = Date.now();
+      const toDelete: string[] = [];
+      for (const [key, value] of this.selectDataCache) {
+        if ((now - value.timestamp) > this.SELECT_CACHE_TTL) {
+          toDelete.push(key);
+        }
+      }
+      for (const key of toDelete) {
+        this.selectDataCache.delete(key);
+      }
+      this.logger.log(`🧹 Cleaned up ${toDelete.length} expired cache entries`);
+    }
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       this.logger.debug('Performing Wakanow API health check');
-
-      // Try to get the token as a health check
-      // If token generation fails, the API is not healthy
       await this.getToken();
-
-      // Try a lightweight API call - fetch just 1 airport
       const headers = await this.getAuthHeaders();
       
       const response = await this.fetchWithRetry(`${this.serviceUrl}/api/flight/airports`, {
         method: 'GET',
         headers,
-        timeout: 5000, // 5 second timeout
       });
 
       if (!response.ok) {
@@ -498,7 +521,6 @@ export class WakanowService {
         return false;
       }
 
-      // Check if we got a valid response
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
         this.logger.warn('Health check failed: Invalid content type');
@@ -506,8 +528,6 @@ export class WakanowService {
       }
 
       const data = await response.json();
-      
-      // Check if we got a valid array or object
       const isValid = Array.isArray(data) || (typeof data === 'object' && data !== null);
       
       if (isValid) {
@@ -518,7 +538,6 @@ export class WakanowService {
         return false;
       }
     } catch (error: any) {
-      // If it's a timeout or connection error, return false
       if (error.code === 'ECONNABORTED' || error.name === 'TimeoutError') {
         this.logger.error(`Wakanow API health check timed out`);
       } else {
@@ -528,10 +547,6 @@ export class WakanowService {
     }
   }
 
-  /**
-   * ✅ NEW: Simple ping health check (lighter than full healthCheck)
-   * Only checks token generation, no API call
-   */
   async ping(): Promise<boolean> {
     try {
       await this.getToken();
@@ -543,7 +558,7 @@ export class WakanowService {
   }
 
   async getAirports(): Promise<WakanowAirport[]> {
-    const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+    const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
     if (
       this.airportsCache &&
@@ -627,9 +642,7 @@ export class WakanowService {
         return [];
       }
 
-      // ✅ Handle both array and single result formats
       if (Array.isArray(data) && data.length > 0) {
-        // Extract the FlightCombination and SelectData from the first result
         const results = data.map((item: any) => ({
           FlightCombination: item.FlightCombination || item,
           SelectData: item.SelectData || '',
@@ -658,85 +671,235 @@ export class WakanowService {
     }
   }
 
+  // ✅ UPDATED: selectFlight with decompression and multi-variant support
   async selectFlight(request: WakanowSelectRequest): Promise<WakanowSelectResponse> {
     this.logger.log('Wakanow flight select...');
     this.logger.log(`SelectData length: ${request.SelectData?.length || 0}`);
   
-    // ✅ Validate selectData
     if (!request.SelectData || request.SelectData.length < 10) {
       this.logger.warn(`Invalid selectData: length ${request.SelectData?.length || 0}`);
       throw new BadRequestException('Invalid or expired flight selection. Please search again.');
     }
   
-    // ✅ Log preview for debugging
     this.logger.log(`SelectData preview: ${request.SelectData.substring(0, 50)}...`);
   
+    // ✅ Generate hash for caching
+    const selectDataHash = request.SelectData.substring(0, 100) + '|' + request.SelectData.length;
+    
+    // ✅ Check cache
+    const cachedResponse = this.getCachedSelect(selectDataHash);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+  
     const headers = await this.getAuthHeaders();
+    
+    // ✅ Generate variants to try
+    const variants = this.generateSelectDataVariants(request.SelectData);
+    this.logger.log(`Generated ${variants.length} SelectData variants to try`);
   
-    try {
-      const response = await this.fetchWithRetry(`${this.serviceUrl}/api/flight/select`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          SelectData: request.SelectData,
-          TargetCurrency: request.TargetCurrency || 'NGN',
-        }),
-      });
+    let lastError: any = null;
   
-      if (!response.ok) {
-        const errorText = await response.text();
-        this.logger.warn(`Wakanow select failed: ${response.status} - ${errorText.substring(0, 200)}`);
+    for (let i = 0; i < variants.length; i++) {
+      const variant = variants[i];
+      this.logger.log(`📤 Trying variant ${i + 1}/${variants.length}: ${variant.name} (${variant.data.length} chars)`);
+      this.logger.log(`📤 ${variant.name} preview: ${variant.data.substring(0, 50)}...`);
+  
+      try {
+        const response = await this.fetchWithRetry(`${this.serviceUrl}/api/flight/select`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            SelectData: variant.data,
+            TargetCurrency: request.TargetCurrency || 'NGN',
+          }),
+        });
+  
+        if (!response.ok) {
+          const errorText = await response.text();
+          this.logger.warn(`${variant.name} failed: ${response.status} - ${errorText.substring(0, 200)}`);
+          
+          if (response.status === 500 && errorText.includes('An error has occured')) {
+            this.logger.warn(`${variant.name} returned 500 with error, trying next variant...`);
+            lastError = new BadRequestException('Your flight selection is invalid. Please search for flights again.');
+            continue;
+          }
+          
+          if (response.status === 400) {
+            this.logger.warn(`${variant.name} returned 400, trying next variant...`);
+            lastError = new BadRequestException('Your flight selection has expired. Please search for flights again.');
+            continue;
+          }
+          
+          this.handleApiError(response, errorText, 'Flight select');
+        }
+  
+        const data: WakanowSelectResponse = await response.json();
+  
+        if (!data.HasResult) {
+          this.logger.warn(`${variant.name} returned no results`);
+          lastError = new BadRequestException('Selected flight is no longer available. Please search again.');
+          continue;
+        }
+  
+        this.logger.log(
+          `✅ Wakanow flight selected with ${variant.name}. BookingId: ${data.BookingId}, Price: ${data.FlightSummaryModel?.FlightCombination?.Price?.Amount || 0}`,
+        );
+  
+        // ✅ Cache successful response
+        this.cacheSelectResponse(selectDataHash, data);
+  
+        return data;
         
-        // ✅ If it's a 400 Bad Request, it's likely expired
-        if (response.status === 400) {
-          throw new BadRequestException('Your flight selection has expired. Please search for flights again.');
+      } catch (error: any) {
+        lastError = error;
+        
+        if (error instanceof BadRequestException) {
+          this.logger.warn(`${variant.name} failed: ${error.message}`);
+          continue;
         }
         
-        this.handleApiError(response, errorText, 'Flight select');
+        const errorMsg = error.message?.toLowerCase() || '';
+        if (errorMsg.includes('expired') || 
+            errorMsg.includes('invalid') || 
+            errorMsg.includes('no itinerary') ||
+            errorMsg.includes('bad request') ||
+            errorMsg.includes('an error has occured')) {
+          this.logger.warn(`${variant.name} failed with expired/invalid error: ${error.message}`);
+          continue;
+        }
+        
+        this.logger.warn(`${variant.name} failed with unexpected error: ${error.message}`);
       }
+    }
   
-      const data: WakanowSelectResponse = await response.json();
-  
-      // ✅ Check if the response indicates no results
-      if (!data.HasResult) {
-        this.logger.warn('Wakanow select: No results found');
-        throw new BadRequestException('Selected flight is no longer available. Please search again.');
+    if (lastError) {
+      this.logger.error('All SelectData variants failed');
+      if (lastError instanceof BadRequestException) {
+        throw lastError;
       }
+      throw new BadRequestException('Unable to confirm flight pricing. Please search for flights again.');
+    }
   
-      this.logger.log(
-        `✅ Wakanow flight selected. BookingId: ${data.BookingId}, Price: ${data.FlightSummaryModel?.FlightCombination?.Price?.Amount || 0} ${data.FlightSummaryModel?.FlightCombination?.Price?.CurrencyCode || 'NGN'}`,
-      );
-  
-      return data;
-    } catch (error: any) {
-      // ✅ If it's already a BadRequestException, re-throw it
-      if (error instanceof BadRequestException) {
-        throw error;
+    throw new BadRequestException('Unable to confirm flight pricing. Please search for flights again.');
+  }
+
+  // ✅ NEW: Generate SelectData variants
+  private generateSelectDataVariants(originalSelectData: string): Array<{ name: string; data: string }> {
+    const variants: Array<{ name: string; data: string }> = [];
+
+    // 1. Original
+    variants.push({ name: 'Original', data: originalSelectData });
+
+    // 2. Trimmed
+    const trimmed = originalSelectData.trim();
+    if (trimmed !== originalSelectData) {
+      variants.push({ name: 'Trimmed', data: trimmed });
+    }
+
+    // 3. Try decompression
+    try {
+      const decompressed = this.tryDecompressSelectData(originalSelectData);
+      if (decompressed && decompressed.length > 10 && decompressed !== originalSelectData) {
+        variants.push({ name: 'Decompressed', data: decompressed });
+      }
+    } catch (e) {
+      this.logger.debug(`Decompression attempt failed: ${e.message}`);
+    }
+
+    // 4. If very long, try shortened versions
+    if (originalSelectData.length > 500) {
+      variants.push({ name: 'Shortened_500', data: originalSelectData.substring(0, 500) });
+      
+      if (originalSelectData.length > 1000) {
+        variants.push({ name: 'Shortened_1000', data: originalSelectData.substring(0, 1000) });
+      }
+    }
+
+    // 5. Try Base64 decode if it looks like Base64
+    try {
+      const base64Regex = /^[A-Za-z0-9+/=]+$/;
+      if (base64Regex.test(originalSelectData)) {
+        const decoded = Buffer.from(originalSelectData, 'base64').toString('utf-8');
+        if (decoded && decoded.length > 10) {
+          const trimmedDecoded = decoded.trim();
+          if (trimmedDecoded.startsWith('{') || trimmedDecoded.startsWith('[')) {
+            variants.push({ name: 'Base64Decoded', data: trimmedDecoded });
+          }
+        }
+      }
+    } catch (e) {
+      this.logger.debug(`Base64 decode failed: ${e.message}`);
+    }
+
+    // 6. Try removing common prefixes
+    const prefixes = ['WAAAAB+LCAAAAAAABAC', '7h4AAB+LCAAAAAAABAD'];
+    for (const prefix of prefixes) {
+      if (originalSelectData.startsWith(prefix)) {
+        const withoutPrefix = originalSelectData.substring(prefix.length);
+        if (withoutPrefix.length > 50) {
+          variants.push({ name: `WithoutPrefix_${prefix.substring(0, 10)}`, data: withoutPrefix });
+        }
+      }
+    }
+
+    // ✅ Remove duplicates
+    const seen = new Set<string>();
+    const uniqueVariants = variants.filter(v => {
+      const key = v.data.substring(0, 100);
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+
+    this.logger.log(`Generated ${uniqueVariants.length} unique SelectData variants`);
+    return uniqueVariants;
+  }
+
+  // ✅ NEW: Try to decompress SelectData
+  private tryDecompressSelectData(selectData: string): string | null {
+    try {
+      // Check for gzip compressed data patterns
+      if (selectData.startsWith('7h4AAB+LCAAAAAAABAD') || 
+          selectData.startsWith('H4sI') ||
+          selectData.includes('LCAAAAAAABAD')) {
+        
+        this.logger.log('🔍 Detected possible gzip compressed data, attempting to decompress...');
+        
+        const buffer = Buffer.from(selectData, 'base64');
+        
+        // Check for gzip magic bytes: 1F 8B
+        if (buffer.length > 2 && buffer[0] === 0x1F && buffer[1] === 0x8B) {
+          const decompressed = zlib.gunzipSync(buffer);
+          const result = decompressed.toString('utf-8');
+          
+          if (result && result.length > 10) {
+            this.logger.log(`✅ Decompressed successfully: ${result.length} chars`);
+            return result;
+          }
+        }
+        
+        // If not gzip, try base64 decode
+        const decoded = Buffer.from(selectData, 'base64').toString('utf-8');
+        if (decoded && decoded.length > 10 && 
+            (decoded.trim().startsWith('{') || decoded.trim().startsWith('['))) {
+          this.logger.log(`✅ Base64 decoded to JSON: ${decoded.length} chars`);
+          return decoded;
+        }
       }
       
-      if (error instanceof HttpException && error.getStatus() === HttpStatus.GONE) {
-        throw new BadRequestException('Your flight selection has expired. Please search for flights again.');
-      }
-  
-      this.logger.error('Wakanow flight select failed:', error);
-  
-      // ✅ Check for specific error messages
-      const errorMsg = error.message?.toLowerCase() || '';
-      if (errorMsg.includes('expired') || errorMsg.includes('invalid') || errorMsg.includes('no itinerary')) {
-        throw new BadRequestException('Your flight selection has expired. Please search for flights again.');
-      }
-  
-      throw new HttpException(
-        'Failed to confirm flight pricing with Wakanow',
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      return null;
+    } catch (error) {
+      this.logger.warn(`Decompression failed: ${error.message}`);
+      return null;
     }
   }
 
   async bookFlight(request: WakanowBookRequest): Promise<WakanowBookResponse> {
     this.logger.log(`Wakanow flight booking. BookingId: ${request.BookingId}`);
 
-    // ✅ Validate required fields
     if (!request.BookingId) {
       throw new HttpException('BookingId is required for booking', HttpStatus.BAD_REQUEST);
     }
@@ -765,7 +928,6 @@ export class WakanowService {
 
       const data: WakanowBookResponse = await response.json();
 
-      // ✅ Check if booking was successful
       if (!data.FlightBookingResult?.HasResult) {
         throw new HttpException(
           'Flight booking failed. The selected fare may no longer be available.',
@@ -792,7 +954,6 @@ export class WakanowService {
       `Wakanow ticket issuance. BookingId: ${request.BookingId}, PNR: ${request.PnrNumber}`,
     );
 
-    // ✅ Validate required fields
     if (!request.BookingId) {
       throw new HttpException('BookingId is required for ticket issuance', HttpStatus.BAD_REQUEST);
     }
