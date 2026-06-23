@@ -9,7 +9,6 @@ import { HandleDuffelWebhookUseCase } from './use-cases/handle-duffel-webhook.us
 import { SearchHotelsUseCase } from './use-cases/search-hotels.use-case';
 import { FetchHotelRatesUseCase } from './use-cases/fetch-hotel-rates.use-case';
 import { CreateHotelQuoteUseCase } from './use-cases/create-hotel-quote.use-case';
-// ❌ REMOVED: import { CreateHotelBookingUseCase } from './use-cases/create-hotel-booking.use-case';
 import { CreateAmadeusHotelBookingUseCase } from './use-cases/create-amadeus-hotel-booking.use-case';
 import { CreateGuestAmadeusHotelBookingUseCase } from './use-cases/create-guest-amadeus-hotel-booking.use-case';
 import { GetHotelBookingUseCase } from './use-cases/get-hotel-booking.use-case';
@@ -31,12 +30,15 @@ import { CreateGuestCarRentalBookingUseCase } from './use-cases/create-guest-car
 import { CancelCarRentalBookingUseCase } from './use-cases/cancel-car-rental-booking.use-case';
 import { RequestHotelCancellationUseCase } from './use-cases/request-hotel-cancellation.use-case';
 import { ProcessCancellationRequestUseCase } from './use-cases/process-cancellation-request.use-case';
+import { UpdateAmadeusHotelBookingUseCase } from './use-cases/update-amadeus-hotel-booking.use-case';
 import { SearchWakanowFlightsUseCase } from './use-cases/search-wakanow-flights.use-case';
 import { SelectWakanowFlightUseCase } from './use-cases/select-wakanow-flight.use-case';
 import { BookWakanowFlightUseCase } from './use-cases/book-wakanow-flight.use-case';
 import { BookWakanowFlightGuestUseCase } from './use-cases/book-wakanow-flight-guest.use-case';
 import { TicketWakanowFlightUseCase } from './use-cases/ticket-wakanow-flight.use-case';
-import { UpdateAmadeusHotelBookingUseCase } from './use-cases/update-amadeus-hotel-booking.use-case';
+import { ConfirmWakanowPaymentUseCase } from './use-cases/confirm-wakanow-payment.use-case';
+import { TicketWakanowBookingUseCase } from './use-cases/ticket-wakanow-booking.use-case';
+import { GetWakanowBookingStatusUseCase } from './use-cases/get-wakanow-booking-status.use-case';
 import { BookingModule } from '@domains/booking/booking.module';
 import { PaymentModule } from '@domains/payment/payment.module';
 import { MarkupModule } from '@domains/markup/markup.module';
@@ -64,6 +66,7 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     PaymentModule,
   ],
   providers: [
+
     CreateBookingUseCase,
     CreateGuestBookingUseCase,
     SearchFlightsUseCase,
@@ -74,7 +77,6 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     SearchHotelsUseCase,
     FetchHotelRatesUseCase,
     CreateHotelQuoteUseCase,
-    // ❌ REMOVED: CreateHotelBookingUseCase,
     CreateAmadeusHotelBookingUseCase,
     CreateGuestAmadeusHotelBookingUseCase,
     GetHotelBookingUseCase,
@@ -96,12 +98,15 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     CancelCarRentalBookingUseCase,
     RequestHotelCancellationUseCase,
     ProcessCancellationRequestUseCase,
+    UpdateAmadeusHotelBookingUseCase,
     SearchWakanowFlightsUseCase,
     SelectWakanowFlightUseCase,
     BookWakanowFlightUseCase,
     BookWakanowFlightGuestUseCase,
     TicketWakanowFlightUseCase,
-    UpdateAmadeusHotelBookingUseCase,
+    ConfirmWakanowPaymentUseCase,
+    TicketWakanowBookingUseCase,
+    GetWakanowBookingStatusUseCase,
   ],
   exports: [
     CreateBookingUseCase,
@@ -114,7 +119,6 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     SearchHotelsUseCase,
     FetchHotelRatesUseCase,
     CreateHotelQuoteUseCase,
-    // ❌ REMOVED: CreateHotelBookingUseCase,
     CreateAmadeusHotelBookingUseCase,
     CreateGuestAmadeusHotelBookingUseCase,
     GetHotelBookingUseCase,
@@ -136,12 +140,15 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     CancelCarRentalBookingUseCase,
     RequestHotelCancellationUseCase,
     ProcessCancellationRequestUseCase,
+    UpdateAmadeusHotelBookingUseCase,
     SearchWakanowFlightsUseCase,
     SelectWakanowFlightUseCase,
     BookWakanowFlightUseCase,
     BookWakanowFlightGuestUseCase,
     TicketWakanowFlightUseCase,
-    UpdateAmadeusHotelBookingUseCase,
+    ConfirmWakanowPaymentUseCase,
+    TicketWakanowBookingUseCase,
+    GetWakanowBookingStatusUseCase,
   ],
 })
 export class BookingApplicationModule { }

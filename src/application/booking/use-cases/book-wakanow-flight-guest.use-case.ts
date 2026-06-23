@@ -6,8 +6,6 @@ import { BookWakanowFlightDto } from '@presentation/booking/dto/wakanow-flights.
 @Injectable()
 export class BookWakanowFlightGuestUseCase {
   private readonly logger = new Logger(BookWakanowFlightGuestUseCase.name);
-  private readonly VALID_SELECT_DATA_MAX_LENGTH = 500;
-  private readonly INVALID_SELECT_DATA_PREFIXES = ['7h4AAB+LCAAAAAAABAD', 'H4sI'];
 
   constructor(
     private readonly prisma: PrismaService,
@@ -20,7 +18,7 @@ export class BookWakanowFlightGuestUseCase {
     this.logger.log(`🆔 BookingId: ${dto.bookingId}`);
     this.logger.log(`📋 SelectData length: ${dto.selectData?.length || 0}`);
 
-    // ✅ Validate required fields
+
     if (!dto.bookingId) {
       throw new BadRequestException('BookingId is required');
     }
@@ -31,26 +29,9 @@ export class BookWakanowFlightGuestUseCase {
       throw new BadRequestException('At least one passenger is required');
     }
 
-    // ✅ Validate SelectData format (should not be gzip compressed or too long)
-    if (dto.selectData.length > this.VALID_SELECT_DATA_MAX_LENGTH) {
-      this.logger.warn(`⚠️ SelectData too long for guest booking: ${dto.selectData.length} chars`);
-      throw new BadRequestException(
-        'Invalid booking data. Please search for flights again and complete the booking promptly.'
-      );
-    }
+    this.validateSelectData(dto.selectData);
 
-    // ✅ Check for invalid SelectData prefixes (gzip compressed data)
-    const isInvalidFormat = this.INVALID_SELECT_DATA_PREFIXES.some(prefix => 
-      dto.selectData.startsWith(prefix)
-    );
-    if (isInvalidFormat) {
-      this.logger.warn(`⚠️ SelectData appears to be in invalid format (gzip compressed)`);
-      throw new BadRequestException(
-        'Invalid booking data. Please search for flights again and complete the booking promptly.'
-      );
-    }
 
-    // ✅ Validate price breakdown if provided
     if (dto.priceBreakdown) {
       this.logger.log('💰 Guest booking with price breakdown:', {
         basePrice: dto.priceBreakdown.basePrice,
@@ -64,7 +45,6 @@ export class BookWakanowFlightGuestUseCase {
         currency: dto.priceBreakdown.currency,
       });
 
-      // ✅ Validate price breakdown values
       if (dto.priceBreakdown.totalAmount <= 0) {
         this.logger.warn('⚠️ Invalid price breakdown: totalAmount <= 0');
         throw new BadRequestException('Invalid price breakdown provided');
@@ -77,7 +57,6 @@ export class BookWakanowFlightGuestUseCase {
       this.logger.warn('⚠️ No price breakdown provided for guest booking! Prices will be recalculated.');
     }
 
-    // ✅ Validate lead passenger
     const leadPassenger = dto.passengers?.[0];
     if (!leadPassenger?.email) {
       throw new BadRequestException('Lead passenger email is required for guest bookings');
@@ -91,7 +70,7 @@ export class BookWakanowFlightGuestUseCase {
 
     const email = leadPassenger.email.toLowerCase().trim();
 
-    // ✅ Find or create guest user with retry
+
     let guestUser = null;
     const maxRetries = 3;
     let attempt = 0;
@@ -108,7 +87,6 @@ export class BookWakanowFlightGuestUseCase {
         if (!guestUser) {
           this.logger.log(`👤 Creating new guest user for ${email}`);
           
-          // ✅ Use more passenger data for guest user
           guestUser = await this.prisma.user.create({
             data: {
               email,
@@ -124,7 +102,7 @@ export class BookWakanowFlightGuestUseCase {
         } else {
           this.logger.log(`✅ Using existing guest user: ${guestUser.id}`);
           
-          // ✅ Update guest user info if needed
+   
           if (!guestUser.name || guestUser.name !== `${leadPassenger.firstName} ${leadPassenger.lastName}`.trim()) {
             await this.prisma.user.update({
               where: { id: guestUser.id },
@@ -162,7 +140,6 @@ export class BookWakanowFlightGuestUseCase {
       throw new BadRequestException('Unable to create guest user. Please try again.');
     }
 
-    // ✅ Log price breakdown being passed to BookWakanowFlightUseCase
     if (dto.priceBreakdown) {
       this.logger.log('💰 Passing price breakdown to BookWakanowFlightUseCase:', {
         totalAmount: dto.priceBreakdown.totalAmount,
@@ -175,7 +152,6 @@ export class BookWakanowFlightGuestUseCase {
       this.logger.warn('⚠️ No price breakdown to pass to BookWakanowFlightUseCase');
     }
 
-    // ✅ Execute booking with retry
     let result = null;
     attempt = 0;
 
@@ -189,7 +165,7 @@ export class BookWakanowFlightGuestUseCase {
         const errorMsg = error?.message?.toLowerCase() || '';
         const errorStatus = error?.status || error?.code || 0;
 
-        // ✅ If expired, don't retry
+  
         if (errorMsg.includes('expired') || 
             errorMsg.includes('SELECTION_EXPIRED') ||
             errorMsg.includes('not selected by you') ||
@@ -200,19 +176,19 @@ export class BookWakanowFlightGuestUseCase {
           throw error;
         }
 
-        // ✅ Retry on server errors
+     
         if ((errorStatus === 500 || errorStatus === 0 || errorStatus === 502 || errorStatus === 503) && attempt < maxRetries) {
           this.logger.warn(`⚠️ Booking attempt ${attempt} failed with ${errorStatus}, retrying in ${1000 * attempt}ms...`);
           await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
           continue;
         }
 
-        // ✅ Throw other errors
+    
         throw error;
       }
     }
 
-    // ✅ Check if booking succeeded
+   
     if (!result) {
       this.logger.error('❌ All booking retry attempts failed for guest');
       throw new BadRequestException('Failed to book flight after multiple attempts. Please try again.');
@@ -222,15 +198,32 @@ export class BookWakanowFlightGuestUseCase {
     this.logger.log(`✅ Guest booking completed. Booking: ${result.id}, PNR: ${result.pnr_reference}`);
     this.logger.log(`💰 Final total: ${result.totalAmount} ${result.currency}`);
 
-    // ✅ Return with guest flag
+
     return {
       ...result,
       isGuest: true,
       guestEmail: email,
       guestUserId: guestUser.id,
-      message: 'Guest flight booked successfully. Please proceed to payment.',
-      // ✅ Ensure price breakdown is included in response
+      message: 'Guest booking created. Please complete payment to confirm your flight.',
+      requiresPayment: true,
+      paymentUrl: `/api/v1/payments/initiate?bookingId=${result.id}`,
       priceBreakdown: result.priceBreakdown || dto.priceBreakdown,
     };
+  }
+
+  private validateSelectData(selectData: string): void {
+    if (!selectData || selectData.trim().length === 0) {
+      throw new BadRequestException('SelectData is required for booking');
+    }
+    
+    if (selectData.trim().length < 10) {
+      this.logger.warn(`SelectData too short: ${selectData.length} chars`);
+      throw new BadRequestException(
+        'Invalid booking data. Please search for flights again and complete the booking promptly.'
+      );
+    }
+    
+    this.logger.log(`✅ SelectData validated: ${selectData.length} chars`);
+    this.logger.log(`✅ SelectData preview: ${selectData.substring(0, 50)}...`);
   }
 }

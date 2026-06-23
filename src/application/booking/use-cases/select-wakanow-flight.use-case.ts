@@ -2,12 +2,10 @@ import { Injectable, Logger, HttpException, HttpStatus, BadRequestException } fr
 import { WakanowService } from '@infrastructure/external-apis/wakanow/wakanow.service';
 import { SelectWakanowFlightDto } from '@presentation/booking/dto/wakanow-flights.dto';
 
-const MARKUP_PERCENTAGE = 10; // 10%
-const SERVICE_FEE_PERCENTAGE = 5; // 5%
+const MARKUP_PERCENTAGE = 10;
+const SERVICE_FEE_PERCENTAGE = 5;
 const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
-const VALID_SELECT_DATA_MAX_LENGTH = 500;
-const INVALID_SELECT_DATA_PREFIXES = ['7h4AAB+LCAAAAAAABAD', 'H4sI'];
+const RETRY_DELAY = 1000;
 
 @Injectable()
 export class SelectWakanowFlightUseCase {
@@ -29,15 +27,10 @@ export class SelectWakanowFlightUseCase {
       throw new BadRequestException('Invalid selectData (too short). Please search for flights again.');
     }
 
-    // ✅ Check if SelectData is likely expired (too long or invalid format)
-    const isInvalidFormat = this.isInvalidSelectData(selectData);
-    if (isInvalidFormat) {
-      this.logger.warn(`⚠️ SelectData appears to be in invalid format (length: ${selectData.length})`);
-      this.logger.warn(`⚠️ Preview: ${selectData.substring(0, 50)}...`);
-      throw new BadRequestException('Your flight selection has expired or is invalid. Please search for flights again.');
-    }
-
+    
     this.logger.log(`SelectData preview: ${selectData.substring(0, 50)}...`);
+    this.logger.log(`SelectData length: ${selectData.length} - This is normal for Wakanow`);
+
 
     const selectDataVariants = this.generateSelectDataVariants(selectData);
     this.logger.log(`Generated ${selectDataVariants.length} SelectData variants to try`);
@@ -125,10 +118,6 @@ export class SelectWakanowFlightUseCase {
       );
     }
 
-    if (!selectResponse) {
-      throw new BadRequestException('No response from Wakanow. Please search again.');
-    }
-
     if (!selectResponse.HasResult) {
       throw new BadRequestException('Selected flight is no longer available. Please search again.');
     }
@@ -186,8 +175,6 @@ export class SelectWakanowFlightUseCase {
       `Base: ${roundedBasePrice}, Markup: ${roundedMarkup}, Service: ${roundedServiceFee}, ` +
       `Taxes: ${combinedTaxes}, Total: ${roundedTotal} ${currency}`,
     );
-
-    this.logger.log('💰 Price breakdown:', priceBreakdown);
 
     return {
       provider: 'WAKANOW',
@@ -253,92 +240,20 @@ export class SelectWakanowFlightUseCase {
     };
   }
 
-  /**
-   * ✅ Check if SelectData is in an invalid format (likely expired or gzip compressed)
-   */
-  private isInvalidSelectData(selectData: string): boolean {
-    // ✅ Check length - valid SelectData should be under 500 chars
-    if (selectData.length > VALID_SELECT_DATA_MAX_LENGTH) {
-      this.logger.warn(`⚠️ SelectData too long: ${selectData.length} chars (max: ${VALID_SELECT_DATA_MAX_LENGTH})`);
-      return true;
-    }
-
-    // ✅ Check for gzip compressed data patterns (these always fail)
-    for (const prefix of INVALID_SELECT_DATA_PREFIXES) {
-      if (selectData.startsWith(prefix)) {
-        this.logger.warn(`⚠️ SelectData starts with invalid prefix: ${prefix}`);
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * Generate different variants of SelectData to try
-   */
+ 
   private generateSelectDataVariants(originalSelectData: string): Array<{ name: string; data: string }> {
     const variants: Array<{ name: string; data: string }> = [];
 
-    // 1. Original
+
     variants.push({ name: 'Original', data: originalSelectData });
 
-    // 2. Trimmed
+
     const trimmed = originalSelectData.trim();
     if (trimmed !== originalSelectData) {
       variants.push({ name: 'Trimmed', data: trimmed });
     }
 
-    // 3. Shortened versions (only if the original is valid)
-    if (originalSelectData.length > 200) {
-      // Try first 148 chars (known working length)
-      const shortVersion = originalSelectData.substring(0, 148);
-      if (shortVersion !== originalSelectData && !this.isInvalidSelectData(shortVersion)) {
-        variants.push({ name: 'Shortened_148', data: shortVersion });
-      }
-    }
 
-    if (originalSelectData.length > 500) {
-      variants.push({ name: 'Shortened_500', data: originalSelectData.substring(0, 500) });
-      variants.push({ name: 'Shortened_200', data: originalSelectData.substring(0, 200) });
-    }
-
-    // 4. Base64 decode
-    try {
-      const base64Regex = /^[A-Za-z0-9+/=]+$/;
-      if (base64Regex.test(originalSelectData)) {
-        const decoded = Buffer.from(originalSelectData, 'base64').toString('utf-8');
-        if (decoded && decoded.length > 0) {
-          const trimmedDecoded = decoded.trim();
-          if (trimmedDecoded.length > 10 && !this.isInvalidSelectData(trimmedDecoded)) {
-            variants.push({ name: 'Base64Decoded', data: trimmedDecoded });
-            if (trimmedDecoded.length > 500) {
-              variants.push({ name: 'Base64Decoded_500', data: trimmedDecoded.substring(0, 500) });
-            }
-          }
-        }
-      }
-    } catch (e) {
-      this.logger.debug('Failed to decode Base64:', e.message);
-    }
-
-    // 5. URL-safe Base64 decode
-    try {
-      const urlSafeBase64 = originalSelectData.replace(/-/g, '+').replace(/_/g, '/');
-      if (urlSafeBase64 !== originalSelectData) {
-        const decoded = Buffer.from(urlSafeBase64, 'base64').toString('utf-8');
-        if (decoded && decoded.length > 10) {
-          const trimmedDecoded = decoded.trim();
-          if (!this.isInvalidSelectData(trimmedDecoded)) {
-            variants.push({ name: 'URLSafeBase64Decoded', data: trimmedDecoded });
-          }
-        }
-      }
-    } catch (e) {
-      this.logger.debug('Failed to decode URL-safe Base64:', e.message);
-    }
-
-    // 6. Gzip decompression
     try {
       if (originalSelectData.startsWith('7h4AAB+LCAAAAAAABAD') || 
           originalSelectData.startsWith('H4sI') ||
@@ -350,30 +265,43 @@ export class SelectWakanowFlightUseCase {
           const decompressed = zlib.gunzipSync(buffer);
           const result = decompressed.toString('utf-8');
           
-          if (result && result.length > 10 && !this.isInvalidSelectData(result)) {
-            variants.push({ name: 'GzipDecompressed', data: result });
-            if (result.length > 500) {
-              variants.push({ name: 'GzipDecompressed_500', data: result.substring(0, 500) });
-            }
+          if (result && result.length > 10) {
+            variants.push({ name: 'Decompressed', data: result });
           }
         }
       }
     } catch (e) {
-      this.logger.debug('Failed to decompress gzip:', e.message);
+      this.logger.debug('Decompression failed:', e.message);
     }
 
-    // 7. Remove common prefixes
+    // 4. Base64 decode if it looks like base64
+    try {
+      const base64Regex = /^[A-Za-z0-9+/=]+$/;
+      if (base64Regex.test(originalSelectData)) {
+        const decoded = Buffer.from(originalSelectData, 'base64').toString('utf-8');
+        if (decoded && decoded.length > 10) {
+          const trimmedDecoded = decoded.trim();
+          if (trimmedDecoded.startsWith('{') || trimmedDecoded.startsWith('[')) {
+            variants.push({ name: 'Base64Decoded', data: trimmedDecoded });
+          }
+        }
+      }
+    } catch (e) {
+      this.logger.debug('Base64 decode failed:', e.message);
+    }
+
+
     const prefixes = ['WAAAAB+LCAAAAAAABAC', '7h4AAB+LCAAAAAAABAD'];
     for (const prefix of prefixes) {
       if (originalSelectData.startsWith(prefix)) {
         const withoutPrefix = originalSelectData.substring(prefix.length);
-        if (withoutPrefix.length > 50 && !this.isInvalidSelectData(withoutPrefix)) {
-          variants.push({ name: `WithoutPrefix_${prefix.substring(0, 10)}`, data: withoutPrefix });
+        if (withoutPrefix.length > 50) {
+          variants.push({ name: `WithoutPrefix`, data: withoutPrefix });
         }
       }
     }
 
-    // 8. Deduplicate
+
     const seen = new Set<string>();
     const uniqueVariants = variants.filter(v => {
       const key = v.data.substring(0, 100);
