@@ -60,17 +60,28 @@ export class HandleDuffelWebhookUseCase {
 
   private async handleOrderCreated(order: any): Promise<void> {
     try {
-      // Find booking by order ID (stored in providerBookingId)
-      const booking = await this.bookingRepository.findByProviderBookingId(order.id);
+      let booking = await this.bookingRepository.findByProviderBookingId(order.id);
+
+      if (!booking && order.metadata?.booking_reference) {
+        this.logger.log(`Looking for booking by reference: ${order.metadata.booking_reference}`);
+        booking = await this.bookingRepository.findByReference(order.metadata.booking_reference);
+      }
+
+      if (!booking && order.metadata?.booking_id) {
+        this.logger.log(`Looking for booking by ID: ${order.metadata.booking_id}`);
+        booking = await this.bookingRepository.findById(order.metadata.booking_id);
+      }
 
       if (!booking) {
         this.logger.warn(`Booking not found for Duffel order ${order.id}`);
+        await this.storePendingOrder(order);
         return;
       }
 
-      // Update booking with order details
       await this.bookingRepository.update(booking.id, {
         status: BookingStatus.CONFIRMED,
+        paymentStatus: PaymentStatus.COMPLETED,
+        providerBookingId: order.id,
         providerData: {
           ...(booking.providerData as any),
           order: order,
@@ -78,7 +89,7 @@ export class HandleDuffelWebhookUseCase {
         },
       });
 
-      this.logger.log(`Order ${order.id} created for booking ${booking.id}`);
+      this.logger.log(`✅ Order ${order.id} created for booking ${booking.id} (${booking.reference})`);
     } catch (error) {
       this.logger.error(`Failed to handle order.created for order ${order.id}:`, error);
       throw error;
@@ -87,13 +98,11 @@ export class HandleDuffelWebhookUseCase {
 
   private async handleOrderCreationFailed(orderData: any): Promise<void> {
     try {
-      // Find booking by order ID or offer ID
-      const booking = await this.bookingRepository.findByProviderBookingId(
+      let booking = await this.bookingRepository.findByProviderBookingId(
         orderData.order_id || orderData.id,
       );
 
       if (!booking) {
-        // Try to find by offer ID in metadata
         const offerId = orderData.offer_id || orderData.metadata?.offer_id;
         if (offerId) {
           try {
@@ -106,8 +115,16 @@ export class HandleDuffelWebhookUseCase {
             this.logger.error(`Failed to search bookings by offer ID:`, error);
           }
         }
-        this.logger.warn(`Booking not found for failed order ${orderData.id || orderData.order_id}`);
-        return;
+        
+        if (orderData.metadata?.booking_reference) {
+          booking = await this.bookingRepository.findByReference(orderData.metadata.booking_reference);
+        }
+        
+        if (!booking) {
+          this.logger.warn(`Booking not found for failed order ${orderData.id || orderData.order_id}`);
+          await this.storeFailedOrder(orderData);
+          return;
+        }
       }
 
       await this.updateBookingOrderFailed(booking.id, orderData);
@@ -118,31 +135,91 @@ export class HandleDuffelWebhookUseCase {
   }
 
   private async updateBookingOrderFailed(bookingId: string, orderData: any): Promise<void> {
+    const booking = await this.bookingRepository.findById(bookingId);
+    
     await this.bookingRepository.update(bookingId, {
       status: BookingStatus.FAILED,
       providerData: {
-        ...((await this.bookingRepository.findById(bookingId))?.providerData as any),
+        ...(booking?.providerData as any),
         orderCreationFailed: true,
         orderCreationError: orderData.error || orderData.message || 'Order creation failed',
         orderCreationFailedAt: new Date().toISOString(),
         orderData: orderData,
+        recoverable: this.isRecoverableError(orderData),
       },
     });
-
+  
     this.logger.warn(`Order creation failed for booking ${bookingId}`);
+  
+    // ✅ Send email notification to user
+    try {
+      if (booking?.userId) {
+        const user = await this.prisma.user.findUnique({
+          where: { id: booking.userId },
+          select: { email: true, name: true },
+        });
+  
+        if (user?.email) {
+          await this.resendService.sendBookingFailureEmail({
+            to: user.email,
+            customerName: user.name || 'Valued Customer',
+            bookingReference: booking.reference,
+            productType: booking.productType || 'FLIGHT_INTERNATIONAL',
+            amount: booking.totalAmount || 0,
+            currency: booking.currency || 'GBP',
+            failureReason: this.getFailureReason(orderData),
+          });
+          this.logger.log(`Booking failure email sent to ${user.email}`);
+        }
+      }
+    } catch (emailError) {
+      this.logger.error(`Failed to send booking failure email:`, emailError);
+    }
+  }
+
+  private isRecoverableError(orderData: any): boolean {
+    const error = orderData.error || orderData.message || '';
+    const errorLower = error.toLowerCase();
+    
+    const recoverableErrors = [
+      'expired',
+      'timeout',
+      'unavailable',
+      'try again',
+      'temporarily',
+    ];
+    
+    return recoverableErrors.some(term => errorLower.includes(term));
+  }
+
+  private getFailureReason(orderData: any): string {
+    const error = orderData.error || orderData.message || 'Unknown error';
+    const errorLower = error.toLowerCase();
+    
+    if (errorLower.includes('expired')) {
+      return 'The flight offer has expired. Please search for flights again and complete a new booking.';
+    }
+    if (errorLower.includes('timeout') || errorLower.includes('unavailable')) {
+      return 'The booking service is temporarily unavailable. Please try again in a few minutes.';
+    }
+    return `Order creation failed: ${error}`;
   }
 
   private async handleOrderUpdated(order: any): Promise<void> {
     try {
-      const booking = await this.bookingRepository.findByProviderBookingId(order.id);
+      let booking = await this.bookingRepository.findByProviderBookingId(order.id);
+
+      if (!booking && order.metadata?.booking_reference) {
+        booking = await this.bookingRepository.findByReference(order.metadata.booking_reference);
+      }
 
       if (!booking) {
         this.logger.warn(`Booking not found for updated order ${order.id}`);
         return;
       }
 
-      // Update booking with latest order data
       await this.bookingRepository.update(booking.id, {
+        status: order.status === 'confirmed' ? BookingStatus.CONFIRMED : booking.status,
         providerData: {
           ...(booking.providerData as any),
           order: order,
@@ -160,45 +237,46 @@ export class HandleDuffelWebhookUseCase {
   private async handleAirlineInitiatedChange(change: any): Promise<void> {
     try {
       const orderId = change.order_id || change.id;
-      const booking = await this.bookingRepository.findByProviderBookingId(orderId);
+      let booking = await this.bookingRepository.findByProviderBookingId(orderId);
+
+      if (!booking && change.metadata?.booking_reference) {
+        booking = await this.bookingRepository.findByReference(change.metadata.booking_reference);
+      }
 
       if (!booking) {
         this.logger.warn(`Booking not found for airline change ${orderId}`);
         return;
       }
 
-      // Store airline-initiated change information
-      // Keep status as CONFIRMED but mark in providerData that change is pending
       await this.bookingRepository.update(booking.id, {
-        status: BookingStatus.CONFIRMED, // Keep as confirmed, change tracked in providerData
+        status: BookingStatus.CONFIRMED,
         providerData: {
           ...(booking.providerData as any),
           airlineInitiatedChange: change,
           airlineChangeReceivedAt: new Date().toISOString(),
-          hasPendingAirlineChange: true, // Flag to indicate change needs attention
+          hasPendingAirlineChange: true,
         },
       });
 
       this.logger.log(`Airline-initiated change received for booking ${booking.id}`);
 
-      // Send email notification to customer
       try {
         const user = await this.prisma.user.findUnique({
           where: { id: booking.userId },
           select: { email: true, name: true },
         });
 
-        if (user && user.email) {
+        if (user?.email) {
+          // ✅ FIXED: Use correct method name
           await this.resendService.sendAirlineChangeEmail({
             to: user.email,
             customerName: user.name || 'Valued Customer',
             bookingReference: booking.reference,
             changeDetails: change,
-            actionRequired: true, // Airline changes typically require action
+            actionRequired: true,
           });
         }
       } catch (emailError) {
-        // Don't fail webhook if email fails
         this.logger.error(`Failed to send airline change email:`, emailError);
       }
     } catch (error) {
@@ -210,7 +288,11 @@ export class HandleDuffelWebhookUseCase {
   private async handleCancellationCreated(cancellation: any): Promise<void> {
     try {
       const orderId = cancellation.order_id;
-      const booking = await this.bookingRepository.findByProviderBookingId(orderId);
+      let booking = await this.bookingRepository.findByProviderBookingId(orderId);
+
+      if (!booking && cancellation.metadata?.booking_reference) {
+        booking = await this.bookingRepository.findByReference(cancellation.metadata.booking_reference);
+      }
 
       if (!booking) {
         this.logger.warn(`Booking not found for cancellation ${cancellation.id}`);
@@ -236,7 +318,11 @@ export class HandleDuffelWebhookUseCase {
   private async handleCancellationConfirmed(cancellation: any): Promise<void> {
     try {
       const orderId = cancellation.order_id;
-      const booking = await this.bookingRepository.findByProviderBookingId(orderId);
+      let booking = await this.bookingRepository.findByProviderBookingId(orderId);
+
+      if (!booking && cancellation.metadata?.booking_reference) {
+        booking = await this.bookingRepository.findByReference(cancellation.metadata.booking_reference);
+      }
 
       if (!booking) {
         this.logger.warn(`Booking not found for confirmed cancellation ${cancellation.id}`);
@@ -259,11 +345,61 @@ export class HandleDuffelWebhookUseCase {
         },
       });
 
-      this.logger.log(`Cancellation ${cancellation.id} confirmed for booking ${booking.id}`);
+      this.logger.log(`✅ Cancellation ${cancellation.id} confirmed for booking ${booking.id}`);
     } catch (error) {
       this.logger.error(`Failed to handle cancellation.confirmed:`, error);
       throw error;
     }
   }
-}
 
+  // ============================================================
+  // ✅ HELPER METHODS - Using Prisma raw queries as fallback
+  // ============================================================
+  
+  private async storePendingOrder(order: any): Promise<void> {
+    try {
+      // ✅ Use raw Prisma query as fallback if model doesn't exist
+      await this.prisma.$executeRaw`
+        INSERT INTO "PendingOrder" ("id", "orderId", "orderData", "bookingReference", "bookingId", "status", "createdAt")
+        VALUES (gen_random_uuid(), ${order.id}, ${JSON.stringify(order)}::jsonb, ${order.metadata?.booking_reference || null}, ${order.metadata?.booking_id || null}, 'PENDING', NOW())
+        ON CONFLICT ("orderId") DO NOTHING
+      `;
+      this.logger.log(`Stored pending order ${order.id} for manual reconciliation`);
+    } catch (error) {
+      // ✅ Fallback: Store in a separate table or log
+      this.logger.warn(`Could not store pending order in database, logging instead: ${order.id}`);
+      this.logger.warn(`Pending order data: ${JSON.stringify(order).substring(0, 500)}`);
+      
+      // ✅ Also try to store as a record in the booking repository if possible
+      try {
+        await this.prisma.booking.updateMany({
+          where: { reference: order.metadata?.booking_reference },
+          data: {
+            providerData: {
+              pendingOrder: order,
+              pendingOrderCreatedAt: new Date().toISOString(),
+            },
+          },
+        });
+      } catch (updateError) {
+        this.logger.error(`Failed to store pending order on booking:`, updateError);
+      }
+    }
+  }
+
+  private async storeFailedOrder(orderData: any): Promise<void> {
+    try {
+      // ✅ Use raw Prisma query as fallback if model doesn't exist
+      await this.prisma.$executeRaw`
+        INSERT INTO "FailedOrder" ("id", "orderId", "orderData", "bookingReference", "errorMessage", "status", "createdAt")
+        VALUES (gen_random_uuid(), ${orderData.order_id || orderData.id}, ${JSON.stringify(orderData)}::jsonb, ${orderData.metadata?.booking_reference || null}, ${orderData.error || orderData.message || 'Unknown error'}, 'FAILED', NOW())
+        ON CONFLICT ("orderId") DO NOTHING
+      `;
+      this.logger.log(`Stored failed order for manual review`);
+    } catch (error) {
+      // ✅ Fallback: Log the failed order
+      this.logger.warn(`Could not store failed order in database, logging instead`);
+      this.logger.warn(`Failed order data: ${JSON.stringify(orderData).substring(0, 500)}`);
+    }
+  }
+}
