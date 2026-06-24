@@ -8,6 +8,9 @@ import { WakanowService } from '@infrastructure/external-apis/wakanow/wakanow.se
 export class CancelWakanowBookingUseCase {
   private readonly logger = new Logger(CancelWakanowBookingUseCase.name);
 
+  // ✅ Wakanow cancellation fee is $50 USD as per terms
+  private readonly CANCELLATION_FEE_USD = 50;
+
   constructor(
     @Inject(BOOKING_REPOSITORY)
     private readonly bookingRepository: BookingRepository,
@@ -52,19 +55,51 @@ export class CancelWakanowBookingUseCase {
       this.logger.log('Booking is confirmed but not ticketed - allowing cancellation');
     }
 
-    // 5. Check if payment was completed
-    if (booking.paymentStatus === PaymentStatus.COMPLETED) {
-      // Payment was made - need to process refund
-      this.logger.log('Payment was completed - refund will be processed');
+    // 5. Calculate cancellation fee and refund
+    // ✅ Calculate cancellation fee based on booking currency
+    const currency = booking.currency || 'NGN';
+    
+    // ✅ Convert $50 USD to the booking currency
+    // Using a conservative exchange rate - you should use your currency service
+    const USD_TO_NGN_RATE = 1500; // 1 USD = 1500 NGN (adjust as needed)
+    const USD_TO_GBP_RATE = 0.78; // 1 USD = 0.78 GBP
+    
+    let cancellationFeeInCurrency: number;
+    let cancellationFeeCurrency: string;
+    
+    if (currency === 'USD') {
+      cancellationFeeInCurrency = this.CANCELLATION_FEE_USD;
+      cancellationFeeCurrency = 'USD';
+    } else if (currency === 'GBP') {
+      cancellationFeeInCurrency = this.CANCELLATION_FEE_USD * USD_TO_GBP_RATE;
+      cancellationFeeCurrency = 'GBP';
+    } else if (currency === 'NGN') {
+      cancellationFeeInCurrency = this.CANCELLATION_FEE_USD * USD_TO_NGN_RATE;
+      cancellationFeeCurrency = 'NGN';
+    } else {
+      // Default: use the booking currency with a fallback conversion
+      cancellationFeeInCurrency = this.CANCELLATION_FEE_USD * USD_TO_NGN_RATE;
+      cancellationFeeCurrency = currency;
     }
 
-    // 6. Get Wakanow booking details for logging
+    // ✅ Calculate refund amount
+    const totalAmount = booking.totalAmount || 0;
+    const refundAmount = Math.max(0, totalAmount - cancellationFeeInCurrency);
+
+    // 6. Check if payment was completed
+    const isRefundEligible = booking.paymentStatus === PaymentStatus.COMPLETED;
+
+    if (isRefundEligible) {
+      this.logger.log(`Payment was completed. Refund: ${refundAmount} ${currency}, Fee: ${cancellationFeeInCurrency} ${currency}`);
+    }
+
+    // 7. Get Wakanow booking details for logging
     const wakanowBookingId = booking.providerBookingId;
     const pnrNumber = booking.bookingData?.pnrReferenceNumber;
 
     this.logger.log(`Cancelling Wakanow booking: ${wakanowBookingId}, PNR: ${pnrNumber}`);
 
-    // 7. Update booking status to CANCELLED
+    // 8. Update booking status to CANCELLED
     const updatedBookingData = {
       ...(booking.bookingData as any || {}),
       cancelledAt: new Date().toISOString(),
@@ -73,7 +108,12 @@ export class CancelWakanowBookingUseCase {
       cancellationSource: 'USER_PROFILE',
       wakanowBookingId: wakanowBookingId,
       pnrNumber: pnrNumber,
-      refundStatus: booking.paymentStatus === PaymentStatus.COMPLETED ? 'PENDING' : 'NOT_APPLICABLE',
+      refundStatus: isRefundEligible ? 'PENDING' : 'NOT_APPLICABLE',
+      // ✅ Store cancellation fee details
+      cancellationFee: cancellationFeeInCurrency,
+      cancellationFeeCurrency: cancellationFeeCurrency,
+      cancellationFeeUSD: this.CANCELLATION_FEE_USD,
+      refundAmount: refundAmount,
     };
 
     await this.bookingRepository.update(bookingId, {
@@ -83,7 +123,7 @@ export class CancelWakanowBookingUseCase {
 
     this.logger.log(`Wakanow booking ${bookingId} cancelled successfully`);
 
-    // 8. Return cancellation details
+    // 9. Return cancellation details with fee information
     return {
       success: true,
       bookingId: bookingId,
@@ -93,11 +133,14 @@ export class CancelWakanowBookingUseCase {
       pnrNumber: pnrNumber || 'N/A',
       status: 'CANCELLED',
       cancelledAt: new Date().toISOString(),
-      refundEligible: booking.paymentStatus === PaymentStatus.COMPLETED,
-      refundAmount: booking.paymentStatus === PaymentStatus.COMPLETED ? booking.totalAmount : 0,
-      currency: booking.currency,
-      message: booking.paymentStatus === PaymentStatus.COMPLETED 
-        ? 'Booking cancelled successfully. Your refund will be processed within 7-10 business days.'
+      refundEligible: isRefundEligible,
+      refundAmount: refundAmount,
+      cancellationFee: cancellationFeeInCurrency,
+      cancellationFeeCurrency: cancellationFeeCurrency,
+      cancellationFeeUSD: this.CANCELLATION_FEE_USD,
+      currency: currency,
+      message: isRefundEligible 
+        ? `Booking cancelled successfully. A cancellation fee of ${cancellationFeeCurrency} ${cancellationFeeInCurrency.toFixed(2)} ($${this.CANCELLATION_FEE_USD} USD) has been applied. Your refund of ${currency} ${refundAmount.toFixed(2)} will be processed within 7-10 business days.`
         : 'Booking cancelled successfully. No payment was processed.',
     };
   }
