@@ -121,45 +121,71 @@ export class CancelWakanowBookingUseCase {
 
     this.logger.log(`Wakanow booking ${bookingId} cancelled successfully`);
 
-    // ✅ 10. Send cancellation email - COMPREHENSIVE EMAIL EXTRACTION
+    // ✅ 10. Send cancellation email - WITH JSON PARSING FIX
     try {
-      // Get customer name
-      const customerName = booking.passengerInfo?.firstName || 
-                          booking.passengerInfo?.name || 
-                          booking.passengerInfo?.fullName ||
-                          booking.passengerInfo?.full_name ||
-                          booking.passengerInfo?.fullname ||
-                          booking.passengerInfo?.lastName ||
-                          'Valued Customer';
-
-      // ✅ COMPREHENSIVE EMAIL EXTRACTION - NO booking.user reference
+      // ✅ FIX: Parse passengerInfo if it's a JSON string
+      let parsedPassengerInfo: any = null;
+      let customerName = 'Valued Customer';
       let userEmail: string | null = null;
       const emailLocations: string[] = [];
 
-      // 1. Check passengerInfo (most common)
-      if (booking.passengerInfo?.email) {
-        userEmail = booking.passengerInfo.email;
-        emailLocations.push('passengerInfo.email');
+      // ✅ Parse passengerInfo if it's a string
+      if (booking.passengerInfo) {
+        if (typeof booking.passengerInfo === 'string') {
+          try {
+            parsedPassengerInfo = JSON.parse(booking.passengerInfo);
+            // If it's an array, get the first passenger
+            if (Array.isArray(parsedPassengerInfo) && parsedPassengerInfo.length > 0) {
+              parsedPassengerInfo = parsedPassengerInfo[0];
+            }
+            this.logger.debug(`✅ Parsed passengerInfo from JSON string`);
+          } catch (e) {
+            this.logger.debug(`Could not parse passengerInfo as JSON: ${e.message}`);
+            parsedPassengerInfo = booking.passengerInfo;
+          }
+        } else {
+          parsedPassengerInfo = booking.passengerInfo;
+        }
       }
-      
+
+      // ✅ Get customer name from parsed passengerInfo
+      if (parsedPassengerInfo) {
+        if (parsedPassengerInfo.firstName) {
+          customerName = parsedPassengerInfo.firstName;
+          if (parsedPassengerInfo.lastName) {
+            customerName += ` ${parsedPassengerInfo.lastName}`;
+          }
+        } else if (parsedPassengerInfo.name) {
+          customerName = parsedPassengerInfo.name;
+        } else if (parsedPassengerInfo.fullName) {
+          customerName = parsedPassengerInfo.fullName;
+        }
+      }
+
+      // ✅ Check passengerInfo (most common - parsed from JSON)
+      if (parsedPassengerInfo && parsedPassengerInfo.email) {
+        userEmail = parsedPassengerInfo.email;
+        emailLocations.push('parsedPassengerInfo.email');
+      }
+
       // 2. Check bookingData
       if (!userEmail && booking.bookingData?.email) {
         userEmail = booking.bookingData.email;
         emailLocations.push('bookingData.email');
       }
-      
+
       // 3. Check raw booking data
       if (!userEmail && (booking as any).email) {
         userEmail = (booking as any).email;
         emailLocations.push('booking.email');
       }
-      
-      // 4. Check passengerInfo travellers array
-      if (!userEmail && booking.passengerInfo?.travellers && booking.passengerInfo.travellers.length > 0) {
-        for (const traveller of booking.passengerInfo.travellers) {
+
+      // 4. Check passengerInfo travellers array (parsed)
+      if (!userEmail && parsedPassengerInfo?.travellers && parsedPassengerInfo.travellers.length > 0) {
+        for (const traveller of parsedPassengerInfo.travellers) {
           if (traveller.email) {
             userEmail = traveller.email;
-            emailLocations.push('passengerInfo.travellers[].email');
+            emailLocations.push('parsedPassengerInfo.travellers[].email');
             break;
           }
         }
@@ -205,28 +231,23 @@ export class CancelWakanowBookingUseCase {
         emailLocations.push('bookingData.leadPassenger.email');
       }
 
-      // 10. Check passengerInfo for contact
-      if (!userEmail && booking.passengerInfo?.contact?.email) {
-        userEmail = booking.passengerInfo.contact.email;
-        emailLocations.push('passengerInfo.contact.email');
-      }
-
-      // ✅ 11. Try to get user email from the User table using the userId
-      if (!userEmail && userId) {
-        this.logger.debug(`🔍 Trying to find user with ID: ${userId}`);
-        
-        try {
-          // Use the user service if available, or just log
-          this.logger.debug(`🔍 User email not in booking data. 
-            Please ensure the email is stored in passengerInfo.email or bookingData.email.`);
-          this.logger.debug(`🔍 Current data structure:`, {
-            passengerInfoKeys: booking.passengerInfo ? Object.keys(booking.passengerInfo) : [],
-            bookingDataKeys: booking.bookingData ? Object.keys(booking.bookingData) : [],
-            hasPassengerInfoEmail: !!booking.passengerInfo?.email,
-            hasBookingDataEmail: !!booking.bookingData?.email,
-          });
-        } catch (error) {
-          this.logger.warn(`Could not fetch user: ${error.message}`);
+      // 10. Deep search in parsed passengerInfo for email
+      if (!userEmail && parsedPassengerInfo && typeof parsedPassengerInfo === 'object') {
+        const findEmail = (obj: any): string | null => {
+          if (!obj || typeof obj !== 'object') return null;
+          if (obj.email && typeof obj.email === 'string') return obj.email;
+          for (const key of Object.keys(obj)) {
+            if (typeof obj[key] === 'object') {
+              const result = findEmail(obj[key]);
+              if (result) return result;
+            }
+          }
+          return null;
+        };
+        const foundEmail = findEmail(parsedPassengerInfo);
+        if (foundEmail) {
+          userEmail = foundEmail;
+          emailLocations.push('parsedPassengerInfo.deepSearch');
         }
       }
 
@@ -250,13 +271,14 @@ export class CancelWakanowBookingUseCase {
       } else {
         this.logger.warn(`⚠️ No email found for booking ${bookingId} - skipping cancellation email`);
         
-        // ✅ Log the complete booking structure for debugging
         this.logger.debug(`🔍 Complete booking data structure:`, {
           id: booking.id,
           reference: booking.reference,
           provider: booking.provider,
           userId: booking.userId,
-          passengerInfo: booking.passengerInfo ? JSON.stringify(booking.passengerInfo) : 'undefined',
+          passengerInfoType: typeof booking.passengerInfo,
+          passengerInfoIsString: typeof booking.passengerInfo === 'string',
+          parsedPassengerInfo: parsedPassengerInfo ? JSON.stringify(parsedPassengerInfo).substring(0, 200) : 'null',
           bookingDataKeys: booking.bookingData ? Object.keys(booking.bookingData) : [],
           providerDataKeys: booking.providerData ? Object.keys(booking.providerData) : [],
           allKeys: Object.keys(booking),
