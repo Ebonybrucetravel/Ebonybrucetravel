@@ -7,6 +7,7 @@ import { LoyaltyModule } from '@domains/loyalty/loyalty.module';
 import { PaymentModule } from '@domains/payment/payment.module';
 import { SavedItemsModule } from '@domains/saved-items/saved-items.module';
 import { SavedTravelersModule } from '@domains/saved-travelers/saved-travelers.module';
+import { BookingModule } from '@domains/booking/booking.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { SavedTravelersModule } from '@domains/saved-travelers/saved-travelers.m
     PaymentModule,
     SavedItemsModule,
     SavedTravelersModule,
+    BookingModule, 
   ],
   controllers: [UserController],
   providers: [UserService],
