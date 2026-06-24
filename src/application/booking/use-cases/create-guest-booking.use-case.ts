@@ -19,17 +19,24 @@ export class CreateGuestBookingUseCase {
   ) {}
 
   async execute(dto: CreateGuestBookingDto): Promise<Booking> {
-    // ✅ Validate required fields
+
     if (!dto.passengerInfo) {
       throw new BadRequestException('Passenger information is required');
+    }
+
+  
+    let passengerInfo = dto.passengerInfo;
+    if (dto.provider === Provider.DUFFEL) {
+      passengerInfo = this.cleanDuffelPassengerInfo(dto.passengerInfo);
+      this.logger.log('🧹 Cleaned Duffel passenger info - removed extra fields');
     }
 
     const isDuffelFlight =
       dto.provider === Provider.DUFFEL &&
       (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
     
-    if (isDuffelFlight && dto.passengerInfo) {
-      const hasDob = (dto.passengerInfo as any).dateOfBirth?.trim?.();
+    if (isDuffelFlight && passengerInfo) {
+      const hasDob = (passengerInfo as any).dateOfBirth?.trim?.();
       if (!hasDob) {
         throw new BadRequestException(
           'Date of birth (dateOfBirth, YYYY-MM-DD) is required for flight bookings.',
@@ -37,7 +44,7 @@ export class CreateGuestBookingUseCase {
       }
     }
 
-    // ✅ Check if the DTO has price breakdown
+
     const hasPriceBreakdown = !!dto.priceBreakdown || 
                               (dto.totalAmount && dto.totalAmount > 0);
 
@@ -52,7 +59,6 @@ export class CreateGuestBookingUseCase {
     let currency: string;
 
     if (hasPriceBreakdown) {
-      // ✅ Use the price breakdown from the DTO
       basePrice = dto.getBasePrice();
       markupAmount = dto.getMarkupAmount();
       markupPercentage = dto.getMarkupPercentage();
@@ -75,10 +81,8 @@ export class CreateGuestBookingUseCase {
         currency,
       });
     } else {
-      // ✅ Fallback: Calculate pricing using markup service
       this.logger.warn('No price breakdown provided, calculating from markup service...');
 
-      // Get active markup config
       const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
         dto.productType,
         dto.currency || 'NGN',
@@ -90,7 +94,6 @@ export class CreateGuestBookingUseCase {
         );
       }
 
-      // Calculate pricing
       const pricing = this.markupCalculationService.calculateTotal(
         dto.basePrice || 0,
         dto.productType,
@@ -98,7 +101,6 @@ export class CreateGuestBookingUseCase {
         markupConfig,
       );
 
-      // ✅ Fix: Use type assertion for markupConfig since the interface might not have serviceFeePercentage
       const config = markupConfig as any;
       basePrice = pricing.basePrice || dto.basePrice || 0;
       markupAmount = pricing.markupAmount || 0;
@@ -111,7 +113,7 @@ export class CreateGuestBookingUseCase {
       currency = dto.currency || 'NGN';
     }
 
-    // ✅ Validate total amount
+   
     if (totalAmount <= 0) {
       throw new BadRequestException('Total amount must be greater than 0');
     }
@@ -120,27 +122,26 @@ export class CreateGuestBookingUseCase {
       throw new BadRequestException('Currency is required');
     }
 
-    // Check if guest user exists, if not create one
+
     let guestUser = await this.prisma.user.findUnique({
-      where: { email: dto.passengerInfo.email },
+      where: { email: passengerInfo.email },
     });
 
     if (!guestUser) {
-      // Create guest user account (they can register later)
       guestUser = await this.prisma.user.create({
         data: {
-          email: dto.passengerInfo.email,
-          name: `${dto.passengerInfo.firstName} ${dto.passengerInfo.lastName}`,
-          phone: dto.passengerInfo.phone,
+          email: passengerInfo.email,
+          name: `${passengerInfo.firstName} ${passengerInfo.lastName}`,
+          phone: passengerInfo.phone || null,
           role: 'CUSTOMER',
-          password: null, // Guest users don't have passwords (they can register later)
+          password: null,
           provider: null,
           providerId: null,
         },
       });
     }
 
-    // ✅ Create booking with all price fields
+   
     const booking = await this.bookingService.createBooking({
       userId: guestUser.id,
       productType: dto.productType,
@@ -155,7 +156,7 @@ export class CreateGuestBookingUseCase {
       totalAmount,
       currency,
       bookingData: dto.bookingData,
-      passengerInfo: dto.passengerInfo,
+      passengerInfo: passengerInfo,  
       bookingId: dto.bookingId,
       selectData: dto.selectData,
       providerBookingId: dto.providerBookingId,
@@ -164,5 +165,20 @@ export class CreateGuestBookingUseCase {
     });
 
     return booking;
+  }
+
+
+  private cleanDuffelPassengerInfo(info: any): any {
+
+    const allowedFields = ['firstName', 'lastName', 'email', 'phone', 'title', 'gender', 'dateOfBirth'];
+    const cleaned: any = {};
+    
+    for (const field of allowedFields) {
+      if (info[field] !== undefined && info[field] !== null && info[field] !== '') {
+        cleaned[field] = info[field];
+      }
+    }
+    
+    return cleaned;
   }
 }

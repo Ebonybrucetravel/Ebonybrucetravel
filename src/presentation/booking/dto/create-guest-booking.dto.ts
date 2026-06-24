@@ -1,3 +1,4 @@
+// src/presentation/booking/dto/create-guest-booking.dto.ts
 import {
   IsEnum,
   IsNotEmpty,
@@ -9,14 +10,15 @@ import {
   ValidateNested,
   Min,
   IsPositive,
+  ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProductType, Provider } from '@prisma/client';
 
-// ✅ Reuse PriceBreakdownDto from create-booking.dto
 import { PriceBreakdownDto } from './create-booking.dto';
 
+// ✅ Base passenger info - shared by all providers
 class GuestPassengerInfoDto {
   @ApiProperty()
   @IsString()
@@ -52,6 +54,48 @@ class GuestPassengerInfoDto {
   @IsString()
   @IsOptional()
   dateOfBirth?: string;
+
+  // ✅ These fields are IGNORED by Duffel but kept for Wakanow/Amadeus
+  // They are marked as optional and will be stripped for Duffel in the use case
+  @ApiPropertyOptional({ description: 'Wakanow only - Passport number' })
+  @IsString()
+  @IsOptional()
+  passportNumber?: string;
+
+  @ApiPropertyOptional({ description: 'Wakanow only - Passport expiry date' })
+  @IsString()
+  @IsOptional()
+  passportExpiry?: string;
+
+  @ApiPropertyOptional({ description: 'Wakanow only - Passport issuing country' })
+  @IsString()
+  @IsOptional()
+  passportCountry?: string;
+
+  @ApiPropertyOptional({ description: 'Wakanow only - Street address' })
+  @IsString()
+  @IsOptional()
+  address?: string;
+
+  @ApiPropertyOptional({ description: 'Wakanow only - City' })
+  @IsString()
+  @IsOptional()
+  city?: string;
+
+  @ApiPropertyOptional({ description: 'Wakanow only - Country' })
+  @IsString()
+  @IsOptional()
+  country?: string;
+
+  @ApiPropertyOptional({ description: 'Wakanow only - Country code' })
+  @IsString()
+  @IsOptional()
+  countryCode?: string;
+
+  @ApiPropertyOptional({ description: 'Wakanow only - Postal code' })
+  @IsString()
+  @IsOptional()
+  postalCode?: string;
 }
 
 /**
@@ -66,7 +110,15 @@ class GuestPassengerInfoDto {
  *     "firstName": "John",
  *     "lastName": "Doe",
  *     "email": "john@example.com",
- *     "phone": "+2348000000000"
+ *     "phone": "+2348000000000",
+ *     "passportNumber": "A12345678",
+ *     "passportExpiry": "2030-01-01",
+ *     "passportCountry": "NG",
+ *     "address": "No 1, Guest Street",
+ *     "city": "Lagos",
+ *     "country": "Nigeria",
+ *     "countryCode": "NG",
+ *     "postalCode": "100001"
  *   },
  *   "priceBreakdown": {
  *     "basePrice": 204028.73,
@@ -78,6 +130,32 @@ class GuestPassengerInfoDto {
  *     "taxPercentage": 15,
  *     "totalAmount": 244833.04,
  *     "currency": "NGN"
+ *   }
+ * }
+ * 
+ * @example Duffel booking (minimal - no address)
+ * {
+ *   "productType": "FLIGHT_INTERNATIONAL",
+ *   "provider": "DUFFEL",
+ *   "bookingData": { "adults": 1 },
+ *   "passengerInfo": {
+ *     "firstName": "John",
+ *     "lastName": "Doe",
+ *     "email": "john@example.com",
+ *     "phone": "+1234567890",
+ *     "dateOfBirth": "1990-05-15",
+ *     "gender": "m"
+ *   },
+ *   "priceBreakdown": {
+ *     "basePrice": 500,
+ *     "markupAmount": 50,
+ *     "markupPercentage": 10,
+ *     "serviceFee": 25,
+ *     "serviceFeePercentage": 5,
+ *     "taxes": 75,
+ *     "taxPercentage": 15,
+ *     "totalAmount": 650,
+ *     "currency": "USD"
  *   }
  * }
  */
@@ -92,7 +170,6 @@ export class CreateGuestBookingDto {
   @IsNotEmpty()
   provider: Provider;
 
-  // ✅ Legacy fields - keep for backward compatibility (marked as optional now)
   @ApiPropertyOptional({ description: 'Base price (legacy - use priceBreakdown instead)' })
   @IsNumber()
   @IsOptional()
@@ -114,7 +191,6 @@ export class CreateGuestBookingDto {
   @Type(() => GuestPassengerInfoDto)
   passengerInfo: GuestPassengerInfoDto;
 
-  // ✅ New price breakdown field
   @ApiPropertyOptional({
     description: 'Complete price breakdown including base price, markup, service fee, and taxes',
     type: PriceBreakdownDto,
@@ -124,7 +200,6 @@ export class CreateGuestBookingDto {
   @Type(() => PriceBreakdownDto)
   priceBreakdown?: PriceBreakdownDto;
 
-  // ✅ Individual price fields (for flexibility)
   @ApiPropertyOptional({ description: 'Markup amount applied' })
   @IsNumber()
   @IsOptional()
@@ -177,6 +252,11 @@ export class CreateGuestBookingDto {
   @IsOptional()
   selectData?: string;
 
+  @ApiPropertyOptional({ description: 'Duffel offer ID' })
+  @IsString()
+  @IsOptional()
+  offerId?: string;
+
   @ApiPropertyOptional({ description: 'Provider booking ID' })
   @IsString()
   @IsOptional()
@@ -217,5 +297,18 @@ export class CreateGuestBookingDto {
 
   getTaxPercentage(): number {
     return this.taxPercentage || this.priceBreakdown?.taxPercentage || 15;
+  }
+
+  // ✅ Type guard helpers
+  isDuffel(): boolean {
+    return this.provider === Provider.DUFFEL;
+  }
+
+  isWakanow(): boolean {
+    return this.provider === Provider.WAKANOW;
+  }
+
+  isAmadeus(): boolean {
+    return this.provider === Provider.AMADEUS;
   }
 }
