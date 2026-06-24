@@ -61,8 +61,8 @@ interface ExtendedSearchResult {
   checkOutDate?: string;
   airlineName?: string;
   airlineCode?: string;
-  bookingId?: string;  // ✅ Added - from select step
-  priceBreakdown?: {   // ✅ Added - from select step
+  bookingId?: string;
+  priceBreakdown?: {
     basePrice: number;
     markupAmount: number;
     markupPercentage: number;
@@ -437,6 +437,7 @@ export function useBooking() {
 
         const token = getStoredAuthToken();
 
+        // ==================== WAKANOW FLOW ====================
         if (provider === 'WAKANOW' && (productType === 'FLIGHT_DOMESTIC' || productType === 'FLIGHT_INTERNATIONAL')) {
           console.log("🚀 STARTING WAKANOW FLOW");
         
@@ -461,13 +462,11 @@ export function useBooking() {
             console.log("✅ Pre-selected bookingId:", preSelectedBookingId);
             console.log("✅ Pre-selected priceBreakdown:", preSelectedPriceBreakdown);
             
-            // ✅ FIX: Convert to string with fallback
             wakanowBookingId = String(preSelectedBookingId || '');
             newSelectData = (item as any).selectData || originalSelectData;
             priceBreakdown = preSelectedPriceBreakdown;
             backendBreakdown = getBreakdown(priceBreakdown);
             
-            // ✅ Validate that we have a valid bookingId
             if (!wakanowBookingId || wakanowBookingId.length < 5) {
               throw new Error("Invalid booking ID from pre-selected data. Please search again.");
             }
@@ -488,7 +487,6 @@ export function useBooking() {
               const selectResult = await selectWakanowFlight(originalSelectData, offerCurrency);
               const responseData = selectResult?.data;
               
-              // ✅ FIX: Handle null/undefined with fallback
               wakanowBookingId = responseData?.booking_id || '';
               newSelectData = responseData?.select_data || '';
               
@@ -517,7 +515,6 @@ export function useBooking() {
               });
               
             } catch (error: any) {
-              // ✅ If selection fails with expired, throw so caller can refresh
               if (error.message === 'SELECTION_EXPIRED') {
                 console.warn('⚠️ Selection expired, please refresh search');
                 throw new Error('SELECTION_EXPIRED');
@@ -545,18 +542,25 @@ export function useBooking() {
             serviceFeePercentage: backendServiceFeePercentage,
             breakdown: backendBreakdown,
           });
-                    // STEP 2: Prepare passengers
+
+          // ✅ STEP 2: Prepare ALL passengers (including additional)
           const allPassengers: PassengerInfo[] = [
             passenger,
             ...(passenger.travellers || [])
           ];
-
-          const formattedPassengers = allPassengers.map((p) => {
+          
+          console.log(`👥 Total passengers: ${allPassengers.length}`);
+          console.log('👤 Lead passenger:', passenger.firstName, passenger.lastName);
+          console.log('👤 Additional passengers:', passenger.travellers?.length || 0);
+          
+          // ✅ Format each passenger for Wakanow - WITHOUT IsWakapointRegister
+          const formattedPassengers = allPassengers.map((p, index) => {
             let passengerType = 'Adult';
             if (p.type === 'child') passengerType = 'Child';
             else if (p.type === 'infant') passengerType = 'Infant';
             
-            return {
+            // ✅ Build passenger object without IsWakapointRegister
+            const formatted = {
               passengerType: passengerType,
               firstName: p.firstName || '',
               middleName: (p as any).middleName || '',
@@ -576,8 +580,11 @@ export function useBooking() {
               city: p.city || passenger.city || 'Lagos',
               postalCode: p.postalCode || passenger.postalCode || '100001',
             };
+            
+            console.log(`👤 Passenger ${index + 1}: ${formatted.firstName} ${formatted.lastName} (${formatted.passengerType})`);
+            return formatted;
           });
-
+          
           // STEP 3: Create booking in YOUR system with priceBreakdown
           console.log("💾 Saving booking in our system...");
           
@@ -610,6 +617,10 @@ export function useBooking() {
           };
 
           console.log("📤 Booking payload WITH priceBreakdown:", JSON.stringify(bookingPayload, null, 2));
+          console.log('👥 Passengers being sent to Wakanow:');
+          bookingPayload.passengers.forEach((p: any, idx: number) => {
+            console.log(`  ${idx + 1}. ${p.firstName} ${p.lastName} (${p.passengerType})`);
+          });
 
           const response = await fetch(`${BASE}/api/v1/bookings/wakanow/book${isGuest ? '/guest' : ''}`, {
             method: "POST",

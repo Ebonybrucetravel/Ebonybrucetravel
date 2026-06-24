@@ -21,29 +21,28 @@ export default function ProfilePage() {
 
   if (isLoading || !isLoggedIn || !user) return null;
 
-  // ✅ COMPLETE transformation - convert ALL nullable fields to undefined
+  // ✅ Transform user with fallbacks
   const transformedUser = {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    // Handle all optional fields with null coalescing
-    image: user.image ?? undefined,
-    profilePicture: user.profilePicture ?? undefined,
-    avatar: user.avatar ?? undefined,
-    dateOfBirth: user.dateOfBirth ?? undefined,
-    dob: user.dob ?? undefined,
-    gender: user.gender ?? undefined,
-    phone: user.phone ?? undefined,
-    address: user.address ?? undefined,
-    city: user.city ?? undefined,
-    country: user.country ?? undefined,
-    postalCode: user.postalCode ?? undefined,
-    provider: user.provider,
-    role: user.role,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-    token: user.token ?? undefined,
-    isVerified: user.isVerified,
+    id: user?.id || '',
+    name: user?.name || user?.email?.split('@')[0] || 'Guest',
+    email: user?.email || '',
+    image: user?.image ?? undefined,
+    profilePicture: user?.profilePicture ?? undefined,
+    avatar: user?.avatar ?? undefined,
+    dateOfBirth: user?.dateOfBirth ?? undefined,
+    dob: user?.dob ?? undefined,
+    gender: user?.gender ?? undefined,
+    phone: user?.phone ?? undefined,
+    address: user?.address ?? undefined,
+    city: user?.city ?? undefined,
+    country: user?.country ?? undefined,
+    postalCode: user?.postalCode ?? undefined,
+    provider: user?.provider || undefined,
+    role: user?.role || undefined,
+    createdAt: user?.createdAt || undefined,
+    updatedAt: user?.updatedAt || undefined,
+    token: user?.token ?? undefined,
+    isVerified: user?.isVerified ?? false,
   };
 
   return (

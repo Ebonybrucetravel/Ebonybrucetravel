@@ -998,38 +998,98 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
   const renderTravellerDropdown = () => (
     showTravellerDropdown && (
-      <div className="absolute top-full right-0 mt-2 w-72 md:w-80 bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-50 animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
+      <div 
+        className="absolute bottom-full left-0 right-0 mb-[-20px] w-full min-w-[280px] bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-[100] animate-in fade-in slide-in-from-bottom-2" 
+        onClick={(e) => e.stopPropagation()}
+        style={{ 
+          maxHeight: '90vh',
+          overflowY: 'auto'
+        }}
+      >
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <div><span className="block font-bold text-gray-800 text-sm">{t('search.adults')}</span><span className="text-[10px] text-gray-400 font-bold uppercase">{t('search.adultsAge')}</span></div>
+            <div>
+              <span className="block font-bold text-gray-800 text-sm">{t('search.adults')}</span>
+              <span className="text-[10px] text-gray-400 font-bold uppercase">{t('search.adultsAge')}</span>
+            </div>
             <div className="flex items-center gap-3">
-              <button type="button" onClick={() => updateTraveller('adults', false)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">-</button>
+              <button 
+                type="button" 
+                onClick={() => updateTraveller('adults', false)} 
+                className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500 transition-colors"
+              >
+                -
+              </button>
               <span className="font-bold w-4 text-center text-base">{travellers.adults}</span>
-              <button type="button" onClick={() => updateTraveller('adults', true)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">+</button>
+              <button 
+                type="button" 
+                onClick={() => updateTraveller('adults', true)} 
+                className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500 transition-colors"
+              >
+                +
+              </button>
             </div>
           </div>
+          
           <div className="flex justify-between items-center">
-            <div><span className="block font-bold text-gray-800 text-sm">{t('search.children')}</span><span className="text-[10px] text-gray-400 font-bold uppercase">{t('search.childrenAge')}</span></div>
+            <div>
+              <span className="block font-bold text-gray-800 text-sm">{t('search.children')}</span>
+              <span className="text-[10px] text-gray-400 font-bold uppercase">{t('search.childrenAge')}</span>
+            </div>
             <div className="flex items-center gap-3">
-              <button type="button" onClick={() => updateTraveller('children', false)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">-</button>
+              <button 
+                type="button" 
+                onClick={() => updateTraveller('children', false)} 
+                className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500 transition-colors"
+              >
+                -
+              </button>
               <span className="font-bold w-4 text-center text-base">{travellers.children}</span>
-              <button type="button" onClick={() => updateTraveller('children', true)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">+</button>
+              <button 
+                type="button" 
+                onClick={() => updateTraveller('children', true)} 
+                className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500 transition-colors"
+              >
+                +
+              </button>
             </div>
           </div>
+          
           <div className="flex justify-between items-center">
-            <div><span className="block font-bold text-gray-800 text-sm">{t('search.infants')}</span><span className="text-[10px] text-gray-400 font-bold uppercase">{t('search.infantsAge')}</span></div>
+            <div>
+              <span className="block font-bold text-gray-800 text-sm">{t('search.infants')}</span>
+              <span className="text-[10px] text-gray-400 font-bold uppercase">{t('search.infantsAge')}</span>
+            </div>
             <div className="flex items-center gap-3">
-              <button type="button" onClick={() => updateTraveller('infants', false)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">-</button>
+              <button 
+                type="button" 
+                onClick={() => updateTraveller('infants', false)} 
+                className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500 transition-colors"
+              >
+                -
+              </button>
               <span className="font-bold w-4 text-center text-base">{travellers.infants}</span>
-              <button type="button" onClick={() => updateTraveller('infants', true)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">+</button>
+              <button 
+                type="button" 
+                onClick={() => updateTraveller('infants', true)} 
+                className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500 transition-colors"
+              >
+                +
+              </button>
             </div>
           </div>
-          <button type="button" onClick={() => setShowTravellerDropdown(false)} className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors">{t('search.done')}</button>
+          
+          <button 
+            type="button" 
+            onClick={() => setShowTravellerDropdown(false)} 
+            className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors"
+          >
+            {t('search.done')}
+          </button>
         </div>
       </div>
     )
   );
-
   const renderCarTravellerDropdown = () => (
     showCarTravellerDropdown && (
       <div className="absolute top-full right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-50 animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
@@ -1050,17 +1110,43 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
 
   const renderRoomDropdown = () => (
     showRoomDropdown && (
-      <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-50 animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
+      <div 
+        className="absolute top-full left-0 right-0 mt-2 w-full min-w-[200px] bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-[100] animate-in fade-in slide-in-from-top-2" 
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
+        }}
+      >
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <div><span className="block font-bold text-gray-800 text-sm">{t('search.rooms')}</span></div>
+            <div>
+              <span className="block font-bold text-gray-800 text-sm">{t('search.rooms')}</span>
+            </div>
             <div className="flex items-center gap-3">
-              <button type="button" onClick={() => updateRooms(false)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">-</button>
+              <button 
+                type="button" 
+                onClick={() => updateRooms(false)} 
+                className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500 transition-colors"
+              >
+                -
+              </button>
               <span className="font-bold w-4 text-center text-base">{rooms}</span>
-              <button type="button" onClick={() => updateRooms(true)} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500">+</button>
+              <button 
+                type="button" 
+                onClick={() => updateRooms(true)} 
+                className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 font-bold text-gray-500 transition-colors"
+              >
+                +
+              </button>
             </div>
           </div>
-          <button type="button" onClick={() => setShowRoomDropdown(false)} className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors">{t('search.done')}</button>
+          <button 
+            type="button" 
+            onClick={() => setShowRoomDropdown(false)} 
+            className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors"
+          >
+            Done
+          </button>
         </div>
       </div>
     )
@@ -1493,104 +1579,119 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
             </div>
           )}
 
-          {activeTab === 'hotels' && (
-            <div className="space-y-3">
-              {/* Provider selector removed - Amadeus only */}
+{activeTab === 'hotels' && (
+  <div className="space-y-3">
+    <div className="flex flex-col lg:flex-row items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px] shadow-lg border border-white/20">
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-[2px]">
+        <div className="md:col-span-4 relative" ref={hotelLocationRef}>
+          <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 md:rounded-l-lg min-h-[72px]">
+            <svg className="w-4 h-4 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" />
+            </svg>
+            <div className="flex-1">
+              <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">{t('search.destination')}</label>
+              <input
+                type="text"
+                value={hotelLocation}
+                onChange={(e) => handleHotelLocationChange(e.target.value)}
+                onFocus={() => {
+                  if (hotelLocation.length < 2) {
+                    setHotelLocationSuggestions(popularHotelDestinations.slice(0, 6));
+                  }
+                  setShowHotelLocationDropdown(true);
+                }}
+                className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0"
+                placeholder={t('search.destinationPlaceholder')}
+              />
+            </div>
+            {hotelLocation && (
+              <button
+                type="button"
+                onClick={() => {
+                  setHotelLocation('');
+                  setShowHotelLocationDropdown(false);
+                }}
+                className="text-gray-400 hover:text-gray-600 text-sm font-bold px-1"
+              >
+                ×
+              </button>
+            )}
+          </div>
+          {showHotelLocationDropdown && renderHotelLocationDropdown()}
+        </div>
 
-              <div className="flex flex-col lg:flex-row items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px] shadow-lg border border-white/20">
-                <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-[2px]">
-                  <div className="md:col-span-4 relative" ref={hotelLocationRef}>
-                    <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 md:rounded-l-lg min-h-[72px]">
-                      <svg className="w-4 h-4 text-[#33a8da] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M7 13c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2z" />
-                      </svg>
-                      <div className="flex-1">
-                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">{t('search.destination')}</label>
-                        <input
-                          type="text"
-                          value={hotelLocation}
-                          onChange={(e) => handleHotelLocationChange(e.target.value)}
-                          onFocus={() => {
-                            if (hotelLocation.length < 2) {
-                              setHotelLocationSuggestions(popularHotelDestinations.slice(0, 6));
-                            }
-                            setShowHotelLocationDropdown(true);
-                          }}
-                          className="w-full font-bold text-gray-900 focus:outline-none text-xs bg-transparent p-0"
-                          placeholder={t('search.destinationPlaceholder')}
-                        />
-                      </div>
-                      {hotelLocation && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setHotelLocation('');
-                            setShowHotelLocationDropdown(false);
-                          }}
-                          className="text-gray-400 hover:text-gray-600 text-sm font-bold px-1"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                    {showHotelLocationDropdown && renderHotelLocationDropdown()}
-                  </div>
+        <div className="md:col-span-4 bg-white p-2.5 md:p-3 flex items-center gap-2 relative border-t md:border-t-0 md:border-l border-gray-100 min-h-[72px]">
+          <svg className="w-4 h-4 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <div className="flex-1 grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">{t('search.checkIn')}</label>
+              <input
+                type="date"
+                min={today}
+                value={checkInDate}
+                onChange={(e) => setCheckInDate(e.target.value)}
+                className="w-full font-bold outline-none text-xs bg-transparent p-0"
+              />
+            </div>
+            <div>
+              <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">{t('search.checkOut')}</label>
+              <input
+                type="date"
+                min={checkInDate || today}
+                value={checkOutDate}
+                onChange={(e) => setCheckOutDate(e.target.value)}
+                className="w-full font-bold outline-none text-xs bg-transparent p-0"
+              />
+            </div>
+          </div>
+        </div>
 
-                  <div className="md:col-span-4 bg-white p-2.5 md:p-3 flex items-center gap-2 relative border-t md:border-t-0 md:border-l border-gray-100 min-h-[72px]">
-                    <svg className="w-4 h-4 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <div className="flex-1 grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">{t('search.checkIn')}</label>
-                        <input
-                          type="date"
-                          min={today}
-                          value={checkInDate}
-                          onChange={(e) => setCheckInDate(e.target.value)}
-                          className="w-full font-bold outline-none text-xs bg-transparent p-0"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">{t('search.checkOut')}</label>
-                        <input
-                          type="date"
-                          min={checkInDate || today}
-                          value={checkOutDate}
-                          onChange={(e) => setCheckOutDate(e.target.value)}
-                          className="w-full font-bold outline-none text-xs bg-transparent p-0"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="md:col-span-4 bg-white p-2.5 md:p-3 flex items-center justify-between md:rounded-r-lg border-t md:border-t-0 md:border-l border-gray-100 min-h-[72px]">
-                    <div className="flex items-center gap-2 flex-1">
-                      <svg className="w-4 h-4 text-gray-700 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                      </svg>
-                      <div onClick={() => setShowTravellerDropdown(!showTravellerDropdown)} className="cursor-pointer">
-                        <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">{t('search.guests')}</label>
-                        <span className="block font-bold text-gray-900 text-xs">{getHotelGuestSummary()}</span>
-                      </div>
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="bg-black text-white px-5 py-3.5 lg:py-4 font-bold text-sm rounded-xl lg:rounded-lg hover:bg-gray-900 transition active:scale-95 min-w-[100px] shadow-lg h-[42px] flex items-center justify-center"
-                    >
-                      {loading ? (
-                        <div className="flex items-center gap-1.5">
-                          <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
-                          <span className="text-xs">{t('search.searchBtn')}</span>
-                        </div>
-                      ) : t('search.searchBtn')}
-                    </button>
-                  </div>
-                </div>
+        <div className="md:col-span-4 bg-white p-2.5 md:p-3 flex items-center justify-between md:rounded-r-lg border-t md:border-t-0 md:border-l border-gray-100 min-h-[72px] relative">
+          <div className="flex items-center gap-2 flex-1">
+            <svg className="w-4 h-4 text-gray-700 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+            </svg>
+            <div 
+              ref={travellerRef}
+              className="cursor-pointer relative"
+              onClick={() => setShowTravellerDropdown(!showTravellerDropdown)}
+            >
+              <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">{t('search.guests')}</label>
+              <span className="block font-bold text-gray-900 text-xs">{getHotelGuestSummary()}</span>
+              {renderTravellerDropdown()}
+            </div>
+            
+            <div className="border-l border-gray-200 pl-2 ml-1">
+              <div 
+                ref={roomRef}
+                className="cursor-pointer relative"
+                onClick={() => setShowRoomDropdown(!showRoomDropdown)}
+              >
+                <label className="block text-[7px] font-bold text-gray-400 uppercase mb-0">{t('search.rooms')}</label>
+                <span className="block font-bold text-gray-900 text-xs">{rooms}</span>
+                {renderRoomDropdown()}
               </div>
             </div>
-          )}
+          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-black text-white px-5 py-3.5 lg:py-4 font-bold text-sm rounded-xl lg:rounded-lg hover:bg-gray-900 transition active:scale-95 min-w-[100px] shadow-lg h-[42px] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <div className="flex items-center gap-1.5">
+                <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
+                <span className="text-xs">{t('search.searchBtn')}</span>
+              </div>
+            ) : t('search.searchBtn')}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
           {activeTab === 'cars' && (
             <div className="flex flex-wrap items-stretch gap-[2px] bg-[#33a8da] rounded-xl p-[2px] relative">

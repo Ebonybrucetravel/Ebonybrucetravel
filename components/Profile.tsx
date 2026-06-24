@@ -775,11 +775,9 @@ const Profile: React.FC<ProfileProps> = ({
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
+  // ✅ UPDATED: Show cancel page state
   const [showCancelPage, setShowCancelPage] = useState(false);
-  const [cancellationData, setCancellationData] = useState<{
-    item: any;
-    searchParams: any;
-  } | null>(null);
+  const [cancellationData, setCancellationData] = useState<Booking | null>(null);
 
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
@@ -1455,6 +1453,7 @@ const Profile: React.FC<ProfileProps> = ({
     setIsManageModalOpen(true);
   };
 
+  // ✅ UPDATED: Handle cancel click - passes booking to CancelBooking
   const handleCancelClick = () => {
     if (selectedBooking) {
       setBookings(prev => prev.map(b => 
@@ -1469,43 +1468,24 @@ const Profile: React.FC<ProfileProps> = ({
       
       setIsManageModalOpen(false);
       
-      const flightDetails = extractFlightDetails(selectedBooking);
-      
-      const cancelData = {
-        item: {
-          id: selectedBooking.id,
-          title: flightDetails.origin && flightDetails.destination 
-            ? `${flightDetails.origin} → ${flightDetails.destination}`
-            : selectedBooking.reference,
-          provider: selectedBooking.provider,
-          subtitle: flightDetails.flightNumber || '',
-          date: selectedBooking.createdAt,
-          price: selectedBooking.totalAmount?.toFixed(2) || '0.00',
-          type: selectedBooking.productType?.includes('FLIGHT') ? 'flight' : 
-                selectedBooking.productType?.includes('HOTEL') ? 'hotel' : 'car',
-          status: selectedBooking.status,
-          currency: selectedBooking.currency
-        },
-        searchParams: {
-          segments: [
-            {
-              from: flightDetails.origin ? `${flightDetails.origin} (${flightDetails.origin})` : 'Lagos (LOS)',
-              to: flightDetails.destination ? `${flightDetails.destination} (${flightDetails.destination})` : 'Abuja (ABV)'
-            }
-          ],
-          travellers: '1 Traveller',
-          bookingReference: `#${selectedBooking.id.slice(-8)}`
-        }
-      };
-      
-      setCancellationData(cancelData);
+      // ✅ Pass the booking directly to cancellation
+      setCancellationData(selectedBooking);
       setShowCancelPage(true);
     }
   };
 
+  // ✅ UPDATED: Handle back from cancel page
   const handleBackFromCancel = () => {
     setShowCancelPage(false);
     setCancellationData(null);
+  };
+
+  // ✅ UPDATED: Handle successful cancellation
+  const handleCancelSuccess = () => {
+    // Refresh bookings list
+    setHasLoadedBookings(false);
+    setBookings([]);
+    handleBackFromCancel();
   };
 
   const handleOtpChange = (index: number, value: string) => {
@@ -2135,12 +2115,13 @@ if (bookingType === 'hotel') {
     { id: 'preferences', label: 'Preferences', icon: <path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /> },
   ];
 
+  // ✅ UPDATED: Render CancelBooking with correct props
   if (showCancelPage && cancellationData) {
     return (
       <CancelBooking 
-        item={cancellationData.item}
-        searchParams={cancellationData.searchParams}
+        booking={cancellationData}
         onBack={handleBackFromCancel}
+        onCancelSuccess={handleCancelSuccess}
       />
     );
   }

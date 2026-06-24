@@ -76,7 +76,6 @@ interface ExtendedSearchResult extends SearchResult {
   grandTotal?: string;
   amount?: string;
   rawPrice?: number;
-  // ✅ Direct price fields from backend (Wakanow only)
   productType?: string;
   breakdown?: string;
   markupPercentage?: number;
@@ -311,7 +310,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
     
     const extItem = item as ExtendedSearchResult;
-    // ✅ Check for direct price fields from backend (Wakanow only)
     if (extItem.basePrice && extItem.totalAmount) {
       console.log('🟡 ReviewTrip - Item has direct price fields from backend:', {
         basePrice: extItem.basePrice,
@@ -581,7 +579,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
   }, [extendedItem, actualItem]);
 
-  // ==================== PRICE CALCULATION - NO FRONTEND CALCULATIONS FOR WAKANOW ====================
+  // ==================== PRICE CALCULATION ====================
   let basePrice = 0;
   let markupAmount = 0;
   let serviceFee = 0;
@@ -592,9 +590,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   let combinedTaxPercentage = 15;
   let breakdownDescription = '';
 
-  // ✅ For Wakanow flights - ONLY use backend data, NO calculations
   if (isWakanow) {
-    // Priority 1: Direct price fields from backend
     if (extendedItem.basePrice && extendedItem.basePrice > 0) {
       basePrice = extendedItem.basePrice;
       markupAmount = extendedItem.markupAmount || 0;
@@ -617,9 +613,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         combinedTaxPercentage,
         breakdown: breakdownDescription,
       });
-    }
-    // Priority 2: priceBreakdown from backend
-    else if (extendedItem.priceBreakdown) {
+    } else if (extendedItem.priceBreakdown) {
       const pb = extendedItem.priceBreakdown;
       basePrice = pb.basePrice || 0;
       markupAmount = pb.markupAmount || 0;
@@ -640,9 +634,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         totalDue,
         breakdown: breakdownDescription,
       });
-    }
-    // Priority 3: calculated fields from item (backend calculated)
-    else if (extendedItem.calculatedTotal && extendedItem.calculatedTotal > 0) {
+    } else if (extendedItem.calculatedTotal && extendedItem.calculatedTotal > 0) {
       basePrice = extendedItem.calculatedBasePrice || 0;
       markupAmount = extendedItem.calculatedMarkup || 0;
       serviceFee = extendedItem.calculatedServiceFee || 0;
@@ -651,20 +643,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       serviceFeePercentage = extendedItem.service_fee_percentage || 5;
       combinedTaxes = extendedItem.calculatedTaxes || markupAmount + serviceFee || 0;
       combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-      
-      console.log('💰 ReviewTrip - Wakanow: Using calculated fields from item:', {
-        basePrice,
-        markupAmount,
-        serviceFee,
-        totalDue,
-        markupPercentage,
-        serviceFeePercentage,
-        combinedTaxes,
-        combinedTaxPercentage,
-      });
-    }
-    // Priority 4: createdBooking data (already calculated by backend)
-    else if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
+    } else if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
       basePrice = extBooking.basePrice || 0;
       markupAmount = extBooking.markupAmount || 0;
       serviceFee = extBooking.serviceFee || 0;
@@ -674,20 +653,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       combinedTaxes = extBooking.taxes || markupAmount + serviceFee || 0;
       combinedTaxPercentage = extBooking.taxPercentage || markupPercentage + serviceFeePercentage;
       breakdownDescription = extBooking.breakdown || '';
-      
-      console.log('💰 ReviewTrip - Wakanow: Using createdBooking data:', {
-        basePrice,
-        markupAmount,
-        serviceFee,
-        totalDue,
-        markupPercentage,
-        serviceFeePercentage,
-        combinedTaxes,
-        breakdown: breakdownDescription,
-      });
-    }
-    // Priority 5: session storage (stored from backend)
-    else if (typeof window !== 'undefined') {
+    } else if (typeof window !== 'undefined') {
       try {
         const stored = sessionStorage.getItem('booking_price_breakdown');
         if (stored) {
@@ -701,36 +667,16 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           combinedTaxes = markupAmount + serviceFee;
           combinedTaxPercentage = markupPercentage + serviceFeePercentage;
           breakdownDescription = data.breakdown || '';
-          
-          console.log('💰 ReviewTrip - Wakanow: Using session storage:', {
-            basePrice,
-            markupAmount,
-            serviceFee,
-            totalDue,
-            breakdown: breakdownDescription,
-          });
         }
       } catch (e) {
         console.warn('Could not parse session storage:', e);
       }
     }
     
-    // ✅ If no price found, log warning but DON'T calculate
     if (totalDue === 0) {
-      console.warn('⚠️ ReviewTrip - Wakanow: No price found from backend! Item:', {
-        id: extendedItem.id,
-        title: extendedItem.title,
-        hasPriceBreakdown: !!extendedItem.priceBreakdown,
-        hasBasePrice: !!extendedItem.basePrice,
-        hasCalculatedTotal: !!extendedItem.calculatedTotal,
-        hasTotalAmount: !!extendedItem.totalAmount,
-      });
+      console.warn('⚠️ ReviewTrip - Wakanow: No price found from backend!');
     }
-  } 
-  // ✅ For Hotels and Cars - ONLY DISPLAY, NO CALCULATIONS (use existing logic)
-  else if (isHotel || isCar) {
-    // Use hotel/car price logic (keeping existing code)
-    // This section uses the same logic as before but with NO calculations
+  } else if (isHotel || isCar) {
     if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
       basePrice = extBooking.basePrice || 0;
       markupAmount = extBooking.markupAmount || 0;
@@ -742,7 +688,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       combinedTaxPercentage = extBooking.taxPercentage || markupPercentage + serviceFeePercentage;
       breakdownDescription = extBooking.breakdown || '';
     } else {
-      // For hotels, use the existing logic (this is just display)
       let priceValue = 0;
       if (extendedItem.final_amount) {
         priceValue = parseFloat(extendedItem.final_amount);
@@ -761,7 +706,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       markupPercentage = extendedItem.markup_percentage || 10;
       serviceFeePercentage = extendedItem.service_fee_percentage || 5;
       
-      // ✅ Only calculate if no backend data is available (for hotels)
       if (totalDue > 0 && !extendedItem.basePrice) {
         const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100);
         basePrice = totalDue / totalFactor;
@@ -770,7 +714,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         combinedTaxes = markupAmount + serviceFee;
         combinedTaxPercentage = markupPercentage + serviceFeePercentage;
       } else {
-        // Use backend values if available
         basePrice = extendedItem.basePrice || 0;
         markupAmount = extendedItem.markupAmount || 0;
         serviceFee = extendedItem.serviceFee || 0;
@@ -879,10 +822,90 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     return true;
   };
 
+  // ==================== VALIDATE ALL PASSENGERS ====================
+  const validateAllPassengers = (): boolean => {
+    // Validate lead passenger (already validated in main flow)
+    // Now validate additional passengers
+    for (let i = 0; i < additionalPassengers.length; i++) {
+      const p = additionalPassengers[i];
+      const passengerType = p.type || 'adult';
+      const label = `${passengerType.toUpperCase()} #${i + 1}`;
+      
+      // Check required fields
+      if (!p.firstName || !p.firstName.trim()) {
+        alert(`${label}: First name is required.`);
+        return false;
+      }
+      if (!p.lastName || !p.lastName.trim()) {
+        alert(`${label}: Last name is required.`);
+        return false;
+      }
+
+      if (isFlight) {
+        if (!p.title) {
+          alert(`${label}: Title is required.`);
+          return false;
+        }
+        if (!p.gender) {
+          alert(`${label}: Gender is required.`);
+          return false;
+        }
+        if (!p.dateOfBirth) {
+          alert(`${label}: Date of Birth is required.`);
+          return false;
+        }
+        
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(p.dateOfBirth)) {
+          alert(`${label}: Date of birth must be in YYYY-MM-DD format.`);
+          return false;
+        }
+
+        const dob = new Date(p.dateOfBirth);
+        const today = new Date();
+        const age = today.getFullYear() - dob.getFullYear();
+        if (age < 2) {
+          alert(`${label}: Passenger must be at least 2 years old for flight bookings.`);
+          return false;
+        }
+
+        // For Wakanow international flights, validate passport
+        if (isWakanow && !isDomesticFlightResult) {
+          if (!p.passportNumber || !p.passportNumber.trim()) {
+            alert(`${label}: Passport number is required for international flights.`);
+            return false;
+          }
+          if (!p.passportExpiry) {
+            alert(`${label}: Passport expiry date is required.`);
+            return false;
+          }
+          if (!p.passportIssuingAuthority || !p.passportIssuingAuthority.trim()) {
+            alert(`${label}: Passport issuing authority is required.`);
+            return false;
+          }
+        }
+
+        // For passport mandatory destinations
+        if (isPassportMandatory) {
+          if (!p.passportNumber || !p.passportExpiry || !p.passportIssuingAuthority) {
+            alert(`${label}: Passport details are mandatory for this destination.`);
+            return false;
+          }
+          if (!p.address || !p.city || !p.country || !p.countryCode || !p.postalCode) {
+            alert(`${label}: Address details are required.`);
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  };
+
   // ==================== HANDLE COMPLETE BOOKING ====================
   const handleCompleteBooking = async () => {
     if (isBooking || isCreating) return;
 
+    // Validate lead passenger
     if (!firstName || !lastName || !email || !phone) {
       alert('All passenger fields are required.');
       return;
@@ -957,55 +980,13 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       return;
     }
 
+    // ✅ Validate all additional passengers
+    if (!validateAllPassengers()) {
+      return;
+    }
+
     setIsBooking(true);
     try {
-      for (let i = 0; i < additionalPassengers.length; i++) {
-        const p = additionalPassengers[i];
-        const passengerType = p.type || 'adult';
-        const label = `${passengerType.toUpperCase()} #${i + 1}`;
-        
-        if (!p.firstName || !p.lastName) {
-          alert(`${label}: First and Last name are required.`);
-          setIsBooking(false);
-          return;
-        }
-      
-        if (isFlight) {
-          if (!p.title || !p.gender || !p.dateOfBirth) {
-            alert(`${label}: Title, Gender, and Date of Birth are required.`);
-            setIsBooking(false);
-            return;
-          }
-          const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-          if (!dateRegex.test(p.dateOfBirth)) {
-            alert(`${label}: Date of birth must be in YYYY-MM-DD format.`);
-            setIsBooking(false);
-            return;
-          }
-      
-          if (isFlight && isWakanow && !isDomesticFlightResult) {
-            if (!p.passportNumber || !p.passportExpiry || !p.passportIssuingAuthority) {
-              alert(`${label}: Passport details are required for international flights.`);
-              setIsBooking(false);
-              return;
-            }
-          }
-      
-          if (isPassportMandatory) {
-            if (!p.passportNumber || !p.passportExpiry || !p.passportIssuingAuthority) {
-              alert(`${label}: Passport details are mandatory for this destination.`);
-              setIsBooking(false);
-              return;
-            }
-            if (!p.address || !p.city || !p.country || !p.countryCode || !p.postalCode) {
-              alert(`${label}: Address details are required.`);
-              setIsBooking(false);
-              return;
-            }
-          }
-        }
-      }
-
       let passengerInfo: PassengerInfo;
 
       if (isHotel || isCar) {
@@ -1038,8 +1019,33 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           }),
         };
         
+        // ✅ Format additional passengers with all required fields
         if (additionalPassengers.length > 0) {
-          (passengerInfo as any).travellers = additionalPassengers;
+          const formattedTravellers = additionalPassengers.map((p) => ({
+            passengerType: p.type === 'child' ? 'Child' : p.type === 'infant' ? 'Infant' : 'Adult',
+            firstName: p.firstName || '',
+            middleName: (p as any).middleName || '',
+            lastName: p.lastName || '',
+            dateOfBirth: p.dateOfBirth || '',
+            phoneNumber: p.phone || phone,
+            email: p.email || email,
+            gender: p.gender || 'Male',
+            title: p.title || 'Mr',
+            address: p.address || passportAddress || '123 Fake Street',
+            country: p.country || passportCountry || 'Nigeria',
+            countryCode: p.countryCode || passportCountryCode || 'NG',
+            city: p.city || passportCity || 'Lagos',
+            postalCode: p.postalCode || passportPostalCode || '100001',
+            // Passport fields for international flights
+            ...(isWakanow && !isDomesticFlightResult ? {
+              passportNumber: p.passportNumber || '',
+              expiryDate: p.passportExpiry || '',
+              passportIssuingAuthority: p.passportIssuingAuthority || '',
+              passportIssueCountryCode: p.passportIssueCountry || '',
+            } : {}),
+          }));
+          
+          (passengerInfo as any).travellers = formattedTravellers;
         }
       }
 
@@ -1080,6 +1086,13 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           }))
         ];
       }
+
+      // ✅ Log passenger count before sending
+      console.log('👥 Sending to payment with passengers:', {
+        lead: `${firstName} ${lastName}`,
+        additionalCount: (passengerInfo as any).travellers?.length || 0,
+        total: 1 + ((passengerInfo as any).travellers?.length || 0),
+      });
 
       await onProceedToPayment(
         passengerInfo,
@@ -1377,6 +1390,122 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
               </div>
             )}
 
+            {/* ========== ADDITIONAL PASSENGERS ========== */}
+            {additionalPassengers.length > 0 && (
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                <h3 className="text-md font-semibold text-gray-900 mb-4">
+                  Additional Passengers ({additionalPassengers.length})
+                </h3>
+                
+                {additionalPassengers.map((p, index) => {
+                  const passengerType = p.type || 'adult';
+                  const label = `${passengerType.toUpperCase()} #${index + 1}`;
+                  
+                  return (
+                    <div key={index} className="border border-gray-200 rounded-xl p-4 mb-4 last:mb-0">
+                      <h4 className="font-semibold text-gray-800 mb-3">{label}</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">
+                            First Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={p.firstName || ''}
+                            onChange={(e) => {
+                              const updated = [...additionalPassengers];
+                              updated[index].firstName = e.target.value;
+                              setAdditionalPassengers(updated);
+                            }}
+                            className={inputCls}
+                            placeholder="John"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">
+                            Last Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={p.lastName || ''}
+                            onChange={(e) => {
+                              const updated = [...additionalPassengers];
+                              updated[index].lastName = e.target.value;
+                              setAdditionalPassengers(updated);
+                            }}
+                            className={inputCls}
+                            placeholder="Doe"
+                            required
+                          />
+                        </div>
+                        
+                        {isFlight && (
+                          <>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Title <span className="text-red-500">*</span>
+                              </label>
+                              <select
+                                value={p.title || 'mr'}
+                                onChange={(e) => {
+                                  const updated = [...additionalPassengers];
+                                  updated[index].title = e.target.value as any;
+                                  setAdditionalPassengers(updated);
+                                }}
+                                className={inputCls}
+                                required
+                              >
+                                <option value="mr">Mr</option>
+                                <option value="ms">Ms</option>
+                                <option value="mrs">Mrs</option>
+                                <option value="miss">Miss</option>
+                                <option value="dr">Dr</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Gender <span className="text-red-500">*</span>
+                              </label>
+                              <select
+                                value={p.gender || 'm'}
+                                onChange={(e) => {
+                                  const updated = [...additionalPassengers];
+                                  updated[index].gender = e.target.value as any;
+                                  setAdditionalPassengers(updated);
+                                }}
+                                className={inputCls}
+                                required
+                              >
+                                <option value="m">Male</option>
+                                <option value="f">Female</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Date of Birth <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="date"
+                                value={p.dateOfBirth || ''}
+                                onChange={(e) => {
+                                  const updated = [...additionalPassengers];
+                                  updated[index].dateOfBirth = e.target.value;
+                                  setAdditionalPassengers(updated);
+                                }}
+                                className={inputCls}
+                                required
+                              />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* ========== TRIP SUMMARY ========== */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Trip summary</h2>
@@ -1448,23 +1577,18 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
               </div>
 
               <div className="space-y-3 mb-6">
-                {/* Base Fare */}
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-medium text-gray-500">Base Fare</span>
                   <span className="text-sm font-semibold text-gray-900">{displayBasePrice}</span>
                 </div>
 
-                {/* ✅ FLIGHT: Combined Taxes (Markup + Service Fee) */}
                 {isFlight && combinedTaxes > 0 && (
                   <div className="flex justify-between items-center pt-1 border-t border-gray-100">
-                    <span className="text-xs font-medium text-gray-500">
-                      Taxes 
-                    </span>
+                    <span className="text-xs font-medium text-gray-500">Taxes</span>
                     <span className="text-sm font-semibold text-gray-900">{displayCombinedTaxes}</span>
                   </div>
                 )}
 
-                {/* ✅ HOTEL: Service Fee - UNCHANGED */}
                 {isHotel && serviceFee > 0 && (
                   <div className="flex justify-between items-center pt-1 border-t border-gray-100">
                     <span className="text-xs font-medium text-gray-500">Service Fee</span>
@@ -1472,7 +1596,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                   </div>
                 )}
 
-                {/* Discount */}
                 {appliedPromo && (
                   <div className="flex justify-between items-center text-xs font-bold text-green-600 pt-1">
                     <span>Discount ({appliedPromo.code})</span>
@@ -1480,21 +1603,13 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                   </div>
                 )}
 
-                {/* Total */}
                 <div className="flex justify-between items-center pt-3 border-t border-gray-100">
                   <span className="text-sm font-bold text-gray-900">Total Fare</span>
                   <span className="text-xl font-black text-[#33a8da]">{displayTotalDue}</span>
                 </div>
 
-                {/* ✅ Breakdown description - show as small text */}
                 {breakdownDescription && (
                   <div className="mt-2 text-[10px] text-gray-400 border-t border-gray-50 pt-2 text-center">
-                   
-                  </div>
-                )}
-
-                {combinedTaxes > 0 && (
-                  <div className="mt-1 text-[10px] text-gray-400 text-center">
                    
                   </div>
                 )}
@@ -1529,7 +1644,6 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                 </div>
               )}
 
-              {/* ========== TERMS & CONDITIONS CHECKBOX ========== */}
               {displayedTerms.length > 0 && !extBooking && isFlight && (
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-xl">
