@@ -185,11 +185,14 @@ export class HandleStripeWebhookUseCase {
           });
       }
 
+      // ============================================================
+      // ✅ DUFFEL FLIGHT - UPDATED: No auto-refund on expiry, uses stored data
+      // ============================================================
       if (isDuffelFlight) {
         try {
           this.logger.log(`Creating Duffel order for booking ${bookingId}...`);
           const { orderId } = await this.createDuffelOrderUseCase.execute(bookingId);
-          this.logger.log(`Successfully created Duffel order ${orderId} for booking ${bookingId}`);
+          this.logger.log(`✅ Successfully created Duffel order ${orderId} for booking ${bookingId}`);
 
           const updatedBooking = await this.prisma.booking.findUnique({
             where: { id: bookingId },
@@ -202,27 +205,91 @@ export class HandleStripeWebhookUseCase {
               data: { confirmationEmailSentAt: new Date() },
             });
           }
-        } catch (error) {
-          this.logger.error(
-            `Failed to create Duffel order for booking ${bookingId}.Payment confirmed but order creation failed.Initiating automatic refund.`,
-            error,
-          );
+        } catch (error: any) {
+          this.logger.error(`Failed to create Duffel order for booking ${bookingId}:`, error);
 
-          if (booking.stripeChargeId || chargeId) {
-            try {
-              this.logger.log(`Initiating automatic Stripe refund for failed booking ${bookingId}...`);
-              await this.stripeService.createRefund({ paymentIntentId: paymentIntent.id });
+          // ✅ Check if it's an expired offer error
+          const isExpiredError = error.status === 410 || 
+                                 error.message?.includes('expired') ||
+                                 error.message?.includes('GONE');
 
-              await this.prisma.booking.update({
-                where: { id: bookingId },
-                data: { refundStatus: 'PROCESSING', paymentStatus: 'REFUNDED' }
-              });
-              this.logger.log(`Automatic refund initiated for booking ${bookingId}`);
-            } catch (refundError) {
-              this.logger.error(`Failed to initiate automatic refund for booking ${bookingId}: `, refundError);
+          if (isExpiredError) {
+            this.logger.warn(`⚠️ Offer expired for booking ${bookingId}. Checking for stored data...`);
+
+            // ✅ Check if booking has stored offer data
+            const bookingData = booking.bookingData as any;
+            const hasStoredOfferData = !!(bookingData?.offerData || bookingData?.offerPassengers);
+
+            if (hasStoredOfferData) {
+              this.logger.log(`🔄 Retrying with stored data for booking ${bookingId}...`);
+              try {
+                const { orderId } = await this.createDuffelOrderUseCase.execute(bookingId);
+                this.logger.log(`✅ Duffel order created with stored data: ${orderId}`);
+
+                const updatedBooking = await this.prisma.booking.findUnique({
+                  where: { id: bookingId },
+                  include: { user: { select: { id: true, email: true, name: true } } },
+                });
+                if (updatedBooking) {
+                  await this.sendBookingEmails(updatedBooking, paymentIntent);
+                  await this.prisma.booking.update({
+                    where: { id: bookingId },
+                    data: { confirmationEmailSentAt: new Date() },
+                  });
+                }
+                return;
+              } catch (retryError) {
+                this.logger.error(`❌ Retry with stored data failed: ${retryError.message}`);
+              }
             }
+
+            // ✅ Mark as FAILED but DO NOT auto-refund
+            await this.prisma.booking.update({
+              where: { id: bookingId },
+              data: {
+                status: 'FAILED',
+                providerData: {
+                  ...(booking.providerData as any),
+                  orderCreationError: 'Offer expired - manual review required',
+                  orderCreationFailedAt: new Date().toISOString(),
+                  recoverable: true,
+                  offerExpired: true,
+                },
+              },
+            });
+
+            // ✅ Send failure email (NOT refund)
+            if (booking.user?.email) {
+              this.resendService.sendBookingFailureEmail({
+                to: booking.user.email,
+                customerName: booking.user.name || 'Valued Customer',
+                bookingReference: booking.reference || booking.id,
+                productType: booking.productType,
+                amount: Number(booking.totalAmount),
+                currency: booking.currency,
+                failureReason: `The flight offer expired. Our team has been notified and will manually secure your booking or initiate a refund. No automatic refund has been processed.`,
+              }).catch((err) => this.logger.error(`Failed to send failure email: `, err));
+            }
+
+            this.logger.log(`⏳ Booking ${bookingId} marked as FAILED - manual review required, no auto-refund`);
+            return;
           }
 
+          // ✅ For other errors: Mark as FAILED, DO NOT auto-refund
+          await this.prisma.booking.update({
+            where: { id: bookingId },
+            data: {
+              status: 'FAILED',
+              providerData: {
+                ...(booking.providerData as any),
+                orderCreationError: error instanceof Error ? error.message : 'Unknown error',
+                orderCreationFailedAt: new Date().toISOString(),
+                recoverable: false,
+              },
+            },
+          });
+
+          // Send failure email
           if (booking.user?.email) {
             this.resendService.sendBookingFailureEmail({
               to: booking.user.email,
@@ -231,17 +298,21 @@ export class HandleStripeWebhookUseCase {
               productType: booking.productType,
               amount: Number(booking.totalAmount),
               currency: booking.currency,
-              failureReason: `Flight booking failed with provider: ${error instanceof Error ? error.message : 'Unknown provider error'}. We have automatically initiated a full refund back to your payment method.`,
-            }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
+              failureReason: `Failed to secure booking: ${error instanceof Error ? error.message : 'Unknown provider error'}. Our team has been notified and will assist you shortly.`,
+            }).catch((err) => this.logger.error(`Failed to send failure email: `, err));
           }
+
+          this.logger.warn(`Booking ${bookingId} failed, manual review required`);
         }
       }
 
+      // ============================================================
+      // ✅ WAKANOW FLIGHT (UNCHANGED - still auto-refunds)
+      // ============================================================
       if (isWakanowFlight) {
         try {
           this.logger.log(`Automatically ticketing Wakanow flight for booking ${bookingId}...`);
           
-          // Extract PNR and BookingId from providerData or bookingData
           const bookingData = booking.bookingData as any;
           const providerData = booking.providerData as any;
           
@@ -305,6 +376,9 @@ export class HandleStripeWebhookUseCase {
         }
       }
 
+      // ============================================================
+      // ✅ AMADEUS HOTEL (UNCHANGED)
+      // ============================================================
       if (booking.provider === Provider.AMADEUS && booking.productType === 'HOTEL') {
         this.logger.log(`Processing Amadeus hotel order creation for booking ${bookingId} asynchronously...`);
         this.createAmadeusHotelBookingUseCase
@@ -377,6 +451,9 @@ export class HandleStripeWebhookUseCase {
           });
       }
 
+      // ============================================================
+      // ✅ HOTELBEDS HOTEL (UNCHANGED)
+      // ============================================================
       if (booking.provider === Provider.HOTELBEDS && booking.productType === 'HOTEL') {
         this.logger.log(`Processing Hotelbeds hotel order creation for booking ${bookingId} asynchronously...`);
         this.createHotelbedsBookingUseCase
@@ -415,6 +492,9 @@ export class HandleStripeWebhookUseCase {
           });
       }
 
+      // ============================================================
+      // ✅ CAR RENTAL (UNCHANGED)
+      // ============================================================
       if (booking.provider === Provider.AMADEUS && booking.productType === 'CAR_RENTAL') {
         this.logger.log(`Processing Amadeus transfer order creation for car rental booking ${bookingId} asynchronously...`);
         this.createCarRentalBookingUseCase
@@ -652,4 +732,3 @@ export class HandleStripeWebhookUseCase {
     }
   }
 }
-

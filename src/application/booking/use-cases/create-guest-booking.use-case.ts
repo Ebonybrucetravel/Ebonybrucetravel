@@ -19,16 +19,42 @@ export class CreateGuestBookingUseCase {
   ) {}
 
   async execute(dto: CreateGuestBookingDto): Promise<Booking> {
-
     if (!dto.passengerInfo) {
       throw new BadRequestException('Passenger information is required');
     }
 
-  
+    // ✅ Clean Duffel passenger info
     let passengerInfo = dto.passengerInfo;
+    let cleanedBookingData = dto.bookingData || {};
+    
     if (dto.provider === Provider.DUFFEL) {
       passengerInfo = this.cleanDuffelPassengerInfo(dto.passengerInfo);
       this.logger.log('🧹 Cleaned Duffel passenger info - removed extra fields');
+      
+      // ✅ Store the offer data in bookingData for later use
+      if (dto.offerData || dto.offerId) {
+        // ✅ Ensure we have the full offer data
+        const offerDataToStore = dto.offerData || {
+          id: dto.offerId,
+          offer_request_id: dto.offerRequestId,
+          // If we don't have full offer data, store what we have
+          // The CreateDuffelOrderUseCase will use this as fallback
+        };
+        
+        cleanedBookingData = {
+          ...cleanedBookingData,
+          offerId: dto.offerId,
+          offerRequestId: dto.offerRequestId || cleanedBookingData.offer_request_id,
+          // ✅ Store the full offer data
+          offerData: offerDataToStore,
+          storedOfferDataAt: new Date().toISOString(),
+          // ✅ Also store any passenger data from the offer
+          offerPassengers: dto.offerData?.passengers || [],
+          offerTotalAmount: dto.offerData?.total_amount || dto.totalAmount || 0,
+          offerCurrency: dto.offerData?.total_currency || dto.currency || 'GBP',
+        };
+        this.logger.log(`📦 Stored Duffel offer data for: ${dto.offerId}`);
+      }
     }
 
     const isDuffelFlight =
@@ -43,7 +69,6 @@ export class CreateGuestBookingUseCase {
         );
       }
     }
-
 
     const hasPriceBreakdown = !!dto.priceBreakdown || 
                               (dto.totalAmount && dto.totalAmount > 0);
@@ -113,7 +138,6 @@ export class CreateGuestBookingUseCase {
       currency = dto.currency || 'NGN';
     }
 
-   
     if (totalAmount <= 0) {
       throw new BadRequestException('Total amount must be greater than 0');
     }
@@ -121,7 +145,6 @@ export class CreateGuestBookingUseCase {
     if (!currency) {
       throw new BadRequestException('Currency is required');
     }
-
 
     let guestUser = await this.prisma.user.findUnique({
       where: { email: passengerInfo.email },
@@ -141,7 +164,7 @@ export class CreateGuestBookingUseCase {
       });
     }
 
-   
+    // ✅ Create booking with cleaned booking data (contains offer data for Duffel)
     const booking = await this.bookingService.createBooking({
       userId: guestUser.id,
       productType: dto.productType,
@@ -155,7 +178,7 @@ export class CreateGuestBookingUseCase {
       taxPercentage,
       totalAmount,
       currency,
-      bookingData: dto.bookingData,
+      bookingData: cleanedBookingData, // ✅ Use cleaned booking data with offerData
       passengerInfo: passengerInfo,  
       bookingId: dto.bookingId,
       selectData: dto.selectData,
@@ -167,9 +190,7 @@ export class CreateGuestBookingUseCase {
     return booking;
   }
 
-
   private cleanDuffelPassengerInfo(info: any): any {
-
     const allowedFields = ['firstName', 'lastName', 'email', 'phone', 'title', 'gender', 'dateOfBirth'];
     const cleaned: any = {};
     

@@ -183,6 +183,7 @@ export class PriceBreakdownDto {
  *   "provider": "DUFFEL",
  *   "basePrice": 185.50,
  *   "currency": "GBP",
+ *   "offerId": "off_00009htYpSCXrwaB9DnUm0",
  *   "bookingData": { "offerId": "off_00009htYpSCXrwaB9DnUm0" },
  *   "passengerInfo": {
  *     "firstName": "Jane",
@@ -201,6 +202,14 @@ export class PriceBreakdownDto {
  *   "provider": "DUFFEL",
  *   "basePrice": 450.00,
  *   "currency": "GBP",
+ *   "offerId": "off_00009htYpSCXrwaB9DnUm0",
+ *   "offerRequestId": "orq_00009htYpSCXrwaB9DnUm0",
+ *   "offerData": {
+ *     "id": "off_00009htYpSCXrwaB9DnUm0",
+ *     "total_amount": "450.00",
+ *     "total_currency": "GBP",
+ *     "passengers": [...]
+ *   },
  *   "bookingData": { "offerId": "off_00009htYpSCXrwaB9DnUm0" },
  *   "passengerInfo": {
  *     "firstName": "Jane",
@@ -281,6 +290,40 @@ export class CreateBookingDto {
   @IsOptional()
   providerBookingId?: string;
 
+  // ============================================================
+  // ✅ DUFFEL FIELDS (NEW - ONLY FOR DUFFEL)
+  // ============================================================
+  @ApiPropertyOptional({ description: 'Duffel offer ID (required for Duffel)' })
+  @IsString()
+  @IsOptional()
+  offerId?: string;
+
+  @ApiPropertyOptional({ description: 'Duffel offer request ID' })
+  @IsString()
+  @IsOptional()
+  offerRequestId?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Full offer data from Duffel (stored for later use when creating order)',
+    type: 'object',
+  })
+  @IsObject()
+  @IsOptional()
+  offerData?: any;
+
+  // ============================================================
+  // ✅ WAKANOW FIELDS (UNCHANGED)
+  // ============================================================
+  @ApiPropertyOptional({ description: 'Wakanow booking ID' })
+  @IsString()
+  @IsOptional()
+  bookingId?: string;
+
+  @ApiPropertyOptional({ description: 'Wakanow select data' })
+  @IsString()
+  @IsOptional()
+  selectData?: string;
+
   // ✅ New price breakdown field
   @ApiPropertyOptional({
     description: 'Complete price breakdown including base price, markup, service fee, and taxes',
@@ -334,16 +377,6 @@ export class CreateBookingDto {
   @IsPositive()
   totalAmount?: number;
 
-  @ApiPropertyOptional({ description: 'Wakanow booking ID' })
-  @IsString()
-  @IsOptional()
-  bookingId?: string;
-
-  @ApiPropertyOptional({ description: 'Wakanow select data' })
-  @IsString()
-  @IsOptional()
-  selectData?: string;
-
   // ✅ Helper methods to safely extract values
   getTotalAmount(): number {
     return this.totalAmount || this.priceBreakdown?.totalAmount || 0;
@@ -379,5 +412,18 @@ export class CreateBookingDto {
 
   getTaxPercentage(): number {
     return this.taxPercentage || this.priceBreakdown?.taxPercentage || 15;
+  }
+
+  // ✅ Type guard helpers
+  isDuffel(): boolean {
+    return this.provider === Provider.DUFFEL;
+  }
+
+  isWakanow(): boolean {
+    return this.provider === Provider.WAKANOW;
+  }
+
+  isAmadeus(): boolean {
+    return this.provider === Provider.AMADEUS;
   }
 }

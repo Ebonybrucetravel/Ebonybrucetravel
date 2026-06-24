@@ -133,10 +133,19 @@ class GuestPassengerInfoDto {
  *   }
  * }
  * 
- * @example Duffel booking (minimal - no address)
+ * @example Duffel booking (minimal - no address) - WITH offerData
  * {
  *   "productType": "FLIGHT_INTERNATIONAL",
  *   "provider": "DUFFEL",
+ *   "offerId": "off_0000B7fUFD5dDY93jVTP84",
+ *   "offerRequestId": "orq_0000B7fUFD5dDY93jVTP84",
+ *   "offerData": {
+ *     "id": "off_0000B7fUFD5dDY93jVTP84",
+ *     "total_amount": "500.00",
+ *     "total_currency": "GBP",
+ *     "passengers": [...],
+ *     "slices": [...]
+ *   },
  *   "bookingData": { "adults": 1 },
  *   "passengerInfo": {
  *     "firstName": "John",
@@ -242,6 +251,9 @@ export class CreateGuestBookingDto {
   @IsPositive()
   totalAmount?: number;
 
+  // ============================================================
+  // ✅ WAKANOW FIELDS (UNCHANGED)
+  // ============================================================
   @ApiPropertyOptional({ description: 'Wakanow booking ID' })
   @IsString()
   @IsOptional()
@@ -252,17 +264,38 @@ export class CreateGuestBookingDto {
   @IsOptional()
   selectData?: string;
 
-  @ApiPropertyOptional({ description: 'Duffel offer ID' })
+  // ============================================================
+  // ✅ DUFFEL FIELDS (NEW - ONLY FOR DUFFEL)
+  // ============================================================
+  @ApiPropertyOptional({ description: 'Duffel offer ID (required for Duffel)' })
   @IsString()
   @IsOptional()
   offerId?: string;
 
+  @ApiPropertyOptional({ description: 'Duffel offer request ID' })
+  @IsString()
+  @IsOptional()
+  offerRequestId?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Full offer data from Duffel (stored for later use when creating order)',
+    type: 'object',
+  })
+  @IsObject()
+  @IsOptional()
+  offerData?: any;
+
+  // ============================================================
+  // ✅ COMMON FIELDS
+  // ============================================================
   @ApiPropertyOptional({ description: 'Provider booking ID' })
   @IsString()
   @IsOptional()
   providerBookingId?: string;
 
-  // ✅ Helper methods to safely extract values
+  // ============================================================
+  // ✅ HELPER METHODS (UNCHANGED)
+  // ============================================================
   getTotalAmount(): number {
     return this.totalAmount || this.priceBreakdown?.totalAmount || 0;
   }

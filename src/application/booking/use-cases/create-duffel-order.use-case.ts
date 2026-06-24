@@ -81,6 +81,17 @@ export class CreateDuffelOrderUseCase {
           
           if (offer && offer.id) {
             this.logger.log(`✅ Using stored offer data for ${offer.id}`);
+            
+            // ✅ Ensure offer has the required structure
+            if (!offer.passengers && bookingData.offerPassengers) {
+              offer.passengers = bookingData.offerPassengers;
+            }
+            
+            // ✅ If offer has no total_amount, use stored values
+            if (!offer.total_amount) {
+              offer.total_amount = bookingData.offerTotalAmount || booking.totalAmount || 0;
+              offer.total_currency = bookingData.offerCurrency || booking.currency || 'GBP';
+            }
           }
         }
         
@@ -104,6 +115,11 @@ export class CreateDuffelOrderUseCase {
       const hasValidOfferPassengers = offerPassengers.length > 0;
 
       // If offer doesn't have passengers but we have stored passenger data, use it
+      if (!hasValidOfferPassengers && bookingData.offerPassengers) {
+        this.logger.log('Using stored passenger data from booking...');
+        offerPassengers = bookingData.offerPassengers;
+      }
+
       if (!hasValidOfferPassengers && bookingData.passengers) {
         this.logger.log('Using stored passenger data from booking...');
         offerPassengers = bookingData.passengers.map((p: any) => ({
@@ -232,11 +248,10 @@ export class CreateDuffelOrderUseCase {
       const offerId = offer.id || bookingData.offerId;
       
       // ✅ GET PRICE FROM OFFER OR BOOKING
-      const totalAmount = offer.total_amount || booking.totalAmount || 0;
-      const totalCurrency = offer.total_currency || booking.currency || 'GBP';
+      const totalAmount = offer.total_amount || bookingData.offerTotalAmount || booking.totalAmount || 0;
+      const totalCurrency = offer.total_currency || bookingData.offerCurrency || booking.currency || 'GBP';
 
       // ✅ CREATE DUFFEL ORDER
-      // ✅ FIXED: Convert booleans to strings for metadata
       const orderData = await retryWithBackoffAndLogging(
         () =>
           this.duffelService.createOrder({
@@ -252,8 +267,8 @@ export class CreateDuffelOrderUseCase {
             metadata: {
               booking_id: bookingId,
               booking_reference: booking.reference,
-              offer_expired: offerExpired ? 'true' : 'false', // ✅ Convert boolean to string
-              used_stored_data: (offerExpired || !offer.passengers || offer.passengers.length === 0) ? 'true' : 'false', // ✅ Convert boolean to string
+              offer_expired: offerExpired ? 'true' : 'false',
+              used_stored_data: (offerExpired || !offer.passengers || offer.passengers.length === 0) ? 'true' : 'false',
             },
           }),
         {

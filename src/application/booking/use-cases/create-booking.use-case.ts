@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { BookingService } from '@domains/booking/services/booking.service';
 import { MarkupCalculationService } from '@domains/markup/services/markup-calculation.service';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
@@ -8,6 +8,8 @@ import { BookingStatus, Provider, ProductType } from '@prisma/client';
 
 @Injectable()
 export class CreateBookingUseCase {
+  private readonly logger = new Logger(CreateBookingUseCase.name);
+
   constructor(
     private readonly bookingService: BookingService,
     private readonly markupCalculationService: MarkupCalculationService,
@@ -15,9 +17,11 @@ export class CreateBookingUseCase {
   ) { }
 
   async execute(dto: CreateBookingDto, userId: string): Promise<Booking> {
+    // ✅ DUFFEL: Validate date of birth for all passengers
     const isDuffelFlight =
       dto.provider === Provider.DUFFEL &&
       (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
+    
     if (isDuffelFlight && dto.passengerInfo) {
       const passengers = Array.isArray(dto.passengerInfo) ? dto.passengerInfo : [dto.passengerInfo];
       for (let i = 0; i < passengers.length; i++) {
@@ -49,6 +53,21 @@ export class CreateBookingUseCase {
       totalAmount: number;
     };
     let bookingData = { ...dto.bookingData };
+
+    // ✅ DUFFEL: Store offer data in bookingData for later use
+    if (isDuffelFlight && dto.offerId) {
+      bookingData = {
+        ...bookingData,
+        offerId: dto.offerId,
+        offerRequestId: dto.offerRequestId || bookingData.offer_request_id,
+        offerData: dto.offerData || null,
+        offerPassengers: dto.offerData?.passengers || [],
+        offerTotalAmount: dto.offerData?.total_amount || dto.totalAmount || 0,
+        offerCurrency: dto.offerData?.total_currency || dto.currency || 'GBP',
+        storedOfferDataAt: new Date().toISOString(),
+      };
+      this.logger.log(`📦 Stored Duffel offer data for authenticated booking: ${dto.offerId}`);
+    }
 
     // Amadeus or Hotelbeds hotel via generic POST /bookings: frontend often sends final_price as basePrice.
     // Treat it as final total and reverse-calculate so we don't double-add markup.
