@@ -39,6 +39,8 @@ import { TicketWakanowFlightUseCase } from './use-cases/ticket-wakanow-flight.us
 import { ConfirmWakanowPaymentUseCase } from './use-cases/confirm-wakanow-payment.use-case';
 import { TicketWakanowBookingUseCase } from './use-cases/ticket-wakanow-booking.use-case';
 import { GetWakanowBookingStatusUseCase } from './use-cases/get-wakanow-booking-status.use-case';
+import { CancelBookingUseCase } from './use-cases/cancel-booking.use-case';
+import { CancelWakanowBookingUseCase } from './use-cases/cancel-wakanow-booking.use-case';
 import { BookingModule } from '@domains/booking/booking.module';
 import { PaymentModule } from '@domains/payment/payment.module';
 import { MarkupModule } from '@domains/markup/markup.module';
@@ -66,7 +68,6 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     PaymentModule,
   ],
   providers: [
-
     CreateBookingUseCase,
     CreateGuestBookingUseCase,
     SearchFlightsUseCase,
@@ -107,6 +108,8 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     ConfirmWakanowPaymentUseCase,
     TicketWakanowBookingUseCase,
     GetWakanowBookingStatusUseCase,
+    CancelBookingUseCase,
+    CancelWakanowBookingUseCase,
   ],
   exports: [
     CreateBookingUseCase,
@@ -149,6 +152,8 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     ConfirmWakanowPaymentUseCase,
     TicketWakanowBookingUseCase,
     GetWakanowBookingStatusUseCase,
+    CancelBookingUseCase,
+    CancelWakanowBookingUseCase,
   ],
 })
-export class BookingApplicationModule { }
+export class BookingApplicationModule {}
