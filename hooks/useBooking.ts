@@ -190,7 +190,7 @@ const isValidAmadeusOfferId = (offerId: string | number): boolean => {
   return idString.length >= 8 && /^[A-Z0-9]{8,}$/i.test(idString);
 };
 
-// ✅ Helper to safely get breakdown from any priceBreakdown object
+
 const getBreakdown = (pb: any): string => {
   if (!pb) return '';
   return pb.breakdown || `${pb.basePrice || 0} + ${pb.markupAmount || 0} (${pb.markupPercentage || 10}% markup) + ${pb.serviceFee || 0} (${pb.serviceFeePercentage || 5}% service fee) = ${pb.totalAmount || 0}`;
@@ -294,7 +294,7 @@ export function useBooking() {
           item.currency ??
           "NGN"
         ).toUpperCase();
-
+  
         const basePrice =
           options?.basePrice ??
           (typeof item.original_amount === "string"
@@ -305,12 +305,12 @@ export function useBooking() {
                 ? parseFloat(priceMatch[0].replace(/,/g, ""))
                 : 100;
             })());
-
+  
         const markupAmount = parseFloat(item.markup_amount || "0");
         const serviceFee = parseFloat(item.service_fee || (item as any).service_charge || "0");
         const taxes = markupAmount + serviceFee;
         const finalAmount = basePrice + taxes;
-
+  
         console.log("💰 Price breakdown:", {
           basePrice,
           markupAmount,
@@ -322,7 +322,7 @@ export function useBooking() {
           originCode,
           destinationCode
         });
-
+  
         const body: Record<string, any> = {
           productType,
           provider: provider,
@@ -337,7 +337,7 @@ export function useBooking() {
           },
           bookingData: {},
         };
-
+  
         if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC") {
           body.passengerInfo = {
             ...body.passengerInfo,
@@ -345,7 +345,7 @@ export function useBooking() {
             gender: passenger.gender,
             dateOfBirth: passenger.dateOfBirth,
           };
-
+  
           const finalOrigin = originCode || "LOS";
           const finalDestination = destinationCode || "ABV";
           
@@ -364,7 +364,7 @@ export function useBooking() {
               throw new Error("Missing offer ID for Duffel flight. Please go back and select the flight again.");
             }
           }
-
+  
           body.bookingData = {
             offerId: offerId,
             origin: finalOrigin,
@@ -434,304 +434,47 @@ export function useBooking() {
             markup_percentage: item.markup_percentage,
           };
         }
-
+  
         const token = getStoredAuthToken();
-
-        // ==================== WAKANOW FLOW ====================
+  
         if (provider === 'WAKANOW' && (productType === 'FLIGHT_DOMESTIC' || productType === 'FLIGHT_INTERNATIONAL')) {
-          console.log("🚀 STARTING WAKANOW FLOW");
         
-          const originalSelectData = getSelectData(item);
-          if (!originalSelectData) {
-            throw new Error("Missing booking token. Please search again.");
-          }
-        
-          // ✅ CHECK: Do we already have booking data from the select step?
-          const preSelectedBookingId = (item as any).bookingId;
-          const preSelectedPriceBreakdown = (item as any).priceBreakdown;
-          const hasPreSelectedData = !!preSelectedBookingId && !!preSelectedPriceBreakdown;
-          
-          let wakanowBookingId: string;
-          let newSelectData: string;
-          let priceBreakdown: any;
-          let backendBreakdown: string;
-        
-          if (hasPreSelectedData) {
-            // ✅ Use the already selected data - NO additional API call
-            console.log("✅ Using pre-selected flight data - skipping select API call");
-            console.log("✅ Pre-selected bookingId:", preSelectedBookingId);
-            console.log("✅ Pre-selected priceBreakdown:", preSelectedPriceBreakdown);
-            
-            wakanowBookingId = String(preSelectedBookingId || '');
-            newSelectData = (item as any).selectData || originalSelectData;
-            priceBreakdown = preSelectedPriceBreakdown;
-            backendBreakdown = getBreakdown(priceBreakdown);
-            
-            if (!wakanowBookingId || wakanowBookingId.length < 5) {
-              throw new Error("Invalid booking ID from pre-selected data. Please search again.");
-            }
-            
-            console.log("💰 Using pre-selected prices:", {
-              basePrice: priceBreakdown.basePrice,
-              markupAmount: priceBreakdown.markupAmount,
-              serviceFee: priceBreakdown.serviceFee,
-              totalAmount: priceBreakdown.totalAmount,
-              currency: priceBreakdown.currency,
-              breakdown: backendBreakdown,
-            });
-          } else {
-            // ⚠️ No pre-selected data - need to call select API
-            console.log("📤 No pre-selected data - selecting flight via backend...");
-            
-            try {
-              const selectResult = await selectWakanowFlight(originalSelectData, offerCurrency);
-              const responseData = selectResult?.data;
-              
-              wakanowBookingId = responseData?.booking_id || '';
-              newSelectData = responseData?.select_data || '';
-              
-              if (!wakanowBookingId || !newSelectData) {
-                throw new Error("Failed to confirm flight pricing");
-              }
-              
-              priceBreakdown = responseData?.priceBreakdown || {
-                basePrice: responseData?.basePrice || 0,
-                markupAmount: responseData?.markupAmount || 0,
-                markupPercentage: responseData?.markupPercentage || 10,
-                serviceFee: responseData?.serviceFee || 0,
-                serviceFeePercentage: responseData?.serviceFeePercentage || 5,
-                taxes: responseData?.taxes || 0,
-                taxPercentage: responseData?.taxPercentage || 15,
-                totalAmount: responseData?.totalAmount || responseData?.flight_summary?.price?.Amount || 0,
-                currency: responseData?.currency || responseData?.flight_summary?.price?.CurrencyCode || offerCurrency,
-              };
-              backendBreakdown = getBreakdown(priceBreakdown);
-              
-              console.log("💰 Using backend prices from select:", {
-                basePrice: priceBreakdown.basePrice,
-                markupAmount: priceBreakdown.markupAmount,
-                serviceFee: priceBreakdown.serviceFee,
-                totalAmount: priceBreakdown.totalAmount,
-              });
-              
-            } catch (error: any) {
-              if (error.message === 'SELECTION_EXPIRED') {
-                console.warn('⚠️ Selection expired, please refresh search');
-                throw new Error('SELECTION_EXPIRED');
-              }
-              throw error;
-            }
-          }
-        
-          // ✅ Use the backend's calculated values
-          const backendBasePrice = priceBreakdown.basePrice;
-          const backendMarkupAmount = priceBreakdown.markupAmount;
-          const backendServiceFee = priceBreakdown.serviceFee;
-          const backendTotalAmount = priceBreakdown.totalAmount;
-          const backendCurrency = priceBreakdown.currency;
-          const backendMarkupPercentage = priceBreakdown.markupPercentage;
-          const backendServiceFeePercentage = priceBreakdown.serviceFeePercentage;
-        
-          console.log("💰 Final prices for booking:", {
-            basePrice: backendBasePrice,
-            markupAmount: backendMarkupAmount,
-            serviceFee: backendServiceFee,
-            totalAmount: backendTotalAmount,
-            currency: backendCurrency,
-            markupPercentage: backendMarkupPercentage,
-            serviceFeePercentage: backendServiceFeePercentage,
-            breakdown: backendBreakdown,
-          });
-
-          // ✅ STEP 2: Prepare ALL passengers (including additional)
-          const allPassengers: PassengerInfo[] = [
-            passenger,
-            ...(passenger.travellers || [])
-          ];
-          
-          console.log(`👥 Total passengers: ${allPassengers.length}`);
-          console.log('👤 Lead passenger:', passenger.firstName, passenger.lastName);
-          console.log('👤 Additional passengers:', passenger.travellers?.length || 0);
-          
-          // ✅ Format each passenger for Wakanow - WITHOUT IsWakapointRegister
-          const formattedPassengers = allPassengers.map((p, index) => {
-            let passengerType = 'Adult';
-            if (p.type === 'child') passengerType = 'Child';
-            else if (p.type === 'infant') passengerType = 'Infant';
-            
-            // ✅ Build passenger object without IsWakapointRegister
-            const formatted = {
-              passengerType: passengerType,
-              firstName: p.firstName || '',
-              middleName: (p as any).middleName || '',
-              lastName: p.lastName || '',
-              dateOfBirth: formatWakanowDate(p.dateOfBirth),
-              phoneNumber: formatWakanowPhone(p.phone || passenger.phone),
-              passportNumber: (p as any).passportNumber || '',
-              expiryDate: formatWakanowDate((p as any).passportExpiry),
-              passportIssuingAuthority: (p as any).passportIssuingAuthority || '',
-              passportIssueCountryCode: (p as any).passportIssueCountry || '',
-              gender: formatWakanowGender(p.gender),
-              title: formatWakanowTitle(p.title || 'Mr'),
-              email: p.email || passenger.email || '',
-              address: p.address || passenger.address || '123 Fake Street',
-              country: p.country || passenger.country || 'Nigeria',
-              countryCode: p.countryCode || passenger.countryCode || 'NG',
-              city: p.city || passenger.city || 'Lagos',
-              postalCode: p.postalCode || passenger.postalCode || '100001',
-            };
-            
-            console.log(`👤 Passenger ${index + 1}: ${formatted.firstName} ${formatted.lastName} (${formatted.passengerType})`);
-            return formatted;
-          });
-          
-          // STEP 3: Create booking in YOUR system with priceBreakdown
-          console.log("💾 Saving booking in our system...");
-          
-          const bookingHeaders: Record<string, string> = {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          };
-
-          if (!isGuest && token) {
-            bookingHeaders["Authorization"] = `Bearer ${token}`;
-          }
-
-          // ✅ Send priceBreakdown to backend
-          const bookingPayload = {
-            bookingId: wakanowBookingId,
-            selectData: newSelectData,
-            passengers: formattedPassengers,
-            targetCurrency: offerCurrency,
-            priceBreakdown: {
-              basePrice: backendBasePrice,
-              markupAmount: backendMarkupAmount,
-              markupPercentage: backendMarkupPercentage,
-              serviceFee: backendServiceFee,
-              serviceFeePercentage: backendServiceFeePercentage,
-              taxes: priceBreakdown.taxes || backendMarkupAmount + backendServiceFee,
-              taxPercentage: priceBreakdown.taxPercentage || backendMarkupPercentage + backendServiceFeePercentage,
-              totalAmount: backendTotalAmount,
-              currency: backendCurrency,
-            },
-          };
-
-          console.log("📤 Booking payload WITH priceBreakdown:", JSON.stringify(bookingPayload, null, 2));
-          console.log('👥 Passengers being sent to Wakanow:');
-          bookingPayload.passengers.forEach((p: any, idx: number) => {
-            console.log(`  ${idx + 1}. ${p.firstName} ${p.lastName} (${p.passengerType})`);
-          });
-
-          const response = await fetch(`${BASE}/api/v1/bookings/wakanow/book${isGuest ? '/guest' : ''}`, {
-            method: "POST",
-            headers: bookingHeaders,
-            body: JSON.stringify(bookingPayload),
-          });
-
-          const result = await response.json();
-          if (!response.ok) {
-            console.error("❌ Booking creation failed:", result);
-            throw new Error(result.message || "Failed to create booking");
-          }
-
-          const createdBooking = result.data || result;
-          
-          console.log("📦 Created booking in our system:", JSON.stringify(createdBooking, null, 2));
-
-          // STEP 4: Use backend prices from the booking response
-          const finalBasePrice = createdBooking.basePrice || createdBooking.base_price || backendBasePrice;
-          const finalMarkupAmount = createdBooking.markupAmount || createdBooking.markup_amount || backendMarkupAmount;
-          const finalServiceFee = createdBooking.serviceFee || createdBooking.service_fee || backendServiceFee;
-          const finalTotalAmount = createdBooking.totalAmount || createdBooking.total_amount || backendTotalAmount;
-          const finalCurrency = createdBooking.currency || backendCurrency;
-          const finalMarkupPercentage = createdBooking.markupPercentage || createdBooking.markup_percentage || backendMarkupPercentage;
-          const finalServiceFeePercentage = createdBooking.serviceFeePercentage || createdBooking.service_fee_percentage || backendServiceFeePercentage;
-          const finalBreakdown = createdBooking.breakdown || backendBreakdown;
-
-          console.log("💰 Final booking prices:", {
-            basePrice: finalBasePrice,
-            markupAmount: finalMarkupAmount,
-            serviceFee: finalServiceFee,
-            totalAmount: finalTotalAmount,
-            currency: finalCurrency,
-            markupPercentage: finalMarkupPercentage,
-            serviceFeePercentage: finalServiceFeePercentage,
-            breakdown: finalBreakdown,
-          });
-
-          // ✅ Create the booking object with backend prices
-          const bookingWithPaymentInfo = {
-            id: createdBooking.id,
-            reference: createdBooking.reference,
-            status: createdBooking.status || "PENDING",
-            paymentStatus: createdBooking.paymentStatus || "PENDING",
-            productType: productType as any,
-            provider: "WAKANOW",
-            basePrice: finalBasePrice,
-            markupAmount: finalMarkupAmount,
-            serviceFee: finalServiceFee,
-            totalAmount: finalTotalAmount,
-            amount: finalTotalAmount,
-            currency: finalCurrency,
-            bookingData: {
-              wakanowBookingId: wakanowBookingId,
-              pnrNumber: createdBooking.pnr_reference || 'PENDING',
-              selectData: newSelectData,
-              rawResponse: createdBooking,
-              passengers: formattedPassengers,
-              priceBreakdown: {
-                basePrice: finalBasePrice,
-                markupAmount: finalMarkupAmount,
-                serviceFee: finalServiceFee,
-                totalAmount: finalTotalAmount,
-                currency: finalCurrency,
-                markupPercentage: finalMarkupPercentage,
-                serviceFeePercentage: finalServiceFeePercentage,
-                breakdown: finalBreakdown,
-              },
-            },
-            passengerInfo: {
-              firstName: passenger.firstName,
-              lastName: passenger.lastName,
-              email: passenger.email,
-              phone: passenger.phone,
-            },
-            createdAt: createdBooking.createdAt || new Date().toISOString(),
-          };
-
-          sessionStorage.setItem('booking_price_breakdown', JSON.stringify({
-            basePrice: finalBasePrice,
-            markupAmount: finalMarkupAmount,
-            serviceFee: finalServiceFee,
-            totalAmount: finalTotalAmount,
-            currency: finalCurrency,
-            markupPercentage: finalMarkupPercentage,
-            serviceFeePercentage: finalServiceFeePercentage,
-            breakdown: finalBreakdown,
-          }));
-
-          setBooking(bookingWithPaymentInfo as Booking);
-          return bookingWithPaymentInfo as Booking;
         }
-        // ==================== END WAKANOW FLOW ====================
-
-        // ✅ GENERIC FLOW (DUFFEL, HOTELS, CARS)
+       
+        let cleanedPassengerInfo = body.passengerInfo;
+        
+        if (provider === 'DUFFEL') {
+         
+          const duffelAllowedFields = ['firstName', 'lastName', 'email', 'phone', 'title', 'gender', 'dateOfBirth'];
+          const cleaned: any = {};
+          for (const field of duffelAllowedFields) {
+            if (body.passengerInfo[field] !== undefined && body.passengerInfo[field] !== null && body.passengerInfo[field] !== '') {
+              cleaned[field] = body.passengerInfo[field];
+            }
+          }
+          cleanedPassengerInfo = cleaned;
+          console.log('🧹 Cleaned passenger info for Duffel:', cleanedPassengerInfo);
+        }
+        
+        // ✅ Use cleaned passenger info for the booking
+        body.passengerInfo = cleanedPassengerInfo;
+        
         const endpoint = isGuest ? "/api/v1/bookings/guest" : "/api/v1/bookings";
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
           Accept: "application/json",
         };
-
+  
         if (!isGuest && token) {
           headers["Authorization"] = `Bearer ${token}`;
         }
-
+  
         const res = await fetch(`${BASE}${endpoint}`, {
           method: "POST",
           headers,
           body: JSON.stringify(body),
         });
-
+  
         let data: any;
         try {
           data = await res.json();
@@ -740,20 +483,20 @@ export function useBooking() {
           console.error("Non-JSON response:", text);
           throw new Error(`Server returned ${res.status}: ${text.substring(0, 100)}`);
         }
-
+  
         if (!res.ok) {
           const msg = data.message ?? data.error ?? "Booking creation failed";
           console.error("Booking creation failed:", data);
           throw new Error(msg);
         }
-
+  
         const created: Booking = data.data ?? data;
-
+  
         if (!created?.id) {
           console.error("Invalid booking response:", data);
           throw new Error("Invalid response from server - missing booking ID");
         }
-
+  
         setBooking(created);
         return created;
       } catch (err: any) {

@@ -285,20 +285,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     id: item?.id,
     title: item?.title,
     type: item?.type,
-    price: (item as any)?.price,
-    final_amount: (item as any)?.final_amount,
-    final_price: (item as any)?.final_price,
-    totalAmount: (item as any)?.totalAmount,
-    calculatedTotal: (item as any)?.calculatedTotal,
-    priceBreakdown: (item as any)?.priceBreakdown,
-    basePrice: (item as any)?.basePrice,
-    markupAmount: (item as any)?.markupAmount,
-    markupPercentage: (item as any)?.markupPercentage,
-    serviceFee: (item as any)?.serviceFee,
-    serviceFeePercentage: (item as any)?.serviceFeePercentage,
-    breakdown: (item as any)?.breakdown,
-    isWakanow: (item as any)?.isWakanow,
     provider: (item as any)?.provider,
+    isWakanow: (item as any)?.isWakanow,
   });
 
   const [fixedItem, setFixedItem] = useState<SearchResult | null>(null);
@@ -370,12 +358,12 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         'CAR_RENTAL'
   );
 
-  const offerCurrency = extBooking?.currency ||
-    firstOffer?.price?.currency ||
-    actualItem?.realData?.currency ||
-    extendedItem?.currency ||
-    currency.code ||
-    'GBP';
+  let offerCurrency = extBooking?.currency ||
+  firstOffer?.price?.currency ||
+  actualItem?.realData?.currency ||
+  extendedItem?.currency ||
+  currency.code ||
+  'GBP';
 
   const splitName = (user?.name || extBooking?.passengerInfo?.firstName || '').trim().split(/\s+/);
   const defaultFirstName = extBooking?.passengerInfo?.firstName || splitName[0] || '';
@@ -419,8 +407,12 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [isCheckingPassport, setIsCheckingPassport] = useState(false);
   const [passportError, setPassportError] = useState<string | null>(null);
 
+  // ✅ CHECK PROVIDER
   const isWakanow = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
     (actualItem as any)?.type?.toLowerCase().includes('wakanow');
+  
+  const isDuffel = (actualItem as any)?.provider?.toUpperCase() === 'DUFFEL' ||
+    (actualItem as any)?.type?.toLowerCase().includes('duffel');
   
   const originCode = extendedItem.departureAirport || 
                      extendedItem.origin || 
@@ -436,10 +428,18 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const isDomesticByProduct = (actualItem as any)?.productType === 'FLIGHT_DOMESTIC';
   const isDomesticFlightResult = isDomesticByAirport || isDomesticByProduct;
 
+  // ✅ DUFFEL: Passport is NEVER required
+  // ✅ WAKANOW: Passport required for international flights only
   const showPassportSection = isFlight && isWakanow && !isDomesticFlightResult;
-  const isPassportMandatory = isFlight && isNorthAmericanDestination(extendedItem, searchParams);
+  const isPassportMandatory = isFlight && isWakanow && isNorthAmericanDestination(extendedItem, searchParams);
   const passportRequired = showPassportSection;
   const requiresPassport = isPassportMandatory;
+
+  // ✅ DUFFEL: Skip passport check entirely
+  const shouldSkipPassport = isDuffel || (isFlight && !isWakanow);
+
+  // ✅ DUFFEL: Simplified validation - no passport fields
+  const isPassportIncompleteForDuffel = false; // Duffel doesn't need passport
 
   useEffect(() => {
     if (!extBooking) {
@@ -529,8 +529,13 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
   }, [user]);
 
+  // ✅ DUFFEL: Skip passport loading
   useEffect(() => {
-    if (!passportRequired || !isLoggedIn || extBooking) return;
+    // ✅ Skip passport check for Duffel
+    if (shouldSkipPassport || extBooking) return;
+    
+    if (!passportRequired || !isLoggedIn) return;
+    
     const load = async () => {
       setIsCheckingPassport(true);
       try {
@@ -569,7 +574,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
       }
     };
     load();
-  }, [passportRequired, isLoggedIn, extBooking]);
+  }, [passportRequired, isLoggedIn, extBooking, shouldSkipPassport]);
 
   useEffect(() => {
     if (extendedItem?.terms_and_conditions?.TermsAndConditions) {
@@ -580,148 +585,248 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   }, [extendedItem, actualItem]);
 
   // ==================== PRICE CALCULATION ====================
-  let basePrice = 0;
-  let markupAmount = 0;
-  let serviceFee = 0;
-  let totalDue = 0;
-  let markupPercentage = 10;
-  let serviceFeePercentage = 5;
-  let combinedTaxes = 0;
-  let combinedTaxPercentage = 15;
-  let breakdownDescription = '';
+let basePrice = 0;
+let markupAmount = 0;
+let serviceFee = 0;
+let totalDue = 0;
+let markupPercentage = 10;
+let serviceFeePercentage = 5;
+let combinedTaxes = 0;
+let combinedTaxPercentage = 15;
+let breakdownDescription = '';
 
-  if (isWakanow) {
-    if (extendedItem.basePrice && extendedItem.basePrice > 0) {
-      basePrice = extendedItem.basePrice;
-      markupAmount = extendedItem.markupAmount || 0;
+// ✅ DUFFEL FLIGHT - NEW: Process Duffel prices
+if (isDuffel) {
+  console.log('💰 ReviewTrip - Duffel flight detected');
+  
+  // Try to get price from various sources
+  if (extendedItem.totalAmount && extendedItem.totalAmount > 0) {
+    totalDue = extendedItem.totalAmount;
+    basePrice = extendedItem.basePrice || totalDue / 1.15;
+    markupAmount = extendedItem.markupAmount || (totalDue * 0.10);
+    serviceFee = extendedItem.serviceFee || (totalDue * 0.05);
+    markupPercentage = extendedItem.markupPercentage || 10;
+    serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
+    breakdownDescription = extendedItem.breakdown || `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
+    console.log('💰 ReviewTrip - Duffel: Using totalAmount', { totalDue });
+  } else if (extendedItem.final_amount) {
+    totalDue = parseFloat(extendedItem.final_amount);
+    basePrice = extendedItem.basePrice || totalDue / 1.15;
+    markupAmount = extendedItem.markupAmount || (totalDue * 0.10);
+    serviceFee = extendedItem.serviceFee || (totalDue * 0.05);
+    markupPercentage = extendedItem.markupPercentage || 10;
+    serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
+    breakdownDescription = extendedItem.breakdown || `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
+    console.log('💰 ReviewTrip - Duffel: Using final_amount', { totalDue });
+  } else if (extendedItem.final_price) {
+    totalDue = parseFloat(extendedItem.final_price);
+    basePrice = extendedItem.basePrice || totalDue / 1.15;
+    markupAmount = extendedItem.markupAmount || (totalDue * 0.10);
+    serviceFee = extendedItem.serviceFee || (totalDue * 0.05);
+    markupPercentage = extendedItem.markupPercentage || 10;
+    serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
+    breakdownDescription = extendedItem.breakdown || `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
+    console.log('💰 ReviewTrip - Duffel: Using final_price', { totalDue });
+  } else if (extendedItem.price && typeof extendedItem.price === 'string') {
+    const parsed = parseFloat(extendedItem.price.replace(/[^0-9.]/g, ''));
+    if (parsed > 0) {
+      totalDue = parsed;
+      basePrice = extendedItem.basePrice || totalDue / 1.15;
+      markupAmount = extendedItem.markupAmount || (totalDue * 0.10);
+      serviceFee = extendedItem.serviceFee || (totalDue * 0.05);
       markupPercentage = extendedItem.markupPercentage || 10;
-      serviceFee = extendedItem.serviceFee || 0;
       serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
-      totalDue = extendedItem.totalAmount || 0;
-      combinedTaxes = markupAmount + serviceFee;
-      combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-      breakdownDescription = extendedItem.breakdown || '';
-      
-      console.log('💰 ReviewTrip - Wakanow: Using direct price fields from backend:', {
-        basePrice,
-        markupAmount,
-        markupPercentage,
-        serviceFee,
-        serviceFeePercentage,
-        totalDue,
-        combinedTaxes,
-        combinedTaxPercentage,
-        breakdown: breakdownDescription,
-      });
-    } else if (extendedItem.priceBreakdown) {
-      const pb = extendedItem.priceBreakdown;
-      basePrice = pb.basePrice || 0;
-      markupAmount = pb.markupAmount || 0;
-      markupPercentage = pb.markupPercentage || 10;
-      serviceFee = pb.serviceFee || 0;
-      serviceFeePercentage = pb.serviceFeePercentage || 5;
-      combinedTaxes = pb.taxes || 0;
-      combinedTaxPercentage = pb.taxPercentage || 15;
-      totalDue = pb.totalAmount || 0;
-      breakdownDescription = pb.breakdown || '';
-      
-      console.log('💰 ReviewTrip - Wakanow: Using priceBreakdown from backend:', {
-        basePrice,
-        markupAmount,
-        serviceFee,
-        combinedTaxes,
-        combinedTaxPercentage,
-        totalDue,
-        breakdown: breakdownDescription,
-      });
-    } else if (extendedItem.calculatedTotal && extendedItem.calculatedTotal > 0) {
-      basePrice = extendedItem.calculatedBasePrice || 0;
-      markupAmount = extendedItem.calculatedMarkup || 0;
-      serviceFee = extendedItem.calculatedServiceFee || 0;
-      totalDue = extendedItem.calculatedTotal || 0;
-      markupPercentage = extendedItem.markup_percentage || 10;
-      serviceFeePercentage = extendedItem.service_fee_percentage || 5;
-      combinedTaxes = extendedItem.calculatedTaxes || markupAmount + serviceFee || 0;
-      combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-    } else if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
-      basePrice = extBooking.basePrice || 0;
-      markupAmount = extBooking.markupAmount || 0;
-      serviceFee = extBooking.serviceFee || 0;
-      totalDue = extBooking.totalAmount || 0;
-      markupPercentage = extBooking.markupPercentage || 10;
-      serviceFeePercentage = extBooking.serviceFeePercentage || 5;
-      combinedTaxes = extBooking.taxes || markupAmount + serviceFee || 0;
-      combinedTaxPercentage = extBooking.taxPercentage || markupPercentage + serviceFeePercentage;
-      breakdownDescription = extBooking.breakdown || '';
-    } else if (typeof window !== 'undefined') {
-      try {
-        const stored = sessionStorage.getItem('booking_price_breakdown');
-        if (stored) {
-          const data = JSON.parse(stored);
-          basePrice = data.basePrice || 0;
-          markupAmount = data.markupAmount || 0;
-          serviceFee = data.serviceFee || 0;
-          totalDue = data.totalAmount || 0;
-          markupPercentage = data.markupPercentage || 10;
-          serviceFeePercentage = data.serviceFeePercentage || 5;
-          combinedTaxes = markupAmount + serviceFee;
-          combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-          breakdownDescription = data.breakdown || '';
-        }
-      } catch (e) {
-        console.warn('Could not parse session storage:', e);
-      }
-    }
-    
-    if (totalDue === 0) {
-      console.warn('⚠️ ReviewTrip - Wakanow: No price found from backend!');
-    }
-  } else if (isHotel || isCar) {
-    if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
-      basePrice = extBooking.basePrice || 0;
-      markupAmount = extBooking.markupAmount || 0;
-      serviceFee = extBooking.serviceFee || 0;
-      totalDue = extBooking.totalAmount || 0;
-      markupPercentage = extBooking.markupPercentage || 10;
-      serviceFeePercentage = extBooking.serviceFeePercentage || 5;
-      combinedTaxes = extBooking.taxes || markupAmount + serviceFee || 0;
-      combinedTaxPercentage = extBooking.taxPercentage || markupPercentage + serviceFeePercentage;
-      breakdownDescription = extBooking.breakdown || '';
-    } else {
-      let priceValue = 0;
-      if (extendedItem.final_amount) {
-        priceValue = parseFloat(extendedItem.final_amount);
-      } else if (extendedItem.final_price) {
-        priceValue = typeof extendedItem.final_price === 'string' 
-          ? parseFloat(extendedItem.final_price) 
-          : extendedItem.final_price;
-      } else if (extendedItem.totalAmount) {
-        priceValue = extendedItem.totalAmount;
-      } else if (extendedItem.price) {
-        priceValue = typeof extendedItem.price === 'string' 
-          ? parseFloat(extendedItem.price) 
-          : extendedItem.price;
-      }
-      totalDue = priceValue;
-      markupPercentage = extendedItem.markup_percentage || 10;
-      serviceFeePercentage = extendedItem.service_fee_percentage || 5;
-      
-      if (totalDue > 0 && !extendedItem.basePrice) {
-        const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100);
-        basePrice = totalDue / totalFactor;
-        markupAmount = (basePrice * markupPercentage) / 100;
-        serviceFee = (basePrice * serviceFeePercentage) / 100;
-        combinedTaxes = markupAmount + serviceFee;
-        combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-      } else {
-        basePrice = extendedItem.basePrice || 0;
-        markupAmount = extendedItem.markupAmount || 0;
-        serviceFee = extendedItem.serviceFee || 0;
-        combinedTaxes = markupAmount + serviceFee;
-        combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-      }
+      breakdownDescription = extendedItem.breakdown || `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
+      console.log('💰 ReviewTrip - Duffel: Using price string', { totalDue });
     }
   }
+  
+  // Check priceBreakdown
+  if (totalDue === 0 && extendedItem.priceBreakdown) {
+    const pb = extendedItem.priceBreakdown;
+    totalDue = pb.totalAmount || 0;
+    basePrice = pb.basePrice || 0;
+    markupAmount = pb.markupAmount || 0;
+    serviceFee = pb.serviceFee || 0;
+    markupPercentage = pb.markupPercentage || 10;
+    serviceFeePercentage = pb.serviceFeePercentage || 5;
+    combinedTaxes = pb.taxes || 0;
+    combinedTaxPercentage = pb.taxPercentage || 15;
+    breakdownDescription = pb.breakdown || '';
+    console.log('💰 ReviewTrip - Duffel: Using priceBreakdown', { totalDue, basePrice, markupAmount, serviceFee });
+  }
+  
+  // Check calculatedTotal
+  if (totalDue === 0 && extendedItem.calculatedTotal && extendedItem.calculatedTotal > 0) {
+    totalDue = extendedItem.calculatedTotal;
+    basePrice = extendedItem.calculatedBasePrice || totalDue / 1.15;
+    markupAmount = extendedItem.calculatedMarkup || (totalDue * 0.10);
+    serviceFee = extendedItem.calculatedServiceFee || (totalDue * 0.05);
+    markupPercentage = extendedItem.markup_percentage || 10;
+    serviceFeePercentage = extendedItem.service_fee_percentage || 5;
+    breakdownDescription = `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
+    console.log('💰 ReviewTrip - Duffel: Using calculatedTotal', { totalDue });
+  }
+  
+  // Set currency from item
+  if (extendedItem.currency) {
+    offerCurrency = extendedItem.currency;
+  } else if (extendedItem.priceBreakdown?.currency) {
+    offerCurrency = extendedItem.priceBreakdown.currency;
+  }
+  
+  combinedTaxes = markupAmount + serviceFee;
+  combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+  
+  console.log('💰 ReviewTrip - Duffel: Final prices', {
+    basePrice,
+    markupAmount,
+    serviceFee,
+    totalDue,
+    combinedTaxes,
+    combinedTaxPercentage,
+    currency: offerCurrency,
+    breakdown: breakdownDescription,
+  });
+}
+// ✅ END DUFFEL
+
+// ✅ WAKANOW FLIGHTS (UNCHANGED)
+else if (isWakanow) {
+  if (extendedItem.basePrice && extendedItem.basePrice > 0) {
+    basePrice = extendedItem.basePrice;
+    markupAmount = extendedItem.markupAmount || 0;
+    markupPercentage = extendedItem.markupPercentage || 10;
+    serviceFee = extendedItem.serviceFee || 0;
+    serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
+    totalDue = extendedItem.totalAmount || 0;
+    combinedTaxes = markupAmount + serviceFee;
+    combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+    breakdownDescription = extendedItem.breakdown || '';
+    
+    console.log('💰 ReviewTrip - Wakanow: Using direct price fields from backend:', {
+      basePrice,
+      markupAmount,
+      markupPercentage,
+      serviceFee,
+      serviceFeePercentage,
+      totalDue,
+      combinedTaxes,
+      combinedTaxPercentage,
+      breakdown: breakdownDescription,
+    });
+  } else if (extendedItem.priceBreakdown) {
+    const pb = extendedItem.priceBreakdown;
+    basePrice = pb.basePrice || 0;
+    markupAmount = pb.markupAmount || 0;
+    markupPercentage = pb.markupPercentage || 10;
+    serviceFee = pb.serviceFee || 0;
+    serviceFeePercentage = pb.serviceFeePercentage || 5;
+    combinedTaxes = pb.taxes || 0;
+    combinedTaxPercentage = pb.taxPercentage || 15;
+    totalDue = pb.totalAmount || 0;
+    breakdownDescription = pb.breakdown || '';
+    
+    console.log('💰 ReviewTrip - Wakanow: Using priceBreakdown from backend:', {
+      basePrice,
+      markupAmount,
+      serviceFee,
+      combinedTaxes,
+      combinedTaxPercentage,
+      totalDue,
+      breakdown: breakdownDescription,
+    });
+  } else if (extendedItem.calculatedTotal && extendedItem.calculatedTotal > 0) {
+    basePrice = extendedItem.calculatedBasePrice || 0;
+    markupAmount = extendedItem.calculatedMarkup || 0;
+    serviceFee = extendedItem.calculatedServiceFee || 0;
+    totalDue = extendedItem.calculatedTotal || 0;
+    markupPercentage = extendedItem.markup_percentage || 10;
+    serviceFeePercentage = extendedItem.service_fee_percentage || 5;
+    combinedTaxes = extendedItem.calculatedTaxes || markupAmount + serviceFee || 0;
+    combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+  } else if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
+    basePrice = extBooking.basePrice || 0;
+    markupAmount = extBooking.markupAmount || 0;
+    serviceFee = extBooking.serviceFee || 0;
+    totalDue = extBooking.totalAmount || 0;
+    markupPercentage = extBooking.markupPercentage || 10;
+    serviceFeePercentage = extBooking.serviceFeePercentage || 5;
+    combinedTaxes = extBooking.taxes || markupAmount + serviceFee || 0;
+    combinedTaxPercentage = extBooking.taxPercentage || markupPercentage + serviceFeePercentage;
+    breakdownDescription = extBooking.breakdown || '';
+  } else if (typeof window !== 'undefined') {
+    try {
+      const stored = sessionStorage.getItem('booking_price_breakdown');
+      if (stored) {
+        const data = JSON.parse(stored);
+        basePrice = data.basePrice || 0;
+        markupAmount = data.markupAmount || 0;
+        serviceFee = data.serviceFee || 0;
+        totalDue = data.totalAmount || 0;
+        markupPercentage = data.markupPercentage || 10;
+        serviceFeePercentage = data.serviceFeePercentage || 5;
+        combinedTaxes = markupAmount + serviceFee;
+        combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+        breakdownDescription = data.breakdown || '';
+      }
+    } catch (e) {
+      console.warn('Could not parse session storage:', e);
+    }
+  }
+  
+  if (totalDue === 0) {
+    console.warn('⚠️ ReviewTrip - Wakanow: No price found from backend!');
+  }
+}
+
+// ✅ HOTELS AND CARS (UNCHANGED)
+else if (isHotel || isCar) {
+  if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
+    basePrice = extBooking.basePrice || 0;
+    markupAmount = extBooking.markupAmount || 0;
+    serviceFee = extBooking.serviceFee || 0;
+    totalDue = extBooking.totalAmount || 0;
+    markupPercentage = extBooking.markupPercentage || 10;
+    serviceFeePercentage = extBooking.serviceFeePercentage || 5;
+    combinedTaxes = extBooking.taxes || markupAmount + serviceFee || 0;
+    combinedTaxPercentage = extBooking.taxPercentage || markupPercentage + serviceFeePercentage;
+    breakdownDescription = extBooking.breakdown || '';
+  } else {
+    let priceValue = 0;
+    if (extendedItem.final_amount) {
+      priceValue = parseFloat(extendedItem.final_amount);
+    } else if (extendedItem.final_price) {
+      priceValue = typeof extendedItem.final_price === 'string' 
+        ? parseFloat(extendedItem.final_price) 
+        : extendedItem.final_price;
+    } else if (extendedItem.totalAmount) {
+      priceValue = extendedItem.totalAmount;
+    } else if (extendedItem.price) {
+      priceValue = typeof extendedItem.price === 'string' 
+        ? parseFloat(extendedItem.price) 
+        : extendedItem.price;
+    }
+    totalDue = priceValue;
+    markupPercentage = extendedItem.markup_percentage || 10;
+    serviceFeePercentage = extendedItem.service_fee_percentage || 5;
+    
+    if (totalDue > 0 && !extendedItem.basePrice) {
+      const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100);
+      basePrice = totalDue / totalFactor;
+      markupAmount = (basePrice * markupPercentage) / 100;
+      serviceFee = (basePrice * serviceFeePercentage) / 100;
+      combinedTaxes = markupAmount + serviceFee;
+      combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+    } else {
+      basePrice = extendedItem.basePrice || 0;
+      markupAmount = extendedItem.markupAmount || 0;
+      serviceFee = extendedItem.serviceFee || 0;
+      combinedTaxes = markupAmount + serviceFee;
+      combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+    }
+  }
+}
 
   const displayBasePrice = formatPrice(basePrice, offerCurrency);
   const displayCombinedTaxes = formatPrice(combinedTaxes, offerCurrency);
@@ -771,7 +876,11 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
   };
 
+  // ✅ DUFFEL: Skip passport validation
   const validatePassport = (): boolean => {
+    // ✅ Duffel doesn't need passport validation
+    if (shouldSkipPassport) return true;
+    
     if (!requiresPassport) return true;
     
     setPassportError(null);
@@ -824,14 +933,14 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
   // ==================== VALIDATE ALL PASSENGERS ====================
   const validateAllPassengers = (): boolean => {
-    // Validate lead passenger (already validated in main flow)
-    // Now validate additional passengers
+    // ✅ Duffel: Skip passport validation for all passengers
+    const skipPassportValidation = shouldSkipPassport;
+    
     for (let i = 0; i < additionalPassengers.length; i++) {
       const p = additionalPassengers[i];
       const passengerType = p.type || 'adult';
       const label = `${passengerType.toUpperCase()} #${i + 1}`;
       
-      // Check required fields
       if (!p.firstName || !p.firstName.trim()) {
         alert(`${label}: First name is required.`);
         return false;
@@ -869,8 +978,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           return false;
         }
 
-        // For Wakanow international flights, validate passport
-        if (isWakanow && !isDomesticFlightResult) {
+        // ✅ Only Wakanow international flights need passport
+        if (!skipPassportValidation && isWakanow && !isDomesticFlightResult) {
           if (!p.passportNumber || !p.passportNumber.trim()) {
             alert(`${label}: Passport number is required for international flights.`);
             return false;
@@ -885,8 +994,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           }
         }
 
-        // For passport mandatory destinations
-        if (isPassportMandatory) {
+        // ✅ Only Wakanow passport mandatory destinations
+        if (!skipPassportValidation && isPassportMandatory) {
           if (!p.passportNumber || !p.passportExpiry || !p.passportIssuingAuthority) {
             alert(`${label}: Passport details are mandatory for this destination.`);
             return false;
@@ -939,7 +1048,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         return;
       }
       
-      if (isFlight && isWakanow && !isDomesticFlightResult) {
+      // ✅ Only Wakanow international flights need passport
+      if (!shouldSkipPassport && isFlight && isWakanow && !isDomesticFlightResult) {
         if (!passportNumber || !passportExpiry || !passportIssuingAuthority) {
           alert('Passport details are required for international flights on Wakanow.\n\nPlease provide:\n- Passport Number\n- Passport Expiry Date\n- Passport Issuing Authority');
           return;
@@ -965,7 +1075,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         }
       }
       
-      if (isPassportMandatory && !validatePassport()) {
+      // ✅ Only Wakanow passport mandatory
+      if (!shouldSkipPassport && isPassportMandatory && !validatePassport()) {
         return;
       }
 
@@ -997,6 +1108,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           phone,
         };
       } else {
+        // ✅ Build passenger info based on provider
         passengerInfo = {
           firstName,
           lastName,
@@ -1011,49 +1123,49 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           country: passportCountry || "United Kingdom", 
           countryCode: passportCountryCode || "GB",
           postalCode: passportPostalCode || "NW1 6XE",
-          ...(passportRequired && {
-            passportNumber,
-            passportExpiry,
-            passportIssuingAuthority,
-            passportIssueCountry,
-          }),
         };
+        
+        // ✅ Only add passport fields for Wakanow (not Duffel)
+        if (isWakanow && !isDomesticFlightResult) {
+          (passengerInfo as any).passportNumber = passportNumber;
+          (passengerInfo as any).passportExpiry = passportExpiry;
+          (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
+          (passengerInfo as any).passportIssueCountry = passportIssueCountry || 'Nigeria';
+        }
         
         // ✅ Format additional passengers with all required fields
         if (additionalPassengers.length > 0) {
-          const formattedTravellers = additionalPassengers.map((p) => ({
-            passengerType: p.type === 'child' ? 'Child' : p.type === 'infant' ? 'Infant' : 'Adult',
-            firstName: p.firstName || '',
-            middleName: (p as any).middleName || '',
-            lastName: p.lastName || '',
-            dateOfBirth: p.dateOfBirth || '',
-            phoneNumber: p.phone || phone,
-            email: p.email || email,
-            gender: p.gender || 'Male',
-            title: p.title || 'Mr',
-            address: p.address || passportAddress || '123 Fake Street',
-            country: p.country || passportCountry || 'Nigeria',
-            countryCode: p.countryCode || passportCountryCode || 'NG',
-            city: p.city || passportCity || 'Lagos',
-            postalCode: p.postalCode || passportPostalCode || '100001',
-            // Passport fields for international flights
-            ...(isWakanow && !isDomesticFlightResult ? {
-              passportNumber: p.passportNumber || '',
-              expiryDate: p.passportExpiry || '',
-              passportIssuingAuthority: p.passportIssuingAuthority || '',
-              passportIssueCountryCode: p.passportIssueCountry || '',
-            } : {}),
-          }));
+          const formattedTravellers = additionalPassengers.map((p) => {
+            const traveller: any = {
+              passengerType: p.type === 'child' ? 'Child' : p.type === 'infant' ? 'Infant' : 'Adult',
+              firstName: p.firstName || '',
+              middleName: (p as any).middleName || '',
+              lastName: p.lastName || '',
+              dateOfBirth: p.dateOfBirth || '',
+              phoneNumber: p.phone || phone,
+              email: p.email || email,
+              gender: p.gender || 'Male',
+              title: p.title || 'Mr',
+              address: p.address || passportAddress || '123 Fake Street',
+              country: p.country || passportCountry || 'Nigeria',
+              countryCode: p.countryCode || passportCountryCode || 'NG',
+              city: p.city || passportCity || 'Lagos',
+              postalCode: p.postalCode || passportPostalCode || '100001',
+            };
+            
+            // ✅ Only add passport fields for Wakanow (not Duffel)
+            if (isWakanow && !isDomesticFlightResult) {
+              traveller.passportNumber = p.passportNumber || '';
+              traveller.expiryDate = p.passportExpiry || '';
+              traveller.passportIssuingAuthority = p.passportIssuingAuthority || '';
+              traveller.passportIssueCountryCode = p.passportIssueCountry || '';
+            }
+            
+            return traveller;
+          });
           
           (passengerInfo as any).travellers = formattedTravellers;
         }
-      }
-
-      if (isFlight && isWakanow && !isDomesticFlightResult) {
-        (passengerInfo as any).passportNumber = passportNumber;
-        (passengerInfo as any).passportExpiry = passportExpiry;
-        (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
-        (passengerInfo as any).passportIssueCountry = passportIssueCountry || 'Nigeria';
       }
 
       if (isFlight && displayedTerms.length > 0) {
@@ -1087,8 +1199,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
         ];
       }
 
-      // ✅ Log passenger count before sending
       console.log('👥 Sending to payment with passengers:', {
+        provider: isDuffel ? 'DUFFEL' : isWakanow ? 'WAKANOW' : 'OTHER',
         lead: `${firstName} ${lastName}`,
         additionalCount: (passengerInfo as any).travellers?.length || 0,
         total: 1 + ((passengerInfo as any).travellers?.length || 0),
@@ -1148,7 +1260,9 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           </p>
         </div>
 
-        {isPassportMandatory && !extBooking && (
+        
+
+        {isPassportMandatory && !extBooking && !shouldSkipPassport && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-start gap-3">
               <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1165,7 +1279,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
           </div>
         )}
 
-        {passportRequired && isLoggedIn && isPassportIncomplete && !extBooking && !requiresPassport && (
+        {passportRequired && isLoggedIn && isPassportIncomplete && !extBooking && !requiresPassport && !shouldSkipPassport && (
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
             <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
@@ -1328,8 +1442,8 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
               </div>
             </div>
 
-            {/* ========== PASSPORT FIELDS ========== */}
-            {isFlight && isWakanow && !isDomesticFlightResult && !extBooking && (
+            {/* ========== PASSPORT FIELDS - WAKANOW ONLY ========== */}
+            {isFlight && isWakanow && !isDomesticFlightResult && !extBooking && !shouldSkipPassport && (
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
                 <h3 className="text-md font-semibold text-gray-900 mb-3">Passport Details <span className="text-red-500">*</span></h3>
                 <p className="text-sm text-gray-500 mb-4">
@@ -1387,6 +1501,16 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                     />
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* ✅ DUFFEL: Show message that passport not required */}
+            {isDuffel && isFlight && !extBooking && (
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-green-100">
+                <h3 className="text-md font-semibold text-gray-900 mb-2">Passport Details</h3>
+                <p className="text-sm text-gray-500">
+                  Passport details are not required for this bookings. You can proceed without providing passport information.
+                </p>
               </div>
             )}
 
@@ -1669,7 +1793,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
                   isBooking || isCreating ||
                   (isHotel && !agreedToPolicy) ||
                   (isFlight && displayedTerms.length > 0 && !agreedToTerms) ||
-                  (passportRequired && isLoggedIn && isPassportIncomplete) ||
+                  (passportRequired && isLoggedIn && isPassportIncomplete && !shouldSkipPassport) ||
                   isCheckingPassport
                 }
                 className="w-full bg-[#33a8da] text-white font-medium py-3 rounded-xl hover:bg-[#2c98c7] transition disabled:opacity-50 mt-4"

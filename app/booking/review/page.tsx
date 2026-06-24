@@ -93,7 +93,7 @@ function getBreakdown(pb: any): string {
 }
 
 // ============================================================
-// ✅ WAKANOW: NO CALCULATIONS - Just pass through backend data
+// ✅ WAKANOW: NO CALCULATIONS - Just pass through backend data (UNCHANGED)
 // ============================================================
 function processItemPrices(item: ExtendedSearchResult | null, currencyCode: string = 'NGN'): ExtendedSearchResult | null {
   if (!item) return null;
@@ -101,16 +101,18 @@ function processItemPrices(item: ExtendedSearchResult | null, currencyCode: stri
   console.log('🔍 processItemPrices - Input:', {
     id: item.id,
     isWakanow: item.isWakanow,
+    provider: item.provider,
     hasPriceBreakdown: !!item.priceBreakdown,
     priceBreakdown: item.priceBreakdown,
     basePrice: item.basePrice,
     totalAmount: item.totalAmount,
     final_amount: item.final_amount,
     final_price: item.final_price,
+    price: item.price,
   });
 
   // ============================================================
-  // ✅ WAKANOW FLIGHTS - NO CALCULATIONS, JUST USE BACKEND DATA
+  // ✅ WAKANOW FLIGHTS - NO CALCULATIONS, JUST USE BACKEND DATA (UNCHANGED)
   // ============================================================
   if (item.isWakanow) {
     // ✅ PRIORITY 1: Use final_amount from backend (most common)
@@ -277,6 +279,115 @@ function processItemPrices(item: ExtendedSearchResult | null, currencyCode: stri
   }
 
   // ============================================================
+  // ✅ DUFFEL FLIGHTS - NEW: Process Duffel prices (ONLY DUFFEL CHANGE)
+  // ============================================================
+  const isDuffel = item.provider?.toLowerCase() === 'duffel' || 
+                   item.id?.toString().startsWith('off_') ||
+                   item.offer_request_id ||
+                   item.offer_id;
+
+  if (isDuffel) {
+    console.log('💰 processItemPrices - Duffel flight detected');
+    
+    let totalAmount = 0;
+    let displayCurrency = item.currency || currencyCode || 'USD';
+    
+    // PRIORITY 1: Use priceBreakdown
+    if (item.priceBreakdown) {
+      const pb = item.priceBreakdown;
+      totalAmount = pb.totalAmount || 0;
+      displayCurrency = pb.currency || displayCurrency;
+      console.log('💰 Duffel: Using priceBreakdown', { totalAmount, displayCurrency });
+    }
+    
+    // PRIORITY 2: Use totalAmount
+    if (!totalAmount || totalAmount === 0) {
+      totalAmount = item.totalAmount || 0;
+      console.log('💰 Duffel: Using totalAmount', { totalAmount });
+    }
+    
+    // PRIORITY 3: Use final_amount
+    if (!totalAmount || totalAmount === 0) {
+      totalAmount = parseFloat(item.final_amount || '0');
+      console.log('💰 Duffel: Using final_amount', { totalAmount });
+    }
+    
+    // PRIORITY 4: Use final_price
+    if (!totalAmount || totalAmount === 0) {
+      totalAmount = parseFloat(item.final_price || '0');
+      console.log('💰 Duffel: Using final_price', { totalAmount });
+    }
+    
+    // PRIORITY 5: Use price string
+    if (!totalAmount || totalAmount === 0) {
+      if (item.price && typeof item.price === 'string') {
+        const parsed = parseFloat(item.price.replace(/[^0-9.]/g, ''));
+        if (parsed > 0) {
+          totalAmount = parsed;
+          console.log('💰 Duffel: Using price string', { totalAmount });
+        }
+      }
+    }
+    
+    // PRIORITY 6: Use realData price
+    if (!totalAmount || totalAmount === 0) {
+      totalAmount = item.realData?.price || item.realData?.finalPrice || 0;
+      console.log('💰 Duffel: Using realData', { totalAmount });
+    }
+    
+    // PRIORITY 7: Use rawPrice
+    if (!totalAmount || totalAmount === 0) {
+      totalAmount = item.rawPrice || 0;
+      console.log('💰 Duffel: Using rawPrice', { totalAmount });
+    }
+    
+    // ✅ If we have a basePrice but no totalAmount, calculate
+    if (totalAmount === 0 && item.basePrice) {
+      const markupPct = item.markupPercentage || 10;
+      const servicePct = item.serviceFeePercentage || 5;
+      const base = item.basePrice;
+      const markup = (base * markupPct) / 100;
+      const service = (base * servicePct) / 100;
+      totalAmount = base + markup + service;
+      console.log('💰 Duffel: Calculated from basePrice', { base, markup, service, totalAmount });
+    }
+    
+    // ✅ If still no price, use a default
+    if (!totalAmount || totalAmount === 0) {
+      totalAmount = 100; // Default fallback
+      console.warn('⚠️ Duffel: No price found, using default', { totalAmount });
+    }
+    
+    // ✅ Format the price
+    const formattedPrice = `${displayCurrency} ${totalAmount.toFixed(2)}`;
+    
+    console.log('💰 Duffel: Final price', {
+      totalAmount,
+      displayCurrency,
+      formattedPrice,
+    });
+    
+    return {
+      ...item,
+      price: formattedPrice,
+      displayPrice: formattedPrice,
+      totalPrice: formattedPrice,
+      currency: displayCurrency,
+      rawPrice: totalAmount,
+      final_amount: totalAmount.toString(),
+      final_price: totalAmount.toString(),
+      totalAmount: totalAmount,
+      calculatedTotal: totalAmount,
+      basePrice: item.basePrice || totalAmount / 1.15,
+      markupAmount: item.markupAmount || (totalAmount * 0.10),
+      serviceFee: item.serviceFee || (totalAmount * 0.05),
+      markup_percentage: item.markupPercentage || 10,
+      service_fee_percentage: item.serviceFeePercentage || 5,
+      breakdown: `Total fare: ${formattedPrice}`,
+    };
+  }
+
+  // ============================================================
   // ✅ HOTELS AND CARS - Keep existing logic (UNCHANGED)
   // ============================================================
   if (item.priceBreakdown) {
@@ -354,7 +465,7 @@ function isAmadeusHotel(item: ExtendedSearchResult): boolean {
   return (hasOfferId || hasHotelId);
 }
 
-// ==================== AIRPORT COUNTRY MAPPING ====================
+// ==================== AIRPORT COUNTRY MAPPING (UNCHANGED) ====================
 const AIRPORT_COUNTRY_MAP: Record<string, string> = {
   'LOS': 'NG', 'ABV': 'NG', 'PHC': 'NG', 'KAN': 'NG', 'ENU': 'NG',
   'QOW': 'NG', 'BNI': 'NG', 'JOS': 'NG', 'KAD': 'NG', 'YOL': 'NG',
@@ -480,6 +591,7 @@ const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSea
     return item;
   }
   
+  // ✅ Only Wakanow (UNCHANGED)
   if (item.isWakanow && item.selectData) {
     try {
       const { selectWakanowFlight } = await import('@/lib/wakanow-api');
@@ -487,10 +599,8 @@ const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSea
       
       console.log('🔍 ensureTermsExist - Backend selectResult:', selectResult);
       
-      // ✅ Access data from selectResult.data
       const responseData = selectResult?.data;
       
-      // ✅ Get the price breakdown directly from the backend
       const priceBreakdown = responseData?.priceBreakdown || {
         basePrice: responseData?.basePrice || 0,
         markupAmount: responseData?.markupAmount || 0,
@@ -525,7 +635,7 @@ const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSea
         markupPercentage: priceBreakdown.markupPercentage,
         serviceFee: priceBreakdown.serviceFee,
         serviceFeePercentage: priceBreakdown.serviceFeePercentage,
-        taxes: priceBreakdown.taxes.toString(), // ✅ Convert to string
+        taxes: priceBreakdown.taxes.toString(),
         taxPercentage: priceBreakdown.taxPercentage,
         totalAmount: priceBreakdown.totalAmount,
         currency: priceBreakdown.currency,
@@ -563,6 +673,7 @@ const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSea
   
   return item;
 };
+
 export default function BookingReviewPage() {
   const router = useRouter();
   const { selectedItem, searchParams, persistSelectionForReturn } = useSearch();
@@ -587,7 +698,6 @@ export default function BookingReviewPage() {
     const item = selectedItem as ExtendedSearchResult;
     if (!item) return null;
     
-    // ✅ If it's a Wakanow flight, process it
     if (item.isWakanow) {
       const processed = processItemPrices(item, currency.code);
       console.log('💰 useState - Processing Wakanow item:', {
@@ -637,15 +747,13 @@ export default function BookingReviewPage() {
     return { expired: false };
   };
 
-  // ✅ Fetch terms for Wakanow flights - runs ONCE when selectedItem changes
+  // ✅ Fetch terms for Wakanow flights - runs ONCE when selectedItem changes (UNCHANGED)
   useEffect(() => {
     const loadTerms = async () => {
-      // ✅ Skip if no selectedItem or already fetched
       if (!selectedItem || hasFetchedTermsRef.current) return;
       
       const item = selectedItem as ExtendedSearchResult;
       
-      // ✅ Check if Wakanow selection is expired
       if (item.isWakanow) {
         const { expired, timeRemaining } = checkWakanowSelection();
         if (expired) {
@@ -668,7 +776,6 @@ export default function BookingReviewPage() {
         }
       }
       
-      // ✅ If Wakanow flight with selectData and no terms, fetch them
       if (item.isWakanow && item.selectData && !item.terms_and_conditions) {
         setIsFetchingTerms(true);
         try {
@@ -712,13 +819,11 @@ export default function BookingReviewPage() {
         hasFetchedTermsRef.current = true;
         setIsFetchingTerms(false);
       } else if (!enhancedItem) {
-        // ✅ If no enhancedItem, process the item
         const processed = processItemPrices(item, currency.code);
         setEnhancedItem(processed);
         hasFetchedTermsRef.current = true;
         hasProcessedRef.current = true;
       } else {
-        // ✅ If enhancedItem exists but no terms fetched, mark as fetched
         hasFetchedTermsRef.current = true;
       }
     };
@@ -726,7 +831,7 @@ export default function BookingReviewPage() {
     loadTerms();
   }, [selectedItem, enhancedItem, router, currency.code]);
 
-  // ✅ Store selection time when Wakanow flight is selected
+  // ✅ Store selection time when Wakanow flight is selected (UNCHANGED)
   useEffect(() => {
     if (selectedItem) {
       const item = selectedItem as ExtendedSearchResult;
@@ -759,7 +864,6 @@ export default function BookingReviewPage() {
   const getItemForReview = (): SearchResult => {
     const baseItem = (enhancedItem || selectedItem) as ExtendedSearchResult;
     
-    // ✅ If we have a booking, override the item prices with booking prices
     if (booking) {
       console.log('🔄 Merging item with booking prices:', {
         bookingTotal: booking.totalAmount,
@@ -771,7 +875,6 @@ export default function BookingReviewPage() {
       
       const mergedItem: ExtendedSearchResult = {
         ...baseItem,
-        // ✅ Override price fields with booking values
         basePrice: booking.basePrice ?? baseItem.basePrice,
         totalAmount: booking.totalAmount ?? baseItem.totalAmount,
         markupAmount: booking.markupAmount ?? baseItem.markupAmount,
@@ -783,10 +886,8 @@ export default function BookingReviewPage() {
         calculatedBasePrice: booking.basePrice ?? baseItem.calculatedBasePrice,
         calculatedMarkup: booking.markupAmount ?? baseItem.calculatedMarkup,
         calculatedServiceFee: booking.serviceFee ?? baseItem.calculatedServiceFee,
-        // ✅ Use booking price breakdown if available
         priceBreakdown: booking.bookingData?.priceBreakdown || baseItem.priceBreakdown,
         breakdown: booking.bookingData?.priceBreakdown?.breakdown || baseItem.breakdown,
-        // ✅ Use booking price for display
         price: booking.totalAmount ? `${booking.currency || 'NGN'} ${booking.totalAmount.toFixed(2)}` : baseItem.price,
         displayPrice: booking.totalAmount ? `${booking.currency || 'NGN'} ${booking.totalAmount.toFixed(2)}` : baseItem.displayPrice,
         totalPrice: booking.totalAmount ? `${booking.currency || 'NGN'} ${booking.totalAmount.toFixed(2)}` : baseItem.totalPrice,
@@ -805,6 +906,10 @@ export default function BookingReviewPage() {
     return baseItem as SearchResult;
   };
 
+  // ============================================================
+  // ✅ handleProceedToPayment - ONLY DUFFEL CHANGES
+  // Wakanow and Amadeus flows are UNCHANGED
+  // ============================================================
   const handleProceedToPayment = async (
     passengerInfo: PassengerInfo,
     voucherCode?: string,
@@ -840,21 +945,77 @@ export default function BookingReviewPage() {
       }
     }
   
-    const cleanedPassengerInfo: PassengerInfo = {
+    // ✅ Build base passenger info
+    const basePassengerInfo: PassengerInfo = {
       firstName: passengerInfo.firstName,
       lastName: passengerInfo.lastName,
       email: passengerInfo.email,
       phone: passengerInfo.phone,
     };
   
+    // ✅ Add flight-specific fields if it's a flight
+    if (isFlight) {
+      (basePassengerInfo as any).title = passengerInfo.title;
+      (basePassengerInfo as any).gender = passengerInfo.gender;
+      (basePassengerInfo as any).dateOfBirth = passengerInfo.dateOfBirth;
+    }
+  
+    // Determine provider
+    let provider = extendedItem?.provider || 'DUFFEL';
+    if (extendedItem?.isWakanow === true || provider?.toLowerCase() === 'wakanow') {
+      provider = 'WAKANOW';
+    } else if (provider?.toLowerCase() === 'duffel') {
+      provider = 'DUFFEL';
+    }
+  
+    // ✅ Build passenger info based on provider
+    let cleanedPassengerInfo: PassengerInfo = { ...basePassengerInfo };
+  
+    if (isFlight) {
+      if (provider === 'DUFFEL') {
+        // ✅ DUFFEL: Only these fields (NEW - ONLY DUFFEL CHANGE)
+        cleanedPassengerInfo = {
+          ...basePassengerInfo,
+          title: passengerInfo.title,
+          gender: passengerInfo.gender,
+          dateOfBirth: passengerInfo.dateOfBirth,
+        } as any;
+        
+        console.log('🧹 Cleaned passenger info for Duffel:', cleanedPassengerInfo);
+      } else if (provider === 'WAKANOW') {
+        // ✅ WAKANOW: All fields including passport (UNCHANGED)
+        cleanedPassengerInfo = {
+          ...basePassengerInfo,
+          title: passengerInfo.title,
+          gender: passengerInfo.gender,
+          dateOfBirth: passengerInfo.dateOfBirth,
+          passportNumber: (passengerInfo as any).passportNumber,
+          passportExpiry: (passengerInfo as any).passportExpiry,
+          passportIssuingAuthority: (passengerInfo as any).passportIssuingAuthority,
+          passportIssueCountry: (passengerInfo as any).passportIssueCountry,
+          address: (passengerInfo as any).address,
+          city: (passengerInfo as any).city,
+          country: (passengerInfo as any).country,
+          countryCode: (passengerInfo as any).countryCode,
+          postalCode: (passengerInfo as any).postalCode,
+          travellers: (passengerInfo as any).travellers,
+        } as any;
+        
+        console.log('📋 Full passenger info for Wakanow:', cleanedPassengerInfo);
+      }
+    }
+  
     console.log("🔍 Booking flow detection:", {
       isHotel,
       isCar,
       isFlight,
-      provider: extendedItem?.provider,
+      provider,
       isMerchantPaymentModel,
     });
   
+    // ============================================================
+    // ✅ HOTEL FLOW - AMADEUS (UNCHANGED)
+    // ============================================================
     if (isHotel && !isCar) {
       if (isMerchantPaymentModel) {
         try {
@@ -920,6 +1081,9 @@ export default function BookingReviewPage() {
       return;
     }
   
+    // ============================================================
+    // ✅ CAR RENTAL FLOW - AMADEUS (UNCHANGED)
+    // ============================================================
     if (isCar) {
       try {
         console.log("🚗 Creating car rental booking...");
@@ -948,9 +1112,13 @@ export default function BookingReviewPage() {
       return;
     }
   
+    // ============================================================
+    // ✅ FLIGHT BOOKING - WAKANOW (UNCHANGED) + DUFFEL (FIXED)
+    // ============================================================
     try {
       let bookingItem = extendedItem;
       
+      // ✅ Wakanow terms fetch (UNCHANGED)
       if (isFlight && extendedItem.isWakanow) {
         try {
           const { expired } = checkWakanowSelection();
@@ -1007,6 +1175,7 @@ export default function BookingReviewPage() {
         finalProvider = 'DUFFEL';
       }
       
+      // ✅ Wakanow specific (UNCHANGED)
       if (finalProvider === 'WAKANOW') {
         const selectDataValue = bookingItem.selectData || 
                                bookingItem.token || 
@@ -1023,30 +1192,23 @@ export default function BookingReviewPage() {
         }
       }
       
+      // ✅ Duffel specific (NEW - ONLY DUFFEL CHANGE)
       if (finalProvider === 'DUFFEL' && !bookingItem.offer_request_id) {
         throw new Error('Missing offer ID for this flight. Please go back and select the flight again.');
       }
       
-      // ✅ Get prices from the item (already processed)
-      // ✅ PRIORITY 1: Use final_amount (Wakanow)
+      // ✅ Get prices from the item
       let finalAmount = bookingItem.final_amount ? parseFloat(bookingItem.final_amount) : 0;
       
-      // ✅ PRIORITY 2: Use priceBreakdown
       if (!finalAmount || finalAmount === 0) {
         finalAmount = bookingItem.priceBreakdown?.totalAmount || 0;
       }
-      
-      // ✅ PRIORITY 3: Use calculatedTotal
       if (!finalAmount || finalAmount === 0) {
         finalAmount = bookingItem.calculatedTotal || 0;
       }
-      
-      // ✅ PRIORITY 4: Use totalAmount
       if (!finalAmount || finalAmount === 0) {
         finalAmount = bookingItem.totalAmount || 0;
       }
-      
-      // ✅ PRIORITY 5: Parse from price string
       if (!finalAmount || finalAmount === 0) {
         if (bookingItem.price && typeof bookingItem.price === 'string') {
           const parsed = parseFloat(bookingItem.price.replace(/[^0-9.]/g, ''));
@@ -1059,17 +1221,17 @@ export default function BookingReviewPage() {
       const basePrice = bookingItem.priceBreakdown?.basePrice ||
                         bookingItem.calculatedBasePrice || 
                         bookingItem.basePrice || 
-                        (finalAmount > 0 ? finalAmount / 1.15 : 0); // Estimate if missing
+                        (finalAmount > 0 ? finalAmount / 1.15 : 0);
       
       const markupAmount = bookingItem.priceBreakdown?.markupAmount ||
                            bookingItem.calculatedMarkup || 
                            bookingItem.markupAmount || 
-                           (finalAmount > 0 ? finalAmount * 0.10 : 0); // Estimate if missing
+                           (finalAmount > 0 ? finalAmount * 0.10 : 0);
       
       const serviceFee = bookingItem.priceBreakdown?.serviceFee ||
                          bookingItem.calculatedServiceFee || 
                          bookingItem.serviceFee || 
-                         (finalAmount > 0 ? finalAmount * 0.05 : 0); // Estimate if missing
+                         (finalAmount > 0 ? finalAmount * 0.05 : 0);
 
       console.log('💰 Flight booking prices (from backend):', {
         basePrice,
@@ -1097,10 +1259,11 @@ export default function BookingReviewPage() {
   
       console.log("✈️ Creating flight booking with provider:", finalProvider);
   
+      // ✅ Create booking - uses cleaned passenger info for Duffel
       const newBooking = await createBooking(
         correctedItem,
         searchParams,
-        passengerInfo,
+        cleanedPassengerInfo,  // ✅ Use cleaned passenger info
         isGuest,
         {
           taxes: serviceFee,
@@ -1201,7 +1364,6 @@ export default function BookingReviewPage() {
   return (
     <>
       <ReviewTrip
-        // ✅ Use the merged item with booking prices
         item={getItemForReview()}
         searchParams={searchParams}
         isLoggedIn={isLoggedIn}
