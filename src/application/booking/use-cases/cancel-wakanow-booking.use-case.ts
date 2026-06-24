@@ -3,18 +3,22 @@ import { BookingRepository } from '@domains/booking/repositories/booking.reposit
 import { BOOKING_REPOSITORY } from '@domains/booking/repositories/booking.repository.token';
 import { BookingStatus, PaymentStatus } from '@prisma/client';
 import { WakanowService } from '@infrastructure/external-apis/wakanow/wakanow.service';
+import { ResendService } from '@infrastructure/email/resend.service';
+import { CurrencyService } from '@infrastructure/currency/currency.service';
 
 @Injectable()
 export class CancelWakanowBookingUseCase {
   private readonly logger = new Logger(CancelWakanowBookingUseCase.name);
 
-  // ✅ Wakanow cancellation fee is $50 USD as per terms
+
   private readonly CANCELLATION_FEE_USD = 50;
 
   constructor(
     @Inject(BOOKING_REPOSITORY)
     private readonly bookingRepository: BookingRepository,
     private readonly wakanowService: WakanowService,
+    private readonly resendService: ResendService,
+    private readonly currencyService: CurrencyService,
   ) {}
 
   async execute(bookingId: string, userId: string) {
@@ -26,23 +30,22 @@ export class CancelWakanowBookingUseCase {
       throw new NotFoundException(`Booking ${bookingId} not found`);
     }
 
-    // 2. Verify user owns this booking
+  
     if (booking.userId !== userId) {
       throw new ForbiddenException('You do not have permission to cancel this booking');
     }
 
-    // 3. Verify it's a Wakanow booking
+  
     if (booking.provider !== 'WAKANOW') {
       throw new BadRequestException('This booking is not a Wakanow booking');
     }
 
-    // 4. Check if booking can be cancelled
+   
     if (booking.status === BookingStatus.CANCELLED) {
       throw new BadRequestException('Booking is already cancelled');
     }
 
     if (booking.status === BookingStatus.CONFIRMED) {
-      // CONFIRMED bookings might have tickets issued - check ticket status
       const ticketStatus = booking.bookingData?.ticketStatus as string;
       
       if (ticketStatus === 'Success' || ticketStatus === 'Issued') {
@@ -51,55 +54,54 @@ export class CancelWakanowBookingUseCase {
         );
       }
       
-      // If not ticketed, allow cancellation
       this.logger.log('Booking is confirmed but not ticketed - allowing cancellation');
     }
 
-    // 5. Calculate cancellation fee and refund
-    // ✅ Calculate cancellation fee based on booking currency
+
     const currency = booking.currency || 'NGN';
     
-    // ✅ Convert $50 USD to the booking currency
-    // Using a conservative exchange rate - you should use your currency service
-    const USD_TO_NGN_RATE = 1500; // 1 USD = 1500 NGN (adjust as needed)
-    const USD_TO_GBP_RATE = 0.78; // 1 USD = 0.78 GBP
-    
+   
     let cancellationFeeInCurrency: number;
-    let cancellationFeeCurrency: string;
+    let cancellationFeeCurrency: string = currency;
     
-    if (currency === 'USD') {
-      cancellationFeeInCurrency = this.CANCELLATION_FEE_USD;
-      cancellationFeeCurrency = 'USD';
-    } else if (currency === 'GBP') {
-      cancellationFeeInCurrency = this.CANCELLATION_FEE_USD * USD_TO_GBP_RATE;
-      cancellationFeeCurrency = 'GBP';
-    } else if (currency === 'NGN') {
-      cancellationFeeInCurrency = this.CANCELLATION_FEE_USD * USD_TO_NGN_RATE;
-      cancellationFeeCurrency = 'NGN';
-    } else {
-      // Default: use the booking currency with a fallback conversion
-      cancellationFeeInCurrency = this.CANCELLATION_FEE_USD * USD_TO_NGN_RATE;
-      cancellationFeeCurrency = currency;
+    try {
+   
+      const convertedAmount = await this.currencyService.convert(
+        this.CANCELLATION_FEE_USD,
+        'USD',
+        currency
+      );
+      
+      if (convertedAmount && convertedAmount > 0) {
+        cancellationFeeInCurrency = convertedAmount;
+        this.logger.log(`✅ Converted $${this.CANCELLATION_FEE_USD} USD to ${currency}: ${cancellationFeeInCurrency}`);
+      } else {
+        this.logger.warn(`⚠️ Currency conversion returned ${convertedAmount}, using fallback...`);
+        cancellationFeeInCurrency = await this.convertWithFallback(currency);
+      }
+    } catch (error) {
+      this.logger.error(`❌ Currency conversion failed: ${error.message}`);
+      cancellationFeeInCurrency = await this.convertWithFallback(currency);
     }
 
-    // ✅ Calculate refund amount
+
     const totalAmount = booking.totalAmount || 0;
     const refundAmount = Math.max(0, totalAmount - cancellationFeeInCurrency);
 
-    // 6. Check if payment was completed
+
     const isRefundEligible = booking.paymentStatus === PaymentStatus.COMPLETED;
 
     if (isRefundEligible) {
       this.logger.log(`Payment was completed. Refund: ${refundAmount} ${currency}, Fee: ${cancellationFeeInCurrency} ${currency}`);
     }
 
-    // 7. Get Wakanow booking details for logging
+
     const wakanowBookingId = booking.providerBookingId;
     const pnrNumber = booking.bookingData?.pnrReferenceNumber;
 
     this.logger.log(`Cancelling Wakanow booking: ${wakanowBookingId}, PNR: ${pnrNumber}`);
 
-    // 8. Update booking status to CANCELLED
+
     const updatedBookingData = {
       ...(booking.bookingData as any || {}),
       cancelledAt: new Date().toISOString(),
@@ -109,7 +111,6 @@ export class CancelWakanowBookingUseCase {
       wakanowBookingId: wakanowBookingId,
       pnrNumber: pnrNumber,
       refundStatus: isRefundEligible ? 'PENDING' : 'NOT_APPLICABLE',
-      // ✅ Store cancellation fee details
       cancellationFee: cancellationFeeInCurrency,
       cancellationFeeCurrency: cancellationFeeCurrency,
       cancellationFeeUSD: this.CANCELLATION_FEE_USD,
@@ -123,7 +124,39 @@ export class CancelWakanowBookingUseCase {
 
     this.logger.log(`Wakanow booking ${bookingId} cancelled successfully`);
 
-    // 9. Return cancellation details with fee information
+    try {
+      const customerName = booking.passengerInfo?.firstName || 
+                          booking.passengerInfo?.name || 
+                          'Valued Customer';
+
+      const userEmail = booking.passengerInfo?.email || 
+                       (booking as any).user?.email || 
+                       null;
+
+      if (userEmail) {
+        this.logger.log(`📧 Sending cancellation email to ${userEmail}`);
+        
+        await this.resendService.sendCancellationEmail({
+          to: userEmail,
+          customerName: customerName,
+          bookingReference: booking.reference,
+          refundAmount: isRefundEligible ? refundAmount : undefined,
+          refundCurrency: isRefundEligible ? currency : undefined,
+          refundTo: 'original payment method',
+          hasAirlineCredits: false,
+          airlineCredits: [],
+          cancellationDate: new Date(),
+        });
+
+        this.logger.log(`✅ Cancellation email sent to ${userEmail}`);
+      } else {
+        this.logger.warn(`⚠️ No email found for booking ${bookingId} - skipping cancellation email`);
+      }
+    } catch (emailError: any) {
+      this.logger.error(`❌ Failed to send cancellation email: ${emailError.message}`);
+    }
+
+
     return {
       success: true,
       bookingId: bookingId,
@@ -143,5 +176,59 @@ export class CancelWakanowBookingUseCase {
         ? `Booking cancelled successfully. A cancellation fee of ${cancellationFeeCurrency} ${cancellationFeeInCurrency.toFixed(2)} ($${this.CANCELLATION_FEE_USD} USD) has been applied. Your refund of ${currency} ${refundAmount.toFixed(2)} will be processed within 7-10 business days.`
         : 'Booking cancelled successfully. No payment was processed.',
     };
+  }
+
+  
+  private async convertWithFallback(targetCurrency: string): Promise<number> {
+
+    try {
+     
+      const usdToNgn = await this.currencyService.convert(
+        this.CANCELLATION_FEE_USD,
+        'USD',
+        'NGN'
+      );
+      
+      if (usdToNgn && usdToNgn > 0 && targetCurrency !== 'NGN') {
+      
+        const ngnToTarget = await this.currencyService.convert(
+          usdToNgn,
+          'NGN',
+          targetCurrency
+        );
+        
+        if (ngnToTarget && ngnToTarget > 0) {
+          this.logger.log(`✅ Fallback conversion successful: $${this.CANCELLATION_FEE_USD} USD → ${ngnToTarget} ${targetCurrency}`);
+          return ngnToTarget;
+        }
+      }
+      
+      if (usdToNgn && usdToNgn > 0 && targetCurrency === 'NGN') {
+        return usdToNgn;
+      }
+    } catch (error) {
+      this.logger.error(`Fallback conversion failed: ${error.message}`);
+    }
+
+    
+    const usdToNgnRate = parseFloat(process.env.USD_TO_NGN_RATE || '1500');
+    
+    const fallbackRates: Record<string, number> = {
+      'NGN': usdToNgnRate,
+      'GBP': usdToNgnRate * 0.00078,
+      'EUR': usdToNgnRate * 0.00092,
+      'USD': 1,
+      'GHS': usdToNgnRate * 0.01,
+      'KES': usdToNgnRate * 0.087,
+      'ZAR': usdToNgnRate * 0.012,
+      'CAD': usdToNgnRate * 0.0012,
+      'AUD': usdToNgnRate * 0.0013,
+    };
+
+    const rate = fallbackRates[targetCurrency] || usdToNgnRate;
+    const result = this.CANCELLATION_FEE_USD * rate;
+    
+    this.logger.warn(`⚠️ Using fallback rate for ${targetCurrency}: ${rate} (${result})`);
+    return result;
   }
 }

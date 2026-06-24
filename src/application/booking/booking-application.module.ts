@@ -52,6 +52,8 @@ import { CurrencyModule } from '@infrastructure/currency/currency.module';
 import { SecurityModule } from '@infrastructure/security/security.module';
 import { HotelImagesModule } from '@application/hotel-images/hotel-images.module';
 import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracking.module';
+import { ResendService } from '@infrastructure/email/resend.service';
+import { CurrencyService } from '@infrastructure/currency/currency.service';
 
 @Module({
   imports: [
@@ -68,6 +70,7 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     PaymentModule,
   ],
   providers: [
+  
     CreateBookingUseCase,
     CreateGuestBookingUseCase,
     SearchFlightsUseCase,
@@ -75,6 +78,8 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     CreateDuffelOrderUseCase,
     CancelDuffelOrderUseCase,
     HandleDuffelWebhookUseCase,
+    
+ 
     SearchHotelsUseCase,
     FetchHotelRatesUseCase,
     CreateHotelQuoteUseCase,
@@ -93,13 +98,15 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     CheckHotelbedsRateUseCase,
     CreateHotelbedsBookingUseCase,
     GetAmadeusHotelDetailsUseCase,
+    RequestHotelCancellationUseCase,
+    ProcessCancellationRequestUseCase,
+    UpdateAmadeusHotelBookingUseCase,
+    
+   
     SearchCarRentalsUseCase,
     CreateCarRentalBookingUseCase,
     CreateGuestCarRentalBookingUseCase,
     CancelCarRentalBookingUseCase,
-    RequestHotelCancellationUseCase,
-    ProcessCancellationRequestUseCase,
-    UpdateAmadeusHotelBookingUseCase,
     SearchWakanowFlightsUseCase,
     SelectWakanowFlightUseCase,
     BookWakanowFlightUseCase,
@@ -108,10 +115,16 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     ConfirmWakanowPaymentUseCase,
     TicketWakanowBookingUseCase,
     GetWakanowBookingStatusUseCase,
+    
+  
     CancelBookingUseCase,
     CancelWakanowBookingUseCase,
+  
+    ResendService,  
+    CurrencyService, 
   ],
   exports: [
+ 
     CreateBookingUseCase,
     CreateGuestBookingUseCase,
     SearchFlightsUseCase,
@@ -119,6 +132,8 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     CreateDuffelOrderUseCase,
     CancelDuffelOrderUseCase,
     HandleDuffelWebhookUseCase,
+    
+
     SearchHotelsUseCase,
     FetchHotelRatesUseCase,
     CreateHotelQuoteUseCase,
@@ -137,13 +152,17 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     CheckHotelbedsRateUseCase,
     CreateHotelbedsBookingUseCase,
     GetAmadeusHotelDetailsUseCase,
+    RequestHotelCancellationUseCase,
+    ProcessCancellationRequestUseCase,
+    UpdateAmadeusHotelBookingUseCase,
+    
+
     SearchCarRentalsUseCase,
     CreateCarRentalBookingUseCase,
     CreateGuestCarRentalBookingUseCase,
     CancelCarRentalBookingUseCase,
-    RequestHotelCancellationUseCase,
-    ProcessCancellationRequestUseCase,
-    UpdateAmadeusHotelBookingUseCase,
+    
+
     SearchWakanowFlightsUseCase,
     SelectWakanowFlightUseCase,
     BookWakanowFlightUseCase,
@@ -154,6 +173,8 @@ import { UsageTrackingModule } from '@infrastructure/usage-tracking/usage-tracki
     GetWakanowBookingStatusUseCase,
     CancelBookingUseCase,
     CancelWakanowBookingUseCase,
+    ResendService,
+    CurrencyService,
   ],
 })
 export class BookingApplicationModule {}
