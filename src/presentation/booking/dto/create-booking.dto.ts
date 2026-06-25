@@ -350,7 +350,7 @@ export class CreateBookingDto {
   offerData?: any;
 
   // ============================================================
-  // ✅ WAKANOW FIELDS (UNCHANGED)
+  // ✅ WAKANOW FIELDS
   // ============================================================
   @ApiPropertyOptional({ description: 'Wakanow booking ID' })
   @IsString()
@@ -361,6 +361,15 @@ export class CreateBookingDto {
   @IsString()
   @IsOptional()
   selectData?: string;
+
+  // ✅ NEW: PNR number for Wakanow bookings (used for automatic ticketing)
+  @ApiPropertyOptional({ 
+    description: 'PNR number for Wakanow flight bookings (used for automatic ticketing)', 
+    example: '2606250400161' 
+  })
+  @IsString()
+  @IsOptional()
+  pnrNumber?: string;
 
   // ✅ New price breakdown field
   @ApiPropertyOptional({
