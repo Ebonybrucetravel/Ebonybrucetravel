@@ -17,14 +17,44 @@ export class CreateBookingUseCase {
   ) {}
 
   async execute(dto: CreateBookingDto, userId: string): Promise<Booking> {
-    // Normalize passengerInfo to always be an array for storage
-    const normalizedPassengers = this.normalizePassengers(dto.passengerInfo);
+
+    const totalAmountFromDto = dto.getTotalAmount ? dto.getTotalAmount() : (dto.totalAmount || 0);
     
-    // DUFFEL: Validate date of birth for all passengers
+
     const isDuffelFlight =
       dto.provider === Provider.DUFFEL &&
       (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
+
+    if (isDuffelFlight) {
+      this.logger.log(`💰 Duffel total amount from DTO: ${totalAmountFromDto}`);
+      
+      let finalTotalAmount = totalAmountFromDto;
+      
     
+      if (!finalTotalAmount || finalTotalAmount <= 0) {
+        if (dto.offerData?.total_amount) {
+          finalTotalAmount = parseFloat(dto.offerData.total_amount);
+          this.logger.log(`💰 Using total_amount from offerData: ${finalTotalAmount}`);
+        } else if (dto.offerData?.totalAmount) {
+          finalTotalAmount = parseFloat(dto.offerData.totalAmount);
+          this.logger.log(`💰 Using totalAmount from offerData: ${finalTotalAmount}`);
+        }
+      }
+
+
+      if (!finalTotalAmount || finalTotalAmount <= 0) {
+        throw new BadRequestException(
+          'Total amount is required and must be greater than 0. Please provide price breakdown or total amount.',
+        );
+      }
+      
+
+      (dto as any)._validatedTotalAmount = finalTotalAmount;
+    }
+
+
+    const normalizedPassengers = this.normalizePassengers(dto.passengerInfo);
+
     if (isDuffelFlight && dto.passengerInfo) {
       const passengers = Array.isArray(dto.passengerInfo) ? dto.passengerInfo : [dto.passengerInfo];
       for (let i = 0; i < passengers.length; i++) {
@@ -37,7 +67,7 @@ export class CreateBookingUseCase {
       }
     }
 
-    // Get active markup config for product type and currency
+
     const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
       dto.productType,
       dto.currency,
@@ -57,9 +87,9 @@ export class CreateBookingUseCase {
     };
     let bookingData = { ...dto.bookingData };
 
-    // DUFFEL: Store offer data and passengers in bookingData for later use
+
     if (isDuffelFlight && dto.offerId) {
-      // CRITICAL FIX: Store passengers as an array in bookingData
+   
       const passengersToStore = normalizedPassengers.map((p: any) => ({
         id: p.id || `pas_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
         given_name: p.given_name || p.firstName || 'Guest',
@@ -71,6 +101,13 @@ export class CreateBookingUseCase {
         title: p.title || 'mr',
       }));
 
+     
+      const offerTotalAmount = dto.offerData?.total_amount || 
+                              dto.offerData?.totalAmount || 
+                              (dto as any)._validatedTotalAmount || 
+                              totalAmountFromDto || 
+                              0;
+
       bookingData = {
         ...bookingData,
         offerId: dto.offerId,
@@ -79,15 +116,14 @@ export class CreateBookingUseCase {
         // CRITICAL FIX: Store passengers as an array
         passengers: passengersToStore,
         offerPassengers: dto.offerData?.passengers || [],
-        offerTotalAmount: dto.offerData?.total_amount || dto.totalAmount || 0,
-        offerCurrency: dto.offerData?.total_currency || dto.currency || 'GBP',
+        offerTotalAmount: offerTotalAmount,
+        offerCurrency: dto.offerData?.total_currency || dto.offerData?.currency || dto.currency || 'GBP',
         storedOfferDataAt: new Date().toISOString(),
       };
       this.logger.log(`📦 Stored Duffel offer data for authenticated booking: ${dto.offerId} with ${passengersToStore.length} passengers`);
     }
 
-    // Amadeus or Hotelbeds hotel via generic POST /bookings: frontend often sends final_price as basePrice.
-    // Treat it as final total and reverse-calculate so we don't double-add markup.
+  
     const isHotelProvider =
       dto.productType === ProductType.HOTEL &&
       (dto.provider === Provider.AMADEUS || dto.provider === Provider.HOTELBEDS);
@@ -103,7 +139,7 @@ export class CreateBookingUseCase {
           dto.currency,
           markupConfig,
         );
-        // Normalize: store amadeus_offer_id for webhook (createAmadeusBookingAfterPayment)
+ 
         if (bookingData.offerId && !bookingData.amadeus_offer_id) {
           bookingData = { ...bookingData, amadeus_offer_id: bookingData.offerId };
         }
@@ -116,15 +152,22 @@ export class CreateBookingUseCase {
         );
       }
     } else {
+ 
       pricing = this.markupCalculationService.calculateTotal(
         dto.basePrice,
         dto.productType,
         dto.currency,
         markupConfig,
       );
+      
+    
+      if (isDuffelFlight && (dto as any)._validatedTotalAmount) {
+        pricing.totalAmount = (dto as any)._validatedTotalAmount;
+        this.logger.log(`💰 Duffel: Using DTO total amount: ${pricing.totalAmount}`);
+      }
     }
 
-    // Create booking with calculated amounts
+  
     const booking = await this.bookingService.createBooking({
       userId,
       productType: dto.productType,
@@ -135,7 +178,7 @@ export class CreateBookingUseCase {
       serviceFee: pricing.serviceFee,
       totalAmount: pricing.totalAmount,
       currency: dto.currency,
-      bookingData, // Contains passengers array for Duffel
+      bookingData, 
       passengerInfo: dto.passengerInfo,
       status: BookingStatus.PENDING,
       paymentStatus: 'PENDING',
@@ -144,23 +187,21 @@ export class CreateBookingUseCase {
     return booking;
   }
 
-  /**
-   * Normalize passenger data to always return an array
-   */
+  
   private normalizePassengers(passengerInfo: any): any[] {
     if (!passengerInfo) return [];
     
-    // If it's already an array
+
     if (Array.isArray(passengerInfo)) {
       return passengerInfo;
     }
     
-    // If it's a single passenger object
+
     if (typeof passengerInfo === 'object' && passengerInfo !== null) {
       return [passengerInfo];
     }
     
-    // If it's a JSON string
+
     if (typeof passengerInfo === 'string') {
       try {
         const parsed = JSON.parse(passengerInfo);
