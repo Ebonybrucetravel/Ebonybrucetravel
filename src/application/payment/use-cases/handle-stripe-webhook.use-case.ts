@@ -306,94 +306,126 @@ export class HandleStripeWebhookUseCase {
         }
       }
 
-      if (isWakanowFlight) {
-        try {
-          this.logger.log(`Automatically ticketing Wakanow flight for booking ${bookingId}...`);
-          
-          const bookingData = booking.bookingData as any;
-          const providerData = booking.providerData as any;
-          
-       
-          let pnrNumber = 
-            bookingData?.pnrNumber ||                          
-            bookingData?.pnrReferenceNumber || 
-            bookingData?.wakanowBookingId ||
-            providerData?.FlightBookingSummary?.PnrReferenceNumber ||
-            providerData?.FlightBookingResult?.FlightBookingSummaryModel?.PnrReferenceNumber ||
-            null;
-            
-          // ✅ Also check if pnrNumber is in the booking object directly
-          if (!pnrNumber && (booking as any).pnrNumber) {
-            pnrNumber = (booking as any).pnrNumber;
-          }
-          
+
+if (isWakanowFlight) {
+  try {
+    this.logger.log(`Automatically ticketing Wakanow flight for booking ${bookingId}...`);
+    
+    const bookingData = booking.bookingData as any;
+    const providerData = booking.providerData as any;
+    
+    let pnrNumber = 
+      bookingData?.pnrNumber ||                          
+      bookingData?.pnrReferenceNumber || 
+      bookingData?.wakanowBookingId ||
+      providerData?.FlightBookingSummary?.PnrReferenceNumber ||
+      providerData?.FlightBookingResult?.FlightBookingSummaryModel?.PnrReferenceNumber ||
+      null;
       
-          const wakanowBookingId = 
-            bookingData?.wakanowBookingId || 
-            bookingData?.bookingId ||
-            providerData?.BookingId ||
-            providerData?.booking_id ||
-            pnrNumber; 
-          
-          this.logger.log(`🔍 Found PNR: ${pnrNumber}, WakanowId: ${wakanowBookingId}`);
-            
-          if (!pnrNumber || !wakanowBookingId || pnrNumber === 'PENDING_ISSUE') {
-            this.logger.error(`Ticketing data missing for booking ${bookingId}. PNR: ${pnrNumber}, WakanowId: ${wakanowBookingId}`);
-            throw new Error(`Cannot issue ticket: ${!pnrNumber || pnrNumber === 'PENDING_ISSUE' ? 'PNR is missing or pending' : 'Wakanow BookingId is missing'}.`);
-          }
+    if (!pnrNumber && (booking as any).pnrNumber) {
+      pnrNumber = (booking as any).pnrNumber;
+    }
+    
+    const wakanowBookingId = 
+      bookingData?.wakanowBookingId || 
+      bookingData?.bookingId ||
+      providerData?.BookingId ||
+      providerData?.booking_id ||
+      pnrNumber;
+    
+    this.logger.log(`🔍 Found PNR: ${pnrNumber}, WakanowId: ${wakanowBookingId}`);
       
-          await this.ticketWakanowFlightUseCase.execute({ bookingId: wakanowBookingId, pnrNumber }, bookingId);
-          this.logger.log(`✅ Successfully ticketed Wakanow flight for booking ${bookingId}`);
-      
-          const updatedBooking = await this.prisma.booking.findUnique({
-            where: { id: bookingId },
-            include: { user: { select: { id: true, email: true, name: true } } },
-          });
-          if (updatedBooking) {
-            await this.sendBookingEmails(updatedBooking, paymentIntent);
-            await this.prisma.booking.update({
-              where: { id: bookingId },
-              data: { confirmationEmailSentAt: new Date() },
-            });
-          }
-        } catch (error) {
-          this.logger.error(
-            `Failed to ticket Wakanow flight for booking ${bookingId}. Payment confirmed but ticketing failed. Initiating automatic refund.`,
-            error,
-          );
-      
-          if (booking.stripeChargeId || chargeId) {
-            try {
-              this.logger.log(`Initiating automatic Stripe refund for failed Wakanow booking ${bookingId}...`);
-              await this.stripeService.createRefund({ paymentIntentId: paymentIntent.id });
-      
-              await this.prisma.booking.update({
-                where: { id: bookingId },
-                data: { refundStatus: 'PROCESSING', paymentStatus: 'REFUNDED' }
-              });
-              this.logger.log(`Automatic refund initiated for Wakanow booking ${bookingId}`);
-            } catch (refundError) {
-              this.logger.error(`Failed to initiate automatic refund for Wakanow booking ${bookingId}: `, refundError);
-            }
-          }
-      
-          if (booking.user?.email) {
-            this.resendService.sendBookingFailureEmail({
-              to: booking.user.email,
-              customerName: booking.user.name || 'Valued Customer',
-              bookingReference: booking.reference || booking.id,
-              productType: booking.productType,
-              amount: Number(booking.totalAmount),
-              currency: booking.currency,
-              failureReason: `Flight ticketing failed with provider: ${error instanceof Error ? error.message : 'Unknown provider error'}. We have automatically initiated a full refund back to your payment method.`,
-            }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
-          }
+    if (!pnrNumber || !wakanowBookingId || pnrNumber === 'PENDING_ISSUE') {
+      this.logger.error(`Ticketing data missing for booking ${bookingId}. PNR: ${pnrNumber}, WakanowId: ${wakanowBookingId}`);
+      throw new Error(`Cannot issue ticket: ${!pnrNumber || pnrNumber === 'PENDING_ISSUE' ? 'PNR is missing or pending' : 'Wakanow BookingId is missing'}.`);
+    }
+
+    // ✅ Retry with delay (3 attempts, increasing delays)
+    let lastError: any;
+    let ticketSuccess = false;
+    
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        if (attempt > 1) {
+          const delayMs = 3000 * attempt;
+          this.logger.log(`⏳ Waiting ${delayMs}ms before attempt ${attempt}/3...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+        
+        this.logger.log(`🔄 Ticket attempt ${attempt}/3 for booking ${bookingId}...`);
+        
+        await this.ticketWakanowFlightUseCase.execute(
+          { bookingId: wakanowBookingId, pnrNumber }, 
+          bookingId
+        );
+        
+        ticketSuccess = true;
+        this.logger.log(`✅ Successfully ticketed Wakanow flight for booking ${bookingId} on attempt ${attempt}`);
+        break;
+      } catch (error) {
+        lastError = error;
+        this.logger.warn(`⚠️ Ticket attempt ${attempt}/3 failed for booking ${bookingId}: ${error.message}`);
+        
+        // If it's a pending status, don't retry immediately
+        if (error.message?.includes('pending') || error.message?.includes('processing')) {
+          this.logger.log(`⏳ Ticket is pending, will retry later.`);
+          break;
         }
       }
+    }
 
-      // ============================================================
-      // ✅ AMADEUS HOTEL (UNCHANGED)
-      // ============================================================
+    // If all retries failed
+    if (!ticketSuccess) {
+      throw lastError || new Error('All ticket attempts failed');
+    }
+
+    const updatedBooking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { user: { select: { id: true, email: true, name: true } } },
+    });
+    if (updatedBooking) {
+      await this.sendBookingEmails(updatedBooking, paymentIntent);
+      await this.prisma.booking.update({
+        where: { id: bookingId },
+        data: { confirmationEmailSentAt: new Date() },
+      });
+    }
+  } catch (error) {
+    this.logger.error(
+      `Failed to ticket Wakanow flight for booking ${bookingId}. Payment confirmed but ticketing failed. Initiating automatic refund.`,
+      error,
+    );
+
+    if (booking.stripeChargeId || chargeId) {
+      try {
+        this.logger.log(`Initiating automatic Stripe refund for failed Wakanow booking ${bookingId}...`);
+        await this.stripeService.createRefund({ paymentIntentId: paymentIntent.id });
+
+        await this.prisma.booking.update({
+          where: { id: bookingId },
+          data: { refundStatus: 'PROCESSING', paymentStatus: 'REFUNDED' }
+        });
+        this.logger.log(`Automatic refund initiated for Wakanow booking ${bookingId}`);
+      } catch (refundError) {
+        this.logger.error(`Failed to initiate automatic refund for Wakanow booking ${bookingId}: `, refundError);
+      }
+    }
+
+    if (booking.user?.email) {
+      this.resendService.sendBookingFailureEmail({
+        to: booking.user.email,
+        customerName: booking.user.name || 'Valued Customer',
+        bookingReference: booking.reference || booking.id,
+        productType: booking.productType,
+        amount: Number(booking.totalAmount),
+        currency: booking.currency,
+        failureReason: `Flight ticketing failed with provider: ${error instanceof Error ? error.message : 'Unknown provider error'}. We have automatically initiated a full refund back to your payment method.`,
+      }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
+    }
+  }
+}
+
+     
       if (booking.provider === Provider.AMADEUS && booking.productType === 'HOTEL') {
         this.logger.log(`Processing Amadeus hotel order creation for booking ${bookingId} asynchronously...`);
         this.createAmadeusHotelBookingUseCase
