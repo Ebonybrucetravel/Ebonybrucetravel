@@ -306,9 +306,6 @@ export class HandleStripeWebhookUseCase {
         }
       }
 
-      // ============================================================
-      // ✅ WAKANOW FLIGHT (UNCHANGED - still auto-refunds)
-      // ============================================================
       if (isWakanowFlight) {
         try {
           this.logger.log(`Automatically ticketing Wakanow flight for booking ${bookingId}...`);
@@ -316,20 +313,38 @@ export class HandleStripeWebhookUseCase {
           const bookingData = booking.bookingData as any;
           const providerData = booking.providerData as any;
           
-          const pnrNumber = bookingData?.pnrReferenceNumber || 
-                            providerData?.FlightBookingResult?.FlightBookingSummaryModel?.PnrReferenceNumber;
+       
+          let pnrNumber = 
+            bookingData?.pnrNumber ||                          
+            bookingData?.pnrReferenceNumber || 
+            bookingData?.wakanowBookingId ||
+            providerData?.FlightBookingSummary?.PnrReferenceNumber ||
+            providerData?.FlightBookingResult?.FlightBookingSummaryModel?.PnrReferenceNumber ||
+            null;
             
-          const wakanowBookingId = bookingData?.wakanowBookingId || 
-                                   providerData?.BookingId;
+          // ✅ Also check if pnrNumber is in the booking object directly
+          if (!pnrNumber && (booking as any).pnrNumber) {
+            pnrNumber = (booking as any).pnrNumber;
+          }
+          
+      
+          const wakanowBookingId = 
+            bookingData?.wakanowBookingId || 
+            bookingData?.bookingId ||
+            providerData?.BookingId ||
+            providerData?.booking_id ||
+            pnrNumber; 
+          
+          this.logger.log(`🔍 Found PNR: ${pnrNumber}, WakanowId: ${wakanowBookingId}`);
             
           if (!pnrNumber || !wakanowBookingId || pnrNumber === 'PENDING_ISSUE') {
             this.logger.error(`Ticketing data missing for booking ${bookingId}. PNR: ${pnrNumber}, WakanowId: ${wakanowBookingId}`);
             throw new Error(`Cannot issue ticket: ${!pnrNumber || pnrNumber === 'PENDING_ISSUE' ? 'PNR is missing or pending' : 'Wakanow BookingId is missing'}.`);
           }
-
+      
           await this.ticketWakanowFlightUseCase.execute({ bookingId: wakanowBookingId, pnrNumber }, bookingId);
-          this.logger.log(`Successfully ticketed Wakanow flight for booking ${bookingId}`);
-
+          this.logger.log(`✅ Successfully ticketed Wakanow flight for booking ${bookingId}`);
+      
           const updatedBooking = await this.prisma.booking.findUnique({
             where: { id: bookingId },
             include: { user: { select: { id: true, email: true, name: true } } },
@@ -346,12 +361,12 @@ export class HandleStripeWebhookUseCase {
             `Failed to ticket Wakanow flight for booking ${bookingId}. Payment confirmed but ticketing failed. Initiating automatic refund.`,
             error,
           );
-
+      
           if (booking.stripeChargeId || chargeId) {
             try {
               this.logger.log(`Initiating automatic Stripe refund for failed Wakanow booking ${bookingId}...`);
               await this.stripeService.createRefund({ paymentIntentId: paymentIntent.id });
-
+      
               await this.prisma.booking.update({
                 where: { id: bookingId },
                 data: { refundStatus: 'PROCESSING', paymentStatus: 'REFUNDED' }
@@ -361,7 +376,7 @@ export class HandleStripeWebhookUseCase {
               this.logger.error(`Failed to initiate automatic refund for Wakanow booking ${bookingId}: `, refundError);
             }
           }
-
+      
           if (booking.user?.email) {
             this.resendService.sendBookingFailureEmail({
               to: booking.user.email,
