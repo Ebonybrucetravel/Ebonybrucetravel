@@ -27,10 +27,8 @@ export class SelectWakanowFlightUseCase {
       throw new BadRequestException('Invalid selectData (too short). Please search for flights again.');
     }
 
-    
     this.logger.log(`SelectData preview: ${selectData.substring(0, 50)}...`);
     this.logger.log(`SelectData length: ${selectData.length} - This is normal for Wakanow`);
-
 
     const selectDataVariants = this.generateSelectDataVariants(selectData);
     this.logger.log(`Generated ${selectDataVariants.length} SelectData variants to try`);
@@ -170,16 +168,22 @@ export class SelectWakanowFlightUseCase {
       currency: currency,
     };
 
+    // ✅ Get the booking ID (PNR) from the response
+    const bookingId = selectResponse.BookingId || null;
+    const selectDataResponse = selectResponse.SelectData || selectData;
+
     this.logger.log(
-      `✅ Wakanow flight selected. BookingId: ${selectResponse.BookingId}, ` +
+      `✅ Wakanow flight selected. BookingId: ${bookingId}, ` +
       `Base: ${roundedBasePrice}, Markup: ${roundedMarkup}, Service: ${roundedServiceFee}, ` +
       `Taxes: ${combinedTaxes}, Total: ${roundedTotal} ${currency}`,
     );
 
     return {
       provider: 'WAKANOW',
-      bookingId: selectResponse.BookingId || null,
-      selectData: selectResponse.SelectData || selectData,
+      bookingId: bookingId,
+      pnrNumber: bookingId, // ✅ CRITICAL: Store PNR number
+      wakanowBookingId: bookingId, // ✅ CRITICAL: Store Wakanow booking ID
+      selectData: selectDataResponse,
       isPriceMatched: selectResponse.IsPriceMatched || false,
       isPassportRequired: selectResponse.IsPassportRequired || false,
       
@@ -240,19 +244,15 @@ export class SelectWakanowFlightUseCase {
     };
   }
 
- 
   private generateSelectDataVariants(originalSelectData: string): Array<{ name: string; data: string }> {
     const variants: Array<{ name: string; data: string }> = [];
 
-
     variants.push({ name: 'Original', data: originalSelectData });
-
 
     const trimmed = originalSelectData.trim();
     if (trimmed !== originalSelectData) {
       variants.push({ name: 'Trimmed', data: trimmed });
     }
-
 
     try {
       if (originalSelectData.startsWith('7h4AAB+LCAAAAAAABAD') || 
@@ -274,7 +274,6 @@ export class SelectWakanowFlightUseCase {
       this.logger.debug('Decompression failed:', e.message);
     }
 
-    // 4. Base64 decode if it looks like base64
     try {
       const base64Regex = /^[A-Za-z0-9+/=]+$/;
       if (base64Regex.test(originalSelectData)) {
@@ -290,7 +289,6 @@ export class SelectWakanowFlightUseCase {
       this.logger.debug('Base64 decode failed:', e.message);
     }
 
-
     const prefixes = ['WAAAAB+LCAAAAAAABAC', '7h4AAB+LCAAAAAAABAD'];
     for (const prefix of prefixes) {
       if (originalSelectData.startsWith(prefix)) {
@@ -300,7 +298,6 @@ export class SelectWakanowFlightUseCase {
         }
       }
     }
-
 
     const seen = new Set<string>();
     const uniqueVariants = variants.filter(v => {
