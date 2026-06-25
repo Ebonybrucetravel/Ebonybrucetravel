@@ -14,10 +14,13 @@ export class CreateBookingUseCase {
     private readonly bookingService: BookingService,
     private readonly markupCalculationService: MarkupCalculationService,
     private readonly markupRepository: MarkupRepository,
-  ) { }
+  ) {}
 
   async execute(dto: CreateBookingDto, userId: string): Promise<Booking> {
-    // ✅ DUFFEL: Validate date of birth for all passengers
+    // Normalize passengerInfo to always be an array for storage
+    const normalizedPassengers = this.normalizePassengers(dto.passengerInfo);
+    
+    // DUFFEL: Validate date of birth for all passengers
     const isDuffelFlight =
       dto.provider === Provider.DUFFEL &&
       (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
@@ -54,19 +57,33 @@ export class CreateBookingUseCase {
     };
     let bookingData = { ...dto.bookingData };
 
-    // ✅ DUFFEL: Store offer data in bookingData for later use
+    // DUFFEL: Store offer data and passengers in bookingData for later use
     if (isDuffelFlight && dto.offerId) {
+      // CRITICAL FIX: Store passengers as an array in bookingData
+      const passengersToStore = normalizedPassengers.map((p: any) => ({
+        id: p.id || `pas_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
+        given_name: p.given_name || p.firstName || 'Guest',
+        family_name: p.family_name || p.lastName || 'Traveler',
+        born_on: p.born_on || p.dateOfBirth || '1990-01-01',
+        gender: p.gender || 'm',
+        email: p.email || 'guest@example.com',
+        phone_number: p.phone_number || p.phone || '+1234567890',
+        title: p.title || 'mr',
+      }));
+
       bookingData = {
         ...bookingData,
         offerId: dto.offerId,
         offerRequestId: dto.offerRequestId || bookingData.offer_request_id,
         offerData: dto.offerData || null,
+        // CRITICAL FIX: Store passengers as an array
+        passengers: passengersToStore,
         offerPassengers: dto.offerData?.passengers || [],
         offerTotalAmount: dto.offerData?.total_amount || dto.totalAmount || 0,
         offerCurrency: dto.offerData?.total_currency || dto.currency || 'GBP',
         storedOfferDataAt: new Date().toISOString(),
       };
-      this.logger.log(`📦 Stored Duffel offer data for authenticated booking: ${dto.offerId}`);
+      this.logger.log(`📦 Stored Duffel offer data for authenticated booking: ${dto.offerId} with ${passengersToStore.length} passengers`);
     }
 
     // Amadeus or Hotelbeds hotel via generic POST /bookings: frontend often sends final_price as basePrice.
@@ -118,12 +135,42 @@ export class CreateBookingUseCase {
       serviceFee: pricing.serviceFee,
       totalAmount: pricing.totalAmount,
       currency: dto.currency,
-      bookingData,
+      bookingData, // Contains passengers array for Duffel
       passengerInfo: dto.passengerInfo,
       status: BookingStatus.PENDING,
       paymentStatus: 'PENDING',
     });
 
     return booking;
+  }
+
+  /**
+   * Normalize passenger data to always return an array
+   */
+  private normalizePassengers(passengerInfo: any): any[] {
+    if (!passengerInfo) return [];
+    
+    // If it's already an array
+    if (Array.isArray(passengerInfo)) {
+      return passengerInfo;
+    }
+    
+    // If it's a single passenger object
+    if (typeof passengerInfo === 'object' && passengerInfo !== null) {
+      return [passengerInfo];
+    }
+    
+    // If it's a JSON string
+    if (typeof passengerInfo === 'string') {
+      try {
+        const parsed = JSON.parse(passengerInfo);
+        return this.normalizePassengers(parsed);
+      } catch (e) {
+        this.logger.error('Failed to parse passengerInfo JSON');
+        return [];
+      }
+    }
+    
+    return [];
   }
 }

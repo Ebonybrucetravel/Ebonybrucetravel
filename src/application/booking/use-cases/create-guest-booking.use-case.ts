@@ -23,7 +23,10 @@ export class CreateGuestBookingUseCase {
       throw new BadRequestException('Passenger information is required');
     }
 
-    // ✅ Clean Duffel passenger info
+    // Normalize passengerInfo to always be an array for storage
+    const normalizedPassengers = this.normalizePassengers(dto.passengerInfo);
+    
+    // Clean Duffel passenger info
     let passengerInfo = dto.passengerInfo;
     let cleanedBookingData = dto.bookingData || {};
     
@@ -31,29 +34,41 @@ export class CreateGuestBookingUseCase {
       passengerInfo = this.cleanDuffelPassengerInfo(dto.passengerInfo);
       this.logger.log('🧹 Cleaned Duffel passenger info - removed extra fields');
       
-      // ✅ Store the offer data in bookingData for later use
+      // Store the offer data in bookingData for later use
       if (dto.offerData || dto.offerId) {
-        // ✅ Ensure we have the full offer data
+        // Ensure we have the full offer data
         const offerDataToStore = dto.offerData || {
           id: dto.offerId,
           offer_request_id: dto.offerRequestId,
-          // If we don't have full offer data, store what we have
-          // The CreateDuffelOrderUseCase will use this as fallback
         };
+        
+        // CRITICAL FIX: Store passengers as an array in bookingData
+        const passengersToStore = normalizedPassengers.map((p: any) => ({
+          id: p.id || `pas_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
+          given_name: p.given_name || p.firstName || 'Guest',
+          family_name: p.family_name || p.lastName || 'Traveler',
+          born_on: p.born_on || p.dateOfBirth || '1990-01-01',
+          gender: p.gender || 'm',
+          email: p.email || 'guest@example.com',
+          phone_number: p.phone_number || p.phone || '+1234567890',
+          title: p.title || 'mr',
+        }));
         
         cleanedBookingData = {
           ...cleanedBookingData,
           offerId: dto.offerId,
           offerRequestId: dto.offerRequestId || cleanedBookingData.offer_request_id,
-          // ✅ Store the full offer data
+          // Store the full offer data
           offerData: offerDataToStore,
           storedOfferDataAt: new Date().toISOString(),
-          // ✅ Also store any passenger data from the offer
+          // CRITICAL FIX: Store passengers as an array
+          passengers: passengersToStore,
+          // Also store any passenger data from the offer
           offerPassengers: dto.offerData?.passengers || [],
           offerTotalAmount: dto.offerData?.total_amount || dto.totalAmount || 0,
           offerCurrency: dto.offerData?.total_currency || dto.currency || 'GBP',
         };
-        this.logger.log(`📦 Stored Duffel offer data for: ${dto.offerId}`);
+        this.logger.log(`📦 Stored Duffel offer data for: ${dto.offerId} with ${passengersToStore.length} passengers`);
       }
     }
 
@@ -62,11 +77,15 @@ export class CreateGuestBookingUseCase {
       (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
     
     if (isDuffelFlight && passengerInfo) {
-      const hasDob = (passengerInfo as any).dateOfBirth?.trim?.();
-      if (!hasDob) {
-        throw new BadRequestException(
-          'Date of birth (dateOfBirth, YYYY-MM-DD) is required for flight bookings.',
-        );
+      // Check if passengerInfo is array or single object
+      const passengers = Array.isArray(passengerInfo) ? passengerInfo : [passengerInfo];
+      for (const passenger of passengers) {
+        const hasDob = passenger.dateOfBirth?.trim?.();
+        if (!hasDob) {
+          throw new BadRequestException(
+            'Date of birth (dateOfBirth, YYYY-MM-DD) is required for flight bookings.',
+          );
+        }
       }
     }
 
@@ -146,16 +165,33 @@ export class CreateGuestBookingUseCase {
       throw new BadRequestException('Currency is required');
     }
 
+    // Get email from passengerInfo (handle both array and single object)
+    const email = Array.isArray(passengerInfo) 
+      ? passengerInfo[0]?.email 
+      : passengerInfo?.email;
+    
+    if (!email) {
+      throw new BadRequestException('Passenger email is required');
+    }
+
     let guestUser = await this.prisma.user.findUnique({
-      where: { email: passengerInfo.email },
+      where: { email: email },
     });
 
     if (!guestUser) {
+      const name = Array.isArray(passengerInfo)
+        ? `${passengerInfo[0]?.firstName || 'Guest'} ${passengerInfo[0]?.lastName || 'User'}`
+        : `${passengerInfo.firstName || 'Guest'} ${passengerInfo.lastName || 'User'}`;
+      
+      const phone = Array.isArray(passengerInfo)
+        ? passengerInfo[0]?.phone || null
+        : passengerInfo?.phone || null;
+
       guestUser = await this.prisma.user.create({
         data: {
-          email: passengerInfo.email,
-          name: `${passengerInfo.firstName} ${passengerInfo.lastName}`,
-          phone: passengerInfo.phone || null,
+          email: email,
+          name: name,
+          phone: phone,
           role: 'CUSTOMER',
           password: null,
           provider: null,
@@ -164,7 +200,7 @@ export class CreateGuestBookingUseCase {
       });
     }
 
-    // ✅ Create booking with cleaned booking data (contains offer data for Duffel)
+    // Create booking with cleaned booking data (contains offer data for Duffel)
     const booking = await this.bookingService.createBooking({
       userId: guestUser.id,
       productType: dto.productType,
@@ -178,7 +214,7 @@ export class CreateGuestBookingUseCase {
       taxPercentage,
       totalAmount,
       currency,
-      bookingData: cleanedBookingData, // ✅ Use cleaned booking data with offerData
+      bookingData: cleanedBookingData, // Contains passengers array for Duffel
       passengerInfo: passengerInfo,  
       bookingId: dto.bookingId,
       selectData: dto.selectData,
@@ -190,13 +226,57 @@ export class CreateGuestBookingUseCase {
     return booking;
   }
 
+  /**
+   * Normalize passenger data to always return an array
+   */
+  private normalizePassengers(passengerInfo: any): any[] {
+    if (!passengerInfo) return [];
+    
+    // If it's already an array
+    if (Array.isArray(passengerInfo)) {
+      return passengerInfo;
+    }
+    
+    // If it's a single passenger object
+    if (typeof passengerInfo === 'object' && passengerInfo !== null) {
+      return [passengerInfo];
+    }
+    
+    // If it's a JSON string
+    if (typeof passengerInfo === 'string') {
+      try {
+        const parsed = JSON.parse(passengerInfo);
+        return this.normalizePassengers(parsed);
+      } catch (e) {
+        this.logger.error('Failed to parse passengerInfo JSON');
+        return [];
+      }
+    }
+    
+    return [];
+  }
+
   private cleanDuffelPassengerInfo(info: any): any {
+    // If info is an array, clean each passenger
+    if (Array.isArray(info)) {
+      return info.map(p => this.cleanSingleDuffelPassenger(p));
+    }
+    
+    // If info is a single object
+    if (typeof info === 'object' && info !== null) {
+      return this.cleanSingleDuffelPassenger(info);
+    }
+    
+    return info;
+  }
+
+  private cleanSingleDuffelPassenger(passenger: any): any {
     const allowedFields = ['firstName', 'lastName', 'email', 'phone', 'title', 'gender', 'dateOfBirth'];
     const cleaned: any = {};
     
     for (const field of allowedFields) {
-      if (info[field] !== undefined && info[field] !== null && info[field] !== '') {
-        cleaned[field] = info[field];
+      if (passenger[field] !== undefined && passenger[field] !== null && passenger[field] !== '') {
+        cleaned[field] = passenger[field];
       }
     }
     

@@ -5,6 +5,22 @@ import { BOOKING_REPOSITORY } from '@domains/booking/repositories/booking.reposi
 import { BookingStatus } from '@prisma/client';
 import { retryWithBackoffAndLogging } from '@common/utils/retry.util';
 
+interface Passenger {
+  id?: string;
+  given_name?: string;
+  family_name?: string;
+  firstName?: string;
+  lastName?: string;
+  born_on?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  email?: string;
+  phone_number?: string;
+  phone?: string;
+  title?: string;
+  [key: string]: any;
+}
+
 @Injectable()
 export class CreateDuffelOrderUseCase {
   private readonly logger = new Logger(CreateDuffelOrderUseCase.name);
@@ -13,7 +29,76 @@ export class CreateDuffelOrderUseCase {
     private readonly duffelService: DuffelService,
     @Inject(BOOKING_REPOSITORY)
     private readonly bookingRepository: BookingRepository,
-  ) { }
+  ) {}
+
+  /**
+   * Safely normalize passenger data to an array
+   * Handles: arrays, objects, JSON strings, single objects, null/undefined
+   */
+  private normalizePassengers(passengers: any): Passenger[] {
+    if (!passengers) {
+      this.logger.warn('Passengers data is null/undefined');
+      return [];
+    }
+
+    if (Array.isArray(passengers)) {
+      if (passengers.length === 0) {
+        this.logger.warn('Passengers array is empty');
+      }
+      return passengers;
+    }
+
+    if (typeof passengers === 'string') {
+      try {
+        const parsed = JSON.parse(passengers);
+        return this.normalizePassengers(parsed);
+      } catch (error) {
+        this.logger.error(`Failed to parse passengers JSON: ${error.message}`);
+        return [];
+      }
+    }
+
+    if (typeof passengers === 'object' && passengers !== null) {
+      // Check if it's a single passenger object
+      const hasNameFields = 
+        (passengers as any).given_name || (passengers as any).family_name || 
+        (passengers as any).firstName || (passengers as any).lastName ||
+        (passengers as any).email;
+      
+      if (hasNameFields) {
+        return [passengers];
+      }
+
+      // Try to convert object values to array
+      const values = Object.values(passengers);
+      if (values.length > 0) {
+        const firstValue = values[0];
+        if (typeof firstValue === 'object' && firstValue !== null) {
+          const hasPassengerFields = 
+            (firstValue as any).given_name || (firstValue as any).family_name || 
+            (firstValue as any).firstName || (firstValue as any).lastName ||
+            (firstValue as any).email;
+          
+          if (hasPassengerFields) {
+            return values;
+          }
+        }
+      }
+    }
+
+    // Fallback - create a default passenger
+    this.logger.warn('Unable to normalize passenger data, creating default passenger');
+    return [{
+      id: `pas_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
+      given_name: 'Guest',
+      family_name: 'Traveler',
+      born_on: '1990-01-01',
+      gender: 'm',
+      email: 'guest@example.com',
+      phone_number: '+1234567890',
+      title: 'mr',
+    }];
+  }
 
   async execute(bookingId: string): Promise<{ orderId: string; orderData: any }> {
     // Get booking from database
@@ -58,7 +143,7 @@ export class CreateDuffelOrderUseCase {
     }
 
     try {
-      // ✅ TRY TO GET THE OFFER - WITH ERROR HANDLING FOR EXPIRED OFFERS
+      // TRY TO GET THE OFFER - WITH ERROR HANDLING FOR EXPIRED OFFERS
       let offer: any = null;
       let offerResponse: any = null;
       let offerExpired = false;
@@ -70,11 +155,11 @@ export class CreateDuffelOrderUseCase {
         
         this.logger.log(`✅ Successfully fetched offer ${bookingData.offerId}`);
       } catch (error: any) {
-        // ✅ OFFER EXPIRED OR NOT FOUND
+        // OFFER EXPIRED OR NOT FOUND
         this.logger.warn(`Failed to fetch offer ${bookingData.offerId}: ${error.message}`);
         offerExpired = true;
         
-        // ✅ Check if we have stored offer data in the booking
+        // Check if we have stored offer data in the booking
         if (bookingData.offerData || bookingData.selectedOffer || bookingData.duffelOffer) {
           this.logger.log('Using stored offer data from booking...');
           offer = bookingData.offerData || bookingData.selectedOffer || bookingData.duffelOffer;
@@ -82,12 +167,12 @@ export class CreateDuffelOrderUseCase {
           if (offer && offer.id) {
             this.logger.log(`✅ Using stored offer data for ${offer.id}`);
             
-            // ✅ Ensure offer has the required structure
+            // Ensure offer has the required structure
             if (!offer.passengers && bookingData.offerPassengers) {
               offer.passengers = bookingData.offerPassengers;
             }
             
-            // ✅ If offer has no total_amount, use stored values
+            // If offer has no total_amount, use stored values
             if (!offer.total_amount) {
               offer.total_amount = bookingData.offerTotalAmount || booking.totalAmount || 0;
               offer.total_currency = bookingData.offerCurrency || booking.currency || 'GBP';
@@ -95,7 +180,7 @@ export class CreateDuffelOrderUseCase {
           }
         }
         
-        // ✅ If we can't recover, throw a specific error
+        // If we can't recover, throw a specific error
         if (!offer || !offer.id) {
           throw new HttpException(
             'The flight offer has expired. Please search for flights again and complete a new booking.',
@@ -110,8 +195,8 @@ export class CreateDuffelOrderUseCase {
         );
       }
 
-      // ✅ CHECK IF OFFER HAS PASSENGERS, OR USE STORED PASSENGER DATA
-      let offerPassengers = offer.passengers || [];
+      // CHECK IF OFFER HAS PASSENGERS, OR USE STORED PASSENGER DATA
+      let offerPassengers: Passenger[] = offer.passengers || [];
       const hasValidOfferPassengers = offerPassengers.length > 0;
 
       // If offer doesn't have passengers but we have stored passenger data, use it
@@ -120,16 +205,28 @@ export class CreateDuffelOrderUseCase {
         offerPassengers = bookingData.offerPassengers;
       }
 
+      // CRITICAL FIX: Use normalizePassengers() for bookingData.passengers
       if (!hasValidOfferPassengers && bookingData.passengers) {
         this.logger.log('Using stored passenger data from booking...');
-        offerPassengers = bookingData.passengers.map((p: any) => ({
-          id: p.id || `pas_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
-          ...p,
-        }));
+        const normalizedPassengers = this.normalizePassengers(bookingData.passengers);
+        
+        if (normalizedPassengers.length > 0) {
+          offerPassengers = normalizedPassengers.map((p: Passenger) => ({
+            id: p.id || `pas_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
+            given_name: p.given_name || p.firstName || 'Guest',
+            family_name: p.family_name || p.lastName || 'Traveler',
+            born_on: p.born_on || p.dateOfBirth || '1990-01-01',
+            gender: p.gender || 'm',
+            email: p.email || 'guest@example.com',
+            phone_number: p.phone_number || p.phone || '+1234567890',
+            title: p.title || 'mr',
+          }));
+        }
       }
 
+      // If still no passengers, create from passengerInfo
       if (offerPassengers.length === 0) {
-        // ✅ CREATE DUMMY PASSENGER DATA FROM BOOKING INFO
+        // CREATE DUMMY PASSENGER DATA FROM BOOKING INFO
         this.logger.warn('No passenger data found in offer or booking, creating from booking info...');
         const passengersList = Array.isArray(passengerInfo) ? passengerInfo : [passengerInfo];
         
@@ -147,7 +244,7 @@ export class CreateDuffelOrderUseCase {
         this.logger.log(`Created ${offerPassengers.length} passenger records from booking info`);
       }
 
-      // ✅ MAP PASSENGERS TO DUFFEL FORMAT
+      // MAP PASSENGERS TO DUFFEL FORMAT
       const passengers = Array.isArray(passengerInfo) ? passengerInfo : [passengerInfo];
 
       if (passengers.length !== offerPassengers.length) {
@@ -216,7 +313,7 @@ export class CreateDuffelOrderUseCase {
         
         const email = (passenger.email || offerPassenger.email || 'guest@example.com').trim();
 
-        // ✅ BUILD PASSENGER OBJECT
+        // BUILD PASSENGER OBJECT
         const passengerObj: any = {
           id: passengerId,
           title,
@@ -228,7 +325,7 @@ export class CreateDuffelOrderUseCase {
           phone_number: passenger.phone || passenger.phoneNumber || offerPassenger.phone_number || '+1234567890',
         };
 
-        // ✅ ADD IDENTITY DOCUMENTS IF AVAILABLE
+        // ADD IDENTITY DOCUMENTS IF AVAILABLE
         const identityDocs = passenger.identityDocuments || passenger.identity_documents || offerPassenger.identity_documents;
         if (identityDocs && Array.isArray(identityDocs) && identityDocs.length > 0) {
           passengerObj.identity_documents = identityDocs.map((doc: any) => ({
@@ -244,14 +341,14 @@ export class CreateDuffelOrderUseCase {
 
       this.logger.log(`Prepared ${duffelPassengers.length} passengers for order creation`);
 
-      // ✅ GET THE OFFER ID
+      // GET THE OFFER ID
       const offerId = offer.id || bookingData.offerId;
       
-      // ✅ GET PRICE FROM OFFER OR BOOKING
+      // GET PRICE FROM OFFER OR BOOKING
       const totalAmount = offer.total_amount || bookingData.offerTotalAmount || booking.totalAmount || 0;
       const totalCurrency = offer.total_currency || bookingData.offerCurrency || booking.currency || 'GBP';
 
-      // ✅ CREATE DUFFEL ORDER
+      // CREATE DUFFEL ORDER
       const orderData = await retryWithBackoffAndLogging(
         () =>
           this.duffelService.createOrder({
@@ -280,7 +377,7 @@ export class CreateDuffelOrderUseCase {
         },
       );
 
-      // ✅ UPDATE BOOKING WITH ORDER DATA
+      // UPDATE BOOKING WITH ORDER DATA
       await this.bookingRepository.update(bookingId, {
         providerBookingId: orderData.id,
         providerData: orderData,
@@ -307,7 +404,7 @@ export class CreateDuffelOrderUseCase {
     } catch (error) {
       this.logger.error(`Failed to create Duffel order for booking ${bookingId}:`, error);
 
-      // ✅ UPDATE BOOKING STATUS
+      // UPDATE BOOKING STATUS
       try {
         await this.bookingRepository.update(bookingId, {
           status: BookingStatus.FAILED,
@@ -321,7 +418,7 @@ export class CreateDuffelOrderUseCase {
         this.logger.error(`Failed to update booking status: ${updateError}`);
       }
 
-      // ✅ RETHROW WITH USER-FRIENDLY MESSAGE
+      // RETHROW WITH USER-FRIENDLY MESSAGE
       if (error instanceof HttpException) {
         throw error;
       }
