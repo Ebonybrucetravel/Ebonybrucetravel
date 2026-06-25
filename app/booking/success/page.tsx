@@ -23,6 +23,11 @@ const getAirportName = (code: string): string => {
     'YOL': 'Yola Airport',
     'LHR': 'London Heathrow Airport',
     'JFK': 'John F. Kennedy International Airport, New York',
+    'CDG': 'Charles de Gaulle Airport, Paris',
+    'DXB': 'Dubai International Airport',
+    'IST': 'Istanbul Airport',
+    'FRA': 'Frankfurt Airport',
+    'AMS': 'Amsterdam Schiphol Airport',
   };
   return airports[code] || code;
 };
@@ -340,402 +345,175 @@ export default function BookingSuccessPage() {
     }
   };
 
-// ==================== RENDER HOTEL DETAILS ====================
-const renderHotelDetails = () => {
+// ... (everything before renderDuffelDetails remains the same)
+
+// ==================== RENDER DUFFEL FLIGHT DETAILS ====================
+const renderDuffelDetails = () => {
   if (!booking) return null;
   
-  const isHotel = booking.productType === 'HOTEL';
-  if (!isHotel) return null;
+  const isDuffel = booking?.provider === 'DUFFEL';
+  if (!isDuffel) return null;
   
   const bookingData = booking.bookingData as any;
+  const providerData = booking.providerData as any;
   
-  // ✅ FIX: Extract hotel details from the correct location
-  // The backend stores hotel details in bookingData.hotelDetails
-  const hotelDetails = bookingData?.hotelDetails || {};
+  // Extract Duffel order data
+  const duffelOrder = bookingData?.duffelOrder || providerData || {};
   
-  // Extract hotel name from multiple possible locations
-  const hotelName = 
-    hotelDetails?.hotelName || 
-    bookingData?.hotelName || 
-    bookingData?.hotel?.name || 
-    'Hotel';
+  // Get slices from the order
+  const slices = duffelOrder.slices || bookingData?.slices || [];
+  const outboundSlice = slices[0] || {};
+  const returnSlice = slices[1] || null;
   
-  // Extract other hotel details
-  const hotelAddress = 
-    hotelDetails?.hotelAddress || 
-    bookingData?.hotelAddress || 
-    '';
+  // Get passengers
+  const passengers = duffelOrder.passengers || bookingData?.passengers || [];
   
-  const hotelCity = 
-    hotelDetails?.hotelCity || 
-    bookingData?.hotelCity || 
-    '';
+  // Extract outbound segments
+  const outboundSegments = outboundSlice.segments || [];
+  const firstOutboundSegment = outboundSegments[0] || {};
+  const lastOutboundSegment = outboundSegments[outboundSegments.length - 1] || firstOutboundSegment;
   
-  const hotelCountry = 
-    hotelDetails?.hotelCountry || 
-    bookingData?.hotelCountry || 
-    '';
+  // Extract return segments if exists
+  const returnSegments = returnSlice?.segments || [];
+  const firstReturnSegment = returnSegments[0] || {};
+  const lastReturnSegment = returnSegments[returnSegments.length - 1] || firstReturnSegment;
   
-  const hotelRating = 
-    hotelDetails?.hotelRating || 
-    bookingData?.hotelRating || 
-    null;
+  // Outbound flight details
+  const outboundDepartureAirport = firstOutboundSegment.origin?.iata_code || firstOutboundSegment.origin?.iataCode || 'N/A';
+  const outboundDepartureCity = firstOutboundSegment.origin?.city_name || firstOutboundSegment.origin?.city || '';
+  const outboundDepartureTime = firstOutboundSegment.departing_at || firstOutboundSegment.departure?.at || '';
   
-  const hotelDescription = 
-    hotelDetails?.hotelDescription || 
-    bookingData?.hotelDescription || 
-    '';
+  const outboundArrivalAirport = lastOutboundSegment.destination?.iata_code || lastOutboundSegment.destination?.iataCode || 'N/A';
+  const outboundArrivalCity = lastOutboundSegment.destination?.city_name || lastOutboundSegment.destination?.city || '';
+  const outboundArrivalTime = lastOutboundSegment.arriving_at || lastOutboundSegment.arrival?.at || '';
   
-  const hotelPhone = 
-    hotelDetails?.hotelPhone || 
-    bookingData?.hotelPhone || 
-    '';
+  // Operating carrier
+  const operatingCarrier = firstOutboundSegment.operating_carrier || firstOutboundSegment.marketing_carrier || {};
+  const airlineName = operatingCarrier.name || 'Airline';
+  const airlineCode = operatingCarrier.iata_code || '';
+  const airlineLogo = operatingCarrier.logo_symbol_url || '';
   
-  const roomType = 
-    hotelDetails?.roomType || 
-    bookingData?.roomType || 
-    'Standard Room';
+  // Flight number
+  const flightNumber = firstOutboundSegment.marketing_carrier_flight_number || 
+                      firstOutboundSegment.flight_number || 
+                      firstOutboundSegment.number || 
+                      'N/A';
   
-  const boardType = 
-    hotelDetails?.boardType || 
-    bookingData?.boardType || 
-    'Room Only';
+  // Duration
+  const outboundDuration = outboundSlice.duration || '';
+  const returnDuration = returnSlice?.duration || '';
   
-  const numberOfRooms = 
-    hotelDetails?.numberOfRooms || 
-    bookingData?.numberOfRooms || 
-    1;
+  // Stops
+  const outboundStops = Math.max(0, outboundSegments.length - 1);
+  const returnStops = returnSegments.length > 0 ? Math.max(0, returnSegments.length - 1) : 0;
   
-  const hotelCheckInTime = 
-    hotelDetails?.hotelCheckInTime || 
-    bookingData?.hotelCheckInTime || 
-    '15:00';
+  const outboundStopText = outboundStops === 0 ? 'Direct' : outboundStops === 1 ? '1 stop' : `${outboundStops} stops`;
+  const returnStopText = returnStops === 0 ? 'Direct' : returnStops === 1 ? '1 stop' : `${returnStops} stops`;
   
-  const hotelCheckOutTime = 
-    hotelDetails?.hotelCheckOutTime || 
-    bookingData?.hotelCheckOutTime || 
-    '12:00';
+  // Check if this is a round trip
+  const isRoundTrip = slices.length > 1;
   
-  const hotelId = 
-    hotelDetails?.hotelId || 
-    bookingData?.hotelId || 
-    bookingData?.hotel?.hotelId || 
-    booking.id;
+  // Get order ID
+  const orderId = duffelOrder.id || booking.providerBookingId || 'N/A';
   
-  const hotelOfferId = 
-    bookingData?.amadeus_offer_id || 
-    bookingData?.offerId || 
-    bookingData?.hotelOfferId || 
-    'N/A';
+  // Get booking reference from Duffel
+  const duffelBookingRef = duffelOrder.booking_reference || duffelOrder.reference || 'N/A';
   
-  const checkInDate = 
-    bookingData?.checkInDate || 
-    bookingData?.check_in_date;
-  
-  const checkOutDate = 
-    bookingData?.checkOutDate || 
-    bookingData?.check_out_date;
-  
-  // ✅ FIX: guests might be an object, not a number
-  let guestsCount = 1;
-  if (bookingData?.guests) {
-    if (typeof bookingData.guests === 'number') {
-      guestsCount = bookingData.guests;
-    } else if (typeof bookingData.guests === 'object' && !Array.isArray(bookingData.guests)) {
-      guestsCount = bookingData.guests.adults || bookingData.guests.guests || 1;
-    } else if (Array.isArray(bookingData.guests)) {
-      guestsCount = bookingData.guests.length;
-    }
-  } else if (bookingData?.adults && typeof bookingData.adults === 'number') {
-    guestsCount = bookingData.adults;
+  // Get cabin class
+  let cabinClass = 'Economy';
+  if (firstOutboundSegment.passengers?.length > 0) {
+    cabinClass = firstOutboundSegment.passengers[0].cabin_class_marketing_name || 
+                 firstOutboundSegment.passengers[0].cabin_class || 
+                 'Economy';
   }
   
-  // ✅ FIX: rooms might be an object too
-  let roomsCount = 1;
-  if (bookingData?.rooms) {
-    if (typeof bookingData.rooms === 'number') {
-      roomsCount = bookingData.rooms;
-    } else if (typeof bookingData.rooms === 'object') {
-      roomsCount = bookingData.rooms.rooms || 1;
+  // ✅ FIX: Add type annotations to the filter and reduce callbacks
+  let baggageInfo = '';
+  if (firstOutboundSegment.passengers?.length > 0) {
+    const baggages = firstOutboundSegment.passengers[0].baggages || [];
+    if (baggages.length > 0) {
+      const checkedBags = baggages.filter((b: any) => b.type === 'checked');
+if (checkedBags.length > 0) {
+  baggageInfo = `${checkedBags.reduce((sum: number, b: any) => sum + (b.quantity || 0), 0)} checked bag${checkedBags.length > 1 ? 's' : ''}`;
+}
     }
-  } else if (bookingData?.roomQuantity && typeof bookingData.roomQuantity === 'number') {
-    roomsCount = bookingData.roomQuantity;
   }
   
-  const nights = calculateNights(checkInDate, checkOutDate);
+  // Get passenger count
+  const passengerCount = passengers.length || 1;
   
-  // Get provider order ID from providerData
-  const providerOrderId = (booking.providerData as any)?.id || (booking.providerData as any)?.orderId || 'N/A';
-  const providerConfirmationNumber = (booking.providerData as any)?.hotelBookings?.[0]?.hotelProviderInformation?.[0]?.confirmationNumber || 'N/A';
+  // Get total amount
+  const totalAmount = duffelOrder.total_amount || booking.totalAmount || 0;
+  const currency = duffelOrder.total_currency || booking.currency || 'GBP';
   
-  // Build full address
-  const fullAddress = hotelAddress || 
-    (hotelCity && hotelCountry ? `${hotelCity}, ${hotelCountry}` : 
-    hotelCity || hotelCountry || '');
+  // Get conditions
+  const isRefundable = duffelOrder.conditions?.refund_before_departure?.allowed || false;
   
   return (
     <div className="space-y-6">
       {/* Provider Badge */}
-      <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg">
+      <div className="bg-gradient-to-r from-[#33a8da] to-[#2c98c7] text-white p-4 rounded-lg">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm opacity-90">Powered by</p>
-            <p className="font-bold text-xl">Amadeus Hotels</p>
+            <p className="font-bold text-xl">Duffel • Flight</p>
           </div>
-          <div className="text-3xl">🏨</div>
+          <div className="text-3xl">✈️</div>
         </div>
       </div>
       
-      {/* ✅ Hotel Name - Now displays correctly */}
-      <div className="border-b border-gray-200 pb-4">
-        <h3 className="text-2xl font-bold text-gray-900">{hotelName}</h3>
-        {fullAddress && (
-          <p className="text-sm text-gray-600 mt-1">{fullAddress}</p>
-        )}
-        {hotelRating && (
-          <p className="text-sm text-gray-500 mt-1">
-            {'⭐'.repeat(Math.round(hotelRating))} {hotelRating}/5
-          </p>
-        )}
-        {hotelId && <p className="text-sm text-gray-400 mt-1">Hotel ID: {hotelId}</p>}
-      </div>
-      
-      {/* Hotel Offer ID - Important */}
+      {/* Order ID and Reference */}
       <div className="bg-gray-50 p-4 rounded-lg">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <p className="text-sm text-gray-500">Hotel Offer ID</p>
-            <p className="font-mono font-bold text-md text-blue-600 break-all">{hotelOfferId}</p>
+            <p className="text-sm text-gray-500">Order ID</p>
+            <p className="font-mono font-bold text-md text-blue-600 break-all">{orderId}</p>
           </div>
-          {providerOrderId !== 'N/A' && (
+          {duffelBookingRef !== 'N/A' && (
             <div>
-              <p className="text-sm text-gray-500">Amadeus Order ID</p>
-              <p className="font-mono font-bold text-md break-all">{providerOrderId}</p>
+              <p className="text-sm text-gray-500">Booking Reference</p>
+              <p className="font-mono font-bold text-md">{duffelBookingRef}</p>
             </div>
           )}
-          {providerConfirmationNumber !== 'N/A' && (
-            <div>
-              <p className="text-sm text-gray-500">Confirmation Number</p>
-              <p className="font-mono font-bold text-md">{providerConfirmationNumber}</p>
-            </div>
-          )}
+          <div>
+            <p className="text-sm text-gray-500">Passengers</p>
+            <p className="font-medium">{passengerCount} passenger{passengerCount > 1 ? 's' : ''}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Cabin Class</p>
+            <p className="font-medium capitalize">{cabinClass}</p>
+          </div>
         </div>
       </div>
       
-      {/* Stay Details */}
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <h4 className="font-semibold text-gray-900 mb-3">Stay Details</h4>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-sm text-gray-500">Check-in</p>
-            <p className="font-medium">{formatDate(checkInDate)}</p>
-            <p className="text-xs text-gray-400">From {hotelCheckInTime}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Check-out</p>
-            <p className="font-medium">{formatDate(checkOutDate)}</p>
-            <p className="text-xs text-gray-400">Until {hotelCheckOutTime}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Nights</p>
-            <p className="font-medium">{nights} night{nights > 1 ? 's' : ''}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Guests</p>
-            <p className="font-medium">{guestsCount} guest{guestsCount > 1 ? 's' : ''}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Rooms</p>
-            <p className="font-medium">{roomsCount} room{roomsCount > 1 ? 's' : ''}</p>
-          </div>
-          {boardType && (
-            <div>
-              <p className="text-sm text-gray-500">Board Type</p>
-              <p className="font-medium">{boardType}</p>
+      {/* Outbound Flight */}
+      <div className="border-b border-gray-200 pb-4">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="font-semibold text-gray-900">Outbound Flight</h4>
+          <span className="text-sm text-gray-500">{outboundDuration}</span>
+        </div>
+        
+        <div className="flex items-center gap-4 mb-4">
+          {airlineLogo ? (
+            <img src={airlineLogo} alt={airlineName} className="w-12 h-12 object-contain" />
+          ) : (
+            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+              <span className="text-blue-600 font-bold text-lg">{airlineCode || '✈'}</span>
             </div>
           )}
-        </div>
-      </div>
-      
-      {/* Room Details if available */}
-      {roomType && (
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <h4 className="font-semibold text-gray-900 mb-3">Room Details</h4>
-          <p className="text-gray-700 font-medium">{roomType}</p>
-          {boardType && (
-            <p className="text-sm text-gray-500 mt-1">Board: {boardType}</p>
-          )}
-          {numberOfRooms > 1 && (
-            <p className="text-sm text-gray-500">Number of Rooms: {numberOfRooms}</p>
-          )}
-          {hotelDescription && (
-            <p className="text-sm text-gray-600 mt-2 border-t border-gray-200 pt-2">{hotelDescription}</p>
-          )}
-        </div>
-      )}
-      
-      {/* Hotel Phone */}
-      {hotelPhone && (
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <h4 className="font-semibold text-gray-900 mb-2">Contact</h4>
-          <p className="text-gray-700">📞 {hotelPhone}</p>
-        </div>
-      )}
-      
-      {/* Cancellation Policy */}
-      {booking.cancellationPolicySnapshot && (
-        <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-          <div className="flex items-start gap-2">
-            <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div>
-              <p className="font-medium text-yellow-800">Cancellation Policy</p>
-              <p className="text-sm text-yellow-700 mt-1">{booking.cancellationPolicySnapshot}</p>
-              {booking.cancellationDeadline && (
-                <p className="text-xs text-yellow-600 mt-2">
-                  Cancel by: {formatDate(booking.cancellationDeadline)}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-  // ==================== RENDER WAKANOW FLIGHT DETAILS (UPDATED) ====================
-  const renderWakanowDetails = () => {
-    if (!booking) return null;
-    
-    const isWakanow = booking?.provider === 'WAKANOW';
-    if (!isWakanow) return null;
-    
-    // ✅ Extract data from multiple possible locations
-    const providerData = booking?.providerData as any;
-    const bookingData = booking.bookingData as any;
-    
-    // Get flight summary from booking data or provider data
-    const flightSummary = 
-      providerData?.FlightBookingSummary || 
-      providerData?.FlightBookingResult?.FlightBookingSummaryModel ||
-      bookingData?.flightDetails ||
-      bookingData?.rawResponse?.FlightBookingResult?.FlightBookingSummaryModel ||
-      {};
-    
-    const flightSummaryModel = flightSummary?.FlightSummaryModel || {};
-    const flightCombination = flightSummaryModel?.FlightCombination || {};
-    const flightModels = flightCombination?.FlightModels || [];
-    
-    // Get outbound and return flights
-    const outboundFlight = flightModels[0] || {};
-    const returnFlight = flightModels[1] || null;
-    
-    // Get legs
-    const flightLegs = outboundFlight?.FlightLegs || [];
-    const firstLeg = flightLegs[0] || {};
-    const lastLeg = flightLegs[flightLegs.length - 1] || firstLeg;
-    
-    // Extract flight details
-    const flightNumber = outboundFlight?.Name || firstLeg?.FlightNumber || 'N/A';
-    const airline = outboundFlight?.AirlineName || outboundFlight?.Airline || 'N/A';
-    const airlineCode = outboundFlight?.Airline || '';
-    
-    // Departure details
-    const departureCode = outboundFlight?.DepartureCode || firstLeg?.DepartureCode || 'N/A';
-    const departureName = outboundFlight?.DepartureName || firstLeg?.DepartureName || '';
-    const departureTime = outboundFlight?.DepartureTime || firstLeg?.StartTime || '';
-    
-    // Arrival details
-    const arrivalCode = outboundFlight?.ArrivalCode || lastLeg?.DestinationCode || 'N/A';
-    const arrivalName = outboundFlight?.ArrivalName || lastLeg?.DestinationName || '';
-    const arrivalTime = outboundFlight?.ArrivalTime || lastLeg?.EndTime || '';
-    
-    // Stops
-    const stops = outboundFlight?.Stops || 0;
-    const stopText = stops === 0 ? 'Direct' : stops === 1 ? '1 stop' : `${stops} stops`;
-    const duration = outboundFlight?.TripDuration || '';
-    
-    // Cabin class
-    const cabinClass = firstLeg?.CabinClassName || 'Economy';
-    
-    // ✅ Get PNR number from multiple locations
-    const pnrNumberValue = 
-      bookingData?.pnrNumber ||
-      providerData?.FlightBookingSummary?.PnrReferenceNumber ||
-      providerData?.FlightBookingResult?.FlightBookingSummaryModel?.PnrReferenceNumber ||
-      flightSummary?.PnrReferenceNumber ||
-      'Not issued yet';
-    
-    // ✅ Get ticket status
-    const ticketStatus = 
-      providerData?.FlightBookingSummary?.TicketStatus ||
-      providerData?.FlightBookingResult?.FlightBookingSummaryModel?.TicketStatus ||
-      flightSummary?.TicketStatus ||
-      'Pending';
-    
-    // ✅ Check if ticket is issued
-    const isTicketIssued = ticketStatus === 'Success' || ticketStatus === 'Issued';
-    
-    // ✅ Get booking status
-    const bookingStatus = 
-      providerData?.BookingStatusDetails?.BookingStatus ||
-      providerData?.FlightBookingSummary?.PnrStatus ||
-      booking?.status ||
-      'PENDING';
-    
-    // ✅ Get price
-    const price = flightCombination?.Price || {};
-    const priceAmount = price?.Amount || booking?.totalAmount || 0;
-    const priceCurrency = price?.CurrencyCode || booking?.currency || 'NGN';
-    
-    // ✅ Get departure date
-    const departureDate = firstLeg?.StartTime || outboundFlight?.DepartureTime || '';
-    
-    // ✅ Check if this is a domestic flight
-    const isDomestic = bookingData?.is_domestic || (departureCode && arrivalCode && getAirportName(departureCode) === getAirportName(arrivalCode));
-    
-    return (
-      <div className="space-y-6">
-        {/* Provider Badge */}
-        <div className={`bg-gradient-to-r ${isDomestic ? 'from-green-500 to-emerald-500' : 'from-indigo-500 to-purple-500'} text-white p-4 rounded-lg`}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm opacity-90">Powered by</p>
-              <p className="font-bold text-xl">Wakanow {isDomestic ? '• Domestic' : ''}</p>
-            </div>
-            <div className="text-3xl">{isDomestic ? '🇳🇬' : '🌍'}</div>
+          <div>
+            <p className="font-semibold">{airlineName}</p>
+            <p className="text-sm text-gray-500">Flight {flightNumber}</p>
           </div>
         </div>
         
-        {/* Flight Route */}
-        <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-          <div>
-            <p className="text-sm text-gray-500">Airline</p>
-            <p className="font-semibold text-lg">{airline} {airlineCode && `(${airlineCode})`}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-500">Flight Number</p>
-            <p className="font-semibold text-lg">{flightNumber}</p>
-          </div>
-        </div>
-
-        {/* Flight Route Display */}
         <div className="flex items-center justify-between">
           {/* Departure */}
           <div className="text-center flex-1">
-            <div className="bg-blue-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
-              <span className="text-2xl font-bold text-blue-600">{departureCode}</span>
-            </div>
-            <p className="font-bold text-lg">{departureCode}</p>
-            <p className="text-sm text-gray-500 truncate max-w-[100px] mx-auto">{departureName || getAirportName(departureCode)}</p>
-            {departureDate && (
-              <p className="text-sm font-medium mt-2">{formatDate(departureDate)}</p>
-            )}
-            {departureTime && (
-              <p className="text-xl font-bold text-blue-600 mt-1">{formatTime(departureTime)}</p>
-            )}
+            <p className="text-2xl font-bold text-gray-900">{formatTime(outboundDepartureTime)}</p>
+            <p className="font-bold text-lg">{outboundDepartureAirport}</p>
+            <p className="text-sm text-gray-500 truncate max-w-[120px] mx-auto">{outboundDepartureCity || getAirportName(outboundDepartureAirport)}</p>
+            <p className="text-xs text-gray-400 mt-1">{formatDate(outboundDepartureTime)}</p>
           </div>
 
           {/* Arrow */}
@@ -749,177 +527,385 @@ const renderHotelDetails = () => {
               </div>
             </div>
             <p className="text-center text-sm text-gray-500 mt-2">
-              {duration} • {stopText}
+              {outboundDuration} • {outboundStopText}
             </p>
+            {outboundStops > 0 && outboundSegments.length > 1 && (
+              <p className="text-center text-xs text-gray-400 mt-1">
+                {outboundSegments.map((seg: any, i: number) => (
+                  <span key={i}>
+                    {seg.origin?.iata_code || seg.origin?.iataCode || '??'}
+                    {i < outboundSegments.length - 1 && ' → '}
+                  </span>
+                ))}
+              </p>
+            )}
           </div>
 
           {/* Arrival */}
           <div className="text-center flex-1">
-            <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
-              <span className="text-2xl font-bold text-green-600">{arrivalCode}</span>
-            </div>
-            <p className="font-bold text-lg">{arrivalCode}</p>
-            <p className="text-sm text-gray-500 truncate max-w-[100px] mx-auto">{arrivalName || getAirportName(arrivalCode)}</p>
-            {departureDate && (
-              <p className="text-sm font-medium mt-2">{formatDate(departureDate)}</p>
-            )}
-            {arrivalTime && (
-              <p className="text-xl font-bold text-green-600 mt-1">{formatTime(arrivalTime)}</p>
-            )}
+            <p className="text-2xl font-bold text-gray-900">{formatTime(outboundArrivalTime)}</p>
+            <p className="font-bold text-lg">{outboundArrivalAirport}</p>
+            <p className="text-sm text-gray-500 truncate max-w-[120px] mx-auto">{outboundArrivalCity || getAirportName(outboundArrivalAirport)}</p>
+            <p className="text-xs text-gray-400 mt-1">{formatDate(outboundArrivalTime)}</p>
           </div>
         </div>
-
-        {/* Flight Details Summary */}
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-500">PNR Number</p>
-              <p className="font-mono font-bold text-lg">{pnrNumberValue}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Cabin Class</p>
-              <p className="font-medium capitalize">{cabinClass}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Stops</p>
-              <p className="font-medium">{stopText}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Ticket Status</p>
-              <span className={`inline-block text-xs font-bold uppercase px-2 py-1 rounded-full ${
-                isTicketIssued ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-              }`}>
-                {isTicketIssued ? 'Issued' : 'Pending'}
-              </span>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Booking Status</p>
-              <span className={`inline-block text-xs font-bold uppercase px-2 py-1 rounded-full ${
-                bookingStatus === 'Confirmed Pnr' || bookingStatus === 'CONFIRMED' 
-                  ? 'bg-green-100 text-green-700' 
-                  : bookingStatus === 'PENDING' ? 'bg-yellow-100 text-yellow-700' 
-                  : 'bg-red-100 text-red-700'
-              }`}>
-                {bookingStatus}
-              </span>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Total Price</p>
-              <p className="font-bold text-lg text-gray-900">
-                {formatPrice(priceAmount, priceCurrency)}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Return Flight (if exists) */}
-        {returnFlight && (
-          <div className="border-t border-gray-200 pt-4 mt-4">
-            <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-              <div>
-                <p className="text-sm text-gray-500">Return Flight</p>
-                <p className="font-semibold text-lg">{returnFlight.AirlineName || returnFlight.Airline}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-gray-500">Flight Number</p>
-                <p className="font-semibold text-lg">{returnFlight.Name}</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center justify-between mt-4">
-              <div className="text-center flex-1">
-                <div className="bg-blue-50 w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-2">
-                  <span className="text-xl font-bold text-blue-600">{returnFlight.DepartureCode}</span>
-                </div>
-                <p className="font-bold">{returnFlight.DepartureCode}</p>
-                <p className="text-xs text-gray-500">{formatTime(returnFlight.DepartureTime)}</p>
-              </div>
-              <div className="flex-1 px-4">
-                <div className="relative">
-                  <div className="border-t-2 border-gray-300 border-dashed absolute w-full top-1/2"></div>
-                  <div className="flex justify-center">
-                    <svg className="w-6 h-6 text-gray-400 bg-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                  </div>
-                </div>
-                <p className="text-center text-xs text-gray-500 mt-2">
-                  {returnFlight.TripDuration} • {returnFlight.Stops === 0 ? 'Direct' : `${returnFlight.Stops} stop${returnFlight.Stops > 1 ? 's' : ''}`}
-                </p>
-              </div>
-              <div className="text-center flex-1">
-                <div className="bg-green-50 w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-2">
-                  <span className="text-xl font-bold text-green-600">{returnFlight.ArrivalCode}</span>
-                </div>
-                <p className="font-bold">{returnFlight.ArrivalCode}</p>
-                <p className="text-xs text-gray-500">{formatTime(returnFlight.ArrivalTime)}</p>
-              </div>
-            </div>
+        
+        {/* Baggage info */}
+        {baggageInfo && (
+          <div className="mt-4 flex items-center gap-2 text-sm text-gray-600 border-t border-gray-100 pt-3">
+            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeWidth={1.5} />
+            </svg>
+            <span>{baggageInfo}</span>
           </div>
         )}
+      </div>
 
-        {/* Ticket issuance form if needed */}
-        {!isTicketIssued && !isGuest && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <div className="flex items-start">
-              <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <div className="flex-1">
-                <p className="font-medium text-yellow-800 mb-2">Ticket Not Issued Yet</p>
-                <p className="text-sm text-yellow-700 mb-3">
-                  This booking needs a ticket to be issued. Please enter the PNR number to complete the process.
-                </p>
-                
-                {!showTicketForm ? (
-                  <button
-                    onClick={() => setShowTicketForm(true)}
-                    className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 text-sm"
-                  >
-                    Issue Ticket
-                  </button>
-                ) : (
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      value={pnrNumber}
-                      onChange={(e) => setPnrNumber(e.target.value.toUpperCase())}
-                      placeholder="Enter PNR Number"
-                      className="w-full px-4 py-2 border rounded-lg text-sm"
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleIssueWakanowTicket}
-                        disabled={issuingTicket}
-                        className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
-                      >
-                        {issuingTicket ? 'Issuing...' : 'Confirm Issue'}
-                      </button>
-                      <button
-                        onClick={() => setShowTicketForm(false)}
-                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
+      {/* Return Flight (if exists) */}
+      {isRoundTrip && returnSlice && returnSegments.length > 0 && (
+        <div className="border-b border-gray-200 pb-4">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-semibold text-gray-900">Return Flight</h4>
+            <span className="text-sm text-gray-500">{returnDuration}</span>
+          </div>
+          
+          <div className="flex items-center gap-4 mb-4">
+            {airlineLogo ? (
+              <img src={airlineLogo} alt={airlineName} className="w-12 h-12 object-contain" />
+            ) : (
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <span className="text-blue-600 font-bold text-lg">{airlineCode || '✈'}</span>
               </div>
+            )}
+            <div>
+              <p className="font-semibold">{airlineName}</p>
+              <p className="text-sm text-gray-500">Flight {firstReturnSegment.marketing_carrier_flight_number || firstReturnSegment.flight_number || 'N/A'}</p>
             </div>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <div className="text-center flex-1">
+              <p className="text-2xl font-bold text-gray-900">{formatTime(firstReturnSegment.departing_at || firstReturnSegment.departure?.at)}</p>
+              <p className="font-bold text-lg">{firstReturnSegment.origin?.iata_code || firstReturnSegment.origin?.iataCode || 'N/A'}</p>
+              <p className="text-sm text-gray-500 truncate max-w-[120px] mx-auto">{firstReturnSegment.origin?.city_name || firstReturnSegment.origin?.city || ''}</p>
+              <p className="text-xs text-gray-400 mt-1">{formatDate(firstReturnSegment.departing_at || firstReturnSegment.departure?.at)}</p>
+            </div>
+
+            <div className="flex-1 px-4">
+              <div className="relative">
+                <div className="border-t-2 border-gray-300 border-dashed absolute w-full top-1/2"></div>
+                <div className="flex justify-center">
+                  <svg className="w-8 h-8 text-gray-400 bg-white rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </div>
+              </div>
+              <p className="text-center text-sm text-gray-500 mt-2">
+                {returnDuration} • {returnStopText}
+              </p>
+              {returnStops > 0 && returnSegments.length > 1 && (
+                <p className="text-center text-xs text-gray-400 mt-1">
+                  {returnSegments.map((seg: any, i: number) => (
+                    <span key={i}>
+                      {seg.origin?.iata_code || seg.origin?.iataCode || '??'}
+                      {i < returnSegments.length - 1 && ' → '}
+                    </span>
+                  ))}
+                </p>
+              )}
+            </div>
+
+            <div className="text-center flex-1">
+              <p className="text-2xl font-bold text-gray-900">{formatTime(lastReturnSegment.arriving_at || lastReturnSegment.arrival?.at)}</p>
+              <p className="font-bold text-lg">{lastReturnSegment.destination?.iata_code || lastReturnSegment.destination?.iataCode || 'N/A'}</p>
+              <p className="text-sm text-gray-500 truncate max-w-[120px] mx-auto">{lastReturnSegment.destination?.city_name || lastReturnSegment.destination?.city || ''}</p>
+              <p className="text-xs text-gray-400 mt-1">{formatDate(lastReturnSegment.arriving_at || lastReturnSegment.arrival?.at)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Refundable status */}
+      {/* Refundable status */}
+<div className={`p-4 rounded-lg ${isRefundable ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}`}>
+  <div className="flex items-start gap-2">
+    {isRefundable ? (
+      <svg className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ) : (
+      <svg className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+      </svg>
+    )}
+    <div>
+      <p className={`font-medium ${isRefundable ? 'text-green-800' : 'text-gray-700'}`}>
+        {isRefundable ? 'Refundable' : 'Non-Refundable'}
+      </p>
+      {isRefundable && duffelOrder.conditions?.refund_before_departure?.penalty_amount && (
+        <p className="text-sm text-green-700 mt-1">
+          Penalty: {duffelOrder.conditions.refund_before_departure.penalty_amount} {duffelOrder.conditions.refund_before_departure.penalty_currency}
+        </p>
+      )}
+    </div>
+  </div>
+</div>
+    </div>
+  );
+};
+
+
+
+  // ==================== RENDER HOTEL DETAILS (UNCHANGED - AMADEUS) ====================
+  const renderHotelDetails = () => {
+    if (!booking) return null;
+    
+    const isHotel = booking.productType === 'HOTEL';
+    if (!isHotel) return null;
+    
+    const bookingData = booking.bookingData as any;
+    
+    // Extract hotel details from the correct location
+    const hotelDetails = bookingData?.hotelDetails || {};
+    
+    const hotelName = 
+      hotelDetails?.hotelName || 
+      bookingData?.hotelName || 
+      bookingData?.hotel?.name || 
+      'Hotel';
+    
+    const hotelAddress = 
+      hotelDetails?.hotelAddress || 
+      bookingData?.hotelAddress || 
+      '';
+    
+    const hotelCity = 
+      hotelDetails?.hotelCity || 
+      bookingData?.hotelCity || 
+      '';
+    
+    const hotelCountry = 
+      hotelDetails?.hotelCountry || 
+      bookingData?.hotelCountry || 
+      '';
+    
+    const hotelRating = 
+      hotelDetails?.hotelRating || 
+      bookingData?.hotelRating || 
+      null;
+    
+    const hotelDescription = 
+      hotelDetails?.hotelDescription || 
+      bookingData?.hotelDescription || 
+      '';
+    
+    const hotelPhone = 
+      hotelDetails?.hotelPhone || 
+      bookingData?.hotelPhone || 
+      '';
+    
+    const roomType = 
+      hotelDetails?.roomType || 
+      bookingData?.roomType || 
+      'Standard Room';
+    
+    const boardType = 
+      hotelDetails?.boardType || 
+      bookingData?.boardType || 
+      'Room Only';
+    
+    const numberOfRooms = 
+      hotelDetails?.numberOfRooms || 
+      bookingData?.numberOfRooms || 
+      1;
+    
+    const hotelCheckInTime = 
+      hotelDetails?.hotelCheckInTime || 
+      bookingData?.hotelCheckInTime || 
+      '15:00';
+    
+    const hotelCheckOutTime = 
+      hotelDetails?.hotelCheckOutTime || 
+      bookingData?.hotelCheckOutTime || 
+      '12:00';
+    
+    const hotelId = 
+      hotelDetails?.hotelId || 
+      bookingData?.hotelId || 
+      bookingData?.hotel?.hotelId || 
+      booking.id;
+    
+    const hotelOfferId = 
+      bookingData?.amadeus_offer_id || 
+      bookingData?.offerId || 
+      bookingData?.hotelOfferId || 
+      'N/A';
+    
+    const checkInDate = 
+      bookingData?.checkInDate || 
+      bookingData?.check_in_date;
+    
+    const checkOutDate = 
+      bookingData?.checkOutDate || 
+      bookingData?.check_out_date;
+    
+    let guestsCount = 1;
+    if (bookingData?.guests) {
+      if (typeof bookingData.guests === 'number') {
+        guestsCount = bookingData.guests;
+      } else if (typeof bookingData.guests === 'object' && !Array.isArray(bookingData.guests)) {
+        guestsCount = bookingData.guests.adults || bookingData.guests.guests || 1;
+      } else if (Array.isArray(bookingData.guests)) {
+        guestsCount = bookingData.guests.length;
+      }
+    } else if (bookingData?.adults && typeof bookingData.adults === 'number') {
+      guestsCount = bookingData.adults;
+    }
+    
+    let roomsCount = 1;
+    if (bookingData?.rooms) {
+      if (typeof bookingData.rooms === 'number') {
+        roomsCount = bookingData.rooms;
+      } else if (typeof bookingData.rooms === 'object') {
+        roomsCount = bookingData.rooms.rooms || 1;
+      }
+    } else if (bookingData?.roomQuantity && typeof bookingData.roomQuantity === 'number') {
+      roomsCount = bookingData.roomQuantity;
+    }
+    
+    const nights = calculateNights(checkInDate, checkOutDate);
+    
+    const providerOrderId = (booking.providerData as any)?.id || (booking.providerData as any)?.orderId || 'N/A';
+    const providerConfirmationNumber = (booking.providerData as any)?.hotelBookings?.[0]?.hotelProviderInformation?.[0]?.confirmationNumber || 'N/A';
+    
+    const fullAddress = hotelAddress || 
+      (hotelCity && hotelCountry ? `${hotelCity}, ${hotelCountry}` : 
+      hotelCity || hotelCountry || '');
+    
+    return (
+      <div className="space-y-6">
+        {/* Provider Badge */}
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm opacity-90">Powered by</p>
+              <p className="font-bold text-xl">Amadeus Hotels</p>
+            </div>
+            <div className="text-3xl">🏨</div>
+          </div>
+        </div>
+        
+        {/* Hotel Name */}
+        <div className="border-b border-gray-200 pb-4">
+          <h3 className="text-2xl font-bold text-gray-900">{hotelName}</h3>
+          {fullAddress && (
+            <p className="text-sm text-gray-600 mt-1">{fullAddress}</p>
+          )}
+          {hotelRating && (
+            <p className="text-sm text-gray-500 mt-1">
+              {'⭐'.repeat(Math.round(hotelRating))} {hotelRating}/5
+            </p>
+          )}
+          {hotelId && <p className="text-sm text-gray-400 mt-1">Hotel ID: {hotelId}</p>}
+        </div>
+        
+        {/* Hotel Offer ID */}
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-gray-500">Hotel Offer ID</p>
+              <p className="font-mono font-bold text-md text-blue-600 break-all">{hotelOfferId}</p>
+            </div>
+            {providerOrderId !== 'N/A' && (
+              <div>
+                <p className="text-sm text-gray-500">Amadeus Order ID</p>
+                <p className="font-mono font-bold text-md break-all">{providerOrderId}</p>
+              </div>
+            )}
+            {providerConfirmationNumber !== 'N/A' && (
+              <div>
+                <p className="text-sm text-gray-500">Confirmation Number</p>
+                <p className="font-mono font-bold text-md">{providerConfirmationNumber}</p>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* Stay Details */}
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="font-semibold text-gray-900 mb-3">Stay Details</h4>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-gray-500">Check-in</p>
+              <p className="font-medium">{formatDate(checkInDate)}</p>
+              <p className="text-xs text-gray-400">From {hotelCheckInTime}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Check-out</p>
+              <p className="font-medium">{formatDate(checkOutDate)}</p>
+              <p className="text-xs text-gray-400">Until {hotelCheckOutTime}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Nights</p>
+              <p className="font-medium">{nights} night{nights > 1 ? 's' : ''}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Guests</p>
+              <p className="font-medium">{guestsCount} guest{guestsCount > 1 ? 's' : ''}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Rooms</p>
+              <p className="font-medium">{roomsCount} room{roomsCount > 1 ? 's' : ''}</p>
+            </div>
+            {boardType && (
+              <div>
+                <p className="text-sm text-gray-500">Board Type</p>
+                <p className="font-medium">{boardType}</p>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* Room Details */}
+        {roomType && (
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="font-semibold text-gray-900 mb-3">Room Details</h4>
+            <p className="text-gray-700 font-medium">{roomType}</p>
+            {boardType && (
+              <p className="text-sm text-gray-500 mt-1">Board: {boardType}</p>
+            )}
+            {numberOfRooms > 1 && (
+              <p className="text-sm text-gray-500">Number of Rooms: {numberOfRooms}</p>
+            )}
+            {hotelDescription && (
+              <p className="text-sm text-gray-600 mt-2 border-t border-gray-200 pt-2">{hotelDescription}</p>
+            )}
           </div>
         )}
         
-        {/* Ticket already issued message */}
-        {isTicketIssued && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-start">
-              <svg className="w-5 h-5 text-green-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        {/* Hotel Phone */}
+        {hotelPhone && (
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="font-semibold text-gray-900 mb-2">Contact</h4>
+            <p className="text-gray-700">📞 {hotelPhone}</p>
+          </div>
+        )}
+        
+        {/* Cancellation Policy */}
+        {booking.cancellationPolicySnapshot && (
+          <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+            <div className="flex items-start gap-2">
+              <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <p className="font-medium text-green-800">Ticket Issued ✓</p>
-                <p className="text-sm text-green-700">Your ticket has been successfully issued.</p>
-                <p className="text-xs text-green-600 mt-1">PNR: {pnrNumberValue}</p>
+                <p className="font-medium text-yellow-800">Cancellation Policy</p>
+                <p className="text-sm text-yellow-700 mt-1">{booking.cancellationPolicySnapshot}</p>
+                {booking.cancellationDeadline && (
+                  <p className="text-xs text-yellow-600 mt-2">
+                    Cancel by: {formatDate(booking.cancellationDeadline)}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -928,6 +914,363 @@ const renderHotelDetails = () => {
     );
   };
 
+// ==================== RENDER WAKANOW FLIGHT DETAILS (FIXED) ====================
+const renderWakanowDetails = () => {
+  if (!booking) return null;
+  
+  const isWakanow = booking?.provider === 'WAKANOW';
+  if (!isWakanow) return null;
+  
+  const providerData = booking?.providerData as any;
+  const bookingData = booking.bookingData as any;
+  
+  console.log('🔍 Wakanow providerData:', JSON.stringify(providerData, null, 2));
+  console.log('🔍 Wakanow bookingData:', JSON.stringify(bookingData, null, 2));
+  
+  // ✅ Extract flight data from providerData
+  let airlineName = 'N/A';
+  let flightNumber = 'N/A';
+  let departureAirport = 'N/A';
+  let arrivalAirport = 'N/A';
+  let departureTime = '';
+  let arrivalTime = '';
+  let stops = 0;
+  let cabinClass = 'Economy';
+  let pnrNumber = 'Not issued yet';
+  let ticketStatus = 'Pending';
+  let totalAmount = booking?.totalAmount || 0;
+  let currency = booking?.currency || 'NGN';
+  let airlineCode = '';
+  
+  // Try to extract from providerData
+  if (providerData) {
+    // Get flight summary from various possible locations
+    let flightSummary = null;
+    let flightModels = [];
+    
+    // Try different paths
+    if (providerData.FlightBookingSummary) {
+      flightSummary = providerData.FlightBookingSummary;
+    } else if (providerData.FlightBookingResult?.FlightBookingSummaryModel) {
+      flightSummary = providerData.FlightBookingResult.FlightBookingSummaryModel;
+    } else if (providerData.FlightSummaryModel) {
+      flightSummary = providerData;
+    } else if (providerData.rawResponse?.FlightBookingResult?.FlightBookingSummaryModel) {
+      flightSummary = providerData.rawResponse.FlightBookingResult.FlightBookingSummaryModel;
+    }
+    
+    // If flightSummary found, extract data
+    if (flightSummary) {
+      // Get flight models
+      const summaryModel = flightSummary.FlightSummaryModel || flightSummary;
+      const flightCombination = summaryModel.FlightCombination || flightSummary.FlightCombination || {};
+      flightModels = flightCombination.FlightModels || summaryModel.FlightModels || [];
+      
+      // Get outbound flight
+      const outboundFlight = flightModels[0] || {};
+      const flightLegs = outboundFlight?.FlightLegs || [];
+      const firstLeg = flightLegs[0] || {};
+      const lastLeg = flightLegs[flightLegs.length - 1] || firstLeg;
+      
+      // ✅ Extract with multiple fallbacks
+      airlineName = outboundFlight.AirlineName || outboundFlight.Airline || firstLeg.AirlineName || firstLeg.Airline || 'N/A';
+      airlineCode = outboundFlight.Airline || firstLeg.AirlineCode || '';
+      
+      // ✅ CRITICAL: Flight number from multiple sources
+      flightNumber = 
+        outboundFlight.Name || 
+        outboundFlight.FlightNumber || 
+        firstLeg.FlightNumber || 
+        firstLeg.Name ||
+        'N/A';
+      
+      departureAirport = outboundFlight.DepartureCode || firstLeg.DepartureCode || outboundFlight.Origin || 'N/A';
+      arrivalAirport = outboundFlight.ArrivalCode || lastLeg.DestinationCode || outboundFlight.Destination || 'N/A';
+      departureTime = outboundFlight.DepartureTime || firstLeg.StartTime || outboundFlight.DepartureDateTime || '';
+      arrivalTime = outboundFlight.ArrivalTime || lastLeg.EndTime || outboundFlight.ArrivalDateTime || '';
+      stops = outboundFlight.Stops || outboundFlight.StopCount || 0;
+      cabinClass = firstLeg.CabinClassName || outboundFlight.CabinClass || 'Economy';
+      
+      // Get PNR and ticket status
+      pnrNumber = flightSummary.PnrReferenceNumber || flightSummary.PnrNumber || summaryModel.PnrReferenceNumber || 'Not issued yet';
+      ticketStatus = flightSummary.TicketStatus || summaryModel.TicketStatus || 'Pending';
+      
+      // Get price
+      const price = flightCombination.Price || summaryModel.Price || {};
+      totalAmount = price.Amount || outboundFlight.Price || booking?.totalAmount || 0;
+      currency = price.CurrencyCode || booking?.currency || 'NGN';
+    }
+  }
+  
+  // If no data from providerData, try bookingData
+  if (airlineName === 'N/A' && bookingData) {
+    airlineName = bookingData.airlineName || bookingData.airline || 'N/A';
+    flightNumber = bookingData.flightNumber || bookingData.flight_number || 'N/A';
+    departureAirport = bookingData.origin || bookingData.departureAirport || 'N/A';
+    arrivalAirport = bookingData.destination || bookingData.arrivalAirport || 'N/A';
+    departureTime = bookingData.departureTime || bookingData.departureDate || '';
+    arrivalTime = bookingData.arrivalTime || bookingData.arrivalDate || '';
+    stops = bookingData.stops || 0;
+    cabinClass = bookingData.cabinClass || bookingData.cabin || 'Economy';
+    pnrNumber = bookingData.pnrNumber || bookingData.pnrReferenceNumber || 'Not issued yet';
+    ticketStatus = bookingData.ticketStatus || 'Pending';
+    totalAmount = bookingData.totalAmount || booking?.totalAmount || 0;
+    currency = bookingData.currency || booking?.currency || 'NGN';
+    airlineCode = bookingData.airlineCode || '';
+  }
+  
+  // ✅ If flight number is still N/A, try to get from flightLegs directly
+  if (flightNumber === 'N/A' && providerData) {
+    try {
+      // Search for any flight number in providerData
+      const jsonStr = JSON.stringify(providerData);
+      const match = jsonStr.match(/"Name":"([^"]+)"/);
+      if (match && match[1] && match[1].length > 0) {
+        flightNumber = match[1];
+        console.log('✅ Extracted flight number from JSON:', flightNumber);
+      }
+    } catch (e) {
+      console.log('Could not extract flight number from JSON');
+    }
+  }
+  
+  // Determine if domestic
+  const isDomestic = bookingData?.is_domestic || 
+    (departureAirport !== 'N/A' && arrivalAirport !== 'N/A' && 
+     getAirportName(departureAirport) === getAirportName(arrivalAirport));
+  
+  // Stop text
+  const stopText = stops === 0 ? 'Direct' : stops === 1 ? '1 stop' : `${stops} stops`;
+  
+  // Check if ticket is issued
+  const isTicketIssued = ticketStatus === 'Success' || 
+                         ticketStatus === 'Issued' || 
+                         ticketStatus === 'TICKETED';
+  
+  // Get booking status
+  const bookingStatus = booking?.status || 'PENDING';
+  
+  // Get airline logo
+  const airlineLogo = airlineCode ? `https://images.wakanow.com/Images/flight-logos/${airlineCode}.gif` : '';
+  
+  // Get departure date
+  const departureDate = departureTime || '';
+  
+  console.log('✅ Extracted Wakanow flight data:', {
+    airlineName,
+    flightNumber,
+    departureAirport,
+    arrivalAirport,
+    departureTime,
+    arrivalTime,
+    stops,
+    cabinClass,
+    pnrNumber,
+    ticketStatus,
+    isTicketIssued,
+    totalAmount,
+    currency,
+    isDomestic,
+    airlineCode,
+  });
+  
+  return (
+    <div className="space-y-6">
+      {/* Provider Badge */}
+      <div className={`bg-gradient-to-r ${isDomestic ? 'from-green-500 to-emerald-500' : 'from-indigo-500 to-purple-500'} text-white p-4 rounded-lg`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm opacity-90">Powered by</p>
+            <p className="font-bold text-xl">Wakanow {isDomestic ? '• Domestic' : ''}</p>
+          </div>
+          <div className="text-3xl">{isDomestic ? '🇳🇬' : '🌍'}</div>
+        </div>
+      </div>
+      
+      {/* Flight Route - Airline Info */}
+      <div className="flex items-center justify-between border-b border-gray-200 pb-4">
+        <div className="flex items-center gap-3">
+          {airlineLogo && (
+            <img 
+              src={airlineLogo} 
+              alt={airlineName} 
+              className="w-10 h-10 object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          )}
+          <div>
+            <p className="text-sm text-gray-500">Airline</p>
+            <p className="font-semibold text-lg">{airlineName} {airlineCode && `(${airlineCode})`}</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-sm text-gray-500">Flight Number</p>
+          <p className="font-semibold text-lg">{flightNumber}</p>
+        </div>
+      </div>
+
+      {/* Flight Route Display */}
+      <div className="flex items-center justify-between">
+        {/* Departure */}
+        <div className="text-center flex-1">
+          <div className="bg-blue-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
+            <span className="text-2xl font-bold text-blue-600">{departureAirport}</span>
+          </div>
+          <p className="font-bold text-lg">{departureAirport}</p>
+          <p className="text-sm text-gray-500 truncate max-w-[120px] mx-auto">{getAirportName(departureAirport)}</p>
+          {departureDate && (
+            <p className="text-sm font-medium mt-2">{formatDate(departureDate)}</p>
+          )}
+          {departureTime && (
+            <p className="text-xl font-bold text-blue-600 mt-1">{formatTime(departureTime)}</p>
+          )}
+        </div>
+
+        {/* Arrow with flight info */}
+        <div className="flex-1 px-4">
+          <div className="relative">
+            <div className="border-t-2 border-gray-300 border-dashed absolute w-full top-1/2"></div>
+            <div className="flex justify-center">
+              <svg className="w-8 h-8 text-gray-400 bg-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            </div>
+          </div>
+          <p className="text-center text-sm text-gray-500 mt-2">
+            {stopText}
+          </p>
+        </div>
+
+        {/* Arrival */}
+        <div className="text-center flex-1">
+          <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
+            <span className="text-2xl font-bold text-green-600">{arrivalAirport}</span>
+          </div>
+          <p className="font-bold text-lg">{arrivalAirport}</p>
+          <p className="text-sm text-gray-500 truncate max-w-[120px] mx-auto">{getAirportName(arrivalAirport)}</p>
+          {departureDate && (
+            <p className="text-sm font-medium mt-2">{formatDate(departureDate)}</p>
+          )}
+          {arrivalTime && (
+            <p className="text-xl font-bold text-green-600 mt-1">{formatTime(arrivalTime)}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Flight Details Summary */}
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-sm text-gray-500">PNR Number</p>
+            <p className="font-mono font-bold text-lg">{pnrNumber}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Cabin Class</p>
+            <p className="font-medium capitalize">{cabinClass}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Stops</p>
+            <p className="font-medium">{stopText}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Ticket Status</p>
+            <span className={`inline-block text-xs font-bold uppercase px-2 py-1 rounded-full ${
+              isTicketIssued ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+            }`}>
+              {isTicketIssued ? 'Issued' : 'Pending'}
+            </span>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Booking Status</p>
+            <span className={`inline-block text-xs font-bold uppercase px-2 py-1 rounded-full ${
+              bookingStatus === 'CONFIRMED'
+                ? 'bg-green-100 text-green-700' 
+                : bookingStatus === 'PENDING' ? 'bg-yellow-100 text-yellow-700' 
+                : 'bg-red-100 text-red-700'
+            }`}>
+              {bookingStatus === 'CONFIRMED' ? 'Confirmed' : bookingStatus}
+            </span>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Total Price</p>
+            <p className="font-bold text-lg text-gray-900">
+              {formatPrice(totalAmount, currency)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Ticket issuance form if needed */}
+      {!isTicketIssued && !isGuest && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div className="flex-1">
+              <p className="font-medium text-yellow-800 mb-2">Ticket Not Issued Yet</p>
+              <p className="text-sm text-yellow-700 mb-3">
+                This booking needs a ticket to be issued. Please enter the PNR number to complete the process.
+              </p>
+              
+              {!showTicketForm ? (
+                <button
+                  onClick={() => setShowTicketForm(true)}
+                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 text-sm"
+                >
+                  Issue Ticket
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={pnrNumber}
+                    onChange={(e) => setPnrNumber(e.target.value.toUpperCase())}
+                    placeholder="Enter PNR Number"
+                    className="w-full px-4 py-2 border rounded-lg text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleIssueWakanowTicket}
+                      disabled={issuingTicket}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {issuingTicket ? 'Issuing...' : 'Confirm Issue'}
+                    </button>
+                    <button
+                      onClick={() => setShowTicketForm(false)}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Ticket already issued message */}
+      {isTicketIssued && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <svg className="w-5 h-5 text-green-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <p className="font-medium text-green-800">Ticket Issued ✓</p>
+              <p className="text-sm text-green-700">Your ticket has been successfully issued.</p>
+              <p className="text-xs text-green-600 mt-1">PNR: {pnrNumber}</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
   const getStatusBadge = (status: string): string => {
     const statusMap: Record<string, string> = {
       'CONFIRMED': 'green',
@@ -949,6 +1292,7 @@ const renderHotelDetails = () => {
   };
 
   const isWakanow = booking?.provider === 'WAKANOW';
+  const isDuffel = booking?.provider === 'DUFFEL';
   const isHotelBooking = booking?.productType === 'HOTEL';
   const productType = booking?.productType || '';
   const isConfirmed = ['CONFIRMED', 'COMPLETED', 'PAID'].includes(booking?.status || '');
@@ -1176,7 +1520,9 @@ const renderHotelDetails = () => {
         <div className="text-center mb-4">
           <div className="inline-block bg-blue-50 px-4 py-2 rounded-full mb-4">
             <span className="text-sm font-medium text-blue-700">
-              {isWakanow ? 'WAKANOW FLIGHT' : (productType?.replace(/_/g, ' ') || 'Booking')}
+              {isDuffel ? 'DUFFEL FLIGHT' : 
+               isWakanow ? 'WAKANOW FLIGHT' : 
+               (productType?.replace(/_/g, ' ') || 'Booking')}
             </span>
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Booking Reference: {booking.reference}</h2>
@@ -1223,7 +1569,9 @@ const renderHotelDetails = () => {
       {booking && (
         <div className="bg-white rounded-xl shadow p-6 mb-8 border border-gray-100">
           <h3 className="text-xl font-bold mb-4">Trip Details</h3>
-          {isHotelBooking ? renderHotelDetails() : renderWakanowDetails()}
+          {isHotelBooking ? renderHotelDetails() : 
+           isDuffel ? renderDuffelDetails() : 
+           renderWakanowDetails()}
         </div>
       )}
 

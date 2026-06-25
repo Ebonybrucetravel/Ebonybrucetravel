@@ -1243,6 +1243,9 @@ export default function BookingReviewPage() {
         final_price: bookingItem.final_price,
       });
 
+      // ============================================================
+      // ✅ DUFFEL FIX: Preserve offer data in correctedItem
+      // ============================================================
       const correctedItem = {
         ...bookingItem,
         provider: finalProvider,
@@ -1255,13 +1258,25 @@ export default function BookingReviewPage() {
         totalAmount: finalAmount,
         markup_percentage: bookingItem.markup_percentage || 10,
         service_fee_percentage: bookingItem.service_fee_percentage || 5,
+        // ✅ DUFFEL: Preserve offer data (NEW - ONLY DUFFEL CHANGE)
+        offerData: bookingItem.offerData || undefined,
+        offer_request_id: bookingItem.offer_request_id || bookingItem.offer_id || undefined,
+        offer_id: bookingItem.offer_id || bookingItem.offer_request_id || undefined,
+        slices: bookingItem.slices || undefined,
+        passengers: bookingItem.passengers || undefined,
+        owner: bookingItem.owner || undefined,
       };
   
       console.log("✈️ Creating flight booking with provider:", finalProvider);
+      console.log("📦 Offer data being sent:", {
+        offerData: correctedItem.offerData ? 'YES' : 'NO',
+        offer_request_id: correctedItem.offer_request_id,
+        offer_id: correctedItem.offer_id,
+      });
   
       // ✅ Create booking - uses cleaned passenger info for Duffel
       const newBooking = await createBooking(
-        correctedItem,
+        correctedItem,  // ✅ Pass correctedItem with offerData
         searchParams,
         cleanedPassengerInfo,  // ✅ Use cleaned passenger info
         isGuest,
