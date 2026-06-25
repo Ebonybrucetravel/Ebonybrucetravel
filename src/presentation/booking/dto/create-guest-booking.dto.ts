@@ -251,7 +251,9 @@ export class CreateGuestBookingDto {
   @IsPositive()
   totalAmount?: number;
 
-
+  // ============================================================
+  // ✅ WAKANOW FIELDS
+  // ============================================================
   @ApiPropertyOptional({ description: 'Wakanow booking ID' })
   @IsString()
   @IsOptional()
@@ -261,6 +263,15 @@ export class CreateGuestBookingDto {
   @IsString()
   @IsOptional()
   selectData?: string;
+
+  // ✅ NEW: PNR number for Wakanow bookings (required for automatic ticketing)
+  @ApiPropertyOptional({ 
+    description: 'PNR number for Wakanow flight bookings (used for automatic ticketing)', 
+    example: '2606250400167' 
+  })
+  @IsString()
+  @IsOptional()
+  pnrNumber?: string;
 
   // ============================================================
   // ✅ DUFFEL FIELDS (NEW - ONLY FOR DUFFEL)
@@ -283,13 +294,17 @@ export class CreateGuestBookingDto {
   @IsOptional()
   offerData?: any;
 
-
+  // ============================================================
+  // ✅ COMMON FIELDS
+  // ============================================================
   @ApiPropertyOptional({ description: 'Provider booking ID' })
   @IsString()
   @IsOptional()
   providerBookingId?: string;
 
- 
+  // ============================================================
+  // ✅ HELPER METHODS (UNCHANGED)
+  // ============================================================
   getTotalAmount(): number {
     return this.totalAmount || this.priceBreakdown?.totalAmount || 0;
   }
