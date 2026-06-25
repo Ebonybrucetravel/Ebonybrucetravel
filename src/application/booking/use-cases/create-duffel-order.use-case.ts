@@ -31,10 +31,6 @@ export class CreateDuffelOrderUseCase {
     private readonly bookingRepository: BookingRepository,
   ) {}
 
-  /**
-   * Safely normalize passenger data to an array
-   * Handles: arrays, objects, JSON strings, single objects, null/undefined
-   */
   private normalizePassengers(passengers: any): Passenger[] {
     if (!passengers) {
       this.logger.warn('Passengers data is null/undefined');
@@ -59,7 +55,6 @@ export class CreateDuffelOrderUseCase {
     }
 
     if (typeof passengers === 'object' && passengers !== null) {
-      // Check if it's a single passenger object
       const hasNameFields = 
         (passengers as any).given_name || (passengers as any).family_name || 
         (passengers as any).firstName || (passengers as any).lastName ||
@@ -69,7 +64,6 @@ export class CreateDuffelOrderUseCase {
         return [passengers];
       }
 
-      // Try to convert object values to array
       const values = Object.values(passengers);
       if (values.length > 0) {
         const firstValue = values[0];
@@ -86,7 +80,6 @@ export class CreateDuffelOrderUseCase {
       }
     }
 
-    // Fallback - create a default passenger
     this.logger.warn('Unable to normalize passenger data, creating default passenger');
     return [{
       id: `pas_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
@@ -100,13 +93,59 @@ export class CreateDuffelOrderUseCase {
     }];
   }
 
+  private findOfferIdInObject(obj: any, depth: number = 0): string | null {
+    if (!obj || typeof obj !== 'object' || depth > 10) {
+      return null;
+    }
+
+    if (obj.id && typeof obj.id === 'string' && obj.id.startsWith('off_')) {
+      return obj.id;
+    }
+
+    if (obj.offer_id && typeof obj.offer_id === 'string' && obj.offer_id.startsWith('off_')) {
+      return obj.offer_id;
+    }
+
+    if (obj.selected_offer_id && typeof obj.selected_offer_id === 'string' && obj.selected_offer_id.startsWith('off_')) {
+      return obj.selected_offer_id;
+    }
+
+    if (obj.data && typeof obj.data === 'object') {
+      const result = this.findOfferIdInObject(obj.data, depth + 1);
+      if (result) return result;
+    }
+
+    if (Array.isArray(obj)) {
+      for (const item of obj) {
+        if (item?.id?.startsWith('off_')) {
+          return item.id;
+        }
+        const result = this.findOfferIdInObject(item, depth + 1);
+        if (result) return result;
+      }
+    } else {
+      for (const key of Object.keys(obj)) {
+        if (key === 'passengers' || key === 'slices' || key === 'offers' || key === 'data') {
+          const result = this.findOfferIdInObject(obj[key], depth + 1);
+          if (result) return result;
+        } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+          const result = this.findOfferIdInObject(obj[key], depth + 1);
+          if (result) return result;
+        }
+      }
+    }
+
+    return null;
+  }
+
   /**
    * ✅ DUFFEL ONLY: Validate and fix offer ID
-   * Ensures we have a valid offer ID (starts with 'off_') before proceeding
+   * If we have an 'orq_' ID but no 'off_' ID, try to fetch offers from Duffel
    */
-  private validateAndFixOfferId(offerId: string, bookingData: any): string {
+  private async validateAndFixOfferId(offerId: string, bookingData: any): Promise<string> {
     // If it's already a valid offer ID (starts with 'off_'), return it
     if (offerId?.startsWith('off_')) {
+      this.logger.log(`✅ Valid offer ID: ${offerId}`);
       return offerId;
     }
 
@@ -114,44 +153,59 @@ export class CreateDuffelOrderUseCase {
     if (offerId?.startsWith('orq_')) {
       this.logger.warn(`⚠️ Detected offer request ID: ${offerId}. Looking for actual offer ID...`);
       
-      // Try to get from offerData.id
-      if (bookingData?.offerData?.id?.startsWith('off_')) {
-        this.logger.log(`✅ Using offer ID from offerData.id: ${bookingData.offerData.id}`);
-        return bookingData.offerData.id;
-      }
-      
-      // Try to get from offerData.offers[0].id
-      if (bookingData?.offerData?.offers?.length > 0) {
-        const firstOffer = bookingData.offerData.offers[0];
-        if (firstOffer.id?.startsWith('off_')) {
-          this.logger.log(`✅ Using offer ID from offers[0].id: ${firstOffer.id}`);
-          return firstOffer.id;
-        }
-      }
-      
-      // Try to get from offerData.selectedOffer.id
-      if (bookingData?.offerData?.selectedOffer?.id?.startsWith('off_')) {
-        this.logger.log(`✅ Using offer ID from selectedOffer.id: ${bookingData.offerData.selectedOffer.id}`);
-        return bookingData.offerData.selectedOffer.id;
-      }
-      
-      // Try to get from slices
-      if (bookingData?.offerData?.slices?.length > 0) {
-        const slice = bookingData.offerData.slices[0];
-        if (slice?.offer_id?.startsWith('off_')) {
-          this.logger.log(`✅ Using offer ID from slices[0].offer_id: ${slice.offer_id}`);
-          return slice.offer_id;
-        }
-      }
-      
-      // Last resort: search the entire offerData JSON for an 'off_' ID
+      // Try to find in stored data first
       if (bookingData?.offerData) {
-        const jsonString = JSON.stringify(bookingData.offerData);
-        const match = jsonString.match(/off_[a-zA-Z0-9]+/);
-        if (match) {
-          this.logger.log(`✅ Extracted offer ID from offerData JSON: ${match[0]}`);
-          return match[0];
+        const foundId = this.findOfferIdInObject(bookingData.offerData);
+        if (foundId) {
+          this.logger.log(`✅ Found offer ID in offerData: ${foundId}`);
+          return foundId;
         }
+      }
+
+      if (bookingData) {
+        const foundId = this.findOfferIdInObject(bookingData);
+        if (foundId) {
+          this.logger.log(`✅ Found offer ID in bookingData: ${foundId}`);
+          return foundId;
+        }
+      }
+
+      // ✅ NEW: Call Duffel API to get offers for this request
+      try {
+        this.logger.log(`🔍 Fetching offers from Duffel for request: ${offerId}...`);
+        
+        // Use the listOffers method to get offers for this request
+        const offersResponse = await this.duffelService.listOffers(offerId, { limit: 10 });
+        
+        if (offersResponse?.data && offersResponse.data.length > 0) {
+          // Use the first offer
+          const firstOffer = offersResponse.data[0];
+          this.logger.log(`✅ Retrieved offer from Duffel: ${firstOffer.id}`);
+          
+          // Store the offer data for future use
+          bookingData.offerData = firstOffer;
+          
+          // Update the offerId in bookingData
+          bookingData.offerId = firstOffer.id;
+          
+          return firstOffer.id;
+        } else {
+          this.logger.warn(`No offers found for request: ${offerId}`);
+        }
+      } catch (error: any) {
+        this.logger.warn(`Failed to fetch offers from Duffel: ${error.message}`);
+      }
+
+      // Last resort: search the entire JSON string
+      try {
+        const jsonString = JSON.stringify(bookingData);
+        const matches = jsonString.match(/off_[a-zA-Z0-9]+/g);
+        if (matches && matches.length > 0) {
+          this.logger.log(`✅ Extracted offer ID from JSON: ${matches[0]}`);
+          return matches[0];
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to search JSON for offer ID: ${error.message}`);
       }
     }
 
@@ -162,21 +216,18 @@ export class CreateDuffelOrderUseCase {
   }
 
   async execute(bookingId: string): Promise<{ orderId: string; orderData: any }> {
-    // Get booking from database
     const booking = await this.bookingRepository.findById(bookingId);
 
     if (!booking) {
       throw new NotFoundException(`Booking with ID ${bookingId} not found.`);
     }
 
-    // Only create order if payment is completed
     if (booking.paymentStatus !== 'COMPLETED') {
       throw new BadRequestException(
         `Cannot create Duffel order: Payment status is ${booking.paymentStatus}. Payment must be completed first.`,
       );
     }
 
-    // Check if order already exists
     if (booking.providerBookingId) {
       this.logger.warn(
         `Booking ${bookingId} already has a Duffel order: ${booking.providerBookingId}. Skipping order creation.`,
@@ -187,7 +238,6 @@ export class CreateDuffelOrderUseCase {
       };
     }
 
-    // Extract offer ID and passenger info from booking data
     const bookingData = booking.bookingData as any;
     const passengerInfo = booking.passengerInfo as any;
 
@@ -203,18 +253,30 @@ export class CreateDuffelOrderUseCase {
       );
     }
 
-    // ✅ Validate and fix offer ID before proceeding
-    const validatedOfferId = this.validateAndFixOfferId(bookingData.offerId, bookingData);
+    // ✅ Validate and fix offer ID (async now)
+    const validatedOfferId = await this.validateAndFixOfferId(bookingData.offerId, bookingData);
     this.logger.log(`✅ Validated offer ID: ${validatedOfferId}`);
 
-    // Update bookingData with validated offer ID if it changed
     if (validatedOfferId !== bookingData.offerId) {
+      this.logger.log(`📝 Updating bookingData.offerId from ${bookingData.offerId} to ${validatedOfferId}`);
       bookingData.offerId = validatedOfferId;
-      this.logger.log(`📝 Updated bookingData.offerId from ${bookingData.offerId} to ${validatedOfferId}`);
+      
+      try {
+        await this.bookingRepository.update(bookingId, {
+          bookingData: {
+            ...bookingData,
+            offerId: validatedOfferId,
+            offerIdFixedAt: new Date().toISOString(),
+            originalOfferId: bookingData.offerId,
+          },
+        });
+        this.logger.log(`✅ Fixed offer ID in database for booking ${bookingId}`);
+      } catch (updateError) {
+        this.logger.warn(`Failed to update booking with fixed offer ID: ${updateError}`);
+      }
     }
 
     try {
-      // TRY TO GET THE OFFER - WITH ERROR HANDLING FOR EXPIRED OFFERS
       let offer: any = null;
       let offerResponse: any = null;
       let offerExpired = false;
@@ -223,14 +285,11 @@ export class CreateDuffelOrderUseCase {
         this.logger.log(`Fetching offer ${validatedOfferId} to get passenger IDs...`);
         offerResponse = await this.duffelService.getOffer(validatedOfferId);
         offer = offerResponse.data;
-        
         this.logger.log(`✅ Successfully fetched offer ${validatedOfferId}`);
       } catch (error: any) {
-        // OFFER EXPIRED OR NOT FOUND
         this.logger.warn(`Failed to fetch offer ${validatedOfferId}: ${error.message}`);
         offerExpired = true;
         
-        // Check if we have stored offer data in the booking
         if (bookingData.offerData || bookingData.selectedOffer || bookingData.duffelOffer) {
           this.logger.log('Using stored offer data from booking...');
           offer = bookingData.offerData || bookingData.selectedOffer || bookingData.duffelOffer;
@@ -238,12 +297,10 @@ export class CreateDuffelOrderUseCase {
           if (offer && offer.id) {
             this.logger.log(`✅ Using stored offer data for ${offer.id}`);
             
-            // Ensure offer has the required structure
             if (!offer.passengers && bookingData.offerPassengers) {
               offer.passengers = bookingData.offerPassengers;
             }
             
-            // If offer has no total_amount, use stored values
             if (!offer.total_amount) {
               offer.total_amount = bookingData.offerTotalAmount || booking.totalAmount || 0;
               offer.total_currency = bookingData.offerCurrency || booking.currency || 'GBP';
@@ -251,7 +308,6 @@ export class CreateDuffelOrderUseCase {
           }
         }
         
-        // If we can't recover, throw a specific error
         if (!offer || !offer.id) {
           throw new HttpException(
             'The flight offer has expired. Please search for flights again and complete a new booking.',
@@ -266,17 +322,14 @@ export class CreateDuffelOrderUseCase {
         );
       }
 
-      // CHECK IF OFFER HAS PASSENGERS, OR USE STORED PASSENGER DATA
       let offerPassengers: Passenger[] = offer.passengers || [];
       const hasValidOfferPassengers = offerPassengers.length > 0;
 
-      // If offer doesn't have passengers but we have stored passenger data, use it
       if (!hasValidOfferPassengers && bookingData.offerPassengers) {
         this.logger.log('Using stored passenger data from booking...');
         offerPassengers = bookingData.offerPassengers;
       }
 
-      // CRITICAL FIX: Use normalizePassengers() for bookingData.passengers
       if (!hasValidOfferPassengers && bookingData.passengers) {
         this.logger.log('Using stored passenger data from booking...');
         const normalizedPassengers = this.normalizePassengers(bookingData.passengers);
@@ -295,9 +348,7 @@ export class CreateDuffelOrderUseCase {
         }
       }
 
-      // If still no passengers, create from passengerInfo
       if (offerPassengers.length === 0) {
-        // CREATE DUMMY PASSENGER DATA FROM BOOKING INFO
         this.logger.warn('No passenger data found in offer or booking, creating from booking info...');
         const passengersList = Array.isArray(passengerInfo) ? passengerInfo : [passengerInfo];
         
@@ -315,14 +366,12 @@ export class CreateDuffelOrderUseCase {
         this.logger.log(`Created ${offerPassengers.length} passenger records from booking info`);
       }
 
-      // MAP PASSENGERS TO DUFFEL FORMAT
       const passengers = Array.isArray(passengerInfo) ? passengerInfo : [passengerInfo];
 
       if (passengers.length !== offerPassengers.length) {
         this.logger.warn(
           `Passenger count mismatch: Booking has ${passengers.length} passengers, offer has ${offerPassengers.length}. Adjusting...`
         );
-        // Use whichever has more passengers
         const maxPassengers = Math.max(passengers.length, offerPassengers.length);
         while (passengers.length < maxPassengers) {
           passengers.push({
@@ -341,11 +390,9 @@ export class CreateDuffelOrderUseCase {
       const allowedGenders = ['m', 'f'];
 
       const duffelPassengers = passengers.map((passenger: any, index: number) => {
-        // Get passenger ID from offer or generate one
         const offerPassenger = offerPassengers[index] || {};
         const passengerId = offerPassenger.id || `pas_${Date.now()}_${index}`;
 
-        // Parse date of birth
         let bornOn: string | undefined;
         if (passenger.dateOfBirth) {
           const dob = new Date(passenger.dateOfBirth);
@@ -365,13 +412,11 @@ export class CreateDuffelOrderUseCase {
           this.logger.warn(`Passenger ${index + 1}: using default date of birth 1990-01-01`);
         }
 
-        // Title
         let title = (passenger.title || offerPassenger.title || 'mr').toString().trim().toLowerCase();
         if (!allowedTitles.includes(title)) {
           title = 'mr';
         }
 
-        // Gender
         let gender = (passenger.gender || offerPassenger.gender || 'm').toString().trim().toLowerCase();
         if (!allowedGenders.includes(gender)) {
           gender = 'm';
@@ -384,7 +429,6 @@ export class CreateDuffelOrderUseCase {
         
         const email = (passenger.email || offerPassenger.email || 'guest@example.com').trim();
 
-        // BUILD PASSENGER OBJECT
         const passengerObj: any = {
           id: passengerId,
           title,
@@ -396,7 +440,6 @@ export class CreateDuffelOrderUseCase {
           phone_number: passenger.phone || passenger.phoneNumber || offerPassenger.phone_number || '+1234567890',
         };
 
-        // ADD IDENTITY DOCUMENTS IF AVAILABLE
         const identityDocs = passenger.identityDocuments || passenger.identity_documents || offerPassenger.identity_documents;
         if (identityDocs && Array.isArray(identityDocs) && identityDocs.length > 0) {
           passengerObj.identity_documents = identityDocs.map((doc: any) => ({
@@ -412,14 +455,10 @@ export class CreateDuffelOrderUseCase {
 
       this.logger.log(`Prepared ${duffelPassengers.length} passengers for order creation`);
 
-      // GET THE OFFER ID (use validated ID)
       const offerId = offer.id || validatedOfferId;
-      
-      // GET PRICE FROM OFFER OR BOOKING
       const totalAmount = offer.total_amount || bookingData.offerTotalAmount || booking.totalAmount || 0;
       const totalCurrency = offer.total_currency || bookingData.offerCurrency || booking.currency || 'GBP';
 
-      // CREATE DUFFEL ORDER
       const orderData = await retryWithBackoffAndLogging(
         () =>
           this.duffelService.createOrder({
@@ -448,7 +487,6 @@ export class CreateDuffelOrderUseCase {
         },
       );
 
-      // UPDATE BOOKING WITH ORDER DATA
       await this.bookingRepository.update(bookingId, {
         providerBookingId: orderData.id,
         providerData: orderData,
@@ -475,7 +513,6 @@ export class CreateDuffelOrderUseCase {
     } catch (error) {
       this.logger.error(`Failed to create Duffel order for booking ${bookingId}:`, error);
 
-      // UPDATE BOOKING STATUS
       try {
         await this.bookingRepository.update(bookingId, {
           status: BookingStatus.FAILED,
@@ -489,7 +526,6 @@ export class CreateDuffelOrderUseCase {
         this.logger.error(`Failed to update booking status: ${updateError}`);
       }
 
-      // RETHROW WITH USER-FRIENDLY MESSAGE
       if (error instanceof HttpException) {
         throw error;
       }
