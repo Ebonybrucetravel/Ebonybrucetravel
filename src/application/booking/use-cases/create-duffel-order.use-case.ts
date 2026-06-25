@@ -100,6 +100,67 @@ export class CreateDuffelOrderUseCase {
     }];
   }
 
+  /**
+   * ✅ DUFFEL ONLY: Validate and fix offer ID
+   * Ensures we have a valid offer ID (starts with 'off_') before proceeding
+   */
+  private validateAndFixOfferId(offerId: string, bookingData: any): string {
+    // If it's already a valid offer ID (starts with 'off_'), return it
+    if (offerId?.startsWith('off_')) {
+      return offerId;
+    }
+
+    // If it starts with 'orq_', it's a request ID - try to find the actual offer ID
+    if (offerId?.startsWith('orq_')) {
+      this.logger.warn(`⚠️ Detected offer request ID: ${offerId}. Looking for actual offer ID...`);
+      
+      // Try to get from offerData.id
+      if (bookingData?.offerData?.id?.startsWith('off_')) {
+        this.logger.log(`✅ Using offer ID from offerData.id: ${bookingData.offerData.id}`);
+        return bookingData.offerData.id;
+      }
+      
+      // Try to get from offerData.offers[0].id
+      if (bookingData?.offerData?.offers?.length > 0) {
+        const firstOffer = bookingData.offerData.offers[0];
+        if (firstOffer.id?.startsWith('off_')) {
+          this.logger.log(`✅ Using offer ID from offers[0].id: ${firstOffer.id}`);
+          return firstOffer.id;
+        }
+      }
+      
+      // Try to get from offerData.selectedOffer.id
+      if (bookingData?.offerData?.selectedOffer?.id?.startsWith('off_')) {
+        this.logger.log(`✅ Using offer ID from selectedOffer.id: ${bookingData.offerData.selectedOffer.id}`);
+        return bookingData.offerData.selectedOffer.id;
+      }
+      
+      // Try to get from slices
+      if (bookingData?.offerData?.slices?.length > 0) {
+        const slice = bookingData.offerData.slices[0];
+        if (slice?.offer_id?.startsWith('off_')) {
+          this.logger.log(`✅ Using offer ID from slices[0].offer_id: ${slice.offer_id}`);
+          return slice.offer_id;
+        }
+      }
+      
+      // Last resort: search the entire offerData JSON for an 'off_' ID
+      if (bookingData?.offerData) {
+        const jsonString = JSON.stringify(bookingData.offerData);
+        const match = jsonString.match(/off_[a-zA-Z0-9]+/);
+        if (match) {
+          this.logger.log(`✅ Extracted offer ID from offerData JSON: ${match[0]}`);
+          return match[0];
+        }
+      }
+    }
+
+    // If we still don't have a valid offer ID, throw an error
+    throw new BadRequestException(
+      `Invalid offer ID format: ${offerId}. Expected format starting with 'off_'. Please select a valid flight offer.`,
+    );
+  }
+
   async execute(bookingId: string): Promise<{ orderId: string; orderData: any }> {
     // Get booking from database
     const booking = await this.bookingRepository.findById(bookingId);
@@ -142,6 +203,16 @@ export class CreateDuffelOrderUseCase {
       );
     }
 
+    // ✅ Validate and fix offer ID before proceeding
+    const validatedOfferId = this.validateAndFixOfferId(bookingData.offerId, bookingData);
+    this.logger.log(`✅ Validated offer ID: ${validatedOfferId}`);
+
+    // Update bookingData with validated offer ID if it changed
+    if (validatedOfferId !== bookingData.offerId) {
+      bookingData.offerId = validatedOfferId;
+      this.logger.log(`📝 Updated bookingData.offerId from ${bookingData.offerId} to ${validatedOfferId}`);
+    }
+
     try {
       // TRY TO GET THE OFFER - WITH ERROR HANDLING FOR EXPIRED OFFERS
       let offer: any = null;
@@ -149,14 +220,14 @@ export class CreateDuffelOrderUseCase {
       let offerExpired = false;
 
       try {
-        this.logger.log(`Fetching offer ${bookingData.offerId} to get passenger IDs...`);
-        offerResponse = await this.duffelService.getOffer(bookingData.offerId);
+        this.logger.log(`Fetching offer ${validatedOfferId} to get passenger IDs...`);
+        offerResponse = await this.duffelService.getOffer(validatedOfferId);
         offer = offerResponse.data;
         
-        this.logger.log(`✅ Successfully fetched offer ${bookingData.offerId}`);
+        this.logger.log(`✅ Successfully fetched offer ${validatedOfferId}`);
       } catch (error: any) {
         // OFFER EXPIRED OR NOT FOUND
-        this.logger.warn(`Failed to fetch offer ${bookingData.offerId}: ${error.message}`);
+        this.logger.warn(`Failed to fetch offer ${validatedOfferId}: ${error.message}`);
         offerExpired = true;
         
         // Check if we have stored offer data in the booking
@@ -341,8 +412,8 @@ export class CreateDuffelOrderUseCase {
 
       this.logger.log(`Prepared ${duffelPassengers.length} passengers for order creation`);
 
-      // GET THE OFFER ID
-      const offerId = offer.id || bookingData.offerId;
+      // GET THE OFFER ID (use validated ID)
+      const offerId = offer.id || validatedOfferId;
       
       // GET PRICE FROM OFFER OR BOOKING
       const totalAmount = offer.total_amount || bookingData.offerTotalAmount || booking.totalAmount || 0;

@@ -14,6 +14,7 @@ import {
   HttpStatus,
   HttpException,
   Patch,
+  Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
@@ -74,6 +75,8 @@ import { CancelWakanowBookingUseCase } from '@application/booking/use-cases/canc
 @ApiTags('Bookings')
 @Controller('bookings')
 export class BookingController {
+  private readonly logger = new Logger(BookingController.name);
+
   constructor(
     private readonly createBookingUseCase: CreateBookingUseCase,
     private readonly createGuestBookingUseCase: CreateGuestBookingUseCase,
@@ -107,10 +110,75 @@ export class BookingController {
     private readonly requestHotelCancellationUseCase: RequestHotelCancellationUseCase,
     private readonly updateAmadeusHotelBookingUseCase: UpdateAmadeusHotelBookingUseCase,
     private readonly prisma: PrismaService,
-    // ✅ NEW: Cancellation use cases
     private readonly cancelBookingUseCase: CancelBookingUseCase,
     private readonly cancelWakanowBookingUseCase: CancelWakanowBookingUseCase,
-  ) { }
+  ) {}
+
+  /**
+   * ✅ DUFFEL ONLY: Validate and correct offer ID
+   * If the ID starts with 'orq_', it's a request ID, not an offer ID.
+   * Try to extract the actual offer ID from offerData.
+   */
+  private validateAndFixDuffelOfferId(offerId?: string, offerData?: any): string {
+    if (!offerId) return offerId;
+    
+    // If it's already a valid offer ID (starts with 'off_'), return it
+    if (offerId.startsWith('off_')) {
+      return offerId;
+    }
+    
+    // If it starts with 'orq_', it's a request ID - try to find the actual offer ID
+    if (offerId.startsWith('orq_')) {
+      this.logger.warn(`⚠️ Detected offer request ID: ${offerId}. Looking for actual offer ID...`);
+      
+      // Try to get from offerData.id
+      if (offerData?.id?.startsWith('off_')) {
+        this.logger.log(`✅ Using offer ID from offerData.id: ${offerData.id}`);
+        return offerData.id;
+      }
+      
+      // Try to get from offerData.offers[0].id
+      if (offerData?.offers?.length > 0) {
+        const firstOffer = offerData.offers[0];
+        if (firstOffer.id?.startsWith('off_')) {
+          this.logger.log(`✅ Using offer ID from offers[0].id: ${firstOffer.id}`);
+          return firstOffer.id;
+        }
+      }
+      
+      // Try to get from offerData.selectedOffer.id
+      if (offerData?.selectedOffer?.id?.startsWith('off_')) {
+        this.logger.log(`✅ Using offer ID from selectedOffer.id: ${offerData.selectedOffer.id}`);
+        return offerData.selectedOffer.id;
+      }
+      
+      // Try to get from slices
+      if (offerData?.slices?.length > 0) {
+        const slice = offerData.slices[0];
+        if (slice?.offer_id?.startsWith('off_')) {
+          this.logger.log(`✅ Using offer ID from slices[0].offer_id: ${slice.offer_id}`);
+          return slice.offer_id;
+        }
+      }
+      
+      // Last resort: search the entire offerData JSON for an 'off_' ID
+      if (offerData) {
+        const jsonString = JSON.stringify(offerData);
+        const match = jsonString.match(/off_[a-zA-Z0-9]+/);
+        if (match) {
+          this.logger.log(`✅ Extracted offer ID from offerData JSON: ${match[0]}`);
+          return match[0];
+        }
+      }
+      
+      // If we still don't have a valid offer ID, throw an error
+      throw new BadRequestException(
+        'Invalid offer ID. Please select a valid flight offer.',
+      );
+    }
+    
+    return offerId;
+  }
 
   // ==================== FLIGHT ENDPOINTS ====================
 
@@ -209,6 +277,16 @@ export class BookingController {
   @ApiOperation({ summary: 'Create a guest booking (no authentication required)' })
   @ApiResponse({ status: 201, description: 'Guest booking created successfully' })
   async createGuest(@Body() createGuestBookingDto: CreateGuestBookingDto) {
+    // ✅ DUFFEL ONLY: Validate and correct offer ID
+    if (createGuestBookingDto.provider === 'DUFFEL') {
+      const fixedOfferId = this.validateAndFixDuffelOfferId(
+        createGuestBookingDto.offerId,
+        createGuestBookingDto.offerData,
+      );
+      createGuestBookingDto.offerId = fixedOfferId;
+      this.logger.log(`📦 Final offerId for Duffel guest booking: ${createGuestBookingDto.offerId}`);
+    }
+    
     const booking = await this.createGuestBookingUseCase.execute(createGuestBookingDto);
     return {
       success: true,
@@ -227,6 +305,16 @@ export class BookingController {
   @ApiResponse({ status: 201, description: 'Booking created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid booking data or missing price breakdown' })
   async create(@Body() createBookingDto: CreateBookingDto, @Request() req) {
+    // ✅ DUFFEL ONLY: Validate and correct offer ID
+    if (createBookingDto.provider === 'DUFFEL') {
+      const fixedOfferId = this.validateAndFixDuffelOfferId(
+        createBookingDto.offerId,
+        createBookingDto.offerData,
+      );
+      createBookingDto.offerId = fixedOfferId;
+      this.logger.log(`📦 Final offerId for Duffel authenticated booking: ${createBookingDto.offerId}`);
+    }
+    
     const { priceBreakdown } = createBookingDto;
     
     if (priceBreakdown) {
@@ -237,7 +325,7 @@ export class BookingController {
         throw new BadRequestException('Currency is required');
       }
       
-      console.log('💰 Creating booking with price breakdown:', {
+      this.logger.log('💰 Creating booking with price breakdown:', {
         basePrice: priceBreakdown.basePrice,
         markupAmount: priceBreakdown.markupAmount,
         markupPercentage: priceBreakdown.markupPercentage,
