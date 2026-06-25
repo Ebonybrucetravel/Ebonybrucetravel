@@ -251,9 +251,7 @@ export class CreateGuestBookingDto {
   @IsPositive()
   totalAmount?: number;
 
-  // ============================================================
-  // ✅ WAKANOW FIELDS (UNCHANGED)
-  // ============================================================
+
   @ApiPropertyOptional({ description: 'Wakanow booking ID' })
   @IsString()
   @IsOptional()
@@ -285,17 +283,13 @@ export class CreateGuestBookingDto {
   @IsOptional()
   offerData?: any;
 
-  // ============================================================
-  // ✅ COMMON FIELDS
-  // ============================================================
+
   @ApiPropertyOptional({ description: 'Provider booking ID' })
   @IsString()
   @IsOptional()
   providerBookingId?: string;
 
-  // ============================================================
-  // ✅ HELPER METHODS (UNCHANGED)
-  // ============================================================
+ 
   getTotalAmount(): number {
     return this.totalAmount || this.priceBreakdown?.totalAmount || 0;
   }

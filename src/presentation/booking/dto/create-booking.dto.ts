@@ -116,6 +116,34 @@ class PassengerInfoDto {
   @ValidateNested({ each: true })
   @Type(() => LoyaltyProgrammeAccountDto)
   loyaltyProgrammeAccounts?: LoyaltyProgrammeAccountDto[];
+
+  // ============================================================
+  // ✅ WAKANOW FIELDS (OPTIONAL - ONLY USED BY WAKANOW)
+  // ============================================================
+  @ApiPropertyOptional({ description: 'Wakanow only - Street address' })
+  @IsString()
+  @IsOptional()
+  address?: string;
+
+  @ApiPropertyOptional({ description: 'Wakanow only - City' })
+  @IsString()
+  @IsOptional()
+  city?: string;
+
+  @ApiPropertyOptional({ description: 'Wakanow only - Country' })
+  @IsString()
+  @IsOptional()
+  country?: string;
+
+  @ApiPropertyOptional({ description: 'Wakanow only - Country code' })
+  @IsString()
+  @IsOptional()
+  countryCode?: string;
+
+  @ApiPropertyOptional({ description: 'Wakanow only - Postal code' })
+  @IsString()
+  @IsOptional()
+  postalCode?: string;
 }
 
 // ✅ Price breakdown DTO
@@ -237,7 +265,17 @@ export class PriceBreakdownDto {
  *   "productType": "FLIGHT_DOMESTIC",
  *   "provider": "WAKANOW",
  *   "bookingData": { "flightSummary": {...} },
- *   "passengerInfo": {...},
+ *   "passengerInfo": {
+ *     "firstName": "John",
+ *     "lastName": "Doe",
+ *     "email": "john@example.com",
+ *     "phone": "+2348000000000",
+ *     "address": "No 1, Guest Street",
+ *     "city": "Lagos",
+ *     "country": "Nigeria",
+ *     "countryCode": "NG",
+ *     "postalCode": "100001"
+ *   },
  *   "priceBreakdown": {
  *     "basePrice": 204028.73,
  *     "markupAmount": 20402.87,
