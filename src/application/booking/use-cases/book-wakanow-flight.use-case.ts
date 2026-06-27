@@ -404,7 +404,22 @@ export class BookWakanowFlightUseCase {
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
     const random = Math.floor(100000 + Math.random() * 900000);
     const reference = `EBT-${dateStr}-${random}`;
-
+  
+    // ✅ Ensure passengerInfo has email properly formatted
+    const formattedPassengers = passengers.map((p: any) => ({
+      firstName: p.firstName || p.given_name || 'Guest',
+      lastName: p.lastName || p.family_name || 'User',
+      email: p.email || p.Email || 'guest@example.com',
+      phone: p.phoneNumber || p.phone || p.phone_number || '+2340000000000',
+      title: p.title || 'Mr',
+      gender: p.gender || 'Male',
+      dateOfBirth: p.dateOfBirth || p.born_on || '1990-01-01',
+      passengerType: p.passengerType || 'Adult',
+    }));
+  
+    // ✅ Get the first passenger's email for bookingData
+    const firstPassengerEmail = formattedPassengers[0]?.email || 'guest@example.com';
+  
     const bookingData = {
       wakanowBookingId: bookResponse.BookingId,
       pnrReferenceNumber: pnr,
@@ -413,6 +428,8 @@ export class BookWakanowFlightUseCase {
       targetCurrency,
       ticketStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.TicketStatus || 'PENDING',
       pnrStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.PnrStatus || 'PENDING',
+      // ✅ Store email in bookingData
+      passengerEmail: firstPassengerEmail,
       priceBreakdown: {
         basePrice: prices.basePrice,
         markupAmount: prices.markupAmount,
@@ -426,7 +443,7 @@ export class BookWakanowFlightUseCase {
         breakdown: prices.breakdown,
       },
     };
-
+  
     return await this.bookingRepository.create({
       reference,
       userId,
@@ -441,7 +458,7 @@ export class BookWakanowFlightUseCase {
       totalAmount: prices.totalAmount,
       currency: prices.currency,
       bookingData: bookingData,
-      passengerInfo: passengers as any,
+      passengerInfo: formattedPassengers, 
       paymentStatus: PaymentStatus.PENDING,
     });
   }
