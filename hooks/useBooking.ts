@@ -355,7 +355,7 @@ export function useBooking() {
           
 
 // ============================================================
-// WAKANOW FLOW (FIXED - WITH PNR STORAGE)
+// WAKANOW FLOW (FIXED)
 // ============================================================
 if (provider === 'WAKANOW') {
   offerId = getSelectData(item);
@@ -369,10 +369,15 @@ if (provider === 'WAKANOW') {
   const wakanowCurrency = offerCurrency;
   
   // ✅ CRITICAL: Get the PNR/Wakanow Booking ID from the item
-  // This comes from the selectWakanowFlight response and is stored in item.bookingId
   const wakanowBookingId = item.bookingId || null;
   
   console.log("🔑 Wakanow Booking ID (PNR):", wakanowBookingId);
+  
+  // ✅ STORE bookingId at TOP LEVEL
+  body.bookingId = wakanowBookingId;
+  
+  // ✅ STORE selectData at TOP LEVEL (THIS IS THE FIX)
+  body.selectData = offerId;  // ← ADD THIS LINE
   
   body.bookingData = {
     offerId: offerId,
@@ -382,6 +387,7 @@ if (provider === 'WAKANOW') {
     ...(item.realData?.airline && { airline: item.realData.airline }),
     ...(item.realData?.flightNumber && {
       flightNumber: item.realData.flightNumber,
+      phoneNumber: passenger.phone, 
     }),
     cabinClass: searchParams?.cabinClass ?? "economy",
     passengers: searchParams?.passengers ?? 1,
@@ -395,12 +401,12 @@ if (provider === 'WAKANOW') {
     markup_percentage: item.markup_percentage,
     is_domestic: productType === "FLIGHT_DOMESTIC",
     is_wakanow: provider === 'WAKANOW',
-    select_data: provider === 'WAKANOW' ? offerId : undefined,
-    // ✅ CRITICAL: Store PNR in bookingData for the webhook
+    select_data: offerId,  // Keep for reference
     pnrNumber: wakanowBookingId,
+    wakanowBookingId: wakanowBookingId,
   };
   
-  // ✅ CRITICAL: Also add PNR to top-level body for the webhook
+  // ✅ Also keep top-level pnrNumber for webhook
   body.pnrNumber = wakanowBookingId;
   
   // ✅ WAKANOW: Add totalAmount and priceBreakdown at top level for validation
@@ -422,6 +428,8 @@ if (provider === 'WAKANOW') {
     totalAmount: body.totalAmount, 
     currency: body.currency,
     pnrNumber: wakanowBookingId,
+    bookingId: body.bookingId,
+    hasSelectData: !!body.selectData,  // ← Log to verify
   });
 }
           // ============================================================
@@ -575,6 +583,15 @@ if (provider === 'WAKANOW') {
         }
   
         const created: Booking = data.data ?? data;
+
+        if (created && provider === 'WAKANOW') {
+          if (!created.passengerInfo?.email && passenger?.email) {
+            created.passengerInfo = {
+              ...(created.passengerInfo || {}),
+              email: passenger.email,
+            };
+          }
+        }
   
         if (!created?.id) {
           console.error("Invalid booking response:", data);
@@ -615,28 +632,28 @@ if (provider === 'WAKANOW') {
       let body: Record<string, any>;
   
       if (provider === 'WAKANOW') {
-        endpoint = "/api/v1/payments/stripe/create-intent/wakanow";
+        endpoint = "/api/v1/payments/stripe/create-intent/guest";
         
-        let priceBreakdown = null;
-        try {
-          const stored = sessionStorage.getItem('booking_price_breakdown');
-          if (stored) {
-            priceBreakdown = JSON.parse(stored);
-          }
-        } catch (e) {
-          console.warn('Could not parse price breakdown from session');
+        let email = guestEmail;
+        
+        if (!email && booking) {
+          email = (booking as any)?.passengerInfo?.email;
+        }
+        
+        if (!email) {
+          throw new Error('Passenger email is required for payment. Please provide a valid email address.');
+        }
+        
+        const ref = bookingReference || booking?.reference;
+        
+        if (!ref) {
+          throw new Error('Booking reference is required for payment.');
         }
         
         body = { 
-          bookingId,
-          amount: priceBreakdown?.totalAmount || undefined,
-          currency: priceBreakdown?.currency || 'NGN',
+          bookingReference: ref,
+          email: email,
         };
-        
-        const token = getStoredAuthToken();
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
       } 
       else if (isGuest) {
         endpoint = "/api/v1/payments/stripe/create-intent/guest";
@@ -676,7 +693,7 @@ if (provider === 'WAKANOW') {
         voucherApplied?: any;
       };
     },
-    [BASE],
+    [BASE, booking], // ✅ Add booking to dependencies
   );
 
   const createAmadeusHotelBooking = useCallback(

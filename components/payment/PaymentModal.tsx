@@ -37,8 +37,9 @@ function PaymentForm({ booking, isGuest, voucherCode, onSuccess, onCancel }: Pay
 
       try {
           setStatus('paying');
+          const provider = booking.provider || undefined;
           
-          // Create payment intent with voucher code support
+        
           let clientSecret: string;
           
           if (isGuest) {
@@ -48,7 +49,8 @@ function PaymentForm({ booking, isGuest, voucherCode, onSuccess, onCancel }: Pay
                   true, 
                   booking.passengerInfo.email, 
                   booking.reference,
-                  voucherCode // Pass voucherCode for guests too!
+                  voucherCode,
+                  provider,
               );
               clientSecret = result.clientSecret;
           } else {
@@ -56,9 +58,10 @@ function PaymentForm({ booking, isGuest, voucherCode, onSuccess, onCancel }: Pay
               const result = await createPaymentIntent(
                   booking.id, 
                   false, 
-                  undefined, 
-                  undefined,
-                  voucherCode // Pass voucherCode for authenticated users
+                  booking.passengerInfo.email,
+                  booking.reference, 
+                  voucherCode,
+                  provider,
               );
               clientSecret = result.clientSecret;
           }
