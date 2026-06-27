@@ -307,77 +307,142 @@ export class HandleStripeWebhookUseCase {
       }
 
 
-if (isWakanowFlight) {
-  try {
-    this.logger.log(`Automatically ticketing Wakanow flight for booking ${bookingId}...`);
-    
-    const bookingData = booking.bookingData as any;
-    const providerData = booking.providerData as any;
-    
-    let pnrNumber = 
-      bookingData?.pnrNumber ||                          
-      bookingData?.pnrReferenceNumber || 
-      bookingData?.wakanowBookingId ||
-      providerData?.FlightBookingSummary?.PnrReferenceNumber ||
-      providerData?.FlightBookingResult?.FlightBookingSummaryModel?.PnrReferenceNumber ||
-      null;
+      if (isWakanowFlight) {
+        try {
+          this.logger.log(`Automatically ticketing Wakanow flight for booking ${bookingId}...`);
+          
+          const bookingData = booking.bookingData as any;
+          const providerData = booking.providerData as any;
+          
+          // ✅ Helper function to extract PNR properly
+          const extractPnr = (data: any, provider: any): string | null => {
+            const candidates = [
+              data?.wakanowPnr,
+              data?.pnrNumber,
+              data?.pnrReferenceNumber,
+              provider?.FlightBookingResult?.FlightBookingSummaryModel?.PnReferenceNumber,
+              provider?.FlightBookingSummaryModel?.PnReferenceNumber,
+              provider?.FlightBookingSummary?.PnrReferenceNumber,
+              provider?.PnReferenceNumber,
+              data?.FlightBookingResult?.FlightBookingSummaryModel?.PnReferenceNumber,
+              data?.PnReferenceNumber,
+            ];
+            
+            for (const candidate of candidates) {
+              if (candidate && typeof candidate === 'string') {
+                // Skip numeric strings that look like Booking IDs (10+ digits)
+                if (!/^\d{10,}$/.test(candidate)) {
+                  return candidate;
+                }
+              }
+            }
+            return null;
+          };
+          
+          // ✅ Extract PNR
+          let pnrNumber = extractPnr(bookingData, providerData);
+          
+          // ✅ Extract Wakanow Booking ID
+          const wakanowBookingId = 
+            bookingData?.wakanowBookingId || 
+            bookingData?.bookingId ||
+            providerData?.BookingId ||
+            providerData?.booking_id ||
+            null;
+          
+          this.logger.log(`🔍 Found PNR: ${pnrNumber}, WakanowId: ${wakanowBookingId}`);
+          
+          // ✅ Validate
+          if (!pnrNumber) {
+            this.logger.error(`❌ No valid PNR found for booking ${bookingId}`);
+            
+            // Store the error for debugging
+            await this.prisma.booking.update({
+              where: { id: bookingId },
+              data: {
+                providerData: {
+                  ...providerData,
+                  ticketingError: 'PNR not found',
+                  ticketingErrorAt: new Date().toISOString(),
+                } as any,
+              },
+            });
+            
+            throw new Error(`Cannot issue ticket: PNR not found. Booking ID: ${wakanowBookingId || bookingId}`);
+          }
+          
+          if (!wakanowBookingId) {
+            this.logger.error(`❌ No Wakanow Booking ID found for booking ${bookingId}`);
+            throw new Error(`Cannot issue ticket: Wakanow Booking ID not found.`);
+          }
+          
+          // ✅ Prevent using Booking ID as PNR
+          if (pnrNumber === wakanowBookingId) {
+            this.logger.warn(`⚠️ PNR equals Booking ID (${pnrNumber}). This is a bug - PNR should be the airline PNR.`);
+            
+            // Try one more time to recover from providerData
+            const recoveredPnr = providerData?.FlightBookingResult
+              ?.FlightBookingSummaryModel
+              ?.PnReferenceNumber;
+            
+            if (recoveredPnr && recoveredPnr !== wakanowBookingId && !/^\d{10,}$/.test(recoveredPnr)) {
+              pnrNumber = recoveredPnr;
+              this.logger.log(`✅ Recovered PNR from providerData: ${pnrNumber}`);
+            } else {
+              // We need to abort - this would fail anyway
+              throw new Error(`Cannot issue ticket: PNR appears to be a Booking ID (${pnrNumber}). Please check the booking creation logic.`);
+            }
+          }
+          
+          this.logger.log(`✅ Valid data - PNR: ${pnrNumber}, BookingId: ${wakanowBookingId}`);
+          
+          // ✅ Retry logic with delays
+          let lastError: any;
+          let ticketSuccess = false;
+          
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              if (attempt > 1) {
+                const delayMs = 3000 * attempt;
+                this.logger.log(`⏳ Waiting ${delayMs}ms before attempt ${attempt}/3...`);
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+              }
+              
+              this.logger.log(`🔄 Ticket attempt ${attempt}/3 for booking ${bookingId}...`);
+              
+              await this.ticketWakanowFlightUseCase.execute(
+                { 
+                  bookingId: wakanowBookingId,  // Wakanow's Booking ID
+                  pnrNumber: pnrNumber          // The actual airline PNR
+                }, 
+                bookingId
+              );
+              
+              ticketSuccess = true;
+              this.logger.log(`✅ Successfully ticketed Wakanow flight for booking ${bookingId} on attempt ${attempt}`);
+              break;
+            } catch (error) {
+              lastError = error;
+              this.logger.warn(`⚠️ Ticket attempt ${attempt}/3 failed for booking ${bookingId}: ${error.message}`);
+              
+              // If it's a pending status, don't retry immediately
+              if (error.message?.includes('pending') || error.message?.includes('processing')) {
+                this.logger.log(`⏳ Ticket is pending, will retry later.`);
+                break;
+              }
+              
+              // If it's a PNR issue, don't retry
+              if (error.message?.includes('PNR') || error.message?.includes('not found')) {
+                this.logger.error(`❌ PNR issue detected, aborting retries.`);
+                break;
+              }
+            }
+          }
       
-    if (!pnrNumber && (booking as any).pnrNumber) {
-      pnrNumber = (booking as any).pnrNumber;
-    }
-    
-    const wakanowBookingId = 
-      bookingData?.wakanowBookingId || 
-      bookingData?.bookingId ||
-      providerData?.BookingId ||
-      providerData?.booking_id ||
-      pnrNumber;
-    
-    this.logger.log(`🔍 Found PNR: ${pnrNumber}, WakanowId: ${wakanowBookingId}`);
-      
-    if (!pnrNumber || !wakanowBookingId || pnrNumber === 'PENDING_ISSUE') {
-      this.logger.error(`Ticketing data missing for booking ${bookingId}. PNR: ${pnrNumber}, WakanowId: ${wakanowBookingId}`);
-      throw new Error(`Cannot issue ticket: ${!pnrNumber || pnrNumber === 'PENDING_ISSUE' ? 'PNR is missing or pending' : 'Wakanow BookingId is missing'}.`);
-    }
-
-    // ✅ Retry with delay (3 attempts, increasing delays)
-    let lastError: any;
-    let ticketSuccess = false;
-    
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        if (attempt > 1) {
-          const delayMs = 3000 * attempt;
-          this.logger.log(`⏳ Waiting ${delayMs}ms before attempt ${attempt}/3...`);
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-        }
-        
-        this.logger.log(`🔄 Ticket attempt ${attempt}/3 for booking ${bookingId}...`);
-        
-        await this.ticketWakanowFlightUseCase.execute(
-          { bookingId: wakanowBookingId, pnrNumber }, 
-          bookingId
-        );
-        
-        ticketSuccess = true;
-        this.logger.log(`✅ Successfully ticketed Wakanow flight for booking ${bookingId} on attempt ${attempt}`);
-        break;
-      } catch (error) {
-        lastError = error;
-        this.logger.warn(`⚠️ Ticket attempt ${attempt}/3 failed for booking ${bookingId}: ${error.message}`);
-        
-        // If it's a pending status, don't retry immediately
-        if (error.message?.includes('pending') || error.message?.includes('processing')) {
-          this.logger.log(`⏳ Ticket is pending, will retry later.`);
-          break;
-        }
-      }
-    }
-
-    // If all retries failed
-    if (!ticketSuccess) {
-      throw lastError || new Error('All ticket attempts failed');
-    }
+          // If all retries failed
+          if (!ticketSuccess) {
+            throw lastError || new Error('All ticket attempts failed');
+          }
 
     const updatedBooking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
