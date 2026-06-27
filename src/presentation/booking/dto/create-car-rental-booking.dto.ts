@@ -7,6 +7,7 @@ import {
   IsArray,
   ValidateNested,
   IsEnum,
+  Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform, plainToInstance } from 'class-transformer';
@@ -183,24 +184,25 @@ export class CarRentalPaymentDto {
 export class CreateCarRentalBookingDto {
   @ApiProperty({
     description: 'Transfer offer ID from search results',
-    example: 'TRF123456',
+    example: '4486232653',
   })
   @IsString()
   @IsNotEmpty()
   offerId: string;
 
   @ApiProperty({
-    description: 'Offer price from search results (final price after markup)',
-    example: 250.00,
+    description: 'Offer price from search results',
+    example: 4255.00,
   })
   @IsNumber()
   @IsNotEmpty()
+  @Min(0.01)
   offerPrice: number;
 
   @ApiProperty({
     description: 'Currency code (ISO 4217)',
     enum: ['GBP', 'USD', 'EUR', 'NGN', 'JPY', 'CNY', 'GHS', 'KES', 'ZAR'],
-    example: 'GBP',
+    example: 'NGN',
   })
   @IsString()
   @IsNotEmpty()
@@ -216,9 +218,83 @@ export class CreateCarRentalBookingDto {
   @Type(() => CarRentalDriverDto)
   driver: CarRentalDriverDto;
 
+  // ✅ ADD TOTAL AMOUNT (sent from frontend with markup)
+  @ApiProperty({
+    description: 'Total amount (calculated by frontend with markup)',
+    example: 4255,
+  })
+  @IsNumber()
+  @IsNotEmpty()
+  @Min(0.01)
+  totalAmount: number;
+
+  // ✅ Optional fields from frontend (bookingData)
   @ApiPropertyOptional({
-    description:
-      'Payment card (guest card). Accepts paymentCard with card fields directly, or paymentCard.paymentCardInfo: { vendorCode, cardNumber, expiryDate, holderName, securityCode }. Omit when using merchant model.',
+    description: 'Pickup location',
+    example: 'CDG',
+  })
+  @IsOptional()
+  @IsString()
+  pickupLocation?: string;
+
+  @ApiPropertyOptional({
+    description: 'Dropoff location',
+    example: 'CDG',
+  })
+  @IsOptional()
+  @IsString()
+  dropoffLocation?: string;
+
+  @ApiPropertyOptional({
+    description: 'Pickup date and time',
+    example: '2026-06-28T10:00:00',
+  })
+  @IsOptional()
+  @IsString()
+  pickupDateTime?: string;
+
+  @ApiPropertyOptional({
+    description: 'Dropoff date and time',
+    example: '2026-07-01T10:00:00',
+  })
+  @IsOptional()
+  @IsString()
+  dropoffDateTime?: string;
+
+  @ApiPropertyOptional({
+    description: 'Vehicle type description',
+    example: 'A 3 seater SDN, Toyota Camry or Similar',
+  })
+  @IsOptional()
+  @IsString()
+  vehicleType?: string;
+
+  @ApiPropertyOptional({
+    description: 'Service provider name',
+    example: 'Elife',
+  })
+  @IsOptional()
+  @IsString()
+  serviceProvider?: string;
+
+  @ApiPropertyOptional({
+    description: 'Full offer data from search',
+    example: {},
+  })
+  @IsOptional()
+  offerData?: any;
+
+  @ApiPropertyOptional({
+    description: 'Special requests or notes',
+    example: 'Child seat required',
+  })
+  @IsOptional()
+  @IsString()
+  specialRequests?: string;
+
+  // ✅ Payment is optional - same as Duffel/Wakanow (will use test card)
+  @ApiPropertyOptional({
+    description: 'Payment card (optional - uses test card if not provided)',
     type: CarRentalPaymentDto,
   })
   @IsOptional()
@@ -228,13 +304,4 @@ export class CreateCarRentalBookingDto {
   @ValidateNested()
   @Type(() => CarRentalPaymentDto)
   payment?: CarRentalPaymentDto;
-
-  @ApiPropertyOptional({
-    description: 'Special requests or notes',
-    example: 'Child seat required',
-  })
-  @IsOptional()
-  @IsString()
-  specialRequests?: string;
 }
-
