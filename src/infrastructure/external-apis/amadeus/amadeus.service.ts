@@ -537,11 +537,12 @@ export class AmadeusService {
         requestBody.data.accommodationSpecialRequests = params.accommodationSpecialRequests;
       }
       
+      // ✅ FIX: Convert price strings to numbers
       if (params.price) {
         requestBody.data.price = {
           currency: params.price.currency,
-          base: params.price.base,
-          total: params.price.total,
+          base: typeof params.price.base === 'string' ? parseFloat(params.price.base) : params.price.base,
+          total: typeof params.price.total === 'string' ? parseFloat(params.price.total) : params.price.total,
         };
       }
     } 

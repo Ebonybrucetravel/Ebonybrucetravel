@@ -329,8 +329,8 @@ export class CreateAmadeusHotelBookingUseCase {
 
       const priceForAmadeus: any = {
         currency: originalCurrency,
-        base: originalBase.toFixed(2),
-        total: originalTotal.toFixed(2),
+        base: originalBase,   
+        total: originalTotal, 
       };
 
       this.logger.log(`💰 Sending ORIGINAL price to Amadeus: ${JSON.stringify(priceForAmadeus)}`);
