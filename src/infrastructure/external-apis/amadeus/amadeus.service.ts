@@ -787,12 +787,51 @@ export class AmadeusService {
       name: { title: string; firstName: string; lastName: string };
       contact: { phone: string; email: string };
     }>;
-    payments: Array<{ method: string; card?: { vendorCode: string; cardNumber: string; expiryDate: string } }>;
+    // ✅ Make payment optional - same as hotels
+    payment?: {
+      methodOfPayment: string;
+      creditCard?: {
+        number: string;
+        holderName: string;
+        vendorCode: string;
+        expiryDate: string;
+        cvv: string;
+      };
+    };
   }): Promise<any> {
-    return this.makeRequest('/v1/ordering/transfer-orders', {
+    // ✅ Build request without requiring payment
+    const requestBody: any = {
+      data: {
+        offerId: params.offerId,
+        passengers: params.passengers.map(p => ({
+          name: {
+            title: p.name.title,
+            firstName: p.name.firstName,
+            lastName: p.name.lastName,
+          },
+          contacts: {
+            phoneNumber: p.contact.phone,
+            email: p.contact.email,
+          },
+        })),
+      },
+    };
+  
+    // ✅ Only add payment if explicitly provided (like Amadeus hotels)
+    if (params.payment) {
+      requestBody.data.payment = params.payment;
+    }
+  
+    this.logger.log(`📤 Sending transfer booking to Amadeus: ${JSON.stringify(requestBody, null, 2)}`);
+  
+    const response = await this.makeRequest('/v1/ordering/transfer-orders', {
       method: 'POST',
-      body: { data: { offerId: params.offerId, passengers: params.passengers, payments: params.payments } },
+      body: requestBody,
     });
+  
+    this.logger.log(`✅ Amadeus transfer booking response: ${JSON.stringify(response, null, 2)}`);
+  
+    return response;
   }
 
   async getTransferBooking(orderId: string): Promise<any> {
