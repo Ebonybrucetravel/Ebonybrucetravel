@@ -73,6 +73,114 @@ export class CreateGuestBookingUseCase {
         this.logger.log(`📦 Stored Duffel offer data for: ${dto.offerId} with ${passengersToStore.length} passengers`);
       }
     }
+
+    if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
+      this.logger.log(`🚗 Creating car rental booking for guest.`);
+      
+      // Get email from passengerInfo
+      const email = Array.isArray(passengerInfo) 
+        ? passengerInfo[0]?.email 
+        : passengerInfo?.email;
+      
+      if (!email) {
+        throw new BadRequestException('Passenger email is required');
+      }
+    
+      // Create or get user
+      let guestUser = await this.prisma.user.findUnique({
+        where: { email: email },
+      });
+    
+      if (!guestUser) {
+        const name = Array.isArray(passengerInfo)
+          ? `${passengerInfo[0]?.firstName || 'Guest'} ${passengerInfo[0]?.lastName || 'User'}`
+          : `${passengerInfo.firstName || 'Guest'} ${passengerInfo.lastName || 'User'}`;
+        
+        const phone = Array.isArray(passengerInfo)
+          ? passengerInfo[0]?.phone || null
+          : passengerInfo?.phone || null;
+    
+        guestUser = await this.prisma.user.create({
+          data: {
+            email: email,
+            name: name,
+            phone: phone,
+            role: 'CUSTOMER',
+            password: null,
+            provider: null,
+            providerId: null,
+          },
+        });
+      }
+    
+      // ✅ Extract car rental data from DTO
+      const bookingData = dto.bookingData || {};
+      const offerId = bookingData.offerId || dto.bookingId;
+      const offerPrice = bookingData.offerPrice || dto.basePrice || 0;
+      const driver = bookingData.driver || {};
+      const currency = dto.currency || 'NGN';
+    
+      if (!offerId) {
+        this.logger.error('Missing offerId for car rental booking');
+        throw new BadRequestException('Offer ID is required for car rental booking');
+      }
+    
+      // ✅ Create booking with car rental data
+      const booking = await this.bookingService.createBooking({
+        userId: guestUser.id,
+        productType: 'CAR_RENTAL',
+        provider: Provider.AMADEUS,
+        basePrice: dto.getBasePrice() || offerPrice,
+        markupAmount: dto.getMarkupAmount() || 0,
+        markupPercentage: dto.getMarkupPercentage() || 10,
+        serviceFee: dto.getServiceFee() || 0,
+        serviceFeePercentage: dto.getServiceFeePercentage() || 5,
+        taxes: dto.getTaxes() || 0,
+        taxPercentage: dto.getTaxPercentage() || 15,
+        totalAmount: dto.getTotalAmount() || 0,
+        currency: currency,
+        bookingData: {
+          amadeus_offer_id: offerId,
+          offerId: offerId,
+          offer_price: offerPrice,
+          driver: driver,
+          special_requests: bookingData.specialRequests || '',
+          offerData: bookingData.offerData || {},
+          pickupLocation: bookingData.pickupLocation || '',
+          dropoffLocation: bookingData.dropoffLocation || '',
+          pickupDateTime: bookingData.pickupDateTime || '',
+          dropoffDateTime: bookingData.dropoffDateTime || '',
+          vehicleType: bookingData.vehicleType || '',
+          serviceProvider: bookingData.serviceProvider || '',
+          priceBreakdown: {
+            basePrice: dto.getBasePrice() || offerPrice,
+            markupAmount: dto.getMarkupAmount() || 0,
+            markupPercentage: dto.getMarkupPercentage() || 10,
+            serviceFee: dto.getServiceFee() || 0,
+            serviceFeePercentage: dto.getServiceFeePercentage() || 5,
+            taxes: dto.getTaxes() || 0,
+            taxPercentage: dto.getTaxPercentage() || 15,
+            totalAmount: dto.getTotalAmount() || 0,
+            currency: currency,
+          },
+        },
+        passengerInfo: {
+          firstName: driver?.firstName || passengerInfo?.firstName || 'Guest',
+          lastName: driver?.lastName || passengerInfo?.lastName || 'User',
+          email: email,
+          phone: driver?.phone || passengerInfo?.phone || '',
+          title: driver?.title || 'MR',
+        },
+        status: BookingStatus.PENDING,
+        paymentStatus: 'PENDING',
+      });
+    
+      this.logger.log(`✅ Car rental booking created: ${booking.id} (${booking.reference}) with offerId: ${offerId}`);
+      return booking;
+    }
+    
+
+
     const isWakanowFlight =
       dto.provider === Provider.WAKANOW &&
       (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');

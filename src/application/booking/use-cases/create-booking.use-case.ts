@@ -93,6 +93,99 @@ export class CreateBookingUseCase {
         this.logger.log(`✅ Wakanow booking created. PNR: ${wakanowResult.bookingData?.pnrReferenceNumber}`);
         return wakanowResult;
       }
+      // ✅ HANDLE CAR RENTAL FOR AUTHENTICATED USERS
+if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
+  this.logger.log(`🚗 Creating car rental booking for authenticated user.`);
+  
+  // ✅ Extract car rental data from DTO
+  const bookingData = dto.bookingData || {};
+  const offerId = bookingData.offerId || dto.providerBookingId;
+  const offerPrice = bookingData.offerPrice || dto.basePrice || 0;
+  const driver = bookingData.driver || {};
+  const currency = dto.currency || 'NGN';
+
+  if (!offerId) {
+    this.logger.error('Missing offerId for car rental booking');
+    throw new BadRequestException('Offer ID is required for car rental booking');
+  }
+
+  // Get markup config
+  const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
+    'CAR_RENTAL',
+    currency,
+  );
+
+  if (!markupConfig) {
+    throw new NotFoundException(
+      `No active markup configuration found for CAR_RENTAL in ${currency}`,
+    );
+  }
+
+  // Calculate pricing
+  const pricing = this.markupCalculationService.calculateTotal(
+    offerPrice,
+    'CAR_RENTAL',
+    currency,
+    markupConfig,
+  );
+
+  // ✅ Use fixed percentages (serviceFeePercentage doesn't exist on MarkupConfig)
+  const serviceFeePercentage = 5;  // Fixed default
+  const markupPercentage = markupConfig.markupPercentage || 10;
+
+  // ✅ Create booking with car rental data
+  const booking = await this.bookingService.createBooking({
+    userId,
+    productType: 'CAR_RENTAL',
+    provider: Provider.AMADEUS,
+    basePrice: offerPrice,
+    markupAmount: pricing.markupAmount,
+    markupPercentage: markupPercentage,
+    serviceFee: pricing.serviceFee,
+    serviceFeePercentage: serviceFeePercentage,
+    taxes: pricing.markupAmount + pricing.serviceFee,
+    taxPercentage: markupPercentage + serviceFeePercentage,
+    totalAmount: dto.getTotalAmount ? dto.getTotalAmount() : (dto.totalAmount || pricing.totalAmount),
+    currency: currency,
+    bookingData: {
+      amadeus_offer_id: offerId,
+      offerId: offerId,
+      offer_price: offerPrice,
+      driver: driver,
+      special_requests: bookingData.specialRequests || '',
+      offerData: bookingData.offerData || {},
+      pickupLocation: bookingData.pickupLocation || '',
+      dropoffLocation: bookingData.dropoffLocation || '',
+      pickupDateTime: bookingData.pickupDateTime || '',
+      dropoffDateTime: bookingData.dropoffDateTime || '',
+      vehicleType: bookingData.vehicleType || '',
+      serviceProvider: bookingData.serviceProvider || '',
+      priceBreakdown: {
+        basePrice: offerPrice,
+        markupAmount: pricing.markupAmount,
+        markupPercentage: markupPercentage,
+        serviceFee: pricing.serviceFee,
+        serviceFeePercentage: serviceFeePercentage,
+        taxes: pricing.markupAmount + pricing.serviceFee,
+        taxPercentage: markupPercentage + serviceFeePercentage,
+        totalAmount: dto.getTotalAmount ? dto.getTotalAmount() : (dto.totalAmount || pricing.totalAmount),
+        currency: currency,
+      },
+    },
+    passengerInfo: {
+      firstName: driver?.firstName || dto.passengerInfo?.firstName || 'Guest',
+      lastName: driver?.lastName || dto.passengerInfo?.lastName || 'User',
+      email: dto.passengerInfo?.email || '',
+      phone: driver?.phone || dto.passengerInfo?.phone || '',
+      title: driver?.title || 'MR',
+    },
+    status: BookingStatus.PENDING,
+    paymentStatus: 'PENDING',
+  });
+
+  this.logger.log(`✅ Car rental booking created: ${booking.id} (${booking.reference}) with offerId: ${offerId}`);
+  return booking;
+}
 
     if (isDuffelFlight) {
       this.logger.log(`💰 Duffel total amount from DTO: ${totalAmountFromDto}`);
