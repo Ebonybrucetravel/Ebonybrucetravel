@@ -5,6 +5,7 @@ import { MarkupRepository } from '@infrastructure/database/repositories/markup.r
 import { PrismaService } from '@infrastructure/database/prisma.service';
 import { CreateGuestBookingDto } from '@presentation/booking/dto/create-guest-booking.dto';
 import { Booking } from '@domains/booking/entities/booking.entity';
+import { BookWakanowFlightUseCase } from '@application/booking/use-cases/book-wakanow-flight.use-case';
 import { BookingStatus, Provider } from '@prisma/client';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class CreateGuestBookingUseCase {
     private readonly markupCalculationService: MarkupCalculationService,
     private readonly markupRepository: MarkupRepository,
     private readonly prisma: PrismaService,
+    private readonly bookWakanowFlightUseCase: BookWakanowFlightUseCase,
   ) {}
 
   async execute(dto: CreateGuestBookingDto): Promise<Booking> {
@@ -70,6 +72,74 @@ export class CreateGuestBookingUseCase {
         };
         this.logger.log(`📦 Stored Duffel offer data for: ${dto.offerId} with ${passengersToStore.length} passengers`);
       }
+    }
+    const isWakanowFlight =
+      dto.provider === Provider.WAKANOW &&
+      (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
+
+    if (isWakanowFlight) {
+      this.logger.log(`🛫 Creating Wakanow booking for BookingId: ${dto.bookingId}`);
+      
+      // Get email from passengerInfo
+      const email = Array.isArray(passengerInfo) 
+        ? passengerInfo[0]?.email 
+        : passengerInfo?.email;
+      
+      if (!email) {
+        throw new BadRequestException('Passenger email is required');
+      }
+
+      // Create or get user
+      let guestUser = await this.prisma.user.findUnique({
+        where: { email: email },
+      });
+
+      if (!guestUser) {
+        const name = Array.isArray(passengerInfo)
+          ? `${passengerInfo[0]?.firstName || 'Guest'} ${passengerInfo[0]?.lastName || 'User'}`
+          : `${passengerInfo.firstName || 'Guest'} ${passengerInfo.lastName || 'User'}`;
+        
+        const phone = Array.isArray(passengerInfo)
+          ? passengerInfo[0]?.phone || null
+          : passengerInfo?.phone || null;
+
+        guestUser = await this.prisma.user.create({
+          data: {
+            email: email,
+            name: name,
+            phone: phone,
+            role: 'CUSTOMER',
+            password: null,
+            provider: null,
+            providerId: null,
+          },
+        });
+      }
+
+      // Book with Wakanow
+      const wakanowResult = await this.bookWakanowFlightUseCase.execute(
+        {
+          bookingId: dto.bookingId,
+          selectData: dto.selectData,
+          passengers: normalizedPassengers,
+          targetCurrency: dto.currency || 'NGN',
+          priceBreakdown: {
+            basePrice: dto.getBasePrice(),
+            markupAmount: dto.getMarkupAmount(),
+            markupPercentage: dto.getMarkupPercentage(),
+            serviceFee: dto.getServiceFee(),
+            serviceFeePercentage: dto.getServiceFeePercentage(),
+            taxes: dto.getTaxes(),
+            taxPercentage: dto.getTaxPercentage(),
+            totalAmount: dto.getTotalAmount(),
+            currency: dto.getCurrency(),
+          },
+        },
+        guestUser.id,
+      );
+
+      this.logger.log(`✅ Wakanow booking created. PNR: ${wakanowResult.bookingData?.pnrReferenceNumber}`);
+      return wakanowResult;
     }
 
     const isDuffelFlight =

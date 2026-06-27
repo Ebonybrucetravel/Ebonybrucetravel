@@ -4,6 +4,7 @@ import { MarkupCalculationService } from '@domains/markup/services/markup-calcul
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 import { CreateBookingDto } from '@presentation/booking/dto/create-booking.dto';
 import { Booking } from '@domains/booking/entities/booking.entity';
+import { BookWakanowFlightUseCase } from '@application/booking/use-cases/book-wakanow-flight.use-case';
 import { BookingStatus, Provider, ProductType } from '@prisma/client';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class CreateBookingUseCase {
     private readonly bookingService: BookingService,
     private readonly markupCalculationService: MarkupCalculationService,
     private readonly markupRepository: MarkupRepository,
+    private readonly bookWakanowFlightUseCase: BookWakanowFlightUseCase,
   ) {}
 
   async execute(dto: CreateBookingDto, userId: string): Promise<Booking> {
@@ -24,6 +26,73 @@ export class CreateBookingUseCase {
     const isDuffelFlight =
       dto.provider === Provider.DUFFEL &&
       (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
+
+      const isWakanowFlight =  
+      dto.provider === Provider.WAKANOW &&
+      (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
+    
+
+      if (isWakanowFlight) {
+        this.logger.log(`🛫 Creating Wakanow booking for authenticated user. BookingId: ${dto.providerBookingId || dto.bookingId}`);
+        
+        // Normalize passengers first
+        const normalizedPassengers = this.normalizePassengers(dto.passengerInfo);
+        
+        // Map passengers to WakanowPassengerDto format safely
+        const passengers = normalizedPassengers.map((p: any) => ({
+          firstName: p.firstName || p.given_name || 'Guest',
+          lastName: p.lastName || p.family_name || 'User',
+          middleName: p.middleName || p.middle_name || '',
+          email: p.email || 'guest@example.com',
+          phoneNumber: p.phoneNumber || p.phone || p.phone_number || '+2340000000000',
+          dateOfBirth: p.dateOfBirth || p.born_on || '1990-01-01',
+          gender: p.gender || 'Male',
+          title: p.title || 'Mr',
+          passengerType: p.passengerType || 'Adult',
+          passportNumber: p.passportNumber || p.passport_number || '',
+          expiryDate: p.expiryDate || p.expiry_date || '',
+          passportIssuingAuthority: p.passportIssuingAuthority || p.passport_issuing_authority || '',
+          passportIssueCountryCode: p.passportIssueCountryCode || p.passport_issue_country_code || '',
+          address: p.address || '123 Fake Street',
+          country: p.country || 'Nigeria',
+          countryCode: p.countryCode || p.country_code || 'NG',
+          city: p.city || 'Lagos',
+          postalCode: p.postalCode || p.postal_code || '100001',
+          IsWakapointRegister: false,
+        }));
+        
+        // Get price breakdown safely
+        const getBasePrice = dto.getBasePrice ? dto.getBasePrice() : (dto.basePrice || 0);
+        const getMarkupAmount = dto.getMarkupAmount ? dto.getMarkupAmount() : (dto.markupAmount || 0);
+        const getMarkupPercentage = dto.getMarkupPercentage ? dto.getMarkupPercentage() : (dto.markupPercentage || 10);
+        const getServiceFee = dto.getServiceFee ? dto.getServiceFee() : (dto.serviceFee || 0);
+        const getServiceFeePercentage = dto.getServiceFeePercentage ? dto.getServiceFeePercentage() : (dto.serviceFeePercentage || 5);
+        const getTaxes = dto.getTaxes ? dto.getTaxes() : (dto.taxes || 0);
+        const getTaxPercentage = dto.getTaxPercentage ? dto.getTaxPercentage() : (dto.taxPercentage || 15);
+        const getTotalAmount = dto.getTotalAmount ? dto.getTotalAmount() : (dto.totalAmount || 0);
+        
+        const wakanowDto = {
+          bookingId: dto.providerBookingId || dto.bookingId,
+          selectData: dto.selectData || dto.bookingData?.selectData,
+          passengers: passengers,
+          targetCurrency: dto.currency || 'NGN',
+          priceBreakdown: {
+            basePrice: getBasePrice,
+            markupAmount: getMarkupAmount,
+            markupPercentage: getMarkupPercentage,
+            serviceFee: getServiceFee,
+            serviceFeePercentage: getServiceFeePercentage,
+            taxes: getTaxes,
+            taxPercentage: getTaxPercentage,
+            totalAmount: getTotalAmount,
+            currency: dto.currency || 'NGN',
+          },
+        };
+      
+        const wakanowResult = await this.bookWakanowFlightUseCase.execute(wakanowDto, userId);
+        this.logger.log(`✅ Wakanow booking created. PNR: ${wakanowResult.bookingData?.pnrReferenceNumber}`);
+        return wakanowResult;
+      }
 
     if (isDuffelFlight) {
       this.logger.log(`💰 Duffel total amount from DTO: ${totalAmountFromDto}`);
