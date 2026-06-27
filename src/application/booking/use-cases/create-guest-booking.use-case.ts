@@ -77,70 +77,93 @@ export class CreateGuestBookingUseCase {
       dto.provider === Provider.WAKANOW &&
       (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
 
-    if (isWakanowFlight) {
-      this.logger.log(`🛫 Creating Wakanow booking for BookingId: ${dto.bookingId}`);
-      
-      // Get email from passengerInfo
-      const email = Array.isArray(passengerInfo) 
-        ? passengerInfo[0]?.email 
-        : passengerInfo?.email;
-      
-      if (!email) {
-        throw new BadRequestException('Passenger email is required');
-      }
-
-      // Create or get user
-      let guestUser = await this.prisma.user.findUnique({
-        where: { email: email },
-      });
-
-      if (!guestUser) {
-        const name = Array.isArray(passengerInfo)
-          ? `${passengerInfo[0]?.firstName || 'Guest'} ${passengerInfo[0]?.lastName || 'User'}`
-          : `${passengerInfo.firstName || 'Guest'} ${passengerInfo.lastName || 'User'}`;
+      if (isWakanowFlight) {
+        this.logger.log(`🛫 Creating Wakanow booking for BookingId: ${dto.bookingId}`);
         
-        const phone = Array.isArray(passengerInfo)
-          ? passengerInfo[0]?.phone || null
-          : passengerInfo?.phone || null;
-
-        guestUser = await this.prisma.user.create({
-          data: {
-            email: email,
-            name: name,
-            phone: phone,
-            role: 'CUSTOMER',
-            password: null,
-            provider: null,
-            providerId: null,
-          },
+        // Get email from passengerInfo
+        const email = Array.isArray(passengerInfo) 
+          ? passengerInfo[0]?.email 
+          : passengerInfo?.email;
+        
+        if (!email) {
+          throw new BadRequestException('Passenger email is required');
+        }
+      
+        // Create or get user
+        let guestUser = await this.prisma.user.findUnique({
+          where: { email: email },
         });
-      }
-
-      // Book with Wakanow
-      const wakanowResult = await this.bookWakanowFlightUseCase.execute(
-        {
-          bookingId: dto.bookingId,
-          selectData: dto.selectData,
-          passengers: normalizedPassengers,
-          targetCurrency: dto.currency || 'NGN',
-          priceBreakdown: {
-            basePrice: dto.getBasePrice(),
-            markupAmount: dto.getMarkupAmount(),
-            markupPercentage: dto.getMarkupPercentage(),
-            serviceFee: dto.getServiceFee(),
-            serviceFeePercentage: dto.getServiceFeePercentage(),
-            taxes: dto.getTaxes(),
-            taxPercentage: dto.getTaxPercentage(),
-            totalAmount: dto.getTotalAmount(),
-            currency: dto.getCurrency(),
+      
+        if (!guestUser) {
+          const name = Array.isArray(passengerInfo)
+            ? `${passengerInfo[0]?.firstName || 'Guest'} ${passengerInfo[0]?.lastName || 'User'}`
+            : `${passengerInfo.firstName || 'Guest'} ${passengerInfo.lastName || 'User'}`;
+          
+          const phone = Array.isArray(passengerInfo)
+            ? passengerInfo[0]?.phone || null
+            : passengerInfo?.phone || null;
+      
+          guestUser = await this.prisma.user.create({
+            data: {
+              email: email,
+              name: name,
+              phone: phone,
+              role: 'CUSTOMER',
+              password: null,
+              provider: null,
+              providerId: null,
+            },
+          });
+        }
+      
+        // ✅ FIX: Map passengers for Wakanow (phone → phoneNumber)
+        const wakanowPassengers = normalizedPassengers.map((p: any) => ({
+          firstName: p.firstName || p.given_name || 'Guest',
+          lastName: p.lastName || p.family_name || 'User',
+          middleName: p.middleName || p.middle_name || '',
+          email: p.email || 'guest@example.com',
+          phoneNumber: p.phone || p.phoneNumber || p.phone_number || '+2340000000000',  // ← Map phone to phoneNumber
+          dateOfBirth: p.dateOfBirth || p.born_on || '1990-01-01',
+          gender: p.gender || 'Male',
+          title: p.title || 'Mr',
+          passengerType: p.passengerType || 'Adult',
+          passportNumber: p.passportNumber || p.passport_number || '',
+          expiryDate: p.expiryDate || p.expiry_date || '',
+          passportIssuingAuthority: p.passportIssuingAuthority || p.passport_issuing_authority || '',
+          passportIssueCountryCode: p.passportIssueCountryCode || p.passport_issue_country_code || '',
+          address: p.address || '123 Fake Street',
+          country: p.country || 'Nigeria',
+          countryCode: p.countryCode || p.country_code || 'NG',
+          city: p.city || 'Lagos',
+          postalCode: p.postalCode || p.postal_code || '100001',
+          IsWakapointRegister: false,
+        }));
+      
+        // Book with Wakanow using mapped passengers
+        const wakanowResult = await this.bookWakanowFlightUseCase.execute(
+          {
+            bookingId: dto.bookingId,
+            selectData: dto.selectData,
+            passengers: wakanowPassengers,  // ← Use mapped passengers
+            targetCurrency: dto.currency || 'NGN',
+            priceBreakdown: {
+              basePrice: dto.getBasePrice(),
+              markupAmount: dto.getMarkupAmount(),
+              markupPercentage: dto.getMarkupPercentage(),
+              serviceFee: dto.getServiceFee(),
+              serviceFeePercentage: dto.getServiceFeePercentage(),
+              taxes: dto.getTaxes(),
+              taxPercentage: dto.getTaxPercentage(),
+              totalAmount: dto.getTotalAmount(),
+              currency: dto.getCurrency(),
+            },
           },
-        },
-        guestUser.id,
-      );
-
-      this.logger.log(`✅ Wakanow booking created. PNR: ${wakanowResult.bookingData?.pnrReferenceNumber}`);
-      return wakanowResult;
-    }
+          guestUser.id,
+        );
+      
+        this.logger.log(`✅ Wakanow booking created. PNR: ${wakanowResult.bookingData?.pnrReferenceNumber}`);
+        return wakanowResult;
+      }
 
     const isDuffelFlight =
       dto.provider === Provider.DUFFEL &&
