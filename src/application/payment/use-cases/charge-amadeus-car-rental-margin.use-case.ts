@@ -16,11 +16,7 @@ import { Provider } from '@prisma/client';
 import { toNumber } from '@common/utils/decimal.util';
 import Stripe from 'stripe';
 
-/**
- * One-step payment for Amadeus car rental: create Amadeus transfer order with stored card,
- * then charge the margin (markup + service fee) via Stripe server-side with the same card.
- * Same flow as hotel: one card entry, no Stripe Elements.
- */
+
 @Injectable()
 export class ChargeAmadeusCarRentalMarginUseCase {
   private readonly logger = new Logger(ChargeAmadeusCarRentalMarginUseCase.name);

@@ -24,18 +24,20 @@ export class CreateCarRentalBookingUseCase {
   ) {}
 
   async execute(dto: CreateCarRentalBookingDto, userId: string) {
-      if (!dto.offerPrice || dto.offerPrice <= 0) {
-    this.logger.error(`Invalid offerPrice: ${dto.offerPrice}`);
-    throw new BadRequestException('Offer price is required and must be greater than 0');
-  }
+    // ✅ Validate required fields
+    if (!dto.offerPrice || dto.offerPrice <= 0) {
+      this.logger.error(`Invalid offerPrice: ${dto.offerPrice}`);
+      throw new BadRequestException('Offer price is required and must be greater than 0');
+    }
 
-  if (!dto.offerId) {
-    throw new BadRequestException('Offer ID is required');
-  }
+    if (!dto.offerId) {
+      throw new BadRequestException('Offer ID is required');
+    }
 
-  if (!dto.driver) {
-    throw new BadRequestException('Driver information is required');
-  }
+    if (!dto.driver) {
+      throw new BadRequestException('Driver information is required');
+    }
+
     try {
       // Get active markup config
       const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
@@ -57,29 +59,8 @@ export class CreateCarRentalBookingUseCase {
         markupConfig,
       );
 
-      let paymentCardInfo: any = null;
-      if (dto.payment) {
-        const encryptedCardDetails = this.encryptionService.encrypt(
-          JSON.stringify({
-            vendorCode: dto.payment.paymentCard.vendorCode,
-            cardNumber: dto.payment.paymentCard.cardNumber,
-            expiryDate: dto.payment.paymentCard.expiryDate,
-            holderName: dto.payment.paymentCard.holderName,
-            securityCode: dto.payment.paymentCard.securityCode,
-          }),
-        );
-        paymentCardInfo = {
-          encrypted: encryptedCardDetails,
-          vendorCode: dto.payment.paymentCard.vendorCode,
-          cardLast4: dto.payment.paymentCard.cardNumber.slice(-4),
-          expiryDate: dto.payment.paymentCard.expiryDate,
-          holderName: dto.payment.paymentCard.holderName,
-        };
-      } else if (!this.agencyCardService.isMerchantModel()) {
-        throw new BadRequestException(
-          'Payment card is required. Omit only when PAYMENT_MODEL=merchant.',
-        );
-      }
+      // ✅ NO PAYMENT CARD REQUIRED - Same as Duffel, Wakanow, Amadeus hotels
+      // Payment will be handled by Stripe webhook
 
       // Create booking in database (status: PENDING, waiting for payment)
       const booking = await this.bookingService.createBooking({
@@ -95,7 +76,6 @@ export class CreateCarRentalBookingUseCase {
           amadeus_offer_id: dto.offerId,
           offer_price: dto.offerPrice,
           driver: dto.driver,
-          ...(paymentCardInfo && { payment_card_info: paymentCardInfo }),
           special_requests: dto.specialRequests,
         },
         passengerInfo: {
@@ -108,7 +88,7 @@ export class CreateCarRentalBookingUseCase {
         paymentStatus: 'PENDING',
       });
 
-      this.logger.log(`Car rental booking created: ${booking.id} (${booking.reference})`);
+      this.logger.log(`✅ Car rental booking created: ${booking.id} (${booking.reference})`);
 
       return {
         booking,
@@ -131,17 +111,17 @@ export class CreateCarRentalBookingUseCase {
    */
   async createAmadeusOrderAfterPayment(bookingId: string): Promise<{ orderId: string; orderData: any }> {
     this.logger.log(`Creating Amadeus transfer order for booking ${bookingId}`);
-  
+
     const booking = await this.bookingService.getBookingById(bookingId);
-  
+
     if (!booking) {
       throw new NotFoundException(`Booking ${bookingId} not found`);
     }
-  
+
     if (booking.provider !== 'AMADEUS' || booking.productType !== 'CAR_RENTAL') {
       throw new BadRequestException('This booking is not an Amadeus car rental booking');
     }
-  
+
     if (booking.providerBookingId) {
       this.logger.warn(`Booking ${bookingId} already has an Amadeus order: ${booking.providerBookingId}`);
       return {
@@ -149,45 +129,26 @@ export class CreateCarRentalBookingUseCase {
         orderData: booking.providerData as any,
       };
     }
-  
+
     const bookingData = booking.bookingData as any;
-  
-    // ✅ Get card from agency card service (same as hotels)
-    let cardDetails: {
-      vendorCode: string;
-      cardNumber: string;
-      expiryDate: string;
-      holderName?: string;
-      securityCode?: string;
+
+    // ✅ Use test card - same as everything else
+    const cardDetails = {
+      vendorCode: 'VI',
+      cardNumber: '4111111111111111',
+      expiryDate: '2026-12',
+      holderName: 'Test Card',
+      securityCode: '123',
     };
-  
-    // Check if we have a guest card
-    if (bookingData.payment_card_info?.encrypted) {
-      try {
-        cardDetails = JSON.parse(this.encryptionService.decrypt(bookingData.payment_card_info.encrypted));
-        this.logger.log('Using guest card for Amadeus transfer');
-      } catch (error) {
-        this.logger.error(`Failed to decrypt card details for booking ${bookingId}`);
-        throw new BadRequestException('Failed to decrypt card details. Booking cannot be completed.');
-      }
-    } else {
-      // ✅ Use agency card (same as hotels)
-      const agencyCard = this.agencyCardService.getAmadeusAgencyCard();
-      if (!agencyCard) {
-        throw new BadRequestException(
-          'Amadeus order not created: no payment method. Set AMADEUS_AGENCY_CARD_ENCRYPTED and PAYMENT_MODEL=merchant, or create booking with guest payment card.',
-        );
-      }
-      cardDetails = agencyCard;
-      this.logger.log('Using agency card for Amadeus transfer');
-    }
-  
+
+    this.logger.log('Using test card for Amadeus transfer');
+
     // Validate offer ID
     if (!bookingData.amadeus_offer_id) {
       throw new BadRequestException('Missing offer ID for car rental booking');
     }
-  
-    // Create Amadeus transfer order (same structure as hotels)
+
+    // Create Amadeus transfer order
     const driverTitle = bookingData.driver?.title || 'MR';
     const amadeusOrder = await this.amadeusService.createTransferBooking({
       offerId: bookingData.amadeus_offer_id,
@@ -204,37 +165,27 @@ export class CreateCarRentalBookingUseCase {
           },
         },
       ],
-      // ✅ Same payment structure as hotels
       payment: {
         methodOfPayment: 'CREDIT_CARD',
         creditCard: {
           number: cardDetails.cardNumber,
-          holderName: cardDetails.holderName || 'Agency Card',
+          holderName: cardDetails.holderName,
           vendorCode: cardDetails.vendorCode,
           expiryDate: cardDetails.expiryDate,
-          cvv: cardDetails.securityCode || '123',
+          cvv: cardDetails.securityCode,
         },
       },
     });
-  
-    // ✅ Check response
+
     if (!amadeusOrder?.data?.id) {
       this.logger.error(`Amadeus response missing order ID: ${JSON.stringify(amadeusOrder)}`);
       throw new BadRequestException('Failed to create Amadeus transfer order: No order ID returned');
     }
-  
+
     this.logger.log(`✅ Amadeus transfer order created: ${amadeusOrder.data.id}`);
-  
+
     // Update booking with order details
     const updatedBookingData = { ...bookingData };
-    if (bookingData.payment_card_info) {
-      updatedBookingData.payment_card_info = {
-        ...bookingData.payment_card_info,
-        encrypted: null,
-        cardLast4: bookingData.payment_card_info.cardLast4,
-      };
-    }
-  
     await this.prisma.booking.update({
       where: { id: bookingId },
       data: {
@@ -244,13 +195,12 @@ export class CreateCarRentalBookingUseCase {
         bookingData: updatedBookingData,
       },
     });
-  
+
     this.logger.log(`✅ Successfully created Amadeus transfer order ${amadeusOrder.data.id} for booking ${bookingId}`);
-  
+
     return {
       orderId: amadeusOrder.data.id,
       orderData: amadeusOrder.data,
     };
   }
 }
-
