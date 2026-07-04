@@ -641,3 +641,12 @@ enum ContactSubmissionStatus {
   READ
   REPLIED
 }
+
+model NewsletterSubscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now()) @map("createdAt")
+  updatedAt DateTime @updatedAt @map("updatedAt")
+
+  @@map("NewsletterSubscriber")
+}

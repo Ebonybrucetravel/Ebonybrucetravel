@@ -26,6 +26,7 @@ import { MarkupModule } from './domains/markup/markup.module';
 import { LoyaltyModule } from './domains/loyalty/loyalty.module';
 import { SavedItemsModule } from './domains/saved-items/saved-items.module';
 import { SavedTravelersModule } from './domains/saved-travelers/saved-travelers.module';
+import { NewsletterModule } from './domains/newsletter/newsletter.module';
 
 // Application
 import { BookingApplicationModule } from './application/booking/booking-application.module';
@@ -71,6 +72,7 @@ import { HotelImagesController } from './presentation/hotel-images/hotel-images.
     LoyaltyModule,
     SavedItemsModule,
     SavedTravelersModule,
+    NewsletterModule,
     BookingApplicationModule,
     PaymentApplicationModule,
     AuthModule,
