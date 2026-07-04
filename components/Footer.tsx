@@ -134,7 +134,7 @@ const Footer: React.FC<FooterProps> = ({
                   rel="noopener noreferrer"
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d={social.icon} />
+                  <path d={social.icon} />
                   </svg>
                 </a>
               ))}

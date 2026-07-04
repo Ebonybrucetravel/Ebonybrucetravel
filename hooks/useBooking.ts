@@ -509,11 +509,88 @@ if (provider === 'WAKANOW') {
             });
           }
         } else if (productType === "HOTEL") {
-          // ... existing hotel code (unchanged)
+      
         } else if (productType === "CAR_RENTAL") {
-          // ... existing car rental code (unchanged)
+          // ✅ Handle car rental booking
+          const selectedOffer = item.realData || item;
+          
+          // Get the offer price from the search result
+          const offerPrice = selectedOffer.quotation?.monetaryAmount || 
+                             selectedOffer.converted?.monetaryAmount ||
+                             selectedOffer.price ||
+                             selectedOffer.original_price ||
+                             0;
+          
+          const currency = selectedOffer.quotation?.currencyCode || 
+                           selectedOffer.converted?.currencyCode ||
+                           selectedOffer.currency ||
+                           'NGN';
+          
+          const offerId = item.offerId || item.id || selectedOffer.id;
+          
+          if (!offerId) {
+            throw new Error('Missing offer ID for car rental booking');
+          }
+          
+          if (offerPrice <= 0) {
+            throw new Error('Invalid offer price for car rental booking');
+          }
+          
+          // ✅ CRITICAL: Set offerId at TOP LEVEL
+          body.offerId = offerId;
+          
+          // ✅ Set car rental specific fields in bookingData
+          body.bookingData = {
+            offerId: offerId,
+            offerPrice: Number(offerPrice),
+            currency: currency,
+            driver: {
+              firstName: passenger.firstName,
+              lastName: passenger.lastName,
+              email: passenger.email,
+              phone: passenger.phone,
+              title: passenger.title || 'MR',
+            },
+            offerData: selectedOffer,
+            pickupLocation: item.pickupLocation || selectedOffer.start?.locationCode || selectedOffer.pickupLocation,
+            dropoffLocation: item.dropoffLocation || selectedOffer.end?.locationCode || selectedOffer.dropoffLocation,
+            pickupDateTime: item.pickupDateTime || selectedOffer.start?.dateTime || selectedOffer.pickupDateTime,
+            dropoffDateTime: item.dropoffDateTime || selectedOffer.end?.dateTime || selectedOffer.dropoffDateTime,
+            vehicleType: item.vehicleType || selectedOffer.vehicle?.description,
+            serviceProvider: selectedOffer.serviceProvider?.name,
+          };
+          
+          // ✅ Calculate total with markup
+          const carMarkupPercentage = 10;
+          const carServiceFeePercentage = 5;
+          const carMarkupAmount = Number(offerPrice) * (carMarkupPercentage / 100);
+          const carServiceFee = Number(offerPrice) * (carServiceFeePercentage / 100);
+          const carTotalAmount = Number(offerPrice) + carMarkupAmount + carServiceFee;
+          
+          // ✅ Set totalAmount for validation
+          body.totalAmount = carTotalAmount;
+          
+          // ✅ Store price breakdown
+          body.priceBreakdown = {
+            basePrice: Number(offerPrice),
+            markupAmount: carMarkupAmount,
+            markupPercentage: carMarkupPercentage,
+            serviceFee: carServiceFee,
+            serviceFeePercentage: carServiceFeePercentage,
+            taxes: carMarkupAmount + carServiceFee,
+            taxPercentage: carMarkupPercentage + carServiceFeePercentage,
+            totalAmount: carTotalAmount,
+            currency: currency,
+          };
+          
+          console.log("🚗 Car rental booking payload:", {
+            offerId: body.offerId, // ✅ This should now be at top level
+            offerPrice: body.bookingData.offerPrice,
+            totalAmount: body.totalAmount,
+            currency: body.currency,
+            driver: body.bookingData.driver,
+          });
         }
-  
         const token = getStoredAuthToken();
   
         // ============================================================
