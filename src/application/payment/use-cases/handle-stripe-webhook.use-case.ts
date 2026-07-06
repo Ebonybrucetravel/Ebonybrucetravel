@@ -31,24 +31,29 @@ export class HandleStripeWebhookUseCase {
 
   async execute(event: Stripe.Event): Promise<void> {
     this.logger.log(`Processing Stripe webhook: ${event.type} `);
-
+  
     switch (event.type) {
+     
+      case 'payment_intent.created':
+        await this.handlePaymentIntentCreated(event.data.object as Stripe.PaymentIntent);
+        break;
+  
       case 'payment_intent.succeeded':
         await this.handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
         break;
-
+  
       case 'payment_intent.payment_failed':
         await this.handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
         break;
-
+  
       case 'payment_intent.canceled':
         await this.handlePaymentIntentCanceled(event.data.object as Stripe.PaymentIntent);
         break;
-
+  
       case 'charge.refunded':
         await this.handleChargeRefunded(event.data.object as Stripe.Charge);
         break;
-
+  
       default:
         this.logger.warn(`Unhandled webhook event type: ${event.type} `);
     }
@@ -843,4 +848,20 @@ export class HandleStripeWebhookUseCase {
       this.logger.error(`Failed to send booking emails: `, error);
     }
   }
+  private async handlePaymentIntentCreated(paymentIntent: Stripe.PaymentIntent): Promise<void> {
+    const bookingId = paymentIntent.metadata?.bookingId;
+
+    if (!bookingId) {
+      this.logger.debug(`PaymentIntent ${paymentIntent.id} created without bookingId`);
+      return;
+    }
+
+    try {
+      this.logger.log(`PaymentIntent ${paymentIntent.id} created for booking ${bookingId}`);
+    
+    } catch (error) {
+      this.logger.error(`Failed to handle payment_intent.created for booking ${bookingId}: `, error);
+    }
+  }
+
 }
