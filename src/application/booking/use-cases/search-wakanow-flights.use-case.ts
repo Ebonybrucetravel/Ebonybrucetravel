@@ -24,6 +24,8 @@ export class SearchWakanowFlightsUseCase {
   ) {}
 
   async execute(searchParams: SearchWakanowFlightsDto) {
+    const startTime = Date.now();
+    
     const {
       flightSearchType,
       adults,
@@ -53,14 +55,6 @@ export class SearchWakanowFlightsUseCase {
       })),
     };
 
-    // ❌ DISABLE CACHE - SelectData expires quickly, always fetch fresh
-    // const cacheKey = `wakanow:search:${JSON.stringify(wakanowRequest)}`;
-    // const cached = this.cacheService.get<any>(cacheKey);
-    // if (cached) {
-    //   this.logger.log('Returning cached Wakanow search results');
-    //   return cached;
-    // }
-
     // ✅ Fetch from Wakanow with retry
     let results: WakanowSearchResult[] = [];
     let attempt = 0;
@@ -70,7 +64,9 @@ export class SearchWakanowFlightsUseCase {
       try {
         attempt++;
         this.logger.log(`🔍 Wakanow search attempt ${attempt}/${maxRetries}...`);
+        const searchStart = Date.now();
         results = await this.wakanowService.searchFlights(wakanowRequest);
+        this.logger.log(`⏱️ Wakanow API responded in ${Date.now() - searchStart}ms`);
         break;
       } catch (error: any) {
         const errorMsg = error?.message?.toLowerCase() || '';
@@ -97,65 +93,57 @@ export class SearchWakanowFlightsUseCase {
       };
     }
 
-    // ✅ Filter out invalid SelectData (too long or gzip compressed)
-    const validResults = results.filter((result) => {
+    // ✅ Filter out invalid SelectData (FAST - O(n))
+    const validResults: WakanowSearchResult[] = [];
+    const shortResults: WakanowSearchResult[] = [];
+    
+    for (const result of results) {
       const selectData = result.SelectData || '';
       const isValid = selectData.length > 0 && 
                       selectData.length < this.VALID_SELECT_DATA_MAX_LENGTH &&
                       !this.INVALID_SELECT_DATA_PREFIXES.some(prefix => selectData.startsWith(prefix));
       
-      if (!isValid) {
-        this.logger.warn(`⚠️ Filtering out SelectData: length=${selectData.length}, startsWithInvalid=${!isValid}`);
-        if (selectData.length > 0) {
-          this.logger.warn(`⚠️ Preview: ${selectData.substring(0, 50)}...`);
-        }
+      if (isValid) {
+        validResults.push(result);
+      } else if (selectData.length > 0 && selectData.length < 200) {
+        shortResults.push(result);
       }
-      
-      return isValid;
-    });
+    }
 
     this.logger.log(`✅ ${validResults.length} results with valid SelectData (out of ${results.length})`);
 
-    if (validResults.length === 0) {
-      this.logger.warn('⚠️ All results had invalid SelectData.');
-      
-      // ✅ Try to get results with the short format
-      const shortResults = results.filter((result) => {
-        const selectData = result.SelectData || '';
-        return selectData.length > 0 && selectData.length < 200;
-      });
-      
-      if (shortResults.length > 0) {
-        this.logger.log(`✅ Found ${shortResults.length} results with short SelectData format`);
-        results = shortResults;
-      } else {
-        this.logger.error('❌ No valid SelectData found');
-        return {
-          offers: [],
-          total_offers: 0,
-          selectData: null,
-          message: 'No valid flight selections available. Please try again.',
-        };
-      }
-    } else {
-      results = validResults;
+    // ✅ Use short results if no valid results
+    let finalResults = validResults;
+    if (finalResults.length === 0 && shortResults.length > 0) {
+      this.logger.log(`✅ Using ${shortResults.length} results with short SelectData format`);
+      finalResults = shortResults;
     }
 
-    this.logger.log(`✅ Using ${results.length} results with valid SelectData`);
+    if (finalResults.length === 0) {
+      this.logger.warn('⚠️ No valid SelectData found');
+      return {
+        offers: [],
+        total_offers: 0,
+        selectData: null,
+        message: 'No valid flight selections available. Please try again.',
+      };
+    }
+
+    this.logger.log(`✅ Using ${finalResults.length} results with valid SelectData`);
 
     // ✅ Get markup config ONCE
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
     const markupConfig = await this.getMarkupConfig(productType, displayCurrency);
     const { markupPercentage, serviceFeeAmount } = markupConfig;
 
-    // ✅ Pre-fetch conversion rate once
+    // ✅ Get conversion details ONCE (not per offer)
     let conversionRate = 1;
     let conversionFee = 0;
-    let totalWithFee = 0;
+    let totalWithFee = 1;
     let baseCurrency = 'NGN';
 
-    if (results.length > 0 && results[0]?.FlightCombination?.Price?.CurrencyCode) {
-      baseCurrency = results[0].FlightCombination.Price.CurrencyCode;
+    if (finalResults.length > 0 && finalResults[0]?.FlightCombination?.Price?.CurrencyCode) {
+      baseCurrency = finalResults[0].FlightCombination.Price.CurrencyCode;
       
       if (baseCurrency !== displayCurrency) {
         try {
@@ -170,18 +158,17 @@ export class SearchWakanowFlightsUseCase {
           conversionFee = 0;
           totalWithFee = 1;
         }
-      } else {
-        conversionRate = 1;
-        conversionFee = 0;
-        totalWithFee = 1;
       }
     }
 
     this.logger.log(`💰 Using conversion rate: ${conversionRate}, fee: ${conversionFee}`);
 
-    // ✅ Normalize all offers
-    const normalizedOffers = await this.normalizeOffersBatch(
-      results,
+    // ✅ Pre-calculate constants for faster normalization
+    const markupMultiplier = 1 + (markupPercentage / 100);
+
+    // ✅ Normalize all offers SYNCHRONOUSLY (FAST - no async needed)
+    const normalizedOffers = this.normalizeOffersBatch(
+      finalResults,
       isDomestic,
       displayCurrency,
       markupPercentage,
@@ -190,20 +177,20 @@ export class SearchWakanowFlightsUseCase {
       conversionFee,
       totalWithFee,
       baseCurrency,
+      markupMultiplier,
     );
 
-    // ✅ Get selectData from the first offer (should be valid now)
+    // ✅ Get selectData from the first offer
     const firstSelectData = normalizedOffers.length > 0 ? normalizedOffers[0].selectData : null;
 
-    this.logger.log(`📊 Normalized ${normalizedOffers.length} offers`);
+    const totalTime = Date.now() - startTime;
+    this.logger.log(`📊 Normalized ${normalizedOffers.length} offers in ${totalTime}ms`);
     
-    // ✅ Log selectData info for debugging
     if (firstSelectData) {
       this.logger.log(`🔑 First SelectData length: ${firstSelectData.length}`);
       this.logger.log(`🔑 First SelectData preview: ${firstSelectData.substring(0, 50)}...`);
     }
 
-    // ✅ Return fresh response (NO CACHING)
     return {
       offers: normalizedOffers,
       total_offers: normalizedOffers.length,
@@ -239,9 +226,9 @@ export class SearchWakanowFlightsUseCase {
   }
 
   /**
-   * ✅ Batch normalize offers with controlled concurrency
+   * ✅ Batch normalize offers - SYNCHRONOUS for speed
    */
-  private async normalizeOffersBatch(
+  private normalizeOffersBatch(
     results: WakanowSearchResult[],
     isDomestic: boolean,
     displayCurrency: string,
@@ -251,35 +238,36 @@ export class SearchWakanowFlightsUseCase {
     conversionFee: number,
     totalWithFee: number,
     baseCurrency: string,
+    markupMultiplier: number,
   ) {
-    const batchSize = 10;
     const normalizedOffers: any[] = [];
+    const now = Date.now();
     
-    for (let i = 0; i < results.length; i += batchSize) {
-      const batch = results.slice(i, i + batchSize);
-      const batchPromises = batch.map((result, index) =>
-        this.normalizeOfferFast(
-          result,
-          i + index,
-          isDomestic,
-          displayCurrency,
-          markupPercentage,
-          serviceFeeAmount,
-          conversionRate,
-          conversionFee,
-          totalWithFee,
-          baseCurrency,
-        )
+    // ✅ Use for loop - faster than map + Promise.all
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      const offer = this.normalizeOfferFast(
+        result,
+        i,
+        isDomestic,
+        displayCurrency,
+        markupPercentage,
+        serviceFeeAmount,
+        conversionRate,
+        conversionFee,
+        totalWithFee,
+        baseCurrency,
+        markupMultiplier,
+        now,
       );
-      const batchResults = await Promise.all(batchPromises);
-      normalizedOffers.push(...batchResults);
+      normalizedOffers.push(offer);
     }
     
     return normalizedOffers;
   }
 
   /**
-   * ✅ Fast normalization
+   * ✅ Fast normalization - NO async, pure calculations
    */
   private normalizeOfferFast(
     result: WakanowSearchResult,
@@ -292,64 +280,86 @@ export class SearchWakanowFlightsUseCase {
     conversionFee: number,
     totalWithFee: number,
     baseCurrency: string,
+    markupMultiplier: number,
+    timestamp: number,
   ) {
     const combo = result.FlightCombination;
     const basePrice = combo.Price.Amount;
     
+    // ✅ Calculate all prices in one go
     const convertedPrice = basePrice * conversionRate;
     const convertedTotalWithFee = basePrice * totalWithFee;
     const convertedConversionFee = basePrice * conversionFee;
-    const markupAmount = (convertedTotalWithFee * markupPercentage) / 100;
+    const markupAmount = convertedTotalWithFee * markupPercentage / 100;
     const finalPrice = convertedTotalWithFee + markupAmount + serviceFeeAmount;
 
+    // ✅ Calculate tax once
     let totalBaseFare = 0;
     let totalTax = 0;
-    for (const pd of combo.PriceDetails) {
+    const priceDetails = combo.PriceDetails;
+    for (let i = 0; i < priceDetails.length; i++) {
+      const pd = priceDetails[i];
       totalBaseFare += pd.BaseFare.Amount;
       totalTax += pd.Tax.Amount;
     }
     const convertedTax = totalTax * conversionRate;
 
-    const slices = combo.FlightModels.map((fm) => ({
-      origin: {
-        iata_code: fm.DepartureCode,
-        name: fm.DepartureName,
-        city_name: fm.DepartureName,
-      },
-      destination: {
-        iata_code: fm.ArrivalCode,
-        name: fm.ArrivalName,
-        city_name: fm.ArrivalName,
-      },
-      departure_time: fm.DepartureTime,
-      arrival_time: fm.ArrivalTime,
-      duration: fm.TripDuration,
-      stops: fm.Stops,
-      segments: fm.FlightLegs.map((leg) => ({
-        flight_number: leg.FlightNumber,
-        departure_code: leg.DepartureCode,
-        departure_name: leg.DepartureName,
-        destination_code: leg.DestinationCode,
-        destination_name: leg.DestinationName,
-        start_time: leg.StartTime,
-        end_time: leg.EndTime,
-        duration: leg.Duration,
-        cabin_class: leg.CabinClassName,
-        operating_carrier: leg.OperatingCarrierName,
-        operating_carrier_code: leg.OperatingCarrier,
-        marketing_carrier: leg.MarketingCarrier,
-        aircraft: leg.Aircraft,
-        layover: leg.Layover,
-        layover_duration: leg.LayoverDuration,
-      })),
-      airline: {
-        name: fm.AirlineName,
-        code: fm.Airline,
-        logo_url: fm.AirlineLogoUrl,
-      },
-      free_baggage: fm.FreeBaggage,
-    }));
+    // ✅ Build slices
+    const flightModels = combo.FlightModels;
+    const slices = new Array(flightModels.length);
+    
+    for (let i = 0; i < flightModels.length; i++) {
+      const fm = flightModels[i];
+      const flightLegs = fm.FlightLegs;
+      const segments = new Array(flightLegs.length);
+      
+      for (let j = 0; j < flightLegs.length; j++) {
+        const leg = flightLegs[j];
+        segments[j] = {
+          flight_number: leg.FlightNumber,
+          departure_code: leg.DepartureCode,
+          departure_name: leg.DepartureName,
+          destination_code: leg.DestinationCode,
+          destination_name: leg.DestinationName,
+          start_time: leg.StartTime,
+          end_time: leg.EndTime,
+          duration: leg.Duration,
+          cabin_class: leg.CabinClassName,
+          operating_carrier: leg.OperatingCarrierName,
+          operating_carrier_code: leg.OperatingCarrier,
+          marketing_carrier: leg.MarketingCarrier,
+          aircraft: leg.Aircraft,
+          layover: leg.Layover,
+          layover_duration: leg.LayoverDuration,
+        };
+      }
+      
+      slices[i] = {
+        origin: {
+          iata_code: fm.DepartureCode,
+          name: fm.DepartureName,
+          city_name: fm.DepartureName,
+        },
+        destination: {
+          iata_code: fm.ArrivalCode,
+          name: fm.ArrivalName,
+          city_name: fm.ArrivalName,
+        },
+        departure_time: fm.DepartureTime,
+        arrival_time: fm.ArrivalTime,
+        duration: fm.TripDuration,
+        stops: fm.Stops,
+        segments,
+        airline: {
+          name: fm.AirlineName,
+          code: fm.Airline,
+          logo_url: fm.AirlineLogoUrl,
+        },
+        free_baggage: fm.FreeBaggage,
+      };
+    }
 
+    // ✅ Round values
     const roundedBasePrice = Math.round(convertedPrice * 100) / 100;
     const roundedMarkup = Math.round(markupAmount * 100) / 100;
     const roundedServiceFee = Math.round(serviceFeeAmount * 100) / 100;
@@ -413,19 +423,19 @@ export class SearchWakanowFlightsUseCase {
       isWakanow: true,
       isWakanowDomestic: isDomestic,
       
-      _generatedAt: Date.now(),
+      _generatedAt: timestamp,
     };
   }
 
   private isNigerianRoute(itineraries: Array<{ Departure: string; Destination: string }>): boolean {
-    const nigerianAirports = [
+    const nigerianAirports = new Set([
       'LOS', 'ABV', 'KAN', 'PHC', 'QOW', 'ENU', 'ILR', 'JOS', 'YOL', 
       'CBQ', 'BNI', 'AKR', 'MIU', 'QRW'
-    ];
+    ]);
     return itineraries.every(
       (it) =>
-        nigerianAirports.includes(it.Departure.toUpperCase()) &&
-        nigerianAirports.includes(it.Destination.toUpperCase()),
+        nigerianAirports.has(it.Departure.toUpperCase()) &&
+        nigerianAirports.has(it.Destination.toUpperCase()),
     );
   }
 }
