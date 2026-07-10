@@ -671,7 +671,6 @@ export class WakanowService {
     }
   }
 
-  // ✅ UPDATED: selectFlight with decompression and multi-variant support
   async selectFlight(request: WakanowSelectRequest): Promise<WakanowSelectResponse> {
     this.logger.log('Wakanow flight select...');
     this.logger.log(`SelectData length: ${request.SelectData?.length || 0}`);
@@ -683,10 +682,10 @@ export class WakanowService {
   
     this.logger.log(`SelectData preview: ${request.SelectData.substring(0, 50)}...`);
   
-    // ✅ Generate hash for caching
+    // Generate hash for caching
     const selectDataHash = request.SelectData.substring(0, 100) + '|' + request.SelectData.length;
     
-    // ✅ Check cache
+    // Check cache
     const cachedResponse = this.getCachedSelect(selectDataHash);
     if (cachedResponse) {
       return cachedResponse;
@@ -694,7 +693,7 @@ export class WakanowService {
   
     const headers = await this.getAuthHeaders();
     
-    // ✅ Generate variants to try
+    // ✅ Only use original and trimmed - NO modifications
     const variants = this.generateSelectDataVariants(request.SelectData);
     this.logger.log(`Generated ${variants.length} SelectData variants to try`);
   
@@ -703,7 +702,6 @@ export class WakanowService {
     for (let i = 0; i < variants.length; i++) {
       const variant = variants[i];
       this.logger.log(`📤 Trying variant ${i + 1}/${variants.length}: ${variant.name} (${variant.data.length} chars)`);
-      this.logger.log(`📤 ${variant.name} preview: ${variant.data.substring(0, 50)}...`);
   
       try {
         const response = await this.fetchWithRetry(`${this.serviceUrl}/api/flight/select`, {
@@ -717,21 +715,38 @@ export class WakanowService {
   
         if (!response.ok) {
           const errorText = await response.text();
+          
+          // ✅ Check if selectData is expired/invalid
+          if (response.status === 400 || response.status === 404) {
+            this.logger.warn(`❌ SelectData expired/invalid: ${response.status} - ${errorText}`);
+            
+            // ✅ If this is the original variant, throw immediately
+            if (variant.name === 'Original') {
+              throw new BadRequestException(
+                'Your flight selection has expired. Please search for flights again.'
+              );
+            }
+            
+            // For other variants, continue
+            lastError = new BadRequestException(
+              'Your flight selection has expired. Please search for flights again.'
+            );
+            continue;
+          }
+  
+          // ✅ If it's a server error, don't retry
+          if (response.status >= 500) {
+            this.logger.error(`Server error: ${response.status} - ${errorText}`);
+            throw new HttpException(
+              'Wakanow flight selection service is temporarily unavailable',
+              HttpStatus.SERVICE_UNAVAILABLE
+            );
+          }
+  
+          // Other errors
           this.logger.warn(`${variant.name} failed: ${response.status} - ${errorText.substring(0, 200)}`);
-          
-          if (response.status === 500 && errorText.includes('An error has occured')) {
-            this.logger.warn(`${variant.name} returned 500 with error, trying next variant...`);
-            lastError = new BadRequestException('Your flight selection is invalid. Please search for flights again.');
-            continue;
-          }
-          
-          if (response.status === 400) {
-            this.logger.warn(`${variant.name} returned 400, trying next variant...`);
-            lastError = new BadRequestException('Your flight selection has expired. Please search for flights again.');
-            continue;
-          }
-          
-          this.handleApiError(response, errorText, 'Flight select');
+          lastError = new BadRequestException('Unable to confirm flight pricing. Please try again.');
+          continue;
         }
   
         const data: WakanowSelectResponse = await response.json();
@@ -754,31 +769,19 @@ export class WakanowService {
       } catch (error: any) {
         lastError = error;
         
-        if (error instanceof BadRequestException) {
-          this.logger.warn(`${variant.name} failed: ${error.message}`);
-          continue;
+        // ✅ If this was the original variant and it failed with expiration, stop
+        if (variant.name === 'Original' && 
+            error instanceof BadRequestException && 
+            error.message.includes('expired')) {
+          throw error;
         }
         
-        const errorMsg = error.message?.toLowerCase() || '';
-        if (errorMsg.includes('expired') || 
-            errorMsg.includes('invalid') || 
-            errorMsg.includes('no itinerary') ||
-            errorMsg.includes('bad request') ||
-            errorMsg.includes('an error has occured')) {
-          this.logger.warn(`${variant.name} failed with expired/invalid error: ${error.message}`);
-          continue;
+        // ✅ If this is the last variant, throw
+        if (i === variants.length - 1) {
+          this.logger.error('All SelectData variants failed');
+          throw new BadRequestException('Unable to confirm flight pricing. Please search for flights again.');
         }
-        
-        this.logger.warn(`${variant.name} failed with unexpected error: ${error.message}`);
       }
-    }
-  
-    if (lastError) {
-      this.logger.error('All SelectData variants failed');
-      if (lastError instanceof BadRequestException) {
-        throw lastError;
-      }
-      throw new BadRequestException('Unable to confirm flight pricing. Please search for flights again.');
     }
   
     throw new BadRequestException('Unable to confirm flight pricing. Please search for flights again.');
