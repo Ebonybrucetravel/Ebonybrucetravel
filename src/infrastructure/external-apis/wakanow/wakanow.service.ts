@@ -1,5 +1,3 @@
-// infrastructure/external-apis/wakanow/wakanow.service.ts
-
 import { Injectable, HttpException, HttpStatus, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as zlib from 'zlib';
@@ -674,14 +672,14 @@ export class WakanowService {
   async selectFlight(request: WakanowSelectRequest): Promise<WakanowSelectResponse> {
     this.logger.log('Wakanow flight select...');
     this.logger.log(`SelectData length: ${request.SelectData?.length || 0}`);
-  
+
     if (!request.SelectData || request.SelectData.length < 10) {
       this.logger.warn(`Invalid selectData: length ${request.SelectData?.length || 0}`);
       throw new BadRequestException('Invalid or expired flight selection. Please search again.');
     }
-  
+
     this.logger.log(`SelectData preview: ${request.SelectData.substring(0, 50)}...`);
-  
+
     // Generate hash for caching
     const selectDataHash = request.SelectData.substring(0, 100) + '|' + request.SelectData.length;
     
@@ -690,19 +688,19 @@ export class WakanowService {
     if (cachedResponse) {
       return cachedResponse;
     }
-  
+
     const headers = await this.getAuthHeaders();
     
-    // ✅ Only use original and trimmed - NO modifications
+    // ✅ Only use valid variants
     const variants = this.generateSelectDataVariants(request.SelectData);
     this.logger.log(`Generated ${variants.length} SelectData variants to try`);
-  
+
     let lastError: any = null;
-  
+
     for (let i = 0; i < variants.length; i++) {
       const variant = variants[i];
       this.logger.log(`📤 Trying variant ${i + 1}/${variants.length}: ${variant.name} (${variant.data.length} chars)`);
-  
+
       try {
         const response = await this.fetchWithRetry(`${this.serviceUrl}/api/flight/select`, {
           method: 'POST',
@@ -712,29 +710,26 @@ export class WakanowService {
             TargetCurrency: request.TargetCurrency || 'NGN',
           }),
         });
-  
+
         if (!response.ok) {
           const errorText = await response.text();
-          
-          // ✅ Check if selectData is expired/invalid
+        
           if (response.status === 400 || response.status === 404) {
             this.logger.warn(`❌ SelectData expired/invalid: ${response.status} - ${errorText}`);
             
-            // ✅ If this is the original variant, throw immediately
             if (variant.name === 'Original') {
               throw new BadRequestException(
                 'Your flight selection has expired. Please search for flights again.'
               );
             }
             
-            // For other variants, continue
             lastError = new BadRequestException(
               'Your flight selection has expired. Please search for flights again.'
             );
             continue;
           }
-  
-          // ✅ If it's a server error, don't retry
+
+       
           if (response.status >= 500) {
             this.logger.error(`Server error: ${response.status} - ${errorText}`);
             throw new HttpException(
@@ -742,163 +737,70 @@ export class WakanowService {
               HttpStatus.SERVICE_UNAVAILABLE
             );
           }
-  
-          // Other errors
+
           this.logger.warn(`${variant.name} failed: ${response.status} - ${errorText.substring(0, 200)}`);
           lastError = new BadRequestException('Unable to confirm flight pricing. Please try again.');
           continue;
         }
-  
+
         const data: WakanowSelectResponse = await response.json();
-  
+
+        this.logger.log(`📝 Terms count from Wakanow: ${data.ProductTermsAndConditions?.TermsAndConditions?.length || 0}`);
+        if (data.ProductTermsAndConditions?.TermsAndConditions?.length > 0) {
+          this.logger.log(`📝 First term: ${data.ProductTermsAndConditions.TermsAndConditions[0]}`);
+        } else {
+          this.logger.warn(`⚠️ No terms returned by Wakanow for booking ${data.BookingId}`);
+        }
+
         if (!data.HasResult) {
           this.logger.warn(`${variant.name} returned no results`);
           lastError = new BadRequestException('Selected flight is no longer available. Please search again.');
           continue;
         }
-  
+
         this.logger.log(
           `✅ Wakanow flight selected with ${variant.name}. BookingId: ${data.BookingId}, Price: ${data.FlightSummaryModel?.FlightCombination?.Price?.Amount || 0}`,
         );
-  
-        // ✅ Cache successful response
+
         this.cacheSelectResponse(selectDataHash, data);
-  
+
         return data;
         
       } catch (error: any) {
         lastError = error;
         
-        // ✅ If this was the original variant and it failed with expiration, stop
         if (variant.name === 'Original' && 
             error instanceof BadRequestException && 
             error.message.includes('expired')) {
           throw error;
         }
         
-        // ✅ If this is the last variant, throw
         if (i === variants.length - 1) {
           this.logger.error('All SelectData variants failed');
           throw new BadRequestException('Unable to confirm flight pricing. Please search for flights again.');
         }
       }
     }
-  
+
     throw new BadRequestException('Unable to confirm flight pricing. Please search for flights again.');
   }
 
-  // ✅ NEW: Generate SelectData variants
+  
   private generateSelectDataVariants(originalSelectData: string): Array<{ name: string; data: string }> {
     const variants: Array<{ name: string; data: string }> = [];
 
-    // 1. Original
     variants.push({ name: 'Original', data: originalSelectData });
 
-    // 2. Trimmed
+
     const trimmed = originalSelectData.trim();
-    if (trimmed !== originalSelectData) {
+    if (trimmed !== originalSelectData && trimmed.length > 10) {
       variants.push({ name: 'Trimmed', data: trimmed });
     }
 
-    // 3. Try decompression
-    try {
-      const decompressed = this.tryDecompressSelectData(originalSelectData);
-      if (decompressed && decompressed.length > 10 && decompressed !== originalSelectData) {
-        variants.push({ name: 'Decompressed', data: decompressed });
-      }
-    } catch (e) {
-      this.logger.debug(`Decompression attempt failed: ${e.message}`);
-    }
-
-    // 4. If very long, try shortened versions
-    if (originalSelectData.length > 500) {
-      variants.push({ name: 'Shortened_500', data: originalSelectData.substring(0, 500) });
-      
-      if (originalSelectData.length > 1000) {
-        variants.push({ name: 'Shortened_1000', data: originalSelectData.substring(0, 1000) });
-      }
-    }
-
-    // 5. Try Base64 decode if it looks like Base64
-    try {
-      const base64Regex = /^[A-Za-z0-9+/=]+$/;
-      if (base64Regex.test(originalSelectData)) {
-        const decoded = Buffer.from(originalSelectData, 'base64').toString('utf-8');
-        if (decoded && decoded.length > 10) {
-          const trimmedDecoded = decoded.trim();
-          if (trimmedDecoded.startsWith('{') || trimmedDecoded.startsWith('[')) {
-            variants.push({ name: 'Base64Decoded', data: trimmedDecoded });
-          }
-        }
-      }
-    } catch (e) {
-      this.logger.debug(`Base64 decode failed: ${e.message}`);
-    }
-
-    // 6. Try removing common prefixes
-    const prefixes = ['WAAAAB+LCAAAAAAABAC', '7h4AAB+LCAAAAAAABAD'];
-    for (const prefix of prefixes) {
-      if (originalSelectData.startsWith(prefix)) {
-        const withoutPrefix = originalSelectData.substring(prefix.length);
-        if (withoutPrefix.length > 50) {
-          variants.push({ name: `WithoutPrefix_${prefix.substring(0, 10)}`, data: withoutPrefix });
-        }
-      }
-    }
-
-    // ✅ Remove duplicates
-    const seen = new Set<string>();
-    const uniqueVariants = variants.filter(v => {
-      const key = v.data.substring(0, 100);
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-
-    this.logger.log(`Generated ${uniqueVariants.length} unique SelectData variants`);
-    return uniqueVariants;
+    this.logger.log(`Generated ${variants.length} valid SelectData variants (original + trimmed)`);
+    return variants;
   }
 
-  // ✅ NEW: Try to decompress SelectData
-  private tryDecompressSelectData(selectData: string): string | null {
-    try {
-      // Check for gzip compressed data patterns
-      if (selectData.startsWith('7h4AAB+LCAAAAAAABAD') || 
-          selectData.startsWith('H4sI') ||
-          selectData.includes('LCAAAAAAABAD')) {
-        
-        this.logger.log('🔍 Detected possible gzip compressed data, attempting to decompress...');
-        
-        const buffer = Buffer.from(selectData, 'base64');
-        
-        // Check for gzip magic bytes: 1F 8B
-        if (buffer.length > 2 && buffer[0] === 0x1F && buffer[1] === 0x8B) {
-          const decompressed = zlib.gunzipSync(buffer);
-          const result = decompressed.toString('utf-8');
-          
-          if (result && result.length > 10) {
-            this.logger.log(`✅ Decompressed successfully: ${result.length} chars`);
-            return result;
-          }
-        }
-        
-        // If not gzip, try base64 decode
-        const decoded = Buffer.from(selectData, 'base64').toString('utf-8');
-        if (decoded && decoded.length > 10 && 
-            (decoded.trim().startsWith('{') || decoded.trim().startsWith('['))) {
-          this.logger.log(`✅ Base64 decoded to JSON: ${decoded.length} chars`);
-          return decoded;
-        }
-      }
-      
-      return null;
-    } catch (error) {
-      this.logger.warn(`Decompression failed: ${error.message}`);
-      return null;
-    }
-  }
 
   async bookFlight(request: WakanowBookRequest): Promise<WakanowBookResponse> {
     this.logger.log(`Wakanow flight booking. BookingId: ${request.BookingId}`);
