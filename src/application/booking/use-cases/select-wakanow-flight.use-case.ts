@@ -4,7 +4,7 @@ import { SelectWakanowFlightDto } from '@presentation/booking/dto/wakanow-flight
 
 const MARKUP_PERCENTAGE = 10;
 const SERVICE_FEE_PERCENTAGE = 5;
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 2; 
 const RETRY_DELAY = 1000;
 
 @Injectable()
@@ -66,11 +66,6 @@ export class SelectWakanowFlightUseCase {
                              error?.code || 
                              0;
 
-          if (error.message === 'SELECTION_EXPIRED') {
-            this.logger.warn(`Variant ${variant.name} attempt ${attempt}: Selection expired`);
-            break;
-          }
-
           const isExpired = errorMsg.includes('expired') ||
                             errorMsg.includes('selectdata') ||
                             errorMsg.includes('bad request') ||
@@ -83,7 +78,16 @@ export class SelectWakanowFlightUseCase {
                             errorString.includes('selected flights not available');
 
           if (isExpired) {
-            this.logger.warn(`Variant ${variant.name} attempt ${attempt}: Expired error`);
+            this.logger.warn(`Variant ${variant.name} attempt ${attempt}: Expired error - stopping retries`);
+            
+      
+            if (variant.name === 'Original') {
+              throw new BadRequestException(
+                'Your flight selection has expired. Please search for flights again.'
+              );
+            }
+            
+
             break;
           }
 
@@ -93,10 +97,17 @@ export class SelectWakanowFlightUseCase {
             continue;
           }
 
-          if (errorStatus === 400 && attempt < 2) {
-            this.logger.warn(`Variant ${variant.name} attempt ${attempt} failed with 400, retrying once...`);
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-            continue;
+    
+          if (errorStatus === 400) {
+            this.logger.warn(`Variant ${variant.name} attempt ${attempt} failed with 400: invalid data`);
+            
+  
+            if (variant.name === 'Original') {
+              throw new BadRequestException(
+                'Your flight selection has expired. Please search for flights again.'
+              );
+            }
+            break;
           }
 
           this.logger.warn(`Variant ${variant.name} attempt ${attempt} failed: ${error.message}`);
@@ -111,8 +122,15 @@ export class SelectWakanowFlightUseCase {
 
     if (!selectResponse) {
       this.logger.error('All variants and retry attempts failed');
+      
+      
+      if (lastError && lastError.message && 
+          (lastError.message.includes('expired') || lastError.message.includes('search again'))) {
+        throw new BadRequestException(lastError.message);
+      }
+      
       throw new BadRequestException(
-        'Unable to confirm flight pricing. Please try searching again.'
+        'Unable to confirm flight pricing. Please search for flights again.'
       );
     }
 
@@ -168,9 +186,45 @@ export class SelectWakanowFlightUseCase {
       currency: currency,
     };
 
-    // ✅ Get the booking ID (PNR) from the response
     const bookingId = selectResponse.BookingId || null;
     const selectDataResponse = selectResponse.SelectData || selectData;
+
+    // ✅ Get terms from Wakanow
+    const wakanowTerms = selectResponse.ProductTermsAndConditions?.TermsAndConditions || [];
+    
+    // ✅ Fallback terms from Wakanow API Documentation (Page 19-20)
+    const documentedTerms = [
+      "Cancellation and Date Change penalty applicable. Penalty amount will depend on the Date and Time of Cancellation or Date Change.",
+      "WAKANOW BLACK FRIDAY AND CYBER MONDAY TERMS AND CONDITIONS.",
+      "The Black Friday deals may be applied to selected or stand-alone bookings for flights, hotels and other travel products or flight bookings in combination with any other product such as hotels, tours, airport drop off and pick up, protocol services etc.",
+      "All booking/reservations made by {AgentName} are subject to third party operating Airline's rules and terms of carriage.",
+      "All Black Friday customers must check all details to ensure how the deals work.",
+      "{AgentName} merely acts as a travel agent of third party operating Airlines and SHALL have NO responsibility, whatsoever, for any additional cost (directly or indirectly) incurred by any passenger due to any delay, loss, cancellation, change, inaccurate/insufficient information arising whether during booking reservation or after ticket issuance.",
+      "All Black Friday customers must note that Fares are nonrefundable and nontransferable.",
+      "All the Arik Air flight bookings/reservations are subject to airline availability and are valid for 1 (one) hour from time of booking to payment confirmation and ticket issuance.",
+      "The Black Friday deals are discounted and therefore do not include taxes, supplier fees, cancellation or change fees/penalties, administrative fees or other miscellaneous charges, which are the sole responsibility of the customer.",
+      "All flight fare quoted by {AgentName} are subject to availability, and to change at any time by the third party Airline operators.",
+      "All booking/reservations made on Wakanow.com are subject to third party operating Airline's rules and terms of carriage.",
+      "Passengers are liable for; all card transactions (whether successful or not) travel details, compliance and adequacy of visa requirements, travel itinerary and names (as appear on passport) provided for bookings.",
+      "Ticket issuance SHALL BE subject to payment confirmation by Wakanow.",
+      "Ticket issuance SHALL BE subject to payment confirmation by {AgentName}.",
+      "Please ensure that your International passport has at least 6 (six) months validity prior to its expiration date as Wakanow shall not be liable for any default.",
+      "Please ensure that your International passport has at least 6 (six) months validity prior to its expiration date as {AgentName} shall not be liable for any default.",
+      "Wakanow merely acts as a travel agent of third party operating Airlines and SHALL have NO responsibility, whatsoever, for any additional cost (directly or indirectly) incurred by any passenger due to any delay, loss, cancellation, change, inaccurate/insufficient information arising whether during booking reservation or after ticket issuance.",
+      "All the Arik Air flight bookings/reservations are subject to airline availability and are valid for 1 (one) hour from time of booking to payment confirmation and ticket issuance.",
+      "For all non-card transactions, please contact us at 07009252669, 01-6329250, 01-2773010 to confirm booking details, travel dates and travel requirements before proceeding to payment.",
+      "Refund, cancellation and change requests, where applicable, are subject to third party operating airline's policy, plus a service charge of $50.",
+      "All flight fare quoted on www.wakanow.com are subject to availability, and to change at any time by the third party Airline operators.",
+      "Refund settlement in 9 above, shall be pursuant to fund remittance by the operating airline.",
+      "Passengers are advised to arrive at the airport at least 3-5 hours prior to flight departure.",
+      "First time travelers are advised to have a return flight ticket, confirmed hotel/accommodation and a minimum of $1000 for Personal Travel Allowance (PTA) or Business Travel Allowance (BTA).",
+      "An original child's Birth Certificate and Consent letter from parent(s) must be presented before the check-in counter at the Airport.",
+      "All tickets are non-transferable at any time. Some tickets may be non-refundable or non-changeable.",
+      "Some Airlines may require additional Medical Report/Documents in the case of pregnant passenger(s).",
+      "The Passenger hereby confirms to have read and understood this booking information notice and has agreed to waive all rights, by law and to hold harmless and absolve Wakanow of all liabilities that may arise thereof.",
+    ];
+
+    const displayTerms = wakanowTerms.length > 0 ? wakanowTerms : documentedTerms;
 
     this.logger.log(
       `✅ Wakanow flight selected. BookingId: ${bookingId}, ` +
@@ -181,8 +235,8 @@ export class SelectWakanowFlightUseCase {
     return {
       provider: 'WAKANOW',
       bookingId: bookingId,
-      pnrNumber: bookingId, // ✅ CRITICAL: Store PNR number
-      wakanowBookingId: bookingId, // ✅ CRITICAL: Store Wakanow booking ID
+      pnrNumber: bookingId,
+      wakanowBookingId: bookingId,
       selectData: selectDataResponse,
       isPriceMatched: selectResponse.IsPriceMatched || false,
       isPassportRequired: selectResponse.IsPassportRequired || false,
@@ -235,9 +289,10 @@ export class SelectWakanowFlightUseCase {
       },
       fareRules: combo.FareRules || [],
       penaltyRules: combo.PenaltyRules || null,
-      termsAndConditions: selectResponse.ProductTermsAndConditions || {
-        TermsAndConditions: [],
-        TermsAndConditionImportantNotice: '',
+
+      termsAndConditions: {
+        TermsAndConditions: displayTerms,
+        TermsAndConditionImportantNotice: selectResponse.ProductTermsAndConditions?.TermsAndConditionImportantNotice || '',
       },
       customMessages: selectResponse.CustomMessages || [],
       message: 'Flight pricing confirmed',
@@ -247,69 +302,16 @@ export class SelectWakanowFlightUseCase {
   private generateSelectDataVariants(originalSelectData: string): Array<{ name: string; data: string }> {
     const variants: Array<{ name: string; data: string }> = [];
 
+
     variants.push({ name: 'Original', data: originalSelectData });
 
+  
     const trimmed = originalSelectData.trim();
-    if (trimmed !== originalSelectData) {
+    if (trimmed !== originalSelectData && trimmed.length > 10) {
       variants.push({ name: 'Trimmed', data: trimmed });
     }
 
-    try {
-      if (originalSelectData.startsWith('7h4AAB+LCAAAAAAABAD') || 
-          originalSelectData.startsWith('H4sI') ||
-          originalSelectData.includes('LCAAAAAAABAD')) {
-        
-        const buffer = Buffer.from(originalSelectData, 'base64');
-        if (buffer.length > 2 && buffer[0] === 0x1F && buffer[1] === 0x8B) {
-          const zlib = require('zlib');
-          const decompressed = zlib.gunzipSync(buffer);
-          const result = decompressed.toString('utf-8');
-          
-          if (result && result.length > 10) {
-            variants.push({ name: 'Decompressed', data: result });
-          }
-        }
-      }
-    } catch (e) {
-      this.logger.debug('Decompression failed:', e.message);
-    }
-
-    try {
-      const base64Regex = /^[A-Za-z0-9+/=]+$/;
-      if (base64Regex.test(originalSelectData)) {
-        const decoded = Buffer.from(originalSelectData, 'base64').toString('utf-8');
-        if (decoded && decoded.length > 10) {
-          const trimmedDecoded = decoded.trim();
-          if (trimmedDecoded.startsWith('{') || trimmedDecoded.startsWith('[')) {
-            variants.push({ name: 'Base64Decoded', data: trimmedDecoded });
-          }
-        }
-      }
-    } catch (e) {
-      this.logger.debug('Base64 decode failed:', e.message);
-    }
-
-    const prefixes = ['WAAAAB+LCAAAAAAABAC', '7h4AAB+LCAAAAAAABAD'];
-    for (const prefix of prefixes) {
-      if (originalSelectData.startsWith(prefix)) {
-        const withoutPrefix = originalSelectData.substring(prefix.length);
-        if (withoutPrefix.length > 50) {
-          variants.push({ name: `WithoutPrefix`, data: withoutPrefix });
-        }
-      }
-    }
-
-    const seen = new Set<string>();
-    const uniqueVariants = variants.filter(v => {
-      const key = v.data.substring(0, 100);
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-
-    this.logger.log(`Generated ${uniqueVariants.length} unique SelectData variants`);
-    return uniqueVariants;
+    this.logger.log(`Generated ${variants.length} valid SelectData variants (original + trimmed)`);
+    return variants;
   }
 }
