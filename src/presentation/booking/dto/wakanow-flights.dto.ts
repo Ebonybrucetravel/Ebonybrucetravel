@@ -223,22 +223,22 @@ export class WakanowPassengerDto {
   @ApiPropertyOptional({ description: 'Passport number (required for international flights)' })
   @IsOptional()
   @IsString()
-  passportNumber?: string;
+  PassportNumber?: string;
 
   @ApiPropertyOptional({ description: 'Passport expiry date (YYYY-MM-DD)' })
   @IsOptional()
   @IsString()
-  expiryDate?: string;
+  ExpiryDate?: string;
 
   @ApiPropertyOptional({ description: 'Passport issuing authority' })
   @IsOptional()
   @IsString()
-  passportIssuingAuthority?: string;
+  PassportIssuingAuthority?: string;
 
   @ApiPropertyOptional({ description: 'Passport issue country code (ISO 2-letter)', example: 'NG' })
   @IsOptional()
   @IsString()
-  passportIssueCountryCode?: string;
+  PassportIssueCountryCode?: string;
 
   @ApiPropertyOptional({ description: 'Address', example: '123 Fake Street' })
   @IsOptional()

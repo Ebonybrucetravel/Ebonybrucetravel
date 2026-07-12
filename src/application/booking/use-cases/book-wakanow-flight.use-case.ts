@@ -55,10 +55,10 @@ export class BookWakanowFlightUseCase {
       Email: p.email,
       Gender: p.gender,
       Title: p.title,
-      PassportNumber: p.passportNumber || '',
-      ExpiryDate: p.expiryDate || '',
-      PassportIssuingAuthority: p.passportIssuingAuthority || '',
-      PassportIssueCountryCode: p.passportIssueCountryCode || '',
+      PassportNumber: p.PassportNumber || '',
+      ExpiryDate: p.ExpiryDate || '',
+      PassportIssuingAuthority: p.PassportIssuingAuthority || '',
+      PassportIssueCountryCode: p.PassportIssueCountryCode || '',
       Address: p.address || '123 Fake Street',
       Country: p.country || 'Nigeria',
       CountryCode: p.countryCode || 'NG',
@@ -92,22 +92,22 @@ export class BookWakanowFlightUseCase {
     this.logger.log(`📍 Destination: ${firstArr}, isNorthAmerica: ${isNorthAmerica}`);
   
 
-if (isNorthAmerica) {
-  for (let i = 0; i < passengers.length; i++) {
-    const p = passengers[i];
-  
-    if (!p.passportNumber) {
-      throw new BadRequestException(`Passenger ${i + 1}: Passport number is required for North American flights`);
+    if (isNorthAmerica) {
+      for (let i = 0; i < passengers.length; i++) {
+        const p = passengers[i];
+        // ✅ Use PascalCase - matches what frontend sends
+        if (!p.PassportNumber) {
+          throw new BadRequestException(`Passenger ${i + 1}: Passport number is required for North American flights`);
+        }
+        if (!p.ExpiryDate) {
+          throw new BadRequestException(`Passenger ${i + 1}: Passport expiry date is required for North American flights`);
+        }
+        if (!p.PassportIssuingAuthority) {
+          throw new BadRequestException(`Passenger ${i + 1}: Passport issuing authority is required for North American flights`);
+        }
+      }
+      this.logger.log('✅ Passport validation passed for North America');
     }
-    if (!p.expiryDate) {
-      throw new BadRequestException(`Passenger ${i + 1}: Passport expiry date is required for North American flights`);
-    }
-    if (!p.passportIssuingAuthority) {
-      throw new BadRequestException(`Passenger ${i + 1}: Passport issuing authority is required for North American flights`);
-    }
-  }
-  this.logger.log('✅ Passport validation passed for North America');
-}
     const isDomestic = this.isNigerianRoute(firstDep, firstArr);
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
   
