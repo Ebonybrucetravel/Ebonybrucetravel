@@ -266,7 +266,6 @@ export class WakanowPassengerDto {
   postalCode?: string;
 }
 
-
 export class BookWakanowFlightDto {
   @ApiProperty({ description: 'Passenger details', type: [WakanowPassengerDto] })
   @IsArray()
@@ -299,8 +298,23 @@ export class BookWakanowFlightDto {
   @ValidateNested()
   @Type(() => PriceBreakdownDto)
   priceBreakdown?: PriceBreakdownDto;
-}
 
+  @ApiPropertyOptional({
+    description: 'Destination airport code (IATA 3-letter) for North America detection',
+    example: 'JFK',
+  })
+  @IsOptional()
+  @IsString()
+  destinationCode?: string;
+
+  @ApiPropertyOptional({
+    description: 'Whether this is a North America destination (US, Canada, Mexico)',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isNorthAmerica?: boolean;
+}
 
 export class TicketWakanowFlightDto {
   @ApiProperty({ description: 'Wakanow Booking ID' })

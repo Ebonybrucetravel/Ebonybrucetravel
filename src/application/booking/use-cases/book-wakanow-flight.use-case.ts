@@ -24,21 +24,15 @@ export class BookWakanowFlightUseCase {
 
   async execute(dto: BookWakanowFlightDto, userId: string) {
     const { passengers, bookingId, selectData, targetCurrency = 'NGN', priceBreakdown } = dto;
-
+  
     this.logger.log(`📝 Booking Wakanow flight. BookingId: ${bookingId}`);
     this.logger.log(`👤 UserId: ${userId}`);
     this.logger.log(`👤 Passengers: ${passengers.length}`);
     this.logger.log(`📋 SelectData length: ${selectData?.length || 0}`);
-
-
+  
     this.validateRequiredFields(bookingId, selectData, passengers);
-
-
     this.validateSelectData(selectData);
-
-
     this.validatePriceBreakdown(priceBreakdown);
-
   
     const existingBooking = await this.bookingRepository.findByProviderBookingId(bookingId);
     
@@ -46,12 +40,12 @@ export class BookWakanowFlightUseCase {
       this.logger.log(`Booking ${bookingId} already exists, returning existing`);
       return this.buildExistingBookingResponse(existingBooking);
     }
-
   
+
     this.validatePassengers(passengers);
-
   
-    const wakanowPassengers: WakanowPassengerDetail[] = passengers.map((p) => ({
+    
+    const initialWakanowPassengers: WakanowPassengerDetail[] = passengers.map((p) => ({
       PassengerType: p.passengerType || 'Adult',
       FirstName: p.firstName,
       MiddleName: p.middleName || '',
@@ -72,10 +66,9 @@ export class BookWakanowFlightUseCase {
       PostalCode: p.postalCode || '100001',
       IsWakapointRegister: false,
     }));
-
-
-    const wakanowRequest: WakanowBookRequest = {
-      PassengerDetails: wakanowPassengers,
+  
+    const initialRequest: WakanowBookRequest = {
+      PassengerDetails: initialWakanowPassengers,
       BookingItemModels: [
         {
           ProductType: 'Flight',
@@ -86,32 +79,45 @@ export class BookWakanowFlightUseCase {
       ],
       BookingId: bookingId,
     };
-
-    this.logger.log(`Sending booking request to Wakanow with BookingId: ${bookingId}`);
-
-
-    const bookResponse = await this.executeWithRetry(wakanowRequest, bookingId);
-
-
+  
+    const bookResponse = await this.executeWithRetry(initialRequest, bookingId);
+  
     const pnr = this.extractPnr(bookResponse);
     const combo = this.extractFlightCombination(bookResponse);
     const price = combo.Price;
     const firstDep = combo.FlightModels[0]?.DepartureCode || '';
     const firstArr = combo.FlightModels[0]?.ArrivalCode || '';
+  
+    const isNorthAmerica = this.isNorthAmericaDestination(firstDep, firstArr, dto);
+    this.logger.log(`📍 Destination: ${firstArr}, isNorthAmerica: ${isNorthAmerica}`);
+  
 
-
+if (isNorthAmerica) {
+  for (let i = 0; i < passengers.length; i++) {
+    const p = passengers[i];
+  
+    if (!p.passportNumber) {
+      throw new BadRequestException(`Passenger ${i + 1}: Passport number is required for North American flights`);
+    }
+    if (!p.expiryDate) {
+      throw new BadRequestException(`Passenger ${i + 1}: Passport expiry date is required for North American flights`);
+    }
+    if (!p.passportIssuingAuthority) {
+      throw new BadRequestException(`Passenger ${i + 1}: Passport issuing authority is required for North American flights`);
+    }
+  }
+  this.logger.log('✅ Passport validation passed for North America');
+}
     const isDomestic = this.isNigerianRoute(firstDep, firstArr);
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
-
-
+  
     const priceCalculation = await this.calculatePrices(
       price,
       productType,
       isDomestic,
       priceBreakdown
     );
-
-
+  
     const booking = await this.createLocalBooking(
       bookResponse,
       pnr,
@@ -123,9 +129,9 @@ export class BookWakanowFlightUseCase {
       targetCurrency,
       productType
     );
-
+  
     this.logger.log(`✅ Wakanow flight booked. Local booking: ${booking.id}, PNR: ${pnr}`);
-
+  
     return this.buildSuccessResponse(booking, bookResponse, pnr, combo, passengers, priceCalculation, firstDep, firstArr);
   }
 
@@ -212,9 +218,6 @@ export class BookWakanowFlightUseCase {
     }
   }
 
-  // ============================================================
-  // BUSINESS LOGIC METHODS
-  // ============================================================
 
   private buildExistingBookingResponse(existingBooking: any): any {
     return {
@@ -514,4 +517,36 @@ export class BookWakanowFlightUseCase {
       nigerianAirports.includes(destination.toUpperCase())
     );
   }
+
+private isNorthAmericaDestination(firstDep: string, firstArr: string, dto: BookWakanowFlightDto): boolean {
+
+  if (dto.isNorthAmerica !== undefined) {
+    return dto.isNorthAmerica;
+  }
+  if (dto.destinationCode) {
+    const northAmericanAirports = [
+      'JFK', 'EWR', 'LGA', 'LAX', 'SFO', 'ORD', 'DFW', 'ATL', 'IAH', 'MIA', 
+      'BOS', 'SEA', 'DEN', 'PHX', 'DTW', 'MSP', 'CLT', 'PDX', 'SAN', 'LAS',
+      'IAD', 'DCA', 'BWI', 'PHL', 'STL', 'MCI', 'IND', 'CMH', 'PIT', 'CLE',
+      'MCO', 'TPA', 'FLL', 'PBI', 'RSW', 'JAX', 'BNA', 'MSY', 'SLC', 'ABQ',
+      'YYZ', 'YVR', 'YUL', 'YYC', 'YOW', 'YHZ', 'YEG', 'YQB', 'YWG', 'YXE',
+      'MEX', 'CUN', 'GDL', 'MTY', 'PVR', 'SJD', 'BJX', 'QRO', 'VER', 'CZM'
+    ];
+    return northAmericanAirports.includes(dto.destinationCode.toUpperCase());
+  }
+  
+  if (firstArr) {
+    const northAmericanAirports = [
+      'JFK', 'EWR', 'LGA', 'LAX', 'SFO', 'ORD', 'DFW', 'ATL', 'IAH', 'MIA', 
+      'BOS', 'SEA', 'DEN', 'PHX', 'DTW', 'MSP', 'CLT', 'PDX', 'SAN', 'LAS',
+      'IAD', 'DCA', 'BWI', 'PHL', 'STL', 'MCI', 'IND', 'CMH', 'PIT', 'CLE',
+      'MCO', 'TPA', 'FLL', 'PBI', 'RSW', 'JAX', 'BNA', 'MSY', 'SLC', 'ABQ',
+      'YYZ', 'YVR', 'YUL', 'YYC', 'YOW', 'YHZ', 'YEG', 'YQB', 'YWG', 'YXE',
+      'MEX', 'CUN', 'GDL', 'MTY', 'PVR', 'SJD', 'BJX', 'QRO', 'VER', 'CZM'
+    ];
+    return northAmericanAirports.includes(firstArr.toUpperCase());
+  }
+  
+  return false;
+}
 }
