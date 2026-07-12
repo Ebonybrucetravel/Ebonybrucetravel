@@ -10,7 +10,7 @@
 **Email:** info@cortouchmedia.com.ng  
 **Phone:** +2348067473244  
 **Date:** December 17, 2025  
-**Estimated Project Duration:** 8 Weeks
+**Estimated Project Duration:** 12 Weeks
 
 
 
