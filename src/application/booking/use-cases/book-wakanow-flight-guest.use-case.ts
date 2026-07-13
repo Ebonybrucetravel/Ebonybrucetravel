@@ -12,44 +12,71 @@ export class BookWakanowFlightGuestUseCase {
     private readonly bookWakanowUseCase: BookWakanowFlightUseCase,
   ) {}
 
-  async execute(dto: BookWakanowFlightDto) {
+  async execute(dto: any) {  
+   
+    const passengers = dto.passengers || dto.bookingData?.passengers || [];
+    const bookingId = dto.bookingId || dto.bookingData?.bookingId;
+    const selectData = dto.selectData || dto.bookingData?.selectData;
+    const targetCurrency = dto.targetCurrency || dto.bookingData?.targetCurrency || 'NGN';
+    const isNorthAmerica = dto.isNorthAmerica ?? dto.bookingData?.isNorthAmerica ?? false;
+    const destinationCode = dto.destinationCode || dto.bookingData?.destinationCode;
+    const priceBreakdown = dto.priceBreakdown || dto.bookingData?.priceBreakdown;
+
     this.logger.log('📝 Booking Wakanow flight as guest...');
-    this.logger.log(`👤 Passengers: ${dto.passengers?.length || 0}`);
-    this.logger.log(`🆔 BookingId: ${dto.bookingId}`);
-    this.logger.log(`📋 SelectData length: ${dto.selectData?.length || 0}`);
+    this.logger.log(`👤 Passengers: ${passengers?.length || 0}`);
+    this.logger.log(`🆔 BookingId: ${bookingId}`);
+    this.logger.log(`📋 SelectData length: ${selectData?.length || 0}`);
+    this.logger.log(`📍 isNorthAmerica: ${isNorthAmerica}`);
 
-
-    if (!dto.bookingId) {
+   
+    if (!bookingId) {
       throw new BadRequestException('BookingId is required');
     }
-    if (!dto.selectData) {
+    if (!selectData) {
       throw new BadRequestException('SelectData is required');
     }
-    if (!dto.passengers || dto.passengers.length === 0) {
+    if (!passengers || passengers.length === 0) {
       throw new BadRequestException('At least one passenger is required');
     }
 
-    this.validateSelectData(dto.selectData);
+    this.validateSelectData(selectData);
 
+   
+    if (isNorthAmerica) {
+      for (let i = 0; i < passengers.length; i++) {
+        const p = passengers[i];
+        if (!p.PassportNumber) {
+          throw new BadRequestException(`Passenger ${i + 1}: Passport number is required for North American flights`);
+        }
+        if (!p.ExpiryDate) {
+          throw new BadRequestException(`Passenger ${i + 1}: Passport expiry date is required for North American flights`);
+        }
+        if (!p.PassportIssuingAuthority) {
+          throw new BadRequestException(`Passenger ${i + 1}: Passport issuing authority is required for North American flights`);
+        }
+      }
+      this.logger.log('✅ Passport validation passed for North America');
+    }
 
-    if (dto.priceBreakdown) {
+   
+    if (priceBreakdown) {
       this.logger.log('💰 Guest booking with price breakdown:', {
-        basePrice: dto.priceBreakdown.basePrice,
-        markupAmount: dto.priceBreakdown.markupAmount,
-        markupPercentage: dto.priceBreakdown.markupPercentage,
-        serviceFee: dto.priceBreakdown.serviceFee,
-        serviceFeePercentage: dto.priceBreakdown.serviceFeePercentage,
-        taxes: dto.priceBreakdown.taxes,
-        taxPercentage: dto.priceBreakdown.taxPercentage,
-        totalAmount: dto.priceBreakdown.totalAmount,
-        currency: dto.priceBreakdown.currency,
+        basePrice: priceBreakdown.basePrice,
+        markupAmount: priceBreakdown.markupAmount,
+        markupPercentage: priceBreakdown.markupPercentage,
+        serviceFee: priceBreakdown.serviceFee,
+        serviceFeePercentage: priceBreakdown.serviceFeePercentage,
+        taxes: priceBreakdown.taxes,
+        taxPercentage: priceBreakdown.taxPercentage,
+        totalAmount: priceBreakdown.totalAmount,
+        currency: priceBreakdown.currency,
       });
 
-      if (dto.priceBreakdown.totalAmount <= 0) {
+      if (priceBreakdown.totalAmount <= 0) {
         this.logger.warn('⚠️ Invalid price breakdown: totalAmount <= 0');
         throw new BadRequestException('Invalid price breakdown provided');
       }
-      if (dto.priceBreakdown.basePrice <= 0) {
+      if (priceBreakdown.basePrice <= 0) {
         this.logger.warn('⚠️ Invalid price breakdown: basePrice <= 0');
         throw new BadRequestException('Invalid price breakdown provided');
       }
@@ -57,7 +84,8 @@ export class BookWakanowFlightGuestUseCase {
       this.logger.warn('⚠️ No price breakdown provided for guest booking! Prices will be recalculated.');
     }
 
-    const leadPassenger = dto.passengers?.[0];
+   
+    const leadPassenger = passengers?.[0];
     if (!leadPassenger?.email) {
       throw new BadRequestException('Lead passenger email is required for guest bookings');
     }
@@ -68,9 +96,8 @@ export class BookWakanowFlightGuestUseCase {
       throw new BadRequestException('Lead passenger last name is required for guest bookings');
     }
 
+
     const email = leadPassenger.email.toLowerCase().trim();
-
-
     let guestUser = null;
     const maxRetries = 3;
     let attempt = 0;
@@ -102,7 +129,6 @@ export class BookWakanowFlightGuestUseCase {
         } else {
           this.logger.log(`✅ Using existing guest user: ${guestUser.id}`);
           
-   
           if (!guestUser.name || guestUser.name !== `${leadPassenger.firstName} ${leadPassenger.lastName}`.trim()) {
             await this.prisma.user.update({
               where: { id: guestUser.id },
@@ -140,18 +166,25 @@ export class BookWakanowFlightGuestUseCase {
       throw new BadRequestException('Unable to create guest user. Please try again.');
     }
 
-    if (dto.priceBreakdown) {
-      this.logger.log('💰 Passing price breakdown to BookWakanowFlightUseCase:', {
-        totalAmount: dto.priceBreakdown.totalAmount,
-        basePrice: dto.priceBreakdown.basePrice,
-        markupAmount: dto.priceBreakdown.markupAmount,
-        serviceFee: dto.priceBreakdown.serviceFee,
-        currency: dto.priceBreakdown.currency,
-      });
-    } else {
-      this.logger.warn('⚠️ No price breakdown to pass to BookWakanowFlightUseCase');
-    }
+  
+    const bookDto: BookWakanowFlightDto = {
+      passengers: passengers,
+      bookingId: bookingId,
+      selectData: selectData,
+      targetCurrency: targetCurrency,
+      priceBreakdown: priceBreakdown,
+      isNorthAmerica: isNorthAmerica,
+      destinationCode: destinationCode,
+    };
 
+    this.logger.log('📤 Calling BookWakanowFlightUseCase with:', {
+      passengers: passengers.length,
+      bookingId: bookingId,
+      selectDataLength: selectData?.length || 0,
+      isNorthAmerica: isNorthAmerica,
+    });
+
+   
     let result = null;
     attempt = 0;
 
@@ -159,13 +192,12 @@ export class BookWakanowFlightGuestUseCase {
       try {
         attempt++;
         this.logger.log(`📖 Booking attempt ${attempt}/${maxRetries} for guest...`);
-        result = await this.bookWakanowUseCase.execute(dto, guestUser.id);
+        result = await this.bookWakanowUseCase.execute(bookDto, guestUser.id);
         break;
       } catch (error: any) {
         const errorMsg = error?.message?.toLowerCase() || '';
         const errorStatus = error?.status || error?.code || 0;
 
-  
         if (errorMsg.includes('expired') || 
             errorMsg.includes('SELECTION_EXPIRED') ||
             errorMsg.includes('not selected by you') ||
@@ -176,28 +208,23 @@ export class BookWakanowFlightGuestUseCase {
           throw error;
         }
 
-     
         if ((errorStatus === 500 || errorStatus === 0 || errorStatus === 502 || errorStatus === 503) && attempt < maxRetries) {
           this.logger.warn(`⚠️ Booking attempt ${attempt} failed with ${errorStatus}, retrying in ${1000 * attempt}ms...`);
           await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
           continue;
         }
 
-    
         throw error;
       }
     }
 
-   
     if (!result) {
       this.logger.error('❌ All booking retry attempts failed for guest');
       throw new BadRequestException('Failed to book flight after multiple attempts. Please try again.');
     }
 
-    // ✅ Log success
     this.logger.log(`✅ Guest booking completed. Booking: ${result.id}, PNR: ${result.pnr_reference}`);
     this.logger.log(`💰 Final total: ${result.totalAmount} ${result.currency}`);
-
 
     return {
       ...result,
@@ -207,7 +234,7 @@ export class BookWakanowFlightGuestUseCase {
       message: 'Guest booking created. Please complete payment to confirm your flight.',
       requiresPayment: true,
       paymentUrl: `/api/v1/payments/initiate?bookingId=${result.id}`,
-      priceBreakdown: result.priceBreakdown || dto.priceBreakdown,
+      priceBreakdown: result.priceBreakdown || priceBreakdown,
     };
   }
 
