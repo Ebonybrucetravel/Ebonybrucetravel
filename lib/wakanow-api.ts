@@ -642,21 +642,14 @@ export async function selectWakanowFlight(selectData: string, targetCurrency: st
     throw new Error('Invalid selectData (too short). Please search for flights again.');
   }
   
+  
+  // ✅ Just log what we're sending
+  console.log('✅ Sending SelectData to backend:', {
+    length: cleanedSelectData.length,
+    preview: cleanedSelectData.substring(0, 50) + '...'
+  });
+  
   try {
-    // ✅ Don't send compressed SelectData to backend - filter it out first
-    const isCompressed = cleanedSelectData.length > 500 || 
-                         cleanedSelectData.startsWith('7h4AAB+LCAAAAAAABAD') ||
-                         cleanedSelectData.startsWith('H4sI');
-    
-    if (isCompressed) {
-      console.error('❌ Compressed SelectData detected - this will fail with 500');
-      console.error('❌ Length:', cleanedSelectData.length);
-      console.error('❌ Preview:', cleanedSelectData.substring(0, 50));
-      throw new Error('SELECTION_EXPIRED');
-    }
-    
-    console.log('✅ Valid SelectData format detected, sending to backend...');
-    
     const response = await backendFetch<WakanowSelectResponse>('/select', {
       method: 'POST',
       body: {
@@ -672,7 +665,6 @@ export async function selectWakanowFlight(selectData: string, targetCurrency: st
       hasSelectData: !!response?.data?.select_data,
       hasPriceBreakdown: !!response?.data?.priceBreakdown,
       totalAmount: response?.data?.totalAmount,
-      fullResponse: JSON.stringify(response).substring(0, 500)
     });
     
     // ✅ Check if response is valid

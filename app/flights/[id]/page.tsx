@@ -12,6 +12,7 @@ export default function FlightDetailPage() {
   const { selectedItem, searchParams, selectItem, searchResults } = useSearch();
   const [flight, setFlight] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasSelected, setHasSelected] = useState(false); // ✅ Track if we've selected
 
   useEffect(() => {
     const findFlight = async () => {
@@ -30,7 +31,11 @@ export default function FlightDetailPage() {
             departureTime: foundFlight.departureTime,
           });
           setFlight(foundFlight);
-          selectItem(foundFlight);
+          // ✅ Only select if not already selected
+          if (!hasSelected) {
+            selectItem(foundFlight);
+            setHasSelected(true);
+          }
           setIsLoading(false);
           return;
         }
@@ -44,7 +49,10 @@ export default function FlightDetailPage() {
           if (parsed.id === flightId) {
             console.log('✅ Found flight in sessionStorage');
             setFlight(parsed);
-            selectItem(parsed);
+            if (!hasSelected) {
+              selectItem(parsed);
+              setHasSelected(true);
+            }
             setIsLoading(false);
             return;
           }
@@ -54,7 +62,7 @@ export default function FlightDetailPage() {
       }
 
       // If we have a selected item from context, use it
-      if (selectedItem) {
+      if (selectedItem && !flight) {
         console.log('✅ Using selected item from context');
         setFlight(selectedItem);
         setIsLoading(false);
@@ -67,7 +75,8 @@ export default function FlightDetailPage() {
     };
 
     findFlight();
-  }, [flightId, searchResults, selectedItem, selectItem]);
+    // ✅ Remove selectItem from dependencies
+  }, [flightId, searchResults, selectedItem]); // Removed selectItem
 
   if (isLoading) {
     return (

@@ -81,6 +81,11 @@ interface ExtendedSearchResult extends SearchResult {
     currency: string;
     breakdown?: string;
   };
+  custom_messages?: Array<{
+    Title: string;
+    Message: string;
+    SeverityLevel: 'High' | 'Medium' | 'Low';
+  }>;
   [key: string]: any;
 }
 
@@ -129,6 +134,7 @@ function processItemPrices(item: ExtendedSearchResult | null, currencyCode: stri
       
       return {
         ...item,
+        custom_messages: item.custom_messages || [],
         price: formattedPrice,
         displayPrice: formattedPrice,
         totalPrice: formattedPrice,
@@ -176,6 +182,7 @@ function processItemPrices(item: ExtendedSearchResult | null, currencyCode: stri
       
       return {
         ...item,
+        custom_messages: item.custom_messages || [],
         price: formattedPrice,
         displayPrice: formattedPrice,
         totalPrice: formattedPrice,
@@ -218,6 +225,7 @@ function processItemPrices(item: ExtendedSearchResult | null, currencyCode: stri
       
       return {
         ...item,
+        custom_messages: item.custom_messages || [],
         price: formattedPrice,
         displayPrice: formattedPrice,
         totalPrice: formattedPrice,
@@ -258,6 +266,7 @@ function processItemPrices(item: ExtendedSearchResult | null, currencyCode: stri
         
         return {
           ...item,
+          custom_messages: item.custom_messages || [],
           price: formattedPrice,
           displayPrice: formattedPrice,
           totalPrice: formattedPrice,
@@ -369,6 +378,7 @@ function processItemPrices(item: ExtendedSearchResult | null, currencyCode: stri
     
     return {
       ...item,
+      custom_messages: item.custom_messages || [],
       price: formattedPrice,
       displayPrice: formattedPrice,
       totalPrice: formattedPrice,
@@ -396,7 +406,9 @@ function processItemPrices(item: ExtendedSearchResult | null, currencyCode: stri
     const formattedPrice = `${displayCurrency} ${pb.totalAmount.toFixed(2)}`;
     
     return {
+ 
       ...item,
+      custom_messages: item.custom_messages || [],
       price: formattedPrice,
       displayPrice: formattedPrice,
       totalPrice: formattedPrice,
@@ -427,7 +439,9 @@ function processItemPrices(item: ExtendedSearchResult | null, currencyCode: stri
     const formattedPrice = `${displayCurrency} ${item.calculatedTotal.toFixed(2)}`;
     
     return {
+
       ...item,
+      custom_messages: item.custom_messages || [],
       price: formattedPrice,
       displayPrice: formattedPrice,
       totalPrice: formattedPrice,
@@ -582,8 +596,6 @@ const isDomesticFlight = (origin: string, destination: string): boolean => {
   return !!normalizedOrigin && !!normalizedDest && normalizedOrigin === normalizedDest;
 };
 
-// app/booking/review/page.tsx
-
 const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSearchResult> => {
   const termsExist = !!(item.terms_and_conditions?.TermsAndConditions && item.terms_and_conditions.TermsAndConditions.length > 0);
   
@@ -591,7 +603,7 @@ const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSea
     return item;
   }
   
-  // ✅ Only Wakanow (UNCHANGED)
+  // ✅ Only Wakanow
   if (item.isWakanow && item.selectData) {
     try {
       const { selectWakanowFlight } = await import('@/lib/wakanow-api');
@@ -600,6 +612,22 @@ const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSea
       console.log('🔍 ensureTermsExist - Backend selectResult:', selectResult);
       
       const responseData = selectResult?.data;
+      
+      // ✅ Get custom_messages from response
+      let customMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
+      const rawMessages = responseData?.custom_messages || [];
+      
+      if (Array.isArray(rawMessages) && rawMessages.length > 0) {
+        if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
+          customMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
+        } else if (typeof rawMessages[0] === 'string') {
+          customMessages = rawMessages.map((msg: string) => ({
+            Title: 'Message',
+            Message: msg,
+            SeverityLevel: 'Medium' as const,
+          }));
+        }
+      }
       
       const priceBreakdown = responseData?.priceBreakdown || {
         basePrice: responseData?.basePrice || 0,
@@ -615,14 +643,11 @@ const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSea
       };
       
       const breakdownText = getBreakdown(priceBreakdown);
-      
-      console.log('💰 ensureTermsExist - Price breakdown from backend:', priceBreakdown);
-      console.log('💰 ensureTermsExist - Breakdown text:', breakdownText);
-      
       const termsAndConditions = responseData?.terms_and_conditions?.TermsAndConditions || [];
       const hasFetchedTerms = termsAndConditions.length > 0;
       
       return {
+        // ✅ REMOVE the duplicate custom_messages from here
         ...item,
         terms_and_conditions: hasFetchedTerms ? {
           TermsAndConditions: termsAndConditions,
@@ -648,6 +673,8 @@ const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSea
         final_amount: priceBreakdown.totalAmount.toString(),
         final_price: priceBreakdown.totalAmount.toString(),
         selectData: responseData?.select_data || item.selectData,
+        // ✅ Keep ONLY this one
+        custom_messages: customMessages,
       };
     } catch (error: any) {
       console.error('Failed to fetch terms:', error);
@@ -709,6 +736,7 @@ export default function BookingReviewPage() {
       return processed;
     }
     
+    
     const processed = processItemPrices(item, currency.code);
     return processed;
   });
@@ -719,7 +747,8 @@ export default function BookingReviewPage() {
     router.push("/login");
   };
 
-  const getProductType = (item: ExtendedSearchResult): "flight" | "hotel" | "car" => {
+  const getProductType = (item: ExtendedSearchResult | null): "flight" | "hotel" | "car" => {
+    if (!item) return "flight";
     const type = item.type?.toLowerCase() || "";
     if (type.includes("hotel")) return "hotel";
     if (type.includes("car")) return "car";
@@ -747,89 +776,52 @@ export default function BookingReviewPage() {
     return { expired: false };
   };
 
-  // ✅ Fetch terms for Wakanow flights - runs ONCE when selectedItem changes (UNCHANGED)
-  useEffect(() => {
-    const loadTerms = async () => {
-      if (!selectedItem || hasFetchedTermsRef.current) return;
-      
-      const item = selectedItem as ExtendedSearchResult;
-      
-      if (item.isWakanow) {
-        const { expired, timeRemaining } = checkWakanowSelection();
-        if (expired) {
-          toast.error(
-            'Your flight selection has expired. Please search for flights again.',
-            { duration: 5000 }
-          );
-          sessionStorage.removeItem('wakanow_selection_time');
-          setTimeout(() => {
-            router.push('/search');
-          }, 3000);
-          return;
-        }
-        
-        if (timeRemaining !== undefined && timeRemaining < 10) {
-          toast.error(
-            `Your flight selection expires in ${Math.round(timeRemaining)} minutes. Please complete your booking soon.`,
-            { duration: 5000 }
-          );
-        }
-      }
-      
-      if (item.isWakanow && item.selectData && !item.terms_and_conditions) {
-        setIsFetchingTerms(true);
-        try {
-          const itemWithTerms = await ensureTermsExist(item);
-          
-          if (itemWithTerms) {
-            const processed = processItemPrices(itemWithTerms, currency.code);
-            console.log('💰 Terms loaded - Setting enhancedItem:', {
-              id: processed?.id,
-              totalAmount: processed?.totalAmount,
-              priceBreakdown: processed?.priceBreakdown,
-              breakdown: processed?.breakdown,
-              final_amount: processed?.final_amount,
-            });
-            setEnhancedItem(processed);
-            hasProcessedRef.current = true;
-          }
-        } catch (error: any) {
-          console.error('Terms fetch error:', error);
-          
-          if (error.message === 'SELECTION_EXPIRED' || 
-              error.message?.toLowerCase().includes('expired') || 
-              error.message?.toLowerCase().includes('search again')) {
-            
-            toast.error(
-              'Your flight selection has expired. Please search for flights again to get a new selection.',
-              { duration: 5000 }
-            );
-            
-            sessionStorage.removeItem('wakanow_selection_time');
-            
-            setTimeout(() => {
-              router.push('/search');
-            }, 3000);
-            return;
-          }
-          
-          const processed = processItemPrices(item, currency.code);
-          setEnhancedItem(processed);
-        }
-        hasFetchedTermsRef.current = true;
-        setIsFetchingTerms(false);
-      } else if (!enhancedItem) {
-        const processed = processItemPrices(item, currency.code);
-        setEnhancedItem(processed);
-        hasFetchedTermsRef.current = true;
-        hasProcessedRef.current = true;
-      } else {
-        hasFetchedTermsRef.current = true;
-      }
-    };
+// ✅ Fetch terms for Wakanow flights - runs ONCE when selectedItem changes
+useEffect(() => {
+  const loadTerms = async () => {
+    if (!selectedItem || hasFetchedTermsRef.current) return;
     
-    loadTerms();
-  }, [selectedItem, enhancedItem, router, currency.code]);
+    const item = selectedItem as ExtendedSearchResult;
+    
+    if (item.isWakanow) {
+      const { expired, timeRemaining } = checkWakanowSelection();
+      if (expired) {
+        toast.error(
+          'Your flight selection has expired. Please search for flights again.',
+          { duration: 5000 }
+        );
+        sessionStorage.removeItem('wakanow_selection_time');
+        setTimeout(() => {
+          router.push('/search');
+        }, 3000);
+        return;
+      }
+      
+      if (timeRemaining !== undefined && timeRemaining < 10) {
+        toast.error(
+          `Your flight selection expires in ${Math.round(timeRemaining)} minutes. Please complete your booking soon.`,
+          { duration: 5000 }
+        );
+      }
+    }
+    
+
+    if (!enhancedItem) {
+      const processed = processItemPrices(item, currency.code);
+      console.log('💰 Setting enhancedItem:', {
+        id: processed?.id,
+        custom_messages: processed?.custom_messages,
+      });
+      setEnhancedItem(processed);
+      hasProcessedRef.current = true;
+    }
+    
+    hasFetchedTermsRef.current = true;
+  };
+  
+  loadTerms();
+}, [selectedItem, enhancedItem, router, currency.code]);
+
 
   // ✅ Store selection time when Wakanow flight is selected (UNCHANGED)
   useEffect(() => {
@@ -842,7 +834,7 @@ export default function BookingReviewPage() {
     }
   }, [selectedItem]);
 
-  // ✅ Re-process when currency changes
+  
   useLayoutEffect(() => {
     const item = selectedItem as ExtendedSearchResult;
     if (!item) return;
@@ -855,12 +847,11 @@ export default function BookingReviewPage() {
     setEnhancedItem(processed);
   }, [selectedItem, currency.code]);
 
-  const extendedItem = (enhancedItem || selectedItem) as ExtendedSearchResult;
-  const isHotel = getProductType(extendedItem) === "hotel";
-  const isCar = getProductType(extendedItem) === "car";
-  const isFlight = !isHotel && !isCar;
+  const extendedItem = (enhancedItem || selectedItem) as ExtendedSearchResult | null;
+  const isHotel = extendedItem ? getProductType(extendedItem) === "hotel" : false;
+  const isCar = extendedItem ? getProductType(extendedItem) === "car" : false;
+  const isFlight = extendedItem ? !isHotel && !isCar : false;
 
-  // ✅ Helper function to merge item with booking prices
   const getItemForReview = (): SearchResult => {
     const baseItem = (enhancedItem || selectedItem) as ExtendedSearchResult;
     
@@ -875,6 +866,7 @@ export default function BookingReviewPage() {
       
       const mergedItem: ExtendedSearchResult = {
         ...baseItem,
+        custom_messages: baseItem.custom_messages || [], 
         basePrice: booking.basePrice ?? baseItem.basePrice,
         totalAmount: booking.totalAmount ?? baseItem.totalAmount,
         markupAmount: booking.markupAmount ?? baseItem.markupAmount,
@@ -898,22 +890,45 @@ export default function BookingReviewPage() {
         basePrice: mergedItem.basePrice,
         final_amount: mergedItem.final_amount,
         priceBreakdown: mergedItem.priceBreakdown,
+        custom_messages: mergedItem.custom_messages,
       });
       
       return mergedItem as SearchResult;
     }
     
-    return baseItem as SearchResult;
+   
+    return {
+      ...baseItem,
+      custom_messages: baseItem.custom_messages || [],
+    } as SearchResult;
   };
 
-  // ============================================================
-  // ✅ handleProceedToPayment - ONLY DUFFEL CHANGES
-  // Wakanow and Amadeus flows are UNCHANGED
-  // ============================================================
+
   const handleProceedToPayment = async (
     passengerInfo: PassengerInfo,
     voucherCode?: string,
   ) => {
+    if (!extendedItem) {
+      toast.error("No booking item found. Please go back and try again.");
+      return;
+    }
+    console.log('📥 handleProceedToPayment received passengerInfo:', {
+      firstName: passengerInfo.firstName,
+      lastName: passengerInfo.lastName,
+      email: passengerInfo.email,
+      phone: passengerInfo.phone,
+      // ✅ Log all passport fields (both cases)
+      PassportNumber: (passengerInfo as any).PassportNumber,
+      passportNumber: (passengerInfo as any).passportNumber,
+      ExpiryDate: (passengerInfo as any).ExpiryDate,
+      expiryDate: (passengerInfo as any).expiryDate,
+      PassportIssuingAuthority: (passengerInfo as any).PassportIssuingAuthority,
+      passportIssuingAuthority: (passengerInfo as any).passportIssuingAuthority,
+      PassportIssueCountryCode: (passengerInfo as any).PassportIssueCountryCode,
+      passportIssueCountryCode: (passengerInfo as any).passportIssueCountryCode,
+      travellers: (passengerInfo as any).travellers,
+    });
+    
     const isGuest = !isLoggedIn;
   
     if (isFlight) {
@@ -983,25 +998,55 @@ export default function BookingReviewPage() {
         
         console.log('🧹 Cleaned passenger info for Duffel:', cleanedPassengerInfo);
       } else if (provider === 'WAKANOW') {
-        // ✅ WAKANOW: All fields including passport (UNCHANGED)
+        // ✅ Build the lead passenger as a traveller
+        const leadTraveller: any = {
+          PassengerType: 'Adult',
+          FirstName: passengerInfo.firstName,
+          MiddleName: (passengerInfo as any).middleName || '',
+          LastName: passengerInfo.lastName,
+          DateOfBirth: passengerInfo.dateOfBirth,
+          PhoneNumber: passengerInfo.phone,
+          Email: passengerInfo.email,
+          Gender: passengerInfo.gender === 'm' ? 'Male' : 'Female',
+          Title: passengerInfo.title,
+          // ✅ Passport fields go here
+          PassportNumber: (passengerInfo as any).PassportNumber || (passengerInfo as any).passportNumber || '',
+          ExpiryDate: (passengerInfo as any).ExpiryDate || (passengerInfo as any).expiryDate || '',
+          PassportIssuingAuthority: (passengerInfo as any).PassportIssuingAuthority || (passengerInfo as any).passportIssuingAuthority || '',
+          PassportIssueCountryCode: (passengerInfo as any).PassportIssueCountryCode || (passengerInfo as any).passportIssueCountry || '',
+          Address: (passengerInfo as any).address || (passengerInfo as any).Address || '221B Baker Street',
+          Country: (passengerInfo as any).country || (passengerInfo as any).Country || 'Nigeria',
+          CountryCode: (passengerInfo as any).countryCode || (passengerInfo as any).CountryCode || 'NG',
+          City: (passengerInfo as any).city || (passengerInfo as any).City || 'Lagos',
+          PostalCode: (passengerInfo as any).postalCode || (passengerInfo as any).PostalCode || '100001',
+        };
+      
+        // ✅ Get additional travellers from passengerInfo
+        const additionalTravellers = (passengerInfo as any).travellers || [];
+      
+        // ✅ Combine lead + additional travellers
+        const allTravellers = [leadTraveller, ...additionalTravellers];
+      
+        // ✅ Build the final passenger info with travellers array
         cleanedPassengerInfo = {
           ...basePassengerInfo,
           title: passengerInfo.title,
           gender: passengerInfo.gender,
           dateOfBirth: passengerInfo.dateOfBirth,
-          passportNumber: (passengerInfo as any).passportNumber,
-          passportExpiry: (passengerInfo as any).passportExpiry,
-          passportIssuingAuthority: (passengerInfo as any).passportIssuingAuthority,
-          passportIssueCountry: (passengerInfo as any).passportIssueCountry,
-          address: (passengerInfo as any).address,
-          city: (passengerInfo as any).city,
-          country: (passengerInfo as any).country,
-          countryCode: (passengerInfo as any).countryCode,
-          postalCode: (passengerInfo as any).postalCode,
-          travellers: (passengerInfo as any).travellers,
+          // ✅ Passport fields are NOT at top level - they're in travellers
+          travellers: allTravellers,
         } as any;
-        
-        console.log('📋 Full passenger info for Wakanow:', cleanedPassengerInfo);
+      
+        console.log('📋 Full passenger info for Wakanow with travellers:', {
+          ...cleanedPassengerInfo,
+          travellers: allTravellers.map((t: any) => ({
+            FirstName: t.FirstName,
+            LastName: t.LastName,
+            PassportNumber: t.PassportNumber,
+            ExpiryDate: t.ExpiryDate,
+            PassportIssuingAuthority: t.PassportIssuingAuthority,
+          })),
+        });
       }
     }
   
@@ -1134,7 +1179,7 @@ export default function BookingReviewPage() {
             return;
           }
           
-          bookingItem = await ensureTermsExist(extendedItem);
+          bookingItem = extendedItem;
           if (bookingItem !== extendedItem) {
             const processed = processItemPrices(bookingItem, currency.code);
             setEnhancedItem(processed);

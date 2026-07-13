@@ -870,7 +870,26 @@ const searchHotels = async (params: SearchParams) => {
       }
       
       const offerId = offer.id || offer.offer_id || `wakanow-${Date.now()}-${results.length}`;
-      const selectDataValue = offer.select_data || offer.token || offer.session_id || offer.booking_token || offer.connection_code || '';
+     // ✅ Get the ORIGINAL short selectData - prefer select_data (underscore)
+// The short one is usually in select_data, the compressed one is in SelectData
+const shortSelectData = offer.select_data || '';
+const compressedSelectData = offer.SelectData || offer.selectData || '';
+
+// ✅ Use the SHORT one if available and not compressed
+let selectDataValue = shortSelectData;
+
+// If short is empty or compressed, try the compressed one
+if (!selectDataValue || selectDataValue.length > 500) {
+  selectDataValue = compressedSelectData;
+}
+
+// ✅ If we have a short version (less than 200 chars), use it instead
+if (shortSelectData && shortSelectData.length < 200 && shortSelectData.length > 0) {
+  selectDataValue = shortSelectData;
+  console.log('✅ Using short selectData (length: ' + shortSelectData.length + ')');
+} else if (selectDataValue && selectDataValue.length > 500) {
+  console.warn('⚠️ Only compressed selectData available (length: ' + selectDataValue.length + ')');
+}
       const offerRequestId = offer.offer_request_id || `wakanow-req-${offerId}`;
       
       results.push({
@@ -931,6 +950,7 @@ const searchHotels = async (params: SearchParams) => {
         fareRules: offer.fare_rules || [],
         penaltyRules: offer.penalty_rules || null,
         terms_and_conditions: offer.terms_and_conditions || null,
+        custom_messages: offer.custom_messages || offer.CustomMessages || [],
         _normalizedAirline: airlineName.toLowerCase().trim(),
         _normalizedDepartureTime: outboundDepartureTime,
         _normalizedArrivalAirport: outboundDestination,
@@ -1492,16 +1512,55 @@ const searchFlights = async (params: SearchParams) => {
     return searchDispatchRef.current(params);
   }, []);
 
-  const selectItem = useCallback((item: SearchResult) => {
-    console.log('📦 Item selected:', {
-      id: item.id,
-      provider: item.provider,
-      type: item.type,
-      final_amount: (item as any).final_amount,
-      final_price: (item as any).final_price,
-    });
-    setSelectedItem(item);
-  }, []);
+const selectItem = useCallback(async (item: SearchResult) => {
+  const itemWithMessages = { ...item };
+  
+  if ((item as any).isWakanow) {
+    try {
+      const selectDataValue = (item as any).selectData;
+      
+      if (selectDataValue) {
+        console.log('📝 Fetching custom_messages from SELECT endpoint');
+        const { selectWakanowFlight } = await import('@/lib/wakanow-api');
+        const result = await selectWakanowFlight(selectDataValue, 'NGN');
+        
+        if (result?.data) {
+          // ✅ Get the NEW short selectData from the response
+          const newSelectData = result.data.select_data || result.data.select_data || '';
+          if (newSelectData && newSelectData.length < 500) {
+            itemWithMessages.selectData = newSelectData;
+            console.log('✅ Got new short selectData (length: ' + newSelectData.length + ')');
+          }
+          
+          // ✅ Get custom_messages
+          if (result.data.custom_messages) {
+            const rawMessages = result.data.custom_messages;
+            let formattedMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
+            
+            if (Array.isArray(rawMessages) && rawMessages.length > 0) {
+              if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
+                formattedMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
+              } else if (typeof rawMessages[0] === 'string') {
+                formattedMessages = rawMessages.map((msg: string) => ({
+                  Title: 'Message',
+                  Message: msg,
+                  SeverityLevel: 'Medium' as const,
+                }));
+              }
+            }
+            
+            itemWithMessages.custom_messages = formattedMessages;
+            console.log('✅ Got custom messages:', itemWithMessages.custom_messages);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Could not fetch custom messages:', error);
+    }
+  }
+  
+  setSelectedItem(itemWithMessages);
+}, []);
 
   const clearSearch = useCallback(() => {
     setSearchResults([]);

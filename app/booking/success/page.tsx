@@ -914,7 +914,7 @@ if (checkedBags.length > 0) {
     );
   };
 
-// ==================== RENDER WAKANOW FLIGHT DETAILS (FIXED) ====================
+// ==================== RENDER WAKANOW FLIGHT DETAILS (FIXED WITH ALL INVOICE DETAILS) ====================
 const renderWakanowDetails = () => {
   if (!booking) return null;
   
@@ -924,10 +924,15 @@ const renderWakanowDetails = () => {
   const providerData = booking?.providerData as any;
   const bookingData = booking.bookingData as any;
   
-  console.log('🔍 Wakanow providerData:', JSON.stringify(providerData, null, 2));
-  console.log('🔍 Wakanow bookingData:', JSON.stringify(bookingData, null, 2));
+  console.log('🔍 FULL BOOKING DATA:', {
+    booking,
+    passengerInfo: booking.passengerInfo,
+    bookingData,
+    providerData,
+    allKeys: Object.keys(booking || {}),
+  });
   
-  // ✅ Extract flight data from providerData
+  // ✅ Extract all flight data
   let airlineName = 'N/A';
   let flightNumber = 'N/A';
   let departureAirport = 'N/A';
@@ -936,15 +941,193 @@ const renderWakanowDetails = () => {
   let arrivalTime = '';
   let stops = 0;
   let cabinClass = 'Economy';
+  let bookingClass = 'Economy';
   let pnrNumber = 'Not issued yet';
   let ticketStatus = 'Pending';
   let totalAmount = booking?.totalAmount || 0;
   let currency = booking?.currency || 'NGN';
   let airlineCode = '';
+  let departureDate = '';
+  let arrivalDate = '';
+  let paymentStatus = booking?.paymentStatus || 'PENDING';
   
-  // Try to extract from providerData
+// ==================== PASSENGER EXTRACTION (FIXED - Type Safe) ====================
+let leadPassengerName = 'N/A';
+let leadPassengerEmail = 'N/A';
+let leadPassengerPhone = 'N/A';
+let leadPassengerAddress = 'N/A';
+let otherPassengers: string[] = [];
+
+// ✅ Helper to safely get value from any object with fallback
+const safeGet = (obj: any, keys: string[], fallback: string = ''): string => {
+  if (!obj || typeof obj !== 'object') return fallback;
+  for (const key of keys) {
+    const val = obj[key];
+    if (val && typeof val === 'string' && val.trim()) {
+      return val.trim();
+    }
+  }
+  return fallback;
+};
+
+// ✅ Helper to extract name from various formats (type safe)
+const extractName = (obj: any): string => {
+  if (!obj) return '';
+  const firstName = safeGet(obj, ['firstName', 'FirstName', 'first_name', 'givenName']);
+  const lastName = safeGet(obj, ['lastName', 'LastName', 'last_name', 'familyName', 'surname']);
+  const fullName = safeGet(obj, ['fullName', 'FullName', 'name', 'Name']);
+  
+  if (fullName && fullName !== 'N/A') return fullName;
+  if (firstName && lastName) return `${firstName} ${lastName}`.trim();
+  if (firstName) return firstName;
+  if (lastName) return lastName;
+  return '';
+};
+
+// ✅ Helper to extract email (type safe)
+const extractEmail = (obj: any): string => {
+  return safeGet(obj, ['email', 'Email', 'emailAddress', 'EmailAddress', 'eMail']);
+};
+
+// ✅ Helper to extract phone (type safe)
+const extractPhone = (obj: any): string => {
+  return safeGet(obj, ['phone', 'Phone', 'phoneNumber', 'PhoneNumber', 'mobile', 'Mobile', 'contactNumber']);
+};
+
+// ✅ Helper to extract address (type safe)
+const extractAddress = (obj: any): string => {
+  return safeGet(obj, ['address', 'Address', 'AddressLine1', 'AddressLine', 'street', 'Street', 'addressLine1']);
+};
+
+// ✅ SOURCE 1: Try booking.passengerInfo (could be array or object)
+const passengerInfoValue = booking.passengerInfo;
+console.log('🔍 passengerInfo type:', Array.isArray(passengerInfoValue) ? 'ARRAY' : typeof passengerInfoValue);
+
+if (passengerInfoValue) {
+  // Get the first passenger if it's an array
+  let passenger = passengerInfoValue;
+  if (Array.isArray(passenger) && passenger.length > 0) {
+    passenger = passenger[0];
+  }
+  
+  if (passenger && typeof passenger === 'object') {
+    leadPassengerName = extractName(passenger) || 'N/A';
+    leadPassengerEmail = extractEmail(passenger) || 'N/A';
+    leadPassengerPhone = extractPhone(passenger) || 'N/A';
+    leadPassengerAddress = extractAddress(passenger) || 'N/A';
+    console.log('✅ Source 1 (passengerInfo):', { 
+      leadPassengerName, 
+      leadPassengerEmail, 
+      leadPassengerPhone, 
+      leadPassengerAddress 
+    });
+  }
+}
+
+// ✅ SOURCE 2: Try booking.bookingData.passengerInfo
+if (leadPassengerName === 'N/A' && bookingData?.passengerInfo) {
+  let p = bookingData.passengerInfo;
+  if (Array.isArray(p) && p.length > 0) {
+    p = p[0];
+  }
+  if (p && typeof p === 'object') {
+    leadPassengerName = extractName(p) || 'N/A';
+    leadPassengerEmail = extractEmail(p) || 'N/A';
+    leadPassengerPhone = extractPhone(p) || 'N/A';
+    leadPassengerAddress = extractAddress(p) || 'N/A';
+    console.log('✅ Source 2 (bookingData.passengerInfo):', { leadPassengerName, leadPassengerEmail, leadPassengerPhone, leadPassengerAddress });
+  }
+}
+
+// ✅ SOURCE 3: Try booking.bookingData.passengers array
+if (leadPassengerName === 'N/A' && bookingData?.passengers && Array.isArray(bookingData.passengers) && bookingData.passengers.length > 0) {
+  const firstPassenger = bookingData.passengers[0];
+  leadPassengerName = extractName(firstPassenger) || 'N/A';
+  leadPassengerEmail = extractEmail(firstPassenger) || 'N/A';
+  leadPassengerPhone = extractPhone(firstPassenger) || 'N/A';
+  leadPassengerAddress = extractAddress(firstPassenger) || 'N/A';
+  console.log('✅ Source 3 (bookingData.passengers[0]):', { leadPassengerName, leadPassengerEmail, leadPassengerPhone, leadPassengerAddress });
+  
+  // Extract other passengers
+  otherPassengers = bookingData.passengers
+    .filter((p: any, index: number) => index > 0)
+    .map((p: any) => extractName(p))
+    .filter(Boolean);
+}
+
+// ✅ SOURCE 4: Try booking.bookingData directly
+if (leadPassengerName === 'N/A' && bookingData) {
+  const p = bookingData;
+  leadPassengerName = extractName(p) || 'N/A';
+  leadPassengerEmail = extractEmail(p) || 'N/A';
+  leadPassengerPhone = extractPhone(p) || 'N/A';
+  leadPassengerAddress = extractAddress(p) || 'N/A';
+  console.log('✅ Source 4 (bookingData direct):', { leadPassengerName, leadPassengerEmail, leadPassengerPhone, leadPassengerAddress });
+}
+
+// ✅ SOURCE 5: Try providerData Travellers
+if (leadPassengerName === 'N/A' && providerData) {
+  const travellers = providerData.Travellers || providerData.travellers || providerData.passengers || providerData.Passengers || [];
+  if (Array.isArray(travellers) && travellers.length > 0) {
+    const firstTraveller = travellers[0];
+    leadPassengerName = extractName(firstTraveller) || 'N/A';
+    leadPassengerEmail = extractEmail(firstTraveller) || 'N/A';
+    leadPassengerPhone = extractPhone(firstTraveller) || 'N/A';
+    leadPassengerAddress = extractAddress(firstTraveller) || 'N/A';
+    console.log('✅ Source 5 (providerData travellers):', { leadPassengerName, leadPassengerEmail, leadPassengerPhone, leadPassengerAddress });
+  }
+}
+
+// ✅ If email is found but name is not, try to extract name from email
+if (leadPassengerName === 'N/A' && leadPassengerEmail !== 'N/A') {
+  const emailParts = leadPassengerEmail.split('@')[0];
+  if (emailParts) {
+    const nameParts = emailParts.split(/[._-]/);
+    if (nameParts.length >= 2) {
+      leadPassengerName = nameParts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+    } else {
+      leadPassengerName = emailParts.charAt(0).toUpperCase() + emailParts.slice(1);
+    }
+    console.log('✅ Generated name from email:', leadPassengerName);
+  }
+}
+
+// ✅ If phone is still N/A, try to find it in the passengerInfo array
+if (leadPassengerPhone === 'N/A' && passengerInfoValue) {
+  let p = passengerInfoValue;
+  if (Array.isArray(p) && p.length > 0) {
+    p = p[0];
+  }
+  if (p && typeof p === 'object') {
+    leadPassengerPhone = extractPhone(p) || 'N/A';
+    console.log('✅ Found phone from passengerInfo:', leadPassengerPhone);
+  }
+}
+
+// ✅ If address is still N/A, try to find it in the passengerInfo array
+if (leadPassengerAddress === 'N/A' && passengerInfoValue) {
+  let p = passengerInfoValue;
+  if (Array.isArray(p) && p.length > 0) {
+    p = p[0];
+  }
+  if (p && typeof p === 'object') {
+    leadPassengerAddress = extractAddress(p) || 'N/A';
+    console.log('✅ Found address from passengerInfo:', leadPassengerAddress);
+  }
+}
+
+console.log('📋 FINAL PASSENGER DATA:', {
+  leadPassengerName,
+  leadPassengerEmail,
+  leadPassengerPhone,
+  leadPassengerAddress,
+  otherPassengers,
+});
+
+ // ✅ ==================== END PASSENGER EXTRACTION ====================
+  
+  // Try to extract flight data from providerData
   if (providerData) {
-    // Get flight summary from various possible locations
     let flightSummary = null;
     let flightModels = [];
     
@@ -959,50 +1142,43 @@ const renderWakanowDetails = () => {
       flightSummary = providerData.rawResponse.FlightBookingResult.FlightBookingSummaryModel;
     }
     
-    // If flightSummary found, extract data
     if (flightSummary) {
-      // Get flight models
       const summaryModel = flightSummary.FlightSummaryModel || flightSummary;
       const flightCombination = summaryModel.FlightCombination || flightSummary.FlightCombination || {};
       flightModels = flightCombination.FlightModels || summaryModel.FlightModels || [];
       
-      // Get outbound flight
       const outboundFlight = flightModels[0] || {};
       const flightLegs = outboundFlight?.FlightLegs || [];
       const firstLeg = flightLegs[0] || {};
       const lastLeg = flightLegs[flightLegs.length - 1] || firstLeg;
       
-      // ✅ Extract with multiple fallbacks
       airlineName = outboundFlight.AirlineName || outboundFlight.Airline || firstLeg.AirlineName || firstLeg.Airline || 'N/A';
       airlineCode = outboundFlight.Airline || firstLeg.AirlineCode || '';
-      
-      // ✅ CRITICAL: Flight number from multiple sources
-      flightNumber = 
-        outboundFlight.Name || 
-        outboundFlight.FlightNumber || 
-        firstLeg.FlightNumber || 
-        firstLeg.Name ||
-        'N/A';
+      flightNumber = outboundFlight.Name || outboundFlight.FlightNumber || firstLeg.FlightNumber || firstLeg.Name || 'N/A';
       
       departureAirport = outboundFlight.DepartureCode || firstLeg.DepartureCode || outboundFlight.Origin || 'N/A';
       arrivalAirport = outboundFlight.ArrivalCode || lastLeg.DestinationCode || outboundFlight.Destination || 'N/A';
       departureTime = outboundFlight.DepartureTime || firstLeg.StartTime || outboundFlight.DepartureDateTime || '';
       arrivalTime = outboundFlight.ArrivalTime || lastLeg.EndTime || outboundFlight.ArrivalDateTime || '';
+      departureDate = departureTime ? new Date(departureTime).toISOString().split('T')[0] : '';
+      arrivalDate = arrivalTime ? new Date(arrivalTime).toISOString().split('T')[0] : '';
+      
       stops = outboundFlight.Stops || outboundFlight.StopCount || 0;
       cabinClass = firstLeg.CabinClassName || outboundFlight.CabinClass || 'Economy';
+      bookingClass = firstLeg.BookingClass || outboundFlight.BookingClass || 'Economy';
       
-      // Get PNR and ticket status
       pnrNumber = flightSummary.PnrReferenceNumber || flightSummary.PnrNumber || summaryModel.PnrReferenceNumber || 'Not issued yet';
       ticketStatus = flightSummary.TicketStatus || summaryModel.TicketStatus || 'Pending';
       
-      // Get price
       const price = flightCombination.Price || summaryModel.Price || {};
       totalAmount = price.Amount || outboundFlight.Price || booking?.totalAmount || 0;
       currency = price.CurrencyCode || booking?.currency || 'NGN';
+      
+      paymentStatus = flightSummary.PaymentStatus || booking?.paymentStatus || 'PENDING';
     }
   }
   
-  // If no data from providerData, try bookingData
+  // Fallback to bookingData
   if (airlineName === 'N/A' && bookingData) {
     airlineName = bookingData.airlineName || bookingData.airline || 'N/A';
     flightNumber = bookingData.flightNumber || bookingData.flight_number || 'N/A';
@@ -1010,28 +1186,17 @@ const renderWakanowDetails = () => {
     arrivalAirport = bookingData.destination || bookingData.arrivalAirport || 'N/A';
     departureTime = bookingData.departureTime || bookingData.departureDate || '';
     arrivalTime = bookingData.arrivalTime || bookingData.arrivalDate || '';
+    departureDate = bookingData.departureDate || '';
+    arrivalDate = bookingData.arrivalDate || '';
     stops = bookingData.stops || 0;
     cabinClass = bookingData.cabinClass || bookingData.cabin || 'Economy';
+    bookingClass = bookingData.bookingClass || bookingData.class || 'Economy';
     pnrNumber = bookingData.pnrNumber || bookingData.pnrReferenceNumber || 'Not issued yet';
     ticketStatus = bookingData.ticketStatus || 'Pending';
     totalAmount = bookingData.totalAmount || booking?.totalAmount || 0;
     currency = bookingData.currency || booking?.currency || 'NGN';
     airlineCode = bookingData.airlineCode || '';
-  }
-  
-  // ✅ If flight number is still N/A, try to get from flightLegs directly
-  if (flightNumber === 'N/A' && providerData) {
-    try {
-      // Search for any flight number in providerData
-      const jsonStr = JSON.stringify(providerData);
-      const match = jsonStr.match(/"Name":"([^"]+)"/);
-      if (match && match[1] && match[1].length > 0) {
-        flightNumber = match[1];
-        console.log('✅ Extracted flight number from JSON:', flightNumber);
-      }
-    } catch (e) {
-      console.log('Could not extract flight number from JSON');
-    }
+    paymentStatus = bookingData.paymentStatus || booking?.paymentStatus || 'PENDING';
   }
   
   // Determine if domestic
@@ -1039,57 +1204,105 @@ const renderWakanowDetails = () => {
     (departureAirport !== 'N/A' && arrivalAirport !== 'N/A' && 
      getAirportName(departureAirport) === getAirportName(arrivalAirport));
   
-  // Stop text
   const stopText = stops === 0 ? 'Direct' : stops === 1 ? '1 stop' : `${stops} stops`;
-  
-  // Check if ticket is issued
-  const isTicketIssued = ticketStatus === 'Success' || 
-                         ticketStatus === 'Issued' || 
-                         ticketStatus === 'TICKETED';
-  
-  // Get booking status
+  const isTicketIssued = ticketStatus === 'Success' || ticketStatus === 'Issued' || ticketStatus === 'TICKETED';
   const bookingStatus = booking?.status || 'PENDING';
-  
-  // Get airline logo
   const airlineLogo = airlineCode ? `https://images.wakanow.com/Images/flight-logos/${airlineCode}.gif` : '';
   
-  // Get departure date
-  const departureDate = departureTime || '';
+  const getPaymentStatusText = (status: string): string => {
+    const map: Record<string, string> = {
+      'PAID': 'Paid',
+      'SUCCESS': 'Paid',
+      'COMPLETED': 'Paid',
+      'PENDING': 'Pending',
+      'FAILED': 'Failed',
+      'CANCELLED': 'Cancelled',
+      'REFUNDED': 'Refunded'
+    };
+    return map[status?.toUpperCase()] || status || 'Pending';
+  };
   
-  console.log('✅ Extracted Wakanow flight data:', {
-    airlineName,
-    flightNumber,
-    departureAirport,
-    arrivalAirport,
-    departureTime,
-    arrivalTime,
-    stops,
-    cabinClass,
-    pnrNumber,
-    ticketStatus,
-    isTicketIssued,
-    totalAmount,
-    currency,
-    isDomestic,
-    airlineCode,
-  });
+  const formatDuration = (departure: string, arrival: string): string => {
+    if (!departure || !arrival) return '';
+    try {
+      const diff = Math.abs(new Date(arrival).getTime() - new Date(departure).getTime());
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+      if (hours > 0) return `${hours}h`;
+      return `${minutes}m`;
+    } catch {
+      return '';
+    }
+  };
   
+  const duration = formatDuration(departureTime, arrivalTime);
+  
+  // ... rest of the render function remains the same (the JSX part)
   return (
     <div className="space-y-6">
-      {/* Provider Badge */}
-      <div className={`bg-gradient-to-r ${isDomestic ? 'from-green-500 to-emerald-500' : 'from-indigo-500 to-purple-500'} text-white p-4 rounded-lg`}>
+      {/* Invoice Header */}
+      <div className="bg-gradient-to-r from-[#33a8da] to-[#2c98c7] text-white p-4 rounded-lg">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm opacity-90">Powered by</p>
             <p className="font-bold text-xl">Wakanow {isDomestic ? '• Domestic' : ''}</p>
           </div>
-          <div className="text-3xl">{isDomestic ? '🇳🇬' : '🌍'}</div>
+          <div className="text-right">
+            <p className="text-xs opacity-80">Invoice Number</p>
+            <p className="font-mono font-bold text-sm">{booking.reference || booking.id || 'N/A'}</p>
+          </div>
         </div>
       </div>
       
-      {/* Flight Route - Airline Info */}
-      <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-        <div className="flex items-center gap-3">
+      {/* ==================== PASSENGER DETAILS ==================== */}
+      <div className="border-b border-gray-200 pb-4">
+        <h4 className="font-semibold text-gray-900 mb-3 text-lg">Passenger Details</h4>
+        
+        {/* Lead Passenger */}
+        <div className="bg-gray-50 p-4 rounded-lg mb-3">
+          <p className="text-sm font-medium text-gray-700 mb-2">Lead Passenger</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+            <div>
+              <span className="text-gray-500">Name:</span>
+              <span className="font-medium ml-2">{leadPassengerName}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Email:</span>
+              <span className="font-medium ml-2">{leadPassengerEmail}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Phone:</span>
+              <span className="font-medium ml-2">{leadPassengerPhone}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Address:</span>
+              <span className="font-medium ml-2">{leadPassengerAddress}</span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Other Passengers */}
+        {otherPassengers.length > 0 && (
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <p className="text-sm font-medium text-gray-700 mb-2">Other Passengers ({otherPassengers.length})</p>
+            <div className="flex flex-wrap gap-2">
+              {otherPassengers.map((name, index) => (
+                <span key={index} className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm">
+                  {name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* ==================== FLIGHT DETAILS ==================== */}
+      <div className="border-b border-gray-200 pb-4">
+        <h4 className="font-semibold text-gray-900 mb-3 text-lg">Flight Details</h4>
+        
+        {/* Airline Info */}
+        <div className="flex items-center gap-3 mb-4">
           {airlineLogo && (
             <img 
               src={airlineLogo} 
@@ -1101,108 +1314,110 @@ const renderWakanowDetails = () => {
             />
           )}
           <div>
-            <p className="text-sm text-gray-500">Airline</p>
-            <p className="font-semibold text-lg">{airlineName} {airlineCode && `(${airlineCode})`}</p>
+            <p className="font-semibold text-lg">{airlineName}</p>
+            <p className="text-sm text-gray-500">Flight {flightNumber} • {airlineCode}</p>
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-sm text-gray-500">Flight Number</p>
-          <p className="font-semibold text-lg">{flightNumber}</p>
+        
+        {/* Cabin & Booking Class */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <p className="text-sm text-gray-500">Cabin Class</p>
+            <p className="font-medium capitalize">{cabinClass}</p>
+          </div>
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <p className="text-sm text-gray-500">Booking Class</p>
+            <p className="font-medium uppercase">{bookingClass}</p>
+          </div>
         </div>
-      </div>
-
-      {/* Flight Route Display */}
-      <div className="flex items-center justify-between">
+        
         {/* Departure */}
-        <div className="text-center flex-1">
-          <div className="bg-blue-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
-            <span className="text-2xl font-bold text-blue-600">{departureAirport}</span>
-          </div>
-          <p className="font-bold text-lg">{departureAirport}</p>
-          <p className="text-sm text-gray-500 truncate max-w-[120px] mx-auto">{getAirportName(departureAirport)}</p>
-          {departureDate && (
-            <p className="text-sm font-medium mt-2">{formatDate(departureDate)}</p>
-          )}
-          {departureTime && (
-            <p className="text-xl font-bold text-blue-600 mt-1">{formatTime(departureTime)}</p>
-          )}
-        </div>
-
-        {/* Arrow with flight info */}
-        <div className="flex-1 px-4">
-          <div className="relative">
-            <div className="border-t-2 border-gray-300 border-dashed absolute w-full top-1/2"></div>
-            <div className="flex justify-center">
-              <svg className="w-8 h-8 text-gray-400 bg-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
+        <div className="bg-blue-50 p-4 rounded-lg mb-3">
+          <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2">Departure</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <p className="text-sm text-gray-500">Location</p>
+              <p className="font-bold text-lg">{departureAirport}</p>
+              <p className="text-sm text-gray-600">{getAirportName(departureAirport)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Date & Time</p>
+              <p className="font-bold text-lg">{formatDate(departureDate || departureTime)}</p>
+              <p className="text-sm text-gray-600">{formatTime(departureTime)}</p>
             </div>
           </div>
-          <p className="text-center text-sm text-gray-500 mt-2">
-            {stopText}
-          </p>
         </div>
-
+        
         {/* Arrival */}
-        <div className="text-center flex-1">
-          <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
-            <span className="text-2xl font-bold text-green-600">{arrivalAirport}</span>
+        <div className="bg-green-50 p-4 rounded-lg">
+          <p className="text-xs font-bold text-green-700 uppercase tracking-wider mb-2">Arrival</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <p className="text-sm text-gray-500">Location</p>
+              <p className="font-bold text-lg">{arrivalAirport}</p>
+              <p className="text-sm text-gray-600">{getAirportName(arrivalAirport)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Date & Time</p>
+              <p className="font-bold text-lg">{formatDate(arrivalDate || arrivalTime)}</p>
+              <p className="text-sm text-gray-600">{formatTime(arrivalTime)}</p>
+            </div>
           </div>
-          <p className="font-bold text-lg">{arrivalAirport}</p>
-          <p className="text-sm text-gray-500 truncate max-w-[120px] mx-auto">{getAirportName(arrivalAirport)}</p>
-          {departureDate && (
-            <p className="text-sm font-medium mt-2">{formatDate(departureDate)}</p>
-          )}
-          {arrivalTime && (
-            <p className="text-xl font-bold text-green-600 mt-1">{formatTime(arrivalTime)}</p>
-          )}
+        </div>
+        
+        {/* Duration & Stops */}
+        <div className="grid grid-cols-2 gap-4 mt-3">
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <p className="text-sm text-gray-500">Duration</p>
+            <p className="font-medium">{duration || stopText}</p>
+          </div>
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <p className="text-sm text-gray-500">Stops</p>
+            <p className="font-medium">{stopText}</p>
+          </div>
         </div>
       </div>
-
-      {/* Flight Details Summary */}
-      <div className="bg-gray-50 p-4 rounded-lg">
+      
+      {/* ==================== PRICE DETAILS ==================== */}
+      <div className="border-b border-gray-200 pb-4">
+        <h4 className="font-semibold text-gray-900 mb-3 text-lg">Price Details</h4>
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Amount Paid</span>
+              <span className="font-bold text-lg text-[#33a8da]">{formatPrice(totalAmount, currency)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Payment Status</span>
+              <span className={`font-medium ${paymentStatus === 'PAID' || paymentStatus === 'SUCCESS' ? 'text-green-600' : 'text-yellow-600'}`}>
+                {getPaymentStatusText(paymentStatus)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* ==================== PNR & STATUS ==================== */}
+      <div className="border-b border-gray-200 pb-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-sm text-gray-500">PNR Number</p>
             <p className="font-mono font-bold text-lg">{pnrNumber}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-500">Cabin Class</p>
-            <p className="font-medium capitalize">{cabinClass}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Stops</p>
-            <p className="font-medium">{stopText}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Ticket Status</p>
-            <span className={`inline-block text-xs font-bold uppercase px-2 py-1 rounded-full ${
-              isTicketIssued ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-            }`}>
-              {isTicketIssued ? 'Issued' : 'Pending'}
-            </span>
-          </div>
-          <div>
             <p className="text-sm text-gray-500">Booking Status</p>
-            <span className={`inline-block text-xs font-bold uppercase px-2 py-1 rounded-full ${
-              bookingStatus === 'CONFIRMED'
-                ? 'bg-green-100 text-green-700' 
-                : bookingStatus === 'PENDING' ? 'bg-yellow-100 text-yellow-700' 
-                : 'bg-red-100 text-red-700'
+            <span className={`inline-block text-xs font-bold uppercase px-3 py-1 rounded-full ${
+              bookingStatus === 'CONFIRMED' ? 'bg-green-100 text-green-700' :
+              bookingStatus === 'PENDING' ? 'bg-yellow-100 text-yellow-700' :
+              'bg-red-100 text-red-700'
             }`}>
-              {bookingStatus === 'CONFIRMED' ? 'Confirmed' : bookingStatus}
+              {formatStatus(bookingStatus)}
             </span>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Total Price</p>
-            <p className="font-bold text-lg text-gray-900">
-              {formatPrice(totalAmount, currency)}
-            </p>
           </div>
         </div>
       </div>
-
-      {/* Ticket issuance form if needed */}
+      
+      {/* ==================== TICKET STATUS ==================== */}
       {!isTicketIssued && !isGuest && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start">
@@ -1253,7 +1468,6 @@ const renderWakanowDetails = () => {
         </div>
       )}
       
-      {/* Ticket already issued message */}
       {isTicketIssued && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <div className="flex items-start">

@@ -227,42 +227,59 @@ const isDomesticFlight = (origin: string, destination: string): boolean => {
   return !!normalizedOrigin && !!normalizedDest && normalizedOrigin === normalizedDest;
 };
 
+
+
 const isNorthAmericanDestination = (item: ExtendedSearchResult, searchParams: SearchParams | null): boolean => {
+  
   const destination = 
     item.destination || 
     item.arrivalAirport || 
     item.arrivalCity ||
     searchParams?.segments?.[0]?.to ||
     searchParams?.destination ||
-    searchParams?.location;
+    searchParams?.location ||
+    '';
   
-  const origin = 
-    item.origin ||
-    item.departureAirport ||
-    item.departureCity ||
-    searchParams?.segments?.[0]?.from;
-  
-  const northAmericanAirports = [
-    'JFK', 'EWR', 'LGA', 'LAX', 'SFO', 'ORD', 'DFW', 'ATL', 'IAH', 'MIA', 
-    'BOS', 'SEA', 'DEN', 'PHX', 'DTW', 'MSP', 'CLT', 'PDX', 'SAN', 'LAS',
-    'IAD', 'DCA', 'BWI', 'PHL', 'STL', 'MCI', 'IND', 'CMH', 'PIT', 'CLE',
-    'YYZ', 'YVR', 'YUL', 'YYC', 'YOW', 'YHZ', 'YEG', 'YQB', 'YWG', 'YXE',
-    'MEX', 'CUN', 'GDL', 'MTY', 'PVR', 'SJD', 'BJX', 'QRO', 'VER', 'CZM'
-  ];
-  
-  const extractCode = (str: string | undefined) => {
+  // Extract 3-letter airport code
+  const extractCode = (str: string | undefined): string => {
     if (!str) return '';
-    const match = str.match(/([A-Z]{3})/);
-    return match?.[1] || str.substring(0, 3).toUpperCase();
+    // Try to match a 3-letter airport code
+    const match = str.match(/\b([A-Z]{3})\b/);
+    if (match) return match[1].toUpperCase();
+    // If no match, take first 3 characters
+    return str.substring(0, 3).toUpperCase();
   };
   
   const destinationCode = extractCode(destination);
-  const originCode = extractCode(origin);
   
-  const destinationInNA = northAmericanAirports.includes(destinationCode);
-  const originInNA = northAmericanAirports.includes(originCode);
+  // ✅ North America airport codes (US, Canada, Mexico)
+  const northAmericanAirports = [
+    // USA - Major airports
+    'JFK', 'EWR', 'LGA', 'LAX', 'SFO', 'ORD', 'DFW', 'ATL', 'IAH', 'MIA', 
+    'BOS', 'SEA', 'DEN', 'PHX', 'DTW', 'MSP', 'CLT', 'PDX', 'SAN', 'LAS',
+    'IAD', 'DCA', 'BWI', 'PHL', 'STL', 'MCI', 'IND', 'CMH', 'PIT', 'CLE',
+    'MCO', 'TPA', 'FLL', 'PBI', 'RSW', 'JAX', 'BNA', 'MSY', 'SLC', 'ABQ',
+    'OKC', 'TUL', 'SAT', 'AUS', 'ELP', 'HNL', 'OGG', 'ANC', 'FAI',
+    // Canada
+    'YYZ', 'YVR', 'YUL', 'YYC', 'YOW', 'YHZ', 'YEG', 'YQB', 'YWG', 'YXE',
+    'YQR', 'YXY', 'YQT', 'YAM', 'YQY', 'YDF', 'YHZ',
+    // Mexico
+    'MEX', 'CUN', 'GDL', 'MTY', 'PVR', 'SJD', 'BJX', 'QRO', 'VER', 'CZM',
+    'TIJ', 'HMO', 'CJS', 'LAP', 'VSA', 'MID', 'TRC', 'CUU', 'AGU', 'MZT'
+  ];
   
-  return destinationInNA;
+  // ✅ Check if destination code is in North America
+  const isNorthAmerica = northAmericanAirports.includes(destinationCode);
+  
+  // ✅ Debug logging
+  console.log('🔍 North America detection:', {
+    destination,
+    destinationCode,
+    isNorthAmerica,
+    searchParams: searchParams?.segments,
+  });
+  
+  return isNorthAmerica;
 };
 
 const ReviewTrip: React.FC<ReviewTripProps> = ({
@@ -407,39 +424,41 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const [isCheckingPassport, setIsCheckingPassport] = useState(false);
   const [passportError, setPassportError] = useState<string | null>(null);
 
-  // ✅ CHECK PROVIDER
   const isWakanow = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
-    (actualItem as any)?.type?.toLowerCase().includes('wakanow');
-  
-  const isDuffel = (actualItem as any)?.provider?.toUpperCase() === 'DUFFEL' ||
-    (actualItem as any)?.type?.toLowerCase().includes('duffel');
-  
-  const originCode = extendedItem.departureAirport || 
-                     extendedItem.origin || 
-                     searchParams?.segments?.[0]?.from ||
-                     '';
-                     
-  const destinationCode = extendedItem.arrivalAirport || 
-                          extendedItem.destination || 
-                          searchParams?.segments?.[0]?.to ||
-                          '';
 
-  const isDomesticByAirport = originCode && destinationCode && isDomesticFlight(originCode, destinationCode);
-  const isDomesticByProduct = (actualItem as any)?.productType === 'FLIGHT_DOMESTIC';
-  const isDomesticFlightResult = isDomesticByAirport || isDomesticByProduct;
+  (actualItem as any)?.type?.toLowerCase().includes('wakanow');
 
-  // ✅ DUFFEL: Passport is NEVER required
-  // ✅ WAKANOW: Passport required for international flights only
-  const showPassportSection = isFlight && isWakanow && !isDomesticFlightResult;
-  const isPassportMandatory = isFlight && isWakanow && isNorthAmericanDestination(extendedItem, searchParams);
-  const passportRequired = showPassportSection;
-  const requiresPassport = isPassportMandatory;
+const isDuffel = (actualItem as any)?.provider?.toUpperCase() === 'DUFFEL' ||
+  (actualItem as any)?.type?.toLowerCase().includes('duffel');
 
-  // ✅ DUFFEL: Skip passport check entirely
+const originCode = extendedItem.departureAirport || 
+                   extendedItem.origin || 
+                   searchParams?.segments?.[0]?.from ||
+                   '';
+                   
+const destinationCode = extendedItem.arrivalAirport || 
+                        extendedItem.destination || 
+                        searchParams?.segments?.[0]?.to ||
+                        '';
+
+const isDomesticByAirport = originCode && destinationCode && isDomesticFlight(originCode, destinationCode);
+const isDomesticByProduct = (actualItem as any)?.productType === 'FLIGHT_DOMESTIC';
+const isDomesticFlightResult = isDomesticByAirport || isDomesticByProduct;
+
+const isNorthAmerica = isFlight && isWakanow && isNorthAmericanDestination(extendedItem, searchParams);
+
+const showPassportSection = isFlight && isWakanow && isNorthAmerica;
+
+const passportRequired = showPassportSection;
+
+const requiresPassport = isNorthAmerica;
+
+const isPassportMandatory = isNorthAmerica;
+
   const shouldSkipPassport = isDuffel || (isFlight && !isWakanow);
 
-  // ✅ DUFFEL: Simplified validation - no passport fields
-  const isPassportIncompleteForDuffel = false; // Duffel doesn't need passport
+
+  const isPassportIncompleteForDuffel = false; 
 
   useEffect(() => {
     if (!extBooking) {
@@ -1012,6 +1031,15 @@ else if (isHotel || isCar) {
 
   // ==================== HANDLE COMPLETE BOOKING ====================
   const handleCompleteBooking = async () => {
+    console.log('🔍🔍🔍 CRITICAL DEBUG - Passport State Values:', {
+      passportNumber: passportNumber || '(empty)',
+      passportExpiry: passportExpiry || '(empty)',
+      passportIssuingAuthority: passportIssuingAuthority || '(empty)',
+      passportIssueCountry: passportIssueCountry || '(empty)',
+      isWakanowFlight: (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW',
+      isNorthAmerica: isNorthAmericanDestination(extendedItem, searchParams),
+    });
+  
     if (isBooking || isCreating) return;
 
     // Validate lead passenger
@@ -1048,10 +1076,9 @@ else if (isHotel || isCar) {
         return;
       }
       
-      // ✅ Only Wakanow international flights need passport
-      if (!shouldSkipPassport && isFlight && isWakanow && !isDomesticFlightResult) {
+      if (!shouldSkipPassport && isFlight && isWakanow && isNorthAmericanDestination(extendedItem, searchParams)) {
         if (!passportNumber || !passportExpiry || !passportIssuingAuthority) {
-          alert('Passport details are required for international flights on Wakanow.\n\nPlease provide:\n- Passport Number\n- Passport Expiry Date\n- Passport Issuing Authority');
+          alert('Passport details are required for North American flights on Wakanow.\n\nPlease provide:\n- Passport Number\n- Passport Expiry Date\n- Passport Issuing Authority');
           return;
         }
         
@@ -1107,8 +1134,8 @@ else if (isHotel || isCar) {
           email,
           phone,
         };
+
       } else {
-        // ✅ Build passenger info based on provider
         passengerInfo = {
           firstName,
           lastName,
@@ -1124,55 +1151,84 @@ else if (isHotel || isCar) {
           countryCode: passportCountryCode || "GB",
           postalCode: passportPostalCode || "NW1 6XE",
         };
-        
-        // ✅ Only add passport fields for Wakanow (not Duffel)
-        if (isWakanow && !isDomesticFlightResult) {
-          (passengerInfo as any).passportNumber = passportNumber;
-          (passengerInfo as any).passportExpiry = passportExpiry;
-          (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
-          (passengerInfo as any).passportIssueCountry = passportIssueCountry || 'Nigeria';
-        }
-        
-        // ✅ Format additional passengers with all required fields
-        if (additionalPassengers.length > 0) {
-          const formattedTravellers = additionalPassengers.map((p) => {
-            const traveller: any = {
-              passengerType: p.type === 'child' ? 'Child' : p.type === 'infant' ? 'Infant' : 'Adult',
-              firstName: p.firstName || '',
-              middleName: (p as any).middleName || '',
-              lastName: p.lastName || '',
-              dateOfBirth: p.dateOfBirth || '',
-              phoneNumber: p.phone || phone,
-              email: p.email || email,
-              gender: p.gender || 'Male',
-              title: p.title || 'Mr',
-              address: p.address || passportAddress || '123 Fake Street',
-              country: p.country || passportCountry || 'Nigeria',
-              countryCode: p.countryCode || passportCountryCode || 'NG',
-              city: p.city || passportCity || 'Lagos',
-              postalCode: p.postalCode || passportPostalCode || '100001',
-            };
-            
-            // ✅ Only add passport fields for Wakanow (not Duffel)
-            if (isWakanow && !isDomesticFlightResult) {
-              traveller.passportNumber = p.passportNumber || '';
-              traveller.expiryDate = p.passportExpiry || '';
-              traveller.passportIssuingAuthority = p.passportIssuingAuthority || '';
-              traveller.passportIssueCountryCode = p.passportIssueCountry || '';
-            }
-            
-            return traveller;
-          });
+      
+      
+        const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+                                (actualItem as any)?.type?.toLowerCase().includes('wakanow');
+      
+        console.log('🔍 Passport condition check in handleCompleteBooking:', {
+          isWakanowFlight,
+          isNorthAmerican: isNorthAmericanDestination(extendedItem, searchParams),
+          passportNumber,
+          passportExpiry,
+        });
+      
+        if (isWakanowFlight && isNorthAmericanDestination(extendedItem, searchParams)) {
+          (passengerInfo as any).PassportNumber = passportNumber;
+          (passengerInfo as any).ExpiryDate = passportExpiry;
+          (passengerInfo as any).PassportIssuingAuthority = passportIssuingAuthority;
+          (passengerInfo as any).PassportIssueCountryCode = passportIssueCountry || 'Nigeria';
           
-          (passengerInfo as any).travellers = formattedTravellers;
+          console.log('📄 Adding passport fields to passengerInfo:', {
+            PassportNumber: (passengerInfo as any).PassportNumber,
+            ExpiryDate: (passengerInfo as any).ExpiryDate,
+            PassportIssuingAuthority: (passengerInfo as any).PassportIssuingAuthority,
+            PassportIssueCountryCode: (passengerInfo as any).PassportIssueCountryCode,
+          });
+        } else {
+          console.log('❌ Skipping passport fields:', { 
+            isWakanowFlight, 
+            isNorthAmerican: isNorthAmericanDestination(extendedItem, searchParams) 
+          });
         }
       }
+      
+                
 
+
+
+ 
+      if (additionalPassengers.length > 0) {
+        const formattedTravellers = additionalPassengers.map((p) => {
+          const traveller: any = {
+            passengerType: p.type === 'child' ? 'Child' : p.type === 'infant' ? 'Infant' : 'Adult',
+            firstName: p.firstName || '',
+            middleName: (p as any).middleName || '',
+            lastName: p.lastName || '',
+            dateOfBirth: p.dateOfBirth || '',
+            phoneNumber: p.phone || phone,
+            email: p.email || email,
+            gender: p.gender || 'Male',
+            title: p.title || 'Mr',
+            address: p.address || passportAddress || '123 Fake Street',
+            country: p.country || passportCountry || 'Nigeria',
+            countryCode: p.countryCode || passportCountryCode || 'NG',
+            city: p.city || passportCity || 'Lagos',
+            postalCode: p.postalCode || passportPostalCode || '100001',
+          };
+          
+         
+          const isWakanowFlightForTravellers = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+                                               (actualItem as any)?.type?.toLowerCase().includes('wakanow');
+
+          if (isWakanowFlightForTravellers && isNorthAmerica) {
+            traveller.PassportNumber = p.passportNumber || '';
+            traveller.ExpiryDate = p.passportExpiry || '';
+            traveller.PassportIssuingAuthority = p.passportIssuingAuthority || '';
+            traveller.PassportIssueCountryCode = p.passportIssueCountry || '';
+          }
+          
+          return traveller;
+        });
+        
+        (passengerInfo as any).travellers = formattedTravellers;
+      } 
+
+     
       if (isFlight && displayedTerms.length > 0) {
         (passengerInfo as any).policyAccepted = agreedToTerms;
         (passengerInfo as any).policyAcceptedAt = new Date().toISOString();
       }
-
       let hbxMetadata: any = undefined;
       if (isHBXHotel && hbxQuote) {
         const quoteData = hbxQuote?.data?.data || hbxQuote?.data;
@@ -1204,6 +1260,13 @@ else if (isHotel || isCar) {
         lead: `${firstName} ${lastName}`,
         additionalCount: (passengerInfo as any).travellers?.length || 0,
         total: 1 + ((passengerInfo as any).travellers?.length || 0),
+      });
+      console.log('🛫 FINAL passengerInfo BEFORE sending to onProceedToPayment:', {
+        passengerInfo,
+        PassportNumber: (passengerInfo as any).PassportNumber,
+        ExpiryDate: (passengerInfo as any).ExpiryDate,
+        PassportIssuingAuthority: (passengerInfo as any).PassportIssuingAuthority,
+        PassportIssueCountryCode: (passengerInfo as any).PassportIssueCountryCode,
       });
 
       await onProceedToPayment(
@@ -1259,6 +1322,59 @@ else if (isHotel || isCar) {
             Prices displayed in {currency.code} ({currency.symbol}) using live exchange rates
           </p>
         </div>
+
+        {/* ✅ ADD CUSTOM MESSAGES HERE - RIGHT AFTER PRICE DISCLAIMER */}
+{isWakanow && extendedItem?.custom_messages && extendedItem.custom_messages.length > 0 && (
+  <div className="space-y-3 mb-6">
+    {extendedItem.custom_messages.map((msg: { Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }, index: number) => {
+      const severityColors = {
+        High: 'bg-red-50 border-red-200 text-red-800',
+        Medium: 'bg-yellow-50 border-yellow-200 text-yellow-800',
+        Low: 'bg-blue-50 border-blue-200 text-blue-800',
+      };
+      const iconColors = {
+        High: 'text-red-500',
+        Medium: 'text-yellow-500',
+        Low: 'text-blue-500',
+      };
+      
+      return (
+        <div 
+          key={index} 
+          className={`p-4 rounded-xl border ${severityColors[msg.SeverityLevel as keyof typeof severityColors] || severityColors.Medium}`}
+        >
+          <div className="flex items-start gap-3">
+            <svg 
+              className={`w-5 h-5 flex-shrink-0 mt-0.5 ${iconColors[msg.SeverityLevel as keyof typeof iconColors] || iconColors.Medium}`} 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor"
+            >
+              {msg.SeverityLevel === 'High' ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              )}
+            </svg>
+            <div className="flex-1">
+              <p className={`font-semibold text-sm ${
+                msg.SeverityLevel === 'High' ? 'text-red-800' : 
+                msg.SeverityLevel === 'Medium' ? 'text-yellow-800' : 
+                'text-blue-800'
+              }`}>
+                {msg.Title}
+              </p>
+              <p 
+                className="text-sm mt-0.5"
+                dangerouslySetInnerHTML={{ __html: msg.Message }}
+              />
+            </div>
+          </div>
+        </div>
+      );
+    })}
+  </div>
+)}
 
         
 
@@ -1443,11 +1559,11 @@ else if (isHotel || isCar) {
             </div>
 
             {/* ========== PASSPORT FIELDS - WAKANOW ONLY ========== */}
-            {isFlight && isWakanow && !isDomesticFlightResult && !extBooking && !shouldSkipPassport && (
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                <h3 className="text-md font-semibold text-gray-900 mb-3">Passport Details <span className="text-red-500">*</span></h3>
-                <p className="text-sm text-gray-500 mb-4">
-                  Passport details are required for international flights on Wakanow.
+            {isFlight && isWakanow && isNorthAmerica && !extBooking && !shouldSkipPassport && (
+  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+    <h3 className="text-md font-semibold text-gray-900 mb-3">Passport Details <span className="text-red-500">*</span></h3>
+    <p className="text-sm text-gray-500 mb-4">
+      Passport details are required for North American flights on Wakanow.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>

@@ -701,20 +701,16 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
           if (flightModels.length === 0) continue;
 
-          const isInvalidSelectData = 
-            !selectData || 
-            selectData.length === 0 ||
-            selectData.length > 500 ||
-            selectData.startsWith('7h4AAB+LCAAAAAAABAD') ||
-            selectData.startsWith('H4sI');
-
-          if (isInvalidSelectData) {
-            if (selectData && selectData.length > 0) {
-              console.log(`⏭️ Skipping flight with SelectData that Wakanow rejects: ${selectData.length} chars`);
-              console.log(`⏭️ Preview: ${selectData.substring(0, 30)}...`);
-            }
-            continue;
-          }
+          const isValidSelectData = 
+          selectData && 
+          typeof selectData === 'string' && 
+          selectData.length > 10 &&
+          selectData.startsWith('WAAAAB');
+        
+        if (!isValidSelectData) {
+          console.log(`⏭️ Skipping flight - invalid SelectData format`);
+          continue;
+        }
 
           console.log(`✅ Processing flight with valid SelectData: ${selectData.length} chars`);
           console.log(`✅ SelectData preview: ${selectData.substring(0, 50)}...`);
@@ -1561,246 +1557,138 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       <span className={`text-xs font-bold ${isChecked ? 'text-gray-900' : 'text-gray-500 group-hover:text-gray-700'}`}>{label}</span>
     </label>
   );
-
-  // ==================== Refresh SelectData Helper (WAKANOW ONLY - UNCHANGED) ====================
-  const refreshSelectData = useCallback(async (flight: ExtendedSearchResult): Promise<string | null> => {
-    try {
-      const origin = flight.departureAirport || flight.departureCity;
-      const destination = flight.arrivalAirport || flight.arrivalCity;
-      
-      if (!origin || !destination) {
-        console.warn('Missing origin or destination for refresh');
-        return null;
-      }
-      
-      let departureDate = '';
-      if (flight.departureTime) {
-        departureDate = new Date(flight.departureTime).toISOString().split('T')[0];
-      } else {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        departureDate = tomorrow.toISOString().split('T')[0];
-      }
-      
-      let returnDate = undefined;
-      if (flight.isRoundTrip && flight.returnFlight?.departureTime) {
-        returnDate = new Date(flight.returnFlight.departureTime).toISOString().split('T')[0];
-      }
-      
-      const adults = (flight as any).adults || 1;
-      const children = (flight as any).children || 0;
-      const infants = (flight as any).infants || 0;
-      
-      let ticketClass: 'Y' | 'W' | 'C' | 'F' = 'Y';
-      const cabin = flight.cabin?.toLowerCase() || 'economy';
-      if (cabin === 'premium_economy') ticketClass = 'W';
-      else if (cabin === 'business') ticketClass = 'C';
-      else if (cabin === 'first') ticketClass = 'F';
-      
-      const searchParams = {
-        FlightSearchType: returnDate ? 'Return' : 'Oneway' as 'Return' | 'Oneway',
-        Ticketclass: ticketClass,
-        Adults: adults,
-        Children: children,
-        Infants: infants,
-        TargetCurrency: 'NGN',
-        Itineraries: [
-          {
-            Departure: origin,
-            Destination: destination,
-            DepartureDate: departureDate,
-          },
-        ],
-      };
-      
-      if (returnDate) {
-        searchParams.Itineraries.push({
-          Departure: destination,
-          Destination: origin,
-          DepartureDate: returnDate,
-        });
-      }
-      
-      console.log('🔄 Refreshing search with params:', searchParams);
-      
-      const { searchWakanowFlights } = await import('@/lib/wakanow-api');
-      const searchResult = await searchWakanowFlights(searchParams);
-      
-      const offers = searchResult?.data?.offers || [];
-      if (offers.length === 0) {
-        console.warn('No offers found in refresh search');
-        return null;
-      }
-      
-      let matchedOffer = offers.find((offer: any) => {
-        const offerAirline = offer.airlineName || offer.airline || '';
-        const offerFlightNumber = offer.flightNumber || offer.flight_number || '';
-        return offerAirline === flight.airlineName && 
-               offerFlightNumber === flight.flightNumber;
-      });
-      
-      if (!matchedOffer) {
-        matchedOffer = offers[0];
-        console.log('Using first offer as fallback:', matchedOffer.id);
-      }
-      
-      const newSelectData = matchedOffer.selectData || matchedOffer.SelectData || matchedOffer.select_data;
-      if (newSelectData && newSelectData.length > 10) {
-        console.log('✅ Refreshed selectData obtained:', newSelectData.substring(0, 50) + '...');
-        return newSelectData;
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Failed to refresh selectData:', error);
-      return null;
-    }
-  }, []);
-
-  // ==================== Handle Wakanow Flight Booking (UNCHANGED) ====================
-  const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
-    if (flight._isBooking) return;
+const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
+  if (flight._isBooking) return;
+  
+  // ✅ Validate selectData
+  if (!flight.selectData) {
+    toast.error('Missing flight selection data. Please search again.', { id: 'flight-select' });
+    return;
+  }
+  
+  if (flight.selectData.length < 10) {
+    toast.error('Invalid flight selection. Please search again.', { id: 'flight-select' });
+    return;
+  }
+  
+  // ✅ Only accept valid Base64 encoded selectData
+  if (!flight.selectData.startsWith('WAAAAB')) {
+    console.error('❌ Invalid selectData format:', flight.selectData.substring(0, 30));
+    toast.error('Invalid flight selection. Please search again.', { id: 'flight-select' });
+    return;
+  }
+  
+  console.log('🔍 Booking flight with valid selectData:', {
+    id: flight.id,
+    selectDataLength: flight.selectData.length,
+    preview: flight.selectData.substring(0, 30) + '...'
+  });
+  
+  flight._isBooking = true;
+  setBookingFlightId(flight.id);
+  
+  try {
+    toast.loading('Confirming flight pricing...', { id: 'flight-select' });
     
-    if (!flight.selectData) {
-      toast.error('Missing flight selection data. Please search again.', { id: 'flight-select' });
-      return;
-    }
+    // ✅ Single attempt - no retry loop
+    const selectResult = await selectWakanowFlight(flight.selectData, 'NGN');
     
-    if (flight.selectData.length < 10) {
-      toast.error('Invalid flight selection. Please search again.', { id: 'flight-select' });
-      return;
-    }
+    const responseData = selectResult?.data;
     
-    console.log('🔍 Booking flight with selectData:', {
-      id: flight.id,
-      selectDataLength: flight.selectData.length,
-      isWakanowDomestic: flight.isWakanowDomestic,
-      isRoundTrip: flight.isRoundTrip,
-      airline: flight.airlineName,
-    });
-    
-    flight._isBooking = true;
-    setBookingFlightId(flight.id);
-    
-    try {
-      toast.loading('Confirming flight pricing...', { id: 'flight-select' });
-      
-      let selectResult;
-      let currentSelectData = flight.selectData;
-      let retryCount = 0;
-      const maxRetries = 2;
-      
-      while (retryCount <= maxRetries) {
-        try {
-          selectResult = await selectWakanowFlight(currentSelectData, 'NGN');
-          break;
-        } catch (error: any) {
-          retryCount++;
-          
-          if (error.message === 'SELECTION_EXPIRED' || 
-              error.message?.includes('expired') ||
-              error.message?.includes('An error has occured') ||
-              error.message?.includes('500')) {
-            
-            console.warn(`⚠️ Selection failed (attempt ${retryCount}/${maxRetries})`);
-            
-            if (retryCount <= maxRetries) {
-              toast.loading('Refreshing flight selection...', { id: 'flight-select' });
-              
-              try {
-                const freshSelectData = await refreshSelectData(flight);
-                if (freshSelectData) {
-                  currentSelectData = freshSelectData;
-                  console.log('✅ Got fresh selectData, retrying...');
-                  continue;
-                }
-              } catch (refreshError) {
-                console.error('Failed to refresh selectData:', refreshError);
-              }
-            }
-          }
-          
-          throw error;
-        }
-      }
-      
-      const responseData = selectResult?.data;
-      
-      if (!responseData?.booking_id || !responseData?.select_data) {
-        toast.error('Flight no longer available. Please search again.', { id: 'flight-select' });
-        flight._isBooking = false;
-        setBookingFlightId(null);
-        return;
-      }
-      
-      console.log('💰 Real flight data from backend:', {
-        bookingId: responseData.booking_id,
-        totalAmount: responseData.priceBreakdown?.totalAmount,
-        basePrice: responseData.priceBreakdown?.basePrice,
-        markupAmount: responseData.priceBreakdown?.markupAmount,
-        serviceFee: responseData.priceBreakdown?.serviceFee,
-      });
-      
-      const realFlightData: ExtendedSearchResult = {
-        ...flight,
-        bookingId: responseData.booking_id,
-        selectData: responseData.select_data,
-        priceBreakdown: responseData.priceBreakdown || undefined,
-        basePrice: responseData.priceBreakdown?.basePrice || 0,
-        markupAmount: responseData.priceBreakdown?.markupAmount || 0,
-        serviceFee: responseData.priceBreakdown?.serviceFee || 0,
-        totalAmount: responseData.priceBreakdown?.totalAmount || 0,
-        currency: responseData.priceBreakdown?.currency || 'NGN',
-        final_amount: responseData.priceBreakdown?.totalAmount?.toString() || '0',
-        final_price: responseData.priceBreakdown?.totalAmount?.toString() || '0',
-        markupPercentage: responseData.priceBreakdown?.markupPercentage || 10,
-        serviceFeePercentage: responseData.priceBreakdown?.serviceFeePercentage || 5,
-        taxes: responseData.priceBreakdown?.taxes?.toString() || '0',
-        taxPercentage: responseData.priceBreakdown?.taxPercentage || 15,
-        terms_and_conditions: responseData.terms_and_conditions || null,
-        isWakanow: true,
-        _isRealData: true,
-        _isBooking: false,
-      };
-      
-      if (realFlightData.priceBreakdown) {
-        const realTotal = realFlightData.priceBreakdown.totalAmount;
-        const realCurrency = realFlightData.priceBreakdown.currency || 'NGN';
-        try {
-          const converted = await formatPriceWithCurrency(realTotal, realCurrency);
-          setFlightPrices(prev => ({
-            ...prev,
-            [flight.id]: converted
-          }));
-        } catch (error) {
-          setFlightPrices(prev => ({
-            ...prev,
-            [flight.id]: `${currency.symbol} ${realTotal.toFixed(2)}`
-          }));
-        }
-      }
-      
-      toast.success('Price confirmed!', { id: 'flight-select' });
-      
-      onSelect?.(realFlightData);
-      
-    } catch (error: any) {
-      console.error('Failed to select flight:', error);
-      
-      const errorMessage = error?.message || '';
-      
-      if (errorMessage === 'SELECTION_EXPIRED' || errorMessage?.includes('expired')) {
-        toast.error('Your flight selection has expired. Please search again.', { id: 'flight-select' });
-      } else if (errorMessage?.includes('500') || errorMessage?.includes('An error has occured')) {
-        toast.error('Flight pricing temporarily unavailable. Please try again.', { id: 'flight-select' });
-      } else {
-        toast.error('Failed to confirm flight pricing. Please try again.', { id: 'flight-select' });
-      }
-      
+    if (!responseData?.booking_id || !responseData?.select_data) {
+      toast.error('Flight no longer available. Please search again.', { id: 'flight-select' });
       flight._isBooking = false;
       setBookingFlightId(null);
+      return;
     }
-  }, [onSelect, formatPriceWithCurrency, currency.symbol, refreshSelectData]);
+    
+    console.log('💰 Real flight data from backend:', {
+      bookingId: responseData.booking_id,
+      totalAmount: responseData.priceBreakdown?.totalAmount,
+      basePrice: responseData.priceBreakdown?.basePrice,
+      markupAmount: responseData.priceBreakdown?.markupAmount,
+      serviceFee: responseData.priceBreakdown?.serviceFee,
+    });
+    
+    // ✅ Format custom_messages
+    const rawMessages = responseData?.custom_messages || [];
+    let formattedCustomMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
+
+    if (Array.isArray(rawMessages) && rawMessages.length > 0) {
+      if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
+        formattedCustomMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
+      } else if (typeof rawMessages[0] === 'string') {
+        formattedCustomMessages = rawMessages.map((msg: string) => ({
+          Title: 'Message',
+          Message: msg,
+          SeverityLevel: 'Medium' as const,
+        }));
+      }
+    }
+    
+    const realFlightData: ExtendedSearchResult = {
+      ...flight,
+      bookingId: responseData.booking_id,
+      selectData: responseData.select_data,
+      priceBreakdown: responseData.priceBreakdown || undefined,
+      basePrice: responseData.priceBreakdown?.basePrice || 0,
+      markupAmount: responseData.priceBreakdown?.markupAmount || 0,
+      serviceFee: responseData.priceBreakdown?.serviceFee || 0,
+      totalAmount: responseData.priceBreakdown?.totalAmount || 0,
+      currency: responseData.priceBreakdown?.currency || 'NGN',
+      final_amount: responseData.priceBreakdown?.totalAmount?.toString() || '0',
+      final_price: responseData.priceBreakdown?.totalAmount?.toString() || '0',
+      markupPercentage: responseData.priceBreakdown?.markupPercentage || 10,
+      serviceFeePercentage: responseData.priceBreakdown?.serviceFeePercentage || 5,
+      taxes: responseData.priceBreakdown?.taxes?.toString() || '0',
+      taxPercentage: responseData.priceBreakdown?.taxPercentage || 15,
+      terms_and_conditions: responseData.terms_and_conditions || null,
+      custom_messages: formattedCustomMessages,
+      isWakanow: true,
+      _isRealData: true,
+      _isBooking: false,
+    };
+    
+    // ✅ Update price display
+    if (realFlightData.priceBreakdown) {
+      const realTotal = realFlightData.priceBreakdown.totalAmount;
+      const realCurrency = realFlightData.priceBreakdown.currency || 'NGN';
+      try {
+        const converted = await formatPriceWithCurrency(realTotal, realCurrency);
+        setFlightPrices(prev => ({
+          ...prev,
+          [flight.id]: converted
+        }));
+      } catch (error) {
+        setFlightPrices(prev => ({
+          ...prev,
+          [flight.id]: `${currency.symbol} ${realTotal.toFixed(2)}`
+        }));
+      }
+    }
+    
+    toast.success('Price confirmed!', { id: 'flight-select' });
+    
+    // ✅ Pass the flight data to onSelect
+    onSelect?.(realFlightData);
+    
+  } catch (error: any) {
+    console.error('Failed to select flight:', error);
+    
+    const errorMessage = error?.message || '';
+    
+    if (errorMessage === 'SELECTION_EXPIRED' || errorMessage?.includes('expired')) {
+      toast.error('Your flight selection has expired. Please search again.', { id: 'flight-select' });
+    } else if (errorMessage?.includes('500') || errorMessage?.includes('An error has occured')) {
+      toast.error('Flight pricing temporarily unavailable. Please try again.', { id: 'flight-select' });
+    } else {
+      toast.error('Failed to confirm flight pricing. Please try again.', { id: 'flight-select' });
+    }
+    
+    flight._isBooking = false;
+    setBookingFlightId(null);
+  }
+}, [onSelect, formatPriceWithCurrency, currency.symbol]); 
 
   // ============================================================
   // ✅ DUFFEL ONLY: Helper to build offer data for Duffel flights

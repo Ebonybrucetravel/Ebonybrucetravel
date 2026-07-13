@@ -209,6 +209,11 @@ export interface SearchResult {
     currency: string;
     breakdown?: string;
   };
+  custom_messages?: Array<{
+    Title: string;
+    Message: string;
+    SeverityLevel: 'High' | 'Medium' | 'Low';
+  }>;
 }
 
 export interface User {

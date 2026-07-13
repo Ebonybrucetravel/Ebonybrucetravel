@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
 import SearchResults from '@/components/SearchResults';
 
-
 export default function SearchPage() {
   const router = useRouter();
   const { 
@@ -26,7 +25,6 @@ export default function SearchPage() {
     console.log('🔍 Search page - search type:', searchParams?.type);
     console.log('🔍 Search page - results count:', searchResults?.length);
     
-    // Log first hotel result if any
     if (searchResults && searchResults.length > 0 && searchParams?.type === 'hotels') {
       console.log('🏨 SEARCH PAGE - First hotel in results:', {
         title: searchResults[0]?.title,
@@ -43,6 +41,11 @@ export default function SearchPage() {
       id: item.id,
       type: item.type,
       title: item.title,
+      isWakanow: item.isWakanow,
+      provider: item.provider,
+      hasOfferData: !!item.offerData,
+      offer_id: item.offer_id,
+      offer_request_id: item.offer_request_id,
       final_amount: item.final_amount,
       final_price: item.final_price,
       original_amount: item.original_amount,
@@ -61,7 +64,6 @@ export default function SearchPage() {
         will_send_to_booking: offerPrice
       });
       
-      // Store the complete hotel data in sessionStorage
       const hotelData = {
         ...item,
         offerPrice: offerPrice,
@@ -80,14 +82,54 @@ export default function SearchPage() {
       return;
     }
     
-    // For Wakanow flights
+    // ✅ FOR WAKANOW FLIGHTS: Go directly to booking review
     if (item.isWakanow && (item as any).selectData) {
       console.log('🚀 Wakanow flight - navigating directly to booking review');
       router.push('/booking/review');
       return;
     }
     
-    // For other items (flights, cars)
+    // ✅ FOR DUFFEL FLIGHTS: Go directly to booking review with offer data
+    if (!item.isWakanow) {
+      console.log('✈️ Duffel flight - navigating to booking review with offer data');
+      
+      const offerData = item.offerData || {
+        id: item.offer_id || item.id,
+        offer_request_id: item.offer_request_id,
+        total_amount: item.totalAmount || item.total_amount || 0,
+        total_currency: item.currency || 'GBP',
+        slices: item.slices || [],
+        passengers: item.passengers || [],
+        owner: item.owner || { name: item.airlineName || 'Unknown' },
+      };
+      
+      const flightData = {
+        ...item,
+        offerData: offerData,
+        offer_id: offerData.id,
+        offer_request_id: item.offer_request_id || offerData.offer_request_id,
+        slices: item.slices || offerData.slices || [],
+        passengers: item.passengers || offerData.passengers || [],
+        owner: item.owner || offerData.owner || { name: item.airlineName || 'Unknown' },
+      };
+      
+      console.log('📦 Duffel flight data being sent to booking review:', {
+        id: flightData.id,
+        offer_id: flightData.offer_id,
+        offer_request_id: flightData.offer_request_id,
+        hasOfferData: !!flightData.offerData,
+        slicesLength: flightData.slices?.length || 0,
+        passengersLength: flightData.passengers?.length || 0,
+      });
+      
+      sessionStorage.setItem('selectedDuffelOffer', JSON.stringify(offerData));
+      sessionStorage.setItem('selectedFlight', JSON.stringify(flightData));
+      
+      router.push('/booking/review');
+      return;
+    }
+    
+    // For other items (car rentals, etc.)
     let route = '/';
     switch (item.type) {
       case 'car-rentals':
@@ -100,11 +142,6 @@ export default function SearchPage() {
     }
     
     router.push(route);
-  };
-
-  const handleClear = () => {
-    clearSearch();
-    router.push('/');
   };
 
   // Handle new search from the compact search box - STAY ON SEARCH PAGE
@@ -142,6 +179,12 @@ export default function SearchPage() {
     } catch (error) {
       console.error('New search failed:', error);
     }
+  };
+
+  // ✅ ADD THIS FUNCTION BACK
+  const handleClear = () => {
+    clearSearch();
+    router.push('/');
   };
 
   // Show full page loading state only when we don't have any results yet
