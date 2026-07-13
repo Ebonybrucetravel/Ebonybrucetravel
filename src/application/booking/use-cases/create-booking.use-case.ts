@@ -31,14 +31,33 @@ export class CreateBookingUseCase {
       dto.provider === Provider.WAKANOW &&
       (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
     
-
       if (isWakanowFlight) {
         this.logger.log(`🛫 Creating Wakanow booking for authenticated user. BookingId: ${dto.providerBookingId || dto.bookingId}`);
         
+        // ✅ FIX: Extract passengers from bookingData.passengers first
+        let normalizedPassengers = [];
         
-        const normalizedPassengers = this.normalizePassengers(dto.passengerInfo);
-        
-       
+        if (dto.bookingData?.passengers && Array.isArray(dto.bookingData.passengers)) {
+          normalizedPassengers = dto.bookingData.passengers;
+          this.logger.log(`📋 Extracted ${normalizedPassengers.length} passengers from bookingData.passengers`);
+        } else {
+          normalizedPassengers = this.normalizePassengers(dto.passengerInfo);
+          this.logger.log(`📋 Extracted ${normalizedPassengers.length} passengers from passengerInfo`);
+        }
+      
+        // ✅ Log raw passenger data
+        if (normalizedPassengers.length > 0) {
+          this.logger.log(`🔍 Raw passenger data:`, {
+            firstName: normalizedPassengers[0]?.firstName,
+            lastName: normalizedPassengers[0]?.lastName,
+            PassportNumber: normalizedPassengers[0]?.PassportNumber,
+            ExpiryDate: normalizedPassengers[0]?.ExpiryDate,
+            PassportIssuingAuthority: normalizedPassengers[0]?.PassportIssuingAuthority,
+            PassportIssueCountryCode: normalizedPassengers[0]?.PassportIssueCountryCode,
+          });
+        }
+      
+        // ✅ Map passengers with PascalCase passport fields
         const passengers = normalizedPassengers.map((p: any) => ({
           firstName: p.firstName || p.given_name || 'Guest',
           lastName: p.lastName || p.family_name || 'User',
@@ -49,7 +68,7 @@ export class CreateBookingUseCase {
           gender: p.gender || 'Male',
           title: p.title || 'Mr',
           passengerType: p.passengerType || 'Adult',
-         
+          // ✅ PascalCase - matches frontend
           PassportNumber: p.PassportNumber || p.passportNumber || p.passport_number || '',
           ExpiryDate: p.ExpiryDate || p.expiryDate || p.expiry_date || '',
           PassportIssuingAuthority: p.PassportIssuingAuthority || p.passportIssuingAuthority || p.passport_issuing_authority || '',
@@ -61,8 +80,7 @@ export class CreateBookingUseCase {
           postalCode: p.postalCode || p.postal_code || '100001',
           IsWakapointRegister: false,
         }));
-        
-   
+      
         this.logger.log(`🔍 First passenger passport data after mapping:`, {
           firstName: passengers[0]?.firstName,
           lastName: passengers[0]?.lastName,
@@ -72,6 +90,7 @@ export class CreateBookingUseCase {
           PassportIssueCountryCode: passengers[0]?.PassportIssueCountryCode,
         });
       
+        // Get price breakdown safely
         const getBasePrice = dto.getBasePrice ? dto.getBasePrice() : (dto.basePrice || 0);
         const getMarkupAmount = dto.getMarkupAmount ? dto.getMarkupAmount() : (dto.markupAmount || 0);
         const getMarkupPercentage = dto.getMarkupPercentage ? dto.getMarkupPercentage() : (dto.markupPercentage || 10);
