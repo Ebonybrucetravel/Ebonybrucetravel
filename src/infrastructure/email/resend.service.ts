@@ -60,6 +60,17 @@ export interface BookingConfirmationEmailData {
   bookingReference: string;
   productType: string;
   provider: string;
+  // ✅ Add passenger details
+  passengerDetails?: {
+    name: string;
+    email: string;
+    phone: string;
+    address?: string;
+    city?: string;
+    country?: string;
+  };
+  // ✅ Add other passengers
+  otherPassengers?: string[];
   bookingDetails: {
     checkInDate?: string;
     checkOutDate?: string;
@@ -72,7 +83,6 @@ export interface BookingConfirmationEmailData {
     guests?: number;
     adults?: number;
     children?: number;
-    // ✅ Enhanced hotel fields
     hotelAddress?: string;
     hotelCity?: string;
     hotelCountry?: string;
@@ -930,7 +940,7 @@ export class ResendService {
         : data.productType === 'CAR_RENTAL' 
           ? 'Car Rental' 
           : 'Booking';
-
+  
     // Get hotel details
     const hotelName = data.bookingDetails?.hotelName || 'Hotel';
     const hotelAddress = data.bookingDetails?.hotelAddress || '';
@@ -946,9 +956,50 @@ export class ResendService {
     const roomType = data.bookingDetails?.roomType || 'Standard Room';
     const numberOfRooms = data.bookingDetails?.numberOfRooms || 1;
     const boardType = data.bookingDetails?.boardType || 'Room Only';
-
+  
+    // ✅ Get passenger details
+    const passengerName = data.passengerDetails?.name || data.customerName || 'Valued Customer';
+    const passengerEmail = data.passengerDetails?.email || 'N/A';
+    const passengerPhone = data.passengerDetails?.phone || 'N/A';
+    const passengerAddress = data.passengerDetails?.address || '';
+    const passengerCity = data.passengerDetails?.city || '';
+    const passengerCountry = data.passengerDetails?.country || '';
+    const otherPassengers = data.otherPassengers || [];
+  
     this.logger.log(`📝 Email template using hotel name: "${hotelName}"`);
-
+    this.logger.log(`📝 Passenger: ${passengerName}, Email: ${passengerEmail}`);
+  
+    // ✅ Passenger details section
+    const passengerSection = `
+      <div style="background-color: #f0f7ff; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #3498db;">
+        <h3 style="margin-top: 0; color: #2c3e50;">👤 Passenger Details</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 6px 0; font-weight: bold; width: 35%;">Lead Passenger:</td>
+            <td style="padding: 6px 0; width: 65%; color: #2c3e50; font-weight: 500;">${passengerName}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; font-weight: bold;">Email:</td>
+            <td style="padding: 6px 0;">${passengerEmail}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; font-weight: bold;">Phone:</td>
+            <td style="padding: 6px 0;">${passengerPhone}</td>
+          </tr>
+          ${passengerAddress ? `
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold;">Address:</td>
+              <td style="padding: 6px 0;">${passengerAddress}${passengerCity ? `, ${passengerCity}` : ''}${passengerCountry ? `, ${passengerCountry}` : ''}</td>
+            </tr>` : ''}
+          ${otherPassengers.length > 0 ? `
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; vertical-align: top;">Other Passengers:</td>
+              <td style="padding: 6px 0;">${otherPassengers.join(', ')}</td>
+            </tr>` : ''}
+        </table>
+      </div>
+    `;
+  
     // Hotel details section
     const bookingDetailsSection = data.bookingDetails?.hotelName
       ? `
@@ -1031,15 +1082,6 @@ export class ResendService {
           <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
             <p style="margin: 5px 0; font-style: italic; color: #666; line-height: 1.5;">${hotelDescription}</p>
           </div>` : ''}
-        ${hotelImages && hotelImages.length > 0 ? `
-          <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd; text-align: center;">
-            <p style="margin: 5px 0; font-weight: bold;">Hotel Images:</p>
-            <div style="display: flex; flex-wrap: wrap; gap: 5px; justify-content: center;">
-              ${hotelImages.slice(0, 3).map(image => `
-                <img src="${image}" alt="Hotel image" style="width: 100px; height: 100px; object-fit: cover; border-radius: 5px;">
-              `).join('')}
-            </div>
-          </div>` : ''}
       </div>
     `
       : data.bookingDetails?.origin && data.bookingDetails?.destination
@@ -1052,7 +1094,7 @@ export class ResendService {
         </div>
       `
         : '';
-
+  
     const defaultNoShowWording =
       'In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.';
     const noShowText = data.noShowWording || (data.productType === 'HOTEL' ? defaultNoShowWording : null);
@@ -1068,7 +1110,7 @@ export class ResendService {
         </div>
       `
       : '';
-
+  
     return `
       <!DOCTYPE html>
       <html>
@@ -1097,6 +1139,7 @@ export class ResendService {
               <p style="margin: 5px 0; font-size: 12px; color: #666;">Please keep this reference number for your records</p>
             </div>
             
+            ${passengerSection}
             ${bookingDetailsSection}
             ${hotelPolicySection}
             
