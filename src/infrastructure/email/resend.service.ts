@@ -60,7 +60,6 @@ export interface BookingConfirmationEmailData {
   bookingReference: string;
   productType: string;
   provider: string;
-  // ✅ Add passenger details
   passengerDetails?: {
     name: string;
     email: string;
@@ -69,15 +68,21 @@ export interface BookingConfirmationEmailData {
     city?: string;
     country?: string;
   };
-  // ✅ Add other passengers
   otherPassengers?: string[];
   bookingDetails: {
-    checkInDate?: string;
-    checkOutDate?: string;
-    departureDate?: string;
-    arrivalDate?: string;
+    // Flight fields
     origin?: string;
     destination?: string;
+    departureDate?: string;
+    arrivalDate?: string;
+    airlineName?: string;
+    flightNumber?: string;
+    cabinClass?: string;
+    bookingClass?: string;
+    stops?: number;
+    // Hotel fields
+    checkInDate?: string;
+    checkOutDate?: string;
     hotelName?: string;
     roomType?: string;
     guests?: number;
@@ -93,16 +98,15 @@ export interface BookingConfirmationEmailData {
     hotelDescription?: string;
     numberOfRooms?: number;
     boardType?: string;
-    latitude?: number;
-    longitude?: number;
     hotelAmenities?: string[];
     hotelImages?: string[];
-    hotelEmail?: string;
-    hotelWebsite?: string;
-    starRating?: number;
-    checkInInstructions?: string;
-    specialFeatures?: string[];
-    languagesSpoken?: string[];
+    // Car rental fields
+    pickupLocation?: string;
+    dropoffLocation?: string;
+    pickupDateTime?: string;
+    dropoffDateTime?: string;
+    vehicleType?: string;
+    carProvider?: string;
   };
   pricing: {
     basePrice: number;
@@ -929,9 +933,7 @@ export class ResendService {
     `;
   }
 
-  /**
-   * Booking confirmation email template with complete hotel details
-   */
+
   private getBookingConfirmationEmailTemplate(data: BookingConfirmationEmailData): string {
     const productTypeLabel = data.productType === 'HOTEL' 
       ? 'Hotel' 
@@ -940,22 +942,6 @@ export class ResendService {
         : data.productType === 'CAR_RENTAL' 
           ? 'Car Rental' 
           : 'Booking';
-  
-    // Get hotel details
-    const hotelName = data.bookingDetails?.hotelName || 'Hotel';
-    const hotelAddress = data.bookingDetails?.hotelAddress || '';
-    const hotelCity = data.bookingDetails?.hotelCity || '';
-    const hotelCountry = data.bookingDetails?.hotelCountry || '';
-    const hotelRating = data.bookingDetails?.hotelRating || null;
-    const hotelDescription = data.bookingDetails?.hotelDescription || '';
-    const hotelCheckInTime = data.bookingDetails?.hotelCheckInTime || '15:00';
-    const hotelCheckOutTime = data.bookingDetails?.hotelCheckOutTime || '12:00';
-    const hotelPhone = data.bookingDetails?.hotelPhone || '';
-    const hotelAmenities = data.bookingDetails?.hotelAmenities || [];
-    const hotelImages = data.bookingDetails?.hotelImages || [];
-    const roomType = data.bookingDetails?.roomType || 'Standard Room';
-    const numberOfRooms = data.bookingDetails?.numberOfRooms || 1;
-    const boardType = data.bookingDetails?.boardType || 'Room Only';
   
     // ✅ Get passenger details
     const passengerName = data.passengerDetails?.name || data.customerName || 'Valued Customer';
@@ -966,10 +952,32 @@ export class ResendService {
     const passengerCountry = data.passengerDetails?.country || '';
     const otherPassengers = data.otherPassengers || [];
   
-    this.logger.log(`📝 Email template using hotel name: "${hotelName}"`);
-    this.logger.log(`📝 Passenger: ${passengerName}, Email: ${passengerEmail}`);
+    // ✅ Get flight details
+    const origin = data.bookingDetails?.origin || 'N/A';
+    const destination = data.bookingDetails?.destination || 'N/A';
+    const departureDate = data.bookingDetails?.departureDate || '';
+    const arrivalDate = data.bookingDetails?.arrivalDate || '';
+    const airlineName = data.bookingDetails?.airlineName || '';
+    const flightNumber = data.bookingDetails?.flightNumber || '';
+    const cabinClass = data.bookingDetails?.cabinClass || 'Economy';
+    const bookingClass = data.bookingDetails?.bookingClass || 'Economy';
+    const stops = data.bookingDetails?.stops || 0;
   
-    // ✅ Passenger details section
+    // ✅ Get hotel details
+    const hotelName = data.bookingDetails?.hotelName || '';
+    const hotelAddress = data.bookingDetails?.hotelAddress || '';
+    const hotelCity = data.bookingDetails?.hotelCity || '';
+    const hotelCountry = data.bookingDetails?.hotelCountry || '';
+    const hotelRating = data.bookingDetails?.hotelRating || null;
+    const hotelCheckInTime = data.bookingDetails?.hotelCheckInTime || '15:00';
+    const hotelCheckOutTime = data.bookingDetails?.hotelCheckOutTime || '12:00';
+    const hotelPhone = data.bookingDetails?.hotelPhone || '';
+    const roomType = data.bookingDetails?.roomType || 'Standard Room';
+    const numberOfRooms = data.bookingDetails?.numberOfRooms || 1;
+    const boardType = data.bookingDetails?.boardType || 'Room Only';
+    const guests = data.bookingDetails?.guests || 1;
+  
+    // ✅ Passenger section
     const passengerSection = `
       <div style="background-color: #f0f7ff; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #3498db;">
         <h3 style="margin-top: 0; color: #2c3e50;">👤 Passenger Details</h3>
@@ -1000,10 +1008,68 @@ export class ResendService {
       </div>
     `;
   
-    // Hotel details section
-    const bookingDetailsSection = data.bookingDetails?.hotelName
-      ? `
+    // ✅ FLIGHT DETAILS SECTION (with full flight info)
+    const isFlight = data.bookingDetails?.origin && data.bookingDetails?.destination;
+    const flightDetailsSection = isFlight ? `
       <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #3498db;">
+        <h3 style="margin-top: 0; color: #2c3e50;">✈️ Flight Details</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          ${airlineName ? `
+            <tr>
+              <td style="padding: 8px 0; font-weight: bold; width: 35%;">Airline:</td>
+              <td style="padding: 8px 0; width: 65%; color: #2c3e50; font-weight: 500;">${airlineName}</td>
+            </tr>` : ''}
+          ${flightNumber ? `
+            <tr>
+              <td style="padding: 8px 0; font-weight: bold;">Flight Number:</td>
+              <td style="padding: 8px 0;">${flightNumber}</td>
+            </tr>` : ''}
+          <tr>
+            <td style="padding: 8px 0; font-weight: bold;">Route:</td>
+            <td style="padding: 8px 0; font-weight: 500;">${origin} → ${destination}</td>
+          </tr>
+          ${departureDate ? `
+            <tr>
+              <td style="padding: 8px 0; font-weight: bold;">Departure Date:</td>
+              <td style="padding: 8px 0;">${new Date(departureDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</td>
+            </tr>` : ''}
+          ${departureDate ? `
+            <tr>
+              <td style="padding: 8px 0; font-weight: bold;">Departure Time:</td>
+              <td style="padding: 8px 0;">${new Date(departureDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
+            </tr>` : ''}
+          ${arrivalDate ? `
+            <tr>
+              <td style="padding: 8px 0; font-weight: bold;">Arrival Date:</td>
+              <td style="padding: 8px 0;">${new Date(arrivalDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</td>
+            </tr>` : ''}
+          ${arrivalDate ? `
+            <tr>
+              <td style="padding: 8px 0; font-weight: bold;">Arrival Time:</td>
+              <td style="padding: 8px 0;">${new Date(arrivalDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
+            </tr>` : ''}
+          ${cabinClass ? `
+            <tr>
+              <td style="padding: 8px 0; font-weight: bold;">Cabin Class:</td>
+              <td style="padding: 8px 0;">${cabinClass}</td>
+            </tr>` : ''}
+          ${bookingClass ? `
+            <tr>
+              <td style="padding: 8px 0; font-weight: bold;">Booking Class:</td>
+              <td style="padding: 8px 0;">${bookingClass}</td>
+            </tr>` : ''}
+          <tr>
+            <td style="padding: 8px 0; font-weight: bold;">Stops:</td>
+            <td style="padding: 8px 0;">${stops === 0 ? 'Direct' : stops === 1 ? '1 stop' : `${stops} stops`}</td>
+          </tr>
+        </table>
+      </div>
+    ` : '';
+  
+    // ✅ HOTEL DETAILS SECTION
+    const isHotel = data.bookingDetails?.hotelName;
+    const hotelDetailsSection = isHotel ? `
+      <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #e67e22;">
         <h3 style="margin-top: 0; color: #2c3e50;">🏨 Hotel Details</h3>
         <table style="width: 100%; border-collapse: collapse;">
           <tr>
@@ -1045,6 +1111,11 @@ export class ResendService {
               <td style="padding: 8px 0; font-weight: bold;">Number of Rooms:</td>
               <td style="padding: 8px 0;">${numberOfRooms}</td>
             </tr>` : ''}
+          ${guests ? `
+            <tr>
+              <td style="padding: 8px 0; font-weight: bold;">Total Guests:</td>
+              <td style="padding: 8px 0;">${guests}</td>
+            </tr>` : ''}
           ${data.bookingDetails?.checkInDate ? `
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Check-in:</td>
@@ -1057,43 +1128,12 @@ export class ResendService {
               <td style="padding: 8px 0;">${new Date(data.bookingDetails.checkOutDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               ${hotelCheckOutTime ? `(until ${hotelCheckOutTime})` : ''}</td>
             </tr>` : ''}
-          ${data.bookingDetails?.guests ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Total Guests:</td>
-              <td style="padding: 8px 0;">${data.bookingDetails.guests}</td>
-            </tr>` : ''}
-          ${data.bookingDetails?.adults ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Adults:</td>
-              <td style="padding: 8px 0;">${data.bookingDetails.adults}</td>
-            </tr>` : ''}
-          ${data.bookingDetails?.children ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Children:</td>
-              <td style="padding: 8px 0;">${data.bookingDetails.children}</td>
-            </tr>` : ''}
-          ${hotelAmenities && hotelAmenities.length > 0 ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Amenities:</td>
-              <td style="padding: 8px 0;">${hotelAmenities.join(', ')}</td>
-            </tr>` : ''}
         </table>
-        ${hotelDescription ? `
-          <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
-            <p style="margin: 5px 0; font-style: italic; color: #666; line-height: 1.5;">${hotelDescription}</p>
-          </div>` : ''}
       </div>
-    `
-      : data.bookingDetails?.origin && data.bookingDetails?.destination
-        ? `
-        <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
-          <h3 style="margin-top: 0;">✈️ Flight Details</h3>
-          <p style="margin: 5px 0;"><strong>Route:</strong> ${data.bookingDetails.origin} → ${data.bookingDetails.destination}</p>
-          ${data.bookingDetails.departureDate ? `<p style="margin: 5px 0;"><strong>Departure:</strong> ${new Date(data.bookingDetails.departureDate).toLocaleDateString()}</p>` : ''}
-          ${data.bookingDetails.arrivalDate ? `<p style="margin: 5px 0;"><strong>Arrival:</strong> ${new Date(data.bookingDetails.arrivalDate).toLocaleDateString()}</p>` : ''}
-        </div>
-      `
-        : '';
+    ` : '';
+  
+    // Determine which details section to show
+    const detailsSection = isHotel ? hotelDetailsSection : flightDetailsSection;
   
     const defaultNoShowWording =
       'In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.';
@@ -1140,7 +1180,7 @@ export class ResendService {
             </div>
             
             ${passengerSection}
-            ${bookingDetailsSection}
+            ${detailsSection}
             ${hotelPolicySection}
             
             <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
