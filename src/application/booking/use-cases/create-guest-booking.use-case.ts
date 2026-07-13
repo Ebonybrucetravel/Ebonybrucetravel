@@ -182,106 +182,128 @@ export class CreateGuestBookingUseCase {
 
 
     const isWakanowFlight =
-      dto.provider === Provider.WAKANOW &&
-      (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
+  dto.provider === Provider.WAKANOW &&
+  (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
 
-      if (isWakanowFlight) {
-        this.logger.log(`🛫 Creating Wakanow booking for BookingId: ${dto.bookingId}`);
-        
-        // Get email from passengerInfo
-        const email = Array.isArray(passengerInfo) 
-          ? passengerInfo[0]?.email 
-          : passengerInfo?.email;
-        
-        if (!email) {
-          throw new BadRequestException('Passenger email is required');
-        }
-      
-        // Create or get user
-        let guestUser = await this.prisma.user.findUnique({
-          where: { email: email },
-        });
-      
-        if (!guestUser) {
-          const name = Array.isArray(passengerInfo)
-            ? `${passengerInfo[0]?.firstName || 'Guest'} ${passengerInfo[0]?.lastName || 'User'}`
-            : `${passengerInfo.firstName || 'Guest'} ${passengerInfo.lastName || 'User'}`;
-          
-          const phone = Array.isArray(passengerInfo)
-            ? passengerInfo[0]?.phone || null
-            : passengerInfo?.phone || null;
-      
-          guestUser = await this.prisma.user.create({
-            data: {
-              email: email,
-              name: name,
-              phone: phone,
-              role: 'CUSTOMER',
-              password: null,
-              provider: null,
-              providerId: null,
-            },
-          });
-        }
-      
-      
-const wakanowPassengers = normalizedPassengers.map((p: any) => ({
-  firstName: p.firstName || p.given_name || 'Guest',
-  lastName: p.lastName || p.family_name || 'User',
-  middleName: p.middleName || p.middle_name || '',
-  email: p.email || 'guest@example.com',
-  phoneNumber: p.phone || p.phoneNumber || p.phone_number || '+2340000000000',
-  dateOfBirth: p.dateOfBirth || p.born_on || '1990-01-01',
-  gender: p.gender || 'Male',
-  title: p.title || 'Mr',
-  passengerType: p.passengerType || 'Adult',
+if (isWakanowFlight) {
+  this.logger.log(`🛫 Creating Wakanow booking for BookingId: ${dto.bookingId}`);
   
-  PassportNumber: p.PassportNumber || p.passportNumber || p.passport_number || '',
-  ExpiryDate: p.ExpiryDate || p.expiryDate || p.expiry_date || '',
-  PassportIssuingAuthority: p.PassportIssuingAuthority || p.passportIssuingAuthority || p.passport_issuing_authority || '',
-  PassportIssueCountryCode: p.PassportIssueCountryCode || p.passportIssueCountryCode || p.passport_issue_country_code || '',
-  address: p.address || '123 Fake Street',
-  country: p.country || 'Nigeria',
-  countryCode: p.countryCode || p.country_code || 'NG',
-  city: p.city || 'Lagos',
-  postalCode: p.postalCode || p.postal_code || '100001',
-  IsWakapointRegister: false,
-}));
+  // ✅ FIX: Extract passengers from bookingData.passengers
+  let wakanowPassengersData = [];
+  
+  if (dto.bookingData?.passengers && Array.isArray(dto.bookingData.passengers)) {
+    wakanowPassengersData = dto.bookingData.passengers;
+    this.logger.log(`📋 Extracted ${wakanowPassengersData.length} passengers from bookingData.passengers`);
+  } else {
+    wakanowPassengersData = normalizedPassengers;
+    this.logger.log(`📋 Using ${wakanowPassengersData.length} passengers from normalizedPassengers`);
+  }
+  
+  // ✅ Log raw passenger data
+  if (wakanowPassengersData.length > 0) {
+    this.logger.log(`🔍 Raw passenger data from bookingData:`, {
+      firstName: wakanowPassengersData[0]?.firstName,
+      lastName: wakanowPassengersData[0]?.lastName,
+      PassportNumber: wakanowPassengersData[0]?.PassportNumber,
+      ExpiryDate: wakanowPassengersData[0]?.ExpiryDate,
+      PassportIssuingAuthority: wakanowPassengersData[0]?.PassportIssuingAuthority,
+      PassportIssueCountryCode: wakanowPassengersData[0]?.PassportIssueCountryCode,
+    });
+  }
 
+  // ✅ Map passengers with PascalCase passport fields
+  const wakanowPassengers = wakanowPassengersData.map((p: any) => ({
+    firstName: p.firstName || p.given_name || 'Guest',
+    lastName: p.lastName || p.family_name || 'User',
+    middleName: p.middleName || p.middle_name || '',
+    email: p.email || 'guest@example.com',
+    phoneNumber: p.phone || p.phoneNumber || p.phone_number || '+2340000000000',
+    dateOfBirth: p.dateOfBirth || p.born_on || '1990-01-01',
+    gender: p.gender || 'Male',
+    title: p.title || 'Mr',
+    passengerType: p.passengerType || 'Adult',
+    // ✅ PascalCase - matches frontend
+    PassportNumber: p.PassportNumber || p.passportNumber || p.passport_number || '',
+    ExpiryDate: p.ExpiryDate || p.expiryDate || p.expiry_date || '',
+    PassportIssuingAuthority: p.PassportIssuingAuthority || p.passportIssuingAuthority || p.passport_issuing_authority || '',
+    PassportIssueCountryCode: p.PassportIssueCountryCode || p.passportIssueCountryCode || p.passport_issue_country_code || '',
+    address: p.address || '123 Fake Street',
+    country: p.country || 'Nigeria',
+    countryCode: p.countryCode || p.country_code || 'NG',
+    city: p.city || 'Lagos',
+    postalCode: p.postalCode || p.postal_code || '100001',
+    IsWakapointRegister: false,
+  }));
 
-this.logger.log(`🔍 First passenger passport data after mapping:`, {
-  firstName: wakanowPassengers[0]?.firstName,
-  lastName: wakanowPassengers[0]?.lastName,
-  PassportNumber: wakanowPassengers[0]?.PassportNumber,
-  ExpiryDate: wakanowPassengers[0]?.ExpiryDate,
-  PassportIssuingAuthority: wakanowPassengers[0]?.PassportIssuingAuthority,
-  PassportIssueCountryCode: wakanowPassengers[0]?.PassportIssueCountryCode,
-});
-        
-        const wakanowResult = await this.bookWakanowFlightUseCase.execute(
-          {
-            bookingId: dto.bookingId,
-            selectData: dto.selectData,
-            passengers: wakanowPassengers,  // ← Use mapped passengers
-            targetCurrency: dto.currency || 'NGN',
-            priceBreakdown: {
-              basePrice: dto.getBasePrice(),
-              markupAmount: dto.getMarkupAmount(),
-              markupPercentage: dto.getMarkupPercentage(),
-              serviceFee: dto.getServiceFee(),
-              serviceFeePercentage: dto.getServiceFeePercentage(),
-              taxes: dto.getTaxes(),
-              taxPercentage: dto.getTaxPercentage(),
-              totalAmount: dto.getTotalAmount(),
-              currency: dto.getCurrency(),
-            },
-          },
-          guestUser.id,
-        );
-      
-        this.logger.log(`✅ Wakanow booking created. PNR: ${wakanowResult.bookingData?.pnrReferenceNumber}`);
-        return wakanowResult;
-      }
+  this.logger.log(`🔍 First passenger passport data after mapping:`, {
+    firstName: wakanowPassengers[0]?.firstName,
+    lastName: wakanowPassengers[0]?.lastName,
+    PassportNumber: wakanowPassengers[0]?.PassportNumber,
+    ExpiryDate: wakanowPassengers[0]?.ExpiryDate,
+    PassportIssuingAuthority: wakanowPassengers[0]?.PassportIssuingAuthority,
+    PassportIssueCountryCode: wakanowPassengers[0]?.PassportIssueCountryCode,
+  });
+
+  // Get email from passengerInfo
+  const email = Array.isArray(passengerInfo) 
+    ? passengerInfo[0]?.email 
+    : passengerInfo?.email;
+  
+  if (!email) {
+    throw new BadRequestException('Passenger email is required');
+  }
+
+  // Create or get user
+  let guestUser = await this.prisma.user.findUnique({
+    where: { email: email },
+  });
+
+  if (!guestUser) {
+    const name = Array.isArray(passengerInfo)
+      ? `${passengerInfo[0]?.firstName || 'Guest'} ${passengerInfo[0]?.lastName || 'User'}`
+      : `${passengerInfo.firstName || 'Guest'} ${passengerInfo.lastName || 'User'}`;
+    
+    const phone = Array.isArray(passengerInfo)
+      ? passengerInfo[0]?.phone || null
+      : passengerInfo?.phone || null;
+
+    guestUser = await this.prisma.user.create({
+      data: {
+        email: email,
+        name: name,
+        phone: phone,
+        role: 'CUSTOMER',
+        password: null,
+        provider: null,
+        providerId: null,
+      },
+    });
+  }
+
+  const wakanowResult = await this.bookWakanowFlightUseCase.execute(
+    {
+      bookingId: dto.bookingId,
+      selectData: dto.selectData,
+      passengers: wakanowPassengers,
+      targetCurrency: dto.currency || 'NGN',
+      priceBreakdown: {
+        basePrice: dto.getBasePrice(),
+        markupAmount: dto.getMarkupAmount(),
+        markupPercentage: dto.getMarkupPercentage(),
+        serviceFee: dto.getServiceFee(),
+        serviceFeePercentage: dto.getServiceFeePercentage(),
+        taxes: dto.getTaxes(),
+        taxPercentage: dto.getTaxPercentage(),
+        totalAmount: dto.getTotalAmount(),
+        currency: dto.getCurrency(),
+      },
+    },
+    guestUser.id,
+  );
+
+  this.logger.log(`✅ Wakanow booking created. PNR: ${wakanowResult.bookingData?.pnrReferenceNumber}`);
+  return wakanowResult;
+}
 
     const isDuffelFlight =
       dto.provider === Provider.DUFFEL &&
