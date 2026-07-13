@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger, forwardRef } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common'; 
 import { Booking } from '../entities/booking.entity';
 import { BookingRepository } from '../repositories/booking.repository';
 import { BOOKING_REPOSITORY } from '../repositories/booking.repository.token';
@@ -68,8 +68,7 @@ export class BookingService {
   constructor(
     @Inject(BOOKING_REPOSITORY)
     private readonly bookingRepository: BookingRepository,
-    @Inject(forwardRef(() => ResendService)) // ✅ Inject ResendService
-    private readonly resendService: ResendService,
+    private readonly resendService: ResendService, 
   ) {}
 
   // ✅ Helper to extract passenger details
