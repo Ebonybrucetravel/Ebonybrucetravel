@@ -35,10 +35,10 @@ export class CreateBookingUseCase {
       if (isWakanowFlight) {
         this.logger.log(`🛫 Creating Wakanow booking for authenticated user. BookingId: ${dto.providerBookingId || dto.bookingId}`);
         
-        // Normalize passengers first
+        
         const normalizedPassengers = this.normalizePassengers(dto.passengerInfo);
         
-        // Map passengers to WakanowPassengerDto format safely
+       
         const passengers = normalizedPassengers.map((p: any) => ({
           firstName: p.firstName || p.given_name || 'Guest',
           lastName: p.lastName || p.family_name || 'User',
@@ -49,10 +49,11 @@ export class CreateBookingUseCase {
           gender: p.gender || 'Male',
           title: p.title || 'Mr',
           passengerType: p.passengerType || 'Adult',
-          passportNumber: p.passportNumber || p.passport_number || '',
-          expiryDate: p.expiryDate || p.expiry_date || '',
-          passportIssuingAuthority: p.passportIssuingAuthority || p.passport_issuing_authority || '',
-          passportIssueCountryCode: p.passportIssueCountryCode || p.passport_issue_country_code || '',
+         
+          PassportNumber: p.PassportNumber || p.passportNumber || p.passport_number || '',
+          ExpiryDate: p.ExpiryDate || p.expiryDate || p.expiry_date || '',
+          PassportIssuingAuthority: p.PassportIssuingAuthority || p.passportIssuingAuthority || p.passport_issuing_authority || '',
+          PassportIssueCountryCode: p.PassportIssueCountryCode || p.passportIssueCountryCode || p.passport_issue_country_code || '',
           address: p.address || '123 Fake Street',
           country: p.country || 'Nigeria',
           countryCode: p.countryCode || p.country_code || 'NG',
@@ -61,7 +62,16 @@ export class CreateBookingUseCase {
           IsWakapointRegister: false,
         }));
         
-        // Get price breakdown safely
+   
+        this.logger.log(`🔍 First passenger passport data after mapping:`, {
+          firstName: passengers[0]?.firstName,
+          lastName: passengers[0]?.lastName,
+          PassportNumber: passengers[0]?.PassportNumber,
+          ExpiryDate: passengers[0]?.ExpiryDate,
+          PassportIssuingAuthority: passengers[0]?.PassportIssuingAuthority,
+          PassportIssueCountryCode: passengers[0]?.PassportIssueCountryCode,
+        });
+      
         const getBasePrice = dto.getBasePrice ? dto.getBasePrice() : (dto.basePrice || 0);
         const getMarkupAmount = dto.getMarkupAmount ? dto.getMarkupAmount() : (dto.markupAmount || 0);
         const getMarkupPercentage = dto.getMarkupPercentage ? dto.getMarkupPercentage() : (dto.markupPercentage || 10);
@@ -353,17 +363,21 @@ if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
   private normalizePassengers(passengerInfo: any): any[] {
     if (!passengerInfo) return [];
     
-
+    
     if (Array.isArray(passengerInfo)) {
       return passengerInfo;
     }
     
-
+   
     if (typeof passengerInfo === 'object' && passengerInfo !== null) {
+      if (passengerInfo.passengers && Array.isArray(passengerInfo.passengers)) {
+        this.logger.log(`📋 Extracted ${passengerInfo.passengers.length} passengers from passengerInfo.passengers`);
+        return passengerInfo.passengers;
+      }
       return [passengerInfo];
     }
     
-
+   
     if (typeof passengerInfo === 'string') {
       try {
         const parsed = JSON.parse(passengerInfo);

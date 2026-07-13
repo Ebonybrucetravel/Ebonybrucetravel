@@ -224,30 +224,40 @@ export class CreateGuestBookingUseCase {
           });
         }
       
-        // ✅ FIX: Map passengers for Wakanow (phone → phoneNumber)
-        const wakanowPassengers = normalizedPassengers.map((p: any) => ({
-          firstName: p.firstName || p.given_name || 'Guest',
-          lastName: p.lastName || p.family_name || 'User',
-          middleName: p.middleName || p.middle_name || '',
-          email: p.email || 'guest@example.com',
-          phoneNumber: p.phone || p.phoneNumber || p.phone_number || '+2340000000000',  // ← Map phone to phoneNumber
-          dateOfBirth: p.dateOfBirth || p.born_on || '1990-01-01',
-          gender: p.gender || 'Male',
-          title: p.title || 'Mr',
-          passengerType: p.passengerType || 'Adult',
-          passportNumber: p.passportNumber || p.passport_number || '',
-          expiryDate: p.expiryDate || p.expiry_date || '',
-          passportIssuingAuthority: p.passportIssuingAuthority || p.passport_issuing_authority || '',
-          passportIssueCountryCode: p.passportIssueCountryCode || p.passport_issue_country_code || '',
-          address: p.address || '123 Fake Street',
-          country: p.country || 'Nigeria',
-          countryCode: p.countryCode || p.country_code || 'NG',
-          city: p.city || 'Lagos',
-          postalCode: p.postalCode || p.postal_code || '100001',
-          IsWakapointRegister: false,
-        }));
       
-        // Book with Wakanow using mapped passengers
+const wakanowPassengers = normalizedPassengers.map((p: any) => ({
+  firstName: p.firstName || p.given_name || 'Guest',
+  lastName: p.lastName || p.family_name || 'User',
+  middleName: p.middleName || p.middle_name || '',
+  email: p.email || 'guest@example.com',
+  phoneNumber: p.phone || p.phoneNumber || p.phone_number || '+2340000000000',
+  dateOfBirth: p.dateOfBirth || p.born_on || '1990-01-01',
+  gender: p.gender || 'Male',
+  title: p.title || 'Mr',
+  passengerType: p.passengerType || 'Adult',
+  
+  PassportNumber: p.PassportNumber || p.passportNumber || p.passport_number || '',
+  ExpiryDate: p.ExpiryDate || p.expiryDate || p.expiry_date || '',
+  PassportIssuingAuthority: p.PassportIssuingAuthority || p.passportIssuingAuthority || p.passport_issuing_authority || '',
+  PassportIssueCountryCode: p.PassportIssueCountryCode || p.passportIssueCountryCode || p.passport_issue_country_code || '',
+  address: p.address || '123 Fake Street',
+  country: p.country || 'Nigeria',
+  countryCode: p.countryCode || p.country_code || 'NG',
+  city: p.city || 'Lagos',
+  postalCode: p.postalCode || p.postal_code || '100001',
+  IsWakapointRegister: false,
+}));
+
+
+this.logger.log(`🔍 First passenger passport data after mapping:`, {
+  firstName: wakanowPassengers[0]?.firstName,
+  lastName: wakanowPassengers[0]?.lastName,
+  PassportNumber: wakanowPassengers[0]?.PassportNumber,
+  ExpiryDate: wakanowPassengers[0]?.ExpiryDate,
+  PassportIssuingAuthority: wakanowPassengers[0]?.PassportIssuingAuthority,
+  PassportIssueCountryCode: wakanowPassengers[0]?.PassportIssueCountryCode,
+});
+        
         const wakanowResult = await this.bookWakanowFlightUseCase.execute(
           {
             bookingId: dto.bookingId,
@@ -427,23 +437,23 @@ export class CreateGuestBookingUseCase {
     return booking;
   }
 
-  /**
-   * Normalize passenger data to always return an array
-   */
+  
   private normalizePassengers(passengerInfo: any): any[] {
-    if (!passengerInfo) return [];
-    
-    // If it's already an array
+  
     if (Array.isArray(passengerInfo)) {
       return passengerInfo;
     }
     
-    // If it's a single passenger object
+  
     if (typeof passengerInfo === 'object' && passengerInfo !== null) {
+      
+      if (passengerInfo.passengers && Array.isArray(passengerInfo.passengers)) {
+        return passengerInfo.passengers;
+      }
       return [passengerInfo];
     }
     
-    // If it's a JSON string
+  
     if (typeof passengerInfo === 'string') {
       try {
         const parsed = JSON.parse(passengerInfo);
