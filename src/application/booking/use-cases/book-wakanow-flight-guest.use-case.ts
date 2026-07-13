@@ -12,7 +12,7 @@ export class BookWakanowFlightGuestUseCase {
     private readonly bookWakanowUseCase: BookWakanowFlightUseCase,
   ) {}
 
-  async execute(dto: any) {  
+  async execute(dto: any) {
    
     const passengers = dto.passengers || dto.bookingData?.passengers || [];
     const bookingId = dto.bookingId || dto.bookingData?.bookingId;
@@ -25,10 +25,9 @@ export class BookWakanowFlightGuestUseCase {
     this.logger.log('📝 Booking Wakanow flight as guest...');
     this.logger.log(`👤 Passengers: ${passengers?.length || 0}`);
     this.logger.log(`🆔 BookingId: ${bookingId}`);
-    this.logger.log(`📋 SelectData length: ${selectData?.length || 0}`);
     this.logger.log(`📍 isNorthAmerica: ${isNorthAmerica}`);
 
-   
+
     if (!bookingId) {
       throw new BadRequestException('BookingId is required');
     }
@@ -41,7 +40,7 @@ export class BookWakanowFlightGuestUseCase {
 
     this.validateSelectData(selectData);
 
-   
+
     if (isNorthAmerica) {
       for (let i = 0; i < passengers.length; i++) {
         const p = passengers[i];
@@ -58,33 +57,7 @@ export class BookWakanowFlightGuestUseCase {
       this.logger.log('✅ Passport validation passed for North America');
     }
 
-   
-    if (priceBreakdown) {
-      this.logger.log('💰 Guest booking with price breakdown:', {
-        basePrice: priceBreakdown.basePrice,
-        markupAmount: priceBreakdown.markupAmount,
-        markupPercentage: priceBreakdown.markupPercentage,
-        serviceFee: priceBreakdown.serviceFee,
-        serviceFeePercentage: priceBreakdown.serviceFeePercentage,
-        taxes: priceBreakdown.taxes,
-        taxPercentage: priceBreakdown.taxPercentage,
-        totalAmount: priceBreakdown.totalAmount,
-        currency: priceBreakdown.currency,
-      });
 
-      if (priceBreakdown.totalAmount <= 0) {
-        this.logger.warn('⚠️ Invalid price breakdown: totalAmount <= 0');
-        throw new BadRequestException('Invalid price breakdown provided');
-      }
-      if (priceBreakdown.basePrice <= 0) {
-        this.logger.warn('⚠️ Invalid price breakdown: basePrice <= 0');
-        throw new BadRequestException('Invalid price breakdown provided');
-      }
-    } else {
-      this.logger.warn('⚠️ No price breakdown provided for guest booking! Prices will be recalculated.');
-    }
-
-   
     const leadPassenger = passengers?.[0];
     if (!leadPassenger?.email) {
       throw new BadRequestException('Lead passenger email is required for guest bookings');
@@ -98,75 +71,63 @@ export class BookWakanowFlightGuestUseCase {
 
 
     const email = leadPassenger.email.toLowerCase().trim();
+    const name = `${leadPassenger.firstName} ${leadPassenger.lastName}`.trim();
+    const phone = leadPassenger.phoneNumber || null;
+
     let guestUser = null;
-    const maxRetries = 3;
-    let attempt = 0;
+    try {
+    
+      guestUser = await this.prisma.user.findUnique({
+        where: { email },
+      });
 
-    while (attempt < maxRetries) {
-      try {
-        attempt++;
-        this.logger.log(`Attempt ${attempt}/${maxRetries} to find/create guest user...`);
-        
-        guestUser = await this.prisma.user.findUnique({
-          where: { email },
+      if (!guestUser) {
+      
+        this.logger.log(`👤 Creating new guest user for ${email}`);
+        guestUser = await this.prisma.user.create({
+          data: {
+            email,
+            name,
+            phone,
+            role: 'CUSTOMER',
+            password: null, 
+            provider: 'GUEST', 
+            providerId: null,
+          },
         });
-
-        if (!guestUser) {
-          this.logger.log(`👤 Creating new guest user for ${email}`);
-          
-          guestUser = await this.prisma.user.create({
+        this.logger.log(`✅ Created guest user: ${guestUser.id}`);
+      } else {
+        this.logger.log(`✅ Using existing user: ${guestUser.id}`);
+        
+        if (guestUser.name !== name || guestUser.phone !== phone) {
+          await this.prisma.user.update({
+            where: { id: guestUser.id },
             data: {
-              email,
-              name: `${leadPassenger.firstName} ${leadPassenger.lastName}`.trim(),
-              phone: leadPassenger.phoneNumber || null,
-              role: 'CUSTOMER',
-              password: null,
-              provider: null,
-              providerId: null,
+              name: name || guestUser.name,
+              phone: phone || guestUser.phone,
             },
           });
-          this.logger.log(`✅ Created guest user: ${guestUser.id}`);
-        } else {
-          this.logger.log(`✅ Using existing guest user: ${guestUser.id}`);
-          
-          if (!guestUser.name || guestUser.name !== `${leadPassenger.firstName} ${leadPassenger.lastName}`.trim()) {
-            await this.prisma.user.update({
-              where: { id: guestUser.id },
-              data: {
-                name: `${leadPassenger.firstName} ${leadPassenger.lastName}`.trim(),
-                phone: leadPassenger.phoneNumber || guestUser.phone,
-              },
-            });
-            this.logger.log(`✅ Updated guest user info`);
-          }
+          this.logger.log(`✅ Updated user info`);
         }
-
-        break;
-        
-      } catch (error: any) {
-        const errorMsg = error?.message?.toLowerCase() || '';
-        const errorStatus = error?.status || error?.code || 0;
-
-        if ((errorMsg.includes('connection') || 
-            errorMsg.includes('timeout') ||
-            errorMsg.includes('database') ||
-            errorStatus === 500 ||
-            errorStatus === 503) && attempt < maxRetries) {
-          this.logger.warn(`Attempt ${attempt} failed, retrying in ${1000 * attempt}ms...`);
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-          continue;
-        }
-        
-        throw error;
       }
-    }
-
-    if (!guestUser) {
-      this.logger.error('❌ All retry attempts to find/create guest user failed');
+    } catch (error) {
+      this.logger.error('Failed to find/create guest user:', error);
       throw new BadRequestException('Unable to create guest user. Please try again.');
     }
 
-  
+    if (priceBreakdown) {
+      this.logger.log('💰 Guest booking with price breakdown:', {
+        basePrice: priceBreakdown.basePrice,
+        markupAmount: priceBreakdown.markupAmount,
+        totalAmount: priceBreakdown.totalAmount,
+        currency: priceBreakdown.currency,
+      });
+
+      if (priceBreakdown.totalAmount <= 0 || priceBreakdown.basePrice <= 0) {
+        throw new BadRequestException('Invalid price breakdown provided');
+      }
+    }
+
     const bookDto: BookWakanowFlightDto = {
       passengers: passengers,
       bookingId: bookingId,
@@ -177,54 +138,11 @@ export class BookWakanowFlightGuestUseCase {
       destinationCode: destinationCode,
     };
 
-    this.logger.log('📤 Calling BookWakanowFlightUseCase with:', {
-      passengers: passengers.length,
-      bookingId: bookingId,
-      selectDataLength: selectData?.length || 0,
-      isNorthAmerica: isNorthAmerica,
-    });
+    this.logger.log('📤 Calling BookWakanowFlightUseCase...');
 
-   
-    let result = null;
-    attempt = 0;
-
-    while (attempt < maxRetries) {
-      try {
-        attempt++;
-        this.logger.log(`📖 Booking attempt ${attempt}/${maxRetries} for guest...`);
-        result = await this.bookWakanowUseCase.execute(bookDto, guestUser.id);
-        break;
-      } catch (error: any) {
-        const errorMsg = error?.message?.toLowerCase() || '';
-        const errorStatus = error?.status || error?.code || 0;
-
-        if (errorMsg.includes('expired') || 
-            errorMsg.includes('SELECTION_EXPIRED') ||
-            errorMsg.includes('not selected by you') ||
-            errorMsg.includes('session expired') ||
-            errorMsg.includes('no longer available') ||
-            errorMsg.includes('bad request')) {
-          this.logger.warn('⚠️ Booking failed due to expired selection, not retrying');
-          throw error;
-        }
-
-        if ((errorStatus === 500 || errorStatus === 0 || errorStatus === 502 || errorStatus === 503) && attempt < maxRetries) {
-          this.logger.warn(`⚠️ Booking attempt ${attempt} failed with ${errorStatus}, retrying in ${1000 * attempt}ms...`);
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-          continue;
-        }
-
-        throw error;
-      }
-    }
-
-    if (!result) {
-      this.logger.error('❌ All booking retry attempts failed for guest');
-      throw new BadRequestException('Failed to book flight after multiple attempts. Please try again.');
-    }
+    const result = await this.bookWakanowUseCase.execute(bookDto, guestUser.id);
 
     this.logger.log(`✅ Guest booking completed. Booking: ${result.id}, PNR: ${result.pnr_reference}`);
-    this.logger.log(`💰 Final total: ${result.totalAmount} ${result.currency}`);
 
     return {
       ...result,
@@ -251,6 +169,5 @@ export class BookWakanowFlightGuestUseCase {
     }
     
     this.logger.log(`✅ SelectData validated: ${selectData.length} chars`);
-    this.logger.log(`✅ SelectData preview: ${selectData.substring(0, 50)}...`);
   }
 }
