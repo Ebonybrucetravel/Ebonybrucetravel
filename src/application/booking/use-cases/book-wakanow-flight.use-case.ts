@@ -408,7 +408,7 @@ export class BookWakanowFlightUseCase {
     const random = Math.floor(100000 + Math.random() * 900000);
     const reference = `EBT-${dateStr}-${random}`;
   
-    // ✅ Ensure passengerInfo has email properly formatted
+
     const formattedPassengers = passengers.map((p: any) => ({
       firstName: p.firstName || p.given_name || 'Guest',
       lastName: p.lastName || p.family_name || 'User',
@@ -420,10 +420,59 @@ export class BookWakanowFlightUseCase {
       passengerType: p.passengerType || 'Adult',
     }));
   
-    // ✅ Get the first passenger's email for bookingData
+   
     const firstPassengerEmail = formattedPassengers[0]?.email || 'guest@example.com';
   
+
+    let flightOrigin = 'N/A';
+    let flightDestination = 'N/A';
+    let flightDepartureDate = '';
+    let flightArrivalDate = '';
+    let flightAirlineName = 'N/A';
+    let flightNumber = 'N/A';
+    let flightCabinClass = 'Economy';
+    let flightStops = 0;
+  
+   
+    if (combo) {
+  
+      const firstFlight = combo.FlightModels && combo.FlightModels.length > 0 
+        ? combo.FlightModels[0] 
+        : null;
+      
+      if (firstFlight) {
+        flightOrigin = firstFlight.DepartureCode || firstFlight.Origin || 'N/A';
+        flightDestination = firstFlight.ArrivalCode || firstFlight.Destination || 'N/A';
+        flightDepartureDate = firstFlight.DepartureDate || firstFlight.DepartureTime || '';
+        flightArrivalDate = firstFlight.ArrivalDate || firstFlight.ArrivalTime || '';
+        flightAirlineName = firstFlight.AirlineName || firstFlight.Airline || 'N/A';
+        flightNumber = firstFlight.FlightNumber || firstFlight.FlightNo || 'N/A';
+        flightCabinClass = firstFlight.CabinClass || firstFlight.Class || 'Economy';
+        flightStops = combo.FlightModels.length > 1 ? combo.FlightModels.length - 1 : 0;
+      }
+    }
+  
+   
+    if (bookResponse?.FlightBookingResult?.FlightBookingSummaryModel?.FlightSummaryModel) {
+      const summary = bookResponse.FlightBookingResult.FlightBookingSummaryModel.FlightSummaryModel;
+      if (summary.Origin) flightOrigin = summary.Origin;
+      if (summary.Destination) flightDestination = summary.Destination;
+      if (summary.DepartureDate) flightDepartureDate = summary.DepartureDate;
+      if (summary.ArrivalDate) flightArrivalDate = summary.ArrivalDate;
+      if (summary.AirlineName) flightAirlineName = summary.AirlineName;
+    }
+  
     const bookingData = {
+     
+      origin: flightOrigin,
+      destination: flightDestination,
+      departureDate: flightDepartureDate,
+      arrivalDate: flightArrivalDate,
+      airlineName: flightAirlineName,
+      flightNumber: flightNumber,
+      cabinClass: flightCabinClass,
+      stops: flightStops,
+     
       wakanowBookingId: bookResponse.BookingId,
       pnrReferenceNumber: pnr,
       selectData,
@@ -431,8 +480,9 @@ export class BookWakanowFlightUseCase {
       targetCurrency,
       ticketStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.TicketStatus || 'PENDING',
       pnrStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.PnrStatus || 'PENDING',
-      // ✅ Store email in bookingData
       passengerEmail: firstPassengerEmail,
+      
+      
       priceBreakdown: {
         basePrice: prices.basePrice,
         markupAmount: prices.markupAmount,
@@ -447,6 +497,15 @@ export class BookWakanowFlightUseCase {
       },
     };
   
+ 
+    this.logger.log(`✈️ Storing flight details in bookingData:`, {
+      origin: flightOrigin,
+      destination: flightDestination,
+      airlineName: flightAirlineName,
+      flightNumber: flightNumber,
+      departureDate: flightDepartureDate,
+    });
+  
     return await this.bookingRepository.create({
       reference,
       userId,
@@ -460,8 +519,8 @@ export class BookWakanowFlightUseCase {
       serviceFee: prices.serviceFee,
       totalAmount: prices.totalAmount,
       currency: prices.currency,
-      bookingData: bookingData,
-      passengerInfo: formattedPassengers, 
+      bookingData: bookingData, 
+      passengerInfo: formattedPassengers,
       paymentStatus: PaymentStatus.PENDING,
     });
   }
