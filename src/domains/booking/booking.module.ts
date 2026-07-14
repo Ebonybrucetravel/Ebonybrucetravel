@@ -4,7 +4,7 @@ import { BookingStatusService } from './services/booking-status.service';
 import { BookingRepository } from './repositories/booking.repository';
 import { BOOKING_REPOSITORY } from './repositories/booking.repository.token';
 import { BookingRepositoryImpl } from '@infrastructure/database/repositories/booking.repository.impl';
-import { EmailModule } from '@infrastructure/email/email.module'; 
+import { EmailModule } from '../../infrastructure/email/email.module';
 
 @Module({
   imports: [EmailModule],

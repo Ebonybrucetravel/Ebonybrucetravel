@@ -4,7 +4,7 @@ import { BookingRepository } from '../repositories/booking.repository';
 import { BOOKING_REPOSITORY } from '../repositories/booking.repository.token';
 import { BookingStatus, PaymentStatus } from '@prisma/client';
 import { generateBookingReference } from '@common/utils/booking-reference.util';
-import { ResendService } from '@infrastructure/email/resend.service';
+import { ResendService } from '../../../infrastructure/email/resend.service';
 
 export interface CreateBookingParams {
   userId: string;
