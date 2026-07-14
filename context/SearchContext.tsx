@@ -1512,55 +1512,98 @@ const searchFlights = async (params: SearchParams) => {
     return searchDispatchRef.current(params);
   }, []);
 
-const selectItem = useCallback(async (item: SearchResult) => {
-  const itemWithMessages = { ...item };
-  
-  if ((item as any).isWakanow) {
-    try {
-      const selectDataValue = (item as any).selectData;
-      
-      if (selectDataValue) {
-        console.log('📝 Fetching custom_messages from SELECT endpoint');
-        const { selectWakanowFlight } = await import('@/lib/wakanow-api');
-        const result = await selectWakanowFlight(selectDataValue, 'NGN');
+  const selectItem = useCallback(async (item: SearchResult) => {
+    const itemWithMessages = { ...item };
+    
+    // ✅ Type guard to check if it's a Wakanow item with extra fields
+    const isWakanowItem = (item as any).isWakanow === true;
+    
+    if (isWakanowItem) {
+      try {
+        const selectDataValue = (item as any).selectData;
         
-        if (result?.data) {
-          // ✅ Get the NEW short selectData from the response
-          const newSelectData = result.data.select_data || result.data.select_data || '';
-          if (newSelectData && newSelectData.length < 500) {
-            itemWithMessages.selectData = newSelectData;
-            console.log('✅ Got new short selectData (length: ' + newSelectData.length + ')');
-          }
+        // ✅ Skip API call if we already have the data cached
+        if ((item as any)._wakanowData || (item as any).priceBreakdown) {
+          console.log('✅ Already have Wakanow data, skipping API call');
+          setSelectedItem(item);
+          return;
+        }
+        
+        // ✅ Skip if we have fare_rules (means data was already fetched)
+        if ((item as any).fare_rules?.length > 0) {
+          console.log('✅ Already have fare_rules, skipping API call');
+          setSelectedItem(item);
+          return;
+        }
+        
+        // ✅ Check if we have valid selectData (short version, not compressed)
+        const isValidSelectData = selectDataValue && 
+                                 typeof selectDataValue === 'string' && 
+                                 selectDataValue.length > 10 && 
+                                 selectDataValue.length < 500;
+        
+        if (isValidSelectData) {
+          console.log('📝 Fetching custom_messages from SELECT endpoint (length: ' + selectDataValue.length + ')');
           
-          // ✅ Get custom_messages
-          if (result.data.custom_messages) {
-            const rawMessages = result.data.custom_messages;
-            let formattedMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
+          try {
+            const { selectWakanowFlight } = await import('@/lib/wakanow-api');
+            const result = await selectWakanowFlight(selectDataValue, 'NGN');
             
-            if (Array.isArray(rawMessages) && rawMessages.length > 0) {
-              if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
-                formattedMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
-              } else if (typeof rawMessages[0] === 'string') {
-                formattedMessages = rawMessages.map((msg: string) => ({
-                  Title: 'Message',
-                  Message: msg,
-                  SeverityLevel: 'Medium' as const,
-                }));
+            if (result?.data) {
+              // ✅ Get the NEW short selectData from the response
+              const newSelectData = result.data.select_data || result.data.select_data || '';
+              if (newSelectData && newSelectData.length < 500) {
+                (itemWithMessages as any).selectData = newSelectData;
+                console.log('✅ Got new short selectData (length: ' + newSelectData.length + ')');
+              }
+              
+              // ✅ Get custom_messages
+              if (result.data.custom_messages) {
+                const rawMessages = result.data.custom_messages;
+                let formattedMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
+                
+                if (Array.isArray(rawMessages) && rawMessages.length > 0) {
+                  if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
+                    formattedMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
+                  } else if (typeof rawMessages[0] === 'string') {
+                    formattedMessages = rawMessages.map((msg: string) => ({
+                      Title: 'Message',
+                      Message: msg,
+                      SeverityLevel: 'Medium' as const,
+                    }));
+                  }
+                }
+                
+                (itemWithMessages as any).custom_messages = formattedMessages;
+                console.log('✅ Got custom messages:', (itemWithMessages as any).custom_messages);
+              }
+              
+              // ✅ Store price breakdown if available
+              if (result.data.priceBreakdown) {
+                (itemWithMessages as any).priceBreakdown = result.data.priceBreakdown;
+                (itemWithMessages as any)._wakanowData = result.data;
+                console.log('✅ Stored priceBreakdown');
               }
             }
-            
-            itemWithMessages.custom_messages = formattedMessages;
-            console.log('✅ Got custom messages:', itemWithMessages.custom_messages);
+          } catch (error: any) {
+            // ✅ If error is SELECTION_EXPIRED, just use the data we have
+            if (error.message === 'SELECTION_EXPIRED' || error.message?.includes('expired')) {
+              console.log('⚠️ Selection expired, using existing data');
+              setSelectedItem(item);
+              return;
+            }
+            console.warn('Could not fetch custom messages:', error);
           }
+        } else {
+          console.log('⏭️ Skipping API call - invalid selectData length: ' + (selectDataValue?.length || 0));
         }
+      } catch (error) {
+        console.warn('Could not fetch custom messages:', error);
       }
-    } catch (error) {
-      console.warn('Could not fetch custom messages:', error);
     }
-  }
-  
-  setSelectedItem(itemWithMessages);
-}, []);
+    
+    setSelectedItem(itemWithMessages);
+  }, []);
 
   const clearSearch = useCallback(() => {
     setSearchResults([]);

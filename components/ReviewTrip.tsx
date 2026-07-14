@@ -603,6 +603,64 @@ const isPassportMandatory = isNorthAmerica;
     }
   }, [extendedItem, actualItem]);
 
+
+useEffect(() => {
+  const fetchWakanowPrice = async () => {
+    // Only run for Wakanow flights that have selectData
+    if (!isWakanow || !extendedItem?.selectData) {
+      console.log('⏭️ Skipping Wakanow price fetch - not Wakanow or no selectData');
+      return;
+    }
+    
+    // Skip if we already have the data
+    if (extendedItem._wakanowData?.priceBreakdown) {
+      console.log('✅ Already have Wakanow data, skipping fetch');
+      return;
+    }
+    
+    // Skip if extBooking exists (already created)
+    if (extBooking) {
+      console.log('⏭️ Skipping - extBooking already exists');
+      return;
+    }
+    
+    console.log('🔄 Fetching Wakanow price data on mount...');
+    
+    try {
+      const { selectWakanowFlight } = await import('@/lib/wakanow-api');
+      const result = await selectWakanowFlight(extendedItem.selectData, 'NGN');
+      const responseData = result?.data;
+      
+      if (responseData?.priceBreakdown) {
+        console.log('✅ Fetched Wakanow price data:', responseData.priceBreakdown);
+        
+        // Create updated item with correct prices
+        const updatedItem = {
+          ...extendedItem,
+          _wakanowData: responseData,
+          priceBreakdown: responseData.priceBreakdown,
+          basePrice: responseData.priceBreakdown.basePrice,
+          markupAmount: responseData.priceBreakdown.markupAmount,
+          markupPercentage: responseData.priceBreakdown.markupPercentage,
+          serviceFee: responseData.priceBreakdown.serviceFee,
+          serviceFeePercentage: responseData.priceBreakdown.serviceFeePercentage,
+          taxes: responseData.priceBreakdown.taxes,
+          taxPercentage: responseData.priceBreakdown.taxPercentage,
+          totalAmount: responseData.priceBreakdown.totalAmount,
+          currency: responseData.priceBreakdown.currency,
+        };
+        
+        // Update the item to trigger re-render with correct prices
+        setFixedItem(updatedItem as any);
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch Wakanow price:', error);
+    }
+  };
+  
+  fetchWakanowPrice();
+}, [isWakanow, extendedItem?.selectData, extendedItem?._wakanowData, extBooking]);
+
   // ==================== PRICE CALCULATION ====================
 let basePrice = 0;
 let markupAmount = 0;
@@ -710,31 +768,39 @@ if (isDuffel) {
 }
 // ✅ END DUFFEL
 
-// ✅ WAKANOW FLIGHTS (UNCHANGED)
+// ✅ WAKANOW FLIGHTS - Use _wakanowData.priceBreakdown FIRST
 else if (isWakanow) {
-  if (extendedItem.basePrice && extendedItem.basePrice > 0) {
-    basePrice = extendedItem.basePrice;
-    markupAmount = extendedItem.markupAmount || 0;
-    markupPercentage = extendedItem.markupPercentage || 10;
-    serviceFee = extendedItem.serviceFee || 0;
-    serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
-    totalDue = extendedItem.totalAmount || 0;
-    combinedTaxes = markupAmount + serviceFee;
-    combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-    breakdownDescription = extendedItem.breakdown || '';
+  console.log('💰 ReviewTrip - Wakanow flight detected', {
+    hasWakanowData: !!extendedItem._wakanowData,
+    hasPriceBreakdown: !!extendedItem._wakanowData?.priceBreakdown,
+    itemBasePrice: extendedItem.basePrice,
+    itemTotalAmount: extendedItem.totalAmount,
+  });
+  
+  // ✅ FIRST: Use _wakanowData.priceBreakdown (MOST ACCURATE)
+  if (extendedItem._wakanowData?.priceBreakdown) {
+    const pb = extendedItem._wakanowData.priceBreakdown;
+    basePrice = pb.basePrice || 0;
+    markupAmount = pb.markupAmount || 0;
+    markupPercentage = pb.markupPercentage || 10;
+    serviceFee = pb.serviceFee || 0;
+    serviceFeePercentage = pb.serviceFeePercentage || 5;
+    combinedTaxes = pb.taxes || 0;
+    combinedTaxPercentage = pb.taxPercentage || 15;
+    totalDue = pb.totalAmount || 0;
+    breakdownDescription = pb.breakdown || '';
+    offerCurrency = pb.currency || 'NGN';
     
-    console.log('💰 ReviewTrip - Wakanow: Using direct price fields from backend:', {
+    console.log('💰 ReviewTrip - Wakanow: Using _wakanowData.priceBreakdown:', {
       basePrice,
       markupAmount,
-      markupPercentage,
       serviceFee,
-      serviceFeePercentage,
-      totalDue,
       combinedTaxes,
-      combinedTaxPercentage,
-      breakdown: breakdownDescription,
+      totalDue,
     });
-  } else if (extendedItem.priceBreakdown) {
+  } 
+  // ✅ SECOND: Use priceBreakdown (fallback)
+  else if (extendedItem.priceBreakdown) {
     const pb = extendedItem.priceBreakdown;
     basePrice = pb.basePrice || 0;
     markupAmount = pb.markupAmount || 0;
@@ -745,57 +811,60 @@ else if (isWakanow) {
     combinedTaxPercentage = pb.taxPercentage || 15;
     totalDue = pb.totalAmount || 0;
     breakdownDescription = pb.breakdown || '';
+    offerCurrency = pb.currency || 'NGN';
     
-    console.log('💰 ReviewTrip - Wakanow: Using priceBreakdown from backend:', {
+    console.log('💰 ReviewTrip - Wakanow: Using priceBreakdown:', {
       basePrice,
       markupAmount,
       serviceFee,
       combinedTaxes,
-      combinedTaxPercentage,
       totalDue,
-      breakdown: breakdownDescription,
     });
-  } else if (extendedItem.calculatedTotal && extendedItem.calculatedTotal > 0) {
-    basePrice = extendedItem.calculatedBasePrice || 0;
-    markupAmount = extendedItem.calculatedMarkup || 0;
-    serviceFee = extendedItem.calculatedServiceFee || 0;
-    totalDue = extendedItem.calculatedTotal || 0;
-    markupPercentage = extendedItem.markup_percentage || 10;
-    serviceFeePercentage = extendedItem.service_fee_percentage || 5;
-    combinedTaxes = extendedItem.calculatedTaxes || markupAmount + serviceFee || 0;
-    combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-  } else if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
-    basePrice = extBooking.basePrice || 0;
-    markupAmount = extBooking.markupAmount || 0;
-    serviceFee = extBooking.serviceFee || 0;
-    totalDue = extBooking.totalAmount || 0;
-    markupPercentage = extBooking.markupPercentage || 10;
-    serviceFeePercentage = extBooking.serviceFeePercentage || 5;
-    combinedTaxes = extBooking.taxes || markupAmount + serviceFee || 0;
-    combinedTaxPercentage = extBooking.taxPercentage || markupPercentage + serviceFeePercentage;
-    breakdownDescription = extBooking.breakdown || '';
-  } else if (typeof window !== 'undefined') {
-    try {
-      const stored = sessionStorage.getItem('booking_price_breakdown');
-      if (stored) {
-        const data = JSON.parse(stored);
-        basePrice = data.basePrice || 0;
-        markupAmount = data.markupAmount || 0;
-        serviceFee = data.serviceFee || 0;
-        totalDue = data.totalAmount || 0;
-        markupPercentage = data.markupPercentage || 10;
-        serviceFeePercentage = data.serviceFeePercentage || 5;
-        combinedTaxes = markupAmount + serviceFee;
-        combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-        breakdownDescription = data.breakdown || '';
-      }
-    } catch (e) {
-      console.warn('Could not parse session storage:', e);
-    }
+  } 
+  // ✅ THIRD: Calculate from totalAmount if we have it (but no breakdown)
+  else if (extendedItem.totalAmount && extendedItem.totalAmount > 0) {
+    totalDue = extendedItem.totalAmount;
+    // Try to get markup and service fee percentages from item
+    markupPercentage = extendedItem.markupPercentage || 10;
+    serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
+    combinedTaxPercentage = extendedItem.taxPercentage || 15;
+    
+    // Calculate breakdown from total
+    const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100) + (combinedTaxPercentage / 100);
+    basePrice = totalDue / totalFactor;
+    markupAmount = (basePrice * markupPercentage) / 100;
+    serviceFee = (basePrice * serviceFeePercentage) / 100;
+    combinedTaxes = (basePrice * combinedTaxPercentage) / 100;
+    offerCurrency = extendedItem.currency || 'NGN';
+    
+    console.log('💰 ReviewTrip - Wakanow: Calculated from totalAmount:', {
+      totalDue,
+      basePrice,
+      markupAmount,
+      serviceFee,
+      combinedTaxes,
+    });
   }
-  
-  if (totalDue === 0) {
-    console.warn('⚠️ ReviewTrip - Wakanow: No price found from backend!');
+  // ✅ FOURTH: Use direct fields (fallback)
+  else if (extendedItem.basePrice && extendedItem.basePrice > 0) {
+    basePrice = extendedItem.basePrice;
+    markupAmount = extendedItem.markupAmount || 0;
+    markupPercentage = extendedItem.markupPercentage || 10;
+    serviceFee = extendedItem.serviceFee || 0;
+    serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
+    combinedTaxes = extendedItem.taxes ? parseFloat(extendedItem.taxes as any) : 0;
+    combinedTaxPercentage = extendedItem.taxPercentage || 15;
+    totalDue = extendedItem.totalAmount || 0;
+    breakdownDescription = extendedItem.breakdown || '';
+    offerCurrency = extendedItem.currency || 'NGN';
+    
+    console.log('💰 ReviewTrip - Wakanow: Using direct fields:', {
+      basePrice,
+      markupAmount,
+      serviceFee,
+      combinedTaxes,
+      totalDue,
+    });
   }
 }
 

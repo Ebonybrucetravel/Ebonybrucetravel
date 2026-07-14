@@ -19,47 +19,115 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
   const [convertedPrice, setConvertedPrice] = useState<string>('');
   const [isConverting, setIsConverting] = useState(false);
   
+  // ✅ Add local state to track the item
+  const [currentItem, setCurrentItem] = useState(item);
+
+  // ✅ Update local state when item prop changes
+  useEffect(() => {
+    setCurrentItem(item);
+  }, [item]);
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
+  // Helper functions (defined early)
+  const formatTime = (dateTime?: string) => {
+    if (!dateTime) return '--:--';
+    try {
+      const date = new Date(dateTime);
+      if (isNaN(date.getTime())) return '--:--';
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch {
+      return '--:--';
+    }
+  };
+
+  const formatDate = (dateTime?: string) => {
+    if (!dateTime) return '';
+    try {
+      const date = new Date(dateTime);
+      if (isNaN(date.getTime())) return '';
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return '';
+    }
+  };
+
+  const calculateDuration = (duration?: any) => {
+    if (!duration) return '';
+    let durationStr = String(duration);
+    
+    if (durationStr.includes(':')) {
+      const parts = durationStr.split(':');
+      if (parts.length >= 2) {
+        const hours = parseInt(parts[0]);
+        const minutes = parseInt(parts[1]);
+        if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+        if (hours > 0) return `${hours}h`;
+        if (minutes > 0) return `${minutes}m`;
+      }
+      return durationStr;
+    }
+    
+    const hours = durationStr.match(/(\d+)H/);
+    const minutes = durationStr.match(/(\d+)M/);
+    return `${hours ? hours[1] + 'h ' : ''}${minutes ? minutes[1] + 'm' : ''}`.trim() || durationStr;
+  };
+
   // Convert price when component loads or currency changes
   useEffect(() => {
     const convertFlightPrice = async () => {
-      if (!item) return;
+      if (!currentItem) return;
       
       setIsConverting(true);
       try {
         let originalAmount = 0;
-        let originalCurrency = 'GBP';
+        let originalCurrency = 'NGN';
         
-        // Extract original price and currency from item
-        if (item.originalPriceAmount && item.originalPriceCurrency) {
-          originalAmount = item.originalPriceAmount;
-          originalCurrency = item.originalPriceCurrency;
-        } else if (item.original_amount) {
-          originalAmount = parseFloat(item.original_amount);
-          originalCurrency = item.original_currency || 'GBP';
-        } else if (item.total_amount) {
-          originalAmount = parseFloat(item.total_amount);
-          originalCurrency = item.total_currency || 'GBP';
-        } else if (item.rawPrice) {
-          originalAmount = item.rawPrice;
-          originalCurrency = item.currency || 'GBP';
-        } else if (item.price) {
-          if (typeof item.price === 'string') {
-            const match = item.price.match(/[\d,]+\.?\d*/);
+        // ✅ PRIORITY 1: Check for Wakanow data first (most accurate)
+        if (currentItem.isWakanow && currentItem.totalAmount) {
+          originalAmount = currentItem.totalAmount;
+          originalCurrency = currentItem.currency || 'NGN';
+        }
+        // ✅ PRIORITY 2: Check flight_summary
+        else if (currentItem.flight_summary?.price?.Amount) {
+          originalAmount = currentItem.flight_summary.price.Amount;
+          originalCurrency = currentItem.flight_summary.price.CurrencyCode || 'NGN';
+        }
+        // ✅ PRIORITY 3: Check priceBreakdown
+        else if (currentItem.priceBreakdown?.totalAmount) {
+          originalAmount = currentItem.priceBreakdown.totalAmount;
+          originalCurrency = currentItem.priceBreakdown.currency || 'NGN';
+        }
+        // Fallback to other price fields
+        else if (currentItem.originalPriceAmount && currentItem.originalPriceCurrency) {
+          originalAmount = currentItem.originalPriceAmount;
+          originalCurrency = currentItem.originalPriceCurrency;
+        } else if (currentItem.original_amount) {
+          originalAmount = parseFloat(currentItem.original_amount);
+          originalCurrency = currentItem.original_currency || 'NGN';
+        } else if (currentItem.total_amount) {
+          originalAmount = parseFloat(currentItem.total_amount);
+          originalCurrency = currentItem.total_currency || 'NGN';
+        } else if (currentItem.rawPrice) {
+          originalAmount = currentItem.rawPrice;
+          originalCurrency = currentItem.currency || 'NGN';
+        } else if (currentItem.price) {
+          if (typeof currentItem.price === 'string') {
+            const match = currentItem.price.match(/[\d,]+\.?\d*/);
             if (match) {
               originalAmount = parseFloat(match[0].replace(/,/g, ''));
             }
-          } else if (typeof item.price === 'number') {
-            originalAmount = item.price;
+          } else if (typeof currentItem.price === 'number') {
+            originalAmount = currentItem.price;
           }
         }
         
         if (originalAmount > 0) {
           const formatted = await formatPrice(originalAmount, originalCurrency);
           setConvertedPrice(formatted);
+          console.log('💰 Price converted:', { originalAmount, originalCurrency, formatted });
         } else {
           setConvertedPrice('Price on request');
         }
@@ -72,7 +140,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     };
     
     convertFlightPrice();
-  }, [item, currency.code, formatPrice]);
+  }, [currentItem, currency.code, formatPrice]);
 
   // Helper function to extract stopover airports from segments
   const getStopoverAirports = (segments: any[]) => {
@@ -125,35 +193,177 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     });
   };
 
-  // Transform the item to ensure correct structure for display
- // Transform the item to ensure correct structure for display
+// Transform the item to ensure correct structure for display
 const transformedItem = useMemo(() => {
-  if (!item) return null;
+  if (!currentItem) return null;
   
   console.log('🔄 FlightDetails: Transforming flight:', {
-    id: item.id,
-    provider: item.provider,
-    isWakanow: item.isWakanow,
-    hasSlices: !!(item.slices),
-    slicesLength: item.slices?.length,
-    departureAirport: item.departureAirport,
-    arrivalAirport: item.arrivalAirport,
-    departureTime: item.departureTime,
-    arrivalTime: item.arrivalTime,
+    id: currentItem.id,
+    provider: currentItem.provider,
+    isWakanow: currentItem.isWakanow,
+    hasSlices: !!(currentItem.slices),
+    slicesLength: currentItem.slices?.length,
+    hasWakanowData: !!currentItem._wakanowData,
+    fareRulesCount: currentItem.fare_rules?.length || 0,
+    penaltyRulesCount: currentItem.penalty_rules?.length || 0,
+    hasBaggage: !!currentItem.freeBaggage,
+    isRefundable: currentItem.isRefundable,
+    customMessagesCount: (currentItem as any).custom_messages?.length || 0,
+    slice0Origin: currentItem.slices?.[0]?.segments?.[0]?.origin?.iata_code,
+    slice0Dest: currentItem.slices?.[0]?.segments?.[0]?.destination?.iata_code,
+    slice0Departing: currentItem.slices?.[0]?.segments?.[0]?.departing_at,
+    slice0Arriving: currentItem.slices?.[0]?.segments?.[0]?.arriving_at,
   });
   
+  // ✅ FIRST: Check if we have Wakanow data from the API (most complete)
+  if (currentItem._wakanowData) {
+    const wakanowData = currentItem._wakanowData;
+    const flightSummary = wakanowData.flight_summary;
+    
+    if (flightSummary?.slices && flightSummary.slices.length > 0) {
+      console.log('📦 Using Wakanow data from API:', {
+        slicesCount: flightSummary.slices.length,
+        totalAmount: wakanowData.totalAmount,
+        fareRules: wakanowData.fare_rules?.length || 0,
+        penaltyRules: wakanowData.penalty_rules?.length || 0,
+        customMessagesCount: wakanowData.custom_messages?.length || 0,
+        firstSliceOrigin: flightSummary.slices[0]?.segments?.[0]?.origin?.iata_code,
+        firstSliceDest: flightSummary.slices[0]?.segments?.[0]?.destination?.iata_code,
+        firstSliceDeparting: flightSummary.slices[0]?.segments?.[0]?.departing_at,
+        firstSliceArriving: flightSummary.slices[0]?.segments?.[0]?.arriving_at,
+      });
+      
+      // ✅ Format custom_messages
+      const rawMessages = wakanowData.custom_messages || [];
+      let formattedCustomMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
+
+      if (Array.isArray(rawMessages) && rawMessages.length > 0) {
+        if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
+          formattedCustomMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
+        } else if (typeof rawMessages[0] === 'string') {
+          formattedCustomMessages = rawMessages.map((msg: string) => ({
+            Title: 'Message',
+            Message: msg,
+            SeverityLevel: 'Medium' as const,
+          }));
+        }
+      }
+      
+      // ✅ Ensure slices have proper structure with all fields
+      const processedSlices = flightSummary.slices.map((slice: any) => {
+        const segments = (slice.segments || []).map((segment: any) => {
+          return {
+            departing_at: segment.departing_at || segment.startTime || segment.departureTime || segment.start_time || '',
+            arriving_at: segment.arriving_at || segment.endTime || segment.arrivalTime || segment.end_time || '',
+            duration: segment.duration || slice.tripDuration || '',
+            origin: {
+              iata_code: segment.origin?.iata_code || segment.departureCode || slice.departureCode || '',
+              name: segment.origin?.name || segment.departureName || slice.departureName || '',
+              city_name: segment.origin?.city_name || segment.departureName || slice.departureName || '',
+            },
+            destination: {
+              iata_code: segment.destination?.iata_code || segment.destinationCode || slice.arrivalCode || '',
+              name: segment.destination?.name || segment.destinationName || slice.arrivalName || '',
+              city_name: segment.destination?.city_name || segment.destinationName || slice.arrivalName || '',
+            },
+            operating_carrier: {
+              name: segment.operating_carrier?.name || segment.operatingCarrier || slice.airline || '',
+              iata_code: segment.operating_carrier?.iata_code || segment.airlineCode || slice.airlineCode || '',
+            },
+            marketing_carrier_flight_number: segment.marketing_carrier_flight_number || segment.flightNumber || slice.flightNumber || '',
+            freeBaggage: segment.freeBaggage || slice.freeBaggage || null,
+          };
+        });
+        
+        return {
+          ...slice,
+          segments: segments,
+          duration: slice.duration || slice.tripDuration || '',
+          origin: segments[0]?.origin || slice.origin,
+          destination: segments[segments.length - 1]?.destination || slice.destination,
+          departure_time: segments[0]?.departing_at || slice.departure_time || slice.departureTime,
+          arrival_time: segments[segments.length - 1]?.arriving_at || slice.arrival_time || slice.arrivalTime,
+        };
+      });
+      
+      return {
+        ...currentItem,
+        slices: processedSlices,
+        isRoundTrip: processedSlices.length > 1,
+        totalAmount: wakanowData.totalAmount || currentItem.totalAmount || 0,
+        basePrice: wakanowData.basePrice || currentItem.basePrice || 0,
+        markupAmount: wakanowData.markupAmount || currentItem.markupAmount || 0,
+        markupPercentage: wakanowData.markupPercentage || currentItem.markupPercentage || 10,
+        serviceFee: wakanowData.serviceFee || currentItem.serviceFee || 0,
+        serviceFeePercentage: wakanowData.serviceFeePercentage || currentItem.serviceFeePercentage || 5,
+        taxes: wakanowData.taxes || currentItem.taxes || 0,
+        taxPercentage: wakanowData.taxPercentage || currentItem.taxPercentage || 15,
+        currency: wakanowData.currency || currentItem.currency || 'NGN',
+        priceBreakdown: wakanowData.priceBreakdown || currentItem.priceBreakdown || undefined,
+        flight_summary: flightSummary || currentItem.flight_summary,
+        isRefundable: flightSummary?.isRefundable || currentItem.isRefundable || false,
+        fare_rules: wakanowData.fare_rules || currentItem.fare_rules || [],
+        penalty_rules: wakanowData.penalty_rules || currentItem.penalty_rules || [],
+        terms_and_conditions: wakanowData.terms_and_conditions || currentItem.terms_and_conditions || null,
+        bookingId: wakanowData.booking_id || currentItem.bookingId || '',
+        // ✅ ✅ ✅ PRESERVE CUSTOM MESSAGES
+        custom_messages: formattedCustomMessages.length > 0 ? formattedCustomMessages : (currentItem as any).custom_messages || [],
+        freeBaggage: processedSlices[0]?.segments?.[0]?.freeBaggage || 
+                     processedSlices[0]?.freeBaggage ||
+                     currentItem.freeBaggage ||
+                     null,
+      };
+    }
+  }
+  
+  // ✅ SECOND: If we have already enriched data (from page), use it directly
+  if (currentItem.fare_rules?.length > 0 || currentItem.penalty_rules?.length > 0 || currentItem.isRefundable) {
+    console.log('📦 Using already enriched Wakanow data from props');
+    
+    const slices = currentItem.slices || [];
+    const processedSlices = slices.map((slice: any) => {
+      const segments = (slice.segments || []).map((segment: any) => ({
+        departing_at: segment.departing_at || segment.startTime || segment.departureTime || '',
+        arriving_at: segment.arriving_at || segment.endTime || segment.arrivalTime || '',
+        duration: segment.duration || slice.duration || '',
+        origin: segment.origin || { iata_code: '', name: '', city_name: '' },
+        destination: segment.destination || { iata_code: '', name: '', city_name: '' },
+        operating_carrier: segment.operating_carrier || { name: '', iata_code: '' },
+        marketing_carrier_flight_number: segment.marketing_carrier_flight_number || segment.flightNumber || '',
+        freeBaggage: segment.freeBaggage || currentItem.freeBaggage || null,
+      }));
+      
+      return {
+        ...slice,
+        segments: segments,
+        duration: slice.duration || '',
+        origin: segments[0]?.origin || slice.origin,
+        destination: segments[segments.length - 1]?.destination || slice.destination,
+        departure_time: segments[0]?.departing_at || slice.departure_time || slice.departureTime,
+        arrival_time: segments[segments.length - 1]?.arriving_at || slice.arrival_time || slice.arrivalTime,
+      };
+    });
+    
+    return {
+      ...currentItem,
+      slices: processedSlices.length > 0 ? processedSlices : currentItem.slices,
+      isRoundTrip: (processedSlices.length > 1) || currentItem.isRoundTrip || false,
+      freeBaggage: currentItem.freeBaggage || null,
+      // ✅ Preserve custom_messages
+      custom_messages: (currentItem as any).custom_messages || [],
+    };
+  }
+  
   // Handle Wakanow flights
-  if (item.isWakanow) {
-    const wakanowItem = item as any;
+  if (currentItem.isWakanow) {
+    const wakanowItem = currentItem as any;
     
     // If slices exist, transform them to ensure proper structure
     if (wakanowItem.slices && wakanowItem.slices.length > 0) {
       console.log('📦 Processing existing Wakanow slices:', wakanowItem.slices.length);
       
-      // Transform each slice to ensure segments have proper structure
       const transformedSlices = wakanowItem.slices.map((slice: any, sliceIndex: number) => {
         const segments = (slice.segments || []).map((segment: any) => {
-          // Extract data from segment with fallbacks to slice level
           const departingAt = segment.departing_at || segment.departureTime || segment.start_time || slice.departure_time;
           const arrivingAt = segment.arriving_at || segment.arrivalTime || segment.end_time || slice.arrival_time;
           
@@ -188,6 +398,7 @@ const transformedItem = useMemo(() => {
               iata_code: airlineCode,
             },
             marketing_carrier_flight_number: flightNum,
+            freeBaggage: segment.freeBaggage || slice.freeBaggage || wakanowItem.freeBaggage,
           };
         });
         
@@ -210,9 +421,11 @@ const transformedItem = useMemo(() => {
       });
       
       return {
-        ...item,
+        ...currentItem,
         slices: transformedSlices,
         isRoundTrip: transformedSlices.length > 1,
+        // ✅ Preserve custom_messages
+        custom_messages: (currentItem as any).custom_messages || [],
       };
     }
     
@@ -242,6 +455,7 @@ const transformedItem = useMemo(() => {
         iata_code: wakanowItem.airlineCode,
       },
       marketing_carrier_flight_number: wakanowItem.flightNumber,
+      freeBaggage: wakanowItem.freeBaggage,
     };
     
     const outboundSlice = {
@@ -255,7 +469,6 @@ const transformedItem = useMemo(() => {
     
     const slices = [outboundSlice];
     
-    // Add return slice for round trip
     if (wakanowItem.isRoundTrip || wakanowItem.returnFlight) {
       const returnFlight = wakanowItem.returnFlight;
       const returnDepartureTime = returnFlight?.departureTime;
@@ -281,6 +494,7 @@ const transformedItem = useMemo(() => {
           iata_code: returnFlight?.airlineCode,
         },
         marketing_carrier_flight_number: returnFlight?.flightNumber,
+        freeBaggage: returnFlight?.freeBaggage || wakanowItem.freeBaggage,
       };
       
       const returnSlice = {
@@ -302,15 +516,17 @@ const transformedItem = useMemo(() => {
     });
     
     return {
-      ...item,
+      ...currentItem,
       slices: slices,
       isRoundTrip: slices.length > 1,
+      // ✅ Preserve custom_messages
+      custom_messages: (currentItem as any).custom_messages || [],
     };
   }
   
   // Handle Duffel flights - ensure return direction is correct
-  if (item.provider === 'duffel' || item.slices) {
-    let slices = [...(item.slices || [])];
+  if (currentItem.provider === 'duffel' || currentItem.slices) {
+    let slices = [...(currentItem.slices || [])];
     
     // Fix return direction for Duffel if needed
     if (slices.length > 1) {
@@ -319,7 +535,6 @@ const transformedItem = useMemo(() => {
       const returnOrigin = slices[1]?.segments?.[0]?.origin?.iata_code;
       const returnDest = slices[1]?.segments?.[slices[1].segments.length - 1]?.destination?.iata_code;
       
-      // Check if return is going the wrong way (same as outbound)
       if (returnOrigin === outboundOrigin && returnDest === outboundDest) {
         console.log('🔄 Fixing Duffel return journey direction - swapping');
         const returnSegments = slices[1].segments.map((seg: any) => {
@@ -344,85 +559,22 @@ const transformedItem = useMemo(() => {
     }
     
     return {
-      ...item,
+      ...currentItem,
       slices: slices,
       isRoundTrip: slices.length > 1,
+      // ✅ Preserve custom_messages for Duffel too
+      custom_messages: (currentItem as any).custom_messages || [],
     };
   }
   
-  return item;
-}, [item]);
-
-  if (!transformedItem) {
-    return (
-      <div className="bg-[#f8fbfe] min-h-screen py-12">
-        <div className="max-w-4xl mx-auto px-4 text-center">
-          <div className="bg-white rounded-[32px] p-12 shadow-xl border border-gray-100">
-            <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-8 h-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-black text-gray-900 uppercase mb-2">Flight Details Unavailable</h3>
-            <p className="text-sm text-gray-500 font-medium mb-6">Unable to load flight details. Please go back and try again.</p>
-            <button onClick={onBack} className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition">
-              Back to Results
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const isRoundTrip = transformedItem.slices && transformedItem.slices.length > 1;
-  const outboundSlice = transformedItem.slices?.[0];
-  const returnSlice = transformedItem.slices?.[1];
-
-  const formatTime = (dateTime?: string) => {
-    if (!dateTime) return '--:--';
-    try {
-      const date = new Date(dateTime);
-      if (isNaN(date.getTime())) return '--:--';
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    } catch {
-      return '--:--';
-    }
+  // ✅ FINAL: Return currentItem with custom_messages preserved
+  return {
+    ...currentItem,
+    custom_messages: (currentItem as any).custom_messages || [],
   };
+}, [currentItem]);
 
-  const formatDate = (dateTime?: string) => {
-    if (!dateTime) return '';
-    try {
-      const date = new Date(dateTime);
-      if (isNaN(date.getTime())) return '';
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-    } catch {
-      return '';
-    }
-  };
-
-  const calculateDuration = (duration?: any) => {
-    if (!duration) return '';
-    let durationStr = String(duration);
-    
-    if (durationStr.includes(':')) {
-      const parts = durationStr.split(':');
-      if (parts.length >= 2) {
-        const hours = parseInt(parts[0]);
-        const minutes = parseInt(parts[1]);
-        if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
-        if (hours > 0) return `${hours}h`;
-        if (minutes > 0) return `${minutes}m`;
-      }
-      return durationStr;
-    }
-    
-    const hours = durationStr.match(/(\d+)H/);
-    const minutes = durationStr.match(/(\d+)M/);
-    return `${hours ? hours[1] + 'h ' : ''}${minutes ? minutes[1] + 'm' : ''}`.trim() || durationStr;
-  };
-
- 
-
+// ✅ UPDATED: Handle book click - use cached data if available
 const handleBookClick = async () => {
   try {
     let finalItem = { ...transformedItem };
@@ -432,9 +584,53 @@ const handleBookClick = async () => {
       provider: transformedItem.provider,
       isWakanow: transformedItem.isWakanow,
       hasSelectData: !!(transformedItem as any).selectData,
+      hasWakanowData: !!transformedItem._wakanowData,
+      hasFareRules: transformedItem.fare_rules?.length > 0,
+      customMessagesCount: (transformedItem as any).custom_messages?.length || 0,
     });
     
+    // ✅ If we already have Wakanow data, use it - NO API CALL
+    if (transformedItem.isWakanow && transformedItem._wakanowData) {
+      console.log('✅ Using cached Wakanow data - skipping API call!');
+      
+      // ✅ PRESERVE custom_messages from transformedItem
+      const completeBooking = {
+        ...transformedItem,
+        id: transformedItem.id || `flight-${Date.now()}`,
+        type: 'flight',
+        status: 'Confirmed',
+        // ✅ Ensure custom_messages is preserved
+        custom_messages: (transformedItem as any).custom_messages || [],
+      };
+      
+      selectItem(completeBooking);
+      sessionStorage.setItem('selectedBooking', JSON.stringify(completeBooking));
+      router.push('/booking/review');
+      return;
+    }
+    
+    // ✅ If we have fare_rules but no _wakanowData, still use it
+    if (transformedItem.isWakanow && transformedItem.fare_rules?.length > 0) {
+      console.log('✅ Using cached fare rules - skipping API call!');
+      
+      const completeBooking = {
+        ...transformedItem,
+        id: transformedItem.id || `flight-${Date.now()}`,
+        type: 'flight',
+        status: 'Confirmed',
+        // ✅ Ensure custom_messages is preserved
+        custom_messages: (transformedItem as any).custom_messages || [],
+      };
+      
+      selectItem(completeBooking);
+      sessionStorage.setItem('selectedBooking', JSON.stringify(completeBooking));
+      router.push('/booking/review');
+      return;
+    }
+    
+    // ✅ Only call API if we don't have any cached data (should rarely happen)
     if (transformedItem.isWakanow && (transformedItem as any).selectData) {
+      console.log('⚠️ No cached data, calling API (should not happen)');
       setIsConverting(true);
       
       const { selectWakanowFlight } = await import('@/lib/wakanow-api');
@@ -443,21 +639,87 @@ const handleBookClick = async () => {
         'NGN'
       );
       
-      // ✅ FIXED: Access data from selectResult.data
       const responseData = selectResult?.data;
       
-      const termsAndConditions = responseData?.terms_and_conditions?.TermsAndConditions || [];
-      
-      finalItem = {
-        ...transformedItem,
-        terms_and_conditions: termsAndConditions.length > 0 ? {
-          TermsAndConditions: termsAndConditions,
-          TermsAndConditionImportantNotice: responseData?.terms_and_conditions?.TermsAndConditionImportantNotice || ''
-        } : null,
-        bookingId: responseData?.booking_id,
-      };
-      
-      console.log('✅ Terms loaded for Wakanow flight:', termsAndConditions.length);
+      if (responseData) {
+        console.log('✅ Received full Wakanow data:', {
+          totalAmount: responseData.totalAmount,
+          basePrice: responseData.basePrice,
+          taxes: responseData.taxes,
+          slices: responseData.flight_summary?.slices?.length,
+          bookingId: responseData.booking_id,
+          customMessagesCount: responseData.custom_messages?.length || 0,
+        });
+        
+        const flightSummary = responseData.flight_summary;
+        
+        // ✅ Format custom_messages
+        const rawMessages = responseData.custom_messages || [];
+        let formattedCustomMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
+
+        if (Array.isArray(rawMessages) && rawMessages.length > 0) {
+          if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
+            formattedCustomMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
+          } else if (typeof rawMessages[0] === 'string') {
+            formattedCustomMessages = rawMessages.map((msg: string) => ({
+              Title: 'Message',
+              Message: msg,
+              SeverityLevel: 'Medium' as const,
+            }));
+          }
+        }
+        
+        // ✅ If we already have custom_messages from view details, merge them
+        const existingCustomMessages = (transformedItem as any).custom_messages || [];
+        const finalCustomMessages = formattedCustomMessages.length > 0 ? formattedCustomMessages : existingCustomMessages;
+        
+        finalItem = {
+          ...transformedItem,
+          
+          // ✅ Pricing data from API
+          totalAmount: responseData.totalAmount,
+          basePrice: responseData.basePrice,
+          markupAmount: responseData.markupAmount,
+          markupPercentage: responseData.markupPercentage,
+          serviceFee: responseData.serviceFee,
+          serviceFeePercentage: responseData.serviceFeePercentage,
+          taxes: responseData.taxes,
+          taxPercentage: responseData.taxPercentage,
+          currency: responseData.currency,
+          priceBreakdown: responseData.priceBreakdown,
+          
+          // ✅ Flight summary from API
+          slices: flightSummary?.slices || transformedItem.slices,
+          isRoundTrip: flightSummary?.slices?.length > 1,
+          flight_summary: flightSummary,
+          
+          // ✅ Terms, rules, booking info
+          terms_and_conditions: responseData.terms_and_conditions?.TermsAndConditions?.length > 0 ? {
+            TermsAndConditions: responseData.terms_and_conditions.TermsAndConditions,
+            TermsAndConditionImportantNotice: responseData.terms_and_conditions.TermsAndConditionImportantNotice || ''
+          } : null,
+          fare_rules: responseData.fare_rules || [],
+          penalty_rules: responseData.penalty_rules || [],
+          bookingId: responseData.booking_id,
+          isRefundable: flightSummary?.isRefundable || false,
+          is_price_matched: responseData.is_price_matched,
+          is_passport_required: responseData.is_passport_required,
+          // ✅ ✅ ✅ PRESERVE CUSTOM MESSAGES
+          custom_messages: finalCustomMessages,
+          message: responseData.message,
+          
+          // ✅ Store raw data
+          _wakanowData: responseData,
+        };
+        
+        console.log('✅ Updated finalItem with Wakanow data:', {
+          totalAmount: finalItem.totalAmount,
+          currency: finalItem.currency,
+          slicesCount: finalItem.slices?.length,
+          bookingId: finalItem.bookingId,
+          customMessagesCount: finalItem.custom_messages?.length || 0,
+        });
+      }
     }
     
     const completeBooking = {
@@ -532,6 +794,15 @@ const handleBookClick = async () => {
             Flight {segment.marketing_carrier_flight_number || '--'} • {segment.operating_carrier?.name || ''}
           </p>
         </div>
+        {/* ✅ Show baggage info if available */}
+        {segment.freeBaggage && segment.freeBaggage.BagCount > 0 && (
+          <div className="mt-1 text-center">
+            <span className="text-[9px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+              ✈️ {segment.freeBaggage.BagCount} bag{segment.freeBaggage.BagCount > 1 ? 's' : ''} included
+              {segment.freeBaggage.Weight > 0 && ` (${segment.freeBaggage.Weight} ${segment.freeBaggage.WeightUnit || 'kg'})`}
+            </span>
+          </div>
+        )}
       </div>
     );
   };
@@ -644,15 +915,6 @@ const handleBookClick = async () => {
     );
   };
 
-  // Get airline info
-  const firstSegment = outboundSlice?.segments?.[0] || {};
-  const airlineName = transformedItem.airlineName || firstSegment?.operating_carrier?.name || transformedItem.provider || 'Airline';
-  const airlineCode = transformedItem.airlineCode || firstSegment?.operating_carrier?.iata_code || '';
-  const airlineLogo = transformedItem.airlineLogo;
-  const flightNumber = transformedItem.flightNumber || firstSegment?.marketing_carrier_flight_number || '';
-  const stopCount = outboundSlice?.segments?.length ? outboundSlice.segments.length - 1 : 0;
-  const stopText = stopCount === 0 ? 'Direct' : `${stopCount} stop${stopCount > 1 ? 's' : ''}`;
-
   // Show loading state while converting
   if (isConverting || isLoadingRates) {
     return (
@@ -667,6 +929,71 @@ const handleBookClick = async () => {
       </div>
     );
   }
+
+  if (!transformedItem) {
+    return (
+      <div className="bg-[#f8fbfe] min-h-screen py-12">
+        <div className="max-w-4xl mx-auto px-4 text-center">
+          <div className="bg-white rounded-[32px] p-12 shadow-xl border border-gray-100">
+            <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-8 h-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-black text-gray-900 uppercase mb-2">Flight Details Unavailable</h3>
+            <p className="text-sm text-gray-500 font-medium mb-6">Unable to load flight details. Please go back and try again.</p>
+            <button onClick={onBack} className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition">
+              Back to Results
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ DEFINE isRoundTrip, outboundSlice, and returnSlice HERE (before using them)
+  const isRoundTrip = transformedItem.slices && transformedItem.slices.length > 1;
+  const outboundSlice = transformedItem.slices?.[0];
+  const returnSlice = transformedItem.slices?.[1];
+
+  // ✅ NOW define all the variables that depend on outboundSlice
+  const firstSegment = outboundSlice?.segments?.[0] || {};
+  const airlineName = transformedItem.airlineName || firstSegment?.operating_carrier?.name || transformedItem.provider || 'Airline';
+  const airlineCode = transformedItem.airlineCode || firstSegment?.operating_carrier?.iata_code || '';
+  const airlineLogo = transformedItem.airlineLogo;
+  const flightNumber = transformedItem.flightNumber || firstSegment?.marketing_carrier_flight_number || '';
+  const stopCount = outboundSlice?.segments?.length ? outboundSlice.segments.length - 1 : 0;
+  const stopText = stopCount === 0 ? 'Direct' : `${stopCount} stop${stopCount > 1 ? 's' : ''}`;
+  
+  // ✅ Get baggage info from the first segment or from transformedItem
+  const baggageInfo = outboundSlice?.segments?.[0]?.freeBaggage || transformedItem.freeBaggage;
+  
+  // ✅ Get refundable status
+  const isRefundable = transformedItem.isRefundable || transformedItem.flight_summary?.isRefundable || false;
+  
+  // ✅ Get provider badge
+  const providerBadge = transformedItem.isWakanow ? 'Wakanow' : '';
+
+  // ✅ Get fare rules and penalty rules
+  const fareRules = transformedItem.fare_rules || [];
+  const penaltyRules = transformedItem.penalty_rules || [];
+
+  // Log what we're showing
+  console.log('📊 FlightDetails rendering with:', {
+    hasBaggage: !!baggageInfo,
+    baggageCount: baggageInfo?.BagCount || 0,
+    isRefundable,
+    fareRulesCount: fareRules.length,
+    penaltyRulesCount: penaltyRules.length,
+    providerBadge,
+    // ✅ Log slice data for debugging
+    slicesLength: transformedItem.slices?.length || 0,
+    outboundOrigin: outboundSlice?.segments?.[0]?.origin?.iata_code,
+    outboundDest: outboundSlice?.segments?.[0]?.destination?.iata_code,
+    outboundDeparture: outboundSlice?.segments?.[0]?.departing_at,
+    outboundArrival: outboundSlice?.segments?.[0]?.arriving_at,
+    hasReturn: !!returnSlice,
+  });
 
   return (
     <div className="bg-[#f8fbfe] min-h-screen py-12">
@@ -701,10 +1028,30 @@ const handleBookClick = async () => {
                 </div>
                 <div>
                   <h1 className="text-2xl font-black text-gray-900 tracking-tight">{airlineName}</h1>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{flightNumber || 'Flight'}</p>
                     <span className="w-1 h-1 rounded-full bg-gray-300"></span>
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{stopText}</p>
+                    
+                    {/* ✅ Show provider badge for Wakanow */}
+                    {providerBadge && (
+                      <>
+                        <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                        <span className="text-[9px] font-bold text-[#33a8da] bg-[#33a8da]/10 px-2 py-0.5 rounded-full">
+                          {providerBadge}
+                        </span>
+                      </>
+                    )}
+                    
+                    {/* ✅ Show refundable badge */}
+                    {isRefundable && (
+                      <>
+                        <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                        <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                          ✅ Refundable
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -713,6 +1060,19 @@ const handleBookClick = async () => {
                 <p className="text-[10px] font-bold text-gray-400 uppercase">Per Passenger</p>
               </div>
             </div>
+
+            {/* ✅ Baggage Info - Displayed prominently */}
+            {baggageInfo && baggageInfo.BagCount > 0 && (
+              <div className="mb-4 p-3 bg-green-50 rounded-xl border border-green-100 flex items-center gap-3">
+                <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+                <span className="text-sm font-bold text-gray-700">
+                  Baggage Allowance: <span className="text-green-700">{baggageInfo.BagCount} bag{baggageInfo.BagCount > 1 ? 's' : ''} included</span>
+                  {baggageInfo.Weight > 0 && ` (${baggageInfo.Weight} ${baggageInfo.WeightUnit || 'kg'} per bag)`}
+                </span>
+              </div>
+            )}
 
             {/* Flight Summary */}
             {isRoundTrip && outboundSlice && returnSlice ? (
@@ -782,6 +1142,40 @@ const handleBookClick = async () => {
               {renderJourney(outboundSlice, 'Outbound Journey', formatDate(outboundSlice?.segments?.[0]?.departing_at || transformedItem.departureTime))}
               {isRoundTrip && returnSlice && renderJourney(returnSlice, 'Return Journey', formatDate(returnSlice.segments?.[0]?.departing_at))}
             </div>
+
+            {/* ✅ Fare Rules Section - Shows all fare rules from Wakanow */}
+            {fareRules.length > 0 && (
+              <div className="pt-6 border-t border-gray-100">
+                <h4 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-3">Fare Rules</h4>
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <ul className="space-y-1.5">
+                    {fareRules.map((rule: string, idx: number) => (
+                      <li key={idx} className="text-xs text-gray-600 flex items-start gap-2">
+                        <span className="text-[#33a8da] mt-0.5">•</span>
+                        <span>{rule}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* ✅ Penalty Rules Section - Shows all penalty rules from Wakanow */}
+            {penaltyRules.length > 0 && (
+              <div className="pt-2">
+                <h4 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-3">Penalty Rules</h4>
+                <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                  <ul className="space-y-1.5">
+                    {penaltyRules.map((rule: string, idx: number) => (
+                      <li key={idx} className="text-xs text-amber-700 flex items-start gap-2">
+                        <span className="text-amber-500 mt-0.5">⚠</span>
+                        <span>{rule}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
 
             {/* Checkout Button */}
             <div className="pt-8 border-t border-gray-50 flex flex-col md:flex-row items-center justify-between gap-8">

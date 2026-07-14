@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { selectWakanowFlight } from "@/lib/wakanow-api";
 import toast from "react-hot-toast";
 
-// Extend the SearchResult type locally to include pricing fields
+
 interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
   amenities?: string[];
   price?: string | number | {
@@ -362,7 +362,6 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
   serviceFeePercentage?: number;
   taxes?: string;
   taxPercentage?: number;
-  // ✅ DUFFEL: Add offerData fields
   offerData?: any;
   [key: string]: any;
 }
@@ -377,7 +376,6 @@ interface SearchResultsProps {
   onNewSearch?: (searchData: any) => void;
 }
 
-// Advertisement Data - Only for flights
 const advertisements = [
   {
     id: 1,
@@ -431,8 +429,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
   const compactTab = searchType === 'car-rentals' ? 'cars' : searchType;
   const [isSearchBoxLoading, setIsSearchBoxLoading] = useState(false);
-
-  // Flight-specific states
   const [selectedStopFilter, setSelectedStopFilter] = useState<string>("all");
   const [selectedAirlineFilters, setSelectedAirlineFilters] = useState<Set<string>>(new Set());
   const [selectedOutboundDepartureTimeFilter, setSelectedOutboundDepartureTimeFilter] = useState<string>("all");
@@ -440,34 +436,30 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const [selectedReturnDepartureTimeFilter, setSelectedReturnDepartureTimeFilter] = useState<string>("all");
   const [selectedReturnArrivalTimeFilter, setSelectedReturnArrivalTimeFilter] = useState<string>("all");
   const [sortOption, setSortOption] = useState<string>("recommended");
-
-  // Shared States for Hotels and Cars (UNCHANGED)
   const [priceRange, setPriceRange] = useState<number>(5000000);
   const [sortBy, setSortBy] = useState<"match" | "price" | "rating">("match");
   const [visibleCount, setVisibleCount] = useState(6);
   const [flightVisibleCount, setFlightVisibleCount] = useState(15);
   const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
 
-  // Hotel Filters (UNCHANGED)
+ 
   const [starRatings, setStarRatings] = useState<number[]>([]);
   const [amenitiesFilter, setAmenitiesFilter] = useState<string[]>([]);
 
-  // Car Rental Filters (UNCHANGED)
+  
   const [carTypeFilter, setCarTypeFilter] = useState<string[]>([]);
   const [transmissionFilter, setTransmissionFilter] = useState<string[]>([]);
   const [seatCapacityFilter, setSeatCapacityFilter] = useState<number[]>([]);
   const [providerFilter, setProviderFilter] = useState<string[]>([]);
 
-  // Store converted prices
+
   const [flightPrices, setFlightPrices] = useState<Record<string, string>>({});
   const [hotelCarPrices, setHotelCarPrices] = useState<Record<string, string>>({});
   const [processedFlights, setProcessedFlights] = useState<ExtendedSearchResult[]>([]);
 
-  // ==================== Track which flight is being booked ====================
+ 
   const [bookingFlightId, setBookingFlightId] = useState<string | null>(null);
-  // ==================== END NEW ====================
-
-  // Helper function to handle ad click navigation
+  
   const handleAdClick = (ad: typeof advertisements[0]) => {
     if (ad.type === "hotels") {
       router.push(`${ad.link}?type=hotels&destination=${searchParams?.destination || 'London'}&checkIn=${searchParams?.departureDate || ''}&checkOut=${searchParams?.returnDate || ''}&guests=2`);
@@ -480,7 +472,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     }
   };
 
-  // Normalize results to an array for safe access (fixing TS errors)
+
   const resultsArray = useMemo(() => {
     if (Array.isArray(results)) return results;
     if (results && typeof results === 'object' && 'data' in results && Array.isArray(results.data)) {
@@ -489,7 +481,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return [];
   }, [results]);
 
-  // Debug log
   useEffect(() => {
     console.log('🔍 SearchResults received:', {
       resultsType: typeof results,
@@ -506,7 +497,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     console.log('🔄 New search from compact box:', searchData);
     setIsSearchBoxLoading(true);
     
-    // Build new URL with search parameters
     const params = new URLSearchParams();
     
     if (searchData.type === 'flights') {
@@ -536,11 +526,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       params.set('dropoffDate', searchData.dropoffDateTime.split('T')[0]);
     }
     
-    // Update URL without full page navigation
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.pushState({}, '', newUrl);
     
-    // Call the parent's onNewSearch to trigger the actual search
     if (onNewSearch) {
       onNewSearch(searchData);
     }
@@ -592,7 +580,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
   const airlinesMap = useMemo(() => createAirlinesMap(airlines), [airlines]);
 
-  // Helper Functions with Currency Support
   const formatDuration = (duration?: string): string => {
     if (!duration) return '';
 
@@ -680,7 +667,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     }
   };
 
-  // ==================== Process flight offers - WAKANOW UNCHANGED ====================
   useEffect(() => {
     const processFlights = async () => {
       if (searchType !== 'flights') return;
@@ -1080,8 +1066,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
     convertFlightPrices();
   }, [processedFlights, currency.code, formatPriceWithCurrency, currency.symbol]);
-
-  // Get stop counts and cheapest prices for outbound (UNCHANGED)
   const outboundStopStats = useMemo(() => {
     const stops = {
       'Non stop': { count: 0, cheapestPrice: Infinity, cheapestFlight: null as ExtendedSearchResult | null },
@@ -1107,8 +1091,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
     return stops;
   }, [processedFlights]);
-
-  // Get stop counts and cheapest prices for return (UNCHANGED)
   const returnStopStats = useMemo(() => {
     const stops = {
       'Non stop': { count: 0, cheapestPrice: Infinity, cheapestFlight: null as ExtendedSearchResult | null },
@@ -1136,8 +1118,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
     return stops;
   }, [processedFlights]);
-
-  // Get time counts (UNCHANGED)
   const outboundDepartureTimeCounts = useMemo(() => {
     const counts = { morning: 0, afternoon: 0, evening: 0 };
     processedFlights.forEach(flight => {
@@ -1185,8 +1165,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     });
     return counts;
   }, [processedFlights]);
-
-  // Get airline list for filters (UNCHANGED)
   const airlineList = useMemo(() => {
     const airlinesMap = new Map<string, number>();
     processedFlights.forEach(flight => {
@@ -1195,8 +1173,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     });
     return Array.from(airlinesMap.entries()).map(([name, count]) => ({ name, count }));
   }, [processedFlights]);
-
-  // Filter and sort flights (UNCHANGED)
   const filteredAndSortedFlights = useMemo(() => {
     let filtered = processedFlights;
 
@@ -1261,7 +1237,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return filtered;
   }, [processedFlights, selectedAirlineFilters, selectedStopFilter, selectedOutboundDepartureTimeFilter, selectedOutboundArrivalTimeFilter, selectedReturnDepartureTimeFilter, selectedReturnArrivalTimeFilter, sortOption]);
 
-  // Get cheapest and fastest flights (UNCHANGED)
   const cheapestFlight = useMemo(() => {
     if (filteredAndSortedFlights.length === 0) return null;
     return filteredAndSortedFlights.reduce((min, flight) =>
@@ -1291,6 +1266,35 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   };
 
   const getBaggageText = (flight: ExtendedSearchResult): string => {
+ 
+    if (flight.isWakanow) {
+      if (flight.freeBaggage) {
+        const baggage = flight.freeBaggage;
+        if (baggage.BagCount > 0) {
+          return `${baggage.BagCount} checked bag${baggage.BagCount > 1 ? 's' : ''}`;
+        }
+      }
+      if (flight._wakanowData?.flight_summary?.slices?.[0]?.freeBaggage) {
+        const baggage = flight._wakanowData.flight_summary.slices[0].freeBaggage;
+        if (baggage.BagCount > 0) {
+          return `${baggage.BagCount} checked bag${baggage.BagCount > 1 ? 's' : ''}`;
+        }
+      }
+      if (flight.baggage) {
+        try {
+          const bags = JSON.parse(flight.baggage);
+          const checkedBags = bags.find((b: any) => b.type === 'checked');
+          if (checkedBags) {
+            return `${checkedBags.quantity} checked bag${checkedBags.quantity > 1 ? 's' : ''}`;
+          }
+        } catch (e) {
+          return flight.baggage || '';
+        }
+      }
+      return '';
+    }
+    
+  
     if (flight.baggage) {
       try {
         const bags = JSON.parse(flight.baggage);
@@ -1305,7 +1309,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return '';
   };
 
-  // Format route title (UNCHANGED)
   const routeTitle = useMemo(() => {
     const origin = searchParams?.origin || '';
     const destination = searchParams?.destination || '';
@@ -1344,7 +1347,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return 'Flights';
   }, [searchParams, processedFlights]);
 
-  // Get origin and destination for display (UNCHANGED)
+  
   const origin = useMemo(() => {
     return searchParams?.origin || (processedFlights[0]?.departureCity) || 'Lagos';
   }, [searchParams, processedFlights]);
@@ -1353,9 +1356,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return searchParams?.destination || (processedFlights[0]?.arrivalCity) || 'London';
   }, [searchParams, processedFlights]);
 
-  // ============================================================
-  // ✅ HOTELS AND CARS (UNCHANGED - AMADEUS)
-  // ============================================================
   const hotelAndCarResults = useMemo(() => {
     if (searchType === 'flights') return [];
 
@@ -1420,7 +1420,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     });
   }, [results, searchType]);
 
-  // Convert hotel and car prices (UNCHANGED)
   useEffect(() => {
     const convertHotelCarPrices = async () => {
       if (!formatPriceWithCurrency || hotelAndCarResults.length === 0) return;
@@ -1451,7 +1450,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     convertHotelCarPrices();
   }, [hotelAndCarResults, currency.code, formatPriceWithCurrency, currency.symbol]);
 
-  // Filter hotel and car results (UNCHANGED)
+
   const filteredHotelAndCarResults = useMemo(() => {
     let filtered = [...hotelAndCarResults];
 
@@ -1499,7 +1498,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return filtered;
   }, [hotelAndCarResults, searchType, priceRange, sortBy, starRatings, amenitiesFilter, carTypeFilter, transmissionFilter, seatCapacityFilter, providerFilter]);
 
-  // Unique values for filters (UNCHANGED)
+
   const uniqueCarTypes = useMemo(() => {
     const types = hotelAndCarResults
       .filter(r => r.type === 'car-rentals')
@@ -1557,148 +1556,151 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       <span className={`text-xs font-bold ${isChecked ? 'text-gray-900' : 'text-gray-500 group-hover:text-gray-700'}`}>{label}</span>
     </label>
   );
-const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
-  if (flight._isBooking) return;
-  
-  // ✅ Validate selectData
-  if (!flight.selectData) {
-    toast.error('Missing flight selection data. Please search again.', { id: 'flight-select' });
-    return;
-  }
-  
-  if (flight.selectData.length < 10) {
-    toast.error('Invalid flight selection. Please search again.', { id: 'flight-select' });
-    return;
-  }
-  
-  // ✅ Only accept valid Base64 encoded selectData
-  if (!flight.selectData.startsWith('WAAAAB')) {
-    console.error('❌ Invalid selectData format:', flight.selectData.substring(0, 30));
-    toast.error('Invalid flight selection. Please search again.', { id: 'flight-select' });
-    return;
-  }
-  
-  console.log('🔍 Booking flight with valid selectData:', {
-    id: flight.id,
-    selectDataLength: flight.selectData.length,
-    preview: flight.selectData.substring(0, 30) + '...'
-  });
-  
-  flight._isBooking = true;
-  setBookingFlightId(flight.id);
-  
-  try {
-    toast.loading('Confirming flight pricing...', { id: 'flight-select' });
+  const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
+    if (flight._isBooking) return;
     
-    // ✅ Single attempt - no retry loop
-    const selectResult = await selectWakanowFlight(flight.selectData, 'NGN');
-    
-    const responseData = selectResult?.data;
-    
-    if (!responseData?.booking_id || !responseData?.select_data) {
-      toast.error('Flight no longer available. Please search again.', { id: 'flight-select' });
-      flight._isBooking = false;
-      setBookingFlightId(null);
+    // ✅ Validate selectData exists
+    if (!flight.selectData) {
+      toast.error('Missing flight selection data. Please search again.', { id: 'flight-select' });
       return;
     }
     
-    console.log('💰 Real flight data from backend:', {
-      bookingId: responseData.booking_id,
-      totalAmount: responseData.priceBreakdown?.totalAmount,
-      basePrice: responseData.priceBreakdown?.basePrice,
-      markupAmount: responseData.priceBreakdown?.markupAmount,
-      serviceFee: responseData.priceBreakdown?.serviceFee,
+    console.log('📦 Book Now - Flight data:', {
+      id: flight.id,
+      hasWakanowData: !!flight._wakanowData,
+      hasPriceBreakdown: !!flight.priceBreakdown,
+      hasFareRules: flight.fare_rules?.length > 0,
     });
     
-    // ✅ Format custom_messages
-    const rawMessages = responseData?.custom_messages || [];
-    let formattedCustomMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
-
-    if (Array.isArray(rawMessages) && rawMessages.length > 0) {
-      if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
-        formattedCustomMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
-      } else if (typeof rawMessages[0] === 'string') {
-        formattedCustomMessages = rawMessages.map((msg: string) => ({
-          Title: 'Message',
-          Message: msg,
-          SeverityLevel: 'Medium' as const,
-        }));
-      }
+    flight._isBooking = true;
+    setBookingFlightId(flight.id);
+    
+    try {
+      // ✅ NO API CALL - Just use whatever data we have
+      // The review page will fetch price breakdown if needed
+      
+      const bookingData: ExtendedSearchResult = {
+        ...flight,
+        _isBooking: false,
+      };
+      
+      toast.success('Proceeding to booking!', { id: 'flight-select' });
+      
+      // ✅ Navigate to Review page
+      onSelect?.(bookingData);
+      
+    } catch (error: any) {
+      console.error('Failed to book flight:', error);
+      toast.error('Please try again.', { id: 'flight-select' });
+      flight._isBooking = false;
+      setBookingFlightId(null);
     }
+  }, [onSelect]);
+
+  const handleViewDetails = useCallback(async (flight: ExtendedSearchResult, e: React.MouseEvent) => {
+    e.stopPropagation();
     
-    const realFlightData: ExtendedSearchResult = {
-      ...flight,
-      bookingId: responseData.booking_id,
-      selectData: responseData.select_data,
-      priceBreakdown: responseData.priceBreakdown || undefined,
-      basePrice: responseData.priceBreakdown?.basePrice || 0,
-      markupAmount: responseData.priceBreakdown?.markupAmount || 0,
-      serviceFee: responseData.priceBreakdown?.serviceFee || 0,
-      totalAmount: responseData.priceBreakdown?.totalAmount || 0,
-      currency: responseData.priceBreakdown?.currency || 'NGN',
-      final_amount: responseData.priceBreakdown?.totalAmount?.toString() || '0',
-      final_price: responseData.priceBreakdown?.totalAmount?.toString() || '0',
-      markupPercentage: responseData.priceBreakdown?.markupPercentage || 10,
-      serviceFeePercentage: responseData.priceBreakdown?.serviceFeePercentage || 5,
-      taxes: responseData.priceBreakdown?.taxes?.toString() || '0',
-      taxPercentage: responseData.priceBreakdown?.taxPercentage || 15,
-      terms_and_conditions: responseData.terms_and_conditions || null,
-      custom_messages: formattedCustomMessages,
-      isWakanow: true,
-      _isRealData: true,
-      _isBooking: false,
-    };
-    
-    // ✅ Update price display
-    if (realFlightData.priceBreakdown) {
-      const realTotal = realFlightData.priceBreakdown.totalAmount;
-      const realCurrency = realFlightData.priceBreakdown.currency || 'NGN';
+    if (flight.isWakanow && flight.selectData) {
+      // ✅ Check if we already have cached data
+      if (flight._wakanowData || flight.fare_rules?.length > 0) {
+        console.log('✅ Already have cached data, navigating directly');
+        sessionStorage.setItem('selectedFlightDetails', JSON.stringify(flight));
+        router.push(`/flights/${encodeURIComponent(flight.id)}`);
+        return;
+      }
+      
       try {
-        const converted = await formatPriceWithCurrency(realTotal, realCurrency);
-        setFlightPrices(prev => ({
-          ...prev,
-          [flight.id]: converted
-        }));
+        toast.loading('Loading flight details...', { id: 'view-details' });
+        
+        // ✅ FETCH ONCE - This is the ONLY place we call the API
+        const { selectWakanowFlight } = await import('@/lib/wakanow-api');
+        const selectResult = await selectWakanowFlight(flight.selectData, 'NGN');
+        const responseData = selectResult?.data;
+        
+        if (responseData) {
+          console.log('✅ Pre-fetched Wakanow data (ONCE)');
+          
+          // ✅ Safely extract price breakdown with fallbacks
+          const priceBreakdown = responseData.priceBreakdown;
+          const basePrice = priceBreakdown?.basePrice || 0;
+          const markupAmount = priceBreakdown?.markupAmount || 0;
+          const markupPercentage = priceBreakdown?.markupPercentage || 10;
+          const serviceFee = priceBreakdown?.serviceFee || 0;
+          const serviceFeePercentage = priceBreakdown?.serviceFeePercentage || 5;
+          const taxes = priceBreakdown?.taxes || 0;
+          const taxPercentage = priceBreakdown?.taxPercentage || 15;
+          const totalAmount = priceBreakdown?.totalAmount || 0;
+          const currency = priceBreakdown?.currency || 'NGN';
+          
+          const enrichedFlight: ExtendedSearchResult = {
+            ...flight,
+            bookingId: responseData.booking_id || flight.id,
+            selectData: responseData.select_data || flight.selectData,
+            slices: responseData.flight_summary?.slices || flight.slices,
+            flight_summary: responseData.flight_summary,
+            freeBaggage: responseData.flight_summary?.slices?.[0]?.freeBaggage || 
+                         responseData.flight_summary?.slices?.[0]?.segments?.[0]?.freeBaggage ||
+                         null,
+            isRefundable: responseData.flight_summary?.isRefundable || false,
+            fare_rules: responseData.fare_rules || [],
+            penalty_rules: responseData.penalty_rules || [],
+            terms_and_conditions: responseData.terms_and_conditions || null,
+            // ✅ Price breakdown - properly typed
+            priceBreakdown: priceBreakdown ? {
+              basePrice: basePrice,
+              markupAmount: markupAmount,
+              markupPercentage: markupPercentage,
+              serviceFee: serviceFee,
+              serviceFeePercentage: serviceFeePercentage,
+              taxes: taxes,
+              taxPercentage: taxPercentage,
+              totalAmount: totalAmount,
+              currency: currency,
+              breakdown: priceBreakdown.breakdown || '',
+            } : undefined,
+            basePrice: basePrice,
+            markupAmount: markupAmount,
+            markupPercentage: markupPercentage,
+            serviceFee: serviceFee,
+            serviceFeePercentage: serviceFeePercentage,
+            taxes: taxes.toString(),
+            taxPercentage: taxPercentage,
+            totalAmount: totalAmount,
+            currency: currency,
+            _wakanowData: responseData,
+            _isRealData: true,
+          };
+          
+          toast.success('Flight details loaded!', { id: 'view-details' });
+          
+          // ✅ Store in sessionStorage
+          sessionStorage.setItem('selectedFlightDetails', JSON.stringify(enrichedFlight));
+          
+          // ✅ Update the flight in the processedFlights array
+          setProcessedFlights(prev => 
+            prev.map(f => f.id === flight.id ? enrichedFlight : f)
+          );
+          
+          // ✅ Navigate to FlightDetails page
+          router.push(`/flights/${encodeURIComponent(flight.id)}`);
+          return;
+        }
       } catch (error) {
-        setFlightPrices(prev => ({
-          ...prev,
-          [flight.id]: `${currency.symbol} ${realTotal.toFixed(2)}`
-        }));
+        console.error('Failed to pre-fetch flight details:', error);
+        toast.error('Could not load full flight details. Showing basic info.', { id: 'view-details' });
       }
     }
     
-    toast.success('Price confirmed!', { id: 'flight-select' });
-    
-    // ✅ Pass the flight data to onSelect
-    onSelect?.(realFlightData);
-    
-  } catch (error: any) {
-    console.error('Failed to select flight:', error);
-    
-    const errorMessage = error?.message || '';
-    
-    if (errorMessage === 'SELECTION_EXPIRED' || errorMessage?.includes('expired')) {
-      toast.error('Your flight selection has expired. Please search again.', { id: 'flight-select' });
-    } else if (errorMessage?.includes('500') || errorMessage?.includes('An error has occured')) {
-      toast.error('Flight pricing temporarily unavailable. Please try again.', { id: 'flight-select' });
-    } else {
-      toast.error('Failed to confirm flight pricing. Please try again.', { id: 'flight-select' });
-    }
-    
-    flight._isBooking = false;
-    setBookingFlightId(null);
-  }
-}, [onSelect, formatPriceWithCurrency, currency.symbol]); 
-
-  // ============================================================
-  // ✅ DUFFEL ONLY: Helper to build offer data for Duffel flights
-  // ============================================================
+    // ✅ Fallback
+    sessionStorage.setItem('selectedFlightDetails', JSON.stringify(flight));
+    router.push(`/flights/${encodeURIComponent(flight.id)}`);
+  }, [router]);
+ 
   const buildDuffelOfferData = useCallback((flight: ExtendedSearchResult) => {
-    // ✅ CRITICAL FIX: Use the actual offer ID (starts with 'off_')
-    // The offer_id from Duffel starts with 'off_', not 'orq_'
+   
     const actualOfferId = flight.offer_id || flight.id;
     
-    // Log what we're using for debugging
+
     console.log('🔍 DUFFEL: Building offer data:', {
       offer_id: flight.offer_id,
       offer_request_id: flight.offer_request_id,
@@ -1708,8 +1710,8 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
     });
     
     return {
-      id: actualOfferId,  // ✅ Use the actual offer ID (off_)
-      offer_request_id: flight.offer_request_id,  // Store request ID separately
+      id: actualOfferId,  
+      offer_request_id: flight.offer_request_id,  
       total_amount: flight.totalAmount || flight.total_amount || flight.final_amount || 0,
       total_currency: flight.currency || flight.total_currency || 'GBP',
       passengers: flight.slices?.[0]?.segments?.[0]?.passengers || 
@@ -1720,30 +1722,32 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
     };
   }, []);
 
-  // ============================================================
-  // ✅ DUFFEL ONLY: Render Flight Card with Duffel offerData
-  // ============================================================
+
   const renderFlightCard = (flight: ExtendedSearchResult) => {
-    const isRefundable = flight.conditions?.refund_before_departure?.allowed;
+  
+    const isRefundable = flight.isWakanow 
+      ? (flight.isRefundable || flight._wakanowData?.flight_summary?.isRefundable || false)
+      : (flight.conditions?.refund_before_departure?.allowed || false);
+    
     const baggageText = getBaggageText(flight);
     const hasReturn = flight.isRoundTrip && flight.returnFlight?.departureTime;
     const displayPrice = flightPrices[flight.id] || 'Loading...';
     const isBookingThisFlight = bookingFlightId === flight.id;
-
+  
     const isWakanowDomestic = flight.isWakanow && (flight as any).isWakanowDomestic === true;
     const isWakanowInternational = flight.isWakanow && (flight as any).isWakanowDomestic === false;
     const isDuffelFlight = !flight.isWakanow;
-
+  
     const handleBookClick = async (e: React.MouseEvent) => {
       e.stopPropagation();
       if (isBookingThisFlight) return;
       
-      // ✅ DUFFEL ONLY: Build offer data and pass to onSelect
+
       if (isDuffelFlight) {
-        // ✅ CRITICAL FIX: Build offer data with correct ID
+
         const offerData = buildDuffelOfferData(flight);
         
-        // ✅ Ensure we have a valid offer ID (starts with 'off_')
+
         if (!offerData.id?.startsWith('off_')) {
           console.error('❌ DUFFEL: Invalid offer ID:', offerData.id);
           toast.error('Invalid flight offer. Please search again.');
@@ -1753,9 +1757,9 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
         const flightWithOfferData = {
           ...flight,
           offerData: offerData,
-          // ✅ CRITICAL FIX: Use the actual offer ID (off_), not the request ID (orq_)
-          offer_id: offerData.id,  // This should start with 'off_'
-          offer_request_id: flight.offer_request_id || offerData.offer_request_id,  // This starts with 'orq_'
+      
+          offer_id: offerData.id,  
+          offer_request_id: flight.offer_request_id || offerData.offer_request_id,  
         };
         
         console.log('📦 DUFFEL: Passing offerData to review:', {
@@ -1769,17 +1773,17 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
         
         onSelect?.(flightWithOfferData);
       } else {
-        // ✅ Wakanow flights go through the normal booking flow (UNCHANGED)
+       
         await handleBookFlight(flight);
       }
     };
-
+  
     return (
       <div
         key={flight.id}
         className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden cursor-pointer"
         onClick={() => {
-          // ✅ DUFFEL ONLY: Include offer data when navigating to flight details
+    
           if (isDuffelFlight) {
             const offerData = buildDuffelOfferData(flight);
             const flightWithOfferData = {
@@ -1846,7 +1850,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
               </button>
             </div>
           </div>
-
+  
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-gray-50 rounded-xl p-5 transition hover:bg-gray-100">
               <p className="text-sm text-gray-500 mb-4">
@@ -1858,7 +1862,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
                   <p className="text-sm font-medium text-gray-700 mt-2">{flight.departureAirport}</p>
                   <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.departureTime)}</p>
                 </div>
-
+  
                 <div className="flex-1 mx-6">
                   <div className="relative">
                     <div className="w-full h-[1px] bg-gray-300"></div>
@@ -1873,7 +1877,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
                     <p className="text-xs text-gray-400 mt-1">{flight.stopText}</p>
                   </div>
                 </div>
-
+  
                 <div className="text-right">
                   <p className="text-2xl font-bold text-gray-900">{formatTime(flight.arrivalTime)}</p>
                   <p className="text-sm font-medium text-gray-700 mt-2">{flight.arrivalAirport}</p>
@@ -1881,7 +1885,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
                 </div>
               </div>
             </div>
-
+  
             {hasReturn && flight.returnFlight && (
               <div className="bg-gray-50 rounded-xl p-5 transition hover:bg-gray-100">
                 <p className="text-sm text-gray-500 mb-4">
@@ -1893,7 +1897,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
                     <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.departureAirport}</p>
                     <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.returnFlight.departureTime)}</p>
                   </div>
-
+  
                   <div className="flex-1 mx-6">
                     <div className="relative">
                       <div className="w-full h-[1px] bg-gray-300"></div>
@@ -1911,7 +1915,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
                       </p>
                     </div>
                   </div>
-
+  
                   <div className="text-right">
                     <p className="text-2xl font-bold text-gray-900">{formatTime(flight.returnFlight.arrivalTime)}</p>
                     <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.arrivalAirport}</p>
@@ -1921,7 +1925,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
               </div>
             )}
           </div>
-
+  
           <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-4">
               {baggageText && (
@@ -1940,7 +1944,15 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
                   <span className="text-sm text-gray-500">{flight.cabin}</span>
                 </div>
               )}
-              {!isRefundable && (
+
+              {isRefundable ? (
+                <div className="flex items-center gap-1">
+                  <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-sm text-green-600 font-medium">Refundable</span>
+                </div>
+              ) : (
                 <div className="flex items-center gap-1">
                   <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" strokeWidth={1.5} />
@@ -1951,10 +1963,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
             </div>
           
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                router.push(`/flights/${encodeURIComponent(flight.id)}`);
-              }}
+              onClick={(e) => handleViewDetails(flight, e)}
               className="text-[#33a8da] text-sm font-medium hover:underline"
             >
               View Flight Details
@@ -1965,9 +1974,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
     );
   };
 
-  // ============================================================
-  // ✅ RENDER HOTEL CARD (UNCHANGED - AMADEUS)
-  // ============================================================
+
   const renderHotelCard = (item: ExtendedSearchResult) => {
     const starRating = Math.floor(item.rating || 4);
     const displayPrice = hotelCarPrices[item.id] || 'Price on request';
@@ -2031,9 +2038,6 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
     );
   };
 
-  // ============================================================
-  // ✅ RENDER CAR CARD (UNCHANGED - AMADEUS)
-  // ============================================================
   const renderCarCard = (item: ExtendedSearchResult) => {
     const start = item.start;
     const end = item.end;
@@ -2195,7 +2199,6 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
     );
   };
 
-  // Right Sidebar Ads Component - Only for flights (UNCHANGED)
   const renderRightSidebarAds = () => (
     <div className="w-full lg:w-[260px] shrink-0 space-y-4">
       {advertisements.map((ad) => (
@@ -2273,7 +2276,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
     </div>
   );
 
-  // Filter Sidebar for Flights (UNCHANGED - except Duffel price display)
+
   const renderFlightFilters = () => {
     const getCheapestPriceDisplay = (stopCategory: string) => {
       const stats = outboundStopStats[stopCategory as keyof typeof outboundStopStats];
@@ -2330,7 +2333,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
           </div>
         </div>
 
-        {/* Onward Journey Section */}
+       
         <div className="mb-8">
           <h3 className="font-bold text-gray-900 mb-4 text-base">Onward Journey</h3>
 
@@ -2458,7 +2461,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
           </div>
         </div>
 
-        {/* Return Journey Section */}
+  
         {processedFlights.some(flight => flight.isRoundTrip) && (
           <div className="pt-6 border-t border-gray-100">
             <h3 className="font-bold text-gray-900 mb-4 text-base">Return Journey</h3>
@@ -2561,7 +2564,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
           </div>
         )}
 
-        {/* Clear Filters Button */}
+    
         {(selectedAirlineFilters.size > 0 || selectedStopFilter !== 'all' ||
           selectedOutboundDepartureTimeFilter !== 'all' || selectedOutboundArrivalTimeFilter !== 'all' ||
           selectedReturnDepartureTimeFilter !== 'all' || selectedReturnArrivalTimeFilter !== 'all') && (
@@ -2583,7 +2586,6 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
     );
   };
 
-  // Hotel and Car Filter Sidebar (UNCHANGED - AMADEUS)
   const renderHotelCarFilters = () => (
     <div className="bg-white rounded-[24px] p-8 shadow-sm border border-gray-100 sticky top-24">
       <div className="flex justify-between items-center mb-8">
@@ -2596,7 +2598,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
         </button>
       </div>
 
-      {/* Price Range with Currency */}
+
       {renderFilterSection("Price Range", (
         <>
           <input
@@ -2615,7 +2617,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
         </>
       ))}
 
-      {/* HOTEL SPECIFIC FILTERS */}
+
       {searchType === "hotels" && (
         <>
           {renderFilterSection("Star Rating", (
@@ -2635,7 +2637,6 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
         </>
       )}
 
-      {/* CAR SPECIFIC FILTERS */}
       {searchType === "car-rentals" && (
         <>
           {renderFilterSection("Vehicle Type", (
@@ -2674,7 +2675,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
     </div>
   );
 
-  // Loading state (only show full screen if no results yet)
+
   if (isLoading && resultsArray.length === 0) {
     return (
       <div className="bg-gray-50 min-h-screen">
@@ -2707,7 +2708,6 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
     );
   }
 
-  // Main render
   return (
     <div className="bg-gray-50 min-h-screen">
       <div className="bg-white shadow-sm border-b border-gray-200 py-4">
@@ -2722,7 +2722,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Flights View */}
+
         {searchType === 'flights' && (
           <>
             <div className="text-center mb-8">
@@ -2735,7 +2735,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
               </aside>
 
               <div className="flex-1">
-                {/* Batch Loading Indicator */}
+          
                 {isLoading && resultsArray.length > 0 && (
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6 flex items-center justify-between shadow-sm animate-pulse">
                     <div className="flex items-center gap-3">
@@ -2853,7 +2853,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
           </>
         )}
 
-        {/* Hotels View - UNCHANGED (AMADEUS) */}
+   
         {searchType === 'hotels' && (
           <div className="flex flex-col lg:flex-row gap-10">
             <aside className="w-full lg:w-[300px] shrink-0 space-y-6">
@@ -2911,7 +2911,7 @@ const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
           </div>
         )}
 
-        {/* Car Rentals View - UNCHANGED (AMADEUS) */}
+   
         {searchType === 'car-rentals' && (
           <div className="flex flex-col lg:flex-row gap-10">
             <aside className="w-full lg:w-[300px] shrink-0 space-y-6">
