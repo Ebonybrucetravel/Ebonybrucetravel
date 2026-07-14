@@ -1536,6 +1536,13 @@ const searchFlights = async (params: SearchParams) => {
           return;
         }
         
+        // ✅ Skip if we have slices (means data is already populated)
+        if ((item as any).slices?.length > 0) {
+          console.log('✅ Already have slices, skipping API call');
+          setSelectedItem(item);
+          return;
+        }
+        
         // ✅ Check if we have valid selectData (short version, not compressed)
         const isValidSelectData = selectDataValue && 
                                  typeof selectDataValue === 'string' && 
@@ -1582,13 +1589,36 @@ const searchFlights = async (params: SearchParams) => {
               if (result.data.priceBreakdown) {
                 (itemWithMessages as any).priceBreakdown = result.data.priceBreakdown;
                 (itemWithMessages as any)._wakanowData = result.data;
-                console.log('✅ Stored priceBreakdown');
+                
+                // ✅ Store flight summary and slices
+                if (result.data.flight_summary) {
+                  (itemWithMessages as any).flight_summary = result.data.flight_summary;
+                  if (result.data.flight_summary.slices) {
+                    (itemWithMessages as any).slices = result.data.flight_summary.slices;
+                    console.log('✅ Stored slices from flight_summary');
+                  }
+                  if (result.data.flight_summary.isRefundable !== undefined) {
+                    (itemWithMessages as any).isRefundable = result.data.flight_summary.isRefundable;
+                    console.log('✅ Stored isRefundable:', result.data.flight_summary.isRefundable);
+                  }
+                }
+                
+                // ✅ Store fare rules and penalty rules
+                if (result.data.fare_rules) {
+                  (itemWithMessages as any).fare_rules = result.data.fare_rules;
+                }
+                if (result.data.penalty_rules) {
+                  (itemWithMessages as any).penalty_rules = result.data.penalty_rules;
+                }
+                
+                console.log('✅ Stored all Wakanow data from select endpoint');
               }
             }
           } catch (error: any) {
             // ✅ If error is SELECTION_EXPIRED, just use the data we have
             if (error.message === 'SELECTION_EXPIRED' || error.message?.includes('expired')) {
               console.log('⚠️ Selection expired, using existing data');
+              // ✅ Make sure we preserve all existing data
               setSelectedItem(item);
               return;
             }

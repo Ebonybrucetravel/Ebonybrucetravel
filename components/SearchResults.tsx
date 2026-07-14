@@ -1612,7 +1612,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       try {
         toast.loading('Loading flight details...', { id: 'view-details' });
         
-        // ✅ FETCH ONCE - This is the ONLY place we call the API
         const { selectWakanowFlight } = await import('@/lib/wakanow-api');
         const selectResult = await selectWakanowFlight(flight.selectData, 'NGN');
         const responseData = selectResult?.data;
@@ -1620,53 +1619,70 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         if (responseData) {
           console.log('✅ Pre-fetched Wakanow data (ONCE)');
           
-          // ✅ Safely extract price breakdown with fallbacks
+          const flightSummary = responseData.flight_summary;
           const priceBreakdown = responseData.priceBreakdown;
-          const basePrice = priceBreakdown?.basePrice || 0;
-          const markupAmount = priceBreakdown?.markupAmount || 0;
-          const markupPercentage = priceBreakdown?.markupPercentage || 10;
-          const serviceFee = priceBreakdown?.serviceFee || 0;
-          const serviceFeePercentage = priceBreakdown?.serviceFeePercentage || 5;
-          const taxes = priceBreakdown?.taxes || 0;
-          const taxPercentage = priceBreakdown?.taxPercentage || 15;
-          const totalAmount = priceBreakdown?.totalAmount || 0;
-          const currency = priceBreakdown?.currency || 'NGN';
+          
+          // ✅ Get slices from the response
+          const slices = flightSummary?.slices || flight.slices || [];
+          
+          // ✅ Get freeBaggage from the first slice
+          let freeBaggage = null;
+          if (slices.length > 0) {
+            freeBaggage = slices[0]?.freeBaggage || 
+                          slices[0]?.segments?.[0]?.freeBaggage || 
+                          null;
+          }
+          
+          // ✅ Get isRefundable
+          const isRefundable = flightSummary?.isRefundable || false;
+          
+          // ✅ Get fare_rules and penalty_rules
+          const fareRules = responseData.fare_rules || [];
+          const penaltyRules = responseData.penalty_rules || [];
+          
+          // ✅ Get custom_messages
+          const rawMessages = responseData.custom_messages || [];
+          let customMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
+          
+          if (Array.isArray(rawMessages) && rawMessages.length > 0) {
+            if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
+              customMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
+            } else if (typeof rawMessages[0] === 'string') {
+              customMessages = rawMessages.map((msg: string) => ({
+                Title: 'Message',
+                Message: msg,
+                SeverityLevel: 'Medium' as const,
+              }));
+            }
+          }
           
           const enrichedFlight: ExtendedSearchResult = {
             ...flight,
             bookingId: responseData.booking_id || flight.id,
             selectData: responseData.select_data || flight.selectData,
-            slices: responseData.flight_summary?.slices || flight.slices,
-            flight_summary: responseData.flight_summary,
-            freeBaggage: responseData.flight_summary?.slices?.[0]?.freeBaggage || 
-                         responseData.flight_summary?.slices?.[0]?.segments?.[0]?.freeBaggage ||
-                         null,
-            isRefundable: responseData.flight_summary?.isRefundable || false,
-            fare_rules: responseData.fare_rules || [],
-            penalty_rules: responseData.penalty_rules || [],
+            // ✅ CRITICAL: Store the slices from the response
+            slices: slices,
+            flight_summary: flightSummary,
+            // ✅ CRITICAL: Store freeBaggage
+            freeBaggage: freeBaggage,
+            isRefundable: isRefundable,
+            fare_rules: fareRules,
+            penalty_rules: penaltyRules,
             terms_and_conditions: responseData.terms_and_conditions || null,
-            // ✅ Price breakdown - properly typed
-            priceBreakdown: priceBreakdown ? {
-              basePrice: basePrice,
-              markupAmount: markupAmount,
-              markupPercentage: markupPercentage,
-              serviceFee: serviceFee,
-              serviceFeePercentage: serviceFeePercentage,
-              taxes: taxes,
-              taxPercentage: taxPercentage,
-              totalAmount: totalAmount,
-              currency: currency,
-              breakdown: priceBreakdown.breakdown || '',
-            } : undefined,
-            basePrice: basePrice,
-            markupAmount: markupAmount,
-            markupPercentage: markupPercentage,
-            serviceFee: serviceFee,
-            serviceFeePercentage: serviceFeePercentage,
-            taxes: taxes.toString(),
-            taxPercentage: taxPercentage,
-            totalAmount: totalAmount,
-            currency: currency,
+            // ✅ Store price breakdown
+            priceBreakdown: priceBreakdown || undefined,
+            basePrice: priceBreakdown?.basePrice || 0,
+            markupAmount: priceBreakdown?.markupAmount || 0,
+            markupPercentage: priceBreakdown?.markupPercentage || 10,
+            serviceFee: priceBreakdown?.serviceFee || 0,
+            serviceFeePercentage: priceBreakdown?.serviceFeePercentage || 5,
+            taxes: priceBreakdown?.taxes?.toString() || '0',
+            taxPercentage: priceBreakdown?.taxPercentage || 15,
+            totalAmount: priceBreakdown?.totalAmount || 0,
+            currency: priceBreakdown?.currency || 'NGN',
+            // ✅ Store custom messages
+            custom_messages: customMessages,
+            // ✅ Store raw data
             _wakanowData: responseData,
             _isRealData: true,
           };
