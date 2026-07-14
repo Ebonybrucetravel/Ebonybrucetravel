@@ -4,7 +4,7 @@ import { BookingRepository } from '../repositories/booking.repository';
 import { BOOKING_REPOSITORY } from '../repositories/booking.repository.token';
 import { BookingStatus, PaymentStatus } from '@prisma/client';
 import { generateBookingReference } from '@common/utils/booking-reference.util';
-import { ResendService } from '../../../infrastructure/email/resend.service';
+import { ResendService } from '@infrastructure/email/resend.service';
 
 export interface CreateBookingParams {
   userId: string;
@@ -155,111 +155,82 @@ export class BookingService {
     return details;
   }
 
-
-private async sendConfirmationEmail(booking: Booking): Promise<void> {
-  try {
-   
-    this.logger.log(`📦 Booking ${booking.reference} - Product Type: ${booking.productType}`);
-    this.logger.log(`📦 bookingData keys:`, Object.keys(booking.bookingData || {}));
-    
- 
-    if (booking.bookingData?.origin) {
-      this.logger.log(`✈️ Flight details found in bookingData:`, {
-        origin: booking.bookingData.origin,
-        destination: booking.bookingData.destination,
-        airlineName: booking.bookingData.airlineName,
-        flightNumber: booking.bookingData.flightNumber,
-        departureDate: booking.bookingData.departureDate,
-        arrivalDate: booking.bookingData.arrivalDate,
-        cabinClass: booking.bookingData.cabinClass,
-        stops: booking.bookingData.stops,
+  // ✅ Helper to send confirmation email
+  private async sendConfirmationEmail(booking: Booking): Promise<void> {
+    try {
+      // Extract passenger info
+      const passengerInfo = this.extractPassengerInfo(booking.passengerInfo);
+      
+      // Extract booking details
+      const bookingDetails = this.extractBookingDetails(booking.bookingData, booking.productType);
+      
+      // ✅ Send email with all details
+      await this.resendService.sendBookingConfirmationEmail({
+        to: passengerInfo.email,
+        customerName: passengerInfo.name,
+        bookingReference: booking.reference,
+        productType: booking.productType,
+        provider: booking.provider,
+        passengerDetails: {
+          name: passengerInfo.name,
+          email: passengerInfo.email,
+          phone: passengerInfo.phone,
+          address: passengerInfo.address,
+          city: passengerInfo.city,
+          country: passengerInfo.country,
+        },
+        bookingDetails: {
+          // Flight details
+          origin: bookingDetails.origin,
+          destination: bookingDetails.destination,
+          departureDate: bookingDetails.departureDate,
+          arrivalDate: bookingDetails.arrivalDate,
+          airlineName: bookingDetails.airlineName,
+          flightNumber: bookingDetails.flightNumber,
+          cabinClass: bookingDetails.cabinClass,
+          bookingClass: bookingDetails.bookingClass,
+          stops: bookingDetails.stops,
+          // Hotel details
+          checkInDate: bookingDetails.checkInDate,
+          checkOutDate: bookingDetails.checkOutDate,
+          hotelName: bookingDetails.hotelName,
+          roomType: bookingDetails.roomType,
+          guests: bookingDetails.guests,
+          numberOfRooms: bookingDetails.numberOfRooms,
+          boardType: bookingDetails.boardType,
+          hotelAddress: bookingDetails.hotelAddress,
+          hotelCity: bookingDetails.hotelCity,
+          hotelCountry: bookingDetails.hotelCountry,
+          hotelPhone: bookingDetails.hotelPhone,
+          hotelRating: bookingDetails.hotelRating,
+        },
+        pricing: {
+          basePrice: booking.basePrice || 0,
+          markupAmount: booking.markupAmount || 0,
+          serviceFee: booking.serviceFee || 0,
+          totalAmount: booking.totalAmount || 0,
+          currency: booking.currency || 'NGN',
+        },
+        confirmationDate: new Date(),
+        bookingId: booking.id,
+        cancellationDeadline: booking.cancellationDeadline,
+        cancellationPolicySummary: booking.cancellationPolicySnapshot,
       });
-    } else {
-      this.logger.warn(`⚠️ No flight details found in bookingData for booking ${booking.reference}`);
+      
+      this.logger.log(`✅ Confirmation email sent for booking ${booking.reference} to ${passengerInfo.email}`);
+    } catch (error) {
+      // Don't fail the booking if email fails
+      this.logger.error(`❌ Failed to send confirmation email for booking ${booking.reference}:`, error);
     }
-    
-    
-    const passengerInfo = this.extractPassengerInfo(booking.passengerInfo);
-    
-    
-    const bookingDetails = this.extractBookingDetails(booking.bookingData, booking.productType);
-    
-
-    this.logger.log(`📧 Extracted booking details for email:`, {
-      origin: bookingDetails.origin,
-      destination: bookingDetails.destination,
-      airlineName: bookingDetails.airlineName,
-      flightNumber: bookingDetails.flightNumber,
-      departureDate: bookingDetails.departureDate,
-      arrivalDate: bookingDetails.arrivalDate,
-    });
-    
-   
-    await this.resendService.sendBookingConfirmationEmail({
-      to: passengerInfo.email,
-      customerName: passengerInfo.name,
-      bookingReference: booking.reference,
-      productType: booking.productType,
-      provider: booking.provider,
-      passengerDetails: {
-        name: passengerInfo.name,
-        email: passengerInfo.email,
-        phone: passengerInfo.phone,
-        address: passengerInfo.address,
-        city: passengerInfo.city,
-        country: passengerInfo.country,
-      },
-      bookingDetails: {
-     
-        origin: bookingDetails.origin,
-        destination: bookingDetails.destination,
-        departureDate: bookingDetails.departureDate,
-        arrivalDate: bookingDetails.arrivalDate,
-        airlineName: bookingDetails.airlineName,
-        flightNumber: bookingDetails.flightNumber,
-        cabinClass: bookingDetails.cabinClass,
-        bookingClass: bookingDetails.bookingClass,
-        stops: bookingDetails.stops,
-       
-        checkInDate: bookingDetails.checkInDate,
-        checkOutDate: bookingDetails.checkOutDate,
-        hotelName: bookingDetails.hotelName,
-        roomType: bookingDetails.roomType,
-        guests: bookingDetails.guests,
-        numberOfRooms: bookingDetails.numberOfRooms,
-        boardType: bookingDetails.boardType,
-        hotelAddress: bookingDetails.hotelAddress,
-        hotelCity: bookingDetails.hotelCity,
-        hotelCountry: bookingDetails.hotelCountry,
-        hotelPhone: bookingDetails.hotelPhone,
-        hotelRating: bookingDetails.hotelRating,
-      },
-      pricing: {
-        basePrice: booking.basePrice || 0,
-        markupAmount: booking.markupAmount || 0,
-        serviceFee: booking.serviceFee || 0,
-        totalAmount: booking.totalAmount || 0,
-        currency: booking.currency || 'NGN',
-      },
-      confirmationDate: new Date(),
-      bookingId: booking.id,
-      cancellationDeadline: booking.cancellationDeadline,
-      cancellationPolicySummary: booking.cancellationPolicySnapshot,
-    });
-    
-    this.logger.log(`✅ Confirmation email sent for booking ${booking.reference} to ${passengerInfo.email}`);
-  } catch (error) {
-    this.logger.error(`❌ Failed to send confirmation email for booking ${booking.reference}:`, error);
   }
-}
 
   async createBooking(bookingData: CreateBookingParams): Promise<Booking> {
     this.logger.log(`Creating booking for user ${bookingData.userId}`);
 
-  
+    // Generate unique booking reference
     let reference = generateBookingReference();
 
-  
+    // Ensure reference is unique (retry if exists)
     let exists = await this.bookingRepository.findByReference(reference);
     let attempts = 0;
     while (exists && attempts < 10) {
@@ -268,7 +239,7 @@ private async sendConfirmationEmail(booking: Booking): Promise<void> {
       attempts++;
     }
 
-  
+    // ✅ Build the booking data with all price fields
     const bookingPayload: Partial<Booking> = {
       userId: bookingData.userId,
       reference,
@@ -310,10 +281,10 @@ private async sendConfirmationEmail(booking: Booking): Promise<void> {
       currency: bookingPayload.currency,
     });
 
- 
+    // ✅ Create the booking
     const booking = await this.bookingRepository.create(bookingPayload);
     
-    
+    // ✅ Send confirmation email (don't await - fire and forget)
     this.sendConfirmationEmail(booking).catch((error) => {
       this.logger.error(`Failed to send confirmation email for booking ${booking.reference}:`, error);
     });
@@ -324,8 +295,10 @@ private async sendConfirmationEmail(booking: Booking): Promise<void> {
   async createGuestBooking(bookingData: CreateGuestBookingParams): Promise<Booking> {
     this.logger.log('Creating guest booking');
 
+    // Generate unique booking reference
     let reference = generateBookingReference();
 
+    // Ensure reference is unique (retry if exists)
     let exists = await this.bookingRepository.findByReference(reference);
     let attempts = 0;
     while (exists && attempts < 10) {
@@ -334,6 +307,7 @@ private async sendConfirmationEmail(booking: Booking): Promise<void> {
       attempts++;
     }
 
+    // ✅ Build the booking data with all price fields
     const bookingPayload: Partial<Booking> = {
       reference,
       productType: bookingData.productType,
@@ -374,9 +348,10 @@ private async sendConfirmationEmail(booking: Booking): Promise<void> {
       currency: bookingPayload.currency,
     });
 
-
+    // ✅ Create the booking
     const booking = await this.bookingRepository.create(bookingPayload);
-  
+    
+    // ✅ Send confirmation email (don't await - fire and forget)
     this.sendConfirmationEmail(booking).catch((error) => {
       this.logger.error(`Failed to send confirmation email for guest booking ${booking.reference}:`, error);
     });
