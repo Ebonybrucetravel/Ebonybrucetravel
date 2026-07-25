@@ -108,27 +108,32 @@ export class AmadeusService {
       method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
       body?: any;
       params?: Record<string, string>;
+      useAmadeusJson?: boolean;
     } = {},
   ): Promise<any> {
     let token = await this.getAccessToken();
-    const { method = 'GET', body, params } = options;
+    const { method = 'GET', body, params, useAmadeusJson = false } = options;
     
     let url = `${this.baseUrl}${endpoint}`;
     if (params && Object.keys(params).length > 0) {
       const searchParams = new URLSearchParams(params);
       url += `?${searchParams.toString()}`;
     }
+
+    const contentType = useAmadeusJson 
+    ? 'application/vnd.amadeus+json' 
+    : 'application/json';
   
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${token}`,
-      'Accept': 'application/json',
+      'Accept': contentType,
       'X-Office-Id': this.officeId,
       'X-Organization-Id': this.orgId,
       'X-User-Id': this.userId,
     };
   
     if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
-      headers['Content-Type'] = 'application/json';
+      headers['Content-Type'] = contentType;
     }
   
     this.logger.debug(`Amadeus API ${method} ${url}`);
@@ -1085,7 +1090,11 @@ export class AmadeusService {
     
     this.logger.log(`Transfers request: ${JSON.stringify(requestBody)}`);
     
-    return this.makeRequest('/v1/shopping/transfer-offers', { method: 'POST', body: requestBody });
+    return this.makeRequest('/v1/shopping/transfer-offers', { 
+      method: 'POST', 
+      body: requestBody,
+      useAmadeusJson: true, 
+    });
   }
 
   async createTransferBooking(params: {
@@ -1182,6 +1191,7 @@ export class AmadeusService {
     const response = await this.makeRequest('/v1/ordering/transfer-orders', {
       method: 'POST',
       body: requestBody,
+      useAmadeusJson: true, 
     });
   
     this.logger.log(`✅ Amadeus transfer booking response: ${JSON.stringify(response, null, 2)}`);
@@ -1191,7 +1201,10 @@ export class AmadeusService {
 
   async getTransferBooking(orderId: string): Promise<any> {
     if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
-    return this.makeRequest(`/v1/ordering/transfer-orders/${orderId}`, { method: 'GET' });
+    return this.makeRequest(`/v1/ordering/transfer-orders/${orderId}`, { 
+      method: 'GET',
+      useAmadeusJson: true, 
+    });
   }
 
   async getTransferBookingByPNR(params: { pnr: string; firstName: string; lastName: string }): Promise<any> {
@@ -1202,6 +1215,7 @@ export class AmadeusService {
     return this.makeRequest('/v1/ordering/transfer-orders/retrieve', {
       method: 'POST',
       body: { pnr: params.pnr.toUpperCase(), firstName: params.firstName, lastName: params.lastName },
+      useAmadeusJson: true, 
     });
   }
 
@@ -1274,6 +1288,7 @@ export class AmadeusService {
     return this.makeRequest(`/v1/ordering/transfer-orders/${orderId}`, {
       method: 'POST',
       body: requestBody,
+      useAmadeusJson: true, 
     });
   }
 
@@ -1282,7 +1297,8 @@ async cancelTransfer(orderId: string): Promise<any> {
   if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
   return this.makeRequest(`/v1/ordering/transfer-orders/${orderId}/transfers/cancellation`, { 
     method: 'POST',
-    body: {}, // ✅ Empty body as per API spec
+    body: {},
+    useAmadeusJson: true, 
   });
 }
 
@@ -1291,6 +1307,10 @@ async cancelTransfer(orderId: string): Promise<any> {
     if (params?.page) queryParams.page = params.page.toString();
     if (params?.limit) queryParams.limit = params.limit.toString();
     
-    return this.makeRequest('/v1/ordering/transfer-orders', { method: 'GET', params: queryParams });
+    return this.makeRequest('/v1/ordering/transfer-orders', { 
+      method: 'GET', 
+      params: queryParams,
+      useAmadeusJson: true, 
+    });
   }
 }
