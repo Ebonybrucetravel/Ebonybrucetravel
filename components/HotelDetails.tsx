@@ -375,51 +375,113 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     return null;
   };
 
-// Get guests count - FIXED to use actual search params
+// Get guests count - returns total number of guests (adults + children + infants)
 const getGuestsCount = () => {
-  // ✅ Check searchParams first (most reliable)
+  let totalGuests = 0;
+  
+  // ✅ Check searchParams for total guests
   if (searchParams?.guests) {
-    return searchParams.guests;
-  }
-  if (searchParams?.adults) {
-    return searchParams.adults;
+    totalGuests = searchParams.guests;
+  } 
+  // ✅ If guests not available, calculate from adults + children + infants
+  else if (searchParams?.adults) {
+    totalGuests = searchParams.adults;
+    if (searchParams?.children) {
+      totalGuests += searchParams.children;
+    }
+    if (searchParams?.infants) {
+      totalGuests += searchParams.infants;
+    }
   }
   
   // ✅ Check item data
-  if (item?.realData?.guests) {
-    return item.realData.guests;
+  if (totalGuests === 0 && item?.realData?.guests) {
+    totalGuests = item.realData.guests;
   }
-  if ((item as any)?.guests) {
-    return (item as any).guests;
+  if (totalGuests === 0 && (item as any)?.guests) {
+    totalGuests = (item as any).guests;
   }
   
   // ✅ Check sessionStorage
-  if (typeof window !== 'undefined') {
+  if (totalGuests === 0 && typeof window !== 'undefined') {
     const stored = sessionStorage.getItem('selectedHotelDetails');
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        if (parsed.adults) {
-          return parsed.adults;
-        }
         if (parsed.guests) {
-          return parsed.guests;
+          totalGuests = parsed.guests;
+        } else if (parsed.adults) {
+          totalGuests = parsed.adults;
+          if (parsed.children) {
+            totalGuests += parsed.children;
+          }
+          if (parsed.infants) {
+            totalGuests += parsed.infants;
+          }
         }
       } catch (e) {}
     }
   }
   
-  // ✅ Default to 1 Adult (not 2)
-  return 1;
+  // ✅ Default to 1
+  return totalGuests > 0 ? totalGuests : 1;
 };
 
-// Get guests count display string
+// Get guests count display string with breakdown
 const getGuestsDisplay = () => {
-  const count = getGuestsCount();
-  return `${count} Adult${count > 1 ? 's' : ''}`;
+  // ✅ Get counts from searchParams
+  let adults = searchParams?.adults || 0;
+  let children = searchParams?.children || 0;
+  let infants = searchParams?.infants || 0;
+  
+  // ✅ Fallback to item data
+  if (adults === 0 && children === 0 && infants === 0) {
+    if (item?.realData?.adults) adults = item.realData.adults;
+    if (item?.realData?.children) children = item.realData.children;
+    if (item?.realData?.infants) infants = item.realData.infants;
+  }
+  
+  // ✅ Check sessionStorage as fallback
+  if (adults === 0 && children === 0 && infants === 0 && typeof window !== 'undefined') {
+    const stored = sessionStorage.getItem('selectedHotelDetails');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed.adults) adults = parsed.adults;
+        if (parsed.children) children = parsed.children;
+        if (parsed.infants) infants = parsed.infants;
+      } catch (e) {}
+    }
+  }
+  
+  // ✅ Build guest description
+  let parts = [];
+  
+  if (adults > 0) {
+    parts.push(`${adults} Adult${adults > 1 ? 's' : ''}`);
+  }
+  if (children > 0) {
+    parts.push(`${children} Child${children > 1 ? 'ren' : ''}`);
+  }
+  if (infants > 0) {
+    parts.push(`${infants} Infant${infants > 1 ? 's' : ''}`);
+  }
+  
+  // If we have parts, join them
+  if (parts.length > 0) {
+    return parts.join(', ');
+  }
+  
+  // ✅ Fallback to total guests
+  const total = getGuestsCount();
+  return `${total} Guest${total > 1 ? 's' : ''}`;
 };
 
- // Get rooms count - FIXED
+const getGuestsShortDisplay = () => {
+  const total = getGuestsCount();
+  return `${total} Guest${total > 1 ? 's' : ''}`;
+};
+
 const getRoomsCount = () => {
   if (searchParams?.rooms) {
     return searchParams.rooms;
@@ -977,9 +1039,11 @@ if (detailsRes.status === 'fulfilled' && detailsRes.value?.success) {
     const realData = (item as any)?.realData || {};
     const roomType = realData.roomType || item?.features?.[0] || 'Standard Room';
     const bedType = realData.bedType || 'King/Queen Bed';
-    const guests = getGuestsDisplay();  // ✅ Use dynamic display
-    const rooms = getRoomsDisplay();    // ✅ Use dynamic display
-    const nights = getNightsCount();    // ✅ Use dynamic nights
+    const guestsDisplay = getGuestsDisplay();  // ✅ Shows "2 Adults, 1 Child, 1 Infant"
+    const guestsShort = getGuestsShortDisplay(); // ✅ Shows "4 Guests"
+    const rooms = getRoomsCount();
+    const roomsDisplay = getRoomsDisplay();
+    const nights = getNightsCount();
   
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1003,12 +1067,18 @@ if (detailsRes.status === 'fulfilled' && detailsRes.value?.success) {
               <div className="flex flex-wrap gap-4 text-[9px] font-black text-gray-400 uppercase tracking-widest">
                 <span className="flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeWidth="2.5" /></svg>
-                  {guests}  {/* ✅ Dynamic guest count */}
+                  {guestsDisplay}  {/* ✅ Shows "2 Adults, 1 Child, 1 Infant" */}
                 </span>
                 <span className="flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" strokeWidth="2.5" /></svg>
                   {bedType}
                 </span>
+                {roomsDisplay && (
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" strokeWidth="2.5" /></svg>
+                    {roomsDisplay}
+                  </span>
+                )}
                 {nights && (
                   <span className="flex items-center gap-2">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2.5" /></svg>
@@ -1515,6 +1585,22 @@ if (detailsRes.status === 'fulfilled' && detailsRes.value?.success) {
                       : 'Select dates to view pricing'}
                   </p>
                 </div>
+
+                {/* ✅ Add guest info to sidebar */}
+  <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Guests</p>
+    <p className="text-sm font-bold text-gray-900">
+      {getGuestsDisplay()}
+    </p>
+  </div>
+  
+  {/* ✅ Add room info to sidebar */}
+  <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Rooms</p>
+    <p className="text-sm font-bold text-gray-900">
+      {getRoomsDisplay()}
+    </p>
+  </div>
               </div>
 
               <button 
