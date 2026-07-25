@@ -195,6 +195,7 @@ export class AmadeusService {
     return this.makeRequest('/v1/reference-data/locations/hotel', { method: 'GET', params: queryParams });
   }
 
+
   async getHotelsByCity(params: {
     cityCode: string;
     hotelIds?: string[];
@@ -416,6 +417,7 @@ export class AmadeusService {
     roomQuantity?: number;
     currency?: string;
     bestRateOnly?: boolean;
+    includeImages?: boolean; // ✅ ADD THIS
   }): Promise<any> {
     const hasHotelIds = params.hotelIds && params.hotelIds.length > 0;
     const hasCityCode = params.cityCode && params.cityCode.trim() !== '';
@@ -445,8 +447,199 @@ export class AmadeusService {
     if (params.currency) queryParams.currency = params.currency;
     if (params.bestRateOnly !== undefined) queryParams.bestRateOnly = params.bestRateOnly.toString();
     
-    return this.makeRequest('/v3/shopping/hotel-offers', { method: 'GET', params: queryParams });
+    // 1. Get hotel offers
+    const response = await this.makeRequest('/v3/shopping/hotel-offers', { 
+      method: 'GET', 
+      params: queryParams 
+    });
+    
+    // 2. ✅ Enrich with images if requested
+    if (params.includeImages !== false && response?.data?.length > 0) {
+      this.logger.log(`Enriching ${response.data.length} hotels with images...`);
+      
+      // Extract hotel IDs
+      const hotelIds = response.data
+        .map((item: any) => item.hotel?.hotelId)
+        .filter((id: string) => id);
+      
+      if (hotelIds.length > 0) {
+        // Fetch images for all hotels
+        const imagesMap = await this.fetchHotelImagesBatch(hotelIds);
+        
+        // Enrich each hotel with images
+        response.data = response.data.map((hotelOffer: any) => {
+          const hotelId = hotelOffer.hotel?.hotelId;
+          const images = imagesMap.get(hotelId) || [];
+          const primaryImage = this.getPrimaryImageFromMedia(images);
+          
+          return {
+            ...hotelOffer,
+            hotel: {
+              ...hotelOffer.hotel,
+              images: images,
+              primaryImage: primaryImage,
+              imageCategories: this.categorizeImages(images),
+            }
+          };
+        });
+        
+        this.logger.log(`✅ Successfully enriched hotels with images`);
+      }
+    }
+    
+    return response;
   }
+
+  private async fetchHotelImagesBatch(hotelIds: string[]): Promise<Map<string, any[]>> {
+    const imagesMap = new Map<string, any[]>();
+    
+    if (!hotelIds || hotelIds.length === 0) {
+      return imagesMap;
+    }
+    
+    try {
+      // Process in chunks of 10 (Amadeus limit)
+      const chunkSize = 10;
+      for (let i = 0; i < hotelIds.length; i += chunkSize) {
+        const chunk = hotelIds.slice(i, i + chunkSize);
+        
+        // Use the getHotelContent method for each hotel in the chunk
+        const promises = chunk.map(hotelId => 
+          this.getHotelContent(hotelId, undefined, 'FULL')
+            .then(response => ({ hotelId, response }))
+            .catch(error => {
+              this.logger.warn(`Failed to fetch images for hotel ${hotelId}: ${error.message}`);
+              return { hotelId, response: null };
+            })
+        );
+        
+        const results = await Promise.all(promises);
+        
+        // Process each result
+        for (const { hotelId, response } of results) {
+          const images = this.extractImagesFromResponse(response);
+          imagesMap.set(hotelId, images);
+        }
+      }
+      
+      this.logger.log(`✅ Fetched images for ${imagesMap.size} hotels`);
+      return imagesMap;
+    } catch (error) {
+      this.logger.error(`Failed to fetch hotel images batch: ${error.message}`);
+      return imagesMap;
+    }
+  }
+
+  /**
+   * Extract images from hotel content response
+   */
+  private extractImagesFromResponse(response: any): any[] {
+    const images: any[] = [];
+    
+    try {
+      if (!response?.data?.basic?.media) {
+        return images;
+      }
+      
+      for (const media of response.data.basic.media) {
+        if (media.mediaScales && Array.isArray(media.mediaScales)) {
+          // Find the largest image
+          const largest = media.mediaScales.sort((a: any, b: any) => {
+            const aSize = (a.dimensions?.height || 0) * (a.dimensions?.width || 0);
+            const bSize = (b.dimensions?.height || 0) * (b.dimensions?.width || 0);
+            return bSize - aSize;
+          })[0];
+          
+          if (largest?.href) {
+            images.push({
+              uri: largest.href,
+              category: media.category || 'UNKNOWN',
+              type: media.type || 'IMAGE',
+              width: largest.dimensions?.width || null,
+              height: largest.dimensions?.height || null,
+              order: media.order || 0,
+              description: media.description || null,
+            });
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error extracting images: ${error.message}`);
+    }
+    
+    return images;
+  }
+
+  /**
+   * Get primary image with priority categories
+   */
+  private getPrimaryImageFromMedia(images: any[]): string | null {
+    if (!images || images.length === 0) return null;
+    
+    // Priority order for primary image
+    const priorityCategories = [
+      'EXTERIOR_VIEW',
+      'LOBBY_VIEW', 
+      'LOGO',
+      'RESTAURANT',
+      'BAR_OR_LOUNGE',
+      'ROOM_VIEW',
+      'ROOM_DETAIL',
+      'BATHROOM'
+    ];
+    
+    // Try priority categories
+    for (const category of priorityCategories) {
+      const found = images.find(img => img.category === category);
+      if (found) return found.uri;
+    }
+    
+    // If no priority category found, return the first image
+    return images[0]?.uri || null;
+  }
+
+  /**
+   * Categorize images by type
+   */
+  private categorizeImages(images: any[]): any {
+    const categories: Record<string, string[]> = {
+      EXTERIOR: [],
+      LOBBY: [],
+      ROOM: [],
+      BATHROOM: [],
+      RESTAURANT: [],
+      BAR: [],
+      AMENITIES: [],
+      OTHER: [],
+    };
+    
+    if (!images || images.length === 0) return categories;
+    
+    for (const image of images) {
+      const category = image.category || 'OTHER';
+      
+      if (category.includes('EXTERIOR')) {
+        categories.EXTERIOR.push(image.uri);
+      } else if (category.includes('LOBBY')) {
+        categories.LOBBY.push(image.uri);
+      } else if (category.includes('ROOM') || category.includes('BED')) {
+        categories.ROOM.push(image.uri);
+      } else if (category.includes('BATHROOM')) {
+        categories.BATHROOM.push(image.uri);
+      } else if (category.includes('RESTAURANT') || category.includes('FOOD')) {
+        categories.RESTAURANT.push(image.uri);
+      } else if (category.includes('BAR')) {
+        categories.BAR.push(image.uri);
+      } else if (category.includes('POOL') || category.includes('GYM') || category.includes('SPA')) {
+        categories.AMENITIES.push(image.uri);
+      } else {
+        categories.OTHER.push(image.uri);
+      }
+    }
+    
+    return categories;
+  }
+
 
   async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<any> {
     const queryParams: Record<string, string> = {};

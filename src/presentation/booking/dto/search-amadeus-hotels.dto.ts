@@ -290,5 +290,15 @@ export class SearchAmadeusHotelsDto {
   @IsInt()
   @Min(1)
   page?: number = 1;
-}
 
+
+  @ApiPropertyOptional({
+    description: 'Include hotel images in the response. When true, fetches and enriches hotels with images from Amadeus Content API.',
+    default: true,
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  includeImages?: boolean = true;
+}

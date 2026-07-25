@@ -40,6 +40,7 @@ export class SearchAmadeusHotelsUseCase {
       radiusUnit = 'KM',
       limit = 20,
       page = 1,
+      includeImages = true, 
     } = searchParams;
 
     
@@ -195,6 +196,7 @@ export class SearchAmadeusHotelsUseCase {
         ...(bestRateOnly !== undefined && { bestRateOnly }),
         ...(countryOfResidence && { countryOfResidence }),
         ...(lang && { lang }),
+        includeImages: includeImages,
       });
 
       // Validate response
@@ -333,6 +335,7 @@ export class SearchAmadeusHotelsUseCase {
         currency: targetCurrency,
         conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${serviceFeeAmount} ${targetCurrency} service fee` : ''}.`,
         cached: false,
+        images_enriched: includeImages, 
       };
 
       // Cache for 5 minutes
@@ -434,6 +437,7 @@ export class SearchAmadeusHotelsUseCase {
       limit,
       radius,
       radiusUnit,
+      includeImages,
     } = searchParams;
 
     let key = `amadeus_hotel_search_v3:${checkInDate}-${checkOutDate}-${adults}-${roomQuantity}-${currency}-p${page}-l${limit}`;
@@ -444,6 +448,10 @@ export class SearchAmadeusHotelsUseCase {
       key += `:city-${cityCode}`;
     } else if (geographicCoordinates) {
       key += `:geo-${geographicCoordinates.latitude.toFixed(4)}-${geographicCoordinates.longitude.toFixed(4)}-r${radius || 10}-${radiusUnit || 'KM'}`;
+    }
+
+    if (includeImages !== undefined) {
+      key += `:img-${includeImages}`;
     }
 
     return key;

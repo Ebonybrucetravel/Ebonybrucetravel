@@ -722,7 +722,10 @@ export class BookingController {
   @ApiResponse({ status: 500, description: 'Internal server error or Amadeus API unavailable' })
   async searchAmadeusHotels(@Body() searchDto: SearchAmadeusHotelsDto) {
     try {
-      const results = await this.searchAmadeusHotelsUseCase.execute(searchDto);
+      const results = await this.searchAmadeusHotelsUseCase.execute({
+        ...searchDto,
+        includeImages: true
+      });
       return {
         success: true,
         data: results,
