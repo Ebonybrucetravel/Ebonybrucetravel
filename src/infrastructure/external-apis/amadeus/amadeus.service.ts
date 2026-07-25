@@ -370,6 +370,89 @@ export class AmadeusService {
       ]);
       
       const hotelData = contentResponse?.data?.basic || contentResponse?.data || contentResponse;
+      const media = hotelData?.media || [];
+      
+      // ✅ Extract description from media
+      let description = hotelData?.description?.text || null;
+      if (!description) {
+        const longDescription = media.find((m: any) => 
+          m.tags?.includes('HOTEL_LONG_DESCRIPTION')
+        );
+        const shortDescription = media.find((m: any) => 
+          m.tags?.includes('HOTEL_SHORT_DESCRIPTION')
+        );
+        const locationDescription = media.find((m: any) => 
+          m.tags?.includes('LONG_LOCATION_DESCRIPTION')
+        );
+        
+        description = longDescription?.description?.text || 
+                      shortDescription?.description?.text || 
+                      locationDescription?.description?.text || 
+                      null;
+      }
+      
+      // ✅ Extract amenities from media
+      const amenities = media
+        .filter((m: any) => 
+          m.tags?.includes('AMENITY_INFORMATION') || 
+          m.tags?.includes('ONSITE_FACILITIES') ||
+          m.tags?.includes('ONSITE_SERVICES')
+        )
+        .map((m: any) => {
+          // Format amenities nicely
+          const text = m.description?.text || '';
+          // Split by bullet points or newlines for cleaner display
+          if (text.includes('\r') || text.includes('\n')) {
+            return text.split(/\r\n|\n|\r/).filter((line: string) => line.trim());
+          }
+          return text;
+        })
+        .flat()
+        .filter(Boolean);
+      
+      // ✅ Extract policies from media
+      const policyTags = [
+        'COMMISSION_POLICY_DESCRIPTION',
+        'LATE_CHECKOUT_DESCRIPTION',
+        'GROUP_CONDITIONS',
+        'SERVICE_CHARGE_DESCRIPTION',
+        'TAX_AND_FEE_DESCRIPTION',
+        'CANCELLATION_POLICY',
+        'GUARANTEE_POLICY',
+        'GENERAL_POLICY_DECRIPTION'
+      ];
+      
+      const policies = media
+        .filter((m: any) => 
+          m.tags?.some((tag: string) => policyTags.includes(tag))
+        )
+        .map((m: any) => ({
+          type: m.tags?.find((tag: string) => policyTags.includes(tag)) || 'POLICY',
+          text: m.description?.text || '',
+          category: m.category || null
+        }))
+        .filter((p: any) => p.text);
+      
+      // ✅ Also try to get check-in/check-out from media if not in hotelData
+      let checkIn = hotelData?.checkInOut?.checkIn || '15:00';
+      let checkOut = hotelData?.checkInOut?.checkOut || '12:00';
+      
+      // Try to find check-in/check-out in media
+      const checkInMedia = media.find((m: any) => 
+        m.tags?.includes('CHECK_IN_DESCRIPTION')
+      );
+      const checkOutMedia = media.find((m: any) => 
+        m.tags?.includes('CHECK_OUT_DESCRIPTION')
+      );
+      
+      if (checkInMedia?.description?.text) {
+        const match = checkInMedia.description.text.match(/(\d{1,2}:\d{2}\s*[AP]M)/i);
+        if (match) checkIn = match[1];
+      }
+      if (checkOutMedia?.description?.text) {
+        const match = checkOutMedia.description.text.match(/(\d{1,2}:\d{2}\s*[AP]M)/i);
+        if (match) checkOut = match[1];
+      }
       
       return {
         success: true,
@@ -378,18 +461,18 @@ export class AmadeusService {
           name: hotelData?.name || null,
           chainCode: hotelData?.chainCode || null,
           chainName: hotelData?.chainName || null,
-          description: hotelData?.description || null,
+          description: description,
           address: hotelData?.contact?.[0]?.address || null,
           contact: hotelData?.contact || null,
           location: hotelData?.location || null,
           media: hotelData?.media || null,
           images: imageUrls,
           primaryImage: primaryImage,
-          amenities: hotelData?.amenities || null,
-          policies: hotelData?.policies || null,
+          amenities: amenities.length > 0 ? amenities : null,
+          policies: policies.length > 0 ? policies : null,
           checkInOut: {
-            checkIn: hotelData?.checkInOut?.checkIn || '15:00',
-            checkOut: hotelData?.checkInOut?.checkOut || '12:00',
+            checkIn: checkIn,
+            checkOut: checkOut,
           },
         },
         message: 'Hotel details retrieved successfully',
@@ -405,7 +488,6 @@ export class AmadeusService {
       );
     }
   }
-
   // ==================== HOTEL SEARCH API (v3) ====================
   
   async searchHotels(params: {
