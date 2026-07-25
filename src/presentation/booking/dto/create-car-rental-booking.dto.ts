@@ -8,62 +8,86 @@ import {
   ValidateNested,
   IsEnum,
   Min,
+  IsObject,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform, plainToInstance } from 'class-transformer';
 
 /**
- * Normalize driver from either flat shape or nested shape (name + contact).
- * Returns only whitelisted flat fields so forbidNonWhitelisted does not reject name/contact.
+ * Normalize passenger from driver shape to passenger shape
  */
-function normalizeDriver(value: any): any {
+function normalizePassenger(value: any): any {
   if (!value || typeof value !== 'object') return value;
+  
+  // If it's already a passenger with name and contact, return as is
+  if (value.name && value.contact) {
+    return value;
+  }
+  
+  // Convert from driver shape to passenger shape
   const firstName = value.firstName ?? value.name?.firstName;
   const lastName = value.lastName ?? value.name?.lastName;
   const email = value.email ?? value.contact?.email;
   const phone = value.phone ?? value.contact?.phone;
   const title = value.title && value.title !== '' ? value.title : 'MR';
+  
   return {
-    title,
-    firstName,
-    lastName,
-    phone,
-    email,
-    ...(value.dateOfBirth != null && { dateOfBirth: value.dateOfBirth }),
-    ...(value.licenseNumber != null && { licenseNumber: value.licenseNumber }),
-    ...(value.licenseCountry != null && { licenseCountry: value.licenseCountry }),
+    name: {
+      title,
+      firstName,
+      lastName,
+    },
+    contact: {
+      phone,
+      email,
+    },
   };
 }
 
 /**
- * Normalize payment so paymentCardInfo (frontend) is mapped to paymentCard fields.
- * Frontend may send payment.paymentCard.paymentCardInfo: { vendorCode, cardNumber, ... }.
- * Returns payment with only method + paymentCard (flat card fields, no paymentCardInfo).
+ * Normalize payment from frontend format to Amadeus format
  */
 function normalizePayment(value: any): any {
-  if (!value?.paymentCard || typeof value.paymentCard !== 'object') return value;
-  const card = value.paymentCard;
-  const info = card.paymentCardInfo;
-  if (info && typeof info === 'object') {
-    const { paymentCardInfo: _, ...rest } = card;
-    return { method: value.method, paymentCard: { ...rest, ...info } };
+  if (!value) return value;
+  
+  // If it's already in Amadeus format (methodOfPayment), return as is
+  if (value.methodOfPayment) {
+    return value;
   }
-  return value;
+  
+  // Convert from frontend format (method) to Amadeus format (methodOfPayment)
+  const result: any = {
+    methodOfPayment: value.method || 'CREDIT_CARD',
+  };
+  
+  // Handle credit card
+  if (value.paymentCard) {
+    const card = value.paymentCard;
+    const info = card.paymentCardInfo || card;
+    result.creditCard = {
+      vendorCode: info.vendorCode || 'VI',
+      number: info.cardNumber || info.number,
+      holderName: info.holderName,
+      expiryDate: info.expiryDate || info.expiryDate,
+      cvv: info.securityCode || info.cvv,
+    };
+  }
+  
+  return result;
 }
 
-export class CarRentalDriverDto {
-  @ApiPropertyOptional({
-    description: 'Driver title (defaults to MR if omitted or when using nested name/contact)',
+export class PassengerNameDto {
+  @ApiProperty({
+    description: 'Passenger title',
     enum: ['MR', 'MRS', 'MS', 'MISS', 'DR', 'PROF'],
     example: 'MR',
   })
-  @IsOptional()
   @IsString()
   @IsEnum(['MR', 'MRS', 'MS', 'MISS', 'DR', 'PROF'])
-  title?: string;
+  title: string = 'MR';
 
   @ApiProperty({
-    description: 'Driver first name (or driver.name.firstName)',
+    description: 'Passenger first name',
     example: 'John',
   })
   @IsString()
@@ -71,15 +95,17 @@ export class CarRentalDriverDto {
   firstName: string;
 
   @ApiProperty({
-    description: 'Driver last name (or driver.name.lastName)',
+    description: 'Passenger last name',
     example: 'Doe',
   })
   @IsString()
   @IsNotEmpty()
   lastName: string;
+}
 
+export class PassengerContactDto {
   @ApiProperty({
-    description: 'Driver phone number E.164 (or driver.contact.phone)',
+    description: 'Passenger phone number (E.164 format)',
     example: '+33679278416',
   })
   @IsString()
@@ -87,39 +113,33 @@ export class CarRentalDriverDto {
   phone: string;
 
   @ApiProperty({
-    description: 'Driver email (or driver.contact.email)',
+    description: 'Passenger email address',
     example: 'john.doe@example.com',
   })
   @IsEmail()
   @IsNotEmpty()
   email: string;
-
-  @ApiPropertyOptional({
-    description: 'Driver date of birth (YYYY-MM-DD)',
-    example: '1990-01-15',
-  })
-  @IsOptional()
-  @IsString()
-  dateOfBirth?: string;
-
-  @ApiPropertyOptional({
-    description: 'Driver license number',
-    example: 'DL123456',
-  })
-  @IsOptional()
-  @IsString()
-  licenseNumber?: string;
-
-  @ApiPropertyOptional({
-    description: 'Driver license country code (ISO 3166-1 alpha-2)',
-    example: 'GB',
-  })
-  @IsOptional()
-  @IsString()
-  licenseCountry?: string;
 }
 
-export class CarRentalPaymentCardDto {
+export class PassengerDto {
+  @ApiProperty({
+    description: 'Passenger name information',
+    type: PassengerNameDto,
+  })
+  @ValidateNested()
+  @Type(() => PassengerNameDto)
+  name: PassengerNameDto;
+
+  @ApiProperty({
+    description: 'Passenger contact information',
+    type: PassengerContactDto,
+  })
+  @ValidateNested()
+  @Type(() => PassengerContactDto)
+  contact: PassengerContactDto;
+}
+
+export class CreditCardDto {
   @ApiProperty({
     description: 'Card vendor code',
     enum: ['VI', 'MC', 'AX', 'CA', 'DC', 'DI', 'JC', 'TP'],
@@ -127,7 +147,7 @@ export class CarRentalPaymentCardDto {
   })
   @IsString()
   @IsEnum(['VI', 'MC', 'AX', 'CA', 'DC', 'DI', 'JC', 'TP'])
-  vendorCode: string;
+  vendorCode: string = 'VI';
 
   @ApiProperty({
     description: 'Card number (16 digits)',
@@ -135,11 +155,11 @@ export class CarRentalPaymentCardDto {
   })
   @IsString()
   @IsNotEmpty()
-  cardNumber: string;
+  number: string;
 
   @ApiProperty({
-    description: 'Card expiry date (YYYY-MM format)',
-    example: '2026-08',
+    description: 'Card expiry date (MMYY format)',
+    example: '1226',
   })
   @IsString()
   @IsNotEmpty()
@@ -159,32 +179,75 @@ export class CarRentalPaymentCardDto {
   })
   @IsString()
   @IsNotEmpty()
-  securityCode: string;
+  cvv: string;
 }
 
-export class CarRentalPaymentDto {
+export class PaymentDto {
   @ApiProperty({
     description: 'Payment method',
-    enum: ['CREDIT_CARD'],
+    enum: ['CREDIT_CARD', 'INVOICE'],
     example: 'CREDIT_CARD',
   })
   @IsString()
-  @IsEnum(['CREDIT_CARD'])
-  method: string;
+  @IsEnum(['CREDIT_CARD', 'INVOICE'])
+  methodOfPayment: 'CREDIT_CARD' | 'INVOICE' = 'CREDIT_CARD';
 
-  @ApiProperty({
-    description: 'Payment card information',
-    type: CarRentalPaymentCardDto,
+  @ApiPropertyOptional({
+    description: 'Credit card details (required for CREDIT_CARD method)',
+    type: CreditCardDto,
   })
+  @IsOptional()
   @ValidateNested()
-  @Type(() => CarRentalPaymentCardDto)
-  paymentCard: CarRentalPaymentCardDto;
+  @Type(() => CreditCardDto)
+  creditCard?: CreditCardDto;
+
+  @ApiPropertyOptional({
+    description: 'Payment reference (required for INVOICE method)',
+    example: 'INV-2024-001',
+  })
+  @IsOptional()
+  @IsString()
+  paymentReference?: string;
+}
+
+export class BillingAddressDto {
+  @ApiPropertyOptional({
+    description: 'Billing address line',
+    example: '5 Avenue Anatole France',
+  })
+  @IsOptional()
+  @IsString()
+  line?: string;
+
+  @ApiPropertyOptional({
+    description: 'Postal/zip code',
+    example: '75007',
+  })
+  @IsOptional()
+  @IsString()
+  zip?: string;
+
+  @ApiPropertyOptional({
+    description: 'City name',
+    example: 'Paris',
+  })
+  @IsOptional()
+  @IsString()
+  cityName?: string;
+
+  @ApiPropertyOptional({
+    description: 'Country code (ISO 3166-1 alpha-2)',
+    example: 'FR',
+  })
+  @IsOptional()
+  @IsString()
+  countryCode?: string;
 }
 
 export class CreateCarRentalBookingDto {
   @ApiProperty({
     description: 'Transfer offer ID from search results',
-    example: '4486232653',
+    example: '0cb11574-4a02-11e8-842f-0ed5f89f718b',
   })
   @IsString()
   @IsNotEmpty()
@@ -192,7 +255,7 @@ export class CreateCarRentalBookingDto {
 
   @ApiProperty({
     description: 'Offer price from search results',
-    example: 4255.00,
+    example: 63.70,
   })
   @IsNumber()
   @IsNotEmpty()
@@ -202,35 +265,60 @@ export class CreateCarRentalBookingDto {
   @ApiProperty({
     description: 'Currency code (ISO 4217)',
     enum: ['GBP', 'USD', 'EUR', 'NGN', 'JPY', 'CNY', 'GHS', 'KES', 'ZAR'],
-    example: 'NGN',
+    example: 'GBP',
   })
   @IsString()
   @IsNotEmpty()
   currency: string;
 
   @ApiProperty({
-    description:
-      'Driver information. Accepts flat { title?, firstName, lastName, phone, email } or nested { name: { firstName, lastName }, contact: { email, phone } }. Title defaults to MR if omitted.',
-    type: CarRentalDriverDto,
+    description: 'Passengers array (at least one passenger required)',
+    type: [PassengerDto],
+    example: [
+      {
+        name: {
+          title: 'MR',
+          firstName: 'John',
+          lastName: 'Smith',
+        },
+        contact: {
+          phone: '+441234567890',
+          email: 'john.smith@example.com',
+        },
+      },
+    ],
   })
-  @Transform(({ value }) => plainToInstance(CarRentalDriverDto, normalizeDriver(value)))
-  @ValidateNested()
-  @Type(() => CarRentalDriverDto)
-  driver: CarRentalDriverDto;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PassengerDto)
+  passengers: PassengerDto[];
 
-  // ✅ ADD TOTAL AMOUNT (sent from frontend with markup)
+  // ✅ Legacy support for driver field (will be converted to passengers)
+  @ApiPropertyOptional({
+    description: 'Driver information (legacy - use passengers array instead)',
+    type: Object,
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (!value) return value;
+    // Convert driver to passenger format
+    return normalizePassenger(value);
+  })
+  driver?: any;
+
+  // ✅ Total amount (with markup)
   @ApiProperty({
-    description: 'Total amount (calculated by frontend with markup)',
-    example: 4255,
+    description: 'Total amount (calculated with markup)',
+    example: 57.50,
   })
   @IsNumber()
   @IsNotEmpty()
   @Min(0.01)
   totalAmount: number;
 
-  // ✅ Optional fields from frontend (bookingData)
+  // ✅ Optional booking data
   @ApiPropertyOptional({
-    description: 'Pickup location',
+    description: 'Pickup location code',
     example: 'CDG',
   })
   @IsOptional()
@@ -238,24 +326,24 @@ export class CreateCarRentalBookingDto {
   pickupLocation?: string;
 
   @ApiPropertyOptional({
-    description: 'Dropoff location',
-    example: 'CDG',
+    description: 'Dropoff location code',
+    example: 'NCE',
   })
   @IsOptional()
   @IsString()
   dropoffLocation?: string;
 
   @ApiPropertyOptional({
-    description: 'Pickup date and time',
-    example: '2026-06-28T10:00:00',
+    description: 'Pickup date and time (ISO 8601)',
+    example: '2026-07-26T10:30:00',
   })
   @IsOptional()
   @IsString()
   pickupDateTime?: string;
 
   @ApiPropertyOptional({
-    description: 'Dropoff date and time',
-    example: '2026-07-01T10:00:00',
+    description: 'Dropoff date and time (ISO 8601)',
+    example: '2026-07-26T14:30:00',
   })
   @IsOptional()
   @IsString()
@@ -263,7 +351,7 @@ export class CreateCarRentalBookingDto {
 
   @ApiPropertyOptional({
     description: 'Vehicle type description',
-    example: 'A 3 seater SDN, Toyota Camry or Similar',
+    example: 'Mercedes-Benz V-Class or similar',
   })
   @IsOptional()
   @IsString()
@@ -271,7 +359,7 @@ export class CreateCarRentalBookingDto {
 
   @ApiPropertyOptional({
     description: 'Service provider name',
-    example: 'Elife',
+    example: 'ABC',
   })
   @IsOptional()
   @IsString()
@@ -282,26 +370,52 @@ export class CreateCarRentalBookingDto {
     example: {},
   })
   @IsOptional()
+  @IsObject()
   offerData?: any;
 
   @ApiPropertyOptional({
     description: 'Special requests or notes',
-    example: 'Child seat required',
+    example: 'Child seat required, extra waiting time',
   })
   @IsOptional()
   @IsString()
   specialRequests?: string;
 
-  // ✅ Payment is optional - same as Duffel/Wakanow (will use test card)
   @ApiPropertyOptional({
-    description: 'Payment card (optional - uses test card if not provided)',
-    type: CarRentalPaymentDto,
+    description: 'Flight number (for connected flights)',
+    example: 'AF380',
   })
   @IsOptional()
-  @Transform(({ value }) =>
-    value && value.paymentCard ? plainToInstance(CarRentalPaymentDto, normalizePayment(value)) : value,
-  )
+  @IsString()
+  flightNumber?: string;
+
+  @ApiPropertyOptional({
+    description: 'Billing address',
+    type: BillingAddressDto,
+  })
+  @IsOptional()
   @ValidateNested()
-  @Type(() => CarRentalPaymentDto)
-  payment?: CarRentalPaymentDto;
+  @Type(() => BillingAddressDto)
+  billingAddress?: BillingAddressDto;
+
+  // ✅ Payment - optional (will use test card if not provided)
+  @ApiPropertyOptional({
+    description: 'Payment details (optional - uses test card if not provided)',
+    type: PaymentDto,
+  })
+  @IsOptional()
+  @Transform(({ value }) => normalizePayment(value))
+  @ValidateNested()
+  @Type(() => PaymentDto)
+  payment?: PaymentDto;
+
+  // ✅ Transfer type (from Amadeus)
+  @ApiPropertyOptional({
+    description: 'Transfer type',
+    enum: ['PRIVATE', 'SHARED', 'TAXI', 'HOURLY', 'AIRPORT_EXPRESS', 'AIRPORT_BUS'],
+    default: 'PRIVATE',
+  })
+  @IsOptional()
+  @IsEnum(['PRIVATE', 'SHARED', 'TAXI', 'HOURLY', 'AIRPORT_EXPRESS', 'AIRPORT_BUS'])
+  transferType?: string = 'PRIVATE';
 }

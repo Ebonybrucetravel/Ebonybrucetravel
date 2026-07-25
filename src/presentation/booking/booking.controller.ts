@@ -16,7 +16,14 @@ import {
   Patch,
   Logger,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { 
+  ApiTags, 
+  ApiOperation, 
+  ApiResponse, 
+  ApiBearerAuth, 
+  ApiQuery,
+  ApiBody  // ✅ Added this
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
@@ -71,6 +78,7 @@ import { UpdateHotelBookingRequestDto, UpdateHotelBookingDto } from './dto/updat
 import { Throttle } from '@common/decorators/throttle.decorator';
 import { CancelBookingUseCase } from '@application/booking/use-cases/cancel-booking.use-case';
 import { CancelWakanowBookingUseCase } from '@application/booking/use-cases/cancel-wakanow-booking.use-case';
+
 
 @ApiTags('Bookings')
 @Controller('bookings')
@@ -1147,81 +1155,671 @@ export class BookingController {
       message: 'Usage statistics retrieved successfully',
     };
   }
+// ==================== CAR RENTALS / TRANSFERS ====================
 
-  // ==================== CAR RENTALS ====================
-
-  @Public()
-  @Post('search/car-rentals')
-  @Throttle(20, 60000)
-  @ApiOperation({
-    summary: 'Search for car rentals',
-    description:
-      'Search for car rental/transfer options using Amadeus API. Returns available vehicles with pricing, ' +
-      'applies currency conversion and markup automatically.',
-  })
-  @ApiResponse({ status: 200, description: 'Car rental search results' })
-  @ApiResponse({ status: 400, description: 'Invalid search parameters' })
-  async searchCarRentals(@Body() searchDto: SearchCarRentalsDto) {
+@Public()
+@Post('search/car-rentals')
+@Throttle(20, 60000)
+@ApiOperation({
+  summary: 'Search for car rentals / transfers',
+  description: `
+    Search for car rental/transfer options using Amadeus Transfers API.
+    
+    Supported transfer types:
+    - PRIVATE: Private transfer from point to point
+    - SHARED: Shared transfer from point to point
+    - TAXI: Taxi reservation with estimated price
+    - HOURLY: Chauffeured driven transfer per hour
+    - AIRPORT_EXPRESS: Express Train from/to Airport
+    - AIRPORT_BUS: Express Bus from/to Airport
+    
+    Location can be defined using:
+    - IATA code (e.g., CDG)
+    - Address (address line, zip, country, city)
+    - Geocoordinates
+    - Google Place ID
+    
+    Applies currency conversion and markup automatically.
+  `,
+})
+@ApiBody({
+  schema: {
+    example: {
+      startLocationCode: 'CDG',
+      endLocationCode: 'NCE',
+      startDateTime: '2026-07-26T10:30:00',
+      passengers: 2,
+      transferType: 'PRIVATE',
+      currency: 'GBP',
+    },
+  },
+})
+@ApiResponse({ 
+  status: 200, 
+  description: 'Car rental search results',
+  schema: {
+    example: {
+      success: true,
+      data: {
+        data: [
+          {
+            type: 'transfer-offer',
+            id: '0cb11574-4a02-11e8-842f-0ed5f89f718b',
+            transferType: 'PRIVATE',
+            start: {
+              dateTime: '2026-07-26T10:30:00',
+              locationCode: 'CDG',
+            },
+            end: {
+              dateTime: '2026-07-26T14:30:00',
+              locationCode: 'NCE',
+            },
+            vehicle: {
+              code: 'VAN',
+              category: 'BU',
+              description: 'Mercedes-Benz V-Class or similar',
+              seats: [{ count: 3 }],
+              baggages: [{ count: 3, size: 'M' }],
+              imageURL: 'https://provider.com/images/BU_VAN.png',
+            },
+            serviceProvider: {
+              code: 'ABC',
+              name: 'Provider name',
+              logoUrl: 'https://provider.com/images/logo.png',
+              termsUrl: 'https://provider.com/terms_and_conditions.html',
+              contacts: {
+                phoneNumber: '+33123456789',
+                email: 'support@provider.com',
+              },
+              settings: ['BILLING_ADDRESS_REQUIRED', 'FLIGHT_NUMBER_REQUIRED'],
+            },
+            quotation: {
+              monetaryAmount: '63.70',
+              currencyCode: 'USD',
+              isEstimated: false,
+              base: { monetaryAmount: '103.70' },
+              discount: { monetaryAmount: '50.00' },
+              fees: [{ indicator: 'AIRPORT', monetaryAmount: '10.00' }],
+              totalTaxes: { monetaryAmount: '12.74' },
+              totalFees: { monetaryAmount: '10.00' },
+            },
+            converted: {
+              monetaryAmount: '50.00',
+              currencyCode: 'GBP',
+              isEstimated: false,
+              base: { monetaryAmount: '82.96' },
+              discount: { monetaryAmount: '40.00' },
+              fees: [{ indicator: 'AIRPORT', monetaryAmount: '8.00' }],
+              totalTaxes: { monetaryAmount: '10.19' },
+              totalFees: { monetaryAmount: '8.00' },
+            },
+            cancellationRules: [
+              {
+                feeType: 'PERCENTAGE',
+                feeValue: '100',
+                metricType: 'DAYS',
+                metricMin: '0',
+                metricMax: '1',
+              },
+              {
+                feeType: 'PERCENTAGE',
+                feeValue: '0',
+                metricType: 'DAYS',
+                metricMin: '1',
+                metricMax: '100',
+              },
+            ],
+            methodsOfPaymentAccepted: ['CREDIT_CARD', 'INVOICE'],
+            supportedPaymentInstruments: [
+              { vendorCode: 'VI', description: 'VISA' },
+              { vendorCode: 'MC', description: 'MasterCard' },
+            ],
+            distance: { value: 152, unit: 'KM' },
+            original_price: '63.70',
+            original_currency: 'USD',
+            base_price: '50.00',
+            currency: 'GBP',
+            markup_percentage: 10,
+            markup_amount: '5.00',
+            service_fee: '2.50',
+            final_price: '57.50',
+            price: {
+              currency: 'GBP',
+              base: '50.00',
+              total: '57.50',
+              original_total: '63.70',
+              original_currency: 'USD',
+            },
+          },
+        ],
+        meta: {
+          count: 1,
+          total: 1,
+          limit: 20,
+          page: 1,
+          totalPages: 1,
+          hasMore: false,
+          nextPage: null,
+          prevPage: null,
+        },
+        currency: 'GBP',
+        conversion_note: 'Prices include a conversion fee to protect against exchange rate fluctuations.',
+        cached: false,
+      },
+      message: 'Car rentals retrieved successfully',
+    },
+  },
+})
+@ApiResponse({ 
+  status: 400, 
+  description: 'Invalid search parameters',
+  schema: {
+    example: {
+      errors: [
+        {
+          status: 400,
+          code: 4926,
+          title: 'INVALID DATA RECEIVED',
+          detail: 'Transfer type is not valid',
+          source: { parameter: 'transferType' },
+        },
+      ],
+    },
+  },
+})
+@ApiResponse({ 
+  status: 401, 
+  description: 'Unauthorized - Invalid or missing API token' 
+})
+@ApiResponse({ 
+  status: 500, 
+  description: 'Internal server error' 
+})
+async searchCarRentals(@Body() searchDto: SearchCarRentalsDto) {
+  try {
     const results = await this.searchCarRentalsUseCase.execute(searchDto);
+
+    if (results?.error) {
+      throw new BadRequestException({
+        message: results.message || 'Search failed',
+        error: results.error,
+      });
+    }
+
     return {
       success: true,
       data: results,
-      message: 'Car rentals retrieved successfully',
+      message: results?.message || 'Car rentals retrieved successfully',
     };
+  } catch (error: any) {
+    if (error instanceof HttpException) {
+      throw error;
+    }
+    this.logger.error('Error searching car rentals:', error);
+    throw new HttpException(
+      {
+        success: false,
+        message: error?.message || 'Failed to search car rentals',
+        error: 'Search failed',
+      },
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
   }
+}
 
-  @Post('car-rentals/bookings')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Create a car rental booking',
-    description:
-      'Creates a local booking for a car rental/transfer offer. After payment succeeds, the actual Amadeus transfer order will be created automatically.',
-  })
-  @ApiResponse({ status: 201, description: 'Car rental booking created successfully. Proceed to payment.' })
-  async createCarRentalBooking(@Body() dto: CreateCarRentalBookingDto, @Request() req) {
+@Post('car-rentals/bookings')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+@ApiOperation({
+  summary: 'Create a car rental / transfer booking (authenticated)',
+  description: `
+    Creates a booking for a car rental/transfer offer.
+    
+    Required fields:
+    - offerId: The offer ID from search results
+    - passengers: At least one passenger with name and contact details
+    
+    Payment methods supported:
+    - CREDIT_CARD: Requires credit card details
+    - INVOICE: Requires paymentReference (pre-agreed with provider)
+    
+    After payment succeeds, the actual Amadeus transfer order will be created automatically.
+  `,
+})
+@ApiBody({
+  schema: {
+    example: {
+      offerId: '0cb11574-4a02-11e8-842f-0ed5f89f718b',
+      passengers: [
+        {
+          name: {
+            title: 'MR',
+            firstName: 'John',
+            lastName: 'Smith',
+          },
+          contact: {
+            phone: '+441234567890',
+            email: 'john.smith@example.com',
+          },
+        },
+      ],
+      payment: {
+        methodOfPayment: 'CREDIT_CARD',
+        creditCard: {
+          vendorCode: 'VI',
+          number: '4111111111111111',
+          holderName: 'John Smith',
+          expiryDate: '1226',
+          cvv: '123',
+        },
+      },
+      flightNumber: 'AF380',
+      specialRequests: 'Need baby seat',
+      billingAddress: {
+        line: '5 Avenue Anatole France',
+        zip: '75007',
+        cityName: 'Paris',
+        countryCode: 'FR',
+      },
+    },
+  },
+})
+@ApiResponse({ 
+  status: 201, 
+  description: 'Car rental booking created successfully. Proceed to payment.',
+  schema: {
+    example: {
+      success: true,
+      data: {
+        type: 'transfer-order',
+        id: 'UVZTWlJJfERPRQ',
+        reference: 'YNK4JQ',
+        status: 'PENDING',
+        provider: 'AMADEUS',
+        productType: 'CAR_RENTAL',
+        transfers: [
+          {
+            status: 'CONFIRMED',
+            confirmNbr: '2904892',
+            methodOfPayment: 'CREDIT_CARD',
+            offerId: '0cb11574-4a02-11e8-842f-0ed5f89f718b',
+            transferType: 'PRIVATE',
+          },
+        ],
+        totalAmount: 57.50,
+        currency: 'GBP',
+      },
+      message: 'Booking created. Please proceed to payment.',
+    },
+  },
+})
+@ApiResponse({ 
+  status: 400, 
+  description: 'Invalid booking data',
+  schema: {
+    example: {
+      errors: [
+        {
+          status: 400,
+          code: 32171,
+          title: 'MANDATORY DATA MISSING',
+          detail: 'Offer ID is missing',
+        },
+      ],
+    },
+  },
+})
+@ApiResponse({ 
+  status: 401, 
+  description: 'Unauthorized - Authentication required' 
+})
+async createCarRentalBooking(@Body() dto: CreateCarRentalBookingDto, @Request() req) {
+  try {
     const result = await this.createCarRentalBookingUseCase.execute(dto, req.user.id);
     return {
       success: true,
       data: result,
       message: 'Booking created. Please proceed to payment.',
     };
+  } catch (error: any) {
+    if (error instanceof HttpException) {
+      throw error;
+    }
+    this.logger.error('Error creating car rental booking:', error);
+    throw new HttpException(
+      {
+        success: false,
+        message: error?.message || 'Failed to create car rental booking',
+        error: 'Booking creation failed',
+      },
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
   }
+}
 
-  @Public()
-  @Post('car-rentals/bookings/guest')
-  @ApiOperation({
-    summary: 'Create a car rental booking (guest, no auth)',
-    description:
-      'Same body as authenticated. Include payment card to use one-step payment.',
-  })
-  @ApiResponse({ status: 201, description: 'Car rental booking created. Proceed to payment.' })
-  async createGuestCarRentalBooking(@Body() dto: CreateCarRentalBookingDto) {
+@Public()
+@Post('car-rentals/bookings/guest')
+@ApiOperation({
+  summary: 'Create a car rental / transfer booking (guest, no authentication)',
+  description: `
+    Same as authenticated endpoint but for guest users.
+    
+    Creates a guest user automatically if the email doesn't exist.
+    Include payment card to use one-step payment process.
+    
+    Required fields:
+    - offerId: The offer ID from search results
+    - passengers: At least one passenger with name and contact details
+  `,
+})
+@ApiBody({
+  schema: {
+    example: {
+      offerId: '0cb11574-4a02-11e8-842f-0ed5f89f718b',
+      passengers: [
+        {
+          name: {
+            title: 'MR',
+            firstName: 'John',
+            lastName: 'Smith',
+          },
+          contact: {
+            phone: '+441234567890',
+            email: 'john.smith@example.com',
+          },
+        },
+      ],
+      payment: {
+        methodOfPayment: 'CREDIT_CARD',
+        creditCard: {
+          vendorCode: 'VI',
+          number: '4111111111111111',
+          holderName: 'John Smith',
+          expiryDate: '1226',
+          cvv: '123',
+        },
+      },
+      flightNumber: 'AF380',
+      specialRequests: 'Need baby seat',
+    },
+  },
+})
+@ApiResponse({ 
+  status: 201, 
+  description: 'Car rental booking created. Proceed to payment.',
+  schema: {
+    example: {
+      success: true,
+      data: {
+        type: 'transfer-order',
+        id: 'UVZTWlJJfERPRQ',
+        reference: 'YNK4JQ',
+        status: 'PENDING',
+        provider: 'AMADEUS',
+        productType: 'CAR_RENTAL',
+        transfers: [
+          {
+            status: 'CONFIRMED',
+            confirmNbr: '2904892',
+            methodOfPayment: 'CREDIT_CARD',
+            offerId: '0cb11574-4a02-11e8-842f-0ed5f89f718b',
+          },
+        ],
+        totalAmount: 57.50,
+        currency: 'GBP',
+        guestUser: {
+          id: 'guest-id',
+          email: 'john.smith@example.com',
+        },
+      },
+      message: 'Booking created. Please proceed to payment.',
+    },
+  },
+})
+@ApiResponse({ 
+  status: 400, 
+  description: 'Invalid booking data' 
+})
+async createGuestCarRentalBooking(@Body() dto: CreateCarRentalBookingDto) {
+  try {
     const result = await this.createGuestCarRentalBookingUseCase.execute(dto);
     return {
       success: true,
       data: result,
       message: 'Booking created. Please proceed to payment.',
     };
+  } catch (error: any) {
+    if (error instanceof HttpException) {
+      throw error;
+    }
+    this.logger.error('Error creating guest car rental booking:', error);
+    throw new HttpException(
+      {
+        success: false,
+        message: error?.message || 'Failed to create car rental booking',
+        error: 'Booking creation failed',
+      },
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
   }
+}
 
-  @Post('car-rentals/bookings/:bookingId/cancel')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Cancel a car rental booking (Admin only)',
-    description:
-      'Only administrators can cancel car rental bookings. Cancels the booking in Amadeus and updates the local booking status.',
-  })
-  @ApiResponse({ status: 200, description: 'Car rental booking cancelled successfully' })
-  @ApiResponse({ status: 403, description: 'Only administrators can cancel bookings' })
-  async cancelCarRentalBooking(@Param('bookingId') bookingId: string, @Request() req) {
+@Post('car-rentals/bookings/:bookingId/cancel')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN', 'SUPER_ADMIN')
+@ApiBearerAuth()
+@ApiOperation({
+  summary: 'Cancel a car rental / transfer booking (Admin only)',
+  description: `
+    Only administrators can cancel car rental bookings.
+    
+    Cancellation process:
+    1. Cancels the booking in Amadeus
+    2. Updates local booking status to CANCELLED
+    3. Voids the provider booking
+    
+    The cancellation is subject to the provider's cancellation policy.
+  `,
+})
+@ApiResponse({ 
+  status: 200, 
+  description: 'Car rental booking cancelled successfully',
+  schema: {
+    example: {
+      success: true,
+      data: {
+        confirmNbr: '2904892',
+        reservationStatus: 'CANCELLED',
+      },
+      message: 'Car rental booking cancelled successfully',
+    },
+  },
+})
+@ApiResponse({ 
+  status: 403, 
+  description: 'Forbidden - Only administrators can cancel bookings',
+  schema: {
+    example: {
+      statusCode: 403,
+      message: 'Only administrators can cancel bookings',
+      error: 'Forbidden',
+    },
+  },
+})
+@ApiResponse({ 
+  status: 404, 
+  description: 'Booking not found',
+  schema: {
+    example: {
+      statusCode: 404,
+      message: 'Booking not found',
+      error: 'Not Found',
+    },
+  },
+})
+@ApiResponse({ 
+  status: 400, 
+  description: 'Cancellation failed',
+  schema: {
+    example: {
+      errors: [
+        {
+          status: 400,
+          code: 32171,
+          title: 'MANDATORY DATA MISSING',
+          detail: 'Order ID is missing',
+        },
+      ],
+    },
+  },
+})
+async cancelCarRentalBooking(@Param('bookingId') bookingId: string, @Request() req) {
+  try {
     const result = await this.cancelCarRentalBookingUseCase.execute(bookingId, req.user.id);
     return {
       success: true,
       data: result,
       message: 'Car rental booking cancelled successfully',
     };
+  } catch (error: any) {
+    if (error instanceof HttpException) {
+      throw error;
+    }
+    this.logger.error('Error cancelling car rental booking:', error);
+    throw new HttpException(
+      {
+        success: false,
+        message: error?.message || 'Failed to cancel car rental booking',
+        error: 'Cancellation failed',
+      },
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
   }
+}
+
+@Get('car-rentals/bookings/:bookingId')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+@ApiOperation({
+  summary: 'Get a car rental / transfer booking by ID',
+  description: 'Retrieves detailed information about a specific car rental booking including passenger details, vehicle info, and payment status.',
+})
+@ApiResponse({ 
+  status: 200, 
+  description: 'Car rental booking details retrieved successfully',
+  schema: {
+    example: {
+      success: true,
+      data: {
+        type: 'transfer-order',
+        id: 'UVZTWlJJfERPRQ',
+        reference: 'YNK4JQ',
+        status: 'CONFIRMED',
+        provider: 'AMADEUS',
+        productType: 'CAR_RENTAL',
+        providerBookingId: '2904892',
+        transfers: [
+          {
+            status: 'CONFIRMED',
+            confirmNbr: '2904892',
+            note: 'Note to driver',
+            methodOfPayment: 'CREDIT_CARD',
+            offerId: '0cb11574-4a02-11e8-842f-0ed5f89f718b',
+            transferType: 'PRIVATE',
+            start: {
+              dateTime: '2026-07-26T10:30:00',
+              locationCode: 'CDG',
+            },
+            end: {
+              locationCode: 'NCE',
+            },
+            vehicle: {
+              code: 'VAN',
+              category: 'BU',
+              description: 'Mercedes-Benz V-Class or similar',
+            },
+            serviceProvider: {
+              code: 'ABC',
+              name: 'Provider name',
+              contacts: {
+                phoneNumber: '+33123456789',
+                email: 'support@provider.com',
+              },
+            },
+            quotation: {
+              monetaryAmount: '63.70',
+              currencyCode: 'USD',
+            },
+            cancellationRules: [
+              {
+                feeType: 'PERCENTAGE',
+                feeValue: '100',
+                metricType: 'DAYS',
+                metricMin: '0',
+                metricMax: '1',
+              },
+            ],
+          },
+        ],
+        passengers: [
+          {
+            firstName: 'John',
+            lastName: 'Smith',
+            title: 'MR',
+            contacts: {
+              phoneNumber: '+441234567890',
+              email: 'john.smith@example.com',
+            },
+          },
+        ],
+        totalAmount: 57.50,
+        currency: 'GBP',
+        createdAt: '2026-07-25T10:30:00Z',
+        updatedAt: '2026-07-25T10:30:00Z',
+      },
+      message: 'Car rental booking retrieved successfully',
+    },
+  },
+})
+@ApiResponse({ 
+  status: 401, 
+  description: 'Unauthorized - Authentication required' 
+})
+@ApiResponse({ 
+  status: 403, 
+  description: 'Forbidden - You do not have access to this booking' 
+})
+@ApiResponse({ 
+  status: 404, 
+  description: 'Booking not found' 
+})
+async getCarRentalBooking(@Param('bookingId') bookingId: string, @Request() req) {
+  try {
+    const booking = await this.bookingService.getBookingById(bookingId);
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+    if (booking.userId !== req.user.id && req.user.role !== 'ADMIN' && req.user.role !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('You do not have access to this booking');
+    }
+    return {
+      success: true,
+      data: booking,
+      message: 'Car rental booking retrieved successfully',
+    };
+  } catch (error: any) {
+    if (error instanceof HttpException) {
+      throw error;
+    }
+    this.logger.error('Error retrieving car rental booking:', error);
+    throw new HttpException(
+      {
+        success: false,
+        message: error?.message || 'Failed to retrieve car rental booking',
+        error: 'Retrieval failed',
+      },
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
+  }
+}
 }

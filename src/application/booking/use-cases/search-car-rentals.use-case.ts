@@ -3,7 +3,7 @@ import { AmadeusService } from '@infrastructure/external-apis/amadeus/amadeus.se
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 import { CacheService } from '@infrastructure/cache/cache.service';
 import { CurrencyService } from '@infrastructure/currency/currency.service';
-import { SearchCarRentalsDto } from '@presentation/booking/dto/search-car-rentals.dto';
+import { SearchCarRentalsDto, VehicleCategory, VehicleCode, TransferType } from '@presentation/booking/dto/search-car-rentals.dto';
 import { ProductType } from '@prisma/client';
 
 @Injectable()
@@ -19,349 +19,422 @@ export class SearchCarRentalsUseCase {
 
   async execute(searchParams: SearchCarRentalsDto) {
     const {
-      pickupLocationCode,
-      dropoffLocationCode,
-      pickupDateTime,
-      dropoffDateTime,
+      startLocationCode,
+      endLocationCode,
+      startDateTime,
+      transferType = TransferType.PRIVATE,
       passengers = 1,
-      vehicleTypes,
+      duration,
       currency,
-      targetCurrency,
+      vehicleCategory,
+      vehicleCode,
+      providerCodes,
+      baggages = 0,
+      discountNumbers,
       limit = 20,
       page = 1,
     } = searchParams;
-    const effectiveCurrency = targetCurrency ?? currency ?? 'GBP';
+    
+    const effectiveCurrency = currency ?? 'GBP';
 
     // Validate dates
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const pickup = new Date(pickupDateTime);
-    if (pickup < today) {
-      throw new BadRequestException(
-        `Pickup date (${pickupDateTime}) cannot be in the past. Please select a future date.`,
-      );
+    const pickupDate = new Date(startDateTime);
+    if (isNaN(pickupDate.getTime())) {
+      throw new BadRequestException(`Invalid pickup date format: ${startDateTime}`);
     }
+    
+    this.validateDate(pickupDate);
 
-    const dropoff = dropoffDateTime ? new Date(dropoffDateTime) : new Date(pickup.getTime() + 24 * 60 * 60 * 1000);
-    if (dropoff <= pickup) {
-      throw new BadRequestException(
-        `Drop-off date (${dropoffDateTime || 'auto'}) must be after pickup date (${pickupDateTime}).`,
-      );
-    }
-
-    // Check cache
-    const cacheKey = `car_rental:${pickupLocationCode}:${dropoffLocationCode || pickupLocationCode}:${pickupDateTime}:${dropoffDateTime || 'auto'}:${passengers}:${effectiveCurrency}`;
+    // Generate cache key
+    const cacheKey = this.generateCacheKey({
+      startLocationCode,
+      endLocationCode,
+      startDateTime: pickupDate.toISOString(),
+      passengers,
+      effectiveCurrency,
+      transferType,
+      vehicleCategory,
+      vehicleCode,
+    });
+    
     const cached = this.cacheService.get<any>(cacheKey);
-
     if (cached) {
       return { ...cached, cached: true };
     }
 
     try {
-      // Search transfers (Amadeus transfer API can be used for car rentals)
-      this.logger.log(
-        `Searching car rentals: ${pickupLocationCode} -> ${dropoffLocationCode || pickupLocationCode}, ${pickupDateTime} to ${dropoffDateTime || dropoff.toISOString()}, passengers: ${passengers}`,
-      );
-      
-      // Format dates for Amadeus API
-      const pickupDate = new Date(pickupDateTime);
-      const dropoffDate = dropoffDateTime ? new Date(dropoffDateTime) : dropoff;
-      
-      // Validate dates are valid
-      if (isNaN(pickupDate.getTime())) {
-        throw new BadRequestException(`Invalid pickup date format: ${pickupDateTime}`);
-      }
-      if (isNaN(dropoffDate.getTime())) {
-        throw new BadRequestException(`Invalid dropoff date format: ${dropoffDateTime || 'auto'}`);
-      }
-      
-      // Validate minimum rental duration
-      const rentalDurationHours = (dropoffDate.getTime() - pickupDate.getTime()) / (1000 * 60 * 60);
-      
-      if (rentalDurationHours < 4) {
-        throw new BadRequestException(
-          `Rental duration is too short. Minimum rental period is 4 hours. Current duration: ${rentalDurationHours.toFixed(2)} hours. Please set dropoff time at least 4 hours after pickup time.`,
-        );
-      }
-      
-      if (rentalDurationHours < 24) {
-        this.logger.warn(
-          `Short rental duration: ${rentalDurationHours.toFixed(2)} hours. This might be better suited for a transfer service rather than a car rental.`,
-        );
-      }
-      
-      const maxFutureDate = new Date();
-      maxFutureDate.setMonth(maxFutureDate.getMonth() + 12);
-      
-      const testEnvMaxDate = new Date();
-      testEnvMaxDate.setDate(testEnvMaxDate.getDate() + 7);
-      
-      if (pickupDate > maxFutureDate) {
-        throw new BadRequestException(
-          `Pickup date (${pickupDateTime}) is too far in the future. Amadeus API supports dates up to 12 months ahead.`,
-        );
-      }
-      
-      if (pickupDate > testEnvMaxDate) {
-        this.logger.warn(
-          `Pickup date (${pickupDateTime}) is more than 7 days ahead. Amadeus test environment may only support dates within 1-7 days. Try a date closer to today.`,
-        );
-      }
-      
-      const now = new Date();
-      if (pickupDate < now) {
-        throw new BadRequestException(
-          `Pickup date (${pickupDateTime}) cannot be in the past. Current time: ${now.toISOString()}`,
-        );
-      }
-      
-      const formatAmadeusDateTime = (dateString: string, fallbackDate: Date): string => {
-        const isoMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
-        if (isoMatch) {
-          return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}T${isoMatch[4]}:${isoMatch[5]}:${isoMatch[6]}`;
-        }
-        const year = fallbackDate.getFullYear();
-        const month = String(fallbackDate.getMonth() + 1).padStart(2, '0');
-        const day = String(fallbackDate.getDate()).padStart(2, '0');
-        const hours = String(fallbackDate.getHours()).padStart(2, '0');
-        const minutes = String(fallbackDate.getMinutes()).padStart(2, '0');
-        const seconds = String(fallbackDate.getSeconds()).padStart(2, '0');
-        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-      };
-      
-      const formattedPickupDateTime = formatAmadeusDateTime(pickupDateTime, pickupDate);
-      const formattedDropoffDateTime = dropoffDateTime 
-        ? formatAmadeusDateTime(dropoffDateTime, dropoffDate)
-        : formatAmadeusDateTime(dropoff.toISOString(), dropoffDate);
-      
-      this.logger.log(`Formatted dates for Amadeus - Pickup: ${formattedPickupDateTime}, Dropoff: ${formattedDropoffDateTime}`);
-      this.logger.log(`Rental duration: ${rentalDurationHours.toFixed(2)} hours`);
-      this.logger.log(`Sending to Amadeus: start=${pickupLocationCode}, end=${dropoffLocationCode || pickupLocationCode}, startDateTime=${formattedPickupDateTime}, passengers=${passengers}`);
-      
-      const calculateDuration = (start: Date, end: Date): string => {
-        const diffMs = end.getTime() - start.getTime();
-        const hours = Math.floor(diffMs / (1000 * 60 * 60));
-        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-        return `PT${hours}H${minutes > 0 ? `${minutes}M` : ''}`;
-      };
-      
-      const transferDuration = calculateDuration(pickupDate, dropoffDate);
-      this.logger.log(`Transfer duration: ${transferDuration}`);
-      
-      // FIXED: Updated to use new parameter names
-      const response = await this.amadeusService.searchTransfers({
-        startLocationCode: pickupLocationCode,
-        endLocationCode: dropoffLocationCode || pickupLocationCode,
-        startDateTime: formattedPickupDateTime,
+      const formattedStartDateTime = this.formatAmadeusDateTime(pickupDate);
+
+      this.logger.log(`Searching transfers: ${startLocationCode} -> ${endLocationCode || startLocationCode}`);
+      this.logger.log(`Start: ${formattedStartDateTime}, Type: ${transferType}, Passengers: ${passengers}`);
+
+      const transferRequest = this.buildTransferRequest({
+        startLocationCode,
+        endLocationCode: endLocationCode || startLocationCode,
+        startDateTime: formattedStartDateTime,
+        transferType,
         passengers,
-        transferType: 'PRIVATE',
-        duration: transferDuration,
-        currency: effectiveCurrency,
+        effectiveCurrency,
+        duration,
+        vehicleCategory,
+        vehicleCode,
+        providerCodes,
+        baggages,
+        discountNumbers,
       });
 
-      this.logger.log(`Amadeus transfer search response: ${JSON.stringify(response)}`);
+      const response = await this.amadeusService.searchTransfers(transferRequest);
 
-      // Check if response has errors
-      if (response.errors && Array.isArray(response.errors) && response.errors.length > 0) {
-        const firstError = response.errors[0];
-        this.logger.error(`Amadeus transfer search error: ${JSON.stringify(response.errors, null, 2)}`);
-        
-        if (firstError.code === 32698 && firstError.detail === 'INVALID PICKUP DATE') {
-          const daysFromToday = Math.ceil((pickupDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-          
-          return {
-            data: [],
-            meta: {
-              count: 0,
-              total: 0,
-              limit,
-              page,
-              totalPages: 0,
-              hasMore: false,
-              nextPage: null,
-              prevPage: null,
-            },
-            currency: effectiveCurrency,
-            conversion_note: `Prices include a ${this.currencyService.getConversionBuffer()}% conversion fee to protect against exchange rate fluctuations.`,
-            cached: false,
-            message: `INVALID PICKUP DATE error from Amadeus. Your pickup date is ${daysFromToday} days from today. The Amadeus test environment typically only supports dates within 1-7 days. Please try a date closer to today (e.g., tomorrow or within the next week).`,
-            error: {
-              code: firstError.code,
-              detail: firstError.detail,
-              suggestion: 'Try dates within 1-7 days from today for the test environment',
-            },
-          };
-        }
+      if (this.hasErrors(response)) {
+        return this.handleApiErrors(response, pickupDate, effectiveCurrency, limit, page);
+      }
+
+      return await this.processSuccessfulResponse({
+        response,
+        effectiveCurrency,
+        limit,
+        page,
+        cacheKey,
+      });
+
+    } catch (error: any) {
+      this.logger.error('Error searching transfers:', error);
+      
+      if (error instanceof BadRequestException) {
+        throw error;
       }
       
-      // Check if response has data
-      if (!response || !response.data) {
-        this.logger.warn('Amadeus transfer search returned no data. Response:', JSON.stringify(response, null, 2));
-        return {
-          data: [],
-          meta: {
-            count: 0,
-            total: 0,
-            limit,
-            page,
-            totalPages: 0,
-            hasMore: false,
-            nextPage: null,
-            prevPage: null,
-          },
-          currency: effectiveCurrency,
-          conversion_note: `Prices include a ${this.currencyService.getConversionBuffer()}% conversion fee to protect against exchange rate fluctuations.`,
-          cached: false,
-          message: 'No car rental offers found. The Amadeus test environment has limited data. Try major airports (JFK, CDG, LHR) with dates within 1-7 days from today.',
-        };
-      }
+      throw new BadRequestException(
+        error?.message || 'Failed to search transfers. Please check your search parameters.',
+      );
+    }
+  }
 
-      const offers = Array.isArray(response.data) ? response.data : [];
-      
-      if (offers.length === 0) {
-        this.logger.warn(
-          `No car rental offers found for ${pickupLocationCode} on ${pickupDateTime}. Full response:`,
-          JSON.stringify(response, null, 2),
-        );
-      }
+  private validateDate(pickupDate: Date) {
+    const now = new Date();
+    
+    if (pickupDate < now) {
+      throw new BadRequestException(`Pickup date cannot be in the past.`);
+    }
 
-      // Process results with currency conversion and markup
-      const processedResults = await Promise.all(
-        offers.map(async (offer: any) => {
+    const maxDate = new Date();
+    maxDate.setMonth(maxDate.getMonth() + 12);
+    if (pickupDate > maxDate) {
+      throw new BadRequestException(
+        `Pickup date is too far in the future. Maximum allowed is 12 months from today.`,
+      );
+    }
+
+    const testMaxDate = new Date();
+    testMaxDate.setDate(testMaxDate.getDate() + 7);
+    if (pickupDate > testMaxDate) {
+      this.logger.warn(
+        `Pickup date is more than 7 days ahead. Amadeus test environment may only support dates within 1-7 days.`,
+      );
+    }
+  }
+
+  private buildTransferRequest(params: {
+    startLocationCode: string;
+    endLocationCode: string;
+    startDateTime: string;
+    transferType: TransferType;
+    passengers: number;
+    effectiveCurrency: string;
+    duration?: string;
+    vehicleCategory?: VehicleCategory;
+    vehicleCode?: VehicleCode;
+    providerCodes?: string;
+    baggages?: number;
+    discountNumbers?: string;
+  }) {
+    const request: any = {
+      startLocationCode: params.startLocationCode,
+      endLocationCode: params.endLocationCode,
+      startDateTime: params.startDateTime,
+      passengers: params.passengers,
+      transferType: params.transferType,
+      currency: params.effectiveCurrency,
+    };
+
+    if (params.duration) {
+      request.duration = params.duration;
+    }
+
+    // ✅ Directly use VehicleCategory enum values (ST, BU, FC)
+    if (params.vehicleCategory) {
+      request.vehicleCategory = params.vehicleCategory;
+    }
+
+    // ✅ Directly use VehicleCode enum values
+    if (params.vehicleCode) {
+      request.vehicleCode = params.vehicleCode;
+    }
+
+    if (params.providerCodes) {
+      request.providerCodes = params.providerCodes;
+    }
+
+    if (params.baggages !== undefined && params.baggages > 0) {
+      request.baggages = params.baggages;
+    }
+
+    if (params.discountNumbers) {
+      request.discountNumbers = params.discountNumbers;
+    }
+
+    this.logger.log(`Amadeus transfer request: ${JSON.stringify(request)}`);
+
+    return request;
+  }
+
+  private formatAmadeusDateTime(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+  }
+
+  private generateCacheKey(params: any): string {
+    const { startLocationCode, endLocationCode, startDateTime, passengers, effectiveCurrency, transferType, vehicleCategory, vehicleCode } = params;
+    return `transfer:${startLocationCode}:${endLocationCode || startLocationCode}:${startDateTime}:${passengers}:${effectiveCurrency}:${transferType}:${vehicleCategory || 'all'}:${vehicleCode || 'all'}`;
+  }
+
+  private hasErrors(response: any): boolean {
+    return !!(response?.errors && Array.isArray(response.errors) && response.errors.length > 0);
+  }
+
+  private handleApiErrors(response: any, pickupDate: Date, currency: string, limit: number, page: number) {
+    const firstError = response.errors[0];
+    this.logger.error(`Amadeus API error: ${JSON.stringify(response.errors)}`);
+
+    const errorMap: Record<string, { message: string; suggestion: string }> = {
+      '4926': { 
+        message: 'Invalid data received', 
+        suggestion: 'Check your request parameters format' 
+      },
+      '1876': { 
+        message: 'Invalid IATA code', 
+        suggestion: 'Use valid IATA airport codes (e.g., JFK, CDG, LHR)' 
+      },
+      '3337': { 
+        message: 'Invalid date/time', 
+        suggestion: 'Use ISO 8601 format (YYYY-MM-DDTHH:MM:SS)' 
+      },
+      '2323': { 
+        message: 'Service type missing', 
+        suggestion: 'Specify transferType (PRIVATE, SHARED, TAXI, HOURLY, etc.)' 
+      },
+      '530': {
+        message: 'Invalid vehicle type',
+        suggestion: 'Use valid vehicle categories: ST, BU, FC or vehicle codes: CAR, VAN, SUV, etc.'
+      },
+      '8269': {
+        message: 'No transfers available',
+        suggestion: 'Try different dates or locations'
+      },
+      '34499': {
+        message: 'Duration is mandatory',
+        suggestion: 'Provide duration for HOURLY transfer type'
+      },
+      '32800': {
+        message: 'Missing pickup location information',
+        suggestion: 'Provide startLocationCode or address details'
+      },
+      '32803': {
+        message: 'Missing drop-off location information',
+        suggestion: 'Provide endLocationCode or address details'
+      },
+      '33891': {
+        message: 'Pickup date/time required',
+        suggestion: 'Provide startDateTime in ISO 8601 format'
+      },
+    };
+
+    const errorInfo = errorMap[String(firstError.code)] || { 
+      message: firstError.detail || 'Unknown error', 
+      suggestion: 'Check Amadeus API documentation for more details' 
+    };
+
+    const daysFromToday = Math.ceil((pickupDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+
+    return {
+      data: [],
+      meta: {
+        count: 0,
+        total: 0,
+        limit,
+        page,
+        totalPages: 0,
+        hasMore: false,
+        nextPage: null,
+        prevPage: null,
+      },
+      currency,
+      conversion_note: `Prices include a conversion fee to protect against exchange rate fluctuations.`,
+      cached: false,
+      message: `Amadeus API error: ${errorInfo.message}`,
+      error: {
+        code: firstError.code,
+        detail: firstError.detail,
+        suggestion: errorInfo.suggestion,
+        pickup_date_days_from_today: daysFromToday,
+      },
+    };
+  }
+
+  private async processSuccessfulResponse(params: {
+    response: any;
+    effectiveCurrency: string;
+    limit: number;
+    page: number;
+    cacheKey: string;
+  }) {
+    const { response, effectiveCurrency, limit, page, cacheKey } = params;
+
+    const offers = Array.isArray(response.data) ? response.data : [];
+    
+    if (offers.length === 0) {
+      this.logger.warn('No transfer offers found');
+      return this.createEmptyResponse(effectiveCurrency, limit, page);
+    }
+
+    const processedResults = await this.processOffers(offers, effectiveCurrency);
+
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const paginatedResults = processedResults.slice(startIndex, endIndex);
+    const totalResults = processedResults.length;
+    const totalPages = Math.ceil(totalResults / limit);
+
+    const result = {
+      data: paginatedResults,
+      meta: {
+        count: paginatedResults.length,
+        total: totalResults,
+        limit,
+        page,
+        totalPages,
+        hasMore: page < totalPages,
+        nextPage: page < totalPages ? page + 1 : null,
+        prevPage: page > 1 ? page - 1 : null,
+      },
+      currency: effectiveCurrency,
+      conversion_note: `Prices include a conversion fee to protect against exchange rate fluctuations.`,
+      cached: false,
+    };
+
+    this.cacheService.set(cacheKey, result, 5 * 60 * 1000);
+
+    return result;
+  }
+
+  private async processOffers(offers: any[], targetCurrency: string) {
+    return await Promise.all(
+      offers.map(async (offer: any) => {
+        try {
           const quotation = offer.quotation || {};
-          const converted = offer.converted || {};
           const originalPrice = parseFloat(quotation.monetaryAmount || '0');
           const originalCurrency = quotation.currencyCode || 'USD';
 
+          if (originalPrice <= 0) {
+            return offer;
+          }
+
           let convertedBasePrice = originalPrice;
-          if (originalCurrency !== effectiveCurrency && originalPrice > 0) {
+          if (originalCurrency !== targetCurrency) {
             try {
               convertedBasePrice = await this.currencyService.convert(
                 originalPrice,
                 originalCurrency,
-                effectiveCurrency,
+                targetCurrency,
               );
-              if (convertedBasePrice === originalPrice) {
-                throw new Error('Conversion returned original amount, likely failed');
-              }
             } catch (error) {
               this.logger.warn(
-                `Failed to convert ${originalPrice} ${originalCurrency} to ${effectiveCurrency}, using Amadeus converted price as fallback:`,
+                `Failed to convert ${originalPrice} ${originalCurrency} to ${targetCurrency}, using fallback`,
                 error,
               );
+              const converted = offer.converted || {};
               const amadeusConvertedPrice = parseFloat(converted.monetaryAmount || '0');
-              const amadeusConvertedCurrency = converted.currencyCode || '';
-              if (
-                amadeusConvertedPrice > 0 &&
-                amadeusConvertedCurrency.toUpperCase() === effectiveCurrency.toUpperCase()
-              ) {
+              if (amadeusConvertedPrice > 0 && converted.currencyCode === targetCurrency) {
                 convertedBasePrice = amadeusConvertedPrice;
-                this.logger.log(
-                  `Using Amadeus converted price: ${amadeusConvertedPrice} ${effectiveCurrency}`,
-                );
-              } else {
-                convertedBasePrice = originalPrice;
-                this.logger.error(
-                  `Could not convert ${originalPrice} ${originalCurrency} to ${effectiveCurrency} and no valid fallback available`,
-                );
               }
             }
           }
 
-          let markupPercentage = 0;
-          let serviceFeeAmount = 0;
-          try {
-            const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
-              ProductType.CAR_RENTAL,
-              effectiveCurrency,
-            );
-            if (markupConfig) {
-              markupPercentage = markupConfig.markupPercentage || 0;
-              serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
-            }
-          } catch (error) {
-            this.logger.warn(
-              `Could not fetch markup config for CAR_RENTAL in ${effectiveCurrency}, using 0%:`,
-              error,
-            );
-          }
-
-          const conversionDetails = this.currencyService.calculateConversionFee(
-            convertedBasePrice,
-            originalCurrency,
-            effectiveCurrency,
-          );
-
-          const markupAmount = (conversionDetails.totalWithFee * markupPercentage) / 100;
-          const finalPrice = conversionDetails.totalWithFee + markupAmount + serviceFeeAmount;
+          const markupResult = await this.calculateMarkup(convertedBasePrice, targetCurrency);
 
           return {
             ...offer,
             original_price: originalPrice.toString(),
             original_currency: originalCurrency,
-            base_price: this.currencyService.formatAmount(convertedBasePrice, effectiveCurrency),
-            currency: effectiveCurrency,
-            conversion_fee: this.currencyService.formatAmount(
-              conversionDetails.conversionFee,
-              effectiveCurrency,
-            ),
-            conversion_fee_percentage:
-              originalCurrency !== effectiveCurrency ? this.currencyService.getConversionBuffer() : 0,
-            price_after_conversion: this.currencyService.formatAmount(
-              conversionDetails.totalWithFee,
-              effectiveCurrency,
-            ),
-            markup_percentage: markupPercentage,
-            markup_amount: this.currencyService.formatAmount(markupAmount, effectiveCurrency),
-            service_fee: this.currencyService.formatAmount(serviceFeeAmount, effectiveCurrency),
-            final_price: this.currencyService.formatAmount(finalPrice, effectiveCurrency),
+            base_price: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
+            currency: targetCurrency,
             price: {
-              currency: effectiveCurrency,
-              base: this.currencyService.formatAmount(convertedBasePrice, effectiveCurrency),
-              total: this.currencyService.formatAmount(finalPrice, effectiveCurrency),
+              currency: targetCurrency,
+              base: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
+              total: markupResult.final_price,
               original_total: originalPrice.toString(),
               original_currency: originalCurrency,
             },
+            ...markupResult,
           };
-        }),
+        } catch (error) {
+          this.logger.error('Error processing offer:', error);
+          return offer;
+        }
+      }),
+    );
+  }
+
+  private async calculateMarkup(basePrice: number, currency: string) {
+    let markupPercentage = 0;
+    let serviceFeeAmount = 0;
+
+    try {
+      const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
+        ProductType.CAR_RENTAL,
+        currency,
       );
-
-      // Pagination
-      const startIndex = (page - 1) * limit;
-      const endIndex = startIndex + limit;
-      const paginatedResults = processedResults.slice(startIndex, endIndex);
-      const totalResults = processedResults.length;
-      const totalPages = Math.ceil(totalResults / limit);
-
-      const result = {
-        data: paginatedResults,
-        meta: {
-          count: paginatedResults.length,
-          total: totalResults,
-          limit,
-          page,
-          totalPages,
-          hasMore: page < totalPages,
-          nextPage: page < totalPages ? page + 1 : null,
-          prevPage: page > 1 ? page - 1 : null,
-        },
-        currency: effectiveCurrency,
-        conversion_note: `Prices include a ${this.currencyService.getConversionBuffer()}% conversion fee to protect against exchange rate fluctuations.`,
-        cached: false,
-        ...(totalResults === 0 && {
-          message: 'No car rental offers found. The Amadeus test environment has limited data. Try: 1) Major airports (JFK, CDG, LHR), 2) Dates within 1-3 months from today, 3) Different location codes.',
-        }),
-      };
-
-      this.cacheService.set(cacheKey, result, 5 * 60 * 1000);
-
-      return result;
-    } catch (error: any) {
-      this.logger.error('Error searching car rentals:', error);
-      throw new BadRequestException(
-        error?.message || 'Failed to search car rentals. Please check your search parameters.',
-      );
+      if (markupConfig) {
+        markupPercentage = markupConfig.markupPercentage || 0;
+        serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
+      }
+    } catch (error) {
+      this.logger.warn(`Could not fetch markup config for CAR_RENTAL in ${currency}`, error);
     }
+
+    const markupAmount = (basePrice * markupPercentage) / 100;
+    const finalPrice = basePrice + markupAmount + serviceFeeAmount;
+
+    return {
+      markup_percentage: markupPercentage,
+      markup_amount: this.currencyService.formatAmount(markupAmount, currency),
+      service_fee: this.currencyService.formatAmount(serviceFeeAmount, currency),
+      final_price: this.currencyService.formatAmount(finalPrice, currency), 
+    };
+  }
+
+  private createEmptyResponse(currency: string, limit: number, page: number) {
+    return {
+      data: [],
+      meta: {
+        count: 0,
+        total: 0,
+        limit,
+        page,
+        totalPages: 0,
+        hasMore: false,
+        nextPage: null,
+        prevPage: null,
+      },
+      currency,
+      conversion_note: `Prices include a conversion fee to protect against exchange rate fluctuations.`,
+      cached: false,
+      message: 'No transfer offers found. The Amadeus test environment has limited data. Try major airports (JFK, CDG, LHR) with dates within 1-7 days from today.',
+    };
   }
 }

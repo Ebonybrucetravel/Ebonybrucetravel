@@ -25,17 +25,31 @@ export class CreateCarRentalBookingUseCase {
 
   async execute(dto: CreateCarRentalBookingDto, userId: string) {
     // ✅ Validate required fields
+    if (!dto.offerId) {
+      throw new BadRequestException('Offer ID is required');
+    }
+
+    if (!dto.passengers || dto.passengers.length === 0) {
+      throw new BadRequestException('At least one passenger is required');
+    }
+
+    // ✅ Validate passenger has required fields
+    const firstPassenger = dto.passengers[0];
+    if (!firstPassenger.name?.firstName || !firstPassenger.name?.lastName) {
+      throw new BadRequestException('Passenger first name and last name are required');
+    }
+    if (!firstPassenger.contact?.email || !firstPassenger.contact?.phone) {
+      throw new BadRequestException('Passenger email and phone are required');
+    }
+
+    // ✅ Validate offer price
     if (!dto.offerPrice || dto.offerPrice <= 0) {
       this.logger.error(`Invalid offerPrice: ${dto.offerPrice}`);
       throw new BadRequestException('Offer price is required and must be greater than 0');
     }
 
-    if (!dto.offerId) {
-      throw new BadRequestException('Offer ID is required');
-    }
-
-    if (!dto.driver) {
-      throw new BadRequestException('Driver information is required');
+    if (!dto.currency) {
+      throw new BadRequestException('Currency is required');
     }
 
     try {
@@ -59,8 +73,20 @@ export class CreateCarRentalBookingUseCase {
         markupConfig,
       );
 
-      // ✅ NO PAYMENT CARD REQUIRED - Same as Duffel, Wakanow, Amadeus hotels
-      // Payment will be handled by Stripe webhook
+      // ✅ Prepare booking data
+      const bookingData = {
+        amadeus_offer_id: dto.offerId,
+        offer_price: dto.offerPrice,
+        passengers: dto.passengers,
+        special_requests: dto.specialRequests,
+        flight_number: dto.flightNumber,
+        billing_address: dto.billingAddress,
+        payment_method: dto.payment?.methodOfPayment || 'CREDIT_CARD',
+        transfer_type: dto.transferType || 'PRIVATE',
+      };
+
+      // ✅ Get first passenger for booking reference
+      const primaryPassenger = dto.passengers[0];
 
       // Create booking in database (status: PENDING, waiting for payment)
       const booking = await this.bookingService.createBooking({
@@ -72,23 +98,50 @@ export class CreateCarRentalBookingUseCase {
         serviceFee: pricing.serviceFee,
         totalAmount: pricing.totalAmount,
         currency: dto.currency,
-        bookingData: {
-          amadeus_offer_id: dto.offerId,
-          offer_price: dto.offerPrice,
-          driver: dto.driver,
-          special_requests: dto.specialRequests,
-        },
+        bookingData: bookingData,
         passengerInfo: {
-          firstName: dto.driver.firstName,
-          lastName: dto.driver.lastName,
-          email: dto.driver.email,
-          phone: dto.driver.phone,
+          firstName: primaryPassenger.name.firstName,
+          lastName: primaryPassenger.name.lastName,
+          email: primaryPassenger.contact.email,
+          phone: primaryPassenger.contact.phone,
         },
         status: BookingStatus.PENDING,
         paymentStatus: 'PENDING',
       });
 
       this.logger.log(`✅ Car rental booking created: ${booking.id} (${booking.reference})`);
+
+      // ✅ If payment is provided, create Amadeus order immediately
+      if (dto.payment && dto.payment.methodOfPayment === 'CREDIT_CARD' && dto.payment.creditCard) {
+        try {
+          this.logger.log('Payment details provided, creating Amadeus order immediately...');
+          const { orderId, orderData } = await this.createAmadeusOrderAfterPayment(
+            booking.id,
+            dto.payment,
+          );
+          
+          // Update booking with order details
+          await this.prisma.booking.update({
+            where: { id: booking.id },
+            data: {
+              providerBookingId: orderId,
+              providerData: orderData,
+              status: BookingStatus.CONFIRMED,
+            },
+          });
+
+          // ✅ Fetch updated booking
+          const updatedBooking = await this.bookingService.getBookingById(booking.id);
+
+          return {
+            booking: updatedBooking,
+            message: 'Booking confirmed. Order created successfully.',
+          };
+        } catch (error) {
+          this.logger.error('Failed to create Amadeus order immediately:', error);
+          // Booking remains PENDING - will be processed by webhook
+        }
+      }
 
       return {
         booking,
@@ -109,7 +162,10 @@ export class CreateCarRentalBookingUseCase {
    * Create Amadeus transfer order after payment succeeds
    * Called automatically by Stripe webhook handler
    */
-  async createAmadeusOrderAfterPayment(bookingId: string): Promise<{ orderId: string; orderData: any }> {
+  async createAmadeusOrderAfterPayment(
+    bookingId: string,
+    payment?: CreateCarRentalBookingDto['payment'],
+  ): Promise<{ orderId: string; orderData: any }> {
     this.logger.log(`Creating Amadeus transfer order for booking ${bookingId}`);
 
     const booking = await this.bookingService.getBookingById(bookingId);
@@ -132,50 +188,89 @@ export class CreateCarRentalBookingUseCase {
 
     const bookingData = booking.bookingData as any;
 
-    // ✅ Use test card - same as everything else
-    const cardDetails = {
-      vendorCode: 'VI',
-      cardNumber: '4111111111111111',
-      expiryDate: '2026-12',
-      holderName: 'Test Card',
-      securityCode: '123',
-    };
-
-    this.logger.log('Using test card for Amadeus transfer');
-
-    // Validate offer ID
+    // ✅ Validate offer ID
     if (!bookingData.amadeus_offer_id) {
       throw new BadRequestException('Missing offer ID for car rental booking');
     }
 
-    // Create Amadeus transfer order
-    const driverTitle = bookingData.driver?.title || 'MR';
-    const amadeusOrder = await this.amadeusService.createTransferBooking({
-      offerId: bookingData.amadeus_offer_id,
-      passengers: [
-        {
-          name: {
-            title: driverTitle,
-            firstName: bookingData.driver.firstName,
-            lastName: bookingData.driver.lastName,
-          },
-          contact: {
-            phone: bookingData.driver.phone,
-            email: bookingData.driver.email,
-          },
-        },
-      ],
-      payment: {
+    // ✅ Build passenger data for Amadeus API
+    const passengers = bookingData.passengers.map((p: any, index: number) => ({
+      id: (index + 1).toString(), // ✅ Required by Amadeus API
+      name: {
+        title: p.name.title || 'MR',
+        firstName: p.name.firstName,
+        lastName: p.name.lastName,
+      },
+      contact: {
+        phoneNumber: p.contact.phone,
+        email: p.contact.email,
+      },
+    }));
+
+    // ✅ Build payment data
+    let paymentData = null;
+    if (payment) {
+      paymentData = {
+        methodOfPayment: payment.methodOfPayment,
+      };
+
+      if (payment.methodOfPayment === 'CREDIT_CARD' && payment.creditCard) {
+        paymentData.creditCard = {
+          vendorCode: payment.creditCard.vendorCode || 'VI',
+          cardNumber: payment.creditCard.number,
+          holderName: payment.creditCard.holderName,
+          expiryDate: payment.creditCard.expiryDate,
+          cvv: payment.creditCard.cvv,
+        };
+      } else if (payment.methodOfPayment === 'INVOICE') {
+        paymentData.paymentReference = payment.paymentReference;
+      }
+    } else {
+      // ✅ Fallback: Use test card if no payment provided
+      this.logger.log('No payment provided, using test card');
+      paymentData = {
         methodOfPayment: 'CREDIT_CARD',
         creditCard: {
-          number: cardDetails.cardNumber,
-          holderName: cardDetails.holderName,
-          vendorCode: cardDetails.vendorCode,
-          expiryDate: cardDetails.expiryDate,
-          cvv: cardDetails.securityCode,
+          vendorCode: 'VI',
+          cardNumber: '4111111111111111',
+          holderName: 'Test Card',
+          expiryDate: '1226',
+          cvv: '123',
         },
-      },
-    });
+      };
+    }
+
+    // ✅ Build request for Amadeus API
+    const requestParams: any = {
+      offerId: bookingData.amadeus_offer_id,
+      passengers: passengers,
+      payment: paymentData,
+    };
+
+    // ✅ Add billing address if provided
+    if (bookingData.billing_address) {
+      requestParams.billingAddress = {
+        line: bookingData.billing_address.line,
+        zip: bookingData.billing_address.zip,
+        cityName: bookingData.billing_address.cityName,
+        countryCode: bookingData.billing_address.countryCode,
+      };
+    }
+
+    // ✅ Add flight number if provided
+    if (bookingData.flight_number) {
+      requestParams.flightNumber = bookingData.flight_number;
+    }
+
+    // ✅ Add special requests if provided
+    if (bookingData.special_requests) {
+      requestParams.specialRequests = bookingData.special_requests;
+    }
+
+    this.logger.log(`Creating Amadeus transfer order with params: ${JSON.stringify(requestParams, null, 2)}`);
+
+    // ✅ Create Amadeus transfer order
+    const amadeusOrder = await this.amadeusService.createTransferBooking(requestParams);
 
     if (!amadeusOrder?.data?.id) {
       this.logger.error(`Amadeus response missing order ID: ${JSON.stringify(amadeusOrder)}`);
@@ -184,8 +279,16 @@ export class CreateCarRentalBookingUseCase {
 
     this.logger.log(`✅ Amadeus transfer order created: ${amadeusOrder.data.id}`);
 
-    // Update booking with order details
-    const updatedBookingData = { ...bookingData };
+    // ✅ Extract transfer information
+    const transfer = amadeusOrder.data.transfers?.[0];
+    const confirmNbr = transfer?.confirmNbr || null;
+
+    // ✅ Update booking with order details
+    const updatedBookingData = { 
+      ...bookingData,
+      confirmNbr: confirmNbr, // ✅ Store confirmation number in bookingData
+    };
+
     await this.prisma.booking.update({
       where: { id: bookingId },
       data: {
@@ -202,5 +305,45 @@ export class CreateCarRentalBookingUseCase {
       orderId: amadeusOrder.data.id,
       orderData: amadeusOrder.data,
     };
+  }
+
+  /**
+   * Cancel Amadeus transfer order
+   */
+  async cancelAmadeusOrder(bookingId: string): Promise<any> {
+    this.logger.log(`Cancelling Amadeus transfer order for booking ${bookingId}`);
+
+    const booking = await this.bookingService.getBookingById(bookingId);
+
+    if (!booking) {
+      throw new NotFoundException(`Booking ${bookingId} not found`);
+    }
+
+    if (!booking.providerBookingId) {
+      throw new BadRequestException('No Amadeus order found for this booking');
+    }
+
+    // ✅ Get confirmation number from bookingData (for logging only)
+    const bookingData = booking.bookingData as any;
+    const confirmNbr = bookingData?.confirmNbr;
+
+    if (!confirmNbr) {
+      this.logger.warn('No confirmation number found, attempting cancellation without it');
+    }
+
+    // ✅ Cancel in Amadeus - only pass the orderId (1 argument)
+    const result = await this.amadeusService.cancelTransfer(booking.providerBookingId);
+
+    // Update booking status
+    await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: BookingStatus.CANCELLED,
+      },
+    });
+
+    this.logger.log(`✅ Amadeus transfer order cancelled for booking ${bookingId}`);
+
+    return result;
   }
 }

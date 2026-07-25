@@ -5,50 +5,84 @@ import {
   Min,
   Max,
   IsOptional,
-  IsNumber,
   IsArray,
   IsEnum,
   IsNotEmpty,
+  IsIn,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+
+// ✅ Amadeus Transfer Types (from documentation)
+export enum TransferType {
+  PRIVATE = 'PRIVATE',
+  SHARED = 'SHARED',
+  TAXI = 'TAXI',
+  HOURLY = 'HOURLY',
+  AIRPORT_EXPRESS = 'AIRPORT_EXPRESS',
+  AIRPORT_BUS = 'AIRPORT_BUS',
+  HELICOPTER = 'HELICOPTER',
+  PRIVATE_JET = 'PRIVATE_JET',
+}
+
+// ✅ Amadeus Vehicle Categories (from documentation)
+export enum VehicleCategory {
+  ST = 'ST', // Standard Class
+  BU = 'BU', // Business Class
+  FC = 'FC', // First Class
+}
+
+// ✅ Amadeus Vehicle Types (from documentation)
+export enum VehicleCode {
+  MBR = 'MBR', // Motorbike
+  CAR = 'CAR', // Car
+  SED = 'SED', // Sedan
+  WGN = 'WGN', // Wagon
+  ELC = 'ELC', // Electric car
+  VAN = 'VAN', // Van or minivan
+  SUV = 'SUV', // Sport utility vehicle
+  LMS = 'LMS', // Limousine
+  TRN = 'TRN', // Train
+  BUS = 'BUS', // Bus
+  HLC = 'HLC', // Helicopter
+  JET = 'JET', // Jet
+}
 
 export class SearchCarRentalsDto {
   @ApiProperty({
-    description: 'Pickup location code (airport IATA code or city code)',
-    example: 'LHR',
+    description: 'Pickup location (IATA code, e.g., CDG) or address details',
+    example: 'CDG',
   })
   @IsString()
   @IsNotEmpty()
-  pickupLocationCode: string;
+  startLocationCode: string;
 
   @ApiPropertyOptional({
-    description: 'Drop-off location code (if different from pickup). If not provided, same as pickup.',
-    example: 'LHR',
+    description: 'Drop-off location code (IATA code). If not provided, same as pickup.',
+    example: 'NCE',
   })
   @IsOptional()
   @IsString()
-  dropoffLocationCode?: string;
+  endLocationCode?: string;
 
   @ApiProperty({
-    description:
-      'Pickup date and time in ISO 8601 format (date + time required). E.g. 2026-06-04T10:00:00. Time is used for duration and Amadeus.',
-    example: '2026-06-04T10:00:00',
+    description: 'Pickup date and time in ISO 8601 format (YYYY-MM-DDThh:mm:ss)',
+    example: '2026-07-26T10:30:00',
   })
   @IsDateString()
-  pickupDateTime: string;
+  startDateTime: string;
 
-  @ApiPropertyOptional({
-    description:
-      'Drop-off date and time in ISO 8601 format (date + time required when provided). E.g. 2026-06-07T10:00:00. If omitted, defaults to pickup + 24 hours.',
-    example: '2026-06-07T10:00:00',
+  @ApiProperty({
+    description: 'Transfer service type',
+    enum: TransferType,
+    default: TransferType.PRIVATE,
+    example: TransferType.PRIVATE,
   })
   @IsOptional()
-  @IsDateString()
-  dropoffDateTime?: string;
+  @IsEnum(TransferType)
+  transferType?: TransferType = TransferType.PRIVATE;
 
   @ApiPropertyOptional({
-    description: 'Number of passengers',
+    description: 'Number of passengers (1-9)',
     minimum: 1,
     maximum: 9,
     default: 1,
@@ -57,23 +91,18 @@ export class SearchCarRentalsDto {
   @IsInt()
   @Min(1)
   @Max(9)
-  passengers?: number;
+  passengers?: number = 1;
 
   @ApiPropertyOptional({
-    description: 'Vehicle types filter',
-    type: [String],
-    enum: ['SEDAN', 'SUV', 'VAN', 'CONVERTIBLE', 'COUPE', 'HATCHBACK', 'WAGON', 'PICKUP'],
-    example: ['SEDAN', 'SUV'],
+    description: 'Duration in ISO 8601 format (PT2H30M). Required for HOURLY transfer type.',
+    example: 'PT2H30M',
   })
   @IsOptional()
-  @IsArray()
-  @IsEnum(['SEDAN', 'SUV', 'VAN', 'CONVERTIBLE', 'COUPE', 'HATCHBACK', 'WAGON', 'PICKUP'], {
-    each: true,
-  })
-  vehicleTypes?: string[];
+  @IsString()
+  duration?: string;
 
   @ApiPropertyOptional({
-    description: 'Currency code (ISO 4217). Default: GBP. Accepts either "currency" or "targetCurrency".',
+    description: 'Preferred currency (ISO 4217)',
     enum: ['GBP', 'USD', 'EUR', 'NGN', 'JPY', 'CNY', 'GHS', 'KES', 'ZAR'],
     default: 'GBP',
   })
@@ -81,14 +110,49 @@ export class SearchCarRentalsDto {
   @IsString()
   currency?: string = 'GBP';
 
-  /** Alias for currency (same meaning). If both sent, targetCurrency takes precedence. */
   @ApiPropertyOptional({
-    description: 'Same as currency. Use either currency or targetCurrency.',
-    enum: ['GBP', 'USD', 'EUR', 'NGN', 'JPY', 'CNY', 'GHS', 'KES', 'ZAR'],
+    description: 'Vehicle category filter (ST, BU, FC)',
+    enum: VehicleCategory,
+    example: VehicleCategory.BU,
+  })
+  @IsOptional()
+  @IsEnum(VehicleCategory)
+  vehicleCategory?: VehicleCategory;
+
+  @ApiPropertyOptional({
+    description: 'Vehicle type filter',
+    enum: VehicleCode,
+    example: VehicleCode.VAN,
+  })
+  @IsOptional()
+  @IsEnum(VehicleCode)
+  vehicleCode?: VehicleCode;
+
+  @ApiPropertyOptional({
+    description: 'Provider codes (comma-separated). If not filled, all providers are searched.',
+    example: 'TXO,FGT',
   })
   @IsOptional()
   @IsString()
-  targetCurrency?: string;
+  providerCodes?: string;
+
+  @ApiPropertyOptional({
+    description: 'Number of baggages to be supported by the vehicle',
+    minimum: 0,
+    default: 0,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  baggages?: number = 0;
+
+  @ApiPropertyOptional({
+    description: 'Corporate discount number (format: {providerCode}|{discountType}|{discountNumber})',
+    example: 'ABC|CD|1122-DD-22',
+  })
+  @IsOptional()
+  @IsString()
+  discountNumbers?: string;
 
   @ApiPropertyOptional({
     description: 'Number of results per page',
@@ -112,4 +176,3 @@ export class SearchCarRentalsDto {
   @Min(1)
   page?: number = 1;
 }
-

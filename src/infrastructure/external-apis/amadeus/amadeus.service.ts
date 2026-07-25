@@ -1094,29 +1094,38 @@ export class AmadeusService {
       name: { title: string; firstName: string; lastName: string };
       contact: { phone: string; email: string };
     }>;
-    // ✅ Make payment optional - same as hotels
     payment?: {
-      methodOfPayment: string;
+      methodOfPayment: 'CREDIT_CARD' | 'INVOICE';
       creditCard?: {
-        number: string;
+        vendorCode: string;      // VI, MC, AX, etc.
+        cardNumber: string;
         holderName: string;
-        vendorCode: string;
-        expiryDate: string;
-        cvv: string;
+        expiryDate: string;      // YYYY-MM
+        cvv?: string;
       };
+      paymentReference?: string; // For INVOICE method
     };
+    billingAddress?: {
+      line?: string;
+      zip?: string;
+      cityName?: string;
+      countryCode?: string;
+    };
+    flightNumber?: string;
+    specialRequests?: string;
   }): Promise<any> {
-    // ✅ Build request without requiring payment
+    // ✅ Build request with proper passenger structure
     const requestBody: any = {
       data: {
         offerId: params.offerId,
-        passengers: params.passengers.map(p => ({
+        passengers: params.passengers.map((p, index) => ({
+          id: (index + 1).toString(), // ✅ Add passenger ID
           name: {
             title: p.name.title,
             firstName: p.name.firstName,
             lastName: p.name.lastName,
           },
-          contacts: {
+          contact: {
             phoneNumber: p.contact.phone,
             email: p.contact.email,
           },
@@ -1124,9 +1133,48 @@ export class AmadeusService {
       },
     };
   
-    // ✅ Only add payment if explicitly provided (like Amadeus hotels)
+    // ✅ Add payment if provided
     if (params.payment) {
-      requestBody.data.payment = params.payment;
+      const paymentData: any = {
+        methodOfPayment: params.payment.methodOfPayment,
+      };
+  
+      if (params.payment.methodOfPayment === 'CREDIT_CARD' && params.payment.creditCard) {
+        paymentData.creditCard = {
+          vendorCode: params.payment.creditCard.vendorCode,
+          cardNumber: params.payment.creditCard.cardNumber,
+          holderName: params.payment.creditCard.holderName,
+          expiryDate: params.payment.creditCard.expiryDate,
+        };
+        if (params.payment.creditCard.cvv) {
+          paymentData.creditCard.cvv = params.payment.creditCard.cvv;
+        }
+      }
+  
+      if (params.payment.methodOfPayment === 'INVOICE' && params.payment.paymentReference) {
+        paymentData.paymentReference = params.payment.paymentReference;
+      }
+  
+      requestBody.data.payment = paymentData;
+    }
+  
+    // ✅ Add billing address if provided
+    if (params.billingAddress) {
+      requestBody.data.billingAddress = {};
+      if (params.billingAddress.line) requestBody.data.billingAddress.line = params.billingAddress.line;
+      if (params.billingAddress.zip) requestBody.data.billingAddress.zip = params.billingAddress.zip;
+      if (params.billingAddress.cityName) requestBody.data.billingAddress.cityName = params.billingAddress.cityName;
+      if (params.billingAddress.countryCode) requestBody.data.billingAddress.countryCode = params.billingAddress.countryCode;
+    }
+  
+    // ✅ Add flight number if provided
+    if (params.flightNumber) {
+      requestBody.data.flightNumber = params.flightNumber;
+    }
+  
+    // ✅ Add special requests if provided
+    if (params.specialRequests) {
+      requestBody.data.specialRequests = params.specialRequests;
     }
   
     this.logger.log(`📤 Sending transfer booking to Amadeus: ${JSON.stringify(requestBody, null, 2)}`);
@@ -1165,21 +1213,78 @@ export class AmadeusService {
         name: { title: string; firstName: string; lastName: string };
         contact: { phone: string; email: string };
       }>;
-      payments: Array<{ method: string; card?: { vendorCode: string; cardNumber: string; expiryDate: string } }>;
+      payment?: {
+        methodOfPayment: 'CREDIT_CARD' | 'INVOICE';
+        creditCard?: {
+          vendorCode: string;
+          cardNumber: string;
+          holderName: string;
+          expiryDate: string;
+          cvv?: string;
+        };
+        paymentReference?: string;
+      };
     }
   ): Promise<any> {
     if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
     
+    const requestBody: any = {
+      data: {
+        offerId: params.offerId,
+        passengers: params.passengers.map((p, index) => ({
+          id: (index + 1).toString(),
+          name: {
+            title: p.name.title,
+            firstName: p.name.firstName,
+            lastName: p.name.lastName,
+          },
+          contact: {
+            phoneNumber: p.contact.phone,
+            email: p.contact.email,
+          },
+        })),
+      },
+    };
+  
+    // ✅ Add payment if provided
+    if (params.payment) {
+      const paymentData: any = {
+        methodOfPayment: params.payment.methodOfPayment,
+      };
+  
+      if (params.payment.methodOfPayment === 'CREDIT_CARD' && params.payment.creditCard) {
+        paymentData.creditCard = {
+          vendorCode: params.payment.creditCard.vendorCode,
+          cardNumber: params.payment.creditCard.cardNumber,
+          holderName: params.payment.creditCard.holderName,
+          expiryDate: params.payment.creditCard.expiryDate,
+        };
+        if (params.payment.creditCard.cvv) {
+          paymentData.creditCard.cvv = params.payment.creditCard.cvv;
+        }
+      }
+  
+      if (params.payment.methodOfPayment === 'INVOICE' && params.payment.paymentReference) {
+        paymentData.paymentReference = params.payment.paymentReference;
+      }
+  
+      requestBody.data.payment = paymentData;
+    }
+  
     return this.makeRequest(`/v1/ordering/transfer-orders/${orderId}`, {
       method: 'POST',
-      body: { data: { offerId: params.offerId, passengers: params.passengers, payments: params.payments } },
+      body: requestBody,
     });
   }
 
-  async cancelTransfer(orderId: string): Promise<any> {
-    if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
-    return this.makeRequest(`/v1/ordering/transfer-orders/${orderId}/transfers/cancellation`, { method: 'POST' });
-  }
+
+async cancelTransfer(orderId: string): Promise<any> {
+  if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
+  return this.makeRequest(`/v1/ordering/transfer-orders/${orderId}/transfers/cancellation`, { 
+    method: 'POST',
+    body: {}, // ✅ Empty body as per API spec
+  });
+}
 
   async listTransferBookings(params?: { page?: number; limit?: number }): Promise<any> {
     const queryParams: Record<string, string> = {};
