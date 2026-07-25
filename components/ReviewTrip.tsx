@@ -1836,27 +1836,51 @@ else if (isHotel || isCar) {
               </div>
 
               {isHotel && (
-                <div className="mt-6 pt-6 border-t border-gray-100">
-                  <h3 className="text-md font-semibold text-gray-900 mb-3">Cancellation Policy</h3>
-                  <div className="space-y-3">
-                    <p className="text-sm text-gray-600">Please review the cancellation policy carefully.</p>
-                    <div className="flex items-start gap-2 mt-4 p-3 bg-gray-50 rounded-lg">
-                      <input
-                        type="checkbox"
-                        id="cancellationPolicy"
-                        checked={agreedToPolicy}
-                        onChange={(e) => setAgreedToPolicy(e.target.checked)}
-                        className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
-                        required
-                        disabled={!!extBooking}
-                      />
-                      <label htmlFor="cancellationPolicy" className="text-sm text-gray-700">
-                        I have read and agree to the cancellation policy.
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              )}
+  <div className="mt-6 pt-6 border-t border-gray-100">
+    <h3 className="text-md font-semibold text-gray-900 mb-3">Cancellation Policy</h3>
+    <div className="space-y-3">
+      {/* ✅ DISPLAY THE ACTUAL CANCELLATION POLICY FROM THE ITEM */}
+      {(actualItem as any)?.cancellationPolicy ? (
+        <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+          <p className="text-sm text-gray-700 leading-relaxed">
+            {(actualItem as any).cancellationPolicy}
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-gray-600">Please review the cancellation policy carefully.</p>
+      )}
+      
+      {/* ✅ SHOW ALL POLICIES IF AVAILABLE */}
+      {(actualItem as any)?.policies && (actualItem as any).policies.length > 0 && (
+        <div className="mt-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
+          <p className="text-xs font-semibold text-blue-800 mb-2">Additional Policies:</p>
+          <ul className="space-y-1">
+            {(actualItem as any).policies.map((policy: any, idx: number) => (
+              <li key={idx} className="text-xs text-blue-700">
+                • {policy.type?.replace(/_/g, ' ')}: {policy.text}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      
+      <div className="flex items-start gap-2 mt-4 p-3 bg-gray-50 rounded-lg">
+        <input
+          type="checkbox"
+          id="cancellationPolicy"
+          checked={agreedToPolicy}
+          onChange={(e) => setAgreedToPolicy(e.target.checked)}
+          className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
+          required
+          disabled={!!extBooking}
+        />
+        <label htmlFor="cancellationPolicy" className="text-sm text-gray-700">
+          I have read and agree to the cancellation policy.
+        </label>
+      </div>
+    </div>
+  </div>
+)}
 
               {displayedTerms.length > 0 && !extBooking && isFlight && (
                 <div className="mt-6 pt-6 border-t border-gray-100">

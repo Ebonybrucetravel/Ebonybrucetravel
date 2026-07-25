@@ -174,6 +174,20 @@ export interface SearchResult {
   offer?: any;
   hotel?: any;
   adults?: number;
+  hotelId?: string;
+  primaryImage?: string;
+  imageCategories?: Record<string, string[]>;
+  images?: any[];
+  address?: string;
+  cityCode?: string;
+  offers?: any[];
+  description?: string;
+  hotelName?: string;
+  totalReviews?: number;   
+sentiment?: string;   
+offerId?: string;  
+  hotelData?: any;   
+
 
   // ✅ CAR RENTAL SPECIFIC FIELDS
   pickupLocation?: string;

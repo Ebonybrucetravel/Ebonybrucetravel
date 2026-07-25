@@ -1990,20 +1990,166 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
 
-
   const renderHotelCard = (item: ExtendedSearchResult) => {
     const starRating = Math.floor(item.rating || 4);
     const displayPrice = hotelCarPrices[item.id] || 'Price on request';
-
+    
+    // ✅ Get hotel ID from various possible locations
+    const hotelId = item.hotelId || item.hotel?.hotelId || item.id;
+    const hotelName = item.hotel?.name || item.title || 'Hotel';
+    const primaryImage = item.hotel?.primaryImage || item.image || null;
+  
+    // ✅ Extract offers and offerId from all possible sources
+    const offers = item.offers || item.hotel?.offers || [];
+    const offerId = item.offerId || 
+                    item.offer_id || 
+                    item.hotel?.offerId || 
+                    item.hotel?.offer_id ||
+                    (offers.length > 0 ? offers[0]?.id : null);
+  
+    // ✅ Handle hotel click - navigates to details page
+    const handleHotelClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      
+      if (!hotelId) {
+        toast.error('Hotel ID not found');
+        return;
+      }
+  
+      console.log('🏨 Navigating to hotel details:', {
+        hotelId,
+        hotelName,
+        primaryImage,
+        hasOffers: !!(item.offers?.length),
+        offerId: offerId,
+        firstOfferId: offers.length > 0 ? offers[0]?.id : 'none',
+      });
+  
+      // Store the hotel data in sessionStorage for the details page
+      const hotelData = {
+        id: hotelId,
+        hotelId: hotelId,
+        name: hotelName,
+        title: hotelName,
+        subtitle: item.subtitle || item.hotel?.cityCode || '',
+        image: primaryImage,
+        primaryImage: primaryImage,
+        images: item.hotel?.images || [],
+        imageCategories: item.hotel?.imageCategories || {},
+        price: displayPrice,
+        originalPriceAmount: item.originalPriceAmount,
+        originalPriceCurrency: item.originalPriceCurrency,
+        // ✅ CRITICAL: Preserve offers and offerId
+        offers: offers,
+        offerId: offerId,
+        offer_id: offerId,
+        rating: item.rating || 0,
+        description: item.description || item.hotel?.description || '',
+        address: item.address || item.hotel?.address || '',
+        cityCode: item.hotel?.cityCode || item.cityCode || '',
+        checkInDate: item.checkInDate || searchParams?.checkInDate,
+        checkOutDate: item.checkOutDate || searchParams?.checkOutDate,
+        adults: item.adults || searchParams?.adults || 1,
+        currency: item.currency || searchParams?.currency || 'NGN',
+        provider: item.provider || 'amadeus',
+        hotel: {
+          ...item.hotel,
+          offers: offers,
+          offerId: offerId,
+          offer_id: offerId,
+        },
+        // ✅ Also preserve realData
+        realData: {
+          ...item.realData,
+          offerId: offerId,
+        },
+      };
+      
+      console.log('✅ Storing hotel data with offerId:', {
+        hotelId: hotelData.hotelId,
+        offerId: hotelData.offerId,
+        offersCount: hotelData.offers?.length || 0,
+      });
+      
+      sessionStorage.setItem('selectedHotelDetails', JSON.stringify(hotelData));
+      
+      // ✅ Also store the offerId separately for easy access
+      if (offerId) {
+        sessionStorage.setItem('hotelOfferId', offerId);
+      }
+      
+      // ✅ Navigate to hotel details page
+      router.push(`/hotels/${encodeURIComponent(hotelId)}`);
+    };
+  
+    // ✅ Handle the View Details button click
+    const handleViewDetailsClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      
+      if (!hotelId) {
+        toast.error('Hotel ID not found');
+        return;
+      }
+  
+      // ✅ Store the hotel data with offerId directly from the button click
+      const hotelData = {
+        id: hotelId,
+        hotelId: hotelId,
+        name: hotelName,
+        title: hotelName,
+        subtitle: item.subtitle || item.hotel?.cityCode || '',
+        image: primaryImage,
+        primaryImage: primaryImage,
+        images: item.hotel?.images || [],
+        imageCategories: item.hotel?.imageCategories || {},
+        price: displayPrice,
+        originalPriceAmount: item.originalPriceAmount,
+        originalPriceCurrency: item.originalPriceCurrency,
+        offers: offers,
+        offerId: offerId,
+        offer_id: offerId,
+        rating: item.rating || 0,
+        description: item.description || item.hotel?.description || '',
+        address: item.address || item.hotel?.address || '',
+        cityCode: item.hotel?.cityCode || item.cityCode || '',
+        checkInDate: item.checkInDate || searchParams?.checkInDate,
+        checkOutDate: item.checkOutDate || searchParams?.checkOutDate,
+        adults: item.adults || searchParams?.adults || 1,
+        currency: item.currency || searchParams?.currency || 'NGN',
+        provider: item.provider || 'amadeus',
+        hotel: {
+          ...item.hotel,
+          offers: offers,
+          offerId: offerId,
+          offer_id: offerId,
+        },
+        realData: {
+          ...item.realData,
+          offerId: offerId,
+        },
+      };
+      
+      sessionStorage.setItem('selectedHotelDetails', JSON.stringify(hotelData));
+      if (offerId) {
+        sessionStorage.setItem('hotelOfferId', offerId);
+      }
+      
+      router.push(`/hotels/${encodeURIComponent(hotelId)}`);
+    };
+  
     return (
-      <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
+      <div 
+        key={item.id} 
+        className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2 cursor-pointer"
+        onClick={handleHotelClick}
+      >
         <div className="flex flex-col md:flex-row">
           <div className="w-full md:w-[320px] relative flex-shrink-0 min-h-[256px]">
             <HotelListImage
-              hotelId={item.id}
-              hotelName={item.title}
-              initialSrc={item.image}
-              alt={item.title}
+              hotelId={hotelId}          
+              hotelName={hotelName}       
+              initialSrc={primaryImage}   
+              alt={hotelName}
               className="absolute inset-0 w-full h-full overflow-hidden"
             />
             <button
@@ -2023,8 +2169,12 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             </button>
           </div>
           <div className="flex-1 p-8">
-            <h3 className="text-xl font-black text-gray-900 group-hover:text-[#33a8da] transition">{item.title}</h3>
-            <p className="text-[11px] font-bold text-gray-400 uppercase mt-1">{item.subtitle}</p>
+            <h3 className="text-xl font-black text-gray-900 group-hover:text-[#33a8da] transition">
+              {hotelName}
+            </h3>
+            <p className="text-[11px] font-bold text-gray-400 uppercase mt-1">
+              {item.subtitle || item.hotel?.cityCode || ''}
+            </p>
             <div className="flex items-center gap-4 mt-4 mb-6">
               <div className="flex text-yellow-400">
                 {[...Array(5)].map((_, i) => (
@@ -2033,6 +2183,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   </svg>
                 ))}
               </div>
+              {item.hotel?.images && item.hotel.images.length > 0 && (
+                <span className="text-xs text-gray-400">
+                  📸 {item.hotel.images.length} photos
+                </span>
+              )}
             </div>
             <div className="flex items-end justify-between pt-6 border-t border-gray-50">
               <div>
@@ -2042,10 +2197,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                 )}
               </div>
               <button
-                onClick={() => onSelect?.(item)}
+                onClick={handleViewDetailsClick}
                 className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]"
               >
-                Book Hotel
+                View Details
               </button>
             </div>
           </div>
@@ -2053,6 +2208,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       </div>
     );
   };
+  
+
+
 
   const renderCarCard = (item: ExtendedSearchResult) => {
     const start = item.start;

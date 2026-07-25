@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -47,7 +47,26 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const [activeTab, setActiveTab] = useState('Overview');
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
-  const [hotelImages, setHotelImages] = useState<HotelImage[]>(() => {
+  
+  // ✅ Get images from search results
+  const searchResultImages = useMemo(() => {
+    const itemAny = item as any;
+    const hotelData = itemAny?.hotel || {};
+
+    // Check for images in hotel object
+    const images = hotelData.images || itemAny.images || [];
+    
+    if (images.length > 0) {
+      console.log('📸 Using images from search results:', images.length);
+      return images.map((img: any, i: number) => ({
+        id: `${item?.id || 'hotel'}-img-${i}`,
+        url: typeof img === 'string' ? img : (img.uri || img.url),
+        caption: typeof img === 'object' ? (img.category || img.caption || item?.title || 'Hotel Image') : item?.title || 'Hotel Image',
+        type: 'search-result'
+      }));
+    }
+    
+    // Fallback to single image
     if (item?.image && !item.image.includes('placehold.co')) {
       return [{
         id: `${item.id}-initial`,
@@ -56,8 +75,40 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
         type: 'initial'
       }];
     }
+    
+    return [];
+  }, [item]);
+
+  // ✅ Initialize hotelImages with search result images FIRST
+  const [hotelImages, setHotelImages] = useState<HotelImage[]>(() => {
+    // First try to get images from search results
+    const itemAny = item as any;
+    const hotelData = itemAny?.hotel || {};
+    const images = hotelData.images || itemAny.images || [];
+    
+    if (images.length > 0) {
+      console.log('📸 Initializing with search result images:', images.length);
+      return images.map((img: any, i: number) => ({
+        id: `${item?.id || 'hotel'}-img-${i}`,
+        url: typeof img === 'string' ? img : (img.uri || img.url),
+        caption: typeof img === 'object' ? (img.category || img.caption || item?.title || 'Hotel Image') : item?.title || 'Hotel Image',
+        type: 'search-result'
+      }));
+    }
+    
+    // Fallback to single image
+    if (item?.image && !item.image.includes('placehold.co')) {
+      return [{
+        id: `${item.id}-initial`,
+        url: item.image,
+        caption: item.title || 'Hotel Image',
+        type: 'initial'
+      }];
+    }
+    
     return [];
   });
+  
   const [loadingImages, setLoadingImages] = useState(false);
   const [imageError, setImageError] = useState(false);
   
@@ -363,6 +414,212 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const checkInDate = getCheckInDate();
   const checkOutDate = getCheckOutDate();
   const nights = getNightsCount();
+  
+
+const handleReserveStay = useCallback(() => {
+  if (!item) {
+    toast.error('No hotel selected');
+    return;
+  }
+
+  const itemAny = item as any;
+  const hotelAny = itemAny.hotel || {};
+
+  // ✅ Extract cancellation policy from fullDetails
+  let cancellationPolicy = 'Standard cancellation policy applies. Please check during booking for specific terms.';
+  if (fullDetails?.policies && fullDetails.policies.length > 0) {
+    const cancelPolicy = fullDetails.policies.find((p: any) => 
+      p.type?.includes('CANCELLATION') || 
+      p.type?.includes('CANCEL') ||
+      p.type?.includes('GENERAL_POLICY')
+    );
+    if (cancelPolicy) {
+      cancellationPolicy = cancelPolicy.text;
+    } else {
+      cancellationPolicy = fullDetails.policies[0].text;
+    }
+  }
+
+  // ✅ IMPROVED: Extract offer ID from ALL possible sources
+  let offerId = '';
+  let offers: any[] = [];
+  
+  console.log('🔍 DEBUG - Full item data structure:', {
+    hasHotel: !!itemAny.hotel,
+    hasOffers: !!itemAny.offers,
+    hasRealData: !!itemAny.realData,
+    hasHotelData: !!itemAny.hotelData,
+    hasFullDetails: !!fullDetails,
+    hotelKeys: hotelAny ? Object.keys(hotelAny) : [],
+    itemKeys: Object.keys(itemAny),
+  });
+
+  // Source 1: Check hotelAny.offers (from hotel object in search results)
+  if (hotelAny.offers && Array.isArray(hotelAny.offers) && hotelAny.offers.length > 0) {
+    offers = hotelAny.offers;
+    offerId = hotelAny.offers[0]?.id || '';
+    console.log('🔑 Source 1 - hotelAny.offers:', { offerId, count: offers.length });
+  }
+  
+  // Source 2: Check itemAny.offers (direct on item)
+  if (!offerId && itemAny.offers && Array.isArray(itemAny.offers) && itemAny.offers.length > 0) {
+    offers = itemAny.offers;
+    offerId = itemAny.offers[0]?.id || '';
+    console.log('🔑 Source 2 - itemAny.offers:', { offerId, count: offers.length });
+  }
+  
+  // Source 3: Check fullDetails.offers (from API)
+  if (!offerId && fullDetails?.offers && Array.isArray(fullDetails.offers) && fullDetails.offers.length > 0) {
+    offers = fullDetails.offers;
+    offerId = fullDetails.offers[0]?.id || '';
+    console.log('🔑 Source 3 - fullDetails.offers:', { offerId, count: offers.length });
+  }
+  
+  // Source 4: Check realData.offerId
+  if (!offerId && itemAny.realData?.offerId) {
+    offerId = itemAny.realData.offerId;
+    console.log('🔑 Source 4 - realData.offerId:', offerId);
+  }
+  
+  // Source 5: Check hotelData.offerId
+  if (!offerId && itemAny.hotelData?.offerId) {
+    offerId = itemAny.hotelData.offerId;
+    console.log('🔑 Source 5 - hotelData.offerId:', offerId);
+  }
+  
+  // Source 6: Check if item itself has offerId
+  if (!offerId && itemAny.offerId) {
+    offerId = itemAny.offerId;
+    console.log('🔑 Source 6 - item.offerId:', offerId);
+  }
+  
+  // Source 7: Check for offer_id field
+  if (!offerId && itemAny.offer_id) {
+    offerId = itemAny.offer_id;
+    console.log('🔑 Source 7 - item.offer_id:', offerId);
+  }
+  
+  // Source 8: Check if the ID itself is an offer ID (starts with offer_)
+  if (!offerId && itemAny.id && typeof itemAny.id === 'string') {
+    if (itemAny.id.startsWith('offer_') || itemAny.id.includes('offer')) {
+      offerId = itemAny.id;
+      console.log('🔑 Source 8 - item.id (looks like offer):', offerId);
+    }
+  }
+  
+  // Source 9: Check hotelAny.id if it looks like an offer
+  if (!offerId && hotelAny.id && typeof hotelAny.id === 'string') {
+    if (hotelAny.id.startsWith('offer_') || hotelAny.id.includes('offer')) {
+      offerId = hotelAny.id;
+      console.log('🔑 Source 9 - hotelAny.id (looks like offer):', offerId);
+    }
+  }
+  
+  // Source 10: Check first offer in any array by looking for id field
+  if (!offerId) {
+    // Try to find any array with objects that have an id field
+    const possibleOfferArrays = [
+      itemAny.offers,
+      hotelAny.offers,
+      fullDetails?.offers,
+      itemAny.realData?.offers,
+      itemAny.hotelData?.offers,
+    ];
+    
+    for (const arr of possibleOfferArrays) {
+      if (Array.isArray(arr) && arr.length > 0) {
+        const firstItem = arr[0];
+        if (firstItem && typeof firstItem === 'object' && firstItem.id) {
+          offerId = firstItem.id;
+          offers = arr;
+          console.log('🔑 Source 10 - Found in array with id field:', { offerId, source: arr });
+          break;
+        }
+      }
+    }
+  }
+
+  // ✅ VALIDATE: If no offer ID found, try to extract from the full hotel data
+  if (!offerId) {
+    console.error('❌ No valid offer ID found! Hotel data:', {
+      hotelId: hotelAny.hotelId || itemAny.hotelId || item.id,
+      hasOffers: !!offers.length,
+      offersCount: offers.length,
+      fullDetailsHasOffers: !!(fullDetails?.offers?.length),
+      itemKeys: Object.keys(itemAny),
+      hotelKeys: Object.keys(hotelAny),
+      fullDetailsKeys: fullDetails ? Object.keys(fullDetails) : [],
+    });
+    
+    // Log full data for debugging
+    console.log('🔍 DEBUG - Full item data:', JSON.stringify(itemAny, null, 2));
+    console.log('🔍 DEBUG - Full hotel data:', JSON.stringify(hotelAny, null, 2));
+    console.log('🔍 DEBUG - Full details:', JSON.stringify(fullDetails, null, 2));
+    
+    // Show user-friendly error
+    toast.error(
+      'Unable to find a valid hotel offer. Please go back and search for hotels again.',
+      { duration: 5000 }
+    );
+    return;
+  }
+
+  console.log('✅ Final offerId found:', offerId);
+  console.log('📦 Hotel data being passed to booking:', {
+    hotelId: hotelAny.hotelId || itemAny.hotelId || item.id,
+    offerId: offerId,
+    offersCount: offers.length,
+    hotelName: item.title,
+  });
+
+  const hotelForBooking = {
+    id: item.id,
+    hotelId: hotelAny.hotelId || itemAny.hotelId || item.id,
+    name: item.title,
+    title: item.title,
+    subtitle: item.subtitle,
+    image: item.image,
+    primaryImage: hotelAny.primaryImage || itemAny.primaryImage || item.image,
+    images: hotelAny.images || itemAny.images || hotelImages || [],
+    imageCategories: hotelAny.imageCategories || itemAny.imageCategories || {},
+    price: convertedPrice || item.price,
+    originalPriceAmount: originalPriceAmount,
+    originalPriceCurrency: originalPriceCurrency,
+    currency: originalPriceCurrency || 'GBP',
+    rating: item.rating || 4,
+    description: fullDetails?.description || hotelAny.description || item.subtitle,
+    address: hotelAny.address || itemAny.address || fullDetails?.address || '',
+    cityCode: hotelAny.cityCode || itemAny.cityCode || searchParams?.destination || '',
+    checkInDate: checkInDate || searchParams?.checkInDate || '',
+    checkOutDate: checkOutDate || searchParams?.checkOutDate || '',
+    nights: nights || 1,
+    guests: getGuestsCount(),
+    rooms: getRoomsCount(),
+    amenities: fullDetails?.amenities || itemAny.amenities || [],
+    // ✅ Pass offers array
+    offers: offers,
+    // ✅ Pass offerId (extracted from first offer)
+    offerId: offerId,
+    provider: item.provider || 'amadeus',
+    type: 'hotels',
+    cancellationPolicy: cancellationPolicy,
+    policies: fullDetails?.policies || [],
+    hotelData: {
+      ...item,
+      ...fullDetails,
+      primaryImage: hotelAny.primaryImage || itemAny.primaryImage || item.image,
+      images: hotelAny.images || itemAny.images || hotelImages || [],
+      imageCategories: hotelAny.imageCategories || itemAny.imageCategories || {},
+      cancellationPolicy: cancellationPolicy,
+      policies: fullDetails?.policies || [],
+      offers: offers,
+      offerId: offerId,
+    }
+  };
+
+  sessionStorage.setItem('selectedHotelForBooking', JSON.stringify(hotelForBooking));
+  router.push('/review');
+}, [item, convertedPrice, originalPriceAmount, originalPriceCurrency, fullDetails, hotelImages, checkInDate, checkOutDate, nights, router, searchParams]);
 
   // Early return if no item is selected
   if (!item) {
@@ -428,95 +685,130 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     }
   ], []);
 
-  // Main data fetching effect
+  // ✅ MODIFIED: Main data fetching effect - skip images if we already have them
   useEffect(() => {
     const fetchData = async () => {
       if (!item?.id) return;
+      
+      // ✅ If we already have images from search results, skip image fetching
+      const hasSearchImages = searchResultImages.length > 0;
+      if (hasSearchImages) {
+        console.log('✅ Using images from search results, skipping image API call');
+      }
   
       try {
-        setLoadingImages(true);
+        setLoadingImages(!hasSearchImages); // Only show loading if we need to fetch
         setLoadingDetails(true);
         setLoadingStats(true);
   
         const role = user?.role?.toUpperCase();
         const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
   
-        // ✅ Use the new hotelApi methods
-        const [detailsRes, imagesRes, ratingsRes, statsRes] = await Promise.allSettled([
-          api.hotelApi.getHotelDetails(item.id),      // New: combined details endpoint
-          api.hotelApi.getHotelImagesById(item.id),   // New: images endpoint
-          api.hotelApi.getHotelRatingsById(item.id),  // New: ratings endpoint
-          ...(isAdmin ? [api.hotelApi.getUsageStats()] : [])
-        ]);
-  
-        // ============ Handle Hotel Details (Content) ============
-        if (detailsRes.status === 'fulfilled' && detailsRes.value?.success) {
-          const details = detailsRes.value.data;
-          
-          // Extract content from response
-          const hotelContent = details?.content || {};
-          const hotelData = hotelContent?.hotel || {};
-          
-          setFullDetails({
-            name: hotelData.name || item.title,
-            description: hotelData.description?.text || hotelContent?.description?.text || item.subtitle,
-            amenities: hotelContent?.facilities || hotelContent?.amenities || item.amenities || [],
-            policies: hotelContent?.policies,
-            awards: hotelContent?.awards,
-            promotions: hotelContent?.promotions,
-            rooms: hotelContent?.rooms,
-            pointOfInterest: hotelContent?.pointOfInterest,
-            address: hotelData.address,
-            contact: hotelData.contact,
-          });
-          
-          console.log('✅ Hotel details loaded:', hotelData.name);
-        } else {
-          // Fallback to item data
-          setFullDetails({
-            name: item.title,
-            description: item.subtitle,
-            amenities: item.amenities || [],
-          });
-          console.warn('⚠️ Using fallback hotel details');
+        // ✅ Build promises based on what we need
+        const promises: Promise<any>[] = [
+          api.hotelApi.getHotelDetails(item.id),
+          api.hotelApi.getHotelRatingsById(item.id),
+        ];
+        
+        // ✅ Only fetch images if we don't have them from search results
+        if (!hasSearchImages) {
+          promises.push(api.hotelApi.getHotelImagesById(item.id));
+        }
+        
+        // Add stats for admin
+        if (isAdmin) {
+          promises.push(api.hotelApi.getUsageStats());
         }
   
-        // ============ Handle Hotel Images ============
-        if (imagesRes.status === 'fulfilled' && imagesRes.value?.success && imagesRes.value.data?.length > 0) {
-          const images = imagesRes.value.data;
-          const filteredImages = images.filter((img: any) => {
-            const url = typeof img === 'string' ? img : img.url;
-            return url && !url.includes('placehold.co') && !url.includes('dummyimage.com');
-          });
+        const results = await Promise.allSettled(promises);
+        
+        // Parse results
+        let detailsRes = results[0];
+        let ratingsRes = results[1];
+        let imagesRes = !hasSearchImages ? results[2] : null;
+        let statsRes = isAdmin ? results[results.length - 1] : null;
   
-          if (filteredImages.length > 0) {
-            console.log(`✅ Found ${filteredImages.length} hotel images`);
-            setHotelImages(filteredImages.map((img: any, i: number) => ({
-              id: `${item.id}-img-${i}`,
-              url: typeof img === 'string' ? img : img.url,
-              caption: typeof img === 'object' ? (img.type || img.attribution || item.title) : item.title,
-              type: 'api'
-            })));
+// ============ Handle Hotel Details (Content) ============
+if (detailsRes.status === 'fulfilled' && detailsRes.value?.success) {
+  // ✅ The data is directly in detailsRes.value.data
+  const details = detailsRes.value.data;
+  
+  console.log('📋 Hotel details from API:', {
+    name: details.name,
+    hasDescription: !!details.description,
+    hasAmenities: details.amenities?.length,
+    hasPolicies: details.policies?.length,
+    hasImages: details.images?.length,
+  });
+  
+  setFullDetails({
+    name: details.name || item.title,
+    // ✅ description is a string, not an object
+    description: details.description || item.subtitle || '',
+    // ✅ amenities is an array directly
+    amenities: details.amenities || item.amenities || [],
+    // ✅ policies is an array directly
+    policies: details.policies || [],
+    // ✅ images is an array directly
+    images: details.images || [],
+    primaryImage: details.primaryImage || null,
+    address: details.address || null,
+    contact: details.contact || null,
+    location: details.location || null,
+    checkInOut: details.checkInOut || { checkIn: '15:00', checkOut: '12:00' },
+    rating: details.rating || item.rating || 4.0,
+  });
+  
+  console.log('✅ Hotel details loaded:', details.name);
+  console.log('✅ Description set:', details.description?.substring(0, 50));
+} else {
+  // Fallback to item data
+  setFullDetails({
+    name: item.title,
+    description: item.subtitle || '',
+    amenities: item.amenities || [],
+    policies: [],
+    images: [],
+    primaryImage: null,
+  });
+  console.warn('⚠️ Using fallback hotel details');
+}
+  
+        // ============ Handle Hotel Images (only if not from search results) ============
+        if (!hasSearchImages && imagesRes) {
+          if (imagesRes.status === 'fulfilled' && imagesRes.value?.success && imagesRes.value.data?.length > 0) {
+            const images = imagesRes.value.data;
+            const filteredImages = images.filter((img: any) => {
+              const url = typeof img === 'string' ? img : img.url;
+              return url && !url.includes('placehold.co') && !url.includes('dummyimage.com');
+            });
+  
+            if (filteredImages.length > 0) {
+              console.log(`✅ Found ${filteredImages.length} hotel images from API`);
+              setHotelImages(filteredImages.map((img: any, i: number) => ({
+                id: `${item.id}-img-${i}`,
+                url: typeof img === 'string' ? img : img.url,
+                caption: typeof img === 'object' ? (img.type || img.attribution || item.title) : item.title,
+                type: 'api'
+              })));
+            } else if (hotelImages.length === 0) {
+              setHotelImages(getFallbackImages());
+            }
           } else if (hotelImages.length === 0) {
             setHotelImages(getFallbackImages());
+            setImageError(true);
           }
-        } else if (hotelImages.length === 0) {
-          setHotelImages(getFallbackImages());
-          setImageError(true);
         }
   
         // ============ Handle Hotel Ratings ============
         if (ratingsRes.status === 'fulfilled' && ratingsRes.value?.success && ratingsRes.value.data) {
-          const ratings = ratingsRes.value.data;
-          console.log('✅ Hotel ratings loaded:', ratings);
-          // You can use ratings data to display scores
+          console.log('✅ Hotel ratings loaded');
         }
   
         // ============ Handle Usage Stats (Admin only) ============
-        if (isAdmin) {
-          const statsResult = statsRes as PromiseSettledResult<any>;
-          if (statsResult.status === 'fulfilled' && statsResult.value) {
-            setUsageStats(statsResult.value);
+        if (isAdmin && statsRes) {
+          if (statsRes.status === 'fulfilled' && statsRes.value) {
+            setUsageStats(statsRes.value);
           } else {
             setStatsError(true);
           }
@@ -536,8 +828,8 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     };
   
     fetchData();
-  }, [item?.id, item?.title, getFallbackImages, user?.role]);
-  
+  }, [item?.id, item?.title, searchResultImages, getFallbackImages, user?.role]);
+
   // Debounced search effect
   useEffect(() => {
     const debounceTimer = setTimeout(() => {
@@ -692,9 +984,35 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   };
 
   const renderPolicies = () => {
+    // ✅ Get policies from fullDetails (fetched from API)
+    const policies = fullDetails?.policies || [];
+    
+    // ✅ If we have policies from the API, display them
+    if (policies.length > 0) {
+      return (
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <div className="bg-white border border-gray-100 rounded-[24px] overflow-hidden shadow-sm">
+            {policies.map((policy: any, i: number) => (
+              <div key={i} className={`flex flex-col p-6 ${i !== policies.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                <div className="w-full shrink-0 mb-2">
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                    {policy.type?.replace(/_/g, ' ') || 'Policy'}
+                  </span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-gray-700 leading-relaxed">{policy.text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    
+    // ✅ Fallback to hardcoded policies if no API data
     const realData = (item as any)?.realData || {};
     const cancellationPolicy = realData.cancellationPolicy || "Standard cancellation policy applies. Please check during booking for specific terms.";
-
+    
     const policyItems = [
       { label: 'Check-in', value: 'From 2:00 PM' },
       { label: 'Check-out', value: 'Until 11:00 AM' },
@@ -702,7 +1020,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
       { label: 'Pets', value: 'Pets are not allowed unless specified.' },
       { label: 'Payment', value: 'Cash, Visa, Mastercard, American Express' }
     ];
-
+  
     return (
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
         <div className="bg-white border border-gray-100 rounded-[24px] overflow-hidden shadow-sm">
@@ -721,57 +1039,83 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     );
   };
 
-  const renderReviews = () => (
-    <div className="bg-white rounded-[40px] border border-gray-100 p-8 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col md:flex-row gap-12">
-        <div className="w-full md:w-64 space-y-6">
-          <div className="flex items-center gap-4">
-            <div className="text-6xl font-black text-gray-900 tracking-tighter">4.9</div>
-            <div>
-              <div className="flex text-yellow-400 mb-1">
-                {[...Array(5)].map((_, i) => (
-                  <svg key={i} className="w-4 h-4 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
-                ))}
+  const renderReviews = () => {
+    // ✅ Get real rating data from item or fullDetails
+    const rating = item?.rating || fullDetails?.rating || 4.0;
+    const totalReviews = item?.totalReviews || fullDetails?.totalReviews || 100;
+    const sentiment = item?.sentiment || fullDetails?.sentiment || 'POSITIVE';
+    
+    // Calculate star rating
+    const starRating = Math.round(rating);
+    
+    return (
+      <div className="bg-white rounded-[40px] border border-gray-100 p-8 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="flex flex-col md:flex-row gap-12">
+          <div className="w-full md:w-64 space-y-6">
+            <div className="flex items-center gap-4">
+              <div className="text-6xl font-black text-gray-900 tracking-tighter">
+                {rating.toFixed(1)}
               </div>
-              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">1,240 Reviews</p>
+              <div>
+                <div className="flex text-yellow-400 mb-1">
+                  {[...Array(5)].map((_, i) => (
+                    <svg key={i} className={`w-4 h-4 ${i < starRating ? "fill-current" : "text-gray-200"}`} viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                  ))}
+                </div>
+                <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">
+                  {totalReviews.toLocaleString()} Reviews
+                </p>
+                {sentiment && (
+                  <p className="text-[8px] font-bold text-green-500 uppercase tracking-widest mt-1">
+                    {sentiment}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="space-y-4">
+              {['Cleanliness', 'Location', 'Service'].map((metric) => (
+                <div key={metric}>
+                  <div className="flex justify-between text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                    <span>{metric}</span>
+                    <span className="text-gray-900">{rating.toFixed(1)}</span>
+                  </div>
+                  <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-[#33a8da]" 
+                      style={{ width: `${(rating / 5) * 100}%` }}
+                    ></div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="space-y-4">
-            {['Cleanliness', 'Location', 'Service'].map((metric) => (
-              <div key={metric}>
-                <div className="flex justify-between text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
-                  <span>{metric}</span>
-                  <span className="text-gray-900">4.9</span>
-                </div>
-                <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-[#33a8da] w-[98%]"></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex-1 space-y-10">
-          {[1, 2].map((rev) => (
-            <div key={rev} className="pb-8 border-b border-gray-50 last:border-0">
+  
+          <div className="flex-1 space-y-10">
+            <div className="pb-8 border-b border-gray-50 last:border-0">
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-100">
-                  <img src={`https://ui-avatars.com/api/?name=Reviewer+${rev}&background=f4d9c6&color=9a7d6a`} className="w-full h-full" alt="" />
+                  <img src={`https://ui-avatars.com/api/?name=Verified+Guest&background=f4d9c6&color=9a7d6a`} className="w-full h-full" alt="" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-gray-900">Hannah Jenkins</h4>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase">Dec 2024</p>
+                  <h4 className="text-sm font-black text-gray-900">Verified Guest</h4>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase">Recent Stay</p>
                 </div>
               </div>
               <p className="text-sm text-gray-600 font-medium leading-relaxed italic">
-                "A truly formal and premium experience. The attention to detail and professional staff made our stay unforgettable."
+                "{sentiment === 'POSITIVE' 
+                  ? 'Excellent experience! The staff was very professional and the facilities were top-notch.' 
+                  : sentiment === 'NEGATIVE'
+                    ? 'The experience was below expectations. The room was not as described.'
+                    : 'Good experience overall. The location was convenient and the room was comfortable.'}"
               </p>
             </div>
-          ))}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderActiveContent = () => {
     switch (activeTab) {
@@ -797,54 +1141,86 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
 
   return (
     <div className="bg-[#f8fbfe] min-h-screen">
-      {/* Lightbox Gallery */}
-      {isLightboxOpen && (
-        <div className="fixed inset-0 z-[100] bg-gray-900/60 backdrop-blur-[60px] flex flex-col animate-in fade-in duration-300">
-          <div className="flex justify-between items-center p-6 text-white relative z-10">
-            <div className="flex flex-col">
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#33a8da]">Ebony Bruce Gallery</p>
-              <h3 className="text-lg font-bold">{item.title}</h3>
-              {hotelImages[currentImageIndex]?.caption && (
-                <p className="text-sm text-gray-300 mt-1">{hotelImages[currentImageIndex].caption}</p>
-              )}
-            </div>
-            <button onClick={() => setIsLightboxOpen(false)} className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center border border-white/10">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          </div>
+      {/* Lightbox Gallery - Compact & Professional */}
+{isLightboxOpen && (
+  <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex flex-col animate-in fade-in duration-300">
+    {/* Header - More Compact */}
+    <div className="flex justify-between items-center px-4 py-3 text-white border-b border-white/10 shrink-0">
+      <div className="flex flex-col">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#33a8da]">Gallery</p>
+        <h3 className="text-sm font-bold truncate max-w-[200px]">{item.title}</h3>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-gray-400">
+          {currentImageIndex + 1} / {hotelImages.length}
+        </span>
+        <button 
+          onClick={() => setIsLightboxOpen(false)} 
+          className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    </div>
 
-          <div className="flex-1 relative flex items-center justify-center px-4 md:px-20">
-            <button onClick={prevImage} className="absolute left-6 md:left-10 w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md transition flex items-center justify-center border border-white/10 text-white active:scale-95 z-20">
-              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M15 19l-7-7 7-7" /></svg>
-            </button>
+    {/* Main Image Area - More Compact */}
+    <div className="flex-1 relative flex items-center justify-center px-4 py-2 min-h-0">
+      {/* Left Arrow */}
+      <button 
+        onClick={prevImage} 
+        className="absolute left-2 z-20 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md transition flex items-center justify-center border border-white/10 text-white active:scale-95"
+      >
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
 
-            <div className="w-full max-w-5xl h-full flex items-center justify-center p-4">
-              <img
-                src={hotelImages[currentImageIndex]?.url}
-                className="w-full h-full object-contain transition-all duration-700 animate-in fade-in"
-                alt={hotelImages[currentImageIndex]?.caption || item.title}
-              />
-            </div>
+      {/* Image */}
+      <div className="w-full max-w-5xl h-full flex items-center justify-center">
+        <img
+          src={hotelImages[currentImageIndex]?.url}
+          className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+          alt={hotelImages[currentImageIndex]?.caption || item.title}
+        />
+      </div>
 
-            <button onClick={nextImage} className="absolute right-6 md:right-10 w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md transition flex items-center justify-center border border-white/10 text-white active:scale-95 z-20">
-              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 5l7 7-7 7" /></svg>
-            </button>
-          </div>
+      {/* Right Arrow */}
+      <button 
+        onClick={nextImage} 
+        className="absolute right-2 z-20 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md transition flex items-center justify-center border border-white/10 text-white active:scale-95"
+      >
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+    </div>
 
-          <div className="p-10 flex justify-center gap-3 overflow-x-auto hide-scrollbar relative z-10">
-            {hotelImages.map((img, i) => (
-              <button
-                key={img.id || i}
-                onClick={() => setCurrentImageIndex(i)}
-                className={`w-20 h-20 rounded-xl overflow-hidden border-2 transition-all shrink-0 ${currentImageIndex === i ? 'border-[#33a8da] scale-110 shadow-2xl' : 'border-transparent opacity-50 hover:opacity-100'
-                  }`}
-              >
-                <img src={img.url} className="w-full h-full object-cover" alt={img.caption || ''} />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+    {/* Thumbnail Strip - More Compact */}
+    <div className="px-4 py-3 border-t border-white/10 shrink-0 overflow-x-auto">
+      <div className="flex justify-center gap-2">
+        {hotelImages.map((img, i) => (
+          <button
+            key={img.id || i}
+            onClick={() => setCurrentImageIndex(i)}
+            className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition-all shrink-0 ${
+              currentImageIndex === i 
+                ? 'border-[#33a8da] shadow-lg shadow-[#33a8da]/30' 
+                : 'border-transparent opacity-60 hover:opacity-100'
+            }`}
+          >
+            <img 
+              src={img.url} 
+              className="w-full h-full object-cover" 
+              alt={img.caption || ''} 
+            />
+          </button>
+        ))}
+      </div>
+    </div>
+  </div>
+)}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Breadcrumbs */}
@@ -927,53 +1303,103 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             )}
           </div>
           <div className="flex items-center gap-4">
-            <button
-              onClick={handleSaveToggle}
-              disabled={isCheckingSave || isSaving}
-              className={`flex items-center gap-2 px-4 py-2.5 border border-gray-100 bg-white rounded-xl text-[10px] font-black transition-all shadow-sm ${isSaved ? 'text-red-500 hover:text-red-600' : 'text-gray-500 hover:text-[#33a8da]'
-                }`}
-            >
-              {isSaved ? 'Saved' : 'Save'}
-            </button>
-            <div className="bg-[#33a8da] text-white font-black px-4 py-2.5 rounded-xl text-lg tracking-tighter">4.9</div>
-          </div>
+  <button
+    onClick={handleSaveToggle}
+    disabled={isCheckingSave || isSaving}
+    className={`flex items-center gap-2 px-4 py-2.5 border border-gray-100 bg-white rounded-xl text-[10px] font-black transition-all shadow-sm ${isSaved ? 'text-red-500 hover:text-red-600' : 'text-gray-500 hover:text-[#33a8da]'
+      }`}
+  >
+    {isSaved ? 'Saved' : 'Save'}
+  </button>
+  {/* ✅ Display real rating from item or fullDetails */}
+  <div className="bg-[#33a8da] text-white font-black px-4 py-2.5 rounded-xl text-lg tracking-tighter">
+  {item?.rating || fullDetails?.rating || 4.9}
+</div>
+</div>
         </div>
 
-        {/* Gallery Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-16">
-          <div className="lg:col-span-8 bg-white rounded-[32px] p-0 border border-gray-100 shadow-xl overflow-hidden relative group h-[400px] lg:h-[600px]">
-            <div className="absolute inset-0 flex items-center justify-between z-20 px-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-              <button onClick={prevImage} className="w-12 h-12 rounded-full bg-white/80 backdrop-blur-md shadow-lg flex items-center justify-center text-[#33a8da] hover:bg-white transition active:scale-90">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M15 19l-7-7 7-7" /></svg>
-              </button>
-              <button onClick={nextImage} className="w-12 h-12 rounded-full bg-white/80 backdrop-blur-md shadow-lg flex items-center justify-center text-[#33a8da] hover:bg-white transition active:scale-90">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M9 5l7 7-7 7" /></svg>
-              </button>
-            </div>
-            <img src={hotelImages[currentImageIndex]?.url} className="w-full h-full object-cover transition-all duration-700" alt={item.title} />
-            <div className="absolute top-6 left-6 bg-black/60 backdrop-blur-md border border-white/20 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest text-white z-30">
-              {currentImageIndex + 1} / {hotelImages.length}
-            </div>
-            <button
-              onClick={() => setIsLightboxOpen(true)}
-              className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md border border-white/20 px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-white z-30 flex items-center gap-3 hover:bg-black/80 transition"
-            >
-              View all photos
-            </button>
-          </div>
-          <div className="lg:col-span-4 grid grid-cols-2 lg:grid-cols-1 gap-4">
-            {hotelImages.slice(1, 4).map((img, i) => (
-              <div key={img.id || i} onClick={() => setCurrentImageIndex(i + 1)} className="bg-gray-100 rounded-[24px] overflow-hidden border border-gray-100 cursor-pointer h-full relative group">
-                <img src={img.url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
-                {img.caption && (
-                  <div className="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-[8px] font-bold text-white bg-black/50 px-2 py-1 rounded-full">{img.caption}</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+        {/* Gallery Section - Updated with better styling */}
+<div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-16">
+  {/* Main Image */}
+  <div className="lg:col-span-8 relative group h-[400px] lg:h-[500px]">
+    <div className="relative w-full h-full rounded-2xl overflow-hidden bg-gray-100 shadow-lg">
+      <img
+        src={hotelImages[currentImageIndex]?.url}
+        className="w-full h-full object-cover transition-all duration-700 hover:scale-105"
+        alt={hotelImages[currentImageIndex]?.caption || item.title}
+      />
+      
+      {/* Navigation Arrows */}
+      <div className="absolute inset-0 flex items-center justify-between z-20 px-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+        <button
+          onClick={(e) => { e.stopPropagation(); prevImage(); }}
+          className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-md hover:bg-black/70 text-white flex items-center justify-center transition active:scale-90"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); nextImage(); }}
+          className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-md hover:bg-black/70 text-white flex items-center justify-center transition active:scale-90"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+      
+      {/* Image Counter */}
+      <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-widest text-white z-30">
+        {currentImageIndex + 1} / {hotelImages.length}
+      </div>
+      
+      {/* Category Badge */}
+      {hotelImages[currentImageIndex]?.caption && (
+        <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-full text-xs font-medium text-white z-30">
+          {hotelImages[currentImageIndex].caption}
         </div>
+      )}
+      
+      {/* View All Photos Button */}
+      <button
+        onClick={() => setIsLightboxOpen(true)}
+        className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md border border-white/20 px-4 py-2 rounded-full text-xs font-black uppercase tracking-wider text-white z-30 flex items-center gap-2 hover:bg-black/80 transition"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+        </svg>
+        View All Photos
+      </button>
+    </div>
+  </div>
+
+  {/* Thumbnails */}
+  <div className="lg:col-span-4 grid grid-cols-2 lg:grid-cols-1 gap-3">
+    {hotelImages.slice(1, 5).map((img, i) => (
+      <div
+        key={img.id || i}
+        onClick={() => setCurrentImageIndex(i + 1)}
+        className="relative rounded-xl overflow-hidden cursor-pointer group h-[115px] lg:h-[117px] bg-gray-100 border-2 border-transparent hover:border-[#33a8da] transition-all duration-300"
+      >
+        <img
+          src={img.url}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          alt={img.caption || ''}
+        />
+        {img.caption && (
+          <div className="absolute bottom-1 left-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="text-[8px] font-bold text-white bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-full truncate block text-center">
+              {img.caption}
+            </span>
+          </div>
+        )}
+        {/* Overlay on hover */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300"></div>
+      </div>
+    ))}
+  </div>
+</div>
 
         {/* Content Tabs */}
         <div className="flex flex-col lg:flex-row gap-16">
@@ -1017,9 +1443,14 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
                 </div>
               </div>
 
-              <button onClick={onBook} className="w-full bg-[#33a8da] text-white font-black py-5 rounded-2xl shadow-xl hover:shadow-2xl transition active:scale-95 text-xs uppercase tracking-widest">
-                Reserve Your Stay
-              </button>
+              <button 
+  onClick={onBook}  
+  className="w-full bg-[#33a8da] text-white font-black py-5 rounded-2xl shadow-xl hover:shadow-2xl transition active:scale-95 text-xs uppercase tracking-widest"
+>
+  Reserve Your Stay
+</button>
+
+            
             </div>
           </aside>
         </div>

@@ -12,6 +12,45 @@ import PaymentModal from "@/components/payment/PaymentModal";
 import AmadeusHotelPaymentModal from "@/components/payment/AmadeusHotelPaymentModal";
 import type { Booking, PassengerInfo, SearchResult } from "@/lib/types";
 
+function extractOfferIdFromHotel(item: any): string {
+  if (!item) return '';
+  
+  console.log('🔍 extractOfferIdFromHotel - Input:', {
+    hasOfferId: !!item.offerId,
+    hasOffer_id: !!item.offer_id,
+    hasHotelData: !!item.hotelData,
+    hasRealData: !!item.realData,
+    hasOffers: !!(item.offers?.length),
+    itemKeys: Object.keys(item),
+  });
+  
+  // Check all possible locations for offer ID
+  const sources = [
+    item.offerId,
+    item.offer_id,
+    item.realData?.offerId,
+    item.hotelData?.offerId,
+    item.offers?.[0]?.id,
+    item.hotelData?.offers?.[0]?.id,
+    item.realData?.offers?.[0]?.id,
+    // Check if the id itself is an offer ID
+    (typeof item.id === 'string' && (item.id.startsWith('offer_') || item.id.includes('offer'))) ? item.id : null,
+    (typeof item.hotelId === 'string' && (item.hotelId.startsWith('offer_') || item.hotelId.includes('offer'))) ? item.hotelId : null,
+  ];
+  
+  for (const source of sources) {
+    if (source && typeof source === 'string' && source.length > 0) {
+      console.log('✅ Found offer ID:', source);
+      return source;
+    }
+  }
+  
+  console.warn('⚠️ No offer ID found in hotel item');
+  return '';
+}
+
+
+
 interface ExtendedSearchResult extends SearchResult {
   final_amount?: string;
   original_amount?: string;
@@ -433,6 +472,90 @@ function processItemPrices(item: ExtendedSearchResult | null, currencyCode: stri
       totalAmount: pb.totalAmount,
     };
   }
+
+  if (item.type?.toLowerCase() === 'hotels' || item.hotelId || item.hotel) {
+    // Try to get price from various sources
+    let totalAmount = 0;
+    
+    // Try final_amount
+    if (item.final_amount) {
+      totalAmount = parseFloat(item.final_amount);
+    }
+    
+    // Try final_price
+    if (!totalAmount && item.final_price) {
+      totalAmount = parseFloat(item.final_price as string);
+    }
+    
+    // Try totalAmount
+    if (!totalAmount && item.totalAmount) {
+      totalAmount = item.totalAmount;
+    }
+    
+    // Try originalPriceAmount
+    if (!totalAmount && item.originalPriceAmount) {
+      totalAmount = item.originalPriceAmount;
+    }
+    
+    // Try price string
+    if (!totalAmount && item.price && typeof item.price === 'string') {
+      const parsed = parseFloat(item.price.replace(/[^0-9.]/g, ''));
+      if (parsed > 0) {
+        totalAmount = parsed;
+      }
+    }
+    
+    // Try rawPrice
+    if (!totalAmount && item.rawPrice) {
+      totalAmount = item.rawPrice;
+    }
+    
+    // If we found a price, create the breakdown
+    if (totalAmount > 0) {
+      const displayCurrency = item.currency || currencyCode || 'NGN';
+      const formattedPrice = `${displayCurrency} ${totalAmount.toFixed(2)}`;
+      const basePrice = totalAmount / 1.15; // Approximate base
+      const markupAmount = totalAmount * 0.10; // 10% markup
+      const serviceFee = 5000; // Fixed service fee
+      
+      console.log('💰 Hotels: Created fallback price breakdown:', {
+        totalAmount,
+        displayCurrency,
+        basePrice,
+        markupAmount,
+        serviceFee,
+      });
+      
+      return {
+        ...item,
+        custom_messages: item.custom_messages || [],
+        price: formattedPrice,
+        displayPrice: formattedPrice,
+        totalPrice: formattedPrice,
+        currency: displayCurrency,
+        rawPrice: totalAmount,
+        final_amount: totalAmount.toString(),
+        final_price: totalAmount.toString(),
+        service_fee: serviceFee.toString(),
+        base_price: basePrice.toString(),
+        markup_amount: markupAmount.toString(),
+        calculatedBasePrice: basePrice,
+        calculatedServiceFee: serviceFee,
+        calculatedMarkup: markupAmount,
+        calculatedTaxes: markupAmount + serviceFee,
+        calculatedTotal: totalAmount,
+        markup_percentage: 10,
+        service_fee_percentage: 0,
+        basePrice: basePrice,
+        markupAmount: markupAmount,
+        serviceFee: serviceFee,
+        taxes: (markupAmount + serviceFee).toString(),
+        totalAmount: totalAmount,
+        breakdown: `Base: ${basePrice.toFixed(2)} + Markup: ${markupAmount.toFixed(2)} + Service Fee: ${serviceFee} = ${totalAmount.toFixed(2)}`,
+      };
+    }
+  }
+  
   
   if (item.calculatedTotal && item.calculatedTotal > 0) {
     const displayCurrency = item.currency || currencyCode || 'NGN';
@@ -721,8 +844,31 @@ export default function BookingReviewPage() {
   const hasProcessedRef = useRef(false);
   const hasFetchedTermsRef = useRef(false);
 
+  const [restoredHotelItem, setRestoredHotelItem] = useState<ExtendedSearchResult | null>(null);
+
+  // ✅ ONLY ADD THIS - Restore hotel from sessionStorage
+  useEffect(() => {
+    if (!selectedItem) {
+      const storedHotel = sessionStorage.getItem('selectedHotelForBooking');
+      if (storedHotel) {
+        try {
+          const parsed = JSON.parse(storedHotel);
+          if (parsed.type === 'hotels' || parsed.hotelId || parsed.hotel) {
+            console.log('✅ Restored hotel from sessionStorage:', parsed.name || parsed.title);
+            setRestoredHotelItem(parsed as ExtendedSearchResult);
+          }
+        } catch (e) {
+          console.error('Failed to restore hotel:', e);
+        }
+      }
+    }
+  }, [selectedItem]);
+
+  // ✅ ONLY ADD THIS - Use this for hotel fallback
+  const effectiveSelectedItem = selectedItem || restoredHotelItem;
+
   const [enhancedItem, setEnhancedItem] = useState<ExtendedSearchResult | null>(() => {
-    const item = selectedItem as ExtendedSearchResult;
+    const item = effectiveSelectedItem as ExtendedSearchResult; 
     if (!item) return null;
     
     if (item.isWakanow) {
@@ -836,7 +982,7 @@ useEffect(() => {
 
   
   useLayoutEffect(() => {
-    const item = selectedItem as ExtendedSearchResult;
+    const item = effectiveSelectedItem as ExtendedSearchResult;
     if (!item) return;
     
     if (enhancedItem && enhancedItem.currency === currency.code) {
@@ -845,15 +991,30 @@ useEffect(() => {
     
     const processed = processItemPrices(item, currency.code);
     setEnhancedItem(processed);
-  }, [selectedItem, currency.code]);
+  },[effectiveSelectedItem, currency.code]); 
 
-  const extendedItem = (enhancedItem || selectedItem) as ExtendedSearchResult | null;
+  const extendedItem = (enhancedItem || effectiveSelectedItem) as ExtendedSearchResult | null; 
   const isHotel = extendedItem ? getProductType(extendedItem) === "hotel" : false;
   const isCar = extendedItem ? getProductType(extendedItem) === "car" : false;
   const isFlight = extendedItem ? !isHotel && !isCar : false;
 
   const getItemForReview = (): SearchResult => {
-    const baseItem = (enhancedItem || selectedItem) as ExtendedSearchResult;
+    const baseItem = (enhancedItem || effectiveSelectedItem) as ExtendedSearchResult;
+    
+    // ✅ Extract cancellation policy from baseItem
+    let cancellationPolicy = 'Standard cancellation policy applies. Please check during booking for specific terms.';
+    if (baseItem.policies && baseItem.policies.length > 0) {
+      const cancelPolicy = baseItem.policies.find((p: any) => 
+        p.type?.includes('CANCELLATION') || 
+        p.type?.includes('CANCEL') ||
+        p.type?.includes('GENERAL_POLICY')
+      );
+      if (cancelPolicy) {
+        cancellationPolicy = cancelPolicy.text;
+      } else {
+        cancellationPolicy = baseItem.policies[0].text;
+      }
+    }
     
     if (booking) {
       console.log('🔄 Merging item with booking prices:', {
@@ -883,6 +1044,9 @@ useEffect(() => {
         price: booking.totalAmount ? `${booking.currency || 'NGN'} ${booking.totalAmount.toFixed(2)}` : baseItem.price,
         displayPrice: booking.totalAmount ? `${booking.currency || 'NGN'} ${booking.totalAmount.toFixed(2)}` : baseItem.displayPrice,
         totalPrice: booking.totalAmount ? `${booking.currency || 'NGN'} ${booking.totalAmount.toFixed(2)}` : baseItem.totalPrice,
+        // ✅ ADD CANCELLATION POLICY TO MERGED ITEM
+        cancellationPolicy: cancellationPolicy,
+        policies: baseItem.policies || [],
       };
       
       console.log('🔄 Merged item:', {
@@ -891,15 +1055,17 @@ useEffect(() => {
         final_amount: mergedItem.final_amount,
         priceBreakdown: mergedItem.priceBreakdown,
         custom_messages: mergedItem.custom_messages,
+        cancellationPolicy: mergedItem.cancellationPolicy,
       });
       
       return mergedItem as SearchResult;
     }
     
-   
     return {
       ...baseItem,
       custom_messages: baseItem.custom_messages || [],
+      cancellationPolicy: cancellationPolicy,
+      policies: baseItem.policies || [],
     } as SearchResult;
   };
 
@@ -1062,18 +1228,102 @@ useEffect(() => {
     // ✅ HOTEL FLOW - AMADEUS (UNCHANGED)
     // ============================================================
     if (isHotel && !isCar) {
+      // ✅ Extract offer ID from the hotel item
+      const hotelOfferId = extractOfferIdFromHotel(extendedItem);
+      
+      console.log('🏨 Hotel booking - Offer ID check:', {
+        originalOfferId: extendedItem.offerId,
+        extractedOfferId: hotelOfferId,
+        hasOfferId: !!hotelOfferId,
+        hotelId: extendedItem.hotelId || extendedItem.id,
+        hotelName: extendedItem.name || extendedItem.title,
+      });
+      
+      // ✅ If no offer ID found, try to get it from sessionStorage
+      let finalHotelItem = extendedItem;
+      if (!hotelOfferId && typeof window !== 'undefined') {
+        const stored = sessionStorage.getItem('selectedHotelForBooking');
+        if (stored) {
+          try {
+            const hotelData = JSON.parse(stored);
+            const storedOfferId = hotelData.offerId || 
+                                 hotelData.offer_id ||
+                                 hotelData.offers?.[0]?.id ||
+                                 hotelData.hotelData?.offerId ||
+                                 hotelData.realData?.offerId;
+            if (storedOfferId) {
+              console.log('✅ Found offer ID in sessionStorage:', storedOfferId);
+              finalHotelItem = {
+                ...extendedItem,
+                offerId: storedOfferId,
+                offer_id: storedOfferId,
+                hotelData: {
+                  ...extendedItem.hotelData,
+                  offerId: storedOfferId,
+                  offer_id: storedOfferId,
+                }
+              };
+            }
+          } catch (e) {
+            console.error('Failed to parse hotel from sessionStorage:', e);
+          }
+        }
+      }
+      
+      // ✅ If we still don't have an offer ID, show error
+      const finalOfferId = finalHotelItem.offerId || 
+                           finalHotelItem.offer_id || 
+                           finalHotelItem.hotelData?.offerId || 
+                           finalHotelItem.hotelData?.offer_id ||
+                           finalHotelItem.offers?.[0]?.id ||
+                           extractOfferIdFromHotel(finalHotelItem);
+      
+      if (!finalOfferId) {
+        console.error('❌ No offer ID found for hotel:', {
+          item: finalHotelItem,
+          offerId: finalHotelItem.offerId,
+          offer_id: finalHotelItem.offer_id,
+          hotelData: finalHotelItem.hotelData,
+          offers: finalHotelItem.offers,
+        });
+        toast.error(
+          'Unable to find a valid hotel offer. Please go back and search for hotels again.',
+          { duration: 5000 }
+        );
+        return;
+      }
+      
+      // ✅ Ensure the offer ID is on the item
+      finalHotelItem = {
+        ...finalHotelItem,
+        offerId: finalOfferId,
+        offer_id: finalOfferId,
+        realData: {
+          ...finalHotelItem.realData,
+          offerId: finalOfferId,
+        },
+        hotelData: {
+          ...finalHotelItem.hotelData,
+          offerId: finalOfferId,
+          offer_id: finalOfferId,
+        }
+      };
+      
+      console.log('✅ Proceeding with hotel booking using offer ID:', finalOfferId);
+      
       if (isMerchantPaymentModel) {
         try {
           console.log("🏨 Creating Amadeus hotel booking with merchant payment model...");
           
-          const correctPrice = parseFloat(extendedItem.final_amount || extendedItem.final_price || '0');
+          const correctPrice = parseFloat(finalHotelItem.final_amount || finalHotelItem.final_price || '0');
           console.log("💰 Amadeus hotel price check:", {
-            final_amount: extendedItem.final_amount,
-            final_price: extendedItem.final_price,
-            correctPrice: correctPrice
+            final_amount: finalHotelItem.final_amount,
+            final_price: finalHotelItem.final_price,
+            correctPrice: correctPrice,
+            offerId: finalOfferId,
           });
           
-          let finalItem = extendedItem;
+          // Try to restore price from sessionStorage if needed
           if (correctPrice < 500000 && typeof window !== 'undefined') {
             const stored = sessionStorage.getItem('selectedHotel');
             if (stored) {
@@ -1082,8 +1332,8 @@ useEffect(() => {
                 const storedPrice = parseFloat(hotelData.final_amount || hotelData.final_price || '0');
                 if (storedPrice > correctPrice && storedPrice > 0) {
                   console.log("💰 Restoring correct price from sessionStorage:", storedPrice);
-                  finalItem = {
-                    ...extendedItem,
+                  finalHotelItem = {
+                    ...finalHotelItem,
                     final_amount: hotelData.final_amount,
                     final_price: hotelData.final_price,
                   };
@@ -1092,7 +1342,7 @@ useEffect(() => {
             }
           }
           
-          const finalPrice = parseFloat(finalItem.final_amount || finalItem.final_price || '0');
+          const finalPrice = parseFloat(finalHotelItem.final_amount || finalHotelItem.final_price || '0');
           console.log("💰 Final price being sent to createAmadeusHotelBooking:", finalPrice);
           
           const testCard = {
@@ -1104,7 +1354,7 @@ useEffect(() => {
           };
           
           const newBooking = await createAmadeusHotelBooking(
-            finalItem,
+            finalHotelItem,  // ✅ Use finalHotelItem with offer ID
             cleanedPassengerInfo,
             testCard,
             isGuest,
@@ -1122,6 +1372,9 @@ useEffect(() => {
       console.log("🏨 Setting up Amadeus hotel payment modal...");
       setPendingPassengerInfo(cleanedPassengerInfo);
       setAppliedVoucherCode(voucherCode);
+      // ✅ Pass the finalHotelItem with offer ID via state
+      // We need to store it so the modal can use it
+      sessionStorage.setItem('pendingHotelBooking', JSON.stringify(finalHotelItem));
       setShowAmadeusPayment(true);
       return;
     }
@@ -1396,17 +1649,18 @@ useEffect(() => {
     }, 200);
   };
 
-  if (!selectedItem) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-20 text-center">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">No booking to review</h1>
-        <p className="text-gray-600 mb-8">Please select an item from search to continue.</p>
-        <button onClick={() => router.push("/search")} className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg">
-          Back to search
-        </button>
-      </div>
-    );
-  }
+ 
+if (!selectedItem && !restoredHotelItem) {
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-20 text-center">
+      <h1 className="text-3xl font-bold text-gray-900 mb-4">No booking to review</h1>
+      <p className="text-gray-600 mb-8">Please select an item from search to continue.</p>
+      <button onClick={() => router.push("/search")} className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg">
+        Back to search
+      </button>
+    </div>
+  );
+}
 
   if ((isLoadingRates || isProcessing || isFetchingTerms) && !enhancedItem) {
     return (
@@ -1445,20 +1699,31 @@ useEffect(() => {
         />
       )}
 
-      {showAmadeusPayment && selectedItem && pendingPassengerInfo && (
-        <AmadeusHotelPaymentModal
-          item={selectedItem}
-          passengerInfo={pendingPassengerInfo}
-          isGuest={!isLoggedIn}
-          voucherCode={appliedVoucherCode}
-          onSuccess={handlePaymentSuccess}
-          onCancel={() => {
-            setShowAmadeusPayment(false);
-            setPendingPassengerInfo(null);
-          }}
-          onSignInRequired={redirectToLogin}
-        />
-      )}
+{showAmadeusPayment && effectiveSelectedItem && pendingPassengerInfo && (
+  <AmadeusHotelPaymentModal
+    item={{
+      ...effectiveSelectedItem,
+      offerId: effectiveSelectedItem.offerId || 
+               effectiveSelectedItem.offer_id ||
+               effectiveSelectedItem.hotelData?.offerId ||
+               effectiveSelectedItem.offers?.[0]?.id ||
+               (typeof window !== 'undefined' && 
+                sessionStorage.getItem('pendingHotelBooking') ? 
+                  JSON.parse(sessionStorage.getItem('pendingHotelBooking')!).offerId : 
+                  ''),
+    }}
+    passengerInfo={pendingPassengerInfo}
+    isGuest={!isLoggedIn}
+    voucherCode={appliedVoucherCode}
+    onSuccess={handlePaymentSuccess}
+    onCancel={() => {
+      setShowAmadeusPayment(false);
+      setPendingPassengerInfo(null);
+      sessionStorage.removeItem('pendingHotelBooking');
+    }}
+    onSignInRequired={redirectToLogin}
+  />
+)}
     </>
   );
 }

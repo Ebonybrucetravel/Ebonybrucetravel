@@ -74,6 +74,7 @@ interface ExtendedSearchResult {
     totalAmount: number;
     currency: string;
     breakdown?: string;
+    offerId?: string; 
   };
   realData?: {
     offerId?: string;
@@ -91,6 +92,29 @@ interface ExtendedSearchResult {
     original_currency?: string;
     [key: string]: any;
   };
+  hotelId?: string;
+  hotelData?: any;
+  offers?: any[];
+  selectedRoom?: any;
+  hotel?: any;
+  // ✅ Also add these for hotel booking
+  name?: string;
+  city?: string;
+  country?: string;
+  countryCode?: string;
+  description?: string;
+  images?: any[];
+  phone?: string;
+  roomType?: string;
+  rooms?: number;
+  boardType?: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  check_in_date?: string;
+  check_out_date?: string;
+  originalPriceAmount?: number;
+  originalPriceCurrency?: string;
+  final_price?: string | number;
   [key: string]: any;
 }
 
@@ -174,6 +198,14 @@ const isValidAmadeusOfferId = (offerId: string | number): boolean => {
   
   const idString = offerId.toString();
   
+  // ❌ FAKE PATTERNS - Hotel IDs are typically 8 characters
+  // Hotel ID pattern: 3 letters + 5 alphanumeric (e.g., "SILOS445", "FGLOSTAH")
+  const hotelIdPattern = /^[A-Z]{3}[A-Z0-9]{5}$/;
+  if (hotelIdPattern.test(idString)) {
+    return false; // This is a hotel ID, not an offer ID
+  }
+  
+  // ❌ More fake patterns
   const fakePatterns = [
     /^UXNYC\d{3}$/i,
     /^YRPARRAF$/i,
@@ -188,7 +220,15 @@ const isValidAmadeusOfferId = (offerId: string | number): boolean => {
     }
   }
   
-  return idString.length >= 8 && /^[A-Z0-9]{8,}$/i.test(idString);
+  // ✅ Valid offer ID patterns
+  // Offer IDs are typically 10-12 characters with mixed alphanumeric
+  const validPatterns = [
+    /^[A-Z0-9]{10}$/,  // 10 characters (e.g., "MXIOA2ZAT2")
+    /^[A-Z0-9]{11}$/,  // 11 characters
+    /^[A-Z0-9]{12}$/,  // 12 characters (e.g., "H0X709Y88K")
+  ];
+  
+  return validPatterns.some(pattern => pattern.test(idString));
 };
 
 
@@ -1038,6 +1078,7 @@ try {
     [BASE, booking], // ✅ Add booking to dependencies
   );
 
+
   const createAmadeusHotelBooking = useCallback(
     async (
       item: ExtendedSearchResult,
@@ -1057,15 +1098,109 @@ try {
       setError(null);
   
       try {
-        const offerId = item.realData?.offerId ?? item.id;
-        if (!offerId) throw new Error("Missing offer ID");
-  
-        if (!isValidAmadeusOfferId(offerId)) {
-          console.error("❌ Invalid/Fake offer ID detected:", offerId);
+        // ✅ FIX: Extract the offer ID from the correct location
+        let offerId = '';
+        
+        console.log('🏨 createAmadeusHotelBooking - Input item:', {
+          hasOfferId: !!item.offerId,
+          hasOffer_id: !!item.offer_id,
+          hasRealData: !!item.realData,
+          hasHotelData: !!item.hotelData,
+          hasOffers: !!(item.offers?.length),
+          hasSelectedRoom: !!item.selectedRoom,
+          hasPriceBreakdown: !!item.priceBreakdown,
+          hotelId: item.hotelId || item.id,
+          itemKeys: Object.keys(item),
+        });
+        
+        // Priority 1: Check for offer in selectedRoom
+        if (item.selectedRoom?.offerId) {
+          offerId = item.selectedRoom.offerId;
+          console.log('🔑 Found offerId in selectedRoom:', offerId);
+        }
+        // Priority 2: Check for offer in realData
+        else if (item.realData?.offerId) {
+          offerId = item.realData.offerId;
+          console.log('🔑 Found offerId in realData:', offerId);
+        }
+        // Priority 3: Check for offer in offers array (first offer)
+        else if (item.offers && item.offers.length > 0 && item.offers[0]?.id) {
+          offerId = item.offers[0].id;
+          console.log('🔑 Found offerId in offers array:', offerId);
+        }
+        // Priority 4: Check for offer in hotelData
+        else if (item.hotelData?.offers && item.hotelData.offers.length > 0) {
+          offerId = item.hotelData.offers[0]?.id || '';
+          console.log('🔑 Found offerId in hotelData.offers:', offerId);
+        }
+        // Priority 5: Check if the item itself is an offer ID (not a hotel ID)
+        else if (item.offerId && item.offerId !== item.hotelId && item.offerId !== item.id) {
+          offerId = item.offerId;
+          console.log('🔑 Using item.offerId:', offerId);
+        }
+        // Priority 6: Check for offer in priceBreakdown
+        else if (item.priceBreakdown?.offerId) {
+          offerId = item.priceBreakdown.offerId;
+          console.log('🔑 Found offerId in priceBreakdown:', offerId);
+        }
+        // Priority 7: Check sessionStorage for hotelOfferId
+        else if (typeof window !== 'undefined') {
+          const storedOfferId = sessionStorage.getItem('hotelOfferId');
+          if (storedOfferId) {
+            offerId = storedOfferId;
+            console.log('🔑 Found offerId in sessionStorage:', offerId);
+          }
+        }
+        
+        // ✅ If still no offerId, try to find it in the item
+        if (!offerId) {
+          // Check if item.id is actually an offer ID (10+ characters, not 8 like hotel ID)
+          if (item.id && item.id.length >= 10 && /^[A-Z0-9]{10,}$/i.test(item.id)) {
+            offerId = item.id;
+            console.log('🔑 Using item.id as offerId:', offerId);
+          }
+          // Check if item.hotelId is actually an offer ID
+          else if (item.hotelId && item.hotelId.length >= 10 && /^[A-Z0-9]{10,}$/i.test(item.hotelId)) {
+            offerId = item.hotelId;
+            console.log('🔑 Using item.hotelId as offerId:', offerId);
+          }
+        }
+        
+        console.log("🔍 Extracted offerId:", {
+          offerId,
+          hotelId: item.hotelId || item.id,
+          hasSelectedRoom: !!item.selectedRoom,
+          hasRealData: !!item.realData,
+          hasOffers: item.offers?.length,
+        });
+        
+        // ✅ Validate the offer ID format
+        if (!offerId) {
+          console.error("❌ No offer ID found!");
+          console.error("📦 Full item data:", JSON.stringify(item, null, 2));
           throw new Error(
             "Invalid hotel offer. Please go back and search for hotels again. " +
             "Hotel offers expire quickly and cannot be reused from previous searches."
           );
+        }
+        
+        // ✅ Check if it's a hotel ID pattern (3 letters + 5 alphanumeric)
+        const isHotelIdPattern = /^[A-Z]{3}[A-Z0-9]{5}$/i.test(offerId);
+        if (isHotelIdPattern) {
+          console.warn('⚠️ Offer ID looks like a hotel ID:', offerId);
+          // Try to find a better offer ID from other sources
+          const betterOfferId = item.offers?.[0]?.id || 
+                               item.hotelData?.offers?.[0]?.id ||
+                               item.realData?.offerId;
+          if (betterOfferId && betterOfferId !== offerId) {
+            offerId = betterOfferId;
+            console.log('✅ Found better offer ID:', offerId);
+          } else {
+            throw new Error(
+              "Invalid hotel offer. Please go back and search for hotels again. " +
+              "Hotel offers expire quickly and cannot be reused from previous searches."
+            );
+          }
         }
   
         const realData = item.realData || item;
@@ -1107,7 +1242,38 @@ try {
         const hotelCheckOutTime = item.checkOutTime || realData.checkOutTime || '12:00';
         const hotelPhone = item.phone || realData.phone || '';
         const hotelAmenities = item.amenities || realData.amenities || [];
-        const hotelImages = item.images || realData.images || [];
+        
+        // ✅ FIX: Ensure hotelImages is an array of strings
+        let hotelImages: string[] = [];
+        if (item.images) {
+          if (Array.isArray(item.images)) {
+            hotelImages = item.images
+              .filter((img: any) => img && typeof img === 'string')
+              .map((img: any) => img);
+          }
+        }
+        if (hotelImages.length === 0 && realData.images) {
+          if (Array.isArray(realData.images)) {
+            hotelImages = realData.images
+              .filter((img: any) => img && typeof img === 'string')
+              .map((img: any) => img);
+          }
+        }
+        // Fallback: try to extract from hotelData
+        if (hotelImages.length === 0 && item.hotelData?.images) {
+          if (Array.isArray(item.hotelData.images)) {
+            hotelImages = item.hotelData.images
+              .filter((img: any) => img && typeof img === 'string')
+              .map((img: any) => img);
+          }
+        }
+        
+        console.log("🏨 Hotel images:", {
+          count: hotelImages.length,
+          first: hotelImages[0],
+          type: typeof hotelImages[0],
+        });
+        
         const roomType = item.roomType || realData.roomType || 'Standard Room';
         const numberOfRooms = item.rooms || realData.rooms || 1;
         const boardType = item.boardType || realData.boardType || 'Room Only';
@@ -1120,7 +1286,11 @@ try {
           hotelRating,
           roomType,
           checkInDate,
-          checkOutDate
+          checkOutDate,
+          offerId,
+          originalPrice,
+          customerPrice,
+          hotelImagesCount: hotelImages.length,
         });
         
         if (originalPrice <= 0) {
@@ -1173,6 +1343,7 @@ try {
           hotelCheckOutTime: hotelCheckOutTime,
           hotelPhone: hotelPhone,
           hotelAmenities: hotelAmenities,
+          // ✅ FIX: Ensure hotelImages is an array of strings
           hotelImages: hotelImages,
           roomType: roomType,
           numberOfRooms: numberOfRooms,
@@ -1206,6 +1377,17 @@ try {
         if (!isGuest && token) {
           headers["Authorization"] = `Bearer ${token}`;
         }
+  
+        console.log("📤 Sending Amadeus hotel booking request:", {
+          endpoint,
+          hotelOfferId: bookingPayload.hotelOfferId,
+          offerPrice: bookingPayload.offerPrice,
+          currency: bookingPayload.currency,
+          hotelName: bookingPayload.hotelName,
+          checkInDate: bookingPayload.checkInDate,
+          checkOutDate: bookingPayload.checkOutDate,
+          hotelImagesCount: bookingPayload.hotelImages?.length || 0,
+        });
   
         const response = await fetch(`${BASE}${endpoint}`, {
           method: "POST",
@@ -1265,6 +1447,7 @@ try {
             original_currency_sent: originalCurrency,
             customer_price: customerPrice,
             customer_currency: item.currency,
+            offerId: offerId,
           },
           passengerInfo: {
             firstName: passenger.firstName,
@@ -1288,6 +1471,7 @@ try {
     },
     [BASE],
   );
+
 
   const chargeMarginAmadeusHotel = useCallback(
     async (booking: Booking, isGuest: boolean): Promise<Booking> => {
