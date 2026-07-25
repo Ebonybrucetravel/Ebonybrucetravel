@@ -55,14 +55,11 @@ export class AmadeusService {
       this.logger.log('Requesting Amadeus OAuth token...');
       this.logger.debug(`Token endpoint: ${this.baseUrl}/v1/security/oauth2/token`);
       
+      // ✅ ONLY send required parameters as per documentation
       const params = new URLSearchParams({
         grant_type: 'client_credentials',
         client_id: this.apiKey,
         client_secret: this.apiSecret,
-        sap: '1ASIUTCHE9BAQC',
-        office_id: this.officeId,
-        organization_id: this.orgId,
-        user_id: this.userId,
       });
       
       const response = await fetch(`${this.baseUrl}/v1/security/oauth2/token`, {
@@ -79,14 +76,13 @@ export class AmadeusService {
       if (!response.ok) {
         this.logger.error(`Token request failed: ${responseText}`);
         throw new HttpException(
-          `Failed to get Amadeus access token: ${response.status}`,
+          `Failed to get Amadeus access token: ${response.status} - ${responseText}`,
           HttpStatus.UNAUTHORIZED,
         );
       }
   
       const data = JSON.parse(responseText);
       this.accessToken = data.access_token;
-      // ✅ Use 60-second buffer instead of 300-second buffer
       this.tokenExpiresAt = Date.now() + (data.expires_in - 60) * 1000;
       
       this.logger.log('Amadeus OAuth token obtained successfully');
@@ -101,7 +97,6 @@ export class AmadeusService {
       );
     }
   }
-
   private async makeRequest(
     endpoint: string,
     options: {
@@ -111,7 +106,6 @@ export class AmadeusService {
       useAmadeusJson?: boolean;
     } = {},
   ): Promise<any> {
-    let token = await this.getAccessToken();
     const { method = 'GET', body, params, useAmadeusJson = false } = options;
     
     let url = `${this.baseUrl}${endpoint}`;
@@ -119,18 +113,30 @@ export class AmadeusService {
       const searchParams = new URLSearchParams(params);
       url += `?${searchParams.toString()}`;
     }
-
+  
+    const token = await this.getAccessToken();
+  
     const contentType = useAmadeusJson 
-    ? 'application/vnd.amadeus+json' 
-    : 'application/json';
+      ? 'application/vnd.amadeus+json' 
+      : 'application/json';
   
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${token}`,
       'Accept': contentType,
-      'X-Office-Id': this.officeId,
-      'X-Organization-Id': this.orgId,
-      'X-User-Id': this.userId,
     };
+  
+    // ✅ ONLY add X-* headers for hotels (NOT for transfers)
+    // This keeps hotels working while fixing transfers
+    if (!useAmadeusJson) {
+      // Hotels need these headers
+      headers['X-Office-Id'] = this.officeId;
+      headers['X-Organization-Id'] = this.orgId;
+      headers['X-User-Id'] = this.userId;
+      this.logger.debug('Hotels API: Including X-* headers');
+    } else {
+      // Transfers don't need X-* headers
+      this.logger.debug('Transfers API: Skipping X-* headers');
+    }
   
     if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
       headers['Content-Type'] = contentType;
@@ -139,39 +145,11 @@ export class AmadeusService {
     this.logger.debug(`Amadeus API ${method} ${url}`);
   
     try {
-      let response = await fetch(url, {
+      const response = await fetch(url, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
       });
-  
-      // ✅ If 401, refresh token and retry ONCE
-      if (response.status === 401) {
-        this.logger.warn('Token expired, refreshing and retrying...');
-        
-        // ✅ Force token refresh by clearing cache
-        this.accessToken = null;
-        this.tokenExpiresAt = 0;
-        
-        // ✅ Get new token
-        token = await this.getAccessToken();
-        
-        // ✅ Update headers with new token
-        headers['Authorization'] = `Bearer ${token}`;
-        
-        // ✅ Retry the request with new token
-        response = await fetch(url, {
-          method,
-          headers,
-          body: body ? JSON.stringify(body) : undefined,
-        });
-        
-        // ✅ If still 401 after retry, throw error
-        if (response.status === 401) {
-          this.logger.error('Still unauthorized after token refresh');
-          throw new HttpException('Authentication failed after token refresh', HttpStatus.UNAUTHORIZED);
-        }
-      }
   
       if (!response.ok) {
         const errorText = await response.text();
@@ -198,6 +176,8 @@ export class AmadeusService {
       throw new HttpException('Amadeus API request failed', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
+
+
   // ==================== HOTEL LIST API (v1) ====================
   
   async searchHotelNames(params: {
