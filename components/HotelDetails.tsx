@@ -375,23 +375,89 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     return null;
   };
 
-  // Get guests count
-  const getGuestsCount = () => {
-    if (searchParams?.guests) return `${searchParams.guests} Adults`;
-    if (searchParams?.adults) return `${searchParams.adults} Adults`;
-    if (item?.realData?.guests) return `${item.realData.guests} Adults`;
-    if ((item as any)?.guests) return `${(item as any).guests} Adults`;
-    return '2 Adults';
-  };
+// Get guests count - FIXED to use actual search params
+const getGuestsCount = () => {
+  // ✅ Check searchParams first (most reliable)
+  if (searchParams?.guests) {
+    return searchParams.guests;
+  }
+  if (searchParams?.adults) {
+    return searchParams.adults;
+  }
+  
+  // ✅ Check item data
+  if (item?.realData?.guests) {
+    return item.realData.guests;
+  }
+  if ((item as any)?.guests) {
+    return (item as any).guests;
+  }
+  
+  // ✅ Check sessionStorage
+  if (typeof window !== 'undefined') {
+    const stored = sessionStorage.getItem('selectedHotelDetails');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed.adults) {
+          return parsed.adults;
+        }
+        if (parsed.guests) {
+          return parsed.guests;
+        }
+      } catch (e) {}
+    }
+  }
+  
+  // ✅ Default to 1 Adult (not 2)
+  return 1;
+};
 
-  // Get rooms count
-  const getRoomsCount = () => {
-    if (searchParams?.rooms) return `${searchParams.rooms} Room${searchParams.rooms > 1 ? 's' : ''}`;
-    if (searchParams?.roomQuantity) return `${searchParams.roomQuantity} Room${searchParams.roomQuantity > 1 ? 's' : ''}`;
-    if (item?.realData?.rooms) return `${item.realData.rooms} Room${item.realData.rooms > 1 ? 's' : ''}`;
-    if ((item as any)?.rooms) return `${(item as any).rooms} Room${(item as any).rooms > 1 ? 's' : ''}`;
-    return '1 Room';
-  };
+// Get guests count display string
+const getGuestsDisplay = () => {
+  const count = getGuestsCount();
+  return `${count} Adult${count > 1 ? 's' : ''}`;
+};
+
+ // Get rooms count - FIXED
+const getRoomsCount = () => {
+  if (searchParams?.rooms) {
+    return searchParams.rooms;
+  }
+  if (searchParams?.roomQuantity) {
+    return searchParams.roomQuantity;
+  }
+  if (item?.realData?.rooms) {
+    return item.realData.rooms;
+  }
+  if ((item as any)?.rooms) {
+    return (item as any).rooms;
+  }
+  
+  // Check sessionStorage
+  if (typeof window !== 'undefined') {
+    const stored = sessionStorage.getItem('selectedHotelDetails');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed.rooms) {
+          return parsed.rooms;
+        }
+        if (parsed.roomQuantity) {
+          return parsed.roomQuantity;
+        }
+      } catch (e) {}
+    }
+  }
+  
+  return 1;
+};
+
+// Get rooms count display string
+const getRoomsDisplay = () => {
+  const count = getRoomsCount();
+  return `${count} Room${count > 1 ? 's' : ''}`;
+};
 
   // Get nights count
   const getNightsCount = () => {
@@ -593,12 +659,12 @@ const handleReserveStay = useCallback(() => {
     checkInDate: checkInDate || searchParams?.checkInDate || '',
     checkOutDate: checkOutDate || searchParams?.checkOutDate || '',
     nights: nights || 1,
-    guests: getGuestsCount(),
-    rooms: getRoomsCount(),
+    guests: getGuestsCount(),  // ✅ Use numeric count
+    guestsDisplay: getGuestsDisplay(),  // ✅ Use display string
+    rooms: getRoomsCount(),  // ✅ Use numeric count
+    roomsDisplay: getRoomsDisplay(),  // ✅ Use display string
     amenities: fullDetails?.amenities || itemAny.amenities || [],
-    // ✅ Pass offers array
     offers: offers,
-    // ✅ Pass offerId (extracted from first offer)
     offerId: offerId,
     provider: item.provider || 'amadeus',
     type: 'hotels',
@@ -616,7 +682,6 @@ const handleReserveStay = useCallback(() => {
       offerId: offerId,
     }
   };
-
   sessionStorage.setItem('selectedHotelForBooking', JSON.stringify(hotelForBooking));
   router.push('/review');
 }, [item, convertedPrice, originalPriceAmount, originalPriceCurrency, fullDetails, hotelImages, checkInDate, checkOutDate, nights, router, searchParams]);
@@ -912,13 +977,15 @@ if (detailsRes.status === 'fulfilled' && detailsRes.value?.success) {
     const realData = (item as any)?.realData || {};
     const roomType = realData.roomType || item?.features?.[0] || 'Standard Room';
     const bedType = realData.bedType || 'King/Queen Bed';
-    const guests = realData.guests || 2;
-
+    const guests = getGuestsDisplay();  // ✅ Use dynamic display
+    const rooms = getRoomsDisplay();    // ✅ Use dynamic display
+    const nights = getNightsCount();    // ✅ Use dynamic nights
+  
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="bg-white rounded-[40px] border border-gray-100 p-8 hover:shadow-xl transition-all duration-500 overflow-hidden relative group">
           <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 rounded-bl-[100px] -mr-8 -mt-8 transition-transform group-hover:scale-110" />
-
+  
           <div className="flex flex-col md:flex-row gap-8 items-center">
             <div className="w-full md:w-64 h-48 bg-gray-100 rounded-[32px] overflow-hidden">
               <img
@@ -927,7 +994,7 @@ if (detailsRes.status === 'fulfilled' && detailsRes.value?.success) {
                 alt="Room"
               />
             </div>
-
+  
             <div className="flex-1 space-y-4">
               <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-[#33a8da10] text-[#33a8da] rounded-full text-[9px] font-black uppercase tracking-widest">
                 Best Available Rate
@@ -936,12 +1003,18 @@ if (detailsRes.status === 'fulfilled' && detailsRes.value?.success) {
               <div className="flex flex-wrap gap-4 text-[9px] font-black text-gray-400 uppercase tracking-widest">
                 <span className="flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeWidth="2.5" /></svg>
-                  {guests} Guests
+                  {guests}  {/* ✅ Dynamic guest count */}
                 </span>
                 <span className="flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" strokeWidth="2.5" /></svg>
                   {bedType}
                 </span>
+                {nights && (
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2.5" /></svg>
+                    {nights} night{nights > 1 ? 's' : ''}
+                  </span>
+                )}
                 {realData.isRefundable && (
                   <span className="flex items-center gap-2 text-green-500">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2.5" /></svg>
@@ -950,7 +1023,7 @@ if (detailsRes.status === 'fulfilled' && detailsRes.value?.success) {
                 )}
               </div>
             </div>
-
+  
             <div className="text-right space-y-2">
               <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Starting from</div>
               <div className="text-4xl font-black text-gray-900">{convertedPrice || item.price}</div>
@@ -964,6 +1037,7 @@ if (detailsRes.status === 'fulfilled' && detailsRes.value?.success) {
       </div>
     );
   };
+
 
   const renderAmenities = () => {
     const amenities = fullDetails?.amenities || item?.amenities || [];
