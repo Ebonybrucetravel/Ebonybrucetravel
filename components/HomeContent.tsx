@@ -141,39 +141,59 @@ export default function HomeContent({ activeTab }: HomeContentProps) {
     }
   };
 
-  // Handler for car card clicks with loading state
-  const handleCarSearch = async (carData: any) => {
-    console.log('🚗 Car search triggered from card:', carData);
-    setIsCarSearching(true);
+// Handler for car card clicks with loading state
+const handleCarSearch = async (carData: any) => {
+  console.log('🚗 Car search triggered from card:', carData);
+  setIsCarSearching(true);
+  
+  try {
+    const today = new Date();
+    const pickupDate = new Date(today);
+    pickupDate.setDate(today.getDate() + 7);
+    pickupDate.setHours(10, 0, 0, 0);
     
-    try {
-      const today = new Date();
-      const pickupDate = new Date(today);
-      pickupDate.setDate(today.getDate() + 7);
-      pickupDate.setHours(10, 0, 0, 0);
-      
-      const dropoffDate = new Date(pickupDate);
-      dropoffDate.setHours(pickupDate.getHours() + 6);
+    const dropoffDate = new Date(pickupDate);
+    dropoffDate.setHours(pickupDate.getHours() + 6);
 
-      const searchData: SearchParams = {
-        type: 'car-rentals',
-        pickupLocationCode: carData.pickupLocationCode || carData.pickupCode,
-        dropoffLocationCode: carData.dropoffLocationCode || carData.dropoffCode,
-        pickupDateTime: pickupDate.toISOString(),
-        dropoffDateTime: dropoffDate.toISOString(),
-        passengers: 2,
-        currency: 'GBP'
-      };
+    // Extract codes from carData
+    const pickupCode = carData.pickupLocationCode || carData.pickupCode || 'CDG';
+    const dropoffCode = carData.dropoffLocationCode || carData.dropoffCode || 'NCE';
+
+    // ✅ Build search data with BOTH old and new formats
+    const searchData: SearchParams = {
+      type: 'car-rentals',
       
-      console.log('🚗 Sending car search data to API:', searchData);
-      router.push('/search');
-      await search(searchData);
-    } catch (error) {
-      console.error('Car search failed:', error);
-    } finally {
-      setIsCarSearching(false);
-    }
-  };
+      // ✅ New Amadeus format (required)
+      startLocationCode: pickupCode,
+      endLocationCode: dropoffCode,
+      startDateTime: pickupDate.toISOString(),
+      endDateTime: dropoffDate.toISOString(),
+      
+      // ✅ Old format (for backward compatibility)
+      pickupLocationCode: pickupCode,
+      dropoffLocationCode: dropoffCode,
+      pickupDateTime: pickupDate.toISOString(),
+      dropoffDateTime: dropoffDate.toISOString(),
+      
+      passengers: 2,
+      currency: 'GBP',
+      
+      // ✅ Optional Amadeus parameters with defaults
+      transferType: 'PRIVATE',
+      vehicleCategory: 'BU',
+      vehicleCode: 'VAN',
+      duration: `PT${6}H`, // 6 hours duration
+    };
+    
+    console.log('🚗 Sending car search data to API:', searchData);
+    router.push('/search');
+    await search(searchData);
+  } catch (error) {
+    console.error('Car search failed:', error);
+  } finally {
+    setIsCarSearching(false);
+  }
+};
 
   // Handler for trending destinations with loading state
   const handleTrendingSearch = async (city: any) => {

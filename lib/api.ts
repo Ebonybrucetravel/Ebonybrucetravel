@@ -320,6 +320,12 @@ export interface CarRentalSearchParams {
   dropoffDateTime: string; // Format: "YYYY-MM-DDTHH:mm:ss"
   currency?: string;
   passengers?: number;
+  // ✅ ADD THESE NEW PARAMETERS
+  transferType?: 'PRIVATE' | 'SHARED' | 'TAXI' | 'HOURLY';
+  duration?: string; // Format: "PT2H30M" - required for HOURLY
+  vehicleCategory?: 'ST' | 'BU' | 'FC';
+  vehicleCode?: 'CAR' | 'SED' | 'WGN' | 'ELC' | 'VAN' | 'SUV' | 'LMS' | 'MBR' | 'TRN' | 'BUS' | 'HLC' | 'JET';
+  baggages?: number;
   [key: string]: any;
 }
 
@@ -2060,22 +2066,63 @@ export const searchCarRentals = async (
   try {
     console.log("🚗 Starting car rental search with params:", searchParams);
 
+    // ✅ Build request body with ONLY Amadeus-compatible parameters
+    const requestBody: any = {
+      startLocationCode: searchParams.pickupLocationCode || searchParams.startLocationCode,
+      endLocationCode: searchParams.dropoffLocationCode || searchParams.endLocationCode,
+      startDateTime: searchParams.pickupDateTime || searchParams.startDateTime,
+      passengers: searchParams.passengers || 2,
+      currency: searchParams.currency || "GBP",
+    };
+
+    // ✅ Calculate duration from pickup and dropoff times (if both provided)
+    const pickupDateTime = searchParams.pickupDateTime || searchParams.startDateTime;
+    const dropoffDateTime = searchParams.dropoffDateTime || searchParams.endDateTime;
+    
+    if (pickupDateTime && dropoffDateTime) {
+      const pickup = new Date(pickupDateTime);
+      const dropoff = new Date(dropoffDateTime);
+      const diffMs = dropoff.getTime() - pickup.getTime();
+      
+      if (diffMs > 0) {
+        const hours = Math.floor(diffMs / (1000 * 60 * 60));
+        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        const duration = `PT${hours}H${minutes > 0 ? `${minutes}M` : ''}`;
+        requestBody.duration = duration;
+        console.log(`⏰ Calculated duration: ${duration}`);
+      }
+    }
+
+    // ✅ Add transfer type if provided
+    if (searchParams.transferType) {
+      requestBody.transferType = searchParams.transferType;
+    }
+
+    // ✅ Add vehicle filters if provided
+    if (searchParams.vehicleCategory) {
+      requestBody.vehicleCategory = searchParams.vehicleCategory;
+    }
+    if (searchParams.vehicleCode) {
+      requestBody.vehicleCode = searchParams.vehicleCode;
+    }
+    if (searchParams.baggages !== undefined && searchParams.baggages > 0) {
+      requestBody.baggages = searchParams.baggages;
+    }
+
+    // ❌ DO NOT send dropoffDateTime - Amadeus API doesn't accept it
+    // requestBody.dropoffDateTime = searchParams.dropoffDateTime; // ← REMOVE THIS
+
+    console.log("📤 Car rental request body:", JSON.stringify(requestBody, null, 2));
+
     const response = await publicRequest<CarRentalSearchResponse>(
       "/api/v1/bookings/search/car-rentals",
       {
         method: "POST",
-        body: JSON.stringify({
-          pickupLocationCode: searchParams.pickupLocationCode,
-          pickupDateTime: searchParams.pickupDateTime,
-          dropoffLocationCode: searchParams.dropoffLocationCode,
-          dropoffDateTime: searchParams.dropoffDateTime,
-          currency: searchParams.currency || "GBP",
-          passengers: searchParams.passengers || 2,
-        }),
+        body: JSON.stringify(requestBody),
       },
     );
 
-    console.log("✅ Car rental search response structure:", {
+    console.log("✅ Car rental search response:", {
       success: response.success,
       message: response.message,
       hasData: !!response.data?.data,
@@ -2611,6 +2658,10 @@ export async function formatCarRentalSearchParams(
   pickupTime?: string,
   dropoffTime?: string,
   passengers?: number,
+  transferType: 'PRIVATE' | 'SHARED' | 'TAXI' | 'HOURLY' = 'PRIVATE',
+  vehicleCategory?: 'ST' | 'BU' | 'FC',
+  vehicleCode?: 'CAR' | 'SED' | 'WGN' | 'ELC' | 'VAN' | 'SUV' | 'LMS' | 'MBR' | 'TRN' | 'BUS' | 'HLC' | 'JET',
+  baggages?: number,
 ): Promise<CarRentalSearchParams> {
   // Get location codes
   const pickupCode = getCityCode(pickupLocation);
@@ -2630,7 +2681,6 @@ export async function formatCarRentalSearchParams(
   let dropoffDateTime: Date;
 
   if (pickupDate) {
-    // If pickupDate is provided (format: YYYY-MM-DD)
     pickupDateTime = new Date(pickupDate);
     if (pickupTime) {
       const [hours, minutes] = pickupTime.split(":").map(Number);
@@ -2639,14 +2689,12 @@ export async function formatCarRentalSearchParams(
       pickupDateTime.setHours(10, 0, 0, 0);
     }
   } else {
-    // Default to tomorrow at 10:00 AM
     pickupDateTime = new Date(today);
     pickupDateTime.setDate(today.getDate() + 1);
     pickupDateTime.setHours(10, 0, 0, 0);
   }
 
   if (dropoffDate) {
-    // If dropoffDate is provided (format: YYYY-MM-DD)
     dropoffDateTime = new Date(dropoffDate);
     if (dropoffTime) {
       const [hours, minutes] = dropoffTime.split(":").map(Number);
@@ -2655,7 +2703,6 @@ export async function formatCarRentalSearchParams(
       dropoffDateTime.setHours(10, 0, 0, 0);
     }
   } else {
-    // Default to 3 days after pickup at 10:00 AM
     dropoffDateTime = new Date(pickupDateTime);
     dropoffDateTime.setDate(pickupDateTime.getDate() + 3);
   }
@@ -2671,18 +2718,31 @@ export async function formatCarRentalSearchParams(
   const pickupDateTimeStr = pickupDateTime.toISOString();
   const dropoffDateTimeStr = dropoffDateTime.toISOString();
 
-  console.log("📅 Formatted dates:", { pickupDateTimeStr, dropoffDateTimeStr });
+  // ✅ Calculate duration for Amadeus API
+  const diffMs = dropoffDateTime.getTime() - pickupDateTime.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMinutes = Math.round((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  const duration = `PT${diffHours}H${diffMinutes > 0 ? `${diffMinutes}M` : ''}`;
+
+  console.log("📅 Formatted dates:", { pickupDateTimeStr, dropoffDateTimeStr, duration });
 
   // Return ALL required fields
   return {
     pickupLocationCode: pickupCode,
     pickupDateTime: pickupDateTimeStr,
-    dropoffLocationCode: dropoffCode, // ✅ This was missing!
+    dropoffLocationCode: dropoffCode,
     dropoffDateTime: dropoffDateTimeStr,
     currency: "GBP",
     passengers: Math.max(1, passengers || 2),
+    // ✅ ADD NEW PARAMETERS
+    transferType: transferType,
+    duration: transferType === 'HOURLY' ? duration : undefined,
+    vehicleCategory: vehicleCategory,
+    vehicleCode: vehicleCode,
+    baggages: baggages,
   };
 }
+
 // Search car rentals and transform results for frontend
 export async function searchAndTransformCarRentals(
   searchParams: CarRentalSearchParams,

@@ -456,124 +456,172 @@ const getAdultsCount = (params: SearchParams): number => {
   return 1;
 };
 
-  // ==================== CAR RENTAL SEARCH ====================
-  const searchCars = async (params: SearchParams) => {
-    try {
-      if (!params.pickupLocationCode || !params.dropoffLocationCode ||
-        !params.pickupDateTime || !params.dropoffDateTime) {
-        console.error('❌ Missing required car rental parameters');
-        setSearchResults([]);
-        setSearchError('Missing location or date information. Please try again.');
-        return;
-      }
+// ==================== CAR RENTAL SEARCH - FIXED ====================
+const searchCars = async (params: SearchParams) => {
+  try {
+    // ✅ Support both old and new parameter formats
+    const pickupLocationCode = params.startLocationCode || params.pickupLocationCode;
+    const dropoffLocationCode = params.endLocationCode || params.dropoffLocationCode;
+    const pickupDateTime = params.startDateTime || params.pickupDateTime;
+    const dropoffDateTime = params.endDateTime || params.dropoffDateTime;
 
-      let passengerCount = 2;
-      if (params.passengers) {
-        if (typeof params.passengers === 'number') {
-          passengerCount = params.passengers;
-        } else if (typeof params.passengers === 'object') {
-          passengerCount = (params.passengers.adults || 0) +
-            (params.passengers.children || 0) +
-            (params.passengers.infants || 0);
-          passengerCount = Math.max(1, passengerCount);
-        }
-      }
+    // ✅ Log what we received for debugging
+    console.log('🚗 Car search params received:', {
+      pickupLocationCode,
+      dropoffLocationCode,
+      pickupDateTime,
+      dropoffDateTime,
+      transferType: params.transferType,
+      duration: params.duration,
+      vehicleCategory: params.vehicleCategory,
+      vehicleCode: params.vehicleCode,
+      baggages: params.baggages,
+    });
 
-      const carParams = {
-        pickupLocationCode: params.pickupLocationCode,
-        dropoffLocationCode: params.dropoffLocationCode,
-        pickupDateTime: params.pickupDateTime,
-        dropoffDateTime: params.dropoffDateTime,
-        passengers: passengerCount,
-        currency: 'NGN',
-      };
-
-      const response = await api.carApi.searchCarRentals(carParams);
-
-      if (response.success && response.data?.data) {
-        const processedResults = await Promise.all(response.data.data.map(async (item: any) => {
-          const startDate = new Date(item.start?.dateTime);
-          const endDate = new Date(item.end?.dateTime);
-          const hoursDiff = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
-          const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-
-          let rentalType = 'transfer';
-          let displayType = 'Transfer';
-
-          if (daysDiff >= 1) {
-            rentalType = 'multi-day';
-            displayType = 'Multi-Day Rental';
-          } else if (hoursDiff > 4) {
-            rentalType = 'long-transfer';
-            displayType = 'Long Transfer';
-          }
-
-          const basePrice = parseFloat(item.base_price || item.original_price || item.price?.base || '0');
-          const markupAmount = parseFloat(item.markup_amount) || 0;
-          const conversionFee = parseFloat(item.conversion_fee) || 0;
-          const taxes = 0;
-          const serviceFeeFromBackend = parseFloat(item.service_fee) || 0;
-          
-          const totalServiceFee = calculateTotalServiceFee(markupAmount, conversionFee, taxes);
-          const finalServiceFee = serviceFeeFromBackend > 0 ? serviceFeeFromBackend : totalServiceFee;
-          const finalPriceNGN = parseFloat(item.final_price || item.price?.total || item.converted?.monetaryAmount || '0');
-          
-          let serviceFeePercentage = 0;
-          if (basePrice > 0 && finalServiceFee > 0) {
-            serviceFeePercentage = (finalServiceFee / basePrice) * 100;
-          }
-
-          const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalPriceNGN, 'NGN');
-          const formattedDisplayPrice = await formatPriceInUserCurrency(finalPriceNGN, 'NGN');
-
-          console.log(`🚗 Car rental - Service Fee Breakdown:`, {
-            vehicle: item.vehicle?.description,
-            basePriceNGN: `₦${basePrice}`,
-            markupAmountNGN: `₦${markupAmount}`,
-            conversionFeeNGN: `₦${conversionFee}`,
-            totalServiceFeeNGN: `₦${finalServiceFee}`,
-            serviceFeePercentage: `${serviceFeePercentage}%`,
-            finalPriceNGN: `₦${finalPriceNGN}`,
-            displayPriceInUserCurrency: formattedDisplayPrice,
-          });
-
-          return {
-            ...item,
-            type: 'car-rentals' as const,
-            rentalType,
-            displayType,
-            rentalDays: daysDiff,
-            rentalHours: hoursDiff,
-            requestedDays: daysDiff,
-            isMultiDay: daysDiff >= 1,
-            isTransfer: daysDiff < 1,
-            original_amount: basePrice.toString(),
-            original_currency: 'NGN',
-            markup_amount: markupAmount.toString(),
-            conversion_fee: conversionFee.toString(),
-            taxes: taxes.toString(),
-            service_fee: finalServiceFee.toString(),
-            service_fee_percentage: serviceFeePercentage,
-            final_amount: finalPriceNGN.toString(),
-            currency: 'NGN',
-            rawPrice: finalPriceNGN,
-            price: formattedDisplayPrice,
-            totalPrice: formattedDisplayPrice,
-            displayPriceRaw: displayPriceInUserCurrency,
-          };
-        }));
-
-        setSearchResults(processedResults);
-        console.log(`✅ Processed ${processedResults.length} car rentals with merged service fee`);
-      } else {
-        setSearchResults([]);
-      }
-    } catch (error) {
-      console.error('❌ Car search failed:', error);
+    if (!pickupLocationCode || !dropoffLocationCode || !pickupDateTime || !dropoffDateTime) {
+      console.error('❌ Missing required car rental parameters', {
+        pickupLocationCode,
+        dropoffLocationCode,
+        pickupDateTime,
+        dropoffDateTime
+      });
       setSearchResults([]);
-      setSearchError('Failed to search car rentals. Please try again.');
+      setSearchError('Missing location or date information. Please try again.');
+      return;
     }
-  };
+
+    let passengerCount = 2;
+    if (params.passengers) {
+      if (typeof params.passengers === 'number') {
+        passengerCount = params.passengers;
+      } else if (typeof params.passengers === 'object') {
+        passengerCount = (params.passengers.adults || 0) +
+          (params.passengers.children || 0) +
+          (params.passengers.infants || 0);
+        passengerCount = Math.max(1, passengerCount);
+      }
+    }
+
+    // ✅ Build car params with ALL fields
+    const carParams: any = {
+      pickupLocationCode: pickupLocationCode,
+      dropoffLocationCode: dropoffLocationCode,
+      pickupDateTime: pickupDateTime,
+      dropoffDateTime: dropoffDateTime,
+      passengers: passengerCount,
+      currency: 'NGN',
+    };
+
+    // ✅ Add transfer type if provided
+    if (params.transferType) {
+      carParams.transferType = params.transferType;
+    }
+
+    // ✅ Add duration if provided
+    if (params.duration) {
+      carParams.duration = params.duration;
+    }
+
+    // ✅ Add vehicle filters if provided
+    if (params.vehicleCategory) {
+      carParams.vehicleCategory = params.vehicleCategory;
+    }
+    if (params.vehicleCode) {
+      carParams.vehicleCode = params.vehicleCode;
+    }
+    if (params.baggages !== undefined && params.baggages > 0) {
+      carParams.baggages = params.baggages;
+    }
+
+    console.log('🚗 Car rental API request:', carParams);
+
+    const response = await api.carApi.searchCarRentals(carParams);
+
+    if (response.success && response.data?.data) {
+      const processedResults = await Promise.all(response.data.data.map(async (item: any) => {
+        const startDate = new Date(item.start?.dateTime);
+        const endDate = new Date(item.end?.dateTime);
+        const hoursDiff = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
+        const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+
+        let rentalType = 'transfer';
+        let displayType = 'Transfer';
+
+        if (daysDiff >= 1) {
+          rentalType = 'multi-day';
+          displayType = 'Multi-Day Rental';
+        } else if (hoursDiff > 4) {
+          rentalType = 'long-transfer';
+          displayType = 'Long Transfer';
+        }
+
+        const basePrice = parseFloat(item.base_price || item.original_price || item.price?.base || '0');
+        const markupAmount = parseFloat(item.markup_amount) || 0;
+        const conversionFee = parseFloat(item.conversion_fee) || 0;
+        const taxes = 0;
+        const serviceFeeFromBackend = parseFloat(item.service_fee) || 0;
+        
+        const totalServiceFee = calculateTotalServiceFee(markupAmount, conversionFee, taxes);
+        const finalServiceFee = serviceFeeFromBackend > 0 ? serviceFeeFromBackend : totalServiceFee;
+        const finalPriceNGN = parseFloat(item.final_price || item.price?.total || item.converted?.monetaryAmount || '0');
+        
+        let serviceFeePercentage = 0;
+        if (basePrice > 0 && finalServiceFee > 0) {
+          serviceFeePercentage = (finalServiceFee / basePrice) * 100;
+        }
+
+        const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalPriceNGN, 'NGN');
+        const formattedDisplayPrice = await formatPriceInUserCurrency(finalPriceNGN, 'NGN');
+
+        console.log(`🚗 Car rental - Service Fee Breakdown:`, {
+          vehicle: item.vehicle?.description,
+          basePriceNGN: `₦${basePrice}`,
+          markupAmountNGN: `₦${markupAmount}`,
+          conversionFeeNGN: `₦${conversionFee}`,
+          totalServiceFeeNGN: `₦${finalServiceFee}`,
+          serviceFeePercentage: `${serviceFeePercentage}%`,
+          finalPriceNGN: `₦${finalPriceNGN}`,
+          displayPriceInUserCurrency: formattedDisplayPrice,
+        });
+
+        return {
+          ...item,
+          type: 'car-rentals' as const,
+          rentalType,
+          displayType,
+          rentalDays: daysDiff,
+          rentalHours: hoursDiff,
+          requestedDays: daysDiff,
+          isMultiDay: daysDiff >= 1,
+          isTransfer: daysDiff < 1,
+          original_amount: basePrice.toString(),
+          original_currency: 'NGN',
+          markup_amount: markupAmount.toString(),
+          conversion_fee: conversionFee.toString(),
+          taxes: taxes.toString(),
+          service_fee: finalServiceFee.toString(),
+          service_fee_percentage: serviceFeePercentage,
+          final_amount: finalPriceNGN.toString(),
+          currency: 'NGN',
+          rawPrice: finalPriceNGN,
+          price: formattedDisplayPrice,
+          totalPrice: formattedDisplayPrice,
+          displayPriceRaw: displayPriceInUserCurrency,
+        };
+      }));
+
+      setSearchResults(processedResults);
+      console.log(`✅ Processed ${processedResults.length} car rentals with merged service fee`);
+    } else {
+      setSearchResults([]);
+      setSearchError(response.message || 'No car rentals found');
+    }
+  } catch (error) {
+    console.error('❌ Car search failed:', error);
+    setSearchResults([]);
+    setSearchError('Failed to search car rentals. Please try again.');
+  }
+};
 
 // ==================== HOTEL SEARCH - FIXED VERSION ====================
 const searchHotels = async (params: SearchParams) => {
@@ -1479,32 +1527,33 @@ const searchFlights = async (params: SearchParams) => {
   }
 };
 
-  const _searchImpl = async (params: SearchParams) => {
-    console.log('🔍 Search called with params:', params);
-    setSearchParams(params);
-    setIsSearching(true);
-    setSearchResults([]);
-    setSearchError(null);
-    setSearchCompleted(false);
+const _searchImpl = async (params: SearchParams) => {
+  console.log('🔍 Search called with params:', params);
+  setSearchParams(params);
+  setIsSearching(true);
+  setSearchResults([]);
+  setSearchError(null);
+  setSearchCompleted(false);
 
-    try {
-      if (params.type === 'car-rentals' || params.type === 'cars') {
-        await searchCars(params);
-      } else if (params.type === 'hotels') {
-        await searchHotels(params);
-      } else if (params.type === 'flights') {
-        await searchFlights(params);
-      }
-    } catch (err) {
-      console.error('Search error:', err);
-      setSearchError('Failed to load results. Please try again.');
-      const mockKey = params.type === 'cars' ? 'car-rentals' : params.type;
-      setSearchResults(MOCK[mockKey] ?? []);
-    } finally {
-      setIsSearching(false);
-      setSearchCompleted(true);
+  try {
+    // ✅ Check for both 'cars' and 'car-rentals' types
+    if (params.type === 'car-rentals' || params.type === 'cars') {
+      await searchCars(params);
+    } else if (params.type === 'hotels') {
+      await searchHotels(params);
+    } else if (params.type === 'flights') {
+      await searchFlights(params);
     }
-  };
+  } catch (err) {
+    console.error('Search error:', err);
+    setSearchError('Failed to load results. Please try again.');
+    const mockKey = params.type === 'cars' ? 'car-rentals' : params.type;
+    setSearchResults(MOCK[mockKey] ?? []);
+  } finally {
+    setIsSearching(false);
+    setSearchCompleted(true);
+  }
+};
 
   searchDispatchRef.current = _searchImpl;
 
