@@ -222,18 +222,14 @@ export class AmadeusService {
       queryParams.hotelSource = 'ALL';
     }
     
-    if (params.limit) {
-      queryParams['page[limit]'] = params.limit.toString();
-    } else {
-      queryParams['page[limit]'] = '50';
-    }
-    
+    // ✅ These are supported
     if (params.hotelIds?.length) queryParams.hotelIds = params.hotelIds.join(',');
     if (params.amenities?.length) queryParams.amenities = params.amenities.join(',');
     if (params.ratings?.length) queryParams.ratings = params.ratings.join(',');
     if (params.chainCodes?.length) queryParams.chainCodes = params.chainCodes.join(',');
     
-    this.logger.log(`🔍 Searching hotels in ${params.cityCode} with radius ${queryParams.radius} KM, limit ${queryParams['page[limit]']}`);
+
+    this.logger.log(`🔍 Searching hotels in ${params.cityCode} with radius ${queryParams.radius} KM`);
     
     return this.makeRequest('/v1/reference-data/locations/hotels/by-city', { 
       method: 'GET', 
@@ -267,11 +263,11 @@ export class AmadeusService {
       queryParams.radiusUnit = 'KM';
     }
     
-    if (params.limit) {
-      queryParams['page[limit]'] = params.limit.toString();
-    } else {
-      queryParams['page[limit]'] = '50';
-    }
+    //if (params.limit) {
+      //queryParams['page[limit]'] = params.limit.toString();
+    //} else {
+      //queryParams['page[limit]'] = '50';
+    //}
     
     if (params.chainCodes?.length) queryParams.chainCodes = params.chainCodes.join(',');
     
