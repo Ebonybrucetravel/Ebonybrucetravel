@@ -218,16 +218,40 @@ export class AmadeusService {
     radius?: number;
     radiusUnit?: 'KM' | 'MILE';
     chainCodes?: string[];
+    limit?: number; // 👈 ADD THIS
   }): Promise<any> {
     const queryParams: Record<string, string> = {
       latitude: params.latitude.toString(),
       longitude: params.longitude.toString(),
     };
-    if (params.radius) queryParams.radius = params.radius.toString();
-    if (params.radiusUnit) queryParams.radiusUnit = params.radiusUnit;
+    
+    // 👇 SET BETTER DEFAULTS
+    if (params.radius) {
+      queryParams.radius = params.radius.toString();
+    } else {
+      queryParams.radius = '30';
+    }
+    
+    if (params.radiusUnit) {
+      queryParams.radiusUnit = params.radiusUnit;
+    } else {
+      queryParams.radiusUnit = 'KM';
+    }
+    
+    if (params.limit) {
+      queryParams['page[limit]'] = params.limit.toString();
+    } else {
+      queryParams['page[limit]'] = '50';
+    }
+    
     if (params.chainCodes?.length) queryParams.chainCodes = params.chainCodes.join(',');
     
-    return this.makeRequest('/v1/reference-data/locations/hotels/by-geocode', { method: 'GET', params: queryParams });
+    this.logger.log(`🔍 Searching hotels near (${params.latitude}, ${params.longitude}) with radius ${queryParams.radius} KM`);
+    
+    return this.makeRequest('/v1/reference-data/locations/hotels/by-geocode', { 
+      method: 'GET', 
+      params: queryParams 
+    });
   }
 
   async getHotelsByIds(params: { hotelIds: string[] }): Promise<any> {
@@ -664,9 +688,6 @@ export class AmadeusService {
     return images[0]?.uri || null;
   }
 
-  /**
-   * Categorize images by type
-   */
   private categorizeImages(images: any[]): any {
     const categories: Record<string, string[]> = {
       EXTERIOR: [],
