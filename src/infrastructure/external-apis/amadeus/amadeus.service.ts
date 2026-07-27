@@ -204,10 +204,11 @@ export class AmadeusService {
       cityCode: params.cityCode 
     };
     
+    // ✅ CHANGE: Default radius to 200 KM (MAX)
     if (params.radius) {
-      queryParams.radius = params.radius.toString();
+      queryParams.radius = Math.min(params.radius, 200).toString(); // Cap at 200
     } else {
-      queryParams.radius = '30'; 
+      queryParams.radius = '200'; // ← CHANGE FROM '30' TO '200'
     }
     
     if (params.radiusUnit) {
@@ -222,14 +223,12 @@ export class AmadeusService {
       queryParams.hotelSource = 'ALL';
     }
     
-    // ✅ These are supported
     if (params.hotelIds?.length) queryParams.hotelIds = params.hotelIds.join(',');
     if (params.amenities?.length) queryParams.amenities = params.amenities.join(',');
     if (params.ratings?.length) queryParams.ratings = params.ratings.join(',');
     if (params.chainCodes?.length) queryParams.chainCodes = params.chainCodes.join(',');
     
-
-    this.logger.log(`🔍 Searching hotels in ${params.cityCode} with radius ${queryParams.radius} KM`);
+    this.logger.log(`🔍 Searching ALL hotels in ${params.cityCode} with radius ${queryParams.radius} KM`);
     
     return this.makeRequest('/v1/reference-data/locations/hotels/by-city', { 
       method: 'GET', 

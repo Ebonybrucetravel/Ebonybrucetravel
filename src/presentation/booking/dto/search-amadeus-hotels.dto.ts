@@ -291,6 +291,15 @@ export class SearchAmadeusHotelsDto {
   @Min(1)
   page?: number = 1;
 
+  @ApiPropertyOptional({
+    description: 'Fetch all hotels without pagination. When true, ignores limit and page parameters and returns all available hotels.',
+    default: false,
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  getAll?: boolean = false;
 
   @ApiPropertyOptional({
     description: 'Include hotel images in the response. When true, fetches and enriches hotels with images from Amadeus Content API.',
