@@ -189,7 +189,6 @@ export class AmadeusService {
     return this.makeRequest('/v1/reference-data/locations/hotel', { method: 'GET', params: queryParams });
   }
 
-
   async getHotelsByCity(params: {
     cityCode: string;
     hotelIds?: string[];
@@ -199,17 +198,47 @@ export class AmadeusService {
     radius?: number;
     radiusUnit?: 'KM' | 'MILE';
     hotelSource?: 'BEDBANK' | 'DIRECTCHAIN' | 'ALL';
+    limit?: number; 
   }): Promise<any> {
-    const queryParams: Record<string, string> = { cityCode: params.cityCode };
+    const queryParams: Record<string, string> = { 
+      cityCode: params.cityCode 
+    };
+    
+    if (params.radius) {
+      queryParams.radius = params.radius.toString();
+    } else {
+      queryParams.radius = '30'; 
+    }
+    
+    if (params.radiusUnit) {
+      queryParams.radiusUnit = params.radiusUnit;
+    } else {
+      queryParams.radiusUnit = 'KM';
+    }
+    
+    if (params.hotelSource) {
+      queryParams.hotelSource = params.hotelSource;
+    } else {
+      queryParams.hotelSource = 'ALL';
+    }
+    
+    if (params.limit) {
+      queryParams['page[limit]'] = params.limit.toString();
+    } else {
+      queryParams['page[limit]'] = '50';
+    }
+    
     if (params.hotelIds?.length) queryParams.hotelIds = params.hotelIds.join(',');
     if (params.amenities?.length) queryParams.amenities = params.amenities.join(',');
     if (params.ratings?.length) queryParams.ratings = params.ratings.join(',');
     if (params.chainCodes?.length) queryParams.chainCodes = params.chainCodes.join(',');
-    if (params.radius) queryParams.radius = params.radius.toString();
-    if (params.radiusUnit) queryParams.radiusUnit = params.radiusUnit;
-    if (params.hotelSource) queryParams.hotelSource = params.hotelSource;
     
-    return this.makeRequest('/v1/reference-data/locations/hotels/by-city', { method: 'GET', params: queryParams });
+    this.logger.log(`🔍 Searching hotels in ${params.cityCode} with radius ${queryParams.radius} KM, limit ${queryParams['page[limit]']}`);
+    
+    return this.makeRequest('/v1/reference-data/locations/hotels/by-city', { 
+      method: 'GET', 
+      params: queryParams 
+    });
   }
 
   async getHotelsByGeocode(params: {
