@@ -55,11 +55,11 @@ export class AmadeusService {
       this.logger.log('Requesting Amadeus OAuth token...');
       this.logger.debug(`Token endpoint: ${this.baseUrl}/v1/security/oauth2/token`);
       
-      // ✅ ONLY send required parameters as per documentation
       const params = new URLSearchParams({
         grant_type: 'client_credentials',
         client_id: this.apiKey,
         client_secret: this.apiSecret,
+        scope: 'amadeus:hotel:read amadeus:rating:read amadeus:transfer:read',
       });
       
       const response = await fetch(`${this.baseUrl}/v1/security/oauth2/token`, {
@@ -125,16 +125,12 @@ export class AmadeusService {
       'Accept': contentType,
     };
   
-    // ✅ ONLY add X-* headers for hotels (NOT for transfers)
-    // This keeps hotels working while fixing transfers
     if (!useAmadeusJson) {
-      // Hotels need these headers
       headers['X-Office-Id'] = this.officeId;
       headers['X-Organization-Id'] = this.orgId;
       headers['X-User-Id'] = this.userId;
       this.logger.debug('Hotels API: Including X-* headers');
     } else {
-      // Transfers don't need X-* headers
       this.logger.debug('Transfers API: Skipping X-* headers');
     }
   
@@ -177,8 +173,6 @@ export class AmadeusService {
     }
   }
 
-
-  // ==================== HOTEL LIST API (v1) ====================
   
   async searchHotelNames(params: {
     keyword: string;
@@ -251,7 +245,6 @@ export class AmadeusService {
       });
       return result;
     } catch (error) {
-      // ✅ If ratings fail, return a default response instead of throwing
       this.logger.warn(`Failed to fetch ratings for hotels: ${params.hotelIds.join(',')}`);
       return {
         success: true,
@@ -266,8 +259,6 @@ export class AmadeusService {
       };
     }
   }
-
-  // ==================== HOTEL CONTENT & IMAGES API (v3) ====================
   
   async getHotelContent(
     hotelId: string,
@@ -388,8 +379,7 @@ export class AmadeusService {
       
       const hotelData = contentResponse?.data?.basic || contentResponse?.data || contentResponse;
       const media = hotelData?.media || [];
-      
-      // ✅ Extract description from media
+    
       let description = hotelData?.description?.text || null;
       if (!description) {
         const longDescription = media.find((m: any) => 
@@ -407,8 +397,7 @@ export class AmadeusService {
                       locationDescription?.description?.text || 
                       null;
       }
-      
-      // ✅ Extract amenities from media
+    
       const amenities = media
         .filter((m: any) => 
           m.tags?.includes('AMENITY_INFORMATION') || 
@@ -416,9 +405,7 @@ export class AmadeusService {
           m.tags?.includes('ONSITE_SERVICES')
         )
         .map((m: any) => {
-          // Format amenities nicely
           const text = m.description?.text || '';
-          // Split by bullet points or newlines for cleaner display
           if (text.includes('\r') || text.includes('\n')) {
             return text.split(/\r\n|\n|\r/).filter((line: string) => line.trim());
           }
@@ -426,8 +413,6 @@ export class AmadeusService {
         })
         .flat()
         .filter(Boolean);
-      
-      // ✅ Extract policies from media
       const policyTags = [
         'COMMISSION_POLICY_DESCRIPTION',
         'LATE_CHECKOUT_DESCRIPTION',
@@ -450,11 +435,9 @@ export class AmadeusService {
         }))
         .filter((p: any) => p.text);
       
-      // ✅ Also try to get check-in/check-out from media if not in hotelData
       let checkIn = hotelData?.checkInOut?.checkIn || '15:00';
       let checkOut = hotelData?.checkInOut?.checkOut || '12:00';
       
-      // Try to find check-in/check-out in media
       const checkInMedia = media.find((m: any) => 
         m.tags?.includes('CHECK_IN_DESCRIPTION')
       );
@@ -505,7 +488,6 @@ export class AmadeusService {
       );
     }
   }
-  // ==================== HOTEL SEARCH API (v3) ====================
   
   async searchHotels(params: {
     hotelIds?: string[];
@@ -516,7 +498,7 @@ export class AmadeusService {
     roomQuantity?: number;
     currency?: string;
     bestRateOnly?: boolean;
-    includeImages?: boolean; // ✅ ADD THIS
+    includeImages?: boolean; 
   }): Promise<any> {
     const hasHotelIds = params.hotelIds && params.hotelIds.length > 0;
     const hasCityCode = params.cityCode && params.cityCode.trim() !== '';
@@ -546,26 +528,22 @@ export class AmadeusService {
     if (params.currency) queryParams.currency = params.currency;
     if (params.bestRateOnly !== undefined) queryParams.bestRateOnly = params.bestRateOnly.toString();
     
-    // 1. Get hotel offers
     const response = await this.makeRequest('/v3/shopping/hotel-offers', { 
       method: 'GET', 
       params: queryParams 
     });
-    
-    // 2. ✅ Enrich with images if requested
+  
     if (params.includeImages !== false && response?.data?.length > 0) {
       this.logger.log(`Enriching ${response.data.length} hotels with images...`);
       
-      // Extract hotel IDs
       const hotelIds = response.data
         .map((item: any) => item.hotel?.hotelId)
         .filter((id: string) => id);
       
       if (hotelIds.length > 0) {
-        // Fetch images for all hotels
+      
         const imagesMap = await this.fetchHotelImagesBatch(hotelIds);
-        
-        // Enrich each hotel with images
+      
         response.data = response.data.map((hotelOffer: any) => {
           const hotelId = hotelOffer.hotel?.hotelId;
           const images = imagesMap.get(hotelId) || [];
@@ -597,12 +575,11 @@ export class AmadeusService {
     }
     
     try {
-      // Process in chunks of 10 (Amadeus limit)
+
       const chunkSize = 10;
       for (let i = 0; i < hotelIds.length; i += chunkSize) {
         const chunk = hotelIds.slice(i, i + chunkSize);
-        
-        // Use the getHotelContent method for each hotel in the chunk
+      
         const promises = chunk.map(hotelId => 
           this.getHotelContent(hotelId, undefined, 'FULL')
             .then(response => ({ hotelId, response }))
@@ -614,7 +591,6 @@ export class AmadeusService {
         
         const results = await Promise.all(promises);
         
-        // Process each result
         for (const { hotelId, response } of results) {
           const images = this.extractImagesFromResponse(response);
           imagesMap.set(hotelId, images);
@@ -629,9 +605,6 @@ export class AmadeusService {
     }
   }
 
-  /**
-   * Extract images from hotel content response
-   */
   private extractImagesFromResponse(response: any): any[] {
     const images: any[] = [];
     
@@ -642,7 +615,6 @@ export class AmadeusService {
       
       for (const media of response.data.basic.media) {
         if (media.mediaScales && Array.isArray(media.mediaScales)) {
-          // Find the largest image
           const largest = media.mediaScales.sort((a: any, b: any) => {
             const aSize = (a.dimensions?.height || 0) * (a.dimensions?.width || 0);
             const bSize = (b.dimensions?.height || 0) * (b.dimensions?.width || 0);
@@ -669,13 +641,10 @@ export class AmadeusService {
     return images;
   }
 
-  /**
-   * Get primary image with priority categories
-   */
+
   private getPrimaryImageFromMedia(images: any[]): string | null {
     if (!images || images.length === 0) return null;
     
-    // Priority order for primary image
     const priorityCategories = [
       'EXTERIOR_VIEW',
       'LOBBY_VIEW', 
@@ -687,13 +656,11 @@ export class AmadeusService {
       'BATHROOM'
     ];
     
-    // Try priority categories
     for (const category of priorityCategories) {
       const found = images.find(img => img.category === category);
       if (found) return found.uri;
     }
     
-    // If no priority category found, return the first image
     return images[0]?.uri || null;
   }
 

@@ -113,8 +113,22 @@ export class SelectWakanowFlightDto {
   @IsOptional()
   @IsString()
   targetCurrency?: string = 'NGN';
-}
+  
+  @ApiPropertyOptional({ 
+    description: 'Original search parameters for auto-refresh when selectData expires',
+    example: { origin: 'LOS', destination: 'ABV', departureDate: '07/28/2026' }
+  })
+  @IsOptional()
+  searchParams?: any;
 
+  @ApiPropertyOptional({ 
+    description: 'Index of the selected flight in the search results (0-based)',
+    example: 0
+  })
+  @IsOptional()
+  @IsNumber()
+  flightIndex?: number;
+}
 
 export class PriceBreakdownDto {
   @ApiProperty({ description: 'Base price (before markup and service fee)' })

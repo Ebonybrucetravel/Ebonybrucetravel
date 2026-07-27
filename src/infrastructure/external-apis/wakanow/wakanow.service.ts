@@ -311,6 +311,9 @@ export class WakanowService {
   private selectDataCache: Map<string, { response: WakanowSelectResponse; timestamp: number }> = new Map();
   private readonly SELECT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+  private searchCache: Map<string, { results: WakanowSearchResult[]; timestamp: number }> = new Map();
+  private readonly SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
   constructor(private configService: ConfigService) {
     this.serviceUrl = this.configService.get<string>('WAKANOW_SERVICE_URL') || '';
     this.username = this.configService.get<string>('WAKANOW_USERNAME') || '';
@@ -610,6 +613,17 @@ export class WakanowService {
   }
 
   async searchFlights(request: WakanowSearchRequest): Promise<WakanowSearchResult[]> {
+    // 👇 ADD CACHE CHECK AT THE START
+    const cacheKey = this.generateSearchCacheKey(request);
+    
+    // Check cache first
+    const cached = this.searchCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < this.SEARCH_CACHE_TTL) {
+      this.logger.log(`✅ Returning cached search results (${cached.results.length} results)`);
+      return cached.results;
+    }
+
+    // Original logging
     this.logger.log(
       `Wakanow flight search: ${request.FlightSearchType} | ${request.Itineraries.map((i) => `${i.Departure}→${i.Destination}`).join(', ')} | ${request.Adults}A ${request.Children}C ${request.Infants}I`,
     );
@@ -630,35 +644,41 @@ export class WakanowService {
 
       const data = await response.json();
 
+      let results: WakanowSearchResult[] = [];
+
       if (Array.isArray(data) && data.length === 0) {
         this.logger.log('Wakanow search: No itineraries found');
-        return [];
-      }
-
-      if (typeof data === 'string') {
+        results = [];
+      } else if (typeof data === 'string') {
         this.logger.log(`Wakanow search: ${data}`);
-        return [];
-      }
-
-      if (Array.isArray(data) && data.length > 0) {
-        const results = data.map((item: any) => ({
+        results = [];
+      } else if (Array.isArray(data) && data.length > 0) {
+        results = data.map((item: any) => ({
           FlightCombination: item.FlightCombination || item,
           SelectData: item.SelectData || '',
         }));
         this.logger.log(`Wakanow search: ${results.length} results`);
-        return results;
-      }
-
-      if (data.FlightCombination) {
+      } else if (data.FlightCombination) {
         this.logger.log('Wakanow search: 1 result');
-        return [{
+        results = [{
           FlightCombination: data.FlightCombination,
           SelectData: data.SelectData || '',
         }];
       }
 
-      this.logger.log('Wakanow search: No valid results found');
-      return [];
+      // 👇 ADD CACHE STORAGE HERE
+      if (results.length > 0) {
+        this.searchCache.set(cacheKey, {
+          results,
+          timestamp: Date.now(),
+        });
+        this.logger.log(`📦 Cached ${results.length} search results`);
+        
+        // Clean up old cache entries
+        this.cleanupSearchCache();
+      }
+
+      return results;
     } catch (error) {
       if (error instanceof HttpException) throw error;
       this.logger.error('Wakanow flight search failed:', error);
@@ -799,6 +819,27 @@ export class WakanowService {
 
     this.logger.log(`Generated ${variants.length} valid SelectData variants (original + trimmed)`);
     return variants;
+  }
+
+  private generateSearchCacheKey(request: WakanowSearchRequest): string {
+    const itineraryKey = request.Itineraries
+      .map(i => `${i.Departure}-${i.Destination}-${i.DepartureDate}`)
+      .join('|');
+    return `search:${request.FlightSearchType}:${itineraryKey}:${request.Adults}:${request.Children}:${request.Infants}:${request.Ticketclass}`;
+  }
+
+  private cleanupSearchCache(): void {
+    const now = Date.now();
+    let deleted = 0;
+    for (const [key, value] of this.searchCache) {
+      if ((now - value.timestamp) > this.SEARCH_CACHE_TTL) {
+        this.searchCache.delete(key);
+        deleted++;
+      }
+    }
+    if (deleted > 0) {
+      this.logger.log(`🧹 Cleaned up ${deleted} expired search cache entries`);
+    }
   }
 
 

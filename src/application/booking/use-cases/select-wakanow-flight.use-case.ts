@@ -14,7 +14,7 @@ export class SelectWakanowFlightUseCase {
   constructor(private readonly wakanowService: WakanowService) {}
 
   async execute(dto: SelectWakanowFlightDto) {
-    const { selectData, targetCurrency = 'NGN' } = dto;
+    const { selectData, targetCurrency = 'NGN', searchParams, flightIndex } = dto;
 
     this.logger.log('Selecting Wakanow flight offer...');
     this.logger.log(`SelectData length: ${selectData?.length || 0}`);
@@ -28,17 +28,17 @@ export class SelectWakanowFlightUseCase {
     }
 
     this.logger.log(`SelectData preview: ${selectData.substring(0, 50)}...`);
-    this.logger.log(`SelectData length: ${selectData.length} - This is normal for Wakanow`);
 
     const selectDataVariants = this.generateSelectDataVariants(selectData);
     this.logger.log(`Generated ${selectDataVariants.length} SelectData variants to try`);
 
     let lastError: any = null;
     let selectResponse = null;
+    let hasRefreshed = false;
 
     for (let variantIndex = 0; variantIndex < selectDataVariants.length; variantIndex++) {
       const variant = selectDataVariants[variantIndex];
-      this.logger.log(`Trying variant ${variantIndex + 1}/${selectDataVariants.length}: ${variant.name} (length: ${variant.data.length})`);
+      this.logger.log(`Trying variant ${variantIndex + 1}/${selectDataVariants.length}: ${variant.name}`);
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
@@ -50,7 +50,7 @@ export class SelectWakanowFlightUseCase {
           });
 
           if (selectResponse) {
-            this.logger.log(`✅ Successfully selected flight with variant: ${variant.name} on attempt ${attempt}`);
+            this.logger.log(`✅ Successfully selected flight with variant: ${variant.name}`);
             break;
           }
 
@@ -59,58 +59,62 @@ export class SelectWakanowFlightUseCase {
           const errorMsg = error?.message?.toLowerCase() || '';
           const errorString = JSON.stringify(error)?.toLowerCase() || '';
 
-          const errorStatus = error?.status || 
-                             error?.response?.status || 
-                             error?.response?.statusCode || 
-                             error?.statusCode || 
-                             error?.code || 
-                             0;
-
           const isExpired = errorMsg.includes('expired') ||
                             errorMsg.includes('selectdata') ||
                             errorMsg.includes('bad request') ||
                             errorMsg.includes('an error has occured') ||
                             errorMsg.includes('selected flights not available') ||
                             errorString.includes('expired') ||
-                            errorString.includes('selectdata') ||
-                            errorString.includes('bad request') ||
-                            errorString.includes('an error has occured') ||
-                            errorString.includes('selected flights not available');
+                            errorString.includes('selectdata');
 
           if (isExpired) {
-            this.logger.warn(`Variant ${variant.name} attempt ${attempt}: Expired error - stopping retries`);
+            this.logger.warn(`⚠️ Variant ${variant.name} expired`);
             
-      
-            if (variant.name === 'Original') {
+            // 🔥 AUTO-REFRESH: Only try once
+            if (variant.name === 'Original' && searchParams && !hasRefreshed) {
+              hasRefreshed = true;
+              this.logger.log('🔄 Auto-refreshing search to get new selectData...');
+              
+              try {
+                const freshResults = await this.wakanowService.searchFlights(searchParams);
+                
+                if (freshResults && freshResults.length > 0) {
+                  const idx = flightIndex || 0;
+                  const matchingFlight = freshResults[idx] || freshResults[0];
+                  
+                  if (matchingFlight?.SelectData) {
+                    this.logger.log(`✅ Found fresh selectData, retrying...`);
+                    
+                    selectResponse = await this.wakanowService.selectFlight({
+                      SelectData: matchingFlight.SelectData,
+                      TargetCurrency: targetCurrency,
+                    });
+                    
+                    if (selectResponse) {
+                      this.logger.log('✅ Success with refreshed data!');
+                      break;
+                    }
+                  }
+                }
+              } catch (refreshError) {
+                this.logger.error('Auto-refresh failed:', refreshError);
+              }
+            }
+            
+            if (!selectResponse) {
               throw new BadRequestException(
                 'Your flight selection has expired. Please search for flights again.'
               );
             }
-            
-
-            break;
           }
 
-          if (errorStatus === 500 && attempt < MAX_RETRIES) {
-            this.logger.warn(`Variant ${variant.name} attempt ${attempt} failed with 500, retrying in ${RETRY_DELAY * attempt}ms...`);
+          if (attempt < MAX_RETRIES) {
+            this.logger.warn(`Attempt ${attempt} failed, retrying...`);
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * attempt));
             continue;
           }
 
-    
-          if (errorStatus === 400) {
-            this.logger.warn(`Variant ${variant.name} attempt ${attempt} failed with 400: invalid data`);
-            
-  
-            if (variant.name === 'Original') {
-              throw new BadRequestException(
-                'Your flight selection has expired. Please search for flights again.'
-              );
-            }
-            break;
-          }
-
-          this.logger.warn(`Variant ${variant.name} attempt ${attempt} failed: ${error.message}`);
+          this.logger.warn(`Attempt ${attempt} failed: ${error.message}`);
           break;
         }
       }
@@ -121,18 +125,12 @@ export class SelectWakanowFlightUseCase {
     }
 
     if (!selectResponse) {
-      this.logger.error('All variants and retry attempts failed');
-      
-      
-      if (lastError && lastError.message && 
-          (lastError.message.includes('expired') || lastError.message.includes('search again'))) {
-        throw new BadRequestException(lastError.message);
-      }
-      
+      this.logger.error('All attempts failed');
       throw new BadRequestException(
         'Unable to confirm flight pricing. Please search for flights again.'
       );
     }
+
 
     if (!selectResponse.HasResult) {
       throw new BadRequestException('Selected flight is no longer available. Please search again.');
@@ -301,17 +299,23 @@ export class SelectWakanowFlightUseCase {
 
   private generateSelectDataVariants(originalSelectData: string): Array<{ name: string; data: string }> {
     const variants: Array<{ name: string; data: string }> = [];
-
-
+  
     variants.push({ name: 'Original', data: originalSelectData });
-
   
     const trimmed = originalSelectData.trim();
     if (trimmed !== originalSelectData && trimmed.length > 10) {
       variants.push({ name: 'Trimmed', data: trimmed });
     }
-
-    this.logger.log(`Generated ${variants.length} valid SelectData variants (original + trimmed)`);
+  
+    // 👇 ADD THIS COMPRESSED VARIANT
+    const compressed = originalSelectData.replace(/\s+/g, '');
+    if (compressed !== originalSelectData && compressed.length > 10) {
+      if (!variants.some(v => v.data === compressed)) {
+        variants.push({ name: 'Compressed', data: compressed });
+      }
+    }
+  
+    this.logger.log(`Generated ${variants.length} SelectData variants`);
     return variants;
   }
 }
