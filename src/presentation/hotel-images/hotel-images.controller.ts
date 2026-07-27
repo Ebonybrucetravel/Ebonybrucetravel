@@ -260,58 +260,106 @@ export class HotelImagesController {
           message: 'Please enter at least 2 characters'
         };
       }
-
+  
+      // ✅ FIRST: Try searchHotelNames (doesn't require dates)
+      try {
+        const response = await this.amadeusService.searchHotelNames({
+          keyword: query,
+          subType: 'HOTEL',
+          page: { limit: 20 }
+        });
+  
+        if (response?.data && response.data.length > 0) {
+          const destinations = response.data.map((hotel: any) => ({
+            name: hotel.name || '',
+            city: hotel.address?.cityName || hotel.city || '',
+            country: hotel.address?.countryCode || hotel.country || '',
+            cityCode: hotel.hotelId || hotel.id || '',
+            image: hotel.media?.[0]?.uri || '',
+          }));
+  
+          // Remove duplicates by city
+          const uniqueDestinations = Array.from(
+            new Map(destinations.map(d => [d.city, d])).values()
+          );
+  
+          this.logger.log(`Found ${uniqueDestinations.length} destinations via searchHotelNames`);
+          return {
+            success: true,
+            data: uniqueDestinations.slice(0, 10),
+            message: 'Destinations found successfully'
+          };
+        }
+      } catch (searchError) {
+        this.logger.warn(`searchHotelNames failed: ${searchError.message}`);
+      }
+  
+      // ✅ SECOND: Try getHotelsByCity with fallback
       const cityCode = this.getCityCodeFromQuery(query);
       
-      if (!cityCode) {
-        this.logger.warn(`Could not determine city code for query: ${query}`);
-        return {
-          success: true,
-          data: [],
-          message: 'No destinations found. Try another city name.'
-        };
-      }
-
-      const hotelsList = await this.amadeusService.getHotelsByCity({
-        cityCode: cityCode,
-        radius: 20,
-        radiusUnit: 'KM'
-      });
-      
-      if (!hotelsList?.data || hotelsList.data.length === 0) {
-        this.logger.warn(`No hotels found for city code: ${cityCode}`);
-        return {
-          success: true,
-          data: [],
-          message: 'No destinations found. Try another city name.'
-        };
-      }
-
-      const citiesMap = new Map();
-      
-      for (const hotel of hotelsList.data) {
-        const cityName = hotel.address?.cityName;
-        const countryCode = hotel.address?.countryCode;
-        
-        if (cityName && !citiesMap.has(cityName)) {
-          citiesMap.set(cityName, {
-            name: cityName,
-            city: cityName,
-            country: countryCode || '',
+      if (cityCode) {
+        try {
+          const hotelsList = await this.amadeusService.getHotelsByCity({
             cityCode: cityCode,
-            image: this.getCityImage(cityName)
+            radius: 30,
+            radiusUnit: 'KM'
           });
+          
+          if (hotelsList?.data && hotelsList.data.length > 0) {
+            const citiesMap = new Map();
+            
+            for (const hotel of hotelsList.data) {
+              const cityName = hotel.address?.cityName || hotel.city || cityCode;
+              const countryCode = hotel.address?.countryCode || hotel.country || '';
+              
+              if (cityName && !citiesMap.has(cityName)) {
+                citiesMap.set(cityName, {
+                  name: cityName,
+                  city: cityName,
+                  country: countryCode,
+                  cityCode: cityCode,
+                  image: this.getCityImage(cityName)
+                });
+              }
+            }
+            
+            const destinations = Array.from(citiesMap.values());
+            this.logger.log(`Found ${destinations.length} destinations via getHotelsByCity`);
+            
+            return {
+              success: true,
+              data: destinations.slice(0, 10),
+              message: 'Destinations found successfully'
+            };
+          }
+        } catch (hotelError) {
+          this.logger.warn(`getHotelsByCity failed for ${cityCode}: ${hotelError.message}`);
         }
       }
-      
-      const destinations = Array.from(citiesMap.values());
-      
-      this.logger.log(`Found ${destinations.length} destinations for city code: ${cityCode}`);
-      
+  
+      // ✅ THIRD: Fallback to matching popular destinations from the local list
+      const lowerQuery = query.toLowerCase().trim();
+      const popularDestinations = this.getPopularDestinations();
+      const matched = popularDestinations.filter(dest =>
+        dest.city.toLowerCase().includes(lowerQuery) ||
+        dest.name.toLowerCase().includes(lowerQuery) ||
+        dest.cityCode.toLowerCase().includes(lowerQuery)
+      );
+  
+      if (matched.length > 0) {
+        this.logger.log(`Found ${matched.length} destinations via fallback`);
+        return {
+          success: true,
+          data: matched.slice(0, 10),
+          message: 'Destinations found successfully (fallback)'
+        };
+      }
+  
+      this.logger.warn(`No destinations found for query: ${query}`);
       return {
         success: true,
-        data: destinations.slice(0, 10),
-        message: 'Destinations found successfully'
+        data: [],
+        message: 'No destinations found. Try another city name.'
       };
       
     } catch (error) {
@@ -322,6 +370,91 @@ export class HotelImagesController {
         message: 'Failed to fetch destinations. Please try again.'
       };
     }
+  }
+  
+  // ✅ Add this helper method
+  private getPopularDestinations(): Array<{ name: string; city: string; country: string; cityCode: string; image: string }> {
+    return [
+      // ============ NIGERIA ============
+      { name: 'Lagos', city: 'Lagos', country: 'Nigeria', cityCode: 'LOS', image: this.getCityImage('Lagos') },
+      { name: 'Abuja', city: 'Abuja', country: 'Nigeria', cityCode: 'ABV', image: this.getCityImage('Abuja') },
+      { name: 'Ibadan', city: 'Ibadan', country: 'Nigeria', cityCode: 'IBA', image: this.getCityImage('Lagos') },
+      { name: 'Port Harcourt', city: 'Port Harcourt', country: 'Nigeria', cityCode: 'PHC', image: this.getCityImage('Port Harcourt') },
+      { name: 'Enugu', city: 'Enugu', country: 'Nigeria', cityCode: 'ENU', image: this.getCityImage('Lagos') },
+      { name: 'Benin City', city: 'Benin City', country: 'Nigeria', cityCode: 'BNI', image: this.getCityImage('Lagos') },
+      { name: 'Calabar', city: 'Calabar', country: 'Nigeria', cityCode: 'CBQ', image: this.getCityImage('Lagos') },
+      { name: 'Kano', city: 'Kano', country: 'Nigeria', cityCode: 'KAN', image: this.getCityImage('Kano') },
+      
+      // ============ UK ============
+      { name: 'London', city: 'London', country: 'United Kingdom', cityCode: 'LON', image: this.getCityImage('London') },
+      { name: 'Luton', city: 'Luton', country: 'United Kingdom', cityCode: 'LTN', image: this.getCityImage('London') },
+      { name: 'Manchester', city: 'Manchester', country: 'UK', cityCode: 'MAN', image: this.getCityImage('London') },
+      { name: 'Edinburgh', city: 'Edinburgh', country: 'UK', cityCode: 'EDI', image: this.getCityImage('London') },
+      { name: 'Birmingham', city: 'Birmingham', country: 'UK', cityCode: 'BHX', image: this.getCityImage('London') },
+      { name: 'Bristol', city: 'Bristol', country: 'UK', cityCode: 'BRS', image: this.getCityImage('London') },
+      { name: 'Glasgow', city: 'Glasgow', country: 'UK', cityCode: 'GLA', image: this.getCityImage('London') },
+      
+      // ============ USA ============
+      { name: 'New York', city: 'New York', country: 'USA', cityCode: 'NYC', image: this.getCityImage('New York') },
+      { name: 'Los Angeles', city: 'Los Angeles', country: 'USA', cityCode: 'LAX', image: this.getCityImage('New York') },
+      { name: 'Chicago', city: 'Chicago', country: 'USA', cityCode: 'ORD', image: this.getCityImage('New York') },
+      { name: 'Miami', city: 'Miami', country: 'USA', cityCode: 'MIA', image: this.getCityImage('New York') },
+      { name: 'San Francisco', city: 'San Francisco', country: 'USA', cityCode: 'SFO', image: this.getCityImage('New York') },
+      { name: 'Seattle', city: 'Seattle', country: 'USA', cityCode: 'SEA', image: this.getCityImage('New York') },
+      { name: 'Boston', city: 'Boston', country: 'USA', cityCode: 'BOS', image: this.getCityImage('New York') },
+      { name: 'Washington DC', city: 'Washington', country: 'USA', cityCode: 'WAS', image: this.getCityImage('New York') },
+      { name: 'Las Vegas', city: 'Las Vegas', country: 'USA', cityCode: 'LAS', image: this.getCityImage('New York') },
+      { name: 'Orlando', city: 'Orlando', country: 'USA', cityCode: 'MCO', image: this.getCityImage('New York') },
+      
+      // ============ EUROPE ============
+      { name: 'Paris', city: 'Paris', country: 'France', cityCode: 'PAR', image: this.getCityImage('Paris') },
+      { name: 'Barcelona', city: 'Barcelona', country: 'Spain', cityCode: 'BCN', image: this.getCityImage('Barcelona') },
+      { name: 'Madrid', city: 'Madrid', country: 'Spain', cityCode: 'MAD', image: this.getCityImage('Madrid') },
+      { name: 'Rome', city: 'Rome', country: 'Italy', cityCode: 'ROM', image: this.getCityImage('Rome') },
+      { name: 'Amsterdam', city: 'Amsterdam', country: 'Netherlands', cityCode: 'AMS', image: this.getCityImage('Amsterdam') },
+      { name: 'Istanbul', city: 'Istanbul', country: 'Turkey', cityCode: 'IST', image: this.getCityImage('Istanbul') },
+      { name: 'Berlin', city: 'Berlin', country: 'Germany', cityCode: 'BER', image: this.getCityImage('Berlin') },
+      { name: 'Dublin', city: 'Dublin', country: 'Ireland', cityCode: 'DUB', image: this.getCityImage('London') },
+      { name: 'Palma Mallorca', city: 'Palma', country: 'Spain', cityCode: 'PMI', image: this.getCityImage('Barcelona') },
+      { name: 'Ibiza', city: 'Ibiza', country: 'Spain', cityCode: 'IBZ', image: this.getCityImage('Barcelona') },
+      
+      // ============ AFRICA ============
+      { name: 'Cape Town', city: 'Cape Town', country: 'South Africa', cityCode: 'CPT', image: this.getCityImage('Cape Town') },
+      { name: 'Accra', city: 'Accra', country: 'Ghana', cityCode: 'ACC', image: this.getCityImage('Accra') },
+      { name: 'Nairobi', city: 'Nairobi', country: 'Kenya', cityCode: 'NBO', image: this.getCityImage('Nairobi') },
+      { name: 'Cairo', city: 'Cairo', country: 'Egypt', cityCode: 'CAI', image: this.getCityImage('Cairo') },
+      { name: 'Johannesburg', city: 'Johannesburg', country: 'South Africa', cityCode: 'JNB', image: this.getCityImage('Cape Town') },
+      
+      // ============ MIDDLE EAST ============
+      { name: 'Dubai', city: 'Dubai', country: 'UAE', cityCode: 'DXB', image: this.getCityImage('Dubai') },
+      { name: 'Abu Dhabi', city: 'Abu Dhabi', country: 'UAE', cityCode: 'AUH', image: this.getCityImage('Dubai') },
+      { name: 'Doha', city: 'Doha', country: 'Qatar', cityCode: 'DOH', image: this.getCityImage('Dubai') },
+      
+      // ============ ASIA ============
+      { name: 'Tokyo', city: 'Tokyo', country: 'Japan', cityCode: 'TYO', image: this.getCityImage('Tokyo') },
+      { name: 'Singapore', city: 'Singapore', country: 'Singapore', cityCode: 'SIN', image: this.getCityImage('Singapore') },
+      { name: 'Hong Kong', city: 'Hong Kong', country: 'China', cityCode: 'HKG', image: this.getCityImage('Hong Kong') },
+      { name: 'Bangkok', city: 'Bangkok', country: 'Thailand', cityCode: 'BKK', image: this.getCityImage('Bangkok') },
+      { name: 'Bali', city: 'Bali', country: 'Indonesia', cityCode: 'DPS', image: this.getCityImage('Singapore') },
+      { name: 'Kuala Lumpur', city: 'Kuala Lumpur', country: 'Malaysia', cityCode: 'KUL', image: this.getCityImage('Singapore') },
+      
+      // ============ OCEANIA ============
+      { name: 'Sydney', city: 'Sydney', country: 'Australia', cityCode: 'SYD', image: this.getCityImage('Sydney') },
+      { name: 'Melbourne', city: 'Melbourne', country: 'Australia', cityCode: 'MEL', image: this.getCityImage('Melbourne') },
+      { name: 'Auckland', city: 'Auckland', country: 'New Zealand', cityCode: 'AKL', image: this.getCityImage('Sydney') },
+      
+      // ============ CANADA ============
+      { name: 'Toronto', city: 'Toronto', country: 'Canada', cityCode: 'YYZ', image: this.getCityImage('New York') },
+      { name: 'Vancouver', city: 'Vancouver', country: 'Canada', cityCode: 'YVR', image: this.getCityImage('New York') },
+      { name: 'Montreal', city: 'Montreal', country: 'Canada', cityCode: 'YUL', image: this.getCityImage('New York') },
+      
+      // ============ SOUTH AMERICA ============
+      { name: 'Sao Paulo', city: 'Sao Paulo', country: 'Brazil', cityCode: 'GRU', image: this.getCityImage('New York') },
+      { name: 'Rio de Janeiro', city: 'Rio de Janeiro', country: 'Brazil', cityCode: 'GIG', image: this.getCityImage('New York') },
+      { name: 'Buenos Aires', city: 'Buenos Aires', country: 'Argentina', cityCode: 'EZE', image: this.getCityImage('New York') },
+      { name: 'Mexico City', city: 'Mexico City', country: 'Mexico', cityCode: 'MEX', image: this.getCityImage('New York') },
+      { name: 'Cancun', city: 'Cancun', country: 'Mexico', cityCode: 'CUN', image: this.getCityImage('New York') },
+    ];
   }
 
   private getCityCodeFromQuery(query: string): string | null {
