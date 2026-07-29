@@ -31,6 +31,9 @@ import { ConfirmWakanowPaymentUseCase } from '@application/booking/use-cases/con
 import { TicketWakanowBookingUseCase } from '@application/booking/use-cases/ticket-wakanow-booking.use-case';
 import { GetWakanowBookingStatusUseCase } from '@application/booking/use-cases/get-wakanow-booking-status.use-case';
 import { WakanowService } from '@infrastructure/external-apis/wakanow/wakanow.service';
+import { BookingService } from '@domains/booking/services/booking.service';
+
+
 import {
   SearchWakanowFlightsDto,
   SelectWakanowFlightDto,
@@ -53,6 +56,8 @@ export class BookingWakanowController {
     private readonly ticketWakanowBookingUseCase: TicketWakanowBookingUseCase,
     private readonly getWakanowBookingStatusUseCase: GetWakanowBookingStatusUseCase,
     private readonly wakanowService: WakanowService,
+    private readonly bookingService: BookingService,
+    
   ) {}
 
   private validateSelectData(selectData: string): void {
@@ -786,40 +791,103 @@ export class BookingWakanowController {
     }
   }
 
+  @Public()
+@Get('seats/:localBookingId')
+@ApiOperation({
+  summary: 'Get seat map for a Wakanow booking (no authentication required)',
+  description:
+    'Returns the seat map for both outbound and return flights of a booked Wakanow flight. ' +
+    'Shows seat availability, pricing, and seat types (Window, Aisle, Leg Space, Exit Row). ' +
+    'For guest bookings, provide the email parameter.',
+})
+@ApiResponse({ status: 200, description: 'Seat data retrieved successfully' })
+@ApiResponse({ status: 404, description: 'Booking not found' })
+@ApiResponse({ status: 401, description: 'Unauthorized to view this booking' })
+async getSeatData(
+  @Param('localBookingId') localBookingId: string,
+  @Query('email') email?: string,
+  @Request() req?: any,
+) {
+  this.logger.log(`Getting seat data for booking: ${localBookingId}`);
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @Get('wallet-balance')
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Check Wakanow wallet balance (Admin only)',
-    description: 'Returns the current wallet balance for the Wakanow affiliate account.',
-  })
-  @ApiResponse({ status: 200, description: 'Wallet balance retrieved' })
-  async getWalletBalance() {
-    this.logger.log('Checking Wakanow wallet balance');
+  if (!localBookingId) {
+    throw new BadRequestException('Booking ID is required');
+  }
+
+  try {
+    // ✅ FETCH THE BOOKING
+    const booking = await this.bookingService.getBookingById(localBookingId);
     
-    try {
-      const balance = await this.wakanowService.getWalletBalance();
-      this.logger.log(`Wallet balance retrieved: ${balance}`);
-      return {
-        success: true,
-        data: balance,
-        message: 'Wallet balance retrieved successfully',
-      };
-    } catch (error: any) {
-      this.logger.error(`Wallet balance check failed: ${error.message}`);
-      if (error instanceof HttpException) throw error;
+    if (!booking) {
       throw new HttpException(
         {
           success: false,
-          message: 'Unable to check wallet balance',
-          error: 'Wallet check failed',
+          message: 'Booking not found',
+          error: 'Booking not found',
         },
-        HttpStatus.SERVICE_UNAVAILABLE,
+        HttpStatus.NOT_FOUND,
       );
     }
+
+    // ✅ CHECK AUTHORIZATION
+    const userId = req?.user?.id;
+    const isAuthorized = userId === booking.userId || 
+                         (email && booking.passengerInfo?.email === email);
+
+    if (!isAuthorized) {
+      throw new HttpException(
+        {
+          success: false,
+          message: 'Unauthorized to view this booking',
+          error: 'Unauthorized',
+        },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    // ✅ GET PROVIDER DATA
+    const providerData = booking.providerData as any;
+    
+    if (!providerData) {
+      throw new HttpException(
+        {
+          success: false,
+          message: 'No provider data found for this booking',
+          error: 'Provider data missing',
+        },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // ✅ EXTRACT SEAT DATA
+    const seatData = await this.wakanowService.getSeatDataForBooking(
+      localBookingId,
+      providerData
+    );
+
+    this.logger.log(`✅ Seat data retrieved for booking ${localBookingId}`);
+
+    return {
+      success: true,
+      data: seatData,
+      message: 'Seat data retrieved successfully',
+    };
+    
+  } catch (error: any) {
+    this.logger.error(`Seat data fetch failed: ${error.message}`);
+    
+    if (error instanceof HttpException) throw error;
+    
+    throw new HttpException(
+      {
+        success: false,
+        message: error?.message || 'Failed to retrieve seat data',
+        error: 'Seat data fetch failed',
+      },
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
   }
+}
 
 
   @Public()
