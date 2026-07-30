@@ -3,8 +3,8 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { config } from '@/lib/config';
 import { extractAirportCode, transformWakanowToDuffelFormat } from '@/lib/utils';
-import type { SearchParams, SearchResult } from '@/lib/types';
 import type { Airline } from '@/lib/duffel-airlines';
+import type { SearchParams, SearchResult, SelectedSeat } from '@/lib/types';
 import api from '@/lib/api';
 import { type WakanowFlightSearchParams } from '@/lib/wakanow-api';
 import { useLanguage } from '@/context/LanguageContext';
@@ -361,6 +361,11 @@ interface SearchContextType {
   fetchAirlines: () => Promise<void>;
   searchError: string | null;
   searchCompleted: boolean;
+  selectedSeats: SelectedSeat[];
+  setSelectedSeats: (seats: SelectedSeat[]) => void;
+  clearSelectedSeats: () => void;
+  seatTotalPrice: number;
+  seatCurrency: string;
 }
 
 const SearchContext = createContext<SearchContextType | undefined>(undefined);
@@ -377,7 +382,26 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const [airlines, setAirlines] = useState<Airline[]>([]);
   const [isLoadingAirlines, setIsLoadingAirlines] = useState(false);
 
+  const [selectedSeats, setSelectedSeats] = useState<SelectedSeat[]>([]);
+const [seatTotalPrice, setSeatTotalPrice] = useState(0);
+const [seatCurrency, setSeatCurrency] = useState('NGN');
+
   const { currency, convertPrice, formatPrice, isLoadingRates } = useLanguage();
+
+  useEffect(() => {
+    const total = selectedSeats.reduce((sum, seat) => sum + (seat.price || 0), 0);
+    setSeatTotalPrice(total);
+    if (selectedSeats.length > 0) {
+      setSeatCurrency(selectedSeats[0].currency || 'NGN');
+    }
+  }, [selectedSeats]);
+
+
+  const clearSelectedSeats = useCallback(() => {
+    setSelectedSeats([]);
+    setSeatTotalPrice(0);
+    setSeatCurrency('NGN');
+  }, []);
 
   useEffect(() => {
     try {
@@ -1691,8 +1715,9 @@ const _searchImpl = async (params: SearchParams) => {
     setAirlines([]);
     setSearchError(null);
     setSearchCompleted(false);
+    clearSelectedSeats();
     if (typeof window !== 'undefined') sessionStorage.removeItem(BOOKING_REVIEW_SELECTION_KEY);
-  }, []);
+  }, [clearSelectedSeats]);
 
   const persistSelectionForReturn = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -1719,7 +1744,12 @@ const _searchImpl = async (params: SearchParams) => {
         isLoadingAirlines,
         fetchAirlines,
         searchError,
-        searchCompleted
+        searchCompleted,
+        selectedSeats,
+      setSelectedSeats,
+      clearSelectedSeats,
+      seatTotalPrice,
+      seatCurrency
       }}
     >
       {children}

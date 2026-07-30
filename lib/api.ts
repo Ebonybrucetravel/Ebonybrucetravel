@@ -4039,15 +4039,14 @@ export const userApi = {
   },
 };
 
-// FIXED: Booking API with corrected flight search
+
 export const bookingApi = {
-  // Flight search - FIXED version with all parameters
+
   searchFlights: searchFlightsFixed,
 
-  // Flight search with pagination
   searchFlightsWithPagination: searchFlightsWithPagination,
 
-  // Get flight offers with pagination and sorting options
+
   getOffers: (
     offerRequestId: string,
     cursor?: string,
@@ -4065,6 +4064,37 @@ export const bookingApi = {
 
     return request<any>(`/api/v1/bookings/offers?${params.toString()}`, {
       method: "GET",
+    });
+  },
+  getSeatMap: (bookingId: string, email?: string) => {
+    const params = new URLSearchParams();
+    if (email) params.set('email', email);
+    
+    const queryString = params.toString();
+    const url = queryString 
+      ? `/api/v1/bookings/wakanow/seats/${bookingId}?${queryString}`
+      : `/api/v1/bookings/wakanow/seats/${bookingId}`;
+    
+    return request<any>(url, {
+      method: "GET",
+    });
+  },
+
+  // ✅ Select seats for a booking
+  selectSeats: (
+    bookingId: string,
+    seatSelection: {
+      seats: Array<{
+        flightLegNumber: string;
+        seatNumber: string;
+        passengerReference?: string;
+        passengerIndex?: number;
+      }>;
+    }
+  ) => {
+    return request<any>(`/api/v1/bookings/${bookingId}/seats/select`, {
+      method: "POST",
+      body: JSON.stringify(seatSelection),
     });
   },
 
@@ -4205,7 +4235,7 @@ export const bookingApi = {
   },
 };
 
-// FIXED: Payment API – uses bookingId (server calculates amount from booking)
+
 export const paymentApi = {
   // Create Stripe intent for authenticated users
   // Server expects { bookingId, voucherCode? } — it calculates amount from booking

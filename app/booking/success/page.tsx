@@ -302,50 +302,51 @@ export default function BookingSuccessPage() {
     }
   };
 
-  const handleIssueWakanowTicket = async () => {
-    if (!pnrNumber) {
-      alert('Please enter PNR number');
-      return;
-    }
+// In handleIssueWakanowTicket, use the correct booking ID
+const handleIssueWakanowTicket = async () => {
+  if (!pnrNumber) {
+    alert('Please enter PNR number');
+    return;
+  }
+  
+  if (!booking) {
+    alert('Booking not found');
+    return;
+  }
+  
+  // Use the booking ID from the booking object
+  const bookingIdValue = booking.id;
+  if (!bookingIdValue) {
+    alert('Booking ID not found. Please refresh the page and try again.');
+    return;
+  }
+  
+  try {
+    setIssuingTicket(true);
+    console.log('Issuing ticket for booking:', bookingIdValue, 'PNR:', pnrNumber);
     
-    if (!booking) {
-      alert('Booking not found');
-      return;
-    }
+    // The PNR should be 7F66FV
+    const response = await ticketWakanowPNR(bookingIdValue, pnrNumber);
+    console.log('Ticket response:', response);
     
-    const bookingIdValue = booking.id;
-    if (!bookingIdValue) {
-      alert('Booking ID not found. Please refresh the page and try again.');
-      return;
-    }
-    
-    try {
-      setIssuingTicket(true);
-      console.log('Issuing ticket for booking:', bookingIdValue, 'PNR:', pnrNumber);
+    if (response.success !== false) {
+      alert('Ticket issued successfully!');
+      setShowTicketForm(false);
+      setPnrNumber('');
       
-      const response = await ticketWakanowPNR(bookingIdValue, pnrNumber);
-      console.log('Ticket response:', response);
-      
-      if (response.success !== false) {
-        alert('Ticket issued successfully!');
-        setShowTicketForm(false);
-        setPnrNumber('');
-        
-        // Refresh booking data
-        await fetchAuthBooking(bookingIdValue);
-      } else {
-        const errorMsg = (response as any)?.error || response?.message || 'Failed to issue ticket';
-        alert(errorMsg);
-      }
-    } catch (error: any) {
-      console.error('Issue ticket error:', error);
-      alert(error.message || 'Failed to issue ticket. Please check the PNR number and try again.');
-    } finally {
-      setIssuingTicket(false);
+      // Refresh booking data
+      await fetchAuthBooking(bookingIdValue);
+    } else {
+      const errorMsg = (response as any)?.error || response?.message || 'Failed to issue ticket';
+      alert(errorMsg);
     }
-  };
-
-// ... (everything before renderDuffelDetails remains the same)
+  } catch (error: any) {
+    console.error('Issue ticket error:', error);
+    alert(error.message || 'Failed to issue ticket. Please check the PNR number and try again.');
+  } finally {
+    setIssuingTicket(false);
+  }
+};
 
 // ==================== RENDER DUFFEL FLIGHT DETAILS ====================
 const renderDuffelDetails = () => {
@@ -914,577 +915,656 @@ if (checkedBags.length > 0) {
     );
   };
 
-// ==================== RENDER WAKANOW FLIGHT DETAILS (FIXED WITH ALL INVOICE DETAILS) ====================
-const renderWakanowDetails = () => {
-  if (!booking) return null;
+  const renderWakanowDetails = () => {
+    if (!booking) return null;
+    
+    const isWakanow = booking?.provider === 'WAKANOW';
+    if (!isWakanow) return null;
+    
+    const providerData = booking?.providerData as any;
+    const bookingData = booking.bookingData as any;
+    
+    // ✅ Get the Wakanow Booking ID (starts with 260...)
+    const wakanowBookingId = 
+      providerData?.WakanowBookingId || 
+      providerData?.BookingId || 
+      bookingData?.bookingId ||
+      bookingData?.wakanowBookingId ||
+      bookingData?.WakanowBookingId ||
+      'N/A';
+    
+    // ✅ Get the local booking ID
+    const localBookingId = booking?.id || 'N/A';
+    
+    // ✅ Get the booking reference
+    const bookingReference = booking?.reference || 'N/A';
+    
+    // ✅ Updated PNR extraction
+    const pnrNumber = 
+    bookingData?.pnrReferenceNumber ||   // ✅ This is where the backend stores it
+    bookingData?.PnrReferenceNumber ||   // ✅ Alternative case
+    bookingData?.pnrNumber ||            // Fallback
+    bookingData?.PnrNumber ||
+    bookingData?.PNR ||
+    providerData?.PnrReferenceNumber ||
+    providerData?.PNR ||
+    providerData?.PnrNumber ||
+    booking?.bookingData?.pnrReferenceNumber ||
+    booking?.bookingData?.PnrReferenceNumber ||
+    'Not issued yet';
+    
+    console.log('🔍 BOOKING IDs:', {
+      wakanowBookingId,
+      localBookingId,
+      bookingReference,
+      pnrNumber,
+      hasPassengers: !!bookingData?.passengers?.length,
+      passengerCount: bookingData?.passengers?.length || 0,
+    });
+    
+    // ✅ Extract all flight data
+    let airlineName = 'N/A';
+    let flightNumber = 'N/A';
+    let departureAirport = 'N/A';
+    let arrivalAirport = 'N/A';
+    let departureTime = '';
+    let arrivalTime = '';
+    let stops = 0;
+    let cabinClass = 'Economy';
+    let bookingClass = 'Economy';
+    let ticketStatus = 'Pending';
+    let totalAmount = booking?.totalAmount || 0;
+    let currency = booking?.currency || 'NGN';
+    let airlineCode = '';
+    let departureDate = '';
+    let arrivalDate = '';
+    let paymentStatus = booking?.paymentStatus || 'PENDING';
   
-  const isWakanow = booking?.provider === 'WAKANOW';
-  if (!isWakanow) return null;
+    // ==================== PASSENGER EXTRACTION ====================
+    let leadPassengerName = 'N/A';
+    let leadPassengerEmail = 'N/A';
+    let leadPassengerPhone = 'N/A';
+    let leadPassengerAddress = 'N/A';
+    
+    let allPassengers: Array<{
+      name: string;
+      type: string;
+      dateOfBirth?: string;
+      email?: string;
+      phone?: string;
+    }> = [];
   
-  const providerData = booking?.providerData as any;
-  const bookingData = booking.bookingData as any;
+    // ✅ Helper functions
+    const safeGet = (obj: any, keys: string[], fallback: string = ''): string => {
+      if (!obj || typeof obj !== 'object') return fallback;
+      for (const key of keys) {
+        const val = obj[key];
+        if (val && typeof val === 'string' && val.trim()) {
+          return val.trim();
+        }
+      }
+      return fallback;
+    };
   
-  console.log('🔍 FULL BOOKING DATA:', {
-    booking,
-    passengerInfo: booking.passengerInfo,
-    bookingData,
-    providerData,
-    allKeys: Object.keys(booking || {}),
-  });
+    const extractName = (obj: any): string => {
+      if (!obj) return '';
+      const firstName = safeGet(obj, ['firstName', 'FirstName', 'first_name', 'givenName']);
+      const lastName = safeGet(obj, ['lastName', 'LastName', 'last_name', 'familyName', 'surname']);
+      const fullName = safeGet(obj, ['fullName', 'FullName', 'name', 'Name']);
+      
+      if (fullName && fullName !== 'N/A') return fullName;
+      if (firstName && lastName) return `${firstName} ${lastName}`.trim();
+      if (firstName) return firstName;
+      if (lastName) return lastName;
+      return '';
+    };
   
-  // ✅ Extract all flight data
-  let airlineName = 'N/A';
-  let flightNumber = 'N/A';
-  let departureAirport = 'N/A';
-  let arrivalAirport = 'N/A';
-  let departureTime = '';
-  let arrivalTime = '';
-  let stops = 0;
-  let cabinClass = 'Economy';
-  let bookingClass = 'Economy';
-  let pnrNumber = 'Not issued yet';
-  let ticketStatus = 'Pending';
-  let totalAmount = booking?.totalAmount || 0;
-  let currency = booking?.currency || 'NGN';
-  let airlineCode = '';
-  let departureDate = '';
-  let arrivalDate = '';
-  let paymentStatus = booking?.paymentStatus || 'PENDING';
+    const extractPassengerType = (obj: any): string => {
+      if (!obj) return 'Adult';
+      const type = safeGet(obj, ['passengerType', 'PassengerType', 'type', 'Type', 'PTC']);
+      if (type) {
+        const lowerType = type.toLowerCase();
+        if (lowerType.includes('child') || lowerType === 'chd') return 'Child';
+        if (lowerType.includes('infant') || lowerType === 'inf') return 'Infant';
+      }
+      const dob = safeGet(obj, ['dateOfBirth', 'DateOfBirth', 'DOB', 'dob']);
+      if (dob) {
+        try {
+          const age = new Date().getFullYear() - new Date(dob).getFullYear();
+          if (age < 2) return 'Infant';
+          if (age < 12) return 'Child';
+        } catch {}
+      }
+      return 'Adult';
+    };
   
-// ==================== PASSENGER EXTRACTION (FIXED - Type Safe) ====================
-let leadPassengerName = 'N/A';
-let leadPassengerEmail = 'N/A';
-let leadPassengerPhone = 'N/A';
-let leadPassengerAddress = 'N/A';
-let otherPassengers: string[] = [];
-
-// ✅ Helper to safely get value from any object with fallback
-const safeGet = (obj: any, keys: string[], fallback: string = ''): string => {
-  if (!obj || typeof obj !== 'object') return fallback;
-  for (const key of keys) {
-    const val = obj[key];
-    if (val && typeof val === 'string' && val.trim()) {
-      return val.trim();
-    }
-  }
-  return fallback;
-};
-
-// ✅ Helper to extract name from various formats (type safe)
-const extractName = (obj: any): string => {
-  if (!obj) return '';
-  const firstName = safeGet(obj, ['firstName', 'FirstName', 'first_name', 'givenName']);
-  const lastName = safeGet(obj, ['lastName', 'LastName', 'last_name', 'familyName', 'surname']);
-  const fullName = safeGet(obj, ['fullName', 'FullName', 'name', 'Name']);
+    const extractEmail = (obj: any): string => {
+      return safeGet(obj, ['email', 'Email', 'emailAddress', 'EmailAddress', 'eMail']);
+    };
   
-  if (fullName && fullName !== 'N/A') return fullName;
-  if (firstName && lastName) return `${firstName} ${lastName}`.trim();
-  if (firstName) return firstName;
-  if (lastName) return lastName;
-  return '';
-};
-
-// ✅ Helper to extract email (type safe)
-const extractEmail = (obj: any): string => {
-  return safeGet(obj, ['email', 'Email', 'emailAddress', 'EmailAddress', 'eMail']);
-};
-
-// ✅ Helper to extract phone (type safe)
-const extractPhone = (obj: any): string => {
-  return safeGet(obj, ['phone', 'Phone', 'phoneNumber', 'PhoneNumber', 'mobile', 'Mobile', 'contactNumber']);
-};
-
-// ✅ Helper to extract address (type safe)
-const extractAddress = (obj: any): string => {
-  return safeGet(obj, ['address', 'Address', 'AddressLine1', 'AddressLine', 'street', 'Street', 'addressLine1']);
-};
-
-// ✅ SOURCE 1: Try booking.passengerInfo (could be array or object)
-const passengerInfoValue = booking.passengerInfo;
-console.log('🔍 passengerInfo type:', Array.isArray(passengerInfoValue) ? 'ARRAY' : typeof passengerInfoValue);
-
-if (passengerInfoValue) {
-  // Get the first passenger if it's an array
-  let passenger = passengerInfoValue;
-  if (Array.isArray(passenger) && passenger.length > 0) {
-    passenger = passenger[0];
-  }
+    const extractPhone = (obj: any): string => {
+      return safeGet(obj, ['phone', 'Phone', 'phoneNumber', 'PhoneNumber', 'mobile', 'Mobile', 'contactNumber']);
+    };
   
-  if (passenger && typeof passenger === 'object') {
-    leadPassengerName = extractName(passenger) || 'N/A';
-    leadPassengerEmail = extractEmail(passenger) || 'N/A';
-    leadPassengerPhone = extractPhone(passenger) || 'N/A';
-    leadPassengerAddress = extractAddress(passenger) || 'N/A';
-    console.log('✅ Source 1 (passengerInfo):', { 
-      leadPassengerName, 
-      leadPassengerEmail, 
-      leadPassengerPhone, 
-      leadPassengerAddress 
+    const extractAddress = (obj: any): string => {
+      return safeGet(obj, ['address', 'Address', 'AddressLine1', 'AddressLine', 'street', 'Street', 'addressLine1']);
+    };
+  
+  // ✅ Extract ALL passengers from ALL sources
+const extractAllPassengers = () => {
+  const passengerMap = new Map<string, any>();
+  
+  // SOURCE 1: bookingData.passengers
+  if (bookingData?.passengers && Array.isArray(bookingData.passengers)) {
+    bookingData.passengers.forEach((p: any, idx: number) => {
+      const name = extractName(p);
+      if (name) {
+        passengerMap.set(`passengers_${idx}`, p);
+      }
     });
   }
-}
-
-// ✅ SOURCE 2: Try booking.bookingData.passengerInfo
-if (leadPassengerName === 'N/A' && bookingData?.passengerInfo) {
-  let p = bookingData.passengerInfo;
-  if (Array.isArray(p) && p.length > 0) {
-    p = p[0];
-  }
-  if (p && typeof p === 'object') {
-    leadPassengerName = extractName(p) || 'N/A';
-    leadPassengerEmail = extractEmail(p) || 'N/A';
-    leadPassengerPhone = extractPhone(p) || 'N/A';
-    leadPassengerAddress = extractAddress(p) || 'N/A';
-    console.log('✅ Source 2 (bookingData.passengerInfo):', { leadPassengerName, leadPassengerEmail, leadPassengerPhone, leadPassengerAddress });
-  }
-}
-
-// ✅ SOURCE 3: Try booking.bookingData.passengers array
-if (leadPassengerName === 'N/A' && bookingData?.passengers && Array.isArray(bookingData.passengers) && bookingData.passengers.length > 0) {
-  const firstPassenger = bookingData.passengers[0];
-  leadPassengerName = extractName(firstPassenger) || 'N/A';
-  leadPassengerEmail = extractEmail(firstPassenger) || 'N/A';
-  leadPassengerPhone = extractPhone(firstPassenger) || 'N/A';
-  leadPassengerAddress = extractAddress(firstPassenger) || 'N/A';
-  console.log('✅ Source 3 (bookingData.passengers[0]):', { leadPassengerName, leadPassengerEmail, leadPassengerPhone, leadPassengerAddress });
   
-  // Extract other passengers
-  otherPassengers = bookingData.passengers
-    .filter((p: any, index: number) => index > 0)
-    .map((p: any) => extractName(p))
-    .filter(Boolean);
-}
-
-// ✅ SOURCE 4: Try booking.bookingData directly
-if (leadPassengerName === 'N/A' && bookingData) {
-  const p = bookingData;
-  leadPassengerName = extractName(p) || 'N/A';
-  leadPassengerEmail = extractEmail(p) || 'N/A';
-  leadPassengerPhone = extractPhone(p) || 'N/A';
-  leadPassengerAddress = extractAddress(p) || 'N/A';
-  console.log('✅ Source 4 (bookingData direct):', { leadPassengerName, leadPassengerEmail, leadPassengerPhone, leadPassengerAddress });
-}
-
-// ✅ SOURCE 5: Try providerData Travellers
-if (leadPassengerName === 'N/A' && providerData) {
-  const travellers = providerData.Travellers || providerData.travellers || providerData.passengers || providerData.Passengers || [];
-  if (Array.isArray(travellers) && travellers.length > 0) {
-    const firstTraveller = travellers[0];
-    leadPassengerName = extractName(firstTraveller) || 'N/A';
-    leadPassengerEmail = extractEmail(firstTraveller) || 'N/A';
-    leadPassengerPhone = extractPhone(firstTraveller) || 'N/A';
-    leadPassengerAddress = extractAddress(firstTraveller) || 'N/A';
-    console.log('✅ Source 5 (providerData travellers):', { leadPassengerName, leadPassengerEmail, leadPassengerPhone, leadPassengerAddress });
+  // SOURCE 2: bookingData.travellers
+  if (bookingData?.travellers && Array.isArray(bookingData.travellers)) {
+    bookingData.travellers.forEach((t: any, idx: number) => {
+      const name = extractName(t);
+      if (name) {
+        passengerMap.set(`travellers_${idx}`, t);
+      }
+    });
   }
-}
-
-// ✅ If email is found but name is not, try to extract name from email
-if (leadPassengerName === 'N/A' && leadPassengerEmail !== 'N/A') {
-  const emailParts = leadPassengerEmail.split('@')[0];
-  if (emailParts) {
-    const nameParts = emailParts.split(/[._-]/);
-    if (nameParts.length >= 2) {
-      leadPassengerName = nameParts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
-    } else {
-      leadPassengerName = emailParts.charAt(0).toUpperCase() + emailParts.slice(1);
+  
+  // SOURCE 3: booking.passengerInfo
+  const passengerInfoValue = booking.passengerInfo;
+  if (passengerInfoValue) {
+    if (Array.isArray(passengerInfoValue)) {
+      passengerInfoValue.forEach((p: any, idx: number) => {
+        const name = extractName(p);
+        if (name) {
+          passengerMap.set(`passengerInfo_${idx}`, p);
+        }
+      });
+    } else if (typeof passengerInfoValue === 'object') {
+      const name = extractName(passengerInfoValue);
+      if (name) {
+        passengerMap.set('passengerInfo_main', passengerInfoValue);
+      }
     }
-    console.log('✅ Generated name from email:', leadPassengerName);
   }
-}
-
-// ✅ If phone is still N/A, try to find it in the passengerInfo array
-if (leadPassengerPhone === 'N/A' && passengerInfoValue) {
-  let p = passengerInfoValue;
-  if (Array.isArray(p) && p.length > 0) {
-    p = p[0];
-  }
-  if (p && typeof p === 'object') {
-    leadPassengerPhone = extractPhone(p) || 'N/A';
-    console.log('✅ Found phone from passengerInfo:', leadPassengerPhone);
-  }
-}
-
-// ✅ If address is still N/A, try to find it in the passengerInfo array
-if (leadPassengerAddress === 'N/A' && passengerInfoValue) {
-  let p = passengerInfoValue;
-  if (Array.isArray(p) && p.length > 0) {
-    p = p[0];
-  }
-  if (p && typeof p === 'object') {
-    leadPassengerAddress = extractAddress(p) || 'N/A';
-    console.log('✅ Found address from passengerInfo:', leadPassengerAddress);
-  }
-}
-
-console.log('📋 FINAL PASSENGER DATA:', {
-  leadPassengerName,
-  leadPassengerEmail,
-  leadPassengerPhone,
-  leadPassengerAddress,
-  otherPassengers,
-});
-
- // ✅ ==================== END PASSENGER EXTRACTION ====================
   
-  // Try to extract flight data from providerData
+  // SOURCE 4: bookingData.additionalPassengers
+  if (bookingData?.additionalPassengers && Array.isArray(bookingData.additionalPassengers)) {
+    bookingData.additionalPassengers.forEach((p: any, idx: number) => {
+      const name = extractName(p);
+      if (name) {
+        passengerMap.set(`additional_${idx}`, p);
+      }
+    });
+  }
+  
+  // SOURCE 5: providerData
   if (providerData) {
-    let flightSummary = null;
-    let flightModels = [];
-    
-    // Try different paths
-    if (providerData.FlightBookingSummary) {
-      flightSummary = providerData.FlightBookingSummary;
-    } else if (providerData.FlightBookingResult?.FlightBookingSummaryModel) {
-      flightSummary = providerData.FlightBookingResult.FlightBookingSummaryModel;
-    } else if (providerData.FlightSummaryModel) {
-      flightSummary = providerData;
-    } else if (providerData.rawResponse?.FlightBookingResult?.FlightBookingSummaryModel) {
-      flightSummary = providerData.rawResponse.FlightBookingResult.FlightBookingSummaryModel;
-    }
-    
-    if (flightSummary) {
-      const summaryModel = flightSummary.FlightSummaryModel || flightSummary;
-      const flightCombination = summaryModel.FlightCombination || flightSummary.FlightCombination || {};
-      flightModels = flightCombination.FlightModels || summaryModel.FlightModels || [];
-      
-      const outboundFlight = flightModels[0] || {};
-      const flightLegs = outboundFlight?.FlightLegs || [];
-      const firstLeg = flightLegs[0] || {};
-      const lastLeg = flightLegs[flightLegs.length - 1] || firstLeg;
-      
-      airlineName = outboundFlight.AirlineName || outboundFlight.Airline || firstLeg.AirlineName || firstLeg.Airline || 'N/A';
-      airlineCode = outboundFlight.Airline || firstLeg.AirlineCode || '';
-      flightNumber = outboundFlight.Name || outboundFlight.FlightNumber || firstLeg.FlightNumber || firstLeg.Name || 'N/A';
-      
-      departureAirport = outboundFlight.DepartureCode || firstLeg.DepartureCode || outboundFlight.Origin || 'N/A';
-      arrivalAirport = outboundFlight.ArrivalCode || lastLeg.DestinationCode || outboundFlight.Destination || 'N/A';
-      departureTime = outboundFlight.DepartureTime || firstLeg.StartTime || outboundFlight.DepartureDateTime || '';
-      arrivalTime = outboundFlight.ArrivalTime || lastLeg.EndTime || outboundFlight.ArrivalDateTime || '';
-      departureDate = departureTime ? new Date(departureTime).toISOString().split('T')[0] : '';
-      arrivalDate = arrivalTime ? new Date(arrivalTime).toISOString().split('T')[0] : '';
-      
-      stops = outboundFlight.Stops || outboundFlight.StopCount || 0;
-      cabinClass = firstLeg.CabinClassName || outboundFlight.CabinClass || 'Economy';
-      bookingClass = firstLeg.BookingClass || outboundFlight.BookingClass || 'Economy';
-      
-      pnrNumber = flightSummary.PnrReferenceNumber || flightSummary.PnrNumber || summaryModel.PnrReferenceNumber || 'Not issued yet';
-      ticketStatus = flightSummary.TicketStatus || summaryModel.TicketStatus || 'Pending';
-      
-      const price = flightCombination.Price || summaryModel.Price || {};
-      totalAmount = price.Amount || outboundFlight.Price || booking?.totalAmount || 0;
-      currency = price.CurrencyCode || booking?.currency || 'NGN';
-      
-      paymentStatus = flightSummary.PaymentStatus || booking?.paymentStatus || 'PENDING';
+    const travellers = providerData.Travellers || providerData.travellers || 
+                       providerData.passengers || providerData.Passengers || [];
+    if (Array.isArray(travellers)) {
+      travellers.forEach((t: any, idx: number) => {
+        const name = extractName(t);
+        if (name) {
+          passengerMap.set(`provider_${idx}`, t);
+        }
+      });
     }
   }
   
-  // Fallback to bookingData
-  if (airlineName === 'N/A' && bookingData) {
-    airlineName = bookingData.airlineName || bookingData.airline || 'N/A';
-    flightNumber = bookingData.flightNumber || bookingData.flight_number || 'N/A';
-    departureAirport = bookingData.origin || bookingData.departureAirport || 'N/A';
-    arrivalAirport = bookingData.destination || bookingData.arrivalAirport || 'N/A';
-    departureTime = bookingData.departureTime || bookingData.departureDate || '';
-    arrivalTime = bookingData.arrivalTime || bookingData.arrivalDate || '';
-    departureDate = bookingData.departureDate || '';
-    arrivalDate = bookingData.arrivalDate || '';
-    stops = bookingData.stops || 0;
-    cabinClass = bookingData.cabinClass || bookingData.cabin || 'Economy';
-    bookingClass = bookingData.bookingClass || bookingData.class || 'Economy';
-    pnrNumber = bookingData.pnrNumber || bookingData.pnrReferenceNumber || 'Not issued yet';
-    ticketStatus = bookingData.ticketStatus || 'Pending';
-    totalAmount = bookingData.totalAmount || booking?.totalAmount || 0;
-    currency = bookingData.currency || booking?.currency || 'NGN';
-    airlineCode = bookingData.airlineCode || '';
-    paymentStatus = bookingData.paymentStatus || booking?.paymentStatus || 'PENDING';
+  // Convert map to array
+  let foundLead = false;
+  
+  passengerMap.forEach((p) => {
+    const name = extractName(p);
+    if (!name) return;
+    
+    const dob = safeGet(p, ['dateOfBirth', 'DateOfBirth', 'DOB', 'dob']);
+    const email = extractEmail(p);
+    const phone = extractPhone(p);
+    
+    allPassengers.push({
+      name,
+      type: extractPassengerType(p),
+      dateOfBirth: dob || undefined,
+      email: email || undefined,
+      phone: phone || undefined,
+    });
+    
+    if (!foundLead) {
+      leadPassengerName = name;
+      leadPassengerEmail = email || 'N/A';
+      leadPassengerPhone = phone || 'N/A';
+      leadPassengerAddress = extractAddress(p) || 'N/A';
+      foundLead = true;
+    }
+  });
+  
+  // ✅ If no passengers found, try booking directly (type-safe)
+  if (allPassengers.length === 0 && booking) {
+    // Use type assertion to safely access potential properties
+    const bookingAny = booking as any;
+    const name = bookingAny.passengerName || bookingAny.name || '';
+    if (name) {
+      allPassengers.push({
+        name,
+        type: 'Adult',
+        dateOfBirth: undefined,
+        email: bookingAny.email || undefined,
+        phone: bookingAny.phone || undefined,
+      });
+      leadPassengerName = name;
+      leadPassengerEmail = bookingAny.email || 'N/A';
+      leadPassengerPhone = bookingAny.phone || 'N/A';
+    }
   }
   
-  // Determine if domestic
-  const isDomestic = bookingData?.is_domestic || 
-    (departureAirport !== 'N/A' && arrivalAirport !== 'N/A' && 
-     getAirportName(departureAirport) === getAirportName(arrivalAirport));
+  console.log('📋 EXTRACTED PASSENGERS:', {
+    allPassengers: allPassengers.map(p => ({
+      name: p.name,
+      type: p.type,
+    })),
+    total: allPassengers.length,
+  });
+};
   
-  const stopText = stops === 0 ? 'Direct' : stops === 1 ? '1 stop' : `${stops} stops`;
-  const isTicketIssued = ticketStatus === 'Success' || ticketStatus === 'Issued' || ticketStatus === 'TICKETED';
-  const bookingStatus = booking?.status || 'PENDING';
-  const airlineLogo = airlineCode ? `https://images.wakanow.com/Images/flight-logos/${airlineCode}.gif` : '';
+    extractAllPassengers();
   
-  const getPaymentStatusText = (status: string): string => {
-    const map: Record<string, string> = {
-      'PAID': 'Paid',
-      'SUCCESS': 'Paid',
-      'COMPLETED': 'Paid',
-      'PENDING': 'Pending',
-      'FAILED': 'Failed',
-      'CANCELLED': 'Cancelled',
-      'REFUNDED': 'Refunded'
+    // ✅ Try to extract flight data from providerData
+    if (providerData) {
+      let flightSummary = null;
+      let flightModels = [];
+      
+      if (providerData.FlightBookingSummary) {
+        flightSummary = providerData.FlightBookingSummary;
+      } else if (providerData.FlightBookingResult?.FlightBookingSummaryModel) {
+        flightSummary = providerData.FlightBookingResult.FlightBookingSummaryModel;
+      } else if (providerData.FlightSummaryModel) {
+        flightSummary = providerData;
+      }
+      
+      if (flightSummary) {
+        const summaryModel = flightSummary.FlightSummaryModel || flightSummary;
+        const flightCombination = summaryModel.FlightCombination || flightSummary.FlightCombination || {};
+        flightModels = flightCombination.FlightModels || summaryModel.FlightModels || [];
+        
+        const outboundFlight = flightModels[0] || {};
+        const flightLegs = outboundFlight?.FlightLegs || [];
+        const firstLeg = flightLegs[0] || {};
+        const lastLeg = flightLegs[flightLegs.length - 1] || firstLeg;
+        
+        airlineName = outboundFlight.AirlineName || outboundFlight.Airline || firstLeg.AirlineName || firstLeg.Airline || 'N/A';
+        airlineCode = outboundFlight.Airline || firstLeg.AirlineCode || '';
+        flightNumber = outboundFlight.Name || outboundFlight.FlightNumber || firstLeg.FlightNumber || firstLeg.Name || 'N/A';
+        
+        departureAirport = outboundFlight.DepartureCode || firstLeg.DepartureCode || outboundFlight.Origin || 'N/A';
+        arrivalAirport = outboundFlight.ArrivalCode || lastLeg.DestinationCode || outboundFlight.Destination || 'N/A';
+        departureTime = outboundFlight.DepartureTime || firstLeg.StartTime || outboundFlight.DepartureDateTime || '';
+        arrivalTime = outboundFlight.ArrivalTime || lastLeg.EndTime || outboundFlight.ArrivalDateTime || '';
+        departureDate = departureTime ? new Date(departureTime).toISOString().split('T')[0] : '';
+        arrivalDate = arrivalTime ? new Date(arrivalTime).toISOString().split('T')[0] : '';
+        
+        stops = outboundFlight.Stops || outboundFlight.StopCount || 0;
+        cabinClass = firstLeg.CabinClassName || outboundFlight.CabinClass || 'Economy';
+        bookingClass = firstLeg.BookingClass || outboundFlight.BookingClass || 'Economy';
+        
+        ticketStatus = flightSummary.TicketStatus || summaryModel.TicketStatus || 'Pending';
+        
+        const price = flightCombination.Price || summaryModel.Price || {};
+        totalAmount = price.Amount || outboundFlight.Price || booking?.totalAmount || 0;
+        currency = price.CurrencyCode || booking?.currency || 'NGN';
+        
+        paymentStatus = flightSummary.PaymentStatus || booking?.paymentStatus || 'PENDING';
+      }
+    }
+    
+    // Fallback to bookingData
+    if (airlineName === 'N/A' && bookingData) {
+      airlineName = bookingData.airlineName || bookingData.airline || 'N/A';
+      flightNumber = bookingData.flightNumber || bookingData.flight_number || 'N/A';
+      departureAirport = bookingData.origin || bookingData.departureAirport || 'N/A';
+      arrivalAirport = bookingData.destination || bookingData.arrivalAirport || 'N/A';
+      departureTime = bookingData.departureTime || bookingData.departureDate || '';
+      arrivalTime = bookingData.arrivalTime || bookingData.arrivalDate || '';
+      departureDate = bookingData.departureDate || '';
+      arrivalDate = bookingData.arrivalDate || '';
+      stops = bookingData.stops || 0;
+      cabinClass = bookingData.cabinClass || bookingData.cabin || 'Economy';
+      bookingClass = bookingData.bookingClass || bookingData.class || 'Economy';
+      ticketStatus = bookingData.ticketStatus || 'Pending';
+      totalAmount = bookingData.totalAmount || booking?.totalAmount || 0;
+      currency = bookingData.currency || booking?.currency || 'NGN';
+      airlineCode = bookingData.airlineCode || '';
+      paymentStatus = bookingData.paymentStatus || booking?.paymentStatus || 'PENDING';
+    }
+    
+    const isDomestic = bookingData?.is_domestic || 
+      (departureAirport !== 'N/A' && arrivalAirport !== 'N/A' && 
+       getAirportName(departureAirport) === getAirportName(arrivalAirport));
+    
+    const stopText = stops === 0 ? 'Direct' : stops === 1 ? '1 stop' : `${stops} stops`;
+    const isTicketIssued = ticketStatus === 'Success' || ticketStatus === 'Issued' || ticketStatus === 'TICKETED';
+    const bookingStatus = booking?.status || 'PENDING';
+    const airlineLogo = airlineCode ? `https://images.wakanow.com/Images/flight-logos/${airlineCode}.gif` : '';
+    
+    const getPaymentStatusText = (status: string): string => {
+      const map: Record<string, string> = {
+        'PAID': 'Paid',
+        'SUCCESS': 'Paid',
+        'COMPLETED': 'Paid',
+        'PENDING': 'Pending',
+        'FAILED': 'Failed',
+        'CANCELLED': 'Cancelled',
+        'REFUNDED': 'Refunded'
+      };
+      return map[status?.toUpperCase()] || status || 'Pending';
     };
-    return map[status?.toUpperCase()] || status || 'Pending';
-  };
+    
+    const formatDuration = (departure: string, arrival: string): string => {
+      if (!departure || !arrival) return '';
+      try {
+        const diff = Math.abs(new Date(arrival).getTime() - new Date(departure).getTime());
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+        if (hours > 0) return `${hours}h`;
+        return `${minutes}m`;
+      } catch {
+        return '';
+      }
+    };
+    
+    const duration = formatDuration(departureTime, arrivalTime);
   
-  const formatDuration = (departure: string, arrival: string): string => {
-    if (!departure || !arrival) return '';
-    try {
-      const diff = Math.abs(new Date(arrival).getTime() - new Date(departure).getTime());
-      const hours = Math.floor(diff / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
-      if (hours > 0) return `${hours}h`;
-      return `${minutes}m`;
-    } catch {
-      return '';
-    }
-  };
+    const getPassengerTypeBadge = (type: string): string => {
+      const map: Record<string, string> = {
+        'Adult': 'bg-green-100 text-green-700',
+        'Child': 'bg-yellow-100 text-yellow-700',
+        'Infant': 'bg-purple-100 text-purple-700',
+      };
+      return map[type] || 'bg-gray-100 text-gray-700';
+    };
   
-  const duration = formatDuration(departureTime, arrivalTime);
-  
-  // ... rest of the render function remains the same (the JSX part)
-  return (
-    <div className="space-y-6">
-      {/* Invoice Header */}
-      <div className="bg-gradient-to-r from-[#33a8da] to-[#2c98c7] text-white p-4 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm opacity-90">Powered by</p>
-            <p className="font-bold text-xl">Wakanow {isDomestic ? '• Domestic' : ''}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs opacity-80">Invoice Number</p>
-            <p className="font-mono font-bold text-sm">{booking.reference || booking.id || 'N/A'}</p>
-          </div>
-        </div>
-      </div>
-      
-      {/* ==================== PASSENGER DETAILS ==================== */}
-      <div className="border-b border-gray-200 pb-4">
-        <h4 className="font-semibold text-gray-900 mb-3 text-lg">Passenger Details</h4>
-        
-        {/* Lead Passenger */}
-        <div className="bg-gray-50 p-4 rounded-lg mb-3">
-          <p className="text-sm font-medium text-gray-700 mb-2">Lead Passenger</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+    // ==================== RETURN JSX ====================
+    return (
+      <div className="space-y-6">
+        {/* Invoice Header with Wakanow Booking ID */}
+        <div className="bg-gradient-to-r from-[#33a8da] to-[#2c98c7] text-white p-4 rounded-lg">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
-              <span className="text-gray-500">Name:</span>
-              <span className="font-medium ml-2">{leadPassengerName}</span>
+              <p className="text-sm opacity-90">Powered by</p>
+              <p className="font-bold text-xl">Wakanow {isDomestic ? '• Domestic' : ''}</p>
             </div>
-            <div>
-              <span className="text-gray-500">Email:</span>
-              <span className="font-medium ml-2">{leadPassengerEmail}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Phone:</span>
-              <span className="font-medium ml-2">{leadPassengerPhone}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Address:</span>
-              <span className="font-medium ml-2">{leadPassengerAddress}</span>
+            <div className="text-right">
+              <p className="text-xs opacity-80">Wakanow Booking ID</p>
+              <p className="font-mono font-bold text-sm">{wakanowBookingId}</p>
+              <p className="text-xs opacity-80 mt-1">Reference</p>
+              <p className="font-mono font-bold text-sm">{bookingReference}</p>
+              
             </div>
           </div>
         </div>
         
-        {/* Other Passengers */}
-        {otherPassengers.length > 0 && (
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <p className="text-sm font-medium text-gray-700 mb-2">Other Passengers ({otherPassengers.length})</p>
-            <div className="flex flex-wrap gap-2">
-              {otherPassengers.map((name, index) => (
-                <span key={index} className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm">
-                  {name}
-                </span>
-              ))}
+        {/* ==================== PASSENGER DETAILS (NO PASSPORT) ==================== */}
+        <div className="border-b border-gray-200 pb-4">
+          <h4 className="font-semibold text-gray-900 mb-3 text-lg">Passenger Details</h4>
+          
+          {allPassengers.length > 0 ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-gray-600 font-medium">#</th>
+                      <th className="px-4 py-2 text-left text-gray-600 font-medium">Passenger Name</th>
+                      <th className="px-4 py-2 text-left text-gray-600 font-medium">Type</th>
+                      <th className="px-4 py-2 text-left text-gray-600 font-medium">Date of Birth</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {allPassengers.map((passenger, index) => (
+                      <tr key={index} className={index === 0 ? 'bg-blue-50' : ''}>
+                        <td className="px-4 py-2 font-medium">{index + 1}</td>
+                        <td className="px-4 py-2 font-medium">
+                          {passenger.name}
+                          {index === 0 && (
+                            <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Lead</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${getPassengerTypeBadge(passenger.type)}`}>
+                            {passenger.type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2">
+                          {passenger.dateOfBirth ? formatDate(passenger.dateOfBirth) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              
+              <div className="mt-4 bg-gray-50 p-4 rounded-lg">
+                <p className="text-sm font-medium text-gray-700 mb-2">Lead Passenger Contact</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-gray-500">Email:</span>
+                    <span className="font-medium ml-2">{leadPassengerEmail}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Phone:</span>
+                    <span className="font-medium ml-2">{leadPassengerPhone}</span>
+                  </div>
+                  {leadPassengerAddress !== 'N/A' && (
+                    <div className="md:col-span-2">
+                      <span className="text-gray-500">Address:</span>
+                      <span className="font-medium ml-2">{leadPassengerAddress}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <p className="text-sm text-gray-500">No passenger details available</p>
             </div>
-          </div>
-        )}
-      </div>
-      
-      {/* ==================== FLIGHT DETAILS ==================== */}
-      <div className="border-b border-gray-200 pb-4">
-        <h4 className="font-semibold text-gray-900 mb-3 text-lg">Flight Details</h4>
-        
-        {/* Airline Info */}
-        <div className="flex items-center gap-3 mb-4">
-          {airlineLogo && (
-            <img 
-              src={airlineLogo} 
-              alt={airlineName} 
-              className="w-10 h-10 object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
           )}
-          <div>
-            <p className="font-semibold text-lg">{airlineName}</p>
-            <p className="text-sm text-gray-500">Flight {flightNumber} • {airlineCode}</p>
+        </div>
+        
+        {/* ==================== FLIGHT DETAILS ==================== */}
+        <div className="border-b border-gray-200 pb-4">
+          <h4 className="font-semibold text-gray-900 mb-3 text-lg">Flight Details</h4>
+          
+          {/* Airline Info */}
+          <div className="flex items-center gap-3 mb-4">
+            {airlineLogo && (
+              <img 
+                src={airlineLogo} 
+                alt={airlineName} 
+                className="w-10 h-10 object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            )}
+            <div>
+              <p className="font-semibold text-lg">{airlineName}</p>
+              <p className="text-sm text-gray-500">Flight {flightNumber} • {airlineCode}</p>
+            </div>
+          </div>
+          
+          {/* Cabin & Booking Class */}
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-sm text-gray-500">Cabin Class</p>
+              <p className="font-medium capitalize">{cabinClass}</p>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-sm text-gray-500">Booking Class</p>
+              <p className="font-medium uppercase">{bookingClass}</p>
+            </div>
+          </div>
+          
+          {/* Departure */}
+          <div className="bg-blue-50 p-4 rounded-lg mb-3">
+            <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2">Departure</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-sm text-gray-500">Location</p>
+                <p className="font-bold text-lg">{departureAirport}</p>
+                <p className="text-sm text-gray-600">{getAirportName(departureAirport)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Date & Time</p>
+                <p className="font-bold text-lg">{formatDate(departureDate || departureTime)}</p>
+                <p className="text-sm text-gray-600">{formatTime(departureTime)}</p>
+              </div>
+            </div>
+          </div>
+          
+          {/* Arrival */}
+          <div className="bg-green-50 p-4 rounded-lg">
+            <p className="text-xs font-bold text-green-700 uppercase tracking-wider mb-2">Arrival</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-sm text-gray-500">Location</p>
+                <p className="font-bold text-lg">{arrivalAirport}</p>
+                <p className="text-sm text-gray-600">{getAirportName(arrivalAirport)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Date & Time</p>
+                <p className="font-bold text-lg">{formatDate(arrivalDate || arrivalTime)}</p>
+                <p className="text-sm text-gray-600">{formatTime(arrivalTime)}</p>
+              </div>
+            </div>
+          </div>
+          
+          {/* Duration & Stops */}
+          <div className="grid grid-cols-2 gap-4 mt-3">
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-sm text-gray-500">Duration</p>
+              <p className="font-medium">{duration || stopText}</p>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-sm text-gray-500">Stops</p>
+              <p className="font-medium">{stopText}</p>
+            </div>
           </div>
         </div>
         
-        {/* Cabin & Booking Class */}
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-sm text-gray-500">Cabin Class</p>
-            <p className="font-medium capitalize">{cabinClass}</p>
-          </div>
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-sm text-gray-500">Booking Class</p>
-            <p className="font-medium uppercase">{bookingClass}</p>
-          </div>
-        </div>
-        
-        {/* Departure */}
-        <div className="bg-blue-50 p-4 rounded-lg mb-3">
-          <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2">Departure</p>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <p className="text-sm text-gray-500">Location</p>
-              <p className="font-bold text-lg">{departureAirport}</p>
-              <p className="text-sm text-gray-600">{getAirportName(departureAirport)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Date & Time</p>
-              <p className="font-bold text-lg">{formatDate(departureDate || departureTime)}</p>
-              <p className="text-sm text-gray-600">{formatTime(departureTime)}</p>
+        {/* ==================== PRICE DETAILS ==================== */}
+        <div className="border-b border-gray-200 pb-4">
+          <h4 className="font-semibold text-gray-900 mb-3 text-lg">Price Details</h4>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Amount Paid</span>
+                <span className="font-bold text-lg text-[#33a8da]">{formatPrice(totalAmount, currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Payment Status</span>
+                <span className={`font-medium ${paymentStatus === 'PAID' || paymentStatus === 'SUCCESS' ? 'text-green-600' : 'text-yellow-600'}`}>
+                  {getPaymentStatusText(paymentStatus)}
+                </span>
+              </div>
             </div>
           </div>
         </div>
         
-        {/* Arrival */}
-        <div className="bg-green-50 p-4 rounded-lg">
-          <p className="text-xs font-bold text-green-700 uppercase tracking-wider mb-2">Arrival</p>
-          <div className="grid grid-cols-2 gap-2">
+        {/* ==================== PNR & STATUS ==================== */}
+        <div className="border-b border-gray-200 pb-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-sm text-gray-500">Location</p>
-              <p className="font-bold text-lg">{arrivalAirport}</p>
-              <p className="text-sm text-gray-600">{getAirportName(arrivalAirport)}</p>
+              <p className="text-sm text-gray-500">PNR Number</p>
+              <p className="font-mono font-bold text-lg">{pnrNumber}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Date & Time</p>
-              <p className="font-bold text-lg">{formatDate(arrivalDate || arrivalTime)}</p>
-              <p className="text-sm text-gray-600">{formatTime(arrivalTime)}</p>
-            </div>
-          </div>
-        </div>
-        
-        {/* Duration & Stops */}
-        <div className="grid grid-cols-2 gap-4 mt-3">
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-sm text-gray-500">Duration</p>
-            <p className="font-medium">{duration || stopText}</p>
-          </div>
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-sm text-gray-500">Stops</p>
-            <p className="font-medium">{stopText}</p>
-          </div>
-        </div>
-      </div>
-      
-      {/* ==================== PRICE DETAILS ==================== */}
-      <div className="border-b border-gray-200 pb-4">
-        <h4 className="font-semibold text-gray-900 mb-3 text-lg">Price Details</h4>
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Amount Paid</span>
-              <span className="font-bold text-lg text-[#33a8da]">{formatPrice(totalAmount, currency)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Payment Status</span>
-              <span className={`font-medium ${paymentStatus === 'PAID' || paymentStatus === 'SUCCESS' ? 'text-green-600' : 'text-yellow-600'}`}>
-                {getPaymentStatusText(paymentStatus)}
+              <p className="text-sm text-gray-500">Booking Status</p>
+              <span className={`inline-block text-xs font-bold uppercase px-3 py-1 rounded-full ${
+                bookingStatus === 'CONFIRMED' ? 'bg-green-100 text-green-700' :
+                bookingStatus === 'PENDING' ? 'bg-yellow-100 text-yellow-700' :
+                'bg-red-100 text-red-700'
+              }`}>
+                {formatStatus(bookingStatus)}
               </span>
             </div>
           </div>
         </div>
-      </div>
-      
-      {/* ==================== PNR & STATUS ==================== */}
-      <div className="border-b border-gray-200 pb-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-sm text-gray-500">PNR Number</p>
-            <p className="font-mono font-bold text-lg">{pnrNumber}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Booking Status</p>
-            <span className={`inline-block text-xs font-bold uppercase px-3 py-1 rounded-full ${
-              bookingStatus === 'CONFIRMED' ? 'bg-green-100 text-green-700' :
-              bookingStatus === 'PENDING' ? 'bg-yellow-100 text-yellow-700' :
-              'bg-red-100 text-red-700'
-            }`}>
-              {formatStatus(bookingStatus)}
-            </span>
-          </div>
-        </div>
-      </div>
-      
-      {/* ==================== TICKET STATUS ==================== */}
-      {!isTicketIssued && !isGuest && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex items-start">
-            <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <div className="flex-1">
-              <p className="font-medium text-yellow-800 mb-2">Ticket Not Issued Yet</p>
-              <p className="text-sm text-yellow-700 mb-3">
-                This booking needs a ticket to be issued. Please enter the PNR number to complete the process.
-              </p>
-              
-              {!showTicketForm ? (
-                <button
-                  onClick={() => setShowTicketForm(true)}
-                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 text-sm"
-                >
-                  Issue Ticket
-                </button>
-              ) : (
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    value={pnrNumber}
-                    onChange={(e) => setPnrNumber(e.target.value.toUpperCase())}
-                    placeholder="Enter PNR Number"
-                    className="w-full px-4 py-2 border rounded-lg text-sm"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleIssueWakanowTicket}
-                      disabled={issuingTicket}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
-                    >
-                      {issuingTicket ? 'Issuing...' : 'Confirm Issue'}
-                    </button>
-                    <button
-                      onClick={() => setShowTicketForm(false)}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
-                    >
-                      Cancel
-                    </button>
+        
+        {/* ==================== TICKET STATUS ==================== */}
+        {!isTicketIssued && !isGuest && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div className="flex-1">
+                <p className="font-medium text-yellow-800 mb-2">Ticket Not Issued Yet</p>
+                <p className="text-sm text-yellow-700 mb-3">
+                  This booking needs a ticket to be issued. Please enter the PNR number to complete the process.
+                </p>
+                
+                {!showTicketForm ? (
+                  <button
+                    onClick={() => setShowTicketForm(true)}
+                    className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 text-sm"
+                  >
+                    Issue Ticket
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={pnrNumber}
+                      onChange={(e) => setPnrNumber(e.target.value.toUpperCase())}
+                      placeholder="Enter PNR Number"
+                      className="w-full px-4 py-2 border rounded-lg text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleIssueWakanowTicket}
+                        disabled={issuingTicket}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
+                      >
+                        {issuingTicket ? 'Issuing...' : 'Confirm Issue'}
+                      </button>
+                      <button
+                        onClick={() => setShowTicketForm(false)}
+                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
-      
-      {isTicketIssued && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <div className="flex items-start">
-            <svg className="w-5 h-5 text-green-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div>
-              <p className="font-medium text-green-800">Ticket Issued ✓</p>
-              <p className="text-sm text-green-700">Your ticket has been successfully issued.</p>
-              <p className="text-xs text-green-600 mt-1">PNR: {pnrNumber}</p>
+        )}
+        
+        {isTicketIssued && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 text-green-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="font-medium text-green-800">Ticket Issued ✓</p>
+                <p className="text-sm text-green-700">Your ticket has been successfully issued.</p>
+                <p className="text-xs text-green-600 mt-1">PNR: {pnrNumber}</p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
-};
+        )}
+      </div>
+    );
+  };
+
   const getStatusBadge = (status: string): string => {
     const statusMap: Record<string, string> = {
       'CONFIRMED': 'green',

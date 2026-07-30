@@ -12,6 +12,16 @@ import PaymentModal from "@/components/payment/PaymentModal";
 import AmadeusHotelPaymentModal from "@/components/payment/AmadeusHotelPaymentModal";
 import type { Booking, PassengerInfo, SearchResult } from "@/lib/types";
 
+const LoadingSpinner = ({ message }: { message?: string }) => (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl">
+      <div className="w-16 h-16 border-4 border-blue-50 border-t-[#33a8da] rounded-full animate-spin mx-auto mb-4"></div>
+      <p className="text-gray-700 font-medium">{message || 'Processing your booking...'}</p>
+      <p className="text-sm text-gray-500 mt-2">Please wait, this may take a moment</p>
+    </div>
+  </div>
+);
+
 function extractOfferIdFromHotel(item: any): string {
   if (!item) return '';
   
@@ -826,7 +836,7 @@ const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSea
 
 export default function BookingReviewPage() {
   const router = useRouter();
-  const { selectedItem, searchParams, persistSelectionForReturn } = useSearch();
+  const { selectedItem, searchParams, persistSelectionForReturn, selectedSeats, seatTotalPrice, seatCurrency } = useSearch();
   const { isLoggedIn, user } = useAuth();
   const { createBooking, createAmadeusHotelBooking, isCreating } = useBooking();
   const { currency, formatPrice, isLoadingRates } = useLanguage();
@@ -840,6 +850,7 @@ export default function BookingReviewPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [isFetchingTerms, setIsFetchingTerms] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   const hasProcessedRef = useRef(false);
   const hasFetchedTermsRef = useRef(false);
@@ -1074,6 +1085,7 @@ useEffect(() => {
     passengerInfo: PassengerInfo,
     voucherCode?: string,
   ) => {
+    setIsProcessingPayment(true);
     if (!extendedItem) {
       toast.error("No booking item found. Please go back and try again.");
       return;
@@ -1193,24 +1205,33 @@ useEffect(() => {
         // ✅ Combine lead + additional travellers
         const allTravellers = [leadTraveller, ...additionalTravellers];
       
-        // ✅ Build the final passenger info with travellers array
+        // ✅ Build the final passenger info with travellers array AND top-level passport fields
         cleanedPassengerInfo = {
           ...basePassengerInfo,
           title: passengerInfo.title,
           gender: passengerInfo.gender,
           dateOfBirth: passengerInfo.dateOfBirth,
-          // ✅ Passport fields are NOT at top level - they're in travellers
+          // ✅ Passport fields at TOP LEVEL for useBooking.ts
+          PassportNumber: (passengerInfo as any).PassportNumber || (passengerInfo as any).passportNumber || '',
+          ExpiryDate: (passengerInfo as any).ExpiryDate || (passengerInfo as any).expiryDate || '',
+          PassportIssuingAuthority: (passengerInfo as any).PassportIssuingAuthority || (passengerInfo as any).passportIssuingAuthority || '',
+          PassportIssueCountryCode: (passengerInfo as any).PassportIssueCountryCode || (passengerInfo as any).passportIssueCountry || '',
+          // ✅ Also keep lowercase for compatibility
+          passportNumber: (passengerInfo as any).PassportNumber || (passengerInfo as any).passportNumber || '',
+          expiryDate: (passengerInfo as any).ExpiryDate || (passengerInfo as any).expiryDate || '',
+          passportIssuingAuthority: (passengerInfo as any).PassportIssuingAuthority || (passengerInfo as any).passportIssuingAuthority || '',
+          passportIssueCountry: (passengerInfo as any).PassportIssueCountryCode || (passengerInfo as any).passportIssueCountry || '',
+          // ✅ travellers array for additional passengers
           travellers: allTravellers,
         } as any;
       
-        console.log('📋 Full passenger info for Wakanow with travellers:', {
+        console.log('📋 Final cleaned passenger info with passport at top level:', {
           ...cleanedPassengerInfo,
-          travellers: allTravellers.map((t: any) => ({
+          PassportNumber: (cleanedPassengerInfo as any).PassportNumber,
+          ExpiryDate: (cleanedPassengerInfo as any).ExpiryDate,
+          travellers: (cleanedPassengerInfo as any).travellers?.map((t: any) => ({
             FirstName: t.FirstName,
-            LastName: t.LastName,
             PassportNumber: t.PassportNumber,
-            ExpiryDate: t.ExpiryDate,
-            PassportIssuingAuthority: t.PassportIssuingAuthority,
           })),
         });
       }
@@ -1354,7 +1375,7 @@ useEffect(() => {
           };
           
           const newBooking = await createAmadeusHotelBooking(
-            finalHotelItem,  // ✅ Use finalHotelItem with offer ID
+            finalHotelItem,
             cleanedPassengerInfo,
             testCard,
             isGuest,
@@ -1365,10 +1386,11 @@ useEffect(() => {
         } catch (err: any) {
           console.error("Amadeus hotel booking error:", err);
           toast.error(err?.message ?? "We couldn't create your booking. Please try again.");
+        } finally {
+          setIsProcessingPayment(false); 
         }
         return;
       }
-      
       console.log("🏨 Setting up Amadeus hotel payment modal...");
       setPendingPassengerInfo(cleanedPassengerInfo);
       setAppliedVoucherCode(voucherCode);
@@ -1379,9 +1401,6 @@ useEffect(() => {
       return;
     }
   
-    // ============================================================
-    // ✅ CAR RENTAL FLOW - AMADEUS (UNCHANGED)
-    // ============================================================
     if (isCar) {
       try {
         console.log("🚗 Creating car rental booking...");
@@ -1406,9 +1425,12 @@ useEffect(() => {
         setShowPayment(true);
       } catch (err: any) {
         toast.error(err.message ?? "We couldn't create your car rental booking. Please try again.");
+      } finally {
+        setIsProcessingPayment(false);
+        return;
       }
-      return;
     }
+
   
     // ============================================================
     // ✅ FLIGHT BOOKING - WAKANOW (UNCHANGED) + DUFFEL (FIXED)
@@ -1572,11 +1594,10 @@ useEffect(() => {
         offer_id: correctedItem.offer_id,
       });
   
-      // ✅ Create booking - uses cleaned passenger info for Duffel
       const newBooking = await createBooking(
-        correctedItem,  // ✅ Pass correctedItem with offerData
+        correctedItem,
         searchParams,
-        cleanedPassengerInfo,  // ✅ Use cleaned passenger info
+        cleanedPassengerInfo,
         isGuest,
         {
           taxes: serviceFee,
@@ -1619,36 +1640,40 @@ useEffect(() => {
       }
       
       toast.error(err.message ?? "We couldn't create your booking. Please try again.");
-    }
+    }finally {  
+      setIsProcessingPayment(false);  
+    } 
   };
 
-  const handlePaymentSuccess = (confirmed: Booking) => {
-    if (isNavigating) return;
-    setIsNavigating(true);
-    
-    setShowPayment(false);
-    setShowAmadeusPayment(false);
-    setPendingPassengerInfo(null);
-    
-    try {
-      sessionStorage.setItem('last_booking', JSON.stringify(confirmed));
-      sessionStorage.setItem('last_booking_id', confirmed.id);
-      sessionStorage.setItem('last_booking_ref', confirmed.reference);
-      
-      if (!isLoggedIn && confirmed.passengerInfo?.email) {
-        sessionStorage.setItem('guest_booking_email', confirmed.passengerInfo.email);
-      }
-    } catch (error) {
-      console.error("Failed to store booking:", error);
-    }
-    
-    const successUrl = `/booking/success?id=${confirmed.id}&ref=${confirmed.reference}&provider=${confirmed.provider}`;
-    
-    setTimeout(() => {
-      window.location.href = successUrl;
-    }, 200);
-  };
 
+
+
+const handlePaymentSuccess = (confirmed: Booking) => {
+  if (isNavigating) return;
+  setIsNavigating(true);
+  
+  setShowPayment(false);
+  setShowAmadeusPayment(false);
+  setPendingPassengerInfo(null);
+  
+  try {
+    sessionStorage.setItem('last_booking', JSON.stringify(confirmed));
+    sessionStorage.setItem('last_booking_id', confirmed.id);
+    sessionStorage.setItem('last_booking_ref', confirmed.reference);
+    
+    if (!isLoggedIn && confirmed.passengerInfo?.email) {
+      sessionStorage.setItem('guest_booking_email', confirmed.passengerInfo.email);
+    }
+  } catch (error) {
+    console.error("Failed to store booking:", error);
+  }
+  
+  const successUrl = `/booking/success?id=${confirmed.id}&ref=${confirmed.reference}&provider=${confirmed.provider}`;
+  
+  setTimeout(() => {
+    window.location.href = successUrl;
+  }, 200);
+};
  
 if (!selectedItem && !restoredHotelItem) {
   return (
@@ -1677,6 +1702,11 @@ if (!selectedItem && !restoredHotelItem) {
 
   return (
     <>
+    {/* ✅ SPINNER OVERLAY */}
+    {isProcessingPayment && (
+      <LoadingSpinner message="Processing your booking..." />
+    )}
+
       <ReviewTrip
         item={getItemForReview()}
         searchParams={searchParams}
@@ -1687,6 +1717,8 @@ if (!selectedItem && !restoredHotelItem) {
         onProceedToPayment={handleProceedToPayment}
         onSignInRequired={redirectToLogin}
         createdBooking={booking}
+     
+        
       />
 
       {showPayment && booking && (

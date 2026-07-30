@@ -149,6 +149,15 @@ export interface SearchResult {
   fareRules?: string[];
   penaltyRules?: string[] | null;
   connection_code?: string;
+
+  seatMapAvailable?: boolean;
+  selectedSeats?: SelectedSeat[];
+  seatTotalPrice?: number;
+  seatCurrency?: string;
+  hasSeatSelection?: boolean;
+  seatSelectionRequired?: boolean;
+  passengerCount?: number;
+  flightLegsWithSeats?: FlightLegWithSeats[];
   
   // ✅ Duffel specific fields
   offer_request_id?: string;
@@ -348,6 +357,8 @@ export interface Booking {
   // ✅ TAXES FIELD
   taxes?: number;
 
+
+
   // ✅ ADD THESE MISSING PROPERTIES
   conversionFee?: number;
   conversionPercentage?: number;
@@ -393,6 +404,16 @@ export interface Booking {
     provider?: string;
     [key: string]: any;
   };
+  selectedSeats?: SelectedSeat[];
+  seatTotalPrice?: number;
+  seatCurrency?: string;
+  seatSelectionCompleted?: boolean;
+  seatSelectionData?: {
+    selectedAt: string;
+    seats: SelectedSeat[];
+    totalPrice: number;
+    currency: string;
+  };
 
   passengerInfo: PassengerInfo;
   voucherId?: string;
@@ -408,6 +429,8 @@ export interface Booking {
   // ✅ WAKANOW PRICE BREAKDOWN
   breakdown?: string;
 }
+
+
 
 export interface PassengerInfo {
   firstName: string;
@@ -784,6 +807,228 @@ export interface WakanowTicketResponse {
     BookingStatus: string;
     Message: string;
   };
+}
+
+// ============ SEAT MAP TYPES ============
+
+export interface Seat {
+  SeatName: string;
+  RowNumber: number;
+  ColumnName: string;
+  IsOccupied: boolean;
+  IsValidRow: boolean;
+  IsValidSeat: boolean;
+  IsInfantSeat: boolean;
+  IsAdultWithInfantSeat: boolean;
+  IsChargeableSeat: boolean;
+  Price?: {
+    Amount: number;
+    CurrencyCode: string;
+  };
+  PriceInSourceCurrency?: {
+    Amount: number;
+    CurrencyCode: string;
+  };
+  ActualPrice?: {
+    Amount: number;
+    CurrencyCode: string;
+  };
+  MarkUpPrice?: {
+    Amount: number;
+    CurrencyCode: string;
+  };
+  SeatTypeDescription?: {
+    SeatType?: string;
+    Description?: string;
+    [key: string]: any;
+  };
+  [key: string]: any;
+}
+
+export interface FlightLegWithSeats {
+  FlightLegNumber: string;
+  DepartureCode: string;
+  DepartureName: string;
+  DestinationCode: string;
+  DestinationName: string;
+  StartTime: string;
+  EndTime: string;
+  Duration: string;
+  FlightNumber: string;
+  Airline: string;
+  AirlineName: string;
+  Aircraft: string;
+  CabinClassName: string;
+  BookingClass: string;
+  IsStop: boolean;
+  Layover: string | null;
+  LayoverDuration: string;
+  Seats: Seat[];
+  FreeBaggage: {
+    BagCount: number;
+    Weight: number;
+    WeightUnit: string | null;
+  } | null;
+  [key: string]: any;
+}
+
+export interface FlightWithSeats {
+  FlightId: string;
+  Name: string;
+  Airline: string;
+  AirlineName: string;
+  AirlineLogoUrl: string;
+  DepartureCode: string;
+  DepartureName: string;
+  DepartureTime: string;
+  ArrivalCode: string;
+  ArrivalName: string;
+  ArrivalTime: string;
+  Stops: number;
+  TripDuration: string;
+  FlightLegs: FlightLegWithSeats[];
+  FreeBaggage: {
+    BagCount: number;
+    Weight: number;
+    WeightUnit: string | null;
+  } | null;
+  [key: string]: any;
+}
+
+export interface SeatDataResponse {
+  bookingId: string;
+  outboundFlight: FlightWithSeats;
+  returnFlight?: FlightWithSeats;
+  priceBreakdown: {
+    basePrice: number;
+    markupAmount: number;
+    markupPercentage: number;
+    serviceFee: number;
+    serviceFeePercentage: number;
+    taxes: number;
+    taxPercentage: number;
+    totalAmount: number;
+    currency: string;
+  };
+}
+
+export interface SelectedSeat {
+  flightLegNumber: string;
+  seatNumber: string;
+  rowNumber: number;
+  columnName: string;
+  price: number;
+  currency: string;
+  isChargeable: boolean;
+  isInfantSeat: boolean;
+  seatKey: string;
+  passengerReference: string;
+  seatType?: string;
+  seatDescription?: string;
+}
+
+export interface SelectSeatsRequest {
+  seats: Array<{
+    flightLegNumber: string;
+    seatNumber: string;
+    passengerReference?: string;
+    passengerIndex?: number;
+  }>;
+}
+
+export interface SelectSeatsResponse {
+  success: boolean;
+  data?: {
+    bookingId: string;
+    selectedSeats: SelectedSeat[];
+    totalPrice: number;
+    currency: string;
+  };
+  message?: string;
+}
+
+// ============ WAKANOW PRICE BREAKDOWN (Enhanced) ============
+
+export interface WakanowPriceBreakdown {
+  basePrice: number;
+  markupAmount: number;
+  markupPercentage: number;
+  serviceFee: number;
+  serviceFeePercentage: number;
+  taxes: number;
+  taxPercentage: number;
+  totalAmount: number;
+  currency: string;
+  breakdown?: string;
+  seatPrices?: Array<{
+    flightLegNumber: string;
+    seatNumber: string;
+    price: number;
+    currency: string;
+  }>;
+}
+
+// ============ BOOKING WITH SEAT DATA ============
+
+export interface BookingWithSeats extends Booking {
+  selectedSeats?: SelectedSeat[];
+  seatTotalPrice?: number;
+  seatCurrency?: string;
+  providerData?: {
+    wakanow?: {
+      bookingId: string;
+      pnrNumber?: string;
+      flightData: any;
+      seatData?: SeatDataResponse;
+      selectedSeats?: SelectedSeat[];
+    };
+    [key: string]: any;
+  };
+}
+
+// ============ SEAT MAP COMPONENT PROPS ============
+
+export interface SeatMapProps {
+  bookingId: string;
+  isGuest?: boolean;
+  guestEmail?: string;
+  onClose: () => void;
+  onSeatSelected: (seats: SelectedSeat[]) => void;
+  maxSeats?: number;
+  selectedSeats?: SelectedSeat[];
+  readOnly?: boolean;
+}
+
+// ============ SEAT MAP API RESPONSES ============
+
+export interface SeatMapApiResponse {
+  success: boolean;
+  data: SeatDataResponse;
+  message?: string;
+}
+
+export interface SeatSelectionApiResponse {
+  success: boolean;
+  data: {
+    bookingId: string;
+    selectedSeats: SelectedSeat[];
+    totalPrice: number;
+    currency: string;
+    message?: string;
+  };
+  message?: string;
+}
+
+// ============ SEAT MAP STATE ============
+
+export interface SeatMapState {
+  isLoading: boolean;
+  seatData: SeatDataResponse | null;
+  selectedSeats: SelectedSeat[];
+  error: string | null;
+  activeLeg: string | null;
+  totalPrice: number;
+  currency: string;
 }
 
 export interface DomesticFlightSearchParams {

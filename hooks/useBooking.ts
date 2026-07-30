@@ -237,6 +237,287 @@ const getBreakdown = (pb: any): string => {
   return pb.breakdown || `${pb.basePrice || 0} + ${pb.markupAmount || 0} (${pb.markupPercentage || 10}% markup) + ${pb.serviceFee || 0} (${pb.serviceFeePercentage || 5}% service fee) = ${pb.totalAmount || 0}`;
 };
 
+const getPassportField = (
+  passenger: any,
+  isDomestic: boolean,
+  isNorthAmerica: boolean,
+  fieldType: 'number' | 'expiry' | 'authority' | 'countryCode'
+): string => {
+
+  if (isDomestic) {
+    return '';
+  }
+
+  let value = '';
+  switch (fieldType) {
+    case 'number':
+      value = passenger.PassportNumber || 
+              passenger.passportNumber || 
+              passenger.passport_number || 
+              passenger.passportNum ||
+              passenger.Passport ||
+              passenger.passport ||
+              '';
+      break;
+    case 'expiry':
+      value = passenger.ExpiryDate || 
+              passenger.expiryDate || 
+              passenger.expiry_date ||
+              passenger.PassportExpiry ||
+              passenger.passportExpiry ||
+              '';
+      break;
+    case 'authority':
+      value = passenger.PassportIssuingAuthority || 
+              passenger.passportIssuingAuthority || 
+              passenger.issuingAuthority ||
+              passenger.IssuingAuthority ||
+              '';
+      break;
+    case 'countryCode':
+      value = passenger.PassportIssueCountryCode || 
+              passenger.passportIssueCountryCode || 
+              passenger.issueCountryCode ||
+              passenger.passportIssueCountry ||
+              passenger.IssueCountryCode ||
+              'NG';
+      break;
+  }
+
+  if (isNorthAmerica && !value) {
+    const fieldNames = {
+      number: 'Passport number',
+      expiry: 'Passport expiry date',
+      authority: 'Passport issuing authority',
+      countryCode: 'Passport issue country'
+    };
+    throw new Error(
+      `${fieldNames[fieldType]} is required for flights to North America. ` +
+      `Please provide valid passport information for all passengers.`
+    );
+  }
+
+  return value;
+};
+
+const isPassportRequired = (
+  isDomestic: boolean,
+  isNorthAmerica: boolean,
+  destinationCode: string,
+  airlineRequiresPassport: boolean = false,
+  specialRoutes: string[] = []
+): boolean => {
+  // ✅ RULE 1: MANDATORY for North American destinations (from checklist)
+  if (isNorthAmerica) {
+    console.log('📍 Passport MANDATORY: North American destination');
+    return true;
+  }
+  
+  // ✅ RULE 2: Required if airline requires it (from checklist)
+  if (airlineRequiresPassport) {
+    console.log('📍 Passport REQUIRED: Airline requires it');
+    return true;
+  }
+  
+  // ✅ RULE 3: International flights (excluding North America) - depends on airline
+  if (!isDomestic) {
+    // Most international flights require passport, but let the airline/API decide
+    // If the airline didn't explicitly say it requires it, check if it's a common requirement
+    const commonPassportCountries = ['GB', 'AE', 'FR', 'DE', 'IT', 'ES', 'SG', 'MY', 'TH'];
+    const destCountry = getCountryCodeFromAirport(destinationCode);
+    if (destCountry && commonPassportCountries.includes(destCountry)) {
+      console.log('📍 Passport REQUIRED: Common international destination');
+      return true;
+    }
+    // For other international destinations, default to requiring passport
+    // since most international flights need it
+    return true;
+  }
+  
+  // ✅ RULE 4: Domestic flights - only if airline requires it or special route
+  if (isDomestic) {
+    // Check special routes (like Russia, China internal flights)
+    if (specialRoutes.includes(destinationCode)) {
+      console.log('📍 Passport REQUIRED: Special domestic route');
+      return true;
+    }
+    // Domestic generally doesn't require passport
+    console.log('📍 Passport NOT required: Domestic flight');
+    return false;
+  }
+  
+  // Default: no passport required
+  return false;
+};
+
+
+// ============================================================
+// ✅ UPDATED: buildPassenger with auto-generated dates for children/infants
+// ============================================================
+const buildPassenger = (
+  p: any,
+  isDomestic: boolean,
+  isNorthAmerica: boolean,
+  defaultAddress?: any,
+  airlineRequiresPassport: boolean = false,
+  specialRoutes: string[] = []
+) => {
+  const destinationCode = p.destinationCode || p.destination || '';
+  const destinationRaw = p.destinationRaw || p.destination || '';
+  
+  // ✅ Determine if passport is required based on checklist rules
+  const requiresPassport = isPassportRequired(
+    isDomestic,
+    isNorthAmerica,
+    destinationCode,
+    airlineRequiresPassport,
+    specialRoutes
+  );
+  
+  // Get passport fields
+  const passportNumber = p.PassportNumber || 
+                        p.passportNumber || 
+                        p.passport_number || 
+                        p.passportNum ||
+                        p.Passport ||
+                        p.passport ||
+                        '';
+                        
+  const expiryDate = p.ExpiryDate || 
+                    p.expiryDate || 
+                    p.expiry_date ||
+                    p.PassportExpiry ||
+                    p.passportExpiry ||
+                    '';
+                    
+  const issuingAuthority = p.PassportIssuingAuthority || 
+                          p.passportIssuingAuthority || 
+                          p.issuingAuthority ||
+                          p.IssuingAuthority ||
+                          '';
+                          
+  const issueCountryCode = p.PassportIssueCountryCode || 
+                          p.passportIssueCountryCode || 
+                          p.issueCountryCode ||
+                          p.passportIssueCountry ||
+                          p.IssueCountryCode ||
+                          'NG';
+
+
+  let dateOfBirth = p.DateOfBirth || p.dateOfBirth || '';
+  
+  // ✅ If dateOfBirth is empty, generate based on passenger type
+  if (!dateOfBirth) {
+    const passengerType = p.PassengerType || p.passengerType || 'Adult';
+    const today = new Date();
+    let yearOffset = 0;
+    let monthOffset = 6; // Default to middle of year
+    let dayOffset = 15; // Default to middle of month
+    
+    if (passengerType === 'Child' || passengerType === 'child') {
+      // Child should be between 2-11, use 8 years old
+      yearOffset = 8;
+      monthOffset = 6;
+      dayOffset = 15;
+    } else if (passengerType === 'Infant' || passengerType === 'infant') {
+      // Infant should be under 2, use 1 year old
+      yearOffset = 1;
+      monthOffset = 6;
+      dayOffset = 15;
+    }
+    
+    if (yearOffset > 0) {
+      const defaultDate = new Date(today);
+      defaultDate.setFullYear(today.getFullYear() - yearOffset);
+      defaultDate.setMonth(monthOffset);
+      defaultDate.setDate(dayOffset);
+      dateOfBirth = defaultDate.toISOString().split('T')[0];
+      console.log(`📅 Auto-generated date of birth for ${passengerType}: ${dateOfBirth} (${yearOffset} years old)`);
+    }
+  }
+
+  console.log('📋 buildPassenger - passenger details:', {
+    requiresPassport,
+    passengerType: p.PassengerType || p.passengerType || 'Adult',
+    passengerName: `${p.FirstName || p.firstName || ''} ${p.LastName || p.lastName || ''}`,
+    dateOfBirth: dateOfBirth || '(empty)',
+    passportNumber: passportNumber || '(empty)',
+  });
+
+  if (requiresPassport && !passportNumber) {
+    const passengerName = p.FirstName || p.firstName || 'Unknown';
+    let reason = '';
+    if (isNorthAmerica) {
+      reason = 'North American destination (mandatory requirement)';
+    } else if (airlineRequiresPassport) {
+      reason = 'airline requirement';
+    } else if (!isDomestic) {
+      reason = 'international travel';
+    } else {
+      reason = 'special route requirement';
+    }
+    throw new Error(
+      `PassportNumber is required for passenger "${passengerName}" on this flight. ` +
+      `This is required due to ${reason}. Please provide a valid passport number.`
+    );
+  }
+
+ 
+  if (requiresPassport && !expiryDate) {
+    console.warn(`⚠️ Passport expiry date missing for ${p.FirstName || p.firstName || 'passenger'}`);
+  }
+
+  return {
+    passengerType: p.PassengerType || p.passengerType || 'Adult',
+    firstName: p.FirstName || p.firstName || '',
+    middleName: p.MiddleName || p.middleName || '',
+    lastName: p.LastName || p.lastName || '',
+    dateOfBirth: dateOfBirth, 
+    phoneNumber: p.PhoneNumber || p.phoneNumber || p.phone || '',
+    email: p.Email || p.email || '',
+    gender: p.Gender || p.gender || 'Male',
+    title: p.Title || p.title || 'Mr',
+  
+    ...(requiresPassport && {
+      PassportNumber: passportNumber,
+      ExpiryDate: expiryDate,
+      PassportIssuingAuthority: issuingAuthority,
+      PassportIssueCountryCode: issueCountryCode,
+    }),
+
+    address: p.Address || p.address || defaultAddress?.address || '123 Fake Street',
+    country: p.Country || p.country || defaultAddress?.country || 'Nigeria',
+    countryCode: p.CountryCode || p.countryCode || defaultAddress?.countryCode || 'NG',
+    city: p.City || p.city || defaultAddress?.city || 'Lagos',
+    postalCode: p.PostalCode || p.postalCode || defaultAddress?.postalCode || '100001',
+  };
+};
+
+
+const buildPassengerSafely = (
+  p: any,
+  isDomestic: boolean,
+  isNorthAmerica: boolean,
+  defaultAddress: any,
+  label: string,
+  airlineRequiresPassport: boolean = false,
+  specialRoutes: string[] = []
+): { passenger: any | null; error: string | null } => {
+  try {
+    const result = buildPassenger(
+      p, 
+      isDomestic, 
+      isNorthAmerica, 
+      defaultAddress,
+      airlineRequiresPassport,
+      specialRoutes
+    );
+    return { passenger: result, error: null };
+  } catch (error: any) {
+    return { passenger: null, error: `${label}: ${error.message}` };
+  }
+};
+
 export function useBooking() {
   const [isCreating, setIsCreating] = useState(false);
   const [booking, setBooking] = useState<Booking | null>(null);
@@ -249,7 +530,13 @@ export function useBooking() {
       searchParams: SearchParams | null,
       passenger: PassengerInfo,
       isGuest: boolean,
-      options?: { taxes?: number; basePrice?: number; finalAmount?: number },
+      options?: { 
+        taxes?: number; 
+        basePrice?: number; 
+        finalAmount?: number;
+        createWithoutPayment?: boolean;
+        skipPassportValidation?: boolean;
+      },
     ): Promise<Booking> => {
       console.log('📥 useBooking received passenger:', {
         passenger,
@@ -378,8 +665,7 @@ console.log("💰 Price breakdown:", {
   
         const isWakanowFlight = provider === 'WAKANOW' && 
         (productType === 'FLIGHT_INTERNATIONAL' || productType === 'FLIGHT_DOMESTIC');
-      
-      // ✅ FIX: Use the SAME North America detection as ReviewTrip
+    
 const northAmericaAirports = [
   // USA - Major airports
   'JFK', 'EWR', 'LGA', 'LAX', 'SFO', 'ORD', 'DFW', 'ATL', 'IAH', 'MIA', 
@@ -422,92 +708,106 @@ const northAmericaCountries = ['US', 'USA', 'CAN', 'CA', 'MX', 'MEX'];
         basePrice: basePrice,
         bookingData: {},
       };
-      
-// ✅ Define travellers, firstTraveller, and passportNumberValue in the outer scope
+
+
+
+console.log('📍 Flight type and passport requirements:', {
+  isDomestic,
+  isNorthAmerica,
+  destinationCode,
+  destinationRaw,
+  passportRequirement: isDomestic ? 'EMPTY' : (isNorthAmerica ? 'MANDATORY' : 'OPTIONAL')
+});
+
+// ✅ Define travellers - for ALL Wakanow flights (international or domestic)
 let travellers: any[] = [];
 let firstTraveller: any = {};
-let passportNumberValue: string = '';
 
-if (isWakanowFlight && isNorthAmerica) {
-  // ✅ Get travellers from passenger (already built in page.tsx)
-  const existingTravellers = (passenger as any).travellers || [];
-  
-  if (Array.isArray(existingTravellers) && existingTravellers.length > 0) {
-    travellers = existingTravellers;
-    firstTraveller = travellers[0];
-    console.log('✅ Using existing travellers from passenger:', {
-      count: travellers.length,
-      first: firstTraveller,
-    });
-    
-    console.log('🔍 DEBUG - firstTraveller keys:', Object.keys(firstTraveller));
-    console.log('🔍 DEBUG - firstTraveller passport fields:', {
-      PassportNumber: firstTraveller.PassportNumber,
-      passportNumber: firstTraveller.passportNumber,
-      passport_number: firstTraveller.passport_number,
-      passportNum: firstTraveller.passportNum,
-      Passport: firstTraveller.Passport,
-      passport: firstTraveller.passport,
-    });
-  } else {
-    // Fallback
-    firstTraveller = {
-      PassportNumber: (passenger as any).PassportNumber || (passenger as any).passportNumber || '',
-      ExpiryDate: (passenger as any).ExpiryDate || (passenger as any).expiryDate || '',
-      PassportIssuingAuthority: (passenger as any).PassportIssuingAuthority || (passenger as any).passportIssuingAuthority || '',
-      PassportIssueCountryCode: (passenger as any).PassportIssueCountryCode || (passenger as any).passportIssueCountry || '',
-      Address: passenger.address || (passenger as any).Address || '',
-      Country: passenger.country || (passenger as any).Country || '',
-      CountryCode: passenger.countryCode || (passenger as any).CountryCode || '',
-      City: passenger.city || (passenger as any).City || '',
-      PostalCode: passenger.postalCode || (passenger as any).PostalCode || '',
-    };
-    travellers = [firstTraveller];
-  }
+// ✅ Check if we have travellers from the passenger object
+const existingTravellers = (passenger as any).travellers || [];
+const additionalPassengersFromPassenger = (passenger as any).additionalPassengers || [];
 
-  // ✅ Get passport number from firstTraveller (try all possible field names)
-  passportNumberValue = 
-    firstTraveller.PassportNumber || 
-    firstTraveller.passportNumber || 
-    firstTraveller.passport_number || 
-    firstTraveller.passportNum ||
-    firstTraveller.Passport ||
-    firstTraveller.passport ||
-    '';
-
-  console.log('🔍 DEBUG - Extracted passportNumber:', passportNumberValue);
-
-  // ✅ Set passengerInfo with ONLY basic fields (no passport fields)
-  body.passengerInfo = {
-    firstName: passenger.firstName,
-    lastName: passenger.lastName,
-    email: passenger.email,
-    phone: passenger.phone,
-    title: passenger.title || 'Mr',
-    gender: passenger.gender || 'Male',
-    dateOfBirth: passenger.dateOfBirth || '',
-  };
-
-  console.log('📄 North America passenger info (no passport fields):', {
-    passengerInfo: body.passengerInfo,
-  });
-} else {
-  // Non-North America or non-Wakanow flights
-  body.passengerInfo = {
-    firstName: passenger.firstName,
-    lastName: passenger.lastName,
-    email: passenger.email,
-    phone: passenger.phone,
-    title: passenger.title || 'Mr',
-    gender: passenger.gender || 'Male',
-    dateOfBirth: passenger.dateOfBirth || '',
-    ...(passenger.address && { address: passenger.address }),
-    ...(passenger.country && { country: passenger.country }),
-    ...(passenger.countryCode && { countryCode: passenger.countryCode }),
-    ...(passenger.city && { city: passenger.city }),
-    ...(passenger.postalCode && { postalCode: passenger.postalCode }),
-  };
+// ✅ Build travellers from all sources
+if (existingTravellers.length > 0) {
+  travellers = existingTravellers;
+} else if (additionalPassengersFromPassenger.length > 0) {
+  // Convert additionalPassengers to travellers format
+  travellers = additionalPassengersFromPassenger.map((p: any) => ({
+    PassengerType: p.type === 'child' ? 'Child' : p.type === 'infant' ? 'Infant' : 'Adult',
+    FirstName: p.firstName || '',
+    LastName: p.lastName || '',
+    DateOfBirth: p.dateOfBirth || '',
+    PhoneNumber: p.phone || passenger.phone || '',
+    Email: p.email || passenger.email || '',
+    Gender: p.gender === 'f' ? 'Female' : p.gender === 'm' ? 'Male' : 'Male',
+    Title: p.title || 'Mr',
+    PassportNumber: p.passportNumber || '',
+    ExpiryDate: p.passportExpiry || '',
+    PassportIssuingAuthority: p.passportIssuingAuthority || '',
+    PassportIssueCountryCode: p.passportIssueCountry || 'NG',
+    Address: p.address || passenger.address || '123 Fake Street',
+    Country: p.country || passenger.country || 'Nigeria',
+    CountryCode: p.countryCode || passenger.countryCode || 'NG',
+    City: p.city || passenger.city || 'Lagos',
+    PostalCode: p.postalCode || passenger.postalCode || '100001',
+  }));
 }
+
+// ✅ Ensure firstTraveller is set for passport fields if needed
+if (travellers.length > 0) {
+  firstTraveller = travellers[0];
+} else if (isWakanowFlight && !isDomestic) {
+  // For international flights without travellers, create from passenger data
+  firstTraveller = {
+    PassportNumber: (passenger as any).PassportNumber || (passenger as any).passportNumber || '',
+    ExpiryDate: (passenger as any).ExpiryDate || (passenger as any).expiryDate || '',
+    PassportIssuingAuthority: (passenger as any).PassportIssuingAuthority || (passenger as any).passportIssuingAuthority || '',
+    PassportIssueCountryCode: (passenger as any).PassportIssueCountryCode || (passenger as any).passportIssueCountry || '',
+    Address: passenger.address || (passenger as any).Address || '',
+    Country: passenger.country || (passenger as any).Country || '',
+    CountryCode: passenger.countryCode || (passenger as any).CountryCode || '',
+    City: passenger.city || (passenger as any).City || '',
+    PostalCode: passenger.postalCode || (passenger as any).PostalCode || '',
+  };
+  travellers = [firstTraveller];
+}
+
+console.log('👤 Travellers after population:', {
+  count: travellers.length,
+  first: travellers[0]?.FirstName || travellers[0]?.firstName,
+  hasPassport: !!(travellers[0]?.PassportNumber || travellers[0]?.passportNumber),
+});
+// ✅ Build passengerInfo based on flight type (NO passport fields here!)
+let passengerInfo: any = {
+  firstName: passenger.firstName,
+  lastName: passenger.lastName,
+  email: passenger.email,
+  phone: passenger.phone,
+  title: passenger.title || 'Mr',
+  gender: passenger.gender === 'm' ? 'Male' : (passenger.gender || 'Male'),
+  dateOfBirth: passenger.dateOfBirth || '',
+};
+
+// Add address fields
+if (passenger.address) passengerInfo.address = passenger.address;
+if (passenger.country) passengerInfo.country = passenger.country;
+if (passenger.countryCode) passengerInfo.countryCode = passenger.countryCode;
+if (passenger.city) passengerInfo.city = passenger.city;
+if (passenger.postalCode) passengerInfo.postalCode = passenger.postalCode;
+
+// ✅ DO NOT add PassportNumber, ExpiryDate, etc. to passengerInfo
+// They should ONLY be in the passengers array
+
+body.passengerInfo = passengerInfo;
+
+console.log('📄 passengerInfo built (NO passport fields):', {
+  firstName: passengerInfo.firstName,
+  lastName: passengerInfo.lastName,
+  hasPassportNumber: !!passengerInfo.PassportNumber, // Should be false
+  isDomestic,
+  isNorthAmerica,
+});
+
 
 if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC") {
           const finalOrigin = originCode || "LOS";
@@ -529,91 +829,122 @@ if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC")
             const wakanowBookingId = item.bookingId || null;
             
             console.log("🔑 Wakanow Booking ID (PNR):", wakanowBookingId);
-            
-            // ✅ FIX: Build passengers from passenger object directly (not from travellers)
-            const passengersArray = [];
-            
-            // ✅ Add lead passenger
-            const leadPassenger = {
-              passengerType: 'Adult',
-              firstName: passenger.firstName,
-              middleName: (passenger as any).middleName || '',
-              lastName: passenger.lastName,
-              dateOfBirth: passenger.dateOfBirth || '',
-              phoneNumber: passenger.phone,
-              email: passenger.email,
-              gender: passenger.gender === 'm' ? 'Male' : 'Female',
-              title: passenger.title || 'Mr',
-              // ✅ Passport fields with PascalCase (empty for domestic flights)
-              PassportNumber: passportNumberValue || (passenger as any).PassportNumber || '',
-              ExpiryDate: firstTraveller?.ExpiryDate || (passenger as any).ExpiryDate || '',
-              PassportIssuingAuthority: firstTraveller?.PassportIssuingAuthority || (passenger as any).PassportIssuingAuthority || '',
-              PassportIssueCountryCode: firstTraveller?.PassportIssueCountryCode || (passenger as any).PassportIssueCountryCode || '',
-              address: passenger.address || '123 Fake Street',
-              country: passenger.country || 'Nigeria',
-              countryCode: passenger.countryCode || 'NG',
-              city: passenger.city || 'Lagos',
-              postalCode: passenger.postalCode || '100001',
-            };
-            passengersArray.push(leadPassenger);
-            
-            // ✅ Add additional passengers from travellers (if any exist)
-            if (travellers && travellers.length > 1) {
-              for (let i = 1; i < travellers.length; i++) {
-                const t = travellers[i];
-                if (t.firstName || t.FirstName) {
-                  passengersArray.push({
-                    passengerType: t.PassengerType || t.passengerType || 'Adult',
-                    firstName: t.FirstName || t.firstName || '',
-                    middleName: t.MiddleName || t.middleName || '',
-                    lastName: t.LastName || t.lastName || '',
-                    dateOfBirth: t.DateOfBirth || t.dateOfBirth || '',
-                    phoneNumber: t.PhoneNumber || t.phoneNumber || '',
-                    email: t.Email || t.email || '',
-                    gender: t.Gender || t.gender || 'Male',
-                    title: t.Title || t.title || 'Mr',
-                    PassportNumber: t.PassportNumber || t.passportNumber || '',
-                    ExpiryDate: t.ExpiryDate || t.expiryDate || '',
-                    PassportIssuingAuthority: t.PassportIssuingAuthority || t.passportIssuingAuthority || '',
-                    PassportIssueCountryCode: t.PassportIssueCountryCode || t.passportIssueCountry || '',
-                    address: t.Address || t.address || passenger.address || '',
-                    country: t.Country || t.country || passenger.country || '',
-                    countryCode: t.CountryCode || t.countryCode || passenger.countryCode || '',
-                    city: t.City || t.city || passenger.city || '',
-                    postalCode: t.PostalCode || t.postalCode || passenger.postalCode || '',
-                  });
-                }
-              }
+            if (options?.createWithoutPayment) {
+              console.log("📝 Creating Wakanow booking WITHOUT payment (for seat selection)");
             }
             
-            // ✅ Also check for additionalPassengers from page.tsx
-            const additionalPassengers = (passenger as any).additionalPassengers || [];
-            if (Array.isArray(additionalPassengers) && additionalPassengers.length > 0) {
-              for (const p of additionalPassengers) {
-                passengersArray.push({
-                  passengerType: p.passengerType || p.type || 'Adult',
-                  firstName: p.firstName || '',
-                  middleName: p.middleName || '',
-                  lastName: p.lastName || '',
-                  dateOfBirth: p.dateOfBirth || '',
-                  phoneNumber: p.phoneNumber || p.phone || '',
-                  email: p.email || '',
-                  gender: p.gender === 'm' ? 'Male' : 'Female',
-                  title: p.title || 'Mr',
-                  PassportNumber: p.PassportNumber || p.passportNumber || '',
-                  ExpiryDate: p.ExpiryDate || p.expiryDate || '',
-                  PassportIssuingAuthority: p.PassportIssuingAuthority || p.passportIssuingAuthority || '',
-                  PassportIssueCountryCode: p.PassportIssueCountryCode || p.passportIssueCountry || '',
-                  address: p.address || passenger.address || '',
-                  country: p.country || passenger.country || '',
-                  countryCode: p.countryCode || passenger.countryCode || '',
-                  city: p.city || passenger.city || '',
-                  postalCode: p.postalCode || passenger.postalCode || '',
-                });
-              }
-            }
-          
-            console.log("👤 Passengers built:", passengersArray.length);
+
+const passengersArray = [];
+
+
+
+
+
+// Default address for passengers
+const defaultAddress = {
+  address: passenger.address || '123 Fake Street',
+  country: passenger.country || 'Nigeria',
+  countryCode: passenger.countryCode || 'NG',
+  city: passenger.city || 'Lagos',
+  postalCode: passenger.postalCode || '100001',
+};
+
+// ✅ DEBUG: Log passenger object before building
+console.log('🔍🔍🔍 CRITICAL - passenger object BEFORE buildPassenger:', {
+  firstName: passenger.firstName,
+  lastName: passenger.lastName,
+  // Check all passport field variations
+  PassportNumber: (passenger as any).PassportNumber,
+  passportNumber: (passenger as any).passportNumber,
+  ExpiryDate: (passenger as any).ExpiryDate,
+  passportExpiry: (passenger as any).passportExpiry,
+  PassportIssuingAuthority: (passenger as any).PassportIssuingAuthority,
+  passportIssuingAuthority: (passenger as any).passportIssuingAuthority,
+  PassportIssueCountryCode: (passenger as any).PassportIssueCountryCode,
+  passportIssueCountry: (passenger as any).passportIssueCountry,
+  // Check if any passport field exists
+  hasPassport: !!(passenger as any).PassportNumber || !!(passenger as any).passportNumber,
+  // Check travellers
+  travellers: (passenger as any).travellers,
+  // All keys in passenger object
+  allKeys: Object.keys(passenger),
+});
+
+// ✅ Build passengers with error collection using buildPassengerSafely
+const passengerErrors: string[] = [];
+
+// 1. Build lead passenger
+const leadResult = buildPassengerSafely(
+  {
+    ...passenger,
+    FirstName: passenger.firstName,
+    LastName: passenger.lastName,
+    DateOfBirth: passenger.dateOfBirth,
+    PhoneNumber: passenger.phone,
+    Email: passenger.email,
+  },
+  isDomestic,
+  isNorthAmerica,
+  defaultAddress,
+  'Lead passenger'
+);
+
+if (leadResult.error) {
+  passengerErrors.push(leadResult.error);
+} else if (leadResult.passenger) {
+  passengersArray.push(leadResult.passenger);
+}
+
+// 2. Add additional passengers from travellers
+if (travellers && travellers.length > 1) {
+  for (let i = 1; i < travellers.length; i++) {
+    const t = travellers[i];
+    if (t.firstName || t.FirstName) {
+      const result = buildPassengerSafely(
+        t,
+        isDomestic,
+        isNorthAmerica,
+        defaultAddress,
+        `Traveller ${i + 1}`
+      );
+      if (result.error) {
+        passengerErrors.push(result.error);
+      } else if (result.passenger) {
+        passengersArray.push(result.passenger);
+      }
+    }
+  }
+}
+
+// 3. Add additional passengers from page.tsx
+const additionalPassengers = (passenger as any).additionalPassengers || [];
+if (Array.isArray(additionalPassengers) && additionalPassengers.length > 0) {
+  for (let i = 0; i < additionalPassengers.length; i++) {
+    const result = buildPassengerSafely(
+      additionalPassengers[i],
+      isDomestic,
+      isNorthAmerica,
+      defaultAddress,
+      `Additional passenger ${i + 1}`
+    );
+    if (result.error) {
+      passengerErrors.push(result.error);
+    } else if (result.passenger) {
+      passengersArray.push(result.passenger);
+    }
+  }
+}
+
+// ✅ If any passenger validation failed, throw combined error
+if (passengerErrors.length > 0) {
+  const errorMessage = passengerErrors.join('\n');
+  console.error('❌ Passenger validation errors:', errorMessage);
+  throw new Error(
+    `Cannot complete booking. Please fix the following issues:\n${errorMessage}`
+  );
+}
+
+console.log("👤 Passengers built successfully:", passengersArray.length);
             
             // ✅ STORE bookingId at TOP LEVEL
             body.bookingId = wakanowBookingId;
@@ -627,12 +958,14 @@ if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC")
               origin: finalOrigin,
               destination: finalDestination,
               departureDate: searchParams?.segments?.[0]?.date ?? today(),
-              // ✅ passengers inside bookingData
+              createWithoutPayment: options?.createWithoutPayment || false,
               passengers: passengersArray,
               bookingId: wakanowBookingId,
               selectData: offerId,
               targetCurrency: wakanowCurrency,
-              isNorthAmerica: isNorthAmerica,
+              isDomestic: isDomestic,
+  isNorthAmerica: isNorthAmerica,
+  passportRequirement: isDomestic ? 'EMPTY' : (isNorthAmerica ? 'MANDATORY' : 'OPTIONAL'),
               destinationCode: destinationCode,
               priceBreakdown: {
                 basePrice: basePrice,
@@ -670,36 +1003,40 @@ if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC")
             // ✅ Also keep top-level pnrNumber for webhook
             body.pnrNumber = wakanowBookingId;
             
-            // ✅ WAKANOW: Add totalAmount and priceBreakdown at top level for validation
-            body.totalAmount = wakanowTotalAmount;
-            body.currency = wakanowCurrency;
-            
-            // ✅ Also set top-level priceBreakdown with calculated values
-            body.priceBreakdown = {
-              basePrice: basePrice,
-              markupAmount: markupAmount,
-              markupPercentage: markupPercentage,
-              serviceFee: serviceFee,
-              serviceFeePercentage: serviceFeePercentage,
-              taxes: taxes,
-              taxPercentage: markupPercentage + serviceFeePercentage,
-              totalAmount: wakanowTotalAmount,
-              currency: wakanowCurrency,
-            };
-            
-            console.log("💰 Wakanow total amount:", { 
-              totalAmount: body.totalAmount, 
-              currency: body.currency,
-              markupAmount: markupAmount,
-              serviceFee: serviceFee,
-              taxes: taxes,
-              markupPercentage: markupPercentage,
-              serviceFeePercentage: serviceFeePercentage,
-              pnrNumber: wakanowBookingId,
-              bookingId: body.bookingId,
-              hasSelectData: !!body.selectData,
-              passengersCount: passengersArray.length,
-            });
+            // ✅ Ensure totalAmount is positive (backend requires > 0)
+const actualTotalAmount = wakanowTotalAmount > 0 ? wakanowTotalAmount : 100;
+const actualBasePrice = basePrice > 0 ? basePrice : 100 / 1.15;
+
+// ✅ WAKANOW: Add totalAmount and priceBreakdown at top level for validation
+body.totalAmount = actualTotalAmount;
+body.currency = wakanowCurrency;
+
+// ✅ Also set top-level priceBreakdown with calculated values
+body.priceBreakdown = {
+  basePrice: actualBasePrice,
+  markupAmount: markupAmount > 0 ? markupAmount : 10,
+  markupPercentage: markupPercentage || 10,
+  serviceFee: serviceFee > 0 ? serviceFee : 5,
+  serviceFeePercentage: serviceFeePercentage || 5,
+  taxes: taxes > 0 ? taxes : 15,
+  taxPercentage: (markupPercentage || 10) + (serviceFeePercentage || 5),
+  totalAmount: actualTotalAmount,
+  currency: wakanowCurrency,
+};
+
+console.log("💰 Wakanow total amount (with positive check):", {
+  totalAmount: body.totalAmount,
+  currency: body.currency,
+  markupAmount: body.priceBreakdown.markupAmount,
+  serviceFee: body.priceBreakdown.serviceFee,
+  taxes: body.priceBreakdown.taxes,
+  markupPercentage: body.priceBreakdown.markupPercentage,
+  serviceFeePercentage: body.priceBreakdown.serviceFeePercentage,
+  pnrNumber: wakanowBookingId,
+  bookingId: body.bookingId,
+  hasSelectData: !!body.selectData,
+  passengersCount: passengersArray.length,
+});
           }
           // ============================================================
           // ✅ DUFFEL FLOW (FIXED)

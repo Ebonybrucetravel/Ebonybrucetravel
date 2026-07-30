@@ -1,3 +1,6 @@
+
+import { Seat, SelectedSeat, FlightLegWithSeats } from './types';
+
 export const currencySymbol = (code: string) => {
   const map: Record<string, string> = { USD: '$', GBP: '£', EUR: '€', NGN: '₦' };
   return map[code] ?? code;
@@ -274,4 +277,248 @@ export const transformWakanowToDuffelFormat = (flight: any) => {
   });
   
   return transformed;
+};
+
+
+/**
+ * Get the status of a seat
+ */
+export const getSeatStatus = (
+  seat: Seat,
+  selectedSeats: SelectedSeat[],
+  leg: FlightLegWithSeats
+): 'available' | 'occupied' | 'selected' | 'infant' | 'chargeable' | 'invalid' => {
+  if (seat.IsOccupied) return 'occupied';
+  if (!seat.IsValidSeat) return 'invalid';
+  if (selectedSeats.some(s => s.seatKey === `${leg.FlightLegNumber}-${seat.SeatName}`)) {
+    return 'selected';
+  }
+  if (seat.IsInfantSeat) return 'infant';
+  if (seat.IsChargeableSeat) return 'chargeable';
+  return 'available';
+};
+
+/**
+ * Get color classes for a seat based on its status
+ */
+export const getSeatColorClasses = (status: string): string => {
+  switch (status) {
+    case 'occupied': return 'bg-gray-200 cursor-not-allowed text-gray-400';
+    case 'invalid': return 'bg-gray-100 cursor-not-allowed text-gray-300';
+    case 'selected': return 'bg-green-500 hover:bg-green-600 text-white shadow-md';
+    case 'infant': return 'bg-purple-100 hover:bg-purple-200 text-purple-700';
+    case 'chargeable': return 'bg-yellow-100 hover:bg-yellow-200 text-yellow-700';
+    default: return 'bg-blue-100 hover:bg-blue-200 text-blue-700';
+  }
+};
+
+/**
+ * Get tooltip text for a seat
+ */
+export const getSeatTooltip = (seat: Seat, status: string): string => {
+  switch (status) {
+    case 'occupied': return 'Occupied';
+    case 'invalid': return 'Not available';
+    case 'selected': return 'Selected';
+    case 'infant': return 'Infant Seat';
+    case 'chargeable': return `Chargeable: ₦${seat.Price?.Amount?.toLocaleString() || 0}`;
+    default: return 'Available';
+  }
+};
+
+/**
+ * Group seats by row for display
+ */
+export const groupSeatsByRow = (seats: Seat[]): Record<number, Seat[]> => {
+  const seatsByRow: Record<number, Seat[]> = {};
+  seats.forEach(seat => {
+    if (!seatsByRow[seat.RowNumber]) {
+      seatsByRow[seat.RowNumber] = [];
+    }
+    seatsByRow[seat.RowNumber].push(seat);
+  });
+  return seatsByRow;
+};
+
+/**
+ * Get unique columns from seats
+ */
+export const getUniqueColumns = (seats: Seat[]): string[] => {
+  return Array.from(new Set(seats.map(s => s.ColumnName)))
+    .sort((a, b) => a.localeCompare(b));
+};
+
+/**
+ * Calculate total price of selected seats
+ */
+export const calculateSeatTotal = (selectedSeats: SelectedSeat[]): number => {
+  return selectedSeats.reduce((sum, seat) => sum + (seat.price || 0), 0);
+};
+
+/**
+ * Check if any selected seats are chargeable
+ */
+export const hasChargeableSeats = (selectedSeats: SelectedSeat[]): boolean => {
+  return selectedSeats.some(seat => seat.isChargeable);
+};
+
+/**
+ * Group selected seats by flight leg
+ */
+export const groupSelectedSeatsByLeg = (
+  selectedSeats: SelectedSeat[]
+): Record<string, SelectedSeat[]> => {
+  return selectedSeats.reduce((acc, seat) => {
+    if (!acc[seat.flightLegNumber]) {
+      acc[seat.flightLegNumber] = [];
+    }
+    acc[seat.flightLegNumber].push(seat);
+    return acc;
+  }, {} as Record<string, SelectedSeat[]>);
+};
+
+/**
+ * Format seat price for display
+ */
+export const formatSeatPrice = (price: number, currency: string = 'NGN'): string => {
+  const symbols: Record<string, string> = {
+    NGN: '₦',
+    USD: '$',
+    EUR: '€',
+    GBP: '£',
+  };
+  const symbol = symbols[currency] || currency;
+  return `${symbol}${price.toLocaleString()}`;
+};
+
+/**
+ * Get seat type display name
+ */
+export const getSeatTypeDisplay = (seat: Seat): string => {
+  if (seat.IsInfantSeat) return 'Infant Seat';
+  if (seat.IsChargeableSeat) return 'Premium Seat';
+  return 'Standard Seat';
+};
+
+/**
+ * Validate seat selection against passenger count
+ */
+export const validateSeatSelection = (
+  selectedSeats: SelectedSeat[],
+  passengerCount: number
+): { valid: boolean; message?: string } => {
+  if (selectedSeats.length === 0) {
+    return { valid: false, message: 'Please select at least one seat' };
+  }
+  if (selectedSeats.length > passengerCount) {
+    return { 
+      valid: false, 
+      message: `You have selected ${selectedSeats.length} seats but only ${passengerCount} passengers` 
+    };
+  }
+  return { valid: true };
+};
+
+/**
+ * Check if a seat can be selected
+ */
+export const canSelectSeat = (seat: Seat): boolean => {
+  return !seat.IsOccupied && seat.IsValidSeat;
+};
+
+/**
+ * Get a unique key for a seat
+ */
+export const getSeatKey = (leg: FlightLegWithSeats, seat: Seat): string => {
+  return `${leg.FlightLegNumber}-${seat.SeatName}`;
+};
+
+/**
+ * Check if a seat is selected
+ */
+export const isSeatSelected = (
+  seat: Seat,
+  leg: FlightLegWithSeats,
+  selectedSeats: SelectedSeat[]
+): boolean => {
+  const seatKey = getSeatKey(leg, seat);
+  return selectedSeats.some(s => s.seatKey === seatKey);
+};
+
+/**
+ * Create a selected seat object from a seat and leg
+ */
+export const createSelectedSeat = (
+  seat: Seat,
+  leg: FlightLegWithSeats,
+  passengerIndex: number = 0
+): SelectedSeat => {
+  return {
+    flightLegNumber: leg.FlightLegNumber,
+    seatNumber: seat.SeatName,
+    rowNumber: seat.RowNumber,
+    columnName: seat.ColumnName,
+    price: seat.Price?.Amount || 0,
+    currency: seat.Price?.CurrencyCode || 'NGN',
+    isChargeable: seat.IsChargeableSeat,
+    isInfantSeat: seat.IsInfantSeat,
+    seatKey: getSeatKey(leg, seat),
+    passengerReference: `P${passengerIndex + 1}`,
+    seatType: seat.SeatTypeDescription?.SeatType || 'Standard',
+    seatDescription: seat.SeatTypeDescription?.Description || '',
+  };
+};
+
+/**
+ * Get passenger count from booking data
+ */
+export const getPassengerCount = (bookingData: any): number => {
+  if (!bookingData) return 1;
+  
+  // Check for passengers in various formats
+  if (bookingData.passengers) {
+    if (typeof bookingData.passengers === 'number') {
+      return bookingData.passengers;
+    }
+    if (typeof bookingData.passengers === 'object') {
+      const p = bookingData.passengers;
+      return (p.adults || 0) + (p.children || 0) + (p.infants || 0);
+    }
+    if (Array.isArray(bookingData.passengers)) {
+      return bookingData.passengers.length;
+    }
+  }
+  
+  if (bookingData.adults) {
+    return bookingData.adults + (bookingData.children || 0) + (bookingData.infants || 0);
+  }
+  
+  if (bookingData.guests) {
+    return bookingData.guests;
+  }
+  
+  return 1;
+};
+
+/**
+ * Format flight leg for display
+ */
+export const formatFlightLegDisplay = (leg: FlightLegWithSeats): string => {
+  const departure = leg.DepartureCode || 'Unknown';
+  const destination = leg.DestinationCode || 'Unknown';
+  const flightNumber = leg.FlightNumber || '';
+  const airline = leg.AirlineName || leg.Airline || '';
+  
+  let display = `${departure} → ${destination}`;
+  if (airline) display += ` • ${airline}`;
+  if (flightNumber) display += ` (${flightNumber})`;
+  
+  return display;
+};
+
+/**
+ * Get the current date/time for seat selection
+ */
+export const getSeatSelectionTimestamp = (): string => {
+  return new Date().toISOString();
 };

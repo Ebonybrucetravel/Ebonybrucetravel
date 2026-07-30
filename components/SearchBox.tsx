@@ -92,6 +92,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: act
   const [showFiltersDropdown, setShowFiltersDropdown] = useState(false);
   const [stopsFilter, setStopsFilter] = useState('Any');
   const [maxPrice, setMaxPrice] = useState(2000);
+  const [getAllHotels, setGetAllHotels] = useState(false);
   const [segments, setSegments] = useState<Segment[]>([
     { from: '', to: '', date: '' }
   ]);
@@ -162,75 +163,531 @@ const [showBaggagesDropdown, setShowBaggagesDropdown] = useState(false);
   const carDropOffRef = useRef<HTMLDivElement>(null);
   const today = new Date().toISOString().split('T')[0];
 
+
+
   const getCityCode = (location: string): string => {
     if (!location) return 'LOS';
-
+  
     if (selectedHotelCityCode) return selectedHotelCityCode;
-
+  
     const cityNameMap: Record<string, string> = {
+      // ============ NIGERIA ============
       'lagos': 'LOS',
+      'abuja': 'ABV',
+      'ibadan': 'IBA',
+      'port harcourt': 'PHC',
+      'kano': 'KAN',
+      'enugu': 'ENU',
+      'benin city': 'BNI',
+      'calabar': 'CBQ',
+      'warri': 'QRW',
+      'owerri': 'QOW',
+      'jos': 'JOS',
+      'kaduna': 'KAD',
+      'maiduguri': 'MIU',
+      'sokoto': 'SKO',
+      'yola': 'YOL',
+      'akure': 'AKR',
+      'bauchi': 'BCU',
+      'minna': 'MXJ',
+      'lokoja': 'LKO',
+      'makurdi': 'MDI',
+      'zamfara': 'ZAR',
+      'abakaliki': 'ABK',
+      'uyo': 'UYO',
+      'asaba': 'ASB',
+      'ughelli': 'UGL',
+      'sapele': 'SAP',
+      'bida': 'BID',
+      'katsina': 'KTS',
+      'zaria': 'ZAR',
+      'mubi': 'MUB',
+      
+      // ============ UK ============
       'london': 'LON',
+      'luton': 'LTN',
+      'manchester': 'MAN',
+      'edinburgh': 'EDI',
+      'birmingham': 'BHX',
+      'bristol': 'BRS',
+      'glasgow': 'GLA',
+      'leeds': 'LBA',
+      'newcastle': 'NCL',
+      'liverpool': 'LPL',
+      'sheffield': 'DSA',
+      'nottingham': 'EMA',
+      'cardiff': 'CWL',
+      'belfast': 'BFS',
+      'aberdeen': 'ABZ',
+      'brighton': 'BSH',
+      'oxford': 'OXF',
+      'cambridge': 'CBG',
+      
+      // ============ USA ============
       'new york': 'NYC',
-      'dubai': 'DXB',
+      'los angeles': 'LAX',
+      'chicago': 'ORD',
+      'miami': 'MIA',
+      'san francisco': 'SFO',
+      'seattle': 'SEA',
+      'boston': 'BOS',
+      'washington': 'WAS',
+      'dallas': 'DFW',
+      'houston': 'IAH',
+      'phoenix': 'PHX',
+      'orlando': 'MCO',
+      'atlanta': 'ATL',
+      'las vegas': 'LAS',
+      'denver': 'DEN',
+      'san diego': 'SAN',
+      'portland': 'PDX',
+      'detroit': 'DTW',
+      'minneapolis': 'MSP',
+      'st louis': 'STL',
+      'tampa': 'TPA',
+      'charlotte': 'CLT',
+      'pittsburgh': 'PIT',
+      'cleveland': 'CLE',
+      'cincinnati': 'CVG',
+      'kansas city': 'MCI',
+      'indianapolis': 'IND',
+      'columbus': 'CMH',
+      'milwaukee': 'MKE',
+      'nashville': 'BNA',
+      'memphis': 'MEM',
+      'new orleans': 'MSY',
+      'san antonio': 'SAT',
+      'austin': 'AUS',
+      'raleigh': 'RDU',
+      'salt lake city': 'SLC',
+      'sacramento': 'SMF',
+      'san jose': 'SJC',
+      'oakland': 'OAK',
+      'long beach': 'LGB',
+      
+      // ============ EUROPE ============
       'paris': 'PAR',
-      'tokyo': 'TYO',
-      'singapore': 'SIN',
       'palma': 'PMI',
       'palma mallorca': 'PMI',
-      'cape town': 'CPT',
-      'accra': 'ACC',
       'madrid': 'MAD',
       'barcelona': 'BCN',
-      'rome': 'FCO',
+      'rome': 'ROM',
+      'milan': 'MIL',
       'istanbul': 'IST',
+      'amsterdam': 'AMS',
+      'frankfurt': 'FRA',
+      'berlin': 'BER',
+      'munich': 'MUC',
+      'vienna': 'VIE',
+      'prague': 'PRG',
+      'budapest': 'BUD',
+      'warsaw': 'WAW',
+      'lisbon': 'LIS',
+      'copenhagen': 'CPH',
+      'stockholm': 'STO',
+      'oslo': 'OSL',
+      'helsinki': 'HEL',
+      'brussels': 'BRU',
+      'zurich': 'ZRH',
+      'geneva': 'GVA',
+      'nice': 'NCE',
+      'lyon': 'LYS',
+      'marseille': 'MRS',
+      'toulouse': 'TLS',
+      'bordeaux': 'BOD',
+      'ibiza': 'IBZ',
+      'malaga': 'AGP',
+      'seville': 'SVQ',
+      'valencia': 'VLC',
+      'porto': 'OPO',
+      'naples': 'NAP',
+      'venice': 'VCE',
+      'florence': 'FLR',
+      'bologna': 'BLQ',
+      'athens': 'ATH',
+      'dublin': 'DUB',
+      
+      // ============ AFRICA ============
+      'cape town': 'CPT',
+      'accra': 'ACC',
       'nairobi': 'NBO',
       'johannesburg': 'JNB',
       'cairo': 'CAI',
-      'amsterdam': 'AMS',
-      'frankfurt': 'FRA',
+      'addis ababa': 'ADD',
+      'dar es salaam': 'DAR',
+      'casablanca': 'CMN',
+      'tunis': 'TUN',
+      'algiers': 'ALG',
+      'mauritius': 'MRU',
+      'dakar': 'DSS',
+      'abidjan': 'ABJ',
+      'yaounde': 'NSI',
+      'douala': 'DLA',
+      'libreville': 'LBV',
+      'kinshasa': 'FIH',
+
+      
+      // ============ MIDDLE EAST ============
+      'dubai': 'DXB',
+      'abu dhabi': 'AUH',
+      'doha': 'DOH',
+      'riyadh': 'RUH',
+      'jeddah': 'JED',
+      'muscat': 'MCT',
+      'manama': 'BAH',
+      'kuwait': 'KWI',
+      'dammam': 'DMM',
+      'sharjah': 'SHJ',
+      'beirut': 'BEY',
+      'amman': 'AMM',
+      'tel aviv': 'TLV',
+      
+      // ============ ASIA ============
+      'tokyo': 'TYO',
+      'singapore': 'SIN',
+      'hong kong': 'HKG',
+      'bangkok': 'BKK',
+      'delhi': 'DEL',
+      'mumbai': 'BOM',
+      'seoul': 'ICN',
+      'shanghai': 'PVG',
+      'beijing': 'PEK',
+      'kuala lumpur': 'KUL',
+      'manila': 'MNL',
+      'jakarta': 'CGK',
+      'ho chi minh': 'SGN',
+      'taipei': 'TPE',
+      'osaka': 'KIX',
+      'nagoya': 'NGO',
+      'fukuoka': 'FUK',
+      'sapporo': 'CTS',
+      'bali': 'DPS',
+      'phuket': 'HKT',
+      'chiang mai': 'CNX',
+      'hanoi': 'HAN',
+      
+      // ============ OCEANIA ============
+      'sydney': 'SYD',
+      'melbourne': 'MEL',
+      'auckland': 'AKL',
+      'brisbane': 'BNE',
+      'perth': 'PER',
+      'adelaide': 'ADL',
+      'canberra': 'CBR',
+      
+      // ============ CANADA ============
+      'toronto': 'YYZ',
+      'vancouver': 'YVR',
+      'montreal': 'YUL',
+      'calgary': 'YYC',
+      'ottawa': 'YOW',
+      'edmonton': 'YEG',
+      
+      // ============ SOUTH AMERICA ============
+      'sao paulo': 'GRU',
+      'rio de janeiro': 'GIG',
+      'buenos aires': 'EZE',
+      'lima': 'LIM',
+      'santiago': 'SCL',
+      'bogota': 'BOG',
+      'mexico city': 'MEX',
+      'cancun': 'CUN',
+      'monterrey': 'MTY',
+      'guadalajara': 'GDL',
     };
-
+  
     const lowerLoc = location.toLowerCase().trim();
-    for (const [cityName, code] of Object.entries(cityNameMap)) {
-      if (lowerLoc.includes(cityName)) return code;
+    
+    // Try exact match first
+    if (cityNameMap[lowerLoc]) {
+      return cityNameMap[lowerLoc];
     }
-
+  
+    // Try partial match
+    for (const [cityName, code] of Object.entries(cityNameMap)) {
+      if (lowerLoc.includes(cityName) || cityName.includes(lowerLoc)) {
+        return code;
+      }
+    }
+  
     const matchedDest = popularHotelDestinations.find(d =>
       lowerLoc.includes(d.city.toLowerCase()) ||
       lowerLoc.includes(d.name.toLowerCase())
     );
     if (matchedDest) return matchedDest.cityCode;
-
+  
     const airportToCityMap: Record<string, string> = {
+      // UK
       'LHR': 'LON', 'LGW': 'LON', 'STN': 'LON', 'LTN': 'LON',
+      'MAN': 'MAN', 'EDI': 'EDI', 'BHX': 'BHX', 'BRS': 'BRS',
+      'GLA': 'GLA', 'LBA': 'LBA', 'NCL': 'NCL', 'LPL': 'LPL',
+      'DSA': 'DSA', 'EMA': 'EMA', 'CWL': 'CWL', 'BFS': 'BFS',
+      'ABZ': 'ABZ',
+      
+      // US
       'JFK': 'NYC', 'EWR': 'NYC', 'LGA': 'NYC',
       'ORD': 'CHI', 'MDW': 'CHI',
+      'LAX': 'LAX', 'SFO': 'SFO', 'SEA': 'SEA',
+      'BOS': 'BOS', 'WAS': 'WAS', 'DFW': 'DFW',
+      'IAH': 'IAH', 'PHX': 'PHX', 'MCO': 'MCO',
+      'ATL': 'ATL', 'LAS': 'LAS', 'DEN': 'DEN',
+      'SAN': 'SAN', 'PDX': 'PDX', 'DTW': 'DTW',
+      'MSP': 'MSP', 'STL': 'STL', 'TPA': 'TPA',
+      'CLT': 'CLT', 'PIT': 'PIT', 'CLE': 'CLE',
+      'CVG': 'CVG', 'MCI': 'MCI', 'IND': 'IND',
+      'CMH': 'CMH', 'MKE': 'MKE', 'BNA': 'BNA',
+      'MEM': 'MEM', 'MSY': 'MSY', 'SAT': 'SAT',
+      'AUS': 'AUS', 'RDU': 'RDU', 'SLC': 'SLC',
+      'SMF': 'SMF', 'SJC': 'SJC', 'OAK': 'OAK',
+      'LGB': 'LGB',
+      
+      // Europe
       'CDG': 'PAR', 'ORY': 'PAR',
+      'MAD': 'MAD', 'BCN': 'BCN', 'PMI': 'PMI',
+      'FCO': 'ROM', 'MXP': 'MIL', 'LIN': 'MIL',
+      'BER': 'BER', 'TXL': 'BER', 'SXF': 'BER',
+      'FRA': 'FRA', 'AMS': 'AMS', 'IST': 'IST',
+      'SAW': 'IST', 'MUC': 'MUC', 'VIE': 'VIE',
+      'PRG': 'PRG', 'BUD': 'BUD', 'WAW': 'WAW',
+      'LIS': 'LIS', 'CPH': 'CPH', 'ARN': 'STO',
+      'OSL': 'OSL', 'HEL': 'HEL', 'BRU': 'BRU',
+      'ZRH': 'ZRH', 'GVA': 'GVA', 'NCE': 'NCE',
+      'LYS': 'LYS', 'MRS': 'MRS', 'TLS': 'TLS',
+      'BOD': 'BOD', 'IBZ': 'IBZ', 'AGP': 'AGP',
+      'SVQ': 'SVQ', 'VLC': 'VLC', 'OPO': 'OPO',
+      'NAP': 'NAP', 'VCE': 'VCE', 'FLR': 'FLR',
+      'BLQ': 'BLQ', 'ATH': 'ATH', 'DUB': 'DUB',
+      
+      // Africa
+      'CPT': 'CPT', 'ACC': 'ACC', 'NBO': 'NBO',
+      'JNB': 'JNB', 'CAI': 'CAI', 'ADD': 'ADD',
+      'DAR': 'DAR', 'CMN': 'CMN', 'TUN': 'TUN',
+      'ALG': 'ALG', 'MRU': 'MRU', 'DSS': 'DSS',
+      'ABJ': 'ABJ', 'NSI': 'NSI', 'DLA': 'DLA',
+      'LBV': 'LBV', 'FIH': 'FIH',
+      
+      // Middle East
       'DXB': 'DXB', 'DWC': 'DXB',
-      'MAD': 'MAD', 'PMI': 'PMI',
+      'AUH': 'AUH', 'DOH': 'DOH', 'RUH': 'RUH',
+      'JED': 'JED', 'MCT': 'MCT', 'BAH': 'BAH',
+      'KWI': 'KWI', 'DMM': 'DMM', 'SHJ': 'SHJ',
+      'BEY': 'BEY', 'AMM': 'AMM', 'TLV': 'TLV',
+      
+      // Asia
+      'TYO': 'TYO', 'NRT': 'TYO', 'HND': 'TYO',
+      'SIN': 'SIN', 'HKG': 'HKG', 'BKK': 'BKK',
+      'DEL': 'DEL', 'BOM': 'BOM', 'ICN': 'ICN',
+      'PVG': 'PVG', 'PEK': 'PEK', 'KUL': 'KUL',
+      'MNL': 'MNL', 'CGK': 'CGK', 'SGN': 'SGN',
+      'TPE': 'TPE', 'KIX': 'KIX', 'NGO': 'NGO',
+      'FUK': 'FUK', 'CTS': 'CTS', 'DPS': 'DPS',
+      'HKT': 'HKT', 'CNX': 'CNX', 'HAN': 'HAN',
+      
+      // Oceania
+      'SYD': 'SYD', 'MEL': 'MEL', 'AKL': 'AKL',
+      'BNE': 'BNE', 'PER': 'PER', 'ADL': 'ADL',
+      'CBR': 'CBR',
+      
+      // Canada
+      'YYZ': 'YYZ', 'YVR': 'YVR', 'YUL': 'YUL',
+      'YYC': 'YYC', 'YOW': 'YOW', 'YEG': 'YEG',
+      
+      // South America
+      'GRU': 'GRU', 'GIG': 'GIG', 'EZE': 'EZE',
+      'LIM': 'LIM', 'SCL': 'SCL', 'BOG': 'BOG',
+      'MEX': 'MEX', 'CUN': 'CUN', 'MTY': 'MTY',
+      'GDL': 'GDL',
     };
-
+  
     const match = location.match(/\(([A-Z]{3})\)/);
     const codeMatch = location.match(/^([A-Z]{3})\s*-\s*/);
     const code = match ? match[1] : (codeMatch ? codeMatch[1] : null);
     const threeLetterMatch = location.match(/([A-Z]{3})/);
     const finalCode = code || (threeLetterMatch ? threeLetterMatch[1] : 'LOS');
-
+  
     return airportToCityMap[finalCode] || finalCode;
   };
-
   const popularHotelDestinations: HotelDestination[] = [
-    { name: 'Lagos', city: 'Lagos', country: 'Nigeria', cityCode: 'LOS', image: 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bGFnb3N8ZW58MHx8MHx8fDA%3D' },
-    { name: 'London', city: 'London', country: 'United Kingdom', cityCode: 'LON', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&q=80&w=400' },
-    { name: 'New York', city: 'New York', country: 'USA', cityCode: 'NYC', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&q=80&w=400' },
-    { name: 'Dubai', city: 'Dubai', country: 'UAE', cityCode: 'DXB', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=400' },
-    { name: 'Paris', city: 'Paris', country: 'France', cityCode: 'PAR', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=400' },
-    { name: 'Tokyo', city: 'Tokyo', country: 'Japan', cityCode: 'TYO', image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&q=80&w=400' },
-    { name: 'Singapore', city: 'Singapore', country: 'Singapore', cityCode: 'SIN', image: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?auto=format&fit=crop&q=80&w=400' },
-    { name: 'Palma Mallorca', city: 'Palma', country: 'Spain', cityCode: 'PMI', image: 'https://images.unsplash.com/photo-1538332576228-eb5b4c4de6f5?auto=format&fit=crop&q=80&w=400' },
-    { name: 'Cape Town', city: 'Cape Town', country: 'South Africa', cityCode: 'CPT', image: 'https://images.unsplash.com/photo-1596394516093-9ba7b6146eba?auto=format&fit=crop&q=80&w=400' },
-    { name: 'Accra', city: 'Accra', country: 'Ghana', cityCode: 'ACC', image: 'https://images.unsplash.com/photo-1587496679742-bad502958c4a?auto=format&fit=crop&q=80&w=400' },
+    // ============ UK (FIRST - DEFAULT SUGGESTIONS) ============
+    { name: 'London', city: 'London', country: 'United Kingdom', cityCode: 'LON' },
+    { name: 'Manchester', city: 'Manchester', country: 'United Kingdom', cityCode: 'MAN' },
+    { name: 'Edinburgh', city: 'Edinburgh', country: 'United Kingdom', cityCode: 'EDI' },
+    { name: 'Birmingham', city: 'Birmingham', country: 'United Kingdom', cityCode: 'BHX' },
+    { name: 'Bristol', city: 'Bristol', country: 'United Kingdom', cityCode: 'BRS' },
+    { name: 'Glasgow', city: 'Glasgow', country: 'United Kingdom', cityCode: 'GLA' },
+    { name: 'Liverpool', city: 'Liverpool', country: 'United Kingdom', cityCode: 'LPL' },
+    { name: 'Leeds', city: 'Leeds', country: 'United Kingdom', cityCode: 'LBA' },
+    { name: 'Newcastle', city: 'Newcastle', country: 'United Kingdom', cityCode: 'NCL' },
+    { name: 'Cardiff', city: 'Cardiff', country: 'United Kingdom', cityCode: 'CWL' },
+    { name: 'Belfast', city: 'Belfast', country: 'United Kingdom', cityCode: 'BFS' },
+    { name: 'Aberdeen', city: 'Aberdeen', country: 'United Kingdom', cityCode: 'ABZ' },
+    { name: 'Brighton', city: 'Brighton', country: 'United Kingdom', cityCode: 'BSH' },
+    { name: 'Oxford', city: 'Oxford', country: 'United Kingdom', cityCode: 'OXF' },
+    { name: 'Cambridge', city: 'Cambridge', country: 'United Kingdom', cityCode: 'CBG' },
+    { name: 'Luton', city: 'Luton', country: 'United Kingdom', cityCode: 'LTN' },
+    
+    // ============ NIGERIA ============
+    { name: 'Lagos', city: 'Lagos', country: 'Nigeria', cityCode: 'LOS' },
+    { name: 'Abuja', city: 'Abuja', country: 'Nigeria', cityCode: 'ABV' },
+    { name: 'Ibadan', city: 'Ibadan', country: 'Nigeria', cityCode: 'IBA' },
+    { name: 'Port Harcourt', city: 'Port Harcourt', country: 'Nigeria', cityCode: 'PHC' },
+    { name: 'Enugu', city: 'Enugu', country: 'Nigeria', cityCode: 'ENU' },
+    { name: 'Benin City', city: 'Benin City', country: 'Nigeria', cityCode: 'BNI' },
+    { name: 'Calabar', city: 'Calabar', country: 'Nigeria', cityCode: 'CBQ' },
+    { name: 'Kano', city: 'Kano', country: 'Nigeria', cityCode: 'KAN' },
+    { name: 'Warri', city: 'Warri', country: 'Nigeria', cityCode: 'QRW' },
+    { name: 'Jos', city: 'Jos', country: 'Nigeria', cityCode: 'JOS' },
+    { name: 'Kaduna', city: 'Kaduna', country: 'Nigeria', cityCode: 'KAD' },
+    { name: 'Maiduguri', city: 'Maiduguri', country: 'Nigeria', cityCode: 'MIU' },
+    { name: 'Sokoto', city: 'Sokoto', country: 'Nigeria', cityCode: 'SKO' },
+    { name: 'Yola', city: 'Yola', country: 'Nigeria', cityCode: 'YOL' },
+    
+    // ============ USA ============
+    { name: 'New York', city: 'New York', country: 'USA', cityCode: 'NYC' },
+    { name: 'Los Angeles', city: 'Los Angeles', country: 'USA', cityCode: 'LAX' },
+    { name: 'Chicago', city: 'Chicago', country: 'USA', cityCode: 'ORD' },
+    { name: 'Miami', city: 'Miami', country: 'USA', cityCode: 'MIA' },
+    { name: 'San Francisco', city: 'San Francisco', country: 'USA', cityCode: 'SFO' },
+    { name: 'Seattle', city: 'Seattle', country: 'USA', cityCode: 'SEA' },
+    { name: 'Boston', city: 'Boston', country: 'USA', cityCode: 'BOS' },
+    { name: 'Washington DC', city: 'Washington', country: 'USA', cityCode: 'WAS' },
+    { name: 'Las Vegas', city: 'Las Vegas', country: 'USA', cityCode: 'LAS' },
+    { name: 'Orlando', city: 'Orlando', country: 'USA', cityCode: 'MCO' },
+    { name: 'Dallas', city: 'Dallas', country: 'USA', cityCode: 'DFW' },
+    { name: 'Houston', city: 'Houston', country: 'USA', cityCode: 'IAH' },
+    { name: 'Phoenix', city: 'Phoenix', country: 'USA', cityCode: 'PHX' },
+    { name: 'Atlanta', city: 'Atlanta', country: 'USA', cityCode: 'ATL' },
+    { name: 'Denver', city: 'Denver', country: 'USA', cityCode: 'DEN' },
+    { name: 'San Diego', city: 'San Diego', country: 'USA', cityCode: 'SAN' },
+    { name: 'Portland', city: 'Portland', country: 'USA', cityCode: 'PDX' },
+    { name: 'Detroit', city: 'Detroit', country: 'USA', cityCode: 'DTW' },
+    { name: 'Minneapolis', city: 'Minneapolis', country: 'USA', cityCode: 'MSP' },
+    { name: 'St Louis', city: 'St Louis', country: 'USA', cityCode: 'STL' },
+    { name: 'Tampa', city: 'Tampa', country: 'USA', cityCode: 'TPA' },
+    { name: 'Charlotte', city: 'Charlotte', country: 'USA', cityCode: 'CLT' },
+    { name: 'Pittsburgh', city: 'Pittsburgh', country: 'USA', cityCode: 'PIT' },
+    { name: 'Cleveland', city: 'Cleveland', country: 'USA', cityCode: 'CLE' },
+    { name: 'Nashville', city: 'Nashville', country: 'USA', cityCode: 'BNA' },
+    { name: 'Memphis', city: 'Memphis', country: 'USA', cityCode: 'MEM' },
+    { name: 'New Orleans', city: 'New Orleans', country: 'USA', cityCode: 'MSY' },
+    { name: 'San Antonio', city: 'San Antonio', country: 'USA', cityCode: 'SAT' },
+    { name: 'Austin', city: 'Austin', country: 'USA', cityCode: 'AUS' },
+    { name: 'Sacramento', city: 'Sacramento', country: 'USA', cityCode: 'SMF' },
+    { name: 'San Jose', city: 'San Jose', country: 'USA', cityCode: 'SJC' },
+    
+    // ============ EUROPE ============
+    { name: 'Paris', city: 'Paris', country: 'France', cityCode: 'PAR' },
+    { name: 'Barcelona', city: 'Barcelona', country: 'Spain', cityCode: 'BCN' },
+    { name: 'Madrid', city: 'Madrid', country: 'Spain', cityCode: 'MAD' },
+    { name: 'Rome', city: 'Rome', country: 'Italy', cityCode: 'ROM' },
+    { name: 'Milan', city: 'Milan', country: 'Italy', cityCode: 'MIL' },
+    { name: 'Amsterdam', city: 'Amsterdam', country: 'Netherlands', cityCode: 'AMS' },
+    { name: 'Istanbul', city: 'Istanbul', country: 'Turkey', cityCode: 'IST' },
+    { name: 'Berlin', city: 'Berlin', country: 'Germany', cityCode: 'BER' },
+    { name: 'Dublin', city: 'Dublin', country: 'Ireland', cityCode: 'DUB' },
+    { name: 'Palma Mallorca', city: 'Palma', country: 'Spain', cityCode: 'PMI' },
+    { name: 'Ibiza', city: 'Ibiza', country: 'Spain', cityCode: 'IBZ' },
+    { name: 'Malaga', city: 'Malaga', country: 'Spain', cityCode: 'AGP' },
+    { name: 'Seville', city: 'Seville', country: 'Spain', cityCode: 'SVQ' },
+    { name: 'Valencia', city: 'Valencia', country: 'Spain', cityCode: 'VLC' },
+    { name: 'Porto', city: 'Porto', country: 'Portugal', cityCode: 'OPO' },
+    { name: 'Nice', city: 'Nice', country: 'France', cityCode: 'NCE' },
+    { name: 'Lyon', city: 'Lyon', country: 'France', cityCode: 'LYS' },
+    { name: 'Marseille', city: 'Marseille', country: 'France', cityCode: 'MRS' },
+    { name: 'Vienna', city: 'Vienna', country: 'Austria', cityCode: 'VIE' },
+    { name: 'Prague', city: 'Prague', country: 'Czechia', cityCode: 'PRG' },
+    { name: 'Budapest', city: 'Budapest', country: 'Hungary', cityCode: 'BUD' },
+    { name: 'Warsaw', city: 'Warsaw', country: 'Poland', cityCode: 'WAW' },
+    { name: 'Lisbon', city: 'Lisbon', country: 'Portugal', cityCode: 'LIS' },
+    { name: 'Copenhagen', city: 'Copenhagen', country: 'Denmark', cityCode: 'CPH' },
+    { name: 'Stockholm', city: 'Stockholm', country: 'Sweden', cityCode: 'STO' },
+    { name: 'Oslo', city: 'Oslo', country: 'Norway', cityCode: 'OSL' },
+    { name: 'Helsinki', city: 'Helsinki', country: 'Finland', cityCode: 'HEL' },
+    { name: 'Brussels', city: 'Brussels', country: 'Belgium', cityCode: 'BRU' },
+    { name: 'Zurich', city: 'Zurich', country: 'Switzerland', cityCode: 'ZRH' },
+    { name: 'Geneva', city: 'Geneva', country: 'Switzerland', cityCode: 'GVA' },
+    { name: 'Munich', city: 'Munich', country: 'Germany', cityCode: 'MUC' },
+    { name: 'Frankfurt', city: 'Frankfurt', country: 'Germany', cityCode: 'FRA' },
+    { name: 'Athens', city: 'Athens', country: 'Greece', cityCode: 'ATH' },
+    { name: 'Naples', city: 'Naples', country: 'Italy', cityCode: 'NAP' },
+    { name: 'Venice', city: 'Venice', country: 'Italy', cityCode: 'VCE' },
+    { name: 'Florence', city: 'Florence', country: 'Italy', cityCode: 'FLR' },
+    { name: 'Bologna', city: 'Bologna', country: 'Italy', cityCode: 'BLQ' },
+    
+    // ============ AFRICA (excluding Nigeria which is already above) ============
+    { name: 'Cape Town', city: 'Cape Town', country: 'South Africa', cityCode: 'CPT' },
+    { name: 'Johannesburg', city: 'Johannesburg', country: 'South Africa', cityCode: 'JNB' },
+    { name: 'Accra', city: 'Accra', country: 'Ghana', cityCode: 'ACC' },
+    { name: 'Nairobi', city: 'Nairobi', country: 'Kenya', cityCode: 'NBO' },
+    { name: 'Cairo', city: 'Cairo', country: 'Egypt', cityCode: 'CAI' },
+    { name: 'Addis Ababa', city: 'Addis Ababa', country: 'Ethiopia', cityCode: 'ADD' },
+    { name: 'Dar es Salaam', city: 'Dar es Salaam', country: 'Tanzania', cityCode: 'DAR' },
+    { name: 'Casablanca', city: 'Casablanca', country: 'Morocco', cityCode: 'CMN' },
+    { name: 'Tunis', city: 'Tunis', country: 'Tunisia', cityCode: 'TUN' },
+    { name: 'Abidjan', city: 'Abidjan', country: 'Côte d\'Ivoire', cityCode: 'ABJ' },
+    { name: 'Douala', city: 'Douala', country: 'Cameroon', cityCode: 'DLA' },
+    
+    // ============ MIDDLE EAST ============
+    { name: 'Dubai', city: 'Dubai', country: 'UAE', cityCode: 'DXB' },
+    { name: 'Abu Dhabi', city: 'Abu Dhabi', country: 'UAE', cityCode: 'AUH' },
+    { name: 'Doha', city: 'Doha', country: 'Qatar', cityCode: 'DOH' },
+    { name: 'Riyadh', city: 'Riyadh', country: 'Saudi Arabia', cityCode: 'RUH' },
+    { name: 'Jeddah', city: 'Jeddah', country: 'Saudi Arabia', cityCode: 'JED' },
+    { name: 'Muscat', city: 'Muscat', country: 'Oman', cityCode: 'MCT' },
+    { name: 'Bahrain', city: 'Manama', country: 'Bahrain', cityCode: 'BAH' },
+    { name: 'Kuwait', city: 'Kuwait City', country: 'Kuwait', cityCode: 'KWI' },
+    { name: 'Beirut', city: 'Beirut', country: 'Lebanon', cityCode: 'BEY' },
+    { name: 'Amman', city: 'Amman', country: 'Jordan', cityCode: 'AMM' },
+    { name: 'Tel Aviv', city: 'Tel Aviv', country: 'Israel', cityCode: 'TLV' },
+    
+    // ============ ASIA ============
+    { name: 'Tokyo', city: 'Tokyo', country: 'Japan', cityCode: 'TYO' },
+    { name: 'Osaka', city: 'Osaka', country: 'Japan', cityCode: 'KIX' },
+    { name: 'Singapore', city: 'Singapore', country: 'Singapore', cityCode: 'SIN' },
+    { name: 'Hong Kong', city: 'Hong Kong', country: 'China', cityCode: 'HKG' },
+    { name: 'Bangkok', city: 'Bangkok', country: 'Thailand', cityCode: 'BKK' },
+    { name: 'Phuket', city: 'Phuket', country: 'Thailand', cityCode: 'HKT' },
+    { name: 'Chiang Mai', city: 'Chiang Mai', country: 'Thailand', cityCode: 'CNX' },
+    { name: 'Bali', city: 'Bali', country: 'Indonesia', cityCode: 'DPS' },
+    { name: 'Jakarta', city: 'Jakarta', country: 'Indonesia', cityCode: 'CGK' },
+    { name: 'Kuala Lumpur', city: 'Kuala Lumpur', country: 'Malaysia', cityCode: 'KUL' },
+    { name: 'Manila', city: 'Manila', country: 'Philippines', cityCode: 'MNL' },
+    { name: 'Delhi', city: 'Delhi', country: 'India', cityCode: 'DEL' },
+    { name: 'Mumbai', city: 'Mumbai', country: 'India', cityCode: 'BOM' },
+    { name: 'Seoul', city: 'Seoul', country: 'South Korea', cityCode: 'ICN' },
+    { name: 'Shanghai', city: 'Shanghai', country: 'China', cityCode: 'PVG' },
+    { name: 'Beijing', city: 'Beijing', country: 'China', cityCode: 'PEK' },
+    { name: 'Taipei', city: 'Taipei', country: 'Taiwan', cityCode: 'TPE' },
+    { name: 'Ho Chi Minh', city: 'Ho Chi Minh', country: 'Vietnam', cityCode: 'SGN' },
+    { name: 'Hanoi', city: 'Hanoi', country: 'Vietnam', cityCode: 'HAN' },
+    
+    // ============ OCEANIA ============
+    { name: 'Sydney', city: 'Sydney', country: 'Australia', cityCode: 'SYD' },
+    { name: 'Melbourne', city: 'Melbourne', country: 'Australia', cityCode: 'MEL' },
+    { name: 'Brisbane', city: 'Brisbane', country: 'Australia', cityCode: 'BNE' },
+    { name: 'Perth', city: 'Perth', country: 'Australia', cityCode: 'PER' },
+    { name: 'Auckland', city: 'Auckland', country: 'New Zealand', cityCode: 'AKL' },
+    
+    // ============ CANADA ============
+    { name: 'Toronto', city: 'Toronto', country: 'Canada', cityCode: 'YYZ' },
+    { name: 'Vancouver', city: 'Vancouver', country: 'Canada', cityCode: 'YVR' },
+    { name: 'Montreal', city: 'Montreal', country: 'Canada', cityCode: 'YUL' },
+    { name: 'Calgary', city: 'Calgary', country: 'Canada', cityCode: 'YYC' },
+    { name: 'Ottawa', city: 'Ottawa', country: 'Canada', cityCode: 'YOW' },
+    { name: 'Edmonton', city: 'Edmonton', country: 'Canada', cityCode: 'YEG' },
+    
+    // ============ SOUTH AMERICA ============
+    { name: 'Sao Paulo', city: 'Sao Paulo', country: 'Brazil', cityCode: 'GRU' },
+    { name: 'Rio de Janeiro', city: 'Rio de Janeiro', country: 'Brazil', cityCode: 'GIG' },
+    { name: 'Buenos Aires', city: 'Buenos Aires', country: 'Argentina', cityCode: 'EZE' },
+    { name: 'Lima', city: 'Lima', country: 'Peru', cityCode: 'LIM' },
+    { name: 'Santiago', city: 'Santiago', country: 'Chile', cityCode: 'SCL' },
+    { name: 'Bogota', city: 'Bogota', country: 'Colombia', cityCode: 'BOG' },
+    { name: 'Mexico City', city: 'Mexico City', country: 'Mexico', cityCode: 'MEX' },
+    { name: 'Cancun', city: 'Cancun', country: 'Mexico', cityCode: 'CUN' },
+    { name: 'Guadalajara', city: 'Guadalajara', country: 'Mexico', cityCode: 'GDL' },
   ];
+  
 
   const popularAirports: Airport[] = [
     { code: 'LOS', name: 'Murtala Muhammed International Airport', city: 'Lagos', country: 'Nigeria', type: 'airport' },
@@ -776,9 +1233,6 @@ const [showBaggagesDropdown, setShowBaggagesDropdown] = useState(false);
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-
-    // In SearchBox.tsx - handleSubmit for cars
-
 if (activeTab === 'cars') {
   const pickUpCode = extractLocationCode(carPickUp);
   const dropOffCode = extractLocationCode(carDropOff);
@@ -911,7 +1365,6 @@ if (activeTab === 'cars') {
         return;
       }
 
-     
       const data = {
         type: 'hotels',
         location: hotelLocation,
@@ -923,8 +1376,11 @@ if (activeTab === 'cars') {
           children: travellers.children
         },
         rooms,
-        currency: currency.code || 'USD',
-        provider: 'amadeus'  // Hardcoded to Amadeus
+        currency: currency.code || 'NGN',
+        provider: 'amadeus',
+        radius: getAllHotels ? 200 : 30, 
+        limit: getAllHotels ? 100 : 50,   
+
       };
 
       onSearch(data);

@@ -5,6 +5,7 @@ import { useLanguage } from '../context/LanguageContext';
 import type { SearchResult, SearchParams, PassengerInfo, User, Booking } from '../lib/types';
 import { userApi, ApiError, hotelApi } from '../lib/api';
 import { formatPrice, currencySymbol } from '../lib/utils';
+import toast from 'react-hot-toast';
 
 // ✅ Extended Booking type - adds missing price fields
 type ExtendedBooking = Booking & {
@@ -282,6 +283,9 @@ const isNorthAmericanDestination = (item: ExtendedSearchResult, searchParams: Se
   return isNorthAmerica;
 };
 
+
+
+
 const ReviewTrip: React.FC<ReviewTripProps> = ({
   item,
   searchParams,
@@ -459,13 +463,12 @@ const isPassportMandatory = isNorthAmerica;
 
 
   const isPassportIncompleteForDuffel = false; 
-
   useEffect(() => {
     if (!extBooking) {
       let adults = 1;
       let children = 0;
       let infants = 0;
-
+  
       if (typeof searchParams?.passengers === 'object') {
         adults = searchParams.passengers.adults || 1;
         children = searchParams.passengers.children || 0;
@@ -476,30 +479,81 @@ const isPassportMandatory = isNorthAmerica;
       } else if (typeof searchParams?.guests === 'number') {
         adults = searchParams.guests;
       }
-
+  
       const totalAdditional = (adults - 1) + children + infants;
       
       if (totalAdditional > 0) {
         const initial: PassengerInfo[] = [];
         
+        // ✅ Check if passport is required for this flight (ALL international flights)
+        const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+                                (actualItem as any)?.type?.toLowerCase().includes('wakanow');
+        const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
+        const needsPassport = isWakanowFlight && !isDomesticFlight && isFlight;
+        
+        console.log('👶 Initializing additional passengers with needsPassport:', {
+          needsPassport,
+          isWakanowFlight,
+          isDomesticFlight,
+          adults,
+          children,
+          infants,
+        });
+        
         for (let i = 0; i < adults - 1; i++) {
           initial.push({ 
             firstName: '', lastName: '', email: '', phone: '', 
-            type: 'adult', title: 'mr', gender: 'm', dateOfBirth: '' 
+            type: 'adult', title: 'mr', gender: 'm', dateOfBirth: '',
+            // ✅ Add passport fields if needed
+            ...(needsPassport && {
+              passportNumber: '',
+              passportExpiry: '',
+              passportIssuingAuthority: '',
+              passportIssueCountry: '',
+              address: '',
+              city: '',
+              country: '',
+              countryCode: '',
+              postalCode: '',
+            })
           });
         }
         
         for (let i = 0; i < children; i++) {
           initial.push({ 
             firstName: '', lastName: '', email: '', phone: '', 
-            type: 'child', title: 'miss', gender: 'f', dateOfBirth: '' 
+            type: 'child', title: 'miss', gender: 'f', dateOfBirth: '',
+            // ✅ Add passport fields if needed
+            ...(needsPassport && {
+              passportNumber: '',
+              passportExpiry: '',
+              passportIssuingAuthority: '',
+              passportIssueCountry: '',
+              address: '',
+              city: '',
+              country: '',
+              countryCode: '',
+              postalCode: '',
+            })
           });
         }
         
         for (let i = 0; i < infants; i++) {
           initial.push({ 
             firstName: '', lastName: '', email: '', phone: '', 
-            type: 'infant', title: 'miss', gender: 'f', dateOfBirth: '' 
+            type: 'infant', title: 'miss', gender: 'f', dateOfBirth: '',
+            // ✅ Add passport fields if needed
+            ...(needsPassport && {
+              passportNumber: '',
+              passportExpiry: '',
+              passportIssuingAuthority: '',
+              passportIssueCountry: '',
+              address: '',
+              city: '',
+              country: '',
+              countryCode: '',
+              postalCode: '',
+            })
           });
         }
         
@@ -508,7 +562,7 @@ const isPassportMandatory = isNorthAmerica;
         setAdditionalPassengers([]);
       }
     }
-  }, [searchParams, extBooking]);
+  }, [searchParams, extBooking, actualItem, extendedItem, isFlight, isDomesticByAirport, isDomesticByProduct]);
 
   useEffect(() => {
     if (isHBXHotel && extendedItem?.realData?.rateKey && !extBooking) {
@@ -603,63 +657,6 @@ const isPassportMandatory = isNorthAmerica;
     }
   }, [extendedItem, actualItem]);
 
-
-useEffect(() => {
-  const fetchWakanowPrice = async () => {
-    // Only run for Wakanow flights that have selectData
-    if (!isWakanow || !extendedItem?.selectData) {
-      console.log('⏭️ Skipping Wakanow price fetch - not Wakanow or no selectData');
-      return;
-    }
-    
-    // Skip if we already have the data
-    if (extendedItem._wakanowData?.priceBreakdown) {
-      console.log('✅ Already have Wakanow data, skipping fetch');
-      return;
-    }
-    
-    // Skip if extBooking exists (already created)
-    if (extBooking) {
-      console.log('⏭️ Skipping - extBooking already exists');
-      return;
-    }
-    
-    console.log('🔄 Fetching Wakanow price data on mount...');
-    
-    try {
-      const { selectWakanowFlight } = await import('@/lib/wakanow-api');
-      const result = await selectWakanowFlight(extendedItem.selectData, 'NGN');
-      const responseData = result?.data;
-      
-      if (responseData?.priceBreakdown) {
-        console.log('✅ Fetched Wakanow price data:', responseData.priceBreakdown);
-        
-        // Create updated item with correct prices
-        const updatedItem = {
-          ...extendedItem,
-          _wakanowData: responseData,
-          priceBreakdown: responseData.priceBreakdown,
-          basePrice: responseData.priceBreakdown.basePrice,
-          markupAmount: responseData.priceBreakdown.markupAmount,
-          markupPercentage: responseData.priceBreakdown.markupPercentage,
-          serviceFee: responseData.priceBreakdown.serviceFee,
-          serviceFeePercentage: responseData.priceBreakdown.serviceFeePercentage,
-          taxes: responseData.priceBreakdown.taxes,
-          taxPercentage: responseData.priceBreakdown.taxPercentage,
-          totalAmount: responseData.priceBreakdown.totalAmount,
-          currency: responseData.priceBreakdown.currency,
-        };
-        
-        // Update the item to trigger re-render with correct prices
-        setFixedItem(updatedItem as any);
-      }
-    } catch (error) {
-      console.error('❌ Failed to fetch Wakanow price:', error);
-    }
-  };
-  
-  fetchWakanowPrice();
-}, [isWakanow, extendedItem?.selectData, extendedItem?._wakanowData, extBooking]);
 
   // ==================== PRICE CALCULATION ====================
 let basePrice = 0;
@@ -1019,337 +1016,365 @@ else if (isHotel || isCar) {
     return true;
   };
 
-  // ==================== VALIDATE ALL PASSENGERS ====================
-  const validateAllPassengers = (): boolean => {
-    // ✅ Duffel: Skip passport validation for all passengers
-    const skipPassportValidation = shouldSkipPassport;
-    
-    for (let i = 0; i < additionalPassengers.length; i++) {
-      const p = additionalPassengers[i];
-      const passengerType = p.type || 'adult';
-      const label = `${passengerType.toUpperCase()} #${i + 1}`;
-      
-      if (!p.firstName || !p.firstName.trim()) {
-        alert(`${label}: First name is required.`);
-        return false;
-      }
-      if (!p.lastName || !p.lastName.trim()) {
-        alert(`${label}: Last name is required.`);
-        return false;
-      }
 
-      if (isFlight) {
-        if (!p.title) {
-          alert(`${label}: Title is required.`);
-          return false;
-        }
-        if (!p.gender) {
-          alert(`${label}: Gender is required.`);
-          return false;
-        }
-        if (!p.dateOfBirth) {
-          alert(`${label}: Date of Birth is required.`);
-          return false;
-        }
-        
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(p.dateOfBirth)) {
-          alert(`${label}: Date of birth must be in YYYY-MM-DD format.`);
-          return false;
-        }
+const validateAllPassengers = (): boolean => {
 
-        const dob = new Date(p.dateOfBirth);
-        const today = new Date();
-        const age = today.getFullYear() - dob.getFullYear();
-        if (age < 2) {
-          alert(`${label}: Passenger must be at least 2 years old for flight bookings.`);
-          return false;
-        }
-
-        // ✅ Only Wakanow international flights need passport
-        if (!skipPassportValidation && isWakanow && !isDomesticFlightResult) {
-          if (!p.passportNumber || !p.passportNumber.trim()) {
-            alert(`${label}: Passport number is required for international flights.`);
-            return false;
-          }
-          if (!p.passportExpiry) {
-            alert(`${label}: Passport expiry date is required.`);
-            return false;
-          }
-          if (!p.passportIssuingAuthority || !p.passportIssuingAuthority.trim()) {
-            alert(`${label}: Passport issuing authority is required.`);
-            return false;
-          }
-        }
-
-        // ✅ Only Wakanow passport mandatory destinations
-        if (!skipPassportValidation && isPassportMandatory) {
-          if (!p.passportNumber || !p.passportExpiry || !p.passportIssuingAuthority) {
-            alert(`${label}: Passport details are mandatory for this destination.`);
-            return false;
-          }
-          if (!p.address || !p.city || !p.country || !p.countryCode || !p.postalCode) {
-            alert(`${label}: Address details are required.`);
-            return false;
-          }
-        }
-      }
-    }
-    return true;
-  };
-
-  // ==================== HANDLE COMPLETE BOOKING ====================
-  const handleCompleteBooking = async () => {
-    console.log('🔍🔍🔍 CRITICAL DEBUG - Passport State Values:', {
-      passportNumber: passportNumber || '(empty)',
-      passportExpiry: passportExpiry || '(empty)',
-      passportIssuingAuthority: passportIssuingAuthority || '(empty)',
-      passportIssueCountry: passportIssueCountry || '(empty)',
-      isWakanowFlight: (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW',
-      isNorthAmerica: isNorthAmericanDestination(extendedItem, searchParams),
-    });
+  const skipPassportValidation = shouldSkipPassport;
   
-    if (isBooking || isCreating) return;
-
-    // Validate lead passenger
-    if (!firstName || !lastName || !email || !phone) {
-      alert('All passenger fields are required.');
-      return;
+  for (let i = 0; i < additionalPassengers.length; i++) {
+    const p = additionalPassengers[i];
+    const passengerType = p.type || 'adult';
+    const label = `${passengerType.toUpperCase()} #${i + 1}`;
+    
+    // Basic required fields
+    if (!p.firstName || !p.firstName.trim()) {
+      alert(`${label}: First name is required.`);
+      return false;
+    }
+    if (!p.lastName || !p.lastName.trim()) {
+      alert(`${label}: Last name is required.`);
+      return false;
     }
 
     if (isFlight) {
-      if (!title) {
-        alert('Title is required for flight bookings.');
-        return;
+      if (!p.title) {
+        alert(`${label}: Title is required.`);
+        return false;
       }
-      if (!gender) {
-        alert('Gender is required for flight bookings.');
-        return;
+      if (!p.gender) {
+        alert(`${label}: Gender is required.`);
+        return false;
       }
-      if (!dateOfBirth) {
-        alert('Date of birth is required for flight bookings.');
-        return;
+      if (!p.dateOfBirth) {
+        alert(`${label}: Date of Birth is required.`);
+        return false;
       }
-
+      
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      if (!dateRegex.test(dateOfBirth)) {
-        alert('Date of birth must be in YYYY-MM-DD format.');
-        return;
+      if (!dateRegex.test(p.dateOfBirth)) {
+        alert(`${label}: Date of birth must be in YYYY-MM-DD format.`);
+        return false;
       }
 
-      const dob = new Date(dateOfBirth);
+      const dob = new Date(p.dateOfBirth);
       const today = new Date();
       const age = today.getFullYear() - dob.getFullYear();
       if (age < 2) {
-        alert('Passenger must be at least 2 years old for flight bookings.');
-        return;
-      }
-      
-      if (!shouldSkipPassport && isFlight && isWakanow && isNorthAmericanDestination(extendedItem, searchParams)) {
-        if (!passportNumber || !passportExpiry || !passportIssuingAuthority) {
-          alert('Passport details are required for North American flights on Wakanow.\n\nPlease provide:\n- Passport Number\n- Passport Expiry Date\n- Passport Issuing Authority');
-          return;
-        }
-        
-        const passportRegex = /^[A-Za-z][0-9]{7,8}$|^[A-Za-z0-9]{6,9}$/;
-        if (!passportRegex.test(passportNumber)) {
-          alert('Please enter a valid passport number (e.g., A12345678)');
-          return;
-        }
-        
-        const expiryDate = new Date(passportExpiry);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        if (expiryDate < today) {
-          alert('Your passport has expired. Please renew your passport.');
-          return;
-        }
-        
-        if (!passportIssuingAuthority.trim()) {
-          alert('Passport Issuing Authority is required.');
-          return;
-        }
-      }
-      
-      // ✅ Only Wakanow passport mandatory
-      if (!shouldSkipPassport && isPassportMandatory && !validatePassport()) {
-        return;
+        alert(`${label}: Passenger must be at least 2 years old for flight bookings.`);
+        return false;
       }
 
-      if (displayedTerms.length > 0 && !agreedToTerms) {
-        alert('Please agree to the Terms & Conditions to continue.');
-        return;
+      if (!skipPassportValidation && isWakanow && !isDomesticFlightResult) {
+        if (!p.passportNumber || !p.passportNumber.trim()) {
+          alert(`${label}: Passport number is required for flights to North America.`);
+          return false;
+        }
+        if (!p.passportExpiry) {
+          alert(`${label}: Passport expiry date is required for flights to North America.`);
+          return false;
+        }
+        if (!p.passportIssuingAuthority || !p.passportIssuingAuthority.trim()) {
+          alert(`${label}: Passport issuing authority is required for flights to North America.`);
+          return false;
+        }
       }
+      
     }
+  }
+  return true;
+};
 
-    if (isHotel && !agreedToPolicy) {
-      alert('Please agree to the cancellation policy to continue.');
+// ==================== HANDLE COMPLETE BOOKING ====================
+const handleCompleteBooking = async () => {
+  console.log('🔍🔍🔍 CRITICAL DEBUG - Passport State Values:', {
+    passportNumber: passportNumber || '(empty)',
+    passportExpiry: passportExpiry || '(empty)',
+    passportIssuingAuthority: passportIssuingAuthority || '(empty)',
+    passportIssueCountry: passportIssueCountry || '(empty)',
+    isWakanowFlight: (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW',
+    isNorthAmerica: isNorthAmericanDestination(extendedItem, searchParams),
+    isDomestic: isDomesticByAirport || isDomesticByProduct,
+  });
+
+  if (isBooking || isCreating) return;
+
+  // Validate lead passenger
+  if (!firstName || !lastName || !email || !phone) {
+    alert('All passenger fields are required.');
+    return;
+  }
+
+  if (isFlight) {
+    if (!title) {
+      alert('Title is required for flight bookings.');
+      return;
+    }
+    if (!gender) {
+      alert('Gender is required for flight bookings.');
+      return;
+    }
+    if (!dateOfBirth) {
+      alert('Date of birth is required for flight bookings.');
       return;
     }
 
-    // ✅ Validate all additional passengers
-    if (!validateAllPassengers()) {
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(dateOfBirth)) {
+      alert('Date of birth must be in YYYY-MM-DD format.');
       return;
     }
 
-    setIsBooking(true);
-    try {
-      let passengerInfo: PassengerInfo;
+    const dob = new Date(dateOfBirth);
+    const today = new Date();
+    const age = today.getFullYear() - dob.getFullYear();
+    if (age < 2) {
+      alert('Passenger must be at least 2 years old for flight bookings.');
+      return;
+    }
 
-      if (isHotel || isCar) {
-        passengerInfo = {
-          firstName,
-          lastName,
-          email,
-          phone,
-        };
+    const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+                            (actualItem as any)?.type?.toLowerCase().includes('wakanow');
+    const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
+    const isInternational = isWakanowFlight && !isDomesticFlight;
+    
+    if (!shouldSkipPassport && isFlight && isInternational) {
+      if (!passportNumber || !passportExpiry || !passportIssuingAuthority) {
+        alert('Passport details are required for international flights.\n\nPlease provide:\n- Passport Number\n- Passport Expiry Date\n- Passport Issuing Authority');
+        return;
+      }
+      
+      const passportRegex = /^[A-Za-z][0-9]{7,8}$|^[A-Za-z0-9]{6,9}$/;
+      if (!passportRegex.test(passportNumber)) {
+        alert('Please enter a valid passport number (e.g., A12345678)');
+        return;
+      }
+      
+      const expiryDate = new Date(passportExpiry);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (expiryDate < today) {
+        alert('Your passport has expired. Please renew your passport.');
+        return;
+      }
+      
+      if (!passportIssuingAuthority.trim()) {
+        alert('Passport Issuing Authority is required.');
+        return;
+      }
+    }
 
-      } else {
-        passengerInfo = {
-          firstName,
-          lastName,
-          email,
-          phone,
-          type: 'adult',
-          title: title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr',
-          gender: gender as 'm' | 'f',
-          dateOfBirth,
-          address: passportAddress || "221B Baker Street",
-          city: passportCity || "London",
-          country: passportCountry || "United Kingdom", 
-          countryCode: passportCountryCode || "GB",
-          postalCode: passportPostalCode || "NW1 6XE",
-        };
+    if (displayedTerms.length > 0 && !agreedToTerms) {
+      alert('Please agree to the Terms & Conditions to continue.');
+      return;
+    }
+  }
+
+  if (isHotel && !agreedToPolicy) {
+    alert('Please agree to the cancellation policy to continue.');
+    return;
+  }
+
+  // ✅ Validate all additional passengers
+  if (!validateAllPassengers()) {
+    return;
+  }
+
+  setIsBooking(true);
+  try {
+    let passengerInfo: PassengerInfo;
+
+    if (isHotel || isCar) {
+      passengerInfo = {
+        firstName,
+        lastName,
+        email,
+        phone,
+      };
+    } else {
+      passengerInfo = {
+        firstName,
+        lastName,
+        email,
+        phone,
+        type: 'adult',
+        title: title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr',
+        gender: gender as 'm' | 'f',
+        dateOfBirth,
+        address: passportAddress || "221B Baker Street",
+        city: passportCity || "London",
+        country: passportCountry || "United Kingdom", 
+        countryCode: passportCountryCode || "GB",
+        postalCode: passportPostalCode || "NW1 6XE",
+      };
       
+      const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+                              (actualItem as any)?.type?.toLowerCase().includes('wakanow');
       
-        const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
-                                (actualItem as any)?.type?.toLowerCase().includes('wakanow');
+      const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
+      const needsPassport = isWakanowFlight && !isDomesticFlight;
       
-        console.log('🔍 Passport condition check in handleCompleteBooking:', {
-          isWakanowFlight,
-          isNorthAmerican: isNorthAmericanDestination(extendedItem, searchParams),
-          passportNumber,
-          passportExpiry,
+      console.log('🔍 Passport condition check in handleCompleteBooking:', {
+        isWakanowFlight,
+        isDomesticFlight,
+        needsPassport,
+        passportNumber,
+        passportExpiry,
+        passportIssuingAuthority,
+      });
+      
+      if (needsPassport) {
+        (passengerInfo as any).PassportNumber = passportNumber;
+        (passengerInfo as any).ExpiryDate = passportExpiry;
+        (passengerInfo as any).PassportIssuingAuthority = passportIssuingAuthority;
+        (passengerInfo as any).PassportIssueCountryCode = passportIssueCountry || 'Nigeria';
+        
+        (passengerInfo as any).passportNumber = passportNumber;
+        (passengerInfo as any).passportExpiry = passportExpiry;
+        (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
+        (passengerInfo as any).passportIssueCountry = passportIssueCountry || 'Nigeria';
+        
+        console.log('📄 Adding passport fields to lead passenger:', {
+          PassportNumber: (passengerInfo as any).PassportNumber,
+          ExpiryDate: (passengerInfo as any).ExpiryDate,
+          PassportIssuingAuthority: (passengerInfo as any).PassportIssuingAuthority,
+          PassportIssueCountryCode: (passengerInfo as any).PassportIssueCountryCode,
         });
-      
-        if (isWakanowFlight && isNorthAmericanDestination(extendedItem, searchParams)) {
-          (passengerInfo as any).PassportNumber = passportNumber;
-          (passengerInfo as any).ExpiryDate = passportExpiry;
-          (passengerInfo as any).PassportIssuingAuthority = passportIssuingAuthority;
-          (passengerInfo as any).PassportIssueCountryCode = passportIssueCountry || 'Nigeria';
-          
-          console.log('📄 Adding passport fields to passengerInfo:', {
-            PassportNumber: (passengerInfo as any).PassportNumber,
-            ExpiryDate: (passengerInfo as any).ExpiryDate,
-            PassportIssuingAuthority: (passengerInfo as any).PassportIssuingAuthority,
-            PassportIssueCountryCode: (passengerInfo as any).PassportIssueCountryCode,
-          });
-        } else {
-          console.log('❌ Skipping passport fields:', { 
-            isWakanowFlight, 
-            isNorthAmerican: isNorthAmericanDestination(extendedItem, searchParams) 
-          });
-        }
       }
+    }
+    
+    // ✅ CRITICAL: Attach additional passengers
+    if (additionalPassengers.length > 0) {
+      const isWakanowFlightForTravellers = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+                                           (actualItem as any)?.type?.toLowerCase().includes('wakanow');
+      const isDomesticFlightForTravellers = isDomesticByAirport || isDomesticByProduct;
+      const needsPassportForTraveller = isWakanowFlightForTravellers && !isDomesticFlightForTravellers;
       
-                
-
-
-
- 
-      if (additionalPassengers.length > 0) {
-        const formattedTravellers = additionalPassengers.map((p) => {
-          const traveller: any = {
-            passengerType: p.type === 'child' ? 'Child' : p.type === 'infant' ? 'Infant' : 'Adult',
-            firstName: p.firstName || '',
-            middleName: (p as any).middleName || '',
-            lastName: p.lastName || '',
-            dateOfBirth: p.dateOfBirth || '',
-            phoneNumber: p.phone || phone,
-            email: p.email || email,
-            gender: p.gender || 'Male',
-            title: p.title || 'Mr',
-            address: p.address || passportAddress || '123 Fake Street',
-            country: p.country || passportCountry || 'Nigeria',
-            countryCode: p.countryCode || passportCountryCode || 'NG',
-            city: p.city || passportCity || 'Lagos',
-            postalCode: p.postalCode || passportPostalCode || '100001',
-          };
-          
-         
-          const isWakanowFlightForTravellers = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
-                                               (actualItem as any)?.type?.toLowerCase().includes('wakanow');
-
-          if (isWakanowFlightForTravellers && isNorthAmerica) {
-            traveller.PassportNumber = p.passportNumber || '';
-            traveller.ExpiryDate = p.passportExpiry || '';
-            traveller.PassportIssuingAuthority = p.passportIssuingAuthority || '';
-            traveller.PassportIssueCountryCode = p.passportIssueCountry || '';
+      // Build formatted travellers
+      const travellers = additionalPassengers.map((p) => {
+        let passengerType = 'Adult';
+        const typeLower = (p.type || 'adult').toLowerCase();
+        if (typeLower === 'child') {
+          passengerType = 'Child';
+        } else if (typeLower === 'infant') {
+          passengerType = 'Infant';
+        }
+        
+        let dateOfBirth = p.dateOfBirth || '';
+        if (!dateOfBirth) {
+          const today = new Date();
+          let yearOffset = 0;
+          if (passengerType === 'Child') {
+            yearOffset = 8;
+          } else if (passengerType === 'Infant') {
+            yearOffset = 1;
           }
-          
-          return traveller;
-        });
+          if (yearOffset > 0) {
+            const defaultDate = new Date(today);
+            defaultDate.setFullYear(today.getFullYear() - yearOffset);
+            defaultDate.setMonth(6);
+            defaultDate.setDate(15);
+            dateOfBirth = defaultDate.toISOString().split('T')[0];
+          }
+        }
         
-        (passengerInfo as any).travellers = formattedTravellers;
-      } 
-
-     
-      if (isFlight && displayedTerms.length > 0) {
-        (passengerInfo as any).policyAccepted = agreedToTerms;
-        (passengerInfo as any).policyAcceptedAt = new Date().toISOString();
-      }
-      let hbxMetadata: any = undefined;
-      if (isHBXHotel && hbxQuote) {
-        const quoteData = hbxQuote?.data?.data || hbxQuote?.data;
-        const firstOfferData = quoteData?.offers?.[0];
-        hbxMetadata = {
-          totalAmount: totalDue,
-          currency: (firstOfferData?.price?.currency || actualItem.currency || 'GBP').toUpperCase(),
-          cancellationPolicySnapshot: "Standard policy",
-          cancellationDeadline: firstOfferData?.policies?.cancellations?.[0]?.deadline || new Date().toISOString(),
-          policyAccepted: true
+        const traveller: any = {
+          PassengerType: passengerType,
+          FirstName: p.firstName || '',
+          LastName: p.lastName || '',
+          DateOfBirth: dateOfBirth,
+          PhoneNumber: p.phone || phone,
+          Email: p.email || email,
+          Gender: p.gender === 'f' ? 'Female' : 'Male',
+          Title: p.title || 'Mr',
+          Address: p.address || passportAddress || '123 Fake Street',
+          Country: p.country || passportCountry || 'Nigeria',
+          CountryCode: p.countryCode || passportCountryCode || 'NG',
+          City: p.city || passportCity || 'Lagos',
+          PostalCode: p.postalCode || passportPostalCode || '100001',
         };
-      }
-
-      if (isHBXHotel && additionalPassengers.length > 0) {
-        (passengerInfo as any).guests = [
-          {
-            name: { firstName, lastName, title: (title || 'mr').toUpperCase() },
-            travelerId: 1
-          },
-          ...additionalPassengers.map((g, idx) => ({
-            name: { firstName: g.firstName, lastName: g.lastName, title: (g.title || 'mr').toUpperCase() },
-            travelerId: idx + 2
-          }))
-        ];
-      }
-
-      console.log('👥 Sending to payment with passengers:', {
-        provider: isDuffel ? 'DUFFEL' : isWakanow ? 'WAKANOW' : 'OTHER',
-        lead: `${firstName} ${lastName}`,
-        additionalCount: (passengerInfo as any).travellers?.length || 0,
-        total: 1 + ((passengerInfo as any).travellers?.length || 0),
+        
+        if (needsPassportForTraveller) {
+          traveller.PassportNumber = p.passportNumber || '';
+          traveller.ExpiryDate = p.passportExpiry || '';
+          traveller.PassportIssuingAuthority = p.passportIssuingAuthority || '';
+          traveller.PassportIssueCountryCode = p.passportIssueCountry || 'NG';
+          
+          traveller.passportNumber = p.passportNumber || '';
+          traveller.passportExpiry = p.passportExpiry || '';
+          traveller.passportIssuingAuthority = p.passportIssuingAuthority || '';
+          traveller.passportIssueCountry = p.passportIssueCountry || 'NG';
+        }
+        
+        return traveller;
       });
-      console.log('🛫 FINAL passengerInfo BEFORE sending to onProceedToPayment:', {
-        passengerInfo,
-        PassportNumber: (passengerInfo as any).PassportNumber,
-        ExpiryDate: (passengerInfo as any).ExpiryDate,
-        PassportIssuingAuthority: (passengerInfo as any).PassportIssuingAuthority,
-        PassportIssueCountryCode: (passengerInfo as any).PassportIssueCountryCode,
+      
+      // ✅ Attach both arrays to passengerInfo
+      (passengerInfo as any).additionalPassengers = additionalPassengers;
+      (passengerInfo as any).travellers = travellers;
+      
+      console.log('👤 Attached additional passengers:', {
+        additionalCount: additionalPassengers.length,
+        travellersCount: travellers.length,
       });
-
-      await onProceedToPayment(
-        passengerInfo,
-        voucherApplied?.valid ? voucherCode.trim() : undefined,
-        hbxMetadata
-      );
-    } catch (error: any) {
-      console.error('Booking preparation error:', error);
-      alert('Failed to prepare booking. Please try again.');
-    } finally {
-      setIsBooking(false);
     }
-  };
+
+    if (isFlight && displayedTerms.length > 0) {
+      (passengerInfo as any).policyAccepted = agreedToTerms;
+      (passengerInfo as any).policyAcceptedAt = new Date().toISOString();
+    }
+    
+    let hbxMetadata: any = undefined;
+    if (isHBXHotel && hbxQuote) {
+      const quoteData = hbxQuote?.data?.data || hbxQuote?.data;
+      const firstOfferData = quoteData?.offers?.[0];
+      hbxMetadata = {
+        totalAmount: totalDue,
+        currency: (firstOfferData?.price?.currency || actualItem.currency || 'GBP').toUpperCase(),
+        cancellationPolicySnapshot: "Standard policy",
+        cancellationDeadline: firstOfferData?.policies?.cancellations?.[0]?.deadline || new Date().toISOString(),
+        policyAccepted: true
+      };
+    }
+
+    if (isHBXHotel && additionalPassengers.length > 0) {
+      (passengerInfo as any).guests = [
+        {
+          name: { firstName, lastName, title: (title || 'mr').toUpperCase() },
+          travelerId: 1
+        },
+        ...additionalPassengers.map((g, idx) => ({
+          name: { firstName: g.firstName, lastName: g.lastName, title: (g.title || 'mr').toUpperCase() },
+          travelerId: idx + 2
+        }))
+      ];
+    }
+
+    console.log('👥 Sending to payment with passengers:', {
+      provider: isDuffel ? 'DUFFEL' : isWakanow ? 'WAKANOW' : 'OTHER',
+      lead: `${firstName} ${lastName}`,
+      additionalCount: (passengerInfo as any).additionalPassengers?.length || 0,
+      travellersCount: (passengerInfo as any).travellers?.length || 0,
+    });
+    console.log('🛫 FINAL passengerInfo BEFORE sending to onProceedToPayment:', {
+      passengerInfo,
+      hasAdditionalPassengers: !!(passengerInfo as any).additionalPassengers?.length,
+      hasTravellers: !!(passengerInfo as any).travellers?.length,
+      travellersCount: (passengerInfo as any).travellers?.length || 0,
+      PassportNumber: (passengerInfo as any).PassportNumber,
+    });
+
+    await onProceedToPayment(
+      passengerInfo,
+      voucherApplied?.valid ? voucherCode.trim() : undefined,
+      hbxMetadata
+    );
+  } catch (error: any) {
+    console.error('Booking preparation error:', error);
+    alert('Failed to prepare booking. Please try again.');
+  } finally {
+    setIsBooking(false);
+  }
+};
 
   const inputCls = 'w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/30 focus:border-[#33a8da] transition-all text-sm font-medium text-gray-900 placeholder-gray-400';
   const bookingReference = extBooking?.reference;
@@ -1378,11 +1403,11 @@ else if (isHotel || isCar) {
           </svg>
           Back to Selection
         </button>
-
+  
         <h1 className="text-3xl font-bold text-gray-900 mb-8">
           {extBooking ? 'Complete your payment' : 'Complete your booking'}
         </h1>
-
+  
         <div className="mb-6 p-3 bg-blue-50 border border-blue-100 rounded-lg">
           <p className="text-xs text-blue-700 flex items-center gap-2">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1391,62 +1416,60 @@ else if (isHotel || isCar) {
             Prices displayed in {currency.code} ({currency.symbol}) using live exchange rates
           </p>
         </div>
-
+  
         {/* ✅ ADD CUSTOM MESSAGES HERE - RIGHT AFTER PRICE DISCLAIMER */}
-{isWakanow && extendedItem?.custom_messages && extendedItem.custom_messages.length > 0 && (
-  <div className="space-y-3 mb-6">
-    {extendedItem.custom_messages.map((msg: { Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }, index: number) => {
-      const severityColors = {
-        High: 'bg-red-50 border-red-200 text-red-800',
-        Medium: 'bg-yellow-50 border-yellow-200 text-yellow-800',
-        Low: 'bg-blue-50 border-blue-200 text-blue-800',
-      };
-      const iconColors = {
-        High: 'text-red-500',
-        Medium: 'text-yellow-500',
-        Low: 'text-blue-500',
-      };
-      
-      return (
-        <div 
-          key={index} 
-          className={`p-4 rounded-xl border ${severityColors[msg.SeverityLevel as keyof typeof severityColors] || severityColors.Medium}`}
-        >
-          <div className="flex items-start gap-3">
-            <svg 
-              className={`w-5 h-5 flex-shrink-0 mt-0.5 ${iconColors[msg.SeverityLevel as keyof typeof iconColors] || iconColors.Medium}`} 
-              fill="none" 
-              viewBox="0 0 24 24" 
-              stroke="currentColor"
-            >
-              {msg.SeverityLevel === 'High' ? (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              )}
-            </svg>
-            <div className="flex-1">
-              <p className={`font-semibold text-sm ${
-                msg.SeverityLevel === 'High' ? 'text-red-800' : 
-                msg.SeverityLevel === 'Medium' ? 'text-yellow-800' : 
-                'text-blue-800'
-              }`}>
-                {msg.Title}
-              </p>
-              <p 
-                className="text-sm mt-0.5"
-                dangerouslySetInnerHTML={{ __html: msg.Message }}
-              />
-            </div>
+        {isWakanow && extendedItem?.custom_messages && extendedItem.custom_messages.length > 0 && (
+          <div className="space-y-3 mb-6">
+            {extendedItem.custom_messages.map((msg: { Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }, index: number) => {
+              const severityColors = {
+                High: 'bg-red-50 border-red-200 text-red-800',
+                Medium: 'bg-yellow-50 border-yellow-200 text-yellow-800',
+                Low: 'bg-blue-50 border-blue-200 text-blue-800',
+              };
+              const iconColors = {
+                High: 'text-red-500',
+                Medium: 'text-yellow-500',
+                Low: 'text-blue-500',
+              };
+              
+              return (
+                <div 
+                  key={index} 
+                  className={`p-4 rounded-xl border ${severityColors[msg.SeverityLevel as keyof typeof severityColors] || severityColors.Medium}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <svg 
+                      className={`w-5 h-5 flex-shrink-0 mt-0.5 ${iconColors[msg.SeverityLevel as keyof typeof iconColors] || iconColors.Medium}`} 
+                      fill="none" 
+                      viewBox="0 0 24 24" 
+                      stroke="currentColor"
+                    >
+                      {msg.SeverityLevel === 'High' ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      )}
+                    </svg>
+                    <div className="flex-1">
+                      <p className={`font-semibold text-sm ${
+                        msg.SeverityLevel === 'High' ? 'text-red-800' : 
+                        msg.SeverityLevel === 'Medium' ? 'text-yellow-800' : 
+                        'text-blue-800'
+                      }`}>
+                        {msg.Title}
+                      </p>
+                      <p 
+                        className="text-sm mt-0.5"
+                        dangerouslySetInnerHTML={{ __html: msg.Message }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
-      );
-    })}
-  </div>
-)}
-
-        
-
+        )}
+  
         {isPassportMandatory && !extBooking && !shouldSkipPassport && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-start gap-3">
@@ -1463,7 +1486,7 @@ else if (isHotel || isCar) {
             </div>
           </div>
         )}
-
+  
         {passportRequired && isLoggedIn && isPassportIncomplete && !extBooking && !requiresPassport && !shouldSkipPassport && (
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
             <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1489,7 +1512,7 @@ else if (isHotel || isCar) {
             </div>
           </div>
         )}
-
+  
         {bookingReference && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
             <p className="text-sm text-blue-800">
@@ -1497,7 +1520,7 @@ else if (isHotel || isCar) {
             </p>
           </div>
         )}
-
+  
         <div className="flex flex-col lg:flex-row gap-8">
           <div className="flex-1 space-y-6">
             {/* ========== YOUR DETAILS ========== */}
@@ -1510,7 +1533,7 @@ else if (isHotel || isCar) {
                   </span>
                 )}
               </div>
-
+  
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {isFlight && (
                   <div>
@@ -1533,7 +1556,7 @@ else if (isHotel || isCar) {
                     </select>
                   </div>
                 )}
-
+  
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
                     First name <span className="text-red-500">*</span>
@@ -1547,7 +1570,7 @@ else if (isHotel || isCar) {
                     required
                   />
                 </div>
-
+  
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
                     Last name <span className="text-red-500">*</span>
@@ -1561,7 +1584,7 @@ else if (isHotel || isCar) {
                     required
                   />
                 </div>
-
+  
                 {isFlight && (
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -1580,7 +1603,7 @@ else if (isHotel || isCar) {
                     </select>
                   </div>
                 )}
-
+  
                 {isFlight && (
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -1596,7 +1619,7 @@ else if (isHotel || isCar) {
                     />
                   </div>
                 )}
-
+  
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
                     Email <span className="text-red-500">*</span>
@@ -1610,7 +1633,7 @@ else if (isHotel || isCar) {
                     required
                   />
                 </div>
-
+  
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
                     Phone <span className="text-red-500">*</span>
@@ -1626,13 +1649,15 @@ else if (isHotel || isCar) {
                 </div>
               </div>
             </div>
-
-            {/* ========== PASSPORT FIELDS - WAKANOW ONLY ========== */}
-            {isFlight && isWakanow && isNorthAmerica && !extBooking && !shouldSkipPassport && (
-  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-    <h3 className="text-md font-semibold text-gray-900 mb-3">Passport Details <span className="text-red-500">*</span></h3>
-    <p className="text-sm text-gray-500 mb-4">
-      Passport details are required for North American flights on Wakanow.
+  
+            {/* ========== PASSPORT FIELDS - WAKANOW INTERNATIONAL FLIGHTS ========== */}
+            {isFlight && isWakanow && !isDomesticFlightResult && !extBooking && !shouldSkipPassport && (
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                <h3 className="text-md font-semibold text-gray-900 mb-3">
+                  Passport Details <span className="text-red-500">*</span>
+                </h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Passport details are required for international flights.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -1688,7 +1713,7 @@ else if (isHotel || isCar) {
                 </div>
               </div>
             )}
-
+  
             {/* ✅ DUFFEL: Show message that passport not required */}
             {isDuffel && isFlight && !extBooking && (
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-green-100">
@@ -1698,7 +1723,7 @@ else if (isHotel || isCar) {
                 </p>
               </div>
             )}
-
+  
             {/* ========== ADDITIONAL PASSENGERS ========== */}
             {additionalPassengers.length > 0 && (
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
@@ -1709,6 +1734,9 @@ else if (isHotel || isCar) {
                 {additionalPassengers.map((p, index) => {
                   const passengerType = p.type || 'adult';
                   const label = `${passengerType.toUpperCase()} #${index + 1}`;
+                  
+                  // ✅ Check if passport is required for this passenger
+                  const showPassport = isFlight && isWakanow && !isDomesticFlightResult && !shouldSkipPassport;
                   
                   return (
                     <div key={index} className="border border-gray-200 rounded-xl p-4 mb-4 last:mb-0">
@@ -1809,12 +1837,90 @@ else if (isHotel || isCar) {
                           </>
                         )}
                       </div>
+  
+                      {/* ✅ PASSPORT FIELDS FOR ADDITIONAL PASSENGERS */}
+                      {showPassport && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <h5 className="text-sm font-semibold text-gray-700 mb-3">
+                            Passport Details for {p.firstName || 'Passenger'}
+                            <span className="text-red-500 ml-1">*</span>
+                          </h5>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Passport Number <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={p.passportNumber || ''}
+                                onChange={(e) => {
+                                  const updated = [...additionalPassengers];
+                                  updated[index].passportNumber = e.target.value;
+                                  setAdditionalPassengers(updated);
+                                }}
+                                className={inputCls}
+                                placeholder="A12345678"
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Passport Expiry <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="date"
+                                value={p.passportExpiry || ''}
+                                onChange={(e) => {
+                                  const updated = [...additionalPassengers];
+                                  updated[index].passportExpiry = e.target.value;
+                                  setAdditionalPassengers(updated);
+                                }}
+                                className={inputCls}
+                                required
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Passport Issuing Authority <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={p.passportIssuingAuthority || ''}
+                                onChange={(e) => {
+                                  const updated = [...additionalPassengers];
+                                  updated[index].passportIssuingAuthority = e.target.value;
+                                  setAdditionalPassengers(updated);
+                                }}
+                                className={inputCls}
+                                placeholder="e.g., Nigerian Immigration Service"
+                                required
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Passport Issue Country
+                              </label>
+                              <input
+                                type="text"
+                                value={p.passportIssueCountry || ''}
+                                onChange={(e) => {
+                                  const updated = [...additionalPassengers];
+                                  updated[index].passportIssueCountry = e.target.value;
+                                  setAdditionalPassengers(updated);
+                                }}
+                                className={inputCls}
+                                placeholder="Nigeria"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             )}
-
+  
             {/* ========== TRIP SUMMARY ========== */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Trip summary</h2>
@@ -1833,55 +1939,57 @@ else if (isHotel || isCar) {
                   <p className="text-sm text-gray-500">{actualItem.subtitle}</p>
                   <p className="text-xs text-gray-400 mt-1">{actualItem.provider}</p>
                 </div>
+  
+
               </div>
-
+  
               {isHotel && (
-  <div className="mt-6 pt-6 border-t border-gray-100">
-    <h3 className="text-md font-semibold text-gray-900 mb-3">Cancellation Policy</h3>
-    <div className="space-y-3">
-      {/* ✅ DISPLAY THE ACTUAL CANCELLATION POLICY FROM THE ITEM */}
-      {(actualItem as any)?.cancellationPolicy ? (
-        <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-          <p className="text-sm text-gray-700 leading-relaxed">
-            {(actualItem as any).cancellationPolicy}
-          </p>
-        </div>
-      ) : (
-        <p className="text-sm text-gray-600">Please review the cancellation policy carefully.</p>
-      )}
-      
-      {/* ✅ SHOW ALL POLICIES IF AVAILABLE */}
-      {(actualItem as any)?.policies && (actualItem as any).policies.length > 0 && (
-        <div className="mt-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
-          <p className="text-xs font-semibold text-blue-800 mb-2">Additional Policies:</p>
-          <ul className="space-y-1">
-            {(actualItem as any).policies.map((policy: any, idx: number) => (
-              <li key={idx} className="text-xs text-blue-700">
-                • {policy.type?.replace(/_/g, ' ')}: {policy.text}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      
-      <div className="flex items-start gap-2 mt-4 p-3 bg-gray-50 rounded-lg">
-        <input
-          type="checkbox"
-          id="cancellationPolicy"
-          checked={agreedToPolicy}
-          onChange={(e) => setAgreedToPolicy(e.target.checked)}
-          className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
-          required
-          disabled={!!extBooking}
-        />
-        <label htmlFor="cancellationPolicy" className="text-sm text-gray-700">
-          I have read and agree to the cancellation policy.
-        </label>
-      </div>
-    </div>
-  </div>
-)}
-
+                <div className="mt-6 pt-6 border-t border-gray-100">
+                  <h3 className="text-md font-semibold text-gray-900 mb-3">Cancellation Policy</h3>
+                  <div className="space-y-3">
+                    {/* ✅ DISPLAY THE ACTUAL CANCELLATION POLICY FROM THE ITEM */}
+                    {(actualItem as any)?.cancellationPolicy ? (
+                      <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                        <p className="text-sm text-gray-700 leading-relaxed">
+                          {(actualItem as any).cancellationPolicy}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-600">Please review the cancellation policy carefully.</p>
+                    )}
+                    
+                    {/* ✅ SHOW ALL POLICIES IF AVAILABLE */}
+                    {(actualItem as any)?.policies && (actualItem as any).policies.length > 0 && (
+                      <div className="mt-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                        <p className="text-xs font-semibold text-blue-800 mb-2">Additional Policies:</p>
+                        <ul className="space-y-1">
+                          {(actualItem as any).policies.map((policy: any, idx: number) => (
+                            <li key={idx} className="text-xs text-blue-700">
+                              • {policy.type?.replace(/_/g, ' ')}: {policy.text}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-start gap-2 mt-4 p-3 bg-gray-50 rounded-lg">
+                      <input
+                        type="checkbox"
+                        id="cancellationPolicy"
+                        checked={agreedToPolicy}
+                        onChange={(e) => setAgreedToPolicy(e.target.checked)}
+                        className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
+                        required
+                        disabled={!!extBooking}
+                      />
+                      <label htmlFor="cancellationPolicy" className="text-sm text-gray-700">
+                        I have read and agree to the cancellation policy.
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
+  
               {displayedTerms.length > 0 && !extBooking && isFlight && (
                 <div className="mt-6 pt-6 border-t border-gray-100">
                   <h3 className="text-md font-semibold text-gray-900 mb-3">Terms & Conditions</h3>
@@ -1899,55 +2007,54 @@ else if (isHotel || isCar) {
               )}
             </div>
           </div>
-
+  
           {/* ========== PRICE SIDEBAR ========== */}
           <aside className="w-full lg:w-[380px]">
             <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-24 border border-gray-100">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Price details</h3>
-
+  
               <div className="mb-4 text-xs text-gray-500 flex items-center gap-1">
                 <span> All prices in {currency.code} ({currency.symbol})</span>
               </div>
-
+  
               <div className="space-y-3 mb-6">
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-medium text-gray-500">Base Fare</span>
                   <span className="text-sm font-semibold text-gray-900">{displayBasePrice}</span>
                 </div>
-
+  
                 {isFlight && combinedTaxes > 0 && (
                   <div className="flex justify-between items-center pt-1 border-t border-gray-100">
                     <span className="text-xs font-medium text-gray-500">Taxes</span>
                     <span className="text-sm font-semibold text-gray-900">{displayCombinedTaxes}</span>
                   </div>
                 )}
-
+  
                 {isHotel && serviceFee > 0 && (
                   <div className="flex justify-between items-center pt-1 border-t border-gray-100">
                     <span className="text-xs font-medium text-gray-500">Service Fee</span>
                     <span className="text-sm font-semibold text-gray-900">{displayServiceFee}</span>
                   </div>
                 )}
-
+  
                 {appliedPromo && (
                   <div className="flex justify-between items-center text-xs font-bold text-green-600 pt-1">
                     <span>Discount ({appliedPromo.code})</span>
                     <span>- {formattedDiscountedTotal}</span>
                   </div>
                 )}
-
+  
                 <div className="flex justify-between items-center pt-3 border-t border-gray-100">
                   <span className="text-sm font-bold text-gray-900">Total Fare</span>
                   <span className="text-xl font-black text-[#33a8da]">{displayTotalDue}</span>
                 </div>
-
+  
                 {breakdownDescription && (
                   <div className="mt-2 text-[10px] text-gray-400 border-t border-gray-50 pt-2 text-center">
-                   
                   </div>
                 )}
               </div>
-
+  
               {!extBooking && (
                 <div className="pt-3 border-t border-gray-100">
                   <label className="block text-xs font-medium text-gray-500 mb-2">Voucher code</label>
@@ -1976,7 +2083,7 @@ else if (isHotel || isCar) {
                   )}
                 </div>
               )}
-
+  
               {displayedTerms.length > 0 && !extBooking && isFlight && (
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-xl">
@@ -1995,16 +2102,16 @@ else if (isHotel || isCar) {
                   </div>
                 </div>
               )}
-
-              <button
-                onClick={handleCompleteBooking}
-                disabled={
-                  isBooking || isCreating ||
-                  (isHotel && !agreedToPolicy) ||
-                  (isFlight && displayedTerms.length > 0 && !agreedToTerms) ||
-                  (passportRequired && isLoggedIn && isPassportIncomplete && !shouldSkipPassport) ||
-                  isCheckingPassport
-                }
+  
+  <button
+  onClick={handleCompleteBooking}
+  disabled={
+    isBooking || isCreating ||
+    (isHotel && !agreedToPolicy) ||
+    (isFlight && displayedTerms.length > 0 && !agreedToTerms) ||
+    (passportRequired && isLoggedIn && isPassportIncomplete && !shouldSkipPassport) ||
+    isCheckingPassport
+  }
                 className="w-full bg-[#33a8da] text-white font-medium py-3 rounded-xl hover:bg-[#2c98c7] transition disabled:opacity-50 mt-4"
               >
                 {isCheckingPassport ? 'Checking passport...' :
@@ -2012,7 +2119,7 @@ else if (isHotel || isCar) {
                     isBooking ? 'Please wait...' :
                       extBooking ? 'Proceed to Payment' : 'Continue to payment'}
               </button>
-
+  
               <p className="mt-4 text-xs text-gray-400 text-center flex items-center justify-center gap-1">
                 <svg className="w-3 h-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001z" clipRule="evenodd" />
@@ -2025,6 +2132,6 @@ else if (isHotel || isCar) {
       </div>
     </div>
   );
-};
-
-export default ReviewTrip;
+  };
+  
+  export default ReviewTrip;
