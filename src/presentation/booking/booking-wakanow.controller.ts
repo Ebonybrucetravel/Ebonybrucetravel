@@ -791,6 +791,55 @@ export class BookingWakanowController {
     }
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN', 'SUPER_ADMIN')
+@Get('wallet-balance')
+@ApiBearerAuth()
+@ApiOperation({
+  summary: 'Get Wakanow wallet balance (Admin only)',
+  description: 'Returns the current Wakanow wallet balance for admin users.',
+})
+@ApiResponse({ status: 200, description: 'Wallet balance retrieved successfully' })
+@ApiResponse({ status: 401, description: 'Unauthorized' })
+@ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
+async getWalletBalance() {
+  this.logger.log('Getting Wakanow wallet balance...');
+  
+  try {
+    const result = await this.wakanowService.getWalletBalance();
+    
+    this.logger.log(`✅ Wallet balance retrieved: ${result.Result?.Balance || 0} ${result.Result?.Currency || 'NGN'}`);
+    
+    return {
+      success: true,
+      data: {
+        balance: result.Result?.Balance || 0,
+        currency: result.Result?.Currency || 'NGN',
+        hasResult: result.HasResult || false,
+        successful: result.Successful || false,
+        message: result.Message || 'Wallet balance retrieved successfully',
+      },
+      message: 'Wallet balance retrieved successfully',
+    };
+  } catch (error: any) {
+    this.logger.error(`Wallet balance fetch failed: ${error.message}`);
+    
+    if (error instanceof HttpException) {
+      throw error;
+    }
+    
+    throw new HttpException(
+      {
+        success: false,
+        message: 'Failed to fetch wallet balance',
+        error: 'Wallet balance fetch failed',
+        details: process.env.NODE_ENV === 'development' ? error?.message : undefined,
+      },
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
+  }
+}
+
   @Public()
 @Get('seats/:localBookingId')
 @ApiOperation({
@@ -942,52 +991,5 @@ async healthCheck() {
   }
 }
 
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'SUPER_ADMIN')
-@Get('wallet-balance')
-@ApiBearerAuth()
-@ApiOperation({
-  summary: 'Get Wakanow wallet balance (Admin only)',
-  description: 'Returns the current Wakanow wallet balance for admin users.',
-})
-@ApiResponse({ status: 200, description: 'Wallet balance retrieved successfully' })
-@ApiResponse({ status: 401, description: 'Unauthorized' })
-@ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
-async getWalletBalance() {
-  this.logger.log('Getting Wakanow wallet balance...');
-  
-  try {
-    const result = await this.wakanowService.getWalletBalance();
-    
-    this.logger.log(`✅ Wallet balance retrieved: ${result.Result?.Balance || 0} ${result.Result?.Currency || 'NGN'}`);
-    
-    return {
-      success: true,
-      data: {
-        balance: result.Result?.Balance || 0,
-        currency: result.Result?.Currency || 'NGN',
-        hasResult: result.HasResult || false,
-        successful: result.Successful || false,
-        message: result.Message || 'Wallet balance retrieved successfully',
-      },
-      message: 'Wallet balance retrieved successfully',
-    };
-  } catch (error: any) {
-    this.logger.error(`Wallet balance fetch failed: ${error.message}`);
-    
-    if (error instanceof HttpException) {
-      throw error;
-    }
-    
-    throw new HttpException(
-      {
-        success: false,
-        message: 'Failed to fetch wallet balance',
-        error: 'Wallet balance fetch failed',
-        details: process.env.NODE_ENV === 'development' ? error?.message : undefined,
-      },
-      HttpStatus.INTERNAL_SERVER_ERROR,
-    );
-  }
-}
+
 } 
