@@ -231,6 +231,13 @@ export class BookWakanowFlightGuestUseCase {
       isGuest: true,
       guestEmail: email,
       guestUserId: guestUser.id,
+      // Ensure PNR is at the top level
+      pnrNumber: result.pnr_reference || result.bookingData?.pnrReferenceNumber,
+      // Ensure bookingData has pnrReferenceNumber
+      bookingData: {
+        ...result.bookingData,
+        pnrReferenceNumber: result.pnr_reference || result.bookingData?.pnrReferenceNumber,
+      },
       message: 'Guest booking created. Please complete payment to confirm your flight.',
       requiresPayment: true,
       paymentUrl: `/api/v1/payments/initiate?bookingId=${result.id}`,

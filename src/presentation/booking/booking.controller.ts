@@ -385,85 +385,54 @@ export class BookingController {
     }
   }
 
-  @Public()
-  @Get('public/by-reference/:reference')
-  @ApiOperation({
-    summary: 'Get booking by reference (public)',
-    description:
-      'For success page or email links. No auth required. Requires both reference and email for verification.',
-  })
-  @ApiQuery({ name: 'email', required: true, description: 'Lead guest or booking owner email' })
-  @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
-  @ApiResponse({ status: 404, description: 'Booking not found' })
-  async getByReferencePublic(
-    @Param('reference') reference: string,
-    @Query('email') email: string,
-  ) {
-    if (!email?.trim()) {
-      throw new BadRequestException('Query parameter email is required');
-    }
-    const booking = await this.bookingService.getBookingByReference(reference);
-    if (!booking) {
-      throw new NotFoundException('Booking not found');
-    }
-    const bookingWithUser = await this.prisma.booking.findUnique({
-      where: { id: booking.id, deletedAt: null },
-      include: { user: { select: { email: true } } },
-    });
-    if (
-      !bookingWithUser ||
-      (bookingWithUser.user?.email ?? '').toLowerCase() !== email.trim().toLowerCase()
-    ) {
-      throw new NotFoundException('Booking not found');
-    }
-    return {
-      success: true,
-      data: booking,
-      message: 'Booking retrieved successfully',
-    };
-  }
 
   @Public()
-  @Get('public/by-id/:bookingId')
-  @ApiOperation({
-    summary: 'Get booking by ID (guest – reference + email required)',
-    description:
-      'For guest checkout success page when you have booking id. No auth. Provide reference and email to verify access.',
-  })
-  @ApiQuery({ name: 'reference', required: true, description: 'Booking reference' })
-  @ApiQuery({ name: 'email', required: true, description: 'Lead guest email' })
-  @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
-  @ApiResponse({ status: 404, description: 'Booking not found or invalid reference/email' })
-  async getByIdPublic(
-    @Param('bookingId') bookingId: string,
-    @Query('reference') reference: string,
-    @Query('email') email: string,
-  ) {
-    if (!reference?.trim() || !email?.trim()) {
-      throw new BadRequestException('Query parameters reference and email are required');
-    }
-    const bookingWithUser = await this.prisma.booking.findUnique({
-      where: { id: bookingId, deletedAt: null },
-      include: { user: { select: { email: true } } },
-    });
-    if (
-      !bookingWithUser ||
-      bookingWithUser.reference !== reference.trim() ||
-      (bookingWithUser.user?.email ?? '').toLowerCase() !== email.trim().toLowerCase()
-    ) {
-      throw new NotFoundException('Booking not found');
-    }
-    const booking = await this.bookingService.getBookingById(bookingId);
-    if (!booking) {
-      throw new NotFoundException('Booking not found');
-    }
-    return {
-      success: true,
-      data: booking,
-      message: 'Booking retrieved successfully',
-    };
+@Get('public/by-reference/:reference')
+@ApiOperation({
+  summary: 'Get booking by reference (public)',
+  description:
+    'For success page or email links. No auth required. Requires both reference and email for verification.',
+})
+@ApiQuery({ name: 'email', required: true, description: 'Lead guest or booking owner email' })
+@ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
+@ApiResponse({ status: 404, description: 'Booking not found' })
+async getByReferencePublic(
+  @Param('reference') reference: string,
+  @Query('email') email: string,
+) {
+  if (!email?.trim()) {
+    throw new BadRequestException('Query parameter email is required');
   }
-
+  
+  // ✅ FETCH WITH FULL DATA INCLUDING BOOKINGDATA
+  const bookingWithUser = await this.prisma.booking.findUnique({
+    where: { reference, deletedAt: null },
+    include: { user: { select: { email: true } } },
+  });
+  
+  if (!bookingWithUser) {
+    throw new NotFoundException('Booking not found');
+  }
+  
+  if (
+    (bookingWithUser.user?.email ?? '').toLowerCase() !== email.trim().toLowerCase()
+  ) {
+    throw new NotFoundException('Booking not found');
+  }
+  
+  // ✅ Get the full booking
+  const booking = await this.bookingService.getBookingById(bookingWithUser.id);
+  
+  return {
+    success: true,
+    data: {
+      ...booking,
+      bookingData: bookingWithUser.bookingData,   // ✅ ADD THIS
+      providerData: bookingWithUser.providerData, // ✅ ADD THIS
+    },
+    message: 'Booking retrieved successfully',
+  };
+}
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth()
