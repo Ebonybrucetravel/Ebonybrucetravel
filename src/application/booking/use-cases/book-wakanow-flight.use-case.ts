@@ -407,8 +407,6 @@ export class BookWakanowFlightUseCase {
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
     const random = Math.floor(100000 + Math.random() * 900000);
     const reference = `EBT-${dateStr}-${random}`;
-  
-    // ✅ Ensure passengerInfo has email properly formatted
     const formattedPassengers = passengers.map((p: any) => ({
       firstName: p.firstName || p.given_name || 'Guest',
       lastName: p.lastName || p.family_name || 'User',

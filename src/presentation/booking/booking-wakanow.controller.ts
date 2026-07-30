@@ -815,7 +815,6 @@ async getSeatData(
   }
 
   try {
-    // ✅ FETCH THE BOOKING
     const booking = await this.bookingService.getBookingById(localBookingId);
     
     if (!booking) {
@@ -829,7 +828,6 @@ async getSeatData(
       );
     }
 
-    // ✅ CHECK AUTHORIZATION
     const userId = req?.user?.id;
     const isAuthorized = userId === booking.userId || 
                          (email && booking.passengerInfo?.email === email);
@@ -844,8 +842,6 @@ async getSeatData(
         HttpStatus.UNAUTHORIZED,
       );
     }
-
-    // ✅ GET PROVIDER DATA
     const providerData = booking.providerData as any;
     
     if (!providerData) {
@@ -890,59 +886,108 @@ async getSeatData(
 }
 
 
-  @Public()
-  @Get('health')
-  @ApiOperation({
-    summary: 'Check Wakanow API health',
-    description: 'Verifies connectivity to the Wakanow API service.',
-  })
-  @ApiResponse({ status: 200, description: 'Wakanow API is healthy' })
-  @ApiResponse({ status: 503, description: 'Wakanow API is unavailable' })
-  async healthCheck() {
-    this.logger.log('Performing Wakanow API health check');
+@Public()
+@Get('health')
+@ApiOperation({
+  summary: 'Check Wakanow API health',
+  description: 'Verifies connectivity to the Wakanow API service.',
+})
+@ApiResponse({ status: 200, description: 'Wakanow API is healthy' })
+@ApiResponse({ status: 503, description: 'Wakanow API is unavailable' })
+async healthCheck() {
+  this.logger.log('Performing Wakanow API health check');
+  
+  try {
+    const isHealthy = await this.wakanowService.healthCheck();
     
-    try {
-      const isHealthy = await this.wakanowService.healthCheck();
-      
-      if (isHealthy) {
-        return {
-          success: true,
-          data: { 
-            healthy: true, 
-            status: 'operational',
-            timestamp: new Date().toISOString(),
-          },
-          message: 'Wakanow API is healthy',
-        };
-      } else {
-        throw new HttpException(
-          {
-            success: false,
-            data: { 
-              healthy: false, 
-              status: 'unavailable',
-              timestamp: new Date().toISOString(),
-            },
-            message: 'Wakanow API is unavailable',
-          },
-          HttpStatus.SERVICE_UNAVAILABLE,
-        );
-      }
-    } catch (error: any) {
-      this.logger.error(`Health check failed: ${error.message}`);
+    if (isHealthy) {
+      return {
+        success: true,
+        data: { 
+          healthy: true, 
+          status: 'operational',
+          timestamp: new Date().toISOString(),
+        },
+        message: 'Wakanow API is healthy',
+      };
+    } else {
       throw new HttpException(
         {
           success: false,
           data: { 
             healthy: false, 
-            status: 'error',
-            error: error?.message || 'Unknown error',
+            status: 'unavailable',
             timestamp: new Date().toISOString(),
           },
-          message: 'Wakanow API health check failed',
+          message: 'Wakanow API is unavailable',
         },
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
+  } catch (error: any) {
+    this.logger.error(`Health check failed: ${error.message}`);
+    throw new HttpException(
+      {
+        success: false,
+        data: { 
+          healthy: false, 
+          status: 'error',
+          error: error?.message || 'Unknown error',
+          timestamp: new Date().toISOString(),
+        },
+        message: 'Wakanow API health check failed',
+      },
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
   }
 }
+
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN', 'SUPER_ADMIN')
+@Get('wallet-balance')
+@ApiBearerAuth()
+@ApiOperation({
+  summary: 'Get Wakanow wallet balance (Admin only)',
+  description: 'Returns the current Wakanow wallet balance for admin users.',
+})
+@ApiResponse({ status: 200, description: 'Wallet balance retrieved successfully' })
+@ApiResponse({ status: 401, description: 'Unauthorized' })
+@ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
+async getWalletBalance() {
+  this.logger.log('Getting Wakanow wallet balance...');
+  
+  try {
+    const result = await this.wakanowService.getWalletBalance();
+    
+    this.logger.log(`✅ Wallet balance retrieved: ${result.Result?.Balance || 0} ${result.Result?.Currency || 'NGN'}`);
+    
+    return {
+      success: true,
+      data: {
+        balance: result.Result?.Balance || 0,
+        currency: result.Result?.Currency || 'NGN',
+        hasResult: result.HasResult || false,
+        successful: result.Successful || false,
+        message: result.Message || 'Wallet balance retrieved successfully',
+      },
+      message: 'Wallet balance retrieved successfully',
+    };
+  } catch (error: any) {
+    this.logger.error(`Wallet balance fetch failed: ${error.message}`);
+    
+    if (error instanceof HttpException) {
+      throw error;
+    }
+    
+    throw new HttpException(
+      {
+        success: false,
+        message: 'Failed to fetch wallet balance',
+        error: 'Wallet balance fetch failed',
+        details: process.env.NODE_ENV === 'development' ? error?.message : undefined,
+      },
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
+  }
+}
+} 
