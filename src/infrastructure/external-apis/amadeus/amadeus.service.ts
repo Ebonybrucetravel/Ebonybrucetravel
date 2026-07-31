@@ -614,7 +614,262 @@ export class AmadeusService {
     
     return response;
   }
-
+  async getHotelOffersWithRoomTypes(params: {
+    hotelIds?: string[];
+    cityCode?: string;
+    checkInDate: string;
+    checkOutDate: string;
+    adults?: number;
+    roomQuantity?: number;
+    currency?: string;
+    bestRateOnly?: boolean;
+  }): Promise<any> {
+    const hasHotelIds = params.hotelIds && params.hotelIds.length > 0;
+    const hasCityCode = params.cityCode && params.cityCode.trim() !== '';
+    
+    if (!hasHotelIds && !hasCityCode) {
+      throw new HttpException(
+        'Either hotelIds or cityCode is required for hotel search.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    
+    // Step 1: Get hotel offers (this includes room types with prices)
+    const queryParams: Record<string, string> = {
+      checkInDate: params.checkInDate,
+      checkOutDate: params.checkOutDate,
+    };
+    
+    if (hasHotelIds) {
+      queryParams.hotelIds = params.hotelIds.join(',');
+    }
+    if (hasCityCode) {
+      queryParams.cityCode = params.cityCode;
+    }
+    if (params.adults) queryParams.adults = params.adults.toString();
+    if (params.roomQuantity) queryParams.roomQuantity = params.roomQuantity.toString();
+    if (params.currency) queryParams.currency = params.currency;
+    if (params.bestRateOnly !== undefined) queryParams.bestRateOnly = params.bestRateOnly.toString();
+    
+    const response = await this.makeRequest('/v3/shopping/hotel-offers', { 
+      method: 'GET', 
+      params: queryParams 
+    });
+    
+    if (!response?.data?.length) {
+      return {
+        success: true,
+        data: [],
+        message: 'No hotels found',
+      };
+    }
+    
+    // Step 2: Parse each hotel's offers to extract room types with fees
+    const hotelsWithRoomTypes = response.data.map((hotelOffer: any) => {
+      const hotel = hotelOffer.hotel || {};
+      const offers = hotelOffer.offers || [];
+      
+      // Extract room types from offers
+      const roomTypes = offers.map((offer: any) => {
+        const room = offer.room || {};
+        const price = offer.price || {};
+        
+        // Extract all fees from the offer
+        const fees = [];
+        
+        // Base price
+        if (price.base) {
+          fees.push({
+            type: 'BASE_RATE',
+            amount: parseFloat(price.base),
+            currency: price.currency || 'GBP',
+            description: 'Base room rate',
+            includedInBase: true,
+          });
+        }
+        
+        // Taxes
+        if (price.taxes && Array.isArray(price.taxes)) {
+          for (const tax of price.taxes) {
+            fees.push({
+              type: 'TAX',
+              amount: parseFloat(tax.amount || 0),
+              currency: tax.currency || price.currency || 'GBP',
+              description: tax.description || tax.type || 'Tax',
+              includedInBase: false,
+            });
+          }
+        }
+        
+        // Additional fees (resort fees, service fees, etc.)
+        if (price.additionalFees && Array.isArray(price.additionalFees)) {
+          for (const fee of price.additionalFees) {
+            fees.push({
+              type: fee.type || 'ADDITIONAL_FEE',
+              amount: parseFloat(fee.amount || 0),
+              currency: fee.currency || price.currency || 'GBP',
+              description: fee.description || fee.type || 'Additional fee',
+              includedInBase: false,
+            });
+          }
+        }
+        
+        return {
+          id: offer.id,
+          roomId: room.roomId || offer.id,
+          type: room.type || 'STANDARD',
+          name: room.description || room.type || 'Standard Room',
+          description: room.description || null,
+          bedTypes: room.beds?.map((b: any) => ({
+            type: b.type || 'UNKNOWN',
+            quantity: b.quantity || 1,
+          })) || [],
+          occupancy: {
+            maxAdults: room.maxAdultOccupancy || 2,
+            maxChildren: room.maxChildOccupancy || 0,
+            maxOverall: room.maxOverallOccupancy || 2,
+          },
+          price: {
+            base: parseFloat(price.base || 0),
+            total: parseFloat(price.total || 0),
+            currency: price.currency || 'GBP',
+            fees: fees,
+          },
+          rateFamily: offer.rateFamilyEstimated?.code || null,
+          policies: {
+            paymentType: offer.policies?.paymentType || null,
+            guarantee: offer.policies?.guarantee || null,
+            cancellation: offer.policies?.cancellation || null,
+            deposit: offer.policies?.deposit || null,
+          },
+          available: offer.available || false,
+        };
+      });
+      
+      return {
+        hotelId: hotel.hotelId,
+        name: hotel.name,
+        chainCode: hotel.chainCode,
+        cityCode: hotel.cityCode,
+        latitude: hotel.latitude,
+        longitude: hotel.longitude,
+        address: hotel.address,
+        roomTypes: roomTypes,
+        totalRoomTypes: roomTypes.length,
+      };
+    });
+    
+    return {
+      success: true,
+      data: hotelsWithRoomTypes,
+      message: 'Hotels with room types and fees retrieved successfully',
+    };
+  }
+  
+  /**
+   * Get detailed pricing for a specific offer with all fees
+   * This is the pricing confirmation step from the documentation
+   */
+  async getHotelOfferPricingWithFees(offerId: string, currency?: string): Promise<any> {
+    if (!offerId) {
+      throw new HttpException('Offer ID is required', HttpStatus.BAD_REQUEST);
+    }
+    
+    const queryParams: Record<string, string> = {};
+    if (currency) queryParams.currency = currency;
+    
+    // This is the pricing endpoint from the documentation (page 14)
+    const response = await this.makeRequest(`/v3/shopping/hotel-offers/${offerId}`, {
+      method: 'GET',
+      params: queryParams,
+    });
+    
+    if (!response?.data) {
+      throw new HttpException('Offer not found', HttpStatus.NOT_FOUND);
+    }
+    
+    const offer = response.data;
+    const price = offer.price || {};
+    const room = offer.room || {};
+    
+    // Extract detailed fees
+    const fees = [];
+    
+    if (price.base) {
+      fees.push({
+        type: 'BASE_RATE',
+        amount: parseFloat(price.base),
+        currency: price.currency || 'GBP',
+        description: 'Base room rate',
+        includedInBase: true,
+      });
+    }
+    
+    if (price.taxes && Array.isArray(price.taxes)) {
+      for (const tax of price.taxes) {
+        fees.push({
+          type: 'TAX',
+          amount: parseFloat(tax.amount || 0),
+          currency: tax.currency || price.currency || 'GBP',
+          description: tax.description || tax.type || 'Tax',
+          includedInBase: false,
+        });
+      }
+    }
+    
+    if (price.additionalFees && Array.isArray(price.additionalFees)) {
+      for (const fee of price.additionalFees) {
+        fees.push({
+          type: fee.type || 'ADDITIONAL_FEE',
+          amount: parseFloat(fee.amount || 0),
+          currency: fee.currency || price.currency || 'GBP',
+          description: fee.description || fee.type || 'Additional fee',
+          includedInBase: false,
+        });
+      }
+    }
+    
+    return {
+      success: true,
+      data: {
+        offerId: offer.id,
+        roomType: {
+          id: room.roomId,
+          type: room.type,
+          description: room.description,
+          bedTypes: room.beds,
+          maxOccupancy: room.maxAdultOccupancy,
+        },
+        price: {
+          base: parseFloat(price.base || 0),
+          total: parseFloat(price.total || 0),
+          currency: price.currency || 'GBP',
+          fees: fees,
+          variations: price.variations || null,
+        },
+        policies: {
+          paymentType: offer.policies?.paymentType,
+          guarantee: offer.policies?.guarantee,
+          cancellation: offer.policies?.cancellation,
+          deposit: offer.policies?.deposit,
+          checkInOut: offer.policies?.checkInOut,
+        },
+        available: offer.available,
+      },
+      message: 'Offer pricing with fees retrieved successfully',
+    };
+  }
+  
+  // ✅ EXISTING METHOD - Keep this as-is
+  async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<any> {
+    const queryParams: Record<string, string> = {};
+    if (params.lang) queryParams.lang = params.lang;
+    return this.makeRequest(`/v3/shopping/hotel-offers/${params.offerId}`, { 
+      method: 'GET', 
+      params: queryParams 
+    });
+  }
+  
   private async fetchHotelImagesBatch(hotelIds: string[]): Promise<Map<string, any[]>> {
     const imagesMap = new Map<string, any[]>();
     
@@ -750,18 +1005,7 @@ export class AmadeusService {
     
     return categories;
   }
-
-
-  async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<any> {
-    const queryParams: Record<string, string> = {};
-    if (params.lang) queryParams.lang = params.lang;
-    return this.makeRequest(`/v3/shopping/hotel-offers/${params.offerId}`, { 
-      method: 'GET', 
-      params: queryParams 
-    });
-  }
-
-  // ✅ REPRICE HOTEL OFFER - Improved to handle different response structures
+  
   async repriceHotelOffer(offerId: string): Promise<any> {
     try {
       this.logger.log(`🔄 Re-pricing hotel offer: ${offerId}`);

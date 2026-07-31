@@ -432,6 +432,397 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
     }
   }
 
+  async executeWithRoomTypes(searchParams: SearchAmadeusHotelsDto): Promise<any> {
+    this.logger.log(`🔍 Searching Amadeus hotels with room types: ${JSON.stringify(searchParams)}`);
+    
+    const {
+      hotelIds,
+      cityCode,
+      geographicCoordinates,
+      checkInDate,
+      checkOutDate,
+      adults = 1,
+      roomQuantity = 1,
+      currency: targetCurrency = 'NGN',
+      bestRateOnly = true,
+      radius = 200,
+      radiusUnit = 'KM',
+    } = searchParams;
+
+    // Validate inputs
+    const hasHotelIds = hotelIds && hotelIds.length > 0;
+    const hasCityCode = cityCode && cityCode.trim() !== '';
+    const hasGeographicCoordinates = geographicCoordinates !== undefined;
+
+    if (!hasHotelIds && !hasCityCode && !hasGeographicCoordinates) {
+      throw new BadRequestException(
+        'Either hotelIds, cityCode, or geographicCoordinates must be provided for hotel search.',
+      );
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const checkIn = new Date(checkInDate);
+    checkIn.setHours(0, 0, 0, 0);
+
+    if (checkIn < today) {
+      throw new BadRequestException(
+        `Check-in date (${checkInDate}) cannot be in the past. Please select a future date.`,
+      );
+    }
+
+    const checkOut = new Date(checkOutDate);
+    checkOut.setHours(0, 0, 0, 0);
+
+    if (checkOut <= checkIn) {
+      throw new BadRequestException(
+        `Check-out date (${checkOutDate}) must be after check-in date (${checkInDate}).`,
+      );
+    }
+
+    let finalHotelIds = hotelIds;
+    
+    if (hasCityCode && !hasHotelIds) {
+      this.logger.log(`Fetching hotels for city code: ${cityCode}`);
+      
+      const hotelsList = await this.amadeusService.getHotelsByCity({
+        cityCode: cityCode,
+        radius: radius,
+        radiusUnit: radiusUnit,
+      });
+      
+      if (!hotelsList?.data || hotelsList.data.length === 0) {
+        throw new BadRequestException(
+          `No hotels found for city code: ${cityCode}. Please try a different city or use hotelIds directly.`,
+        );
+      }
+      
+      finalHotelIds = hotelsList.data
+        .map((hotel: any) => hotel.hotelId)
+        .filter((id: string) => this.isValidHotelId(id, cityCode));
+      
+      if (finalHotelIds.length === 0) {
+        throw new BadRequestException(
+          `No valid hotel IDs found for city code: ${cityCode}. Please try a different city or use hotelIds directly.`,
+        );
+      }
+      
+      this.logger.log(`Found ${finalHotelIds.length} valid hotels for city code: ${cityCode}`);
+    }
+
+    // Get hotel IDs if geographic coordinates provided
+    if (hasGeographicCoordinates && !hasHotelIds && !hasCityCode) {
+      this.logger.log(`Fetching hotels near coordinates: ${geographicCoordinates.latitude}, ${geographicCoordinates.longitude}`);
+      
+      const hotelsList = await this.amadeusService.getHotelsByGeocode({
+        latitude: geographicCoordinates.latitude,
+        longitude: geographicCoordinates.longitude,
+        radius: radius,
+        radiusUnit: radiusUnit,
+      });
+      
+      if (!hotelsList?.data || hotelsList.data.length === 0) {
+        throw new BadRequestException(
+          `No hotels found near the provided coordinates. Please try different coordinates or use hotelIds directly.`,
+        );
+      }
+      
+      finalHotelIds = hotelsList.data
+        .map((hotel: any) => hotel.hotelId)
+        .filter((id: string) => this.isValidHotelId(id));
+      
+      if (finalHotelIds.length === 0) {
+        throw new BadRequestException(
+          `No valid hotel IDs found near the provided coordinates. Please try a different location.`,
+        );
+      }
+      
+      this.logger.log(`Found ${finalHotelIds.length} valid hotels near the provided coordinates`);
+    }
+
+    if (!finalHotelIds || finalHotelIds.length === 0) {
+      throw new BadRequestException(
+        'No hotel IDs available for search. Please provide valid hotelIds, a cityCode with available hotels, or geographic coordinates.',
+      );
+    }
+
+    const results = await this.amadeusService.getHotelOffersWithRoomTypes({
+      hotelIds: finalHotelIds,
+      checkInDate,
+      checkOutDate,
+      adults: adults || 2,
+      roomQuantity: roomQuantity || 1,
+      currency: targetCurrency || 'GBP',
+      bestRateOnly: bestRateOnly,
+    });
+
+    const processedResults = await this.processRoomTypesWithMarkup(results, targetCurrency);
+    return processedResults;
+  }
+
+  async getOfferPricingWithFees(offerId: string, currency: string = 'GBP'): Promise<any> {
+    this.logger.log(`💰 Getting offer pricing with fees for offer: ${offerId}`);
+    
+    const results = await this.amadeusService.getHotelOfferPricingWithFees(offerId, currency);
+    const processedResults = await this.processOfferPricingWithMarkup(results, currency);
+    
+    return processedResults;
+  }
+
+  private async processRoomTypesWithMarkup(results: any, targetCurrency: string): Promise<any> {
+    if (!results?.data) {
+      return results;
+    }
+
+    let markupPercentage = 2.5;
+    let serviceFeeAmount = 0;
+    try {
+      const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
+        ProductType.HOTEL,
+        targetCurrency,
+      );
+      if (markupConfig) {
+        markupPercentage = markupConfig.markupPercentage || 2.5;
+        serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
+      }
+    } catch (error) {
+      this.logger.warn(`Could not fetch markup config, using default ${markupPercentage}%:`, error);
+    }
+
+    const processedData = await Promise.all(
+      results.data.map(async (hotel: any) => {
+        const processedRoomTypes = await Promise.all(
+          (hotel.roomTypes || []).map(async (roomType: any) => {
+            const originalPrice = roomType.price?.base || 0;
+            const originalCurrency = roomType.price?.currency || 'EUR';
+            
+            let convertedBasePrice: number;
+            let conversionFee: number = 0;
+            let conversionFeePercentage: number = 0;
+        
+            if (originalCurrency !== targetCurrency) {
+              convertedBasePrice = await this.currencyService.convert(
+                originalPrice,
+                originalCurrency,
+                targetCurrency,
+              );
+              const conversionDetails = this.currencyService.calculateConversionFee(
+                convertedBasePrice,
+                originalCurrency,
+                targetCurrency,
+              );
+              conversionFee = conversionDetails.conversionFee;
+              conversionFeePercentage = this.currencyService.getConversionBuffer();
+            } else {
+              convertedBasePrice = originalPrice;
+            }
+        
+            const markupAmount = (convertedBasePrice * markupPercentage) / 100;
+            const finalPrice = convertedBasePrice + markupAmount + serviceFeeAmount + conversionFee;
+        
+            const transformedFees = (roomType.price?.fees || []).map((fee: any) => {
+              let feeAmount = fee.amount || 0;
+              let feeCurrency = fee.currency || originalCurrency;
+              if (feeCurrency !== targetCurrency) {
+                feeAmount = this.currencyService.convert(feeAmount, feeCurrency, targetCurrency);
+              }
+              if (fee.type !== 'BASE_RATE') {
+                feeAmount = feeAmount + (feeAmount * markupPercentage / 100);
+              }
+              return {
+                ...fee,
+                amount: this.currencyService.formatAmount(feeAmount, targetCurrency),
+                currency: targetCurrency,
+              };
+            });
+
+            if (markupAmount > 0) {
+              transformedFees.push({
+                type: 'MARKUP',
+                amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
+                currency: targetCurrency,
+                description: `Markup (${markupPercentage}%)`,
+                includedInBase: false,
+              });
+            }
+
+            if (serviceFeeAmount > 0) {
+              transformedFees.push({
+                type: 'SERVICE_FEE',
+                amount: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
+                currency: targetCurrency,
+                description: 'Service fee',
+                includedInBase: false,
+              });
+            }
+
+            if (conversionFee > 0) {
+              transformedFees.push({
+                type: 'CONVERSION_FEE',
+                amount: this.currencyService.formatAmount(conversionFee, targetCurrency),
+                currency: targetCurrency,
+                description: `Currency conversion fee (${conversionFeePercentage}%)`,
+                includedInBase: false,
+              });
+            }
+
+            return {
+              ...roomType,
+              price: {
+                ...roomType.price,
+                base: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
+                total: this.currencyService.formatAmount(finalPrice, targetCurrency),
+                currency: targetCurrency,
+                fees: transformedFees,
+                original_base: originalPrice,
+                original_currency: originalCurrency,
+                markup_percentage: markupPercentage,
+                markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
+                service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
+                conversion_fee: this.currencyService.formatAmount(conversionFee, targetCurrency),
+              },
+            };
+          }),
+        );
+
+        return {
+          ...hotel,
+          roomTypes: processedRoomTypes,
+          currency: targetCurrency,
+        };
+      }),
+    );
+
+    return {
+      ...results,
+      data: processedData,
+      currency: targetCurrency,
+      markup_percentage: markupPercentage,
+      service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
+      conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${serviceFeeAmount} ${targetCurrency} service fee` : ''}.`,
+    };
+  }
+
+  private async processOfferPricingWithMarkup(results: any, targetCurrency: string): Promise<any> {
+    if (!results?.data) {
+      return results;
+    }
+
+    let markupPercentage = 2.5;
+    let serviceFeeAmount = 0;
+    try {
+      const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
+        ProductType.HOTEL,
+        targetCurrency,
+      );
+      if (markupConfig) {
+        markupPercentage = markupConfig.markupPercentage || 2.5;
+        serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
+      }
+    } catch (error) {
+      this.logger.warn(`Could not fetch markup config, using default ${markupPercentage}%:`, error);
+    }
+
+    const offer = results.data;
+    const originalPrice = offer.price?.base || 0;
+    const originalCurrency = offer.price?.currency || 'EUR';
+    
+    let convertedBasePrice: number;
+    let conversionFee: number = 0;
+    let conversionFeePercentage: number = 0;
+
+    if (originalCurrency !== targetCurrency) {
+      convertedBasePrice = await this.currencyService.convert(
+        originalPrice,
+        originalCurrency,
+        targetCurrency,
+      );
+      const conversionDetails = this.currencyService.calculateConversionFee(
+        convertedBasePrice,
+        originalCurrency,
+        targetCurrency,
+      );
+      conversionFee = conversionDetails.conversionFee;
+      conversionFeePercentage = this.currencyService.getConversionBuffer();
+    } else {
+      convertedBasePrice = originalPrice;
+    }
+
+    const markupAmount = (convertedBasePrice * markupPercentage) / 100;
+    const finalPrice = convertedBasePrice + markupAmount + serviceFeeAmount + conversionFee;
+
+    const transformedFees = (offer.price?.fees || []).map((fee: any) => {
+      let feeAmount = fee.amount || 0;
+      let feeCurrency = fee.currency || originalCurrency;
+      if (feeCurrency !== targetCurrency) {
+        feeAmount = this.currencyService.convert(feeAmount, feeCurrency, targetCurrency);
+      }
+      if (fee.type !== 'BASE_RATE') {
+        feeAmount = feeAmount + (feeAmount * markupPercentage / 100);
+      }
+      return {
+        ...fee,
+        amount: this.currencyService.formatAmount(feeAmount, targetCurrency),
+        currency: targetCurrency,
+      };
+    });
+
+    if (markupAmount > 0) {
+      transformedFees.push({
+        type: 'MARKUP',
+        amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
+        currency: targetCurrency,
+        description: `Markup (${markupPercentage}%)`,
+        includedInBase: false,
+      });
+    }
+
+    if (serviceFeeAmount > 0) {
+      transformedFees.push({
+        type: 'SERVICE_FEE',
+        amount: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
+        currency: targetCurrency,
+        description: 'Service fee',
+        includedInBase: false,
+      });
+    }
+
+    if (conversionFee > 0) {
+      transformedFees.push({
+        type: 'CONVERSION_FEE',
+        amount: this.currencyService.formatAmount(conversionFee, targetCurrency),
+        currency: targetCurrency,
+        description: `Currency conversion fee (${conversionFeePercentage}%)`,
+        includedInBase: false,
+      });
+    }
+
+    return {
+      ...results,
+      data: {
+        ...offer,
+        price: {
+          ...offer.price,
+          base: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
+          total: this.currencyService.formatAmount(finalPrice, targetCurrency),
+          currency: targetCurrency,
+          fees: transformedFees,
+          original_base: originalPrice,
+          original_currency: originalCurrency,
+          markup_percentage: markupPercentage,
+          markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
+          service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
+          conversion_fee: this.currencyService.formatAmount(conversionFee, targetCurrency),
+        },
+      },
+      currency: targetCurrency,
+      markup_percentage: markupPercentage,
+      service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
+      conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${serviceFeeAmount} ${targetCurrency} service fee` : ''}.`,
+    };
+  }
+
+
   private async processResults(
     hotelData: any[],
     targetCurrency: string,

@@ -726,6 +726,110 @@ async getByReferencePublic(
   }
 
   @Public()
+  @Post('search/hotels/amadeus/room-types')
+  @Throttle(20, 60000)
+  @ApiOperation({
+    summary: 'Search Amadeus hotels with room types and fees (REAL Amadeus API)',
+    description: `
+      Searches hotels using Amadeus API and automatically extracts room types with detailed pricing including:
+      - Base rates (REAL from Amadeus)
+      - Taxes (REAL from Amadeus)
+      - Additional fees (REAL from Amadeus)
+      - Occupancy information
+      - Bed types
+      - Cancellation policies
+    `,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Hotels with room types and fees retrieved successfully from Amadeus',
+  })
+  @ApiResponse({ status: 400, description: 'Invalid search parameters' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  async searchAmadeusHotelsWithRoomTypes(@Body() searchDto: SearchAmadeusHotelsDto) {
+    try {
+      const results = await this.searchAmadeusHotelsUseCase.executeWithRoomTypes({
+        ...searchDto,
+      });
+      
+      return {
+        success: true,
+        data: results,
+        message: 'Hotels with room types and fees retrieved successfully from Amadeus',
+      };
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      const errorMessage = error?.message || 'An unexpected error occurred while searching for hotels';
+      throw new HttpException(
+        {
+          success: false,
+          message: 'Unable to search hotels at this time. Please check your search parameters and try again.',
+          error: 'Search failed',
+          details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Public()
+  @Get('hotels/amadeus/offer-pricing/:offerId')
+  @ApiOperation({
+    summary: 'Get detailed pricing for a specific hotel offer with all fees (REAL Amadeus API)',
+    description: `
+      Retrieves detailed pricing for a specific hotel offer from the REAL Amadeus API including:
+      - Base rate (REAL from Amadeus)
+      - All taxes (REAL from Amadeus)
+      - Additional fees (REAL from Amadeus)
+      - Room type details
+      - Payment policies
+      - Cancellation policies
+      - Availability status
+    `,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Offer pricing with fees retrieved successfully from Amadeus',
+  })
+  @ApiResponse({ status: 400, description: 'Invalid offer ID' })
+  @ApiResponse({ status: 404, description: 'Offer not found' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  async getHotelOfferPricingWithFees(
+    @Param('offerId') offerId: string,
+    @Query('currency') currency?: string,
+  ) {
+    try {
+      const result = await this.searchAmadeusHotelsUseCase.getOfferPricingWithFees(
+        offerId,
+        currency || 'GBP',
+      );
+      
+      return {
+        success: true,
+        data: result,
+        message: 'Offer pricing with fees retrieved successfully from Amadeus',
+      };
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        {
+          success: false,
+          message: error?.message || 'Failed to retrieve offer pricing',
+          error: 'Pricing retrieval failed',
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+
+
+  @Public()
   @Get('hotels/rates/:searchResultId')
   @ApiOperation({ summary: 'Fetch detailed rates for a hotel search result' })
   @ApiResponse({ status: 200, description: 'Hotel rates' })
