@@ -36,6 +36,12 @@ export class AmadeusService {
     
     this.logger.log(`AmadeusService initialized with base URL: ${this.baseUrl}`);
     this.logger.log(`Office ID: ${this.officeId}, Org ID: ${this.orgId}, User ID: ${this.userId}`);
+    // ✅ ADD THESE 3 LINES AT THE END OF THE CONSTRUCTOR
+    this.accessToken = null;
+    this.tokenExpiresAt = 0;
+    this.logger.log('🔄 Amadeus token cache cleared on startup - will fetch fresh token on first request');
+
+    
   }
 
   private async getAccessToken(): Promise<string> {
@@ -1005,7 +1011,7 @@ export class AmadeusService {
     
     return categories;
   }
-  
+
   async repriceHotelOffer(offerId: string): Promise<any> {
     try {
       this.logger.log(`🔄 Re-pricing hotel offer: ${offerId}`);
