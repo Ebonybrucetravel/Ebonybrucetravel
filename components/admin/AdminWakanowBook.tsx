@@ -74,19 +74,72 @@ export default function AdminWakanowBook() {
 
   // result
   const [bookingResult, setBookingResult] = useState<any>(null);
-
-  // ── search ─────────────────────────────────────────────────────────────────
-  const handleSearch = async () => {
-    if (!origin || !destination || !depDate) { setError('Origin, destination and departure date are required.'); return; }
-    setError(''); setBusy(true);
-    try {
-      const res = await adminSearchWakanowFlights({ origin, destination, departureDate: depDate, returnDate: retDate || undefined, adults, cabinClass });
-      const items = res?.data?.flights ?? res?.flights ?? res?.data ?? res ?? [];
-      setFlights(parseFlights(Array.isArray(items) ? items : []));
-      setStep('results');
-    } catch (e: any) { setError(e.message ?? 'Search failed'); }
-    finally { setBusy(false); }
-  };
+// ── search ─────────────────────────────────────────────────────────────────
+const handleSearch = async () => {
+  if (!origin || !destination || !depDate) { 
+    setError('Origin, destination and departure date are required.'); 
+    return; 
+  }
+  setError(''); 
+  setBusy(true);
+  try {
+    const res = await adminSearchWakanowFlights({ 
+      origin, 
+      destination, 
+      departureDate: depDate, 
+      returnDate: retDate || undefined, 
+      adults, 
+      cabinClass 
+    });
+    
+    console.log('🔍 Search response:', res);
+    
+    // ✅ Extract flights from the response properly
+    const responseData = res?.data || res || {};
+    
+    let items: any[] = [];
+    
+    // Try different possible paths to find the flights array
+    if (Array.isArray(responseData)) {
+      items = responseData;
+    } else if (responseData.flights && Array.isArray(responseData.flights)) {
+      items = responseData.flights;
+    } else if (responseData.data?.flights) {
+      items = responseData.data.flights;
+    } else if (responseData.results) {
+      items = responseData.results;
+    } else if (responseData.data?.results) {
+      items = responseData.data.results;
+    } else if (Array.isArray(responseData.data)) {
+      items = responseData.data;
+    } else if (responseData.flightCombination || responseData.FlightCombination) {
+      // Handle single flight result
+      items = [responseData];
+    } else if (typeof responseData === 'object' && !Array.isArray(responseData)) {
+      // Try to find any array in the response
+      for (const key of Object.keys(responseData)) {
+        if (Array.isArray(responseData[key]) && responseData[key].length > 0) {
+          const firstItem = responseData[key][0];
+          if (firstItem && (firstItem.FlightCombination || firstItem.flightCombination || 
+              firstItem.FlightModels || firstItem.flightModels || firstItem.FlightLegs)) {
+            items = responseData[key];
+            break;
+          }
+        }
+      }
+    }
+    
+    console.log('📦 Extracted flights:', items.length);
+    setFlights(parseFlights(items));
+    setStep('results');
+  } catch (e: any) { 
+    console.error('Search error:', e);
+    setError(e.message ?? 'Search failed'); 
+  }
+  finally { 
+    setBusy(false); 
+  }
+};
 
   // ── select ─────────────────────────────────────────────────────────────────
   const handleSelect = async (flight: any) => {

@@ -435,6 +435,17 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 const isDuffel = (actualItem as any)?.provider?.toUpperCase() === 'DUFFEL' ||
   (actualItem as any)?.type?.toLowerCase().includes('duffel');
 
+
+  const [convertedPrices, setConvertedPrices] = useState({
+    basePrice: 0,
+    totalDue: 0,
+    combinedTaxes: 0,
+    serviceFee: 0,
+    currency: currency.code,
+  });
+  const [isConverting, setIsConverting] = useState(false);
+  
+
 const originCode = extendedItem.departureAirport || 
                    extendedItem.origin || 
                    searchParams?.segments?.[0]?.from ||
@@ -668,6 +679,8 @@ let serviceFeePercentage = 5;
 let combinedTaxes = 0;
 let combinedTaxPercentage = 15;
 let breakdownDescription = '';
+
+
 
 // ✅ DUFFEL FLIGHT - NEW: Process Duffel prices
 if (isDuffel) {
@@ -913,10 +926,67 @@ else if (isHotel || isCar) {
   }
 }
 
-  const displayBasePrice = formatPrice(basePrice, offerCurrency);
-  const displayCombinedTaxes = formatPrice(combinedTaxes, offerCurrency);
-  const displayTotalDue = formatPrice(totalDue, offerCurrency);
-  const displayServiceFee = formatPrice(serviceFee, offerCurrency);
+
+useEffect(() => {
+  const convertPrices = async () => {
+    const userCurrency = currency.code;
+    const originalCurrency = offerCurrency || 'GBP';
+    
+  
+    if (totalDue <= 0) return;
+    if (userCurrency === originalCurrency) {
+      setConvertedPrices({
+        basePrice: basePrice,
+        totalDue: totalDue,
+        combinedTaxes: combinedTaxes,
+        serviceFee: serviceFee,
+        currency: userCurrency,
+      });
+      return;
+    }
+    
+    setIsConverting(true);
+    try {
+      console.log('💰 Converting prices from', originalCurrency, 'to', userCurrency);
+      
+      const [convertedBase, convertedTotal, convertedTaxes, convertedService] = await Promise.all([
+        convertPrice(basePrice, originalCurrency),
+        convertPrice(totalDue, originalCurrency),
+        convertPrice(combinedTaxes, originalCurrency),
+        convertPrice(serviceFee, originalCurrency),
+      ]);
+      
+      setConvertedPrices({
+        basePrice: convertedBase || basePrice,
+        totalDue: convertedTotal || totalDue,
+        combinedTaxes: convertedTaxes || combinedTaxes,
+        serviceFee: convertedService || serviceFee,
+        currency: userCurrency,
+      });
+      
+      console.log('✅ Prices converted to', userCurrency);
+    } catch (error) {
+      console.error('Failed to convert prices:', error);
+      setConvertedPrices({
+        basePrice: basePrice,
+        totalDue: totalDue,
+        combinedTaxes: combinedTaxes,
+        serviceFee: serviceFee,
+        currency: originalCurrency,
+      });
+    } finally {
+      setIsConverting(false);
+    }
+  };
+  
+  convertPrices();
+}, [basePrice, totalDue, combinedTaxes, serviceFee, offerCurrency, currency.code]);
+
+const displayCurrency = convertedPrices.currency || currency.code || 'GBP';
+const displayBasePrice = formatPrice(convertedPrices.basePrice, displayCurrency);
+const displayCombinedTaxes = formatPrice(convertedPrices.combinedTaxes, displayCurrency);
+const displayTotalDue = formatPrice(convertedPrices.totalDue, displayCurrency);
+const displayServiceFee = formatPrice(convertedPrices.serviceFee, displayCurrency);
   const formattedDiscountedTotal = appliedPromo?.discountAmount 
   ? formatPrice(appliedPromo.discountAmount, offerCurrency) 
   : '';

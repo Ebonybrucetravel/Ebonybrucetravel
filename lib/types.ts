@@ -195,7 +195,16 @@ export interface SearchResult {
   totalReviews?: number;   
 sentiment?: string;   
 offerId?: string;  
-  hotelData?: any;   
+  hotelData?: any;  
+  phoneNumber?: string;     
+  email?: string;           
+  website?: string;         
+  formattedAddress?: string; 
+  latitude?: number;         
+  longitude?: number;        
+  contact?: any[];           
+  location?: any;            
+   
 
 
   // ✅ CAR RENTAL SPECIFIC FIELDS

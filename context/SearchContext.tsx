@@ -688,14 +688,15 @@ const searchHotels = async (params: SearchParams) => {
         
         if (!bestOffer) continue;
         
-        // ✅ CRITICAL: Get the REAL offer ID from Amadeus
-        const realOfferId = bestOffer.id || bestOffer.offer_id;
+        // Get the REAL offer ID from Amadeus
+        const realOfferId = bestOffer.id || bestOffer.offer_id || bestOffer.offerId;
         
-        // Skip if no real offer ID
-        if (!realOfferId || realOfferId.startsWith('hotel-') || realOfferId.includes('Date')) {
-          console.warn('⚠️ Skipping hotel without valid offer ID:', { realOfferId, hotelTitle: hotel.title });
+        if (!realOfferId) {
+          console.warn('⚠️ Skipping hotel without valid offer ID:', { hotelTitle: hotel.title });
           continue;
         }
+        
+        const hotelData = hotel.hotel || hotel;
         
         const basePrice = parseFloat(bestOffer.base_price || bestOffer.price?.base || '0');
         const finalPriceNGN = parseFloat(bestOffer.final_price || bestOffer.price?.total || '0');
@@ -724,14 +725,17 @@ const searchHotels = async (params: SearchParams) => {
         const bedType = bestOffer.room?.typeEstimated?.bedType || 'King';
         const beds = bestOffer.room?.typeEstimated?.beds || 1;
         
-        // ✅ Use REAL offer ID from Amadeus
-        processedResults.push({
+        const hotelId = hotelData.hotelId || hotelData.id || hotelData.hotel_id || '';
+        
+        // Build the result object - NO duplicate properties
+        const resultItem = {
           id: realOfferId,
           offerId: realOfferId,
+          hotelId: hotelId,
           type: 'hotels' as const,
           provider: hotel.provider || 'Amadeus Hotels',
-          title: hotel.title,
-          subtitle: `${hotel.subtitle} • ${nights} night${nights > 1 ? 's' : ''}`,
+          title: hotel.title || hotelData.name || 'Hotel',
+          subtitle: hotel.subtitle || `${hotelData.address?.cityName || ''} • ${nights} night${nights > 1 ? 's' : ''}`,
           
           price: formattedDisplayPrice,
           totalPrice: formattedDisplayPrice,
@@ -757,9 +761,9 @@ const searchHotels = async (params: SearchParams) => {
           service_fee_percentage: markupPercentage + conversionFeePercentage,
           
           nights: nights,
-          rating: hotel.rating || 4.0,
-          image: hotel.image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=800',
-          amenities: hotel.amenities || ['Free Wi-Fi', 'Air Conditioning', 'TV', 'Private Bathroom'],
+          rating: hotel.rating || hotelData.rating || 4.0,
+          image: hotel.image || hotelData.primaryImage || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=800',
+          amenities: hotel.amenities || hotelData.amenities || ['Free Wi-Fi', 'Air Conditioning', 'TV', 'Private Bathroom'],
           features: [
             roomType,
             `${beds} ${bedType.toLowerCase()} bed${beds > 1 ? 's' : ''}`,
@@ -771,24 +775,44 @@ const searchHotels = async (params: SearchParams) => {
           roomType: roomType,
           cancellationDeadline: bestOffer.policies?.cancellations?.[0]?.deadline,
           
-          // ✅ Store REAL data for booking
+          offer: bestOffer,
+          offers: offers,
+          
           realData: {
             offerId: realOfferId,
             original_price: parseFloat(bestOffer.original_price || '0'),
             original_currency: bestOffer.original_currency || 'GBP',
+            hotelId: hotelId,
+            hotelData: hotelData,
           },
           
-          offer: bestOffer,
-          hotel: hotel.hotel || hotel,
           checkInDate: params.checkInDate,
           checkOutDate: params.checkOutDate,
           adults: getAdultsCount(params),
           rooms: params.rooms || 1,
-        });
+          
+          cityCode: params.cityCode,
+          searchLocation: params.location,
+          
+          // All hotel data in ONE property
+          hotelData: hotelData,
+          address: hotelData.address,
+          contact: hotelData.contact,
+          media: hotelData.media,
+          images: hotelData.images,
+          primaryImage: hotelData.primaryImage,
+          location: hotelData.location,
+          description: hotelData.description,
+          checkInOut: hotelData.checkInOut,
+          policies: hotelData.policies,
+        };
+        
+        processedResults.push(resultItem);
+        console.log(`✅ Processed hotel: ${hotel.title} with offer ID: ${realOfferId}`);
       }
       
       setSearchResults(processedResults);
-      console.log(`✅ Processed ${processedResults.length} hotels with REAL offer IDs`);
+      console.log(`✅ Processed ${processedResults.length} hotels with REAL offer IDs and complete data`);
       
       if (processedResults.length === 0) {
         setSearchError('No hotels found with valid offers. Please try different dates.');
@@ -804,7 +828,7 @@ const searchHotels = async (params: SearchParams) => {
     setSearchError(err.message || 'Failed to search hotels. Please try again.');
   }
 };
-  
+
   const formatDateForWakanow = (dateStr: string): string => {
     const date = new Date(dateStr);
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
