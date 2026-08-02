@@ -153,6 +153,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveNotes, setSaveNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [bookingCardPrice, setBookingCardPrice] = useState<string>('');
 
   // Image category mapping
   const categoryMap: Record<string, string> = {
@@ -172,16 +173,24 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
 
   const formatRoomPrice = (price: any): string => {
     if (!price) return 'Price not available';
-    const currency = price.currency || 'GBP';
+    const currencyCode = price.currency || 'GBP';
     const total = price.total;
     let formattedTotal = '0.00';
+    
     if (typeof total === 'number') {
       formattedTotal = total.toFixed(2);
     } else if (typeof total === 'string') {
       const parsed = parseFloat(total);
       formattedTotal = isNaN(parsed) ? '0.00' : parsed.toFixed(2);
     }
-    return `${currency} ${formattedTotal}`;
+
+    // ✅ FIX: Corrected the syntax error on the ternary operator
+    const currencySymbol = currencyCode === 'NGN' ? '₦' : 
+                           currencyCode === 'GBP' ? '£' : 
+                           currencyCode === 'USD' ? '$' : 
+                           currencyCode === 'EUR' ? '€' : currencyCode;
+                           
+    return `${currencySymbol}${formattedTotal}`;
   };
 
   // Extract price from item
@@ -364,20 +373,27 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     return `${count} Room${count > 1 ? 's' : ''}`;
   };
 
-  const getNightsCount = () => {
-    const checkIn = getCheckInDate();
-    const checkOut = getCheckOutDate();
+  
+  const getNightsCount = (customCheckIn?: string | null, customCheckOut?: string | null) => {
+ 
+    const checkIn = customCheckIn || getCheckInDate();
+    const checkOut = customCheckOut || getCheckOutDate();
+    
     if (checkIn && checkOut) {
       try {
         const start = new Date(checkIn);
         const end = new Date(checkOut);
         const nights = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-        if (nights > 0) return nights;
+        if (nights > 0) {
+          console.log(`✅ Calculated ${nights} nights for dates ${checkIn} to ${checkOut}`);
+          return nights;
+        }
       } catch (e) {
         console.warn('Error calculating nights:', e);
       }
     }
-    return null;
+    // Always return at least 1 night
+    return 1;
   };
 
   const checkInDate = getCheckInDate();
@@ -424,108 +440,149 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   
       let fetchedRoomTypes: any[] = [];
       
-      if (data.success && data.data) {
-        const innerData = data.data;
+      // ✅ Correct path to access room types with images from API
+      if (data?.success && data?.data?.data && Array.isArray(data.data.data)) {
+        const hotelData = data.data.data[0];
+        console.log('✅ Hotel data found:', hotelData?.hotelId);
         
-        if (innerData.success && innerData.data && Array.isArray(innerData.data)) {
-          const hotelData = innerData.data[0];
+        if (hotelData && hotelData.roomTypes && Array.isArray(hotelData.roomTypes)) {
+          console.log('✅ Found roomTypes in response:', hotelData.roomTypes.length);
           
-          if (hotelData && hotelData.roomTypes && Array.isArray(hotelData.roomTypes)) {
-            console.log('✅ Found roomTypes in response:', hotelData.roomTypes.length);
+          fetchedRoomTypes = hotelData.roomTypes.map((room: any, index: number) => {
+            const price = room.price || {};
+            const occupancy = room.occupancy || { maxAdults: 2 };
             
-            fetchedRoomTypes = hotelData.roomTypes.map((room: any, index: number) => {
-              const price = room.price || {};
-              const occupancy = room.occupancy || { maxAdults: 2 };
-              
-              const roomName = room.name?.text || room.type || 'Standard Room';
-              const roomDescription = room.description?.text || '';
-              
-              let bedTypes: any[] = room.bedTypes || [];
-              if (bedTypes.length === 0) {
-                const type = room.type || '';
-                let bedType = 'Queen';
-                let beds = 1;
-                
-                if (type.includes('K')) bedType = 'King';
-                else if (type.includes('Q')) bedType = 'Queen';
-                else if (type.includes('T')) bedType = 'Twin';
-                else if (type.includes('D')) bedType = 'Double';
-                
-                const match = type.match(/(\d+)/);
-                if (match) beds = parseInt(match[1]) || 1;
-                
-                bedTypes = [{ type: bedType, quantity: beds }];
-              }
-              
-              const total = parseFloat(price.total || '0');
-              const currency = price.currency || 'GBP';
-              const base = parseFloat(price.base || '0');
-              
-              const isRefundable = room.policies?.cancellation !== null;
-              const cancellationDeadline = room.policies?.cancellation?.deadline || '';
-              const isAvailable = room.available !== undefined ? room.available : true;
-              const rateFamily = room.rateFamily || '';
-              
-              let roomImage = '';
-              if (hotelData.images && Array.isArray(hotelData.images)) {
-                const roomImages = hotelData.images.filter((img: any) => 
-                  img.category === 'ROOM_VIEW' || img.category === 'MISCELLANEOUS'
-                );
-                if (roomImages.length > 0) {
-                  roomImage = roomImages[index % roomImages.length]?.uri || '';
-                } else if (hotelData.images.length > 0) {
-                  roomImage = hotelData.images[0]?.uri || '';
+            // ✅ FIXED - handle nested text
+            const roomName = room.name?.text?.text || room.name?.text || room.type || 'Standard Room';
+            const roomDescription = room.description?.text?.text || room.description?.text || '';
+            
+            // ✅ GET IMAGES FROM THE API
+            const roomImages = room.images || [];
+            const primaryImage = room.primaryImage || '';
+            
+            console.log(`📸 Room ${index} (${room.type}):`);
+            console.log(`  - images from API: ${roomImages.length}`);
+            console.log(`  - primaryImage from API: ${primaryImage ? 'yes' : 'no'}`);
+            console.log(`  - roomName: ${roomName}`);
+            
+            // ✅ Use ONLY API images
+            let roomImage = '';
+
+            if (primaryImage) {
+              roomImage = primaryImage;
+            } else if (roomImages && Array.isArray(roomImages) && roomImages.length > 0) {
+              // Loop through images to find the first one with a valid URI
+              for (const img of roomImages) {
+                if (img?.uri) {
+                  roomImage = img.uri;
+                  break;
                 }
               }
+            }
+            
+            // ✅ If NO image is found, use a local CSS fallback (No external URL)
+            if (!roomImage) {
+              roomImage = ''; // Setting it to empty triggers the CSS placeholder below
+            }
+            
+            let bedTypes: any[] = room.bedTypes || [];
+            if (bedTypes.length === 0) {
+              const type = room.type || '';
+              let bedType = 'Queen';
+              let beds = 1;
               
-              return {
-                id: room.id || room.roomId || `room-${index}`,
-                name: roomName,
-                type: room.type || 'Standard',
-                description: roomDescription,
-                bedTypes: bedTypes,
-                occupancy: occupancy,
-                price: {
-                  total: total,
-                  currency: currency,
-                  base: base,
-                  fees: price.fees || [],
-                  markup_percentage: price.markup_percentage || 15,
-                  service_fee: parseFloat(price.service_fee || '0'),
-                  original_currency: price.original_currency || 'USD',
-                },
-                isRefundable: isRefundable,
-                cancellationDeadline: cancellationDeadline,
-                available: isAvailable,
-                rateFamily: rateFamily,
-                image: roomImage,
-                raw: room,
-              };
-            });
-          }
+              if (type.includes('K')) bedType = 'King';
+              else if (type.includes('Q')) bedType = 'Queen';
+              else if (type.includes('T')) bedType = 'Twin';
+              else if (type.includes('D')) bedType = 'Double';
+              
+              const match = type.match(/(\d+)/);
+              if (match) beds = parseInt(match[1]) || 1;
+              
+              bedTypes = [{ type: bedType, quantity: beds }];
+            }
+            
+            const total = parseFloat(price.total || '0');
+const currencyCode = price.currency || 'GBP';
+const base = parseFloat(price.base || '0');
+
+// ✅ FIX 1: Extract the exact markup and fees from the backend response
+let serviceFee = 0;
+let conversionFee = 0;
+let markup = 0;
+
+if (price.fees && Array.isArray(price.fees)) {
+  price.fees.forEach((fee: any) => {
+    if (fee.type === 'SERVICE_FEE') serviceFee = parseFloat(fee.amount || 0);
+    if (fee.type === 'CONVERSION_FEE') conversionFee = parseFloat(fee.amount || 0);
+    if (fee.type === 'MARKUP' || fee.type === 'MARKUP_PERCENTAGE') markup = parseFloat(fee.amount || 0);
+  });
+}
+            
+            const isRefundable = room.policies?.cancellation !== null;
+            const cancellationDeadline = room.policies?.cancellation?.deadline || '';
+            const isAvailable = room.available !== undefined ? room.available : true;
+            const rateFamily = room.rateFamily || '';
+            
+            return {
+              id: room.id || room.roomId || `room-${index}`,
+              name: roomName,
+              type: room.type || 'Standard',
+              description: roomDescription,
+              bedTypes: bedTypes,
+              occupancy: occupancy,
+              image: roomImage,
+              images: roomImages,
+              primaryImage: primaryImage,
+              price: {
+                total: total,
+                currency: currencyCode,
+                base: base,
+                fees: price.fees || [], 
+                markup_percentage: price.markup_percentage || 15,
+                service_fee: serviceFee,      
+                conversion_fee: conversionFee, 
+                markup_amount: markup,         
+                original_currency: price.original_currency || 'USD',
+              },
+              isRefundable: isRefundable,
+              cancellationDeadline: cancellationDeadline,
+              available: isAvailable,
+              rateFamily: rateFamily,
+              raw: room,
+            };
+          });
         }
       }
       
-      if (fetchedRoomTypes.length > 0) {
-        console.log('✅ Room types loaded:', fetchedRoomTypes.length);
-        // ✅ Only show available rooms
-        const availableRooms = fetchedRoomTypes.filter((room: any) => room.available !== false);
-        
-        if (availableRooms.length === 0) {
-          console.warn('⚠️ No available rooms found');
-          setRoomTypes([]);
-          setSelectedRoomType(null);
-        } else {
-          setRoomTypes(availableRooms);
-          if (!selectedRoomType) {
-            const firstRoom = availableRooms[0];
-            setSelectedRoomType(firstRoom);
-          }
-        }
-      } else {
-        console.warn('⚠️ No room types found in response');
-        setRoomTypes([]);
-      }
+// 🟩 REPLACE IT WITH THIS SINGLE BLOCK
+if (fetchedRoomTypes.length > 0) {
+  console.log('✅ Room types loaded:', fetchedRoomTypes.length);
+  
+  // ✅ FIX: Deduplicate rooms BEFORE setting state
+  const uniqueRoomMap = new Map();
+  fetchedRoomTypes.forEach((room) => {
+    // Use the Room Type Code (e.g., "A1D") as the unique key
+    const key = room.type || room.name;
+    if (!uniqueRoomMap.has(key)) {
+      uniqueRoomMap.set(key, room);
+    }
+  });
+  
+  // Convert the map back to an array for rendering
+  const uniqueRoomTypes = Array.from(uniqueRoomMap.values());
+  
+  console.log('✅ Final Unique Rooms:', uniqueRoomTypes.length);
+  
+  // ✅ Only set the state ONCE with the unique rooms
+  setRoomTypes(uniqueRoomTypes);
+  if (!selectedRoomType) {
+    setSelectedRoomType(uniqueRoomTypes[0]);
+  }
+} else {
+  console.warn('⚠️ No room types found in response');
+  setRoomTypes([]);
+}
     } catch (error: any) {
       console.error('❌ Error fetching room types:', error);
       setRoomTypes([]);
@@ -995,7 +1052,7 @@ if (!roomTypes || roomTypes.length === 0) {
         {roomTypes.map((room: any, index: number) => {
           const total = room.price?.total || 0;
           const currencyCode = room.price?.currency || 'GBP';
-          const isSelected = selectedRoomType?.id === room.id;
+          const isSelected = selectedRoomType?.type === room.type;
           // ✅ Check availability - default to true if not specified
           const isAvailable = room.available !== undefined ? room.available : true;
           
@@ -1107,16 +1164,7 @@ if (!roomTypes || roomTypes.length === 0) {
                         </p>
                       )}
   
-                      {/* Price breakdown */}
-                      {room.price?.fees && room.price.fees.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                          {room.price.fees.map((fee: any, i: number) => (
-                            <span key={i} className="text-[9px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
-                              {fee.type}: {currencySymbol}{fee.amount}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                     
   
                       {/* Refundable & Cancellation */}
                       <div className="flex items-center gap-2 mt-1.5">
@@ -1147,43 +1195,84 @@ if (!roomTypes || roomTypes.length === 0) {
                       </p>
                       <p className="text-[9px] text-gray-400">per night</p>
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (isAvailable) setSelectedRoomType(room);
-                        }}
-                        disabled={!isAvailable}
-                        className={`px-4 py-1 text-xs font-semibold rounded-lg transition whitespace-nowrap ${
-                          !isAvailable 
-                            ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
-                            : isSelected 
-                              ? 'bg-[#33a8da] text-white shadow-sm' 
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        {!isAvailable ? 'Sold Out' : isSelected ? '✓ Selected' : 'Select'}
-                      </button>
+onClick={(e) => {
+  e.stopPropagation();
+  if (isAvailable) {
+    // 1. Select the room
+    setSelectedRoomType(room);
+
+    // 2. Calculate the total stay price immediately
+    const perNight = room.price?.total || 0;
+    const originalCurrency = room.price?.currency || 'USD';
+
+    // ✅ FORCE THE CALCULATION TO ALWAYS USE NIGHTS
+    const safeNights = nights && nights > 0 ? nights : 1;
+    const totalForStay = perNight * safeNights;
+
+    // 3. Update the raw numeric states
+    setOriginalPriceAmount(totalForStay);
+    setOriginalPriceCurrency(originalCurrency);
+
+    // 4. Convert and update the displayed string
+    if (originalCurrency !== currency.code) {
+      convertPrice(totalForStay, originalCurrency).then(converted => {
+        formatPrice(converted).then(formatted => {
+          setBookingCardPrice(formatted);
+        });
+      });
+    } else {
+      formatPrice(totalForStay, originalCurrency).then(formatted => {
+        setBookingCardPrice(formatted);
+      });
+    }
+  }
+}}
+>
+  {!isAvailable ? 'Sold Out' : isSelected ? '✓ Selected' : 'Select'}
+</button>
                     </div>
                   </div>
   
                   {/* Bottom row - Mobile Select */}
                   <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center sm:hidden">
                     <span className="text-[9px] text-gray-400">Includes taxes & charges</span>
+                    
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isAvailable) setSelectedRoomType(room);
-                      }}
-                      disabled={!isAvailable}
-                      className={`px-4 py-1 text-xs font-semibold rounded-lg transition ${
-                        !isAvailable 
-                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
-                          : isSelected 
-                            ? 'bg-[#33a8da] text-white shadow-sm' 
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {!isAvailable ? 'Sold Out' : isSelected ? '✓ Selected' : 'Select'}
-                    </button>
+  onClick={(e) => {
+    e.stopPropagation();
+    if (isAvailable) {
+      // 1. Select the room
+      setSelectedRoomType(room);
+  
+      // 2. Calculate the total stay price immediately
+      const perNight = room.price?.total || 0;
+      const originalCurrency = room.price?.currency || 'USD';
+  
+      // ✅ FORCE THE CALCULATION TO ALWAYS USE NIGHTS
+      const safeNights = nights && nights > 0 ? nights : 1;
+      const totalForStay = perNight * safeNights;
+  
+      // 3. Update the raw numeric states
+      setOriginalPriceAmount(totalForStay);
+      setOriginalPriceCurrency(originalCurrency);
+  
+      // 4. Convert and update the displayed string
+      if (originalCurrency !== currency.code) {
+        convertPrice(totalForStay, originalCurrency).then(converted => {
+          formatPrice(converted).then(formatted => {
+            setBookingCardPrice(formatted);
+          });
+        });
+      } else {
+        formatPrice(totalForStay, originalCurrency).then(formatted => {
+          setBookingCardPrice(formatted);
+        });
+      }
+    }
+  }}
+>
+  {!isAvailable ? 'Sold Out' : isSelected ? '✓ Selected' : 'Select'}
+</button>
                   </div>
                 </div>
               </div>
@@ -1378,28 +1467,57 @@ if (!roomTypes || roomTypes.length === 0) {
                 <p className="text-sm font-semibold text-gray-900">{getGuestsDisplay()}</p>
               </div>
 
-              {/* Price */}
-              <div className="border-t border-gray-100 pt-4 mb-4">
-                <div className="flex justify-between items-end">
-                  <div>
-                    <p className="text-xs text-gray-500">Price for {nights || 1} night{nights && nights > 1 ? 's' : ''}</p>
-                    <p className="text-2xl font-bold text-[#33a8da]">{convertedPrice || 'Price on request'}</p>
-                  </div>
-                </div>
-              </div>
+{/* Price */}
+<div className="border-t border-gray-100 pt-4 mb-4">
+  <div className="flex justify-between items-end">
+    <div>
+      <p className="text-xs text-gray-500">
+        Price for {(() => {
+          // If a room is selected, try to get dates from the root of the raw offer
+          if (selectedRoomType) {
+            // ✅ FIX: Amadeus stores checkInOut directly on the root object, NOT inside policies!
+            const offerCheckIn = selectedRoomType.raw?.checkInDate || selectedRoomType.raw?.checkIn;
+            const offerCheckOut = selectedRoomType.raw?.checkOutDate || selectedRoomType.raw?.checkOut;
+            
+            // Use those if available, otherwise use the global search dates
+            const checkIn = offerCheckIn || getCheckInDate();
+            const checkOut = offerCheckOut || getCheckOutDate();
 
-              {/* Selected Room */}
-              {selectedRoomType && (
-                <div className="bg-blue-50 rounded-lg p-3 mb-4 border border-blue-100">
-                  <p className="text-xs font-medium text-blue-600 uppercase tracking-wider">Selected Room</p>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {safeRender(selectedRoomType.name || selectedRoomType.type || 'Standard Room')}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {formatRoomPrice(selectedRoomType.price)} per night
-                  </p>
-                </div>
-              )}
+            if (checkIn && checkOut) {
+              try {
+                const start = new Date(checkIn);
+                const end = new Date(checkOut);
+                const calculatedNights = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                if (calculatedNights > 0) {
+                  return `${calculatedNights} night${calculatedNights > 1 ? 's' : ''}`;
+                }
+              } catch (e) { /* ignore date error */ }
+            }
+          }
+          // Fallback to the global nights variable
+          return `${nights || 1} night${(nights || 1) > 1 ? 's' : ''}`;
+        })()}
+      </p>
+
+      <p className="text-2xl font-bold text-[#33a8da]">
+        {selectedRoomType && bookingCardPrice ? bookingCardPrice : (convertedPrice || 'Price on request')}
+      </p>
+    </div>
+  </div>
+</div>
+
+
+{selectedRoomType && (
+  <div className="bg-blue-50 rounded-lg p-3 mb-4 border border-blue-100">
+    <p className="text-xs font-medium text-blue-600 uppercase tracking-wider">Selected Room</p>
+    <p className="text-sm font-semibold text-gray-900">
+      {safeRender(selectedRoomType.name || selectedRoomType.type || 'Standard Room')}
+    </p>
+    <p className="text-xs text-gray-500 mt-1">
+      {formatRoomPrice(selectedRoomType.price)} per night
+    </p>
+  </div>
+)}
 
               {/* Book Button */}
               <button 
