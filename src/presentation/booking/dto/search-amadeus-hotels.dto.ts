@@ -155,12 +155,12 @@ export class SearchAmadeusHotelsDto {
   includeClosed?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Return only cheapest offer per hotel',
-    default: true,
+    description: 'Return only cheapest offer per hotel. Set to false to see all room types with their rates.',
+    default: false,
   })
   @IsOptional()
   @IsBoolean()
-  bestRateOnly?: boolean;
+  bestRateOnly?: boolean = false;
 
   @ApiPropertyOptional({
     description: 'Currency code (ISO 4217). Default: GBP',

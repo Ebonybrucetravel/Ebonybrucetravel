@@ -33,7 +33,7 @@ export class SearchAmadeusHotelsUseCase {
       paymentPolicy,
       boardType,
       includeClosed,
-      bestRateOnly = true,
+      bestRateOnly = false,
       countryOfResidence,
       lang,
       radius = 200,
@@ -444,7 +444,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
       adults = 1,
       roomQuantity = 1,
       currency: targetCurrency = 'NGN',
-      bestRateOnly = true,
+      bestRateOnly = false,
       radius = 200,
       radiusUnit = 'KM',
     } = searchParams;
@@ -573,7 +573,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
     if (!results?.data) {
       return results;
     }
-
+  
     let markupPercentage = 2.5;
     let serviceFeeAmount = 0;
     try {
@@ -588,13 +588,34 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
     } catch (error) {
       this.logger.warn(`Could not fetch markup config, using default ${markupPercentage}%:`, error);
     }
-
+  
     const processedData = await Promise.all(
       results.data.map(async (hotel: any) => {
         const processedRoomTypes = await Promise.all(
           (hotel.roomTypes || []).map(async (roomType: any) => {
-            const originalPrice = roomType.price?.base || 0;
+            // ✅ FIX: Use total first, then base - properly parse
+            let originalPrice = roomType.price?.total || roomType.price?.base || 0;
             const originalCurrency = roomType.price?.currency || 'EUR';
+            
+            // ✅ Parse the price correctly (handle string or number)
+            const parsedOriginalPrice = typeof originalPrice === 'string' 
+              ? parseFloat(originalPrice) 
+              : (originalPrice || 0);
+            
+            // ✅ If still 0, try to get from raw data if available
+            let finalOriginalPrice = parsedOriginalPrice;
+            if (finalOriginalPrice === 0 && roomType.raw?.price?.total) {
+              const rawPrice = roomType.raw.price.total;
+              finalOriginalPrice = typeof rawPrice === 'string' ? parseFloat(rawPrice) : (rawPrice || 0);
+            }
+            
+            // ✅ If still 0, try to get from the offer's price.total directly from results
+            if (finalOriginalPrice === 0 && roomType.price?.total) {
+              const totalPrice = roomType.price.total;
+              finalOriginalPrice = typeof totalPrice === 'string' ? parseFloat(totalPrice) : (totalPrice || 0);
+            }
+            
+            this.logger.debug(`Room ${roomType.type}: originalPrice=${finalOriginalPrice}, currency=${originalCurrency}`);
             
             let convertedBasePrice: number;
             let conversionFee: number = 0;
@@ -602,7 +623,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
         
             if (originalCurrency !== targetCurrency) {
               convertedBasePrice = await this.currencyService.convert(
-                originalPrice,
+                finalOriginalPrice,
                 originalCurrency,
                 targetCurrency,
               );
@@ -614,28 +635,43 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
               conversionFee = conversionDetails.conversionFee;
               conversionFeePercentage = this.currencyService.getConversionBuffer();
             } else {
-              convertedBasePrice = originalPrice;
+              convertedBasePrice = finalOriginalPrice;
             }
         
             const markupAmount = (convertedBasePrice * markupPercentage) / 100;
             const finalPrice = convertedBasePrice + markupAmount + serviceFeeAmount + conversionFee;
         
-            const transformedFees = (roomType.price?.fees || []).map((fee: any) => {
-              let feeAmount = fee.amount || 0;
-              let feeCurrency = fee.currency || originalCurrency;
-              if (feeCurrency !== targetCurrency) {
-                feeAmount = this.currencyService.convert(feeAmount, feeCurrency, targetCurrency);
-              }
-              if (fee.type !== 'BASE_RATE') {
-                feeAmount = feeAmount + (feeAmount * markupPercentage / 100);
-              }
-              return {
-                ...fee,
-                amount: this.currencyService.formatAmount(feeAmount, targetCurrency),
-                currency: targetCurrency,
-              };
-            });
-
+            // ✅ Transform fees with async handling
+            const transformedFees = await Promise.all(
+              (roomType.price?.fees || []).map(async (fee: any) => {
+                let feeAmount = fee.amount || 0;
+                let feeCurrency = fee.currency || originalCurrency;
+                
+                // ✅ Parse fee amount correctly
+                const parsedFeeAmount = typeof feeAmount === 'string' 
+                  ? parseFloat(feeAmount) 
+                  : (feeAmount || 0);
+                
+                if (feeCurrency !== targetCurrency) {
+                  feeAmount = await this.currencyService.convert(parsedFeeAmount, feeCurrency, targetCurrency);
+                } else {
+                  feeAmount = parsedFeeAmount;
+                }
+                
+                // ✅ Apply markup only to non-base fees
+                if (fee.type !== 'BASE_RATE' && fee.type !== 'BASE') {
+                  feeAmount = feeAmount + (feeAmount * markupPercentage / 100);
+                }
+                
+                return {
+                  ...fee,
+                  amount: this.currencyService.formatAmount(feeAmount, targetCurrency),
+                  currency: targetCurrency,
+                };
+              })
+            );
+  
+            // ✅ Add MARKUP fee
             if (markupAmount > 0) {
               transformedFees.push({
                 type: 'MARKUP',
@@ -645,7 +681,8 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
                 includedInBase: false,
               });
             }
-
+  
+            // ✅ Add SERVICE_FEE
             if (serviceFeeAmount > 0) {
               transformedFees.push({
                 type: 'SERVICE_FEE',
@@ -655,7 +692,8 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
                 includedInBase: false,
               });
             }
-
+  
+            // ✅ Add CONVERSION_FEE
             if (conversionFee > 0) {
               transformedFees.push({
                 type: 'CONVERSION_FEE',
@@ -665,7 +703,10 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
                 includedInBase: false,
               });
             }
-
+  
+            // ✅ Log final price for debugging
+            this.logger.debug(`Room ${roomType.type}: base=${convertedBasePrice}, markup=${markupAmount}, serviceFee=${serviceFeeAmount}, conversionFee=${conversionFee}, total=${finalPrice}`);
+  
             return {
               ...roomType,
               price: {
@@ -674,7 +715,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
                 total: this.currencyService.formatAmount(finalPrice, targetCurrency),
                 currency: targetCurrency,
                 fees: transformedFees,
-                original_base: originalPrice,
+                original_base: finalOriginalPrice,
                 original_currency: originalCurrency,
                 markup_percentage: markupPercentage,
                 markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
@@ -684,7 +725,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
             };
           }),
         );
-
+  
         return {
           ...hotel,
           roomTypes: processedRoomTypes,
@@ -692,7 +733,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
         };
       }),
     );
-
+  
     return {
       ...results,
       data: processedData,
@@ -702,6 +743,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
       conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${serviceFeeAmount} ${targetCurrency} service fee` : ''}.`,
     };
   }
+
 
   private async processOfferPricingWithMarkup(results: any, targetCurrency: string): Promise<any> {
     if (!results?.data) {

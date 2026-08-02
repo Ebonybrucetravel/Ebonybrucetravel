@@ -2,6 +2,8 @@ import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { redactCardFromString } from '@common/utils/pci-redaction.util';
 import { CurrencyService } from '@infrastructure/currency/currency.service';
+import { ProductType } from '@prisma/client';
+import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
 
 @Injectable()
 export class AmadeusService {
@@ -18,6 +20,7 @@ export class AmadeusService {
   constructor(
     private readonly configService: ConfigService,
     private readonly currencyService: CurrencyService,
+    private readonly markupRepository: MarkupRepository,
   ) {
     this.apiKey = this.configService.get<string>('AMADEUS_API_KEY') || '';
     this.apiSecret = this.configService.get<string>('AMADEUS_API_SECRET') || '';
@@ -640,7 +643,7 @@ export class AmadeusService {
       );
     }
     
-    // Step 1: Get hotel offers (this includes room types with prices)
+    // Step 1: Get hotel offers
     const queryParams: Record<string, string> = {
       checkInDate: params.checkInDate,
       checkOutDate: params.checkOutDate,
@@ -655,7 +658,9 @@ export class AmadeusService {
     if (params.adults) queryParams.adults = params.adults.toString();
     if (params.roomQuantity) queryParams.roomQuantity = params.roomQuantity.toString();
     if (params.currency) queryParams.currency = params.currency;
-    if (params.bestRateOnly !== undefined) queryParams.bestRateOnly = params.bestRateOnly.toString();
+    queryParams.bestRateOnly = params.bestRateOnly === undefined 
+      ? 'false' 
+      : params.bestRateOnly.toString();
     
     const response = await this.makeRequest('/v3/shopping/hotel-offers', { 
       method: 'GET', 
@@ -669,106 +674,220 @@ export class AmadeusService {
         message: 'No hotels found',
       };
     }
-    
-    // Step 2: Parse each hotel's offers to extract room types with fees
-    const hotelsWithRoomTypes = response.data.map((hotelOffer: any) => {
-      const hotel = hotelOffer.hotel || {};
-      const offers = hotelOffer.offers || [];
-      
-      // Extract room types from offers
-      const roomTypes = offers.map((offer: any) => {
-        const room = offer.room || {};
-        const price = offer.price || {};
+  
+    // Step 2: Fetch hotel images and room images
+    let roomImagesMap = new Map<string, Map<string, any[]>>();
+    try {
+      const hotelIds = response.data
+        .map((item: any) => item.hotel?.hotelId)
+        .filter((id: string) => id);
+  
+      if (hotelIds.length > 0) {
+        const imagesData = await this.fetchHotelImagesWithRoomsBatch(hotelIds);
+        roomImagesMap = new Map(
+          Array.from(imagesData.entries()).map(([hotelId, data]) => [hotelId, data.roomImages])
+        );
+        this.logger.log(`✅ Fetched room images for ${roomImagesMap.size} hotels`);
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to fetch room images, continuing without them: ${error.message}`);
+    }
+  
+    // Step 3: Fetch markup configuration
+    const targetCurrency = params.currency || 'NGN';
+    let markupPercentage = 2.5;
+    let serviceFeeAmount = 0;
+    try {
+      const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
+        ProductType.HOTEL,
+        targetCurrency,
+      );
+      if (markupConfig) {
+        markupPercentage = markupConfig.markupPercentage || 2.5;
+        serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
+      }
+    } catch (error) {
+      this.logger.warn(`Could not fetch markup config, using default ${markupPercentage}%:`, error);
+    }
+  
+    // Step 4: Process each hotel's offers with images and prices
+    const hotelsWithRoomTypes = await Promise.all(
+      response.data.map(async (hotelOffer: any) => {
+        const hotel = hotelOffer.hotel || {};
+        const offers = hotelOffer.offers || [];
         
-        // Extract all fees from the offer
-        const fees = [];
+        // Get room images for this hotel
+        const hotelRoomImages = roomImagesMap.get(hotel.hotelId) || new Map<string, any[]>();
         
-        // Base price
-        if (price.base) {
-          fees.push({
-            type: 'BASE_RATE',
-            amount: parseFloat(price.base),
-            currency: price.currency || 'GBP',
-            description: 'Base room rate',
-            includedInBase: true,
-          });
-        }
+        // Process each room type with price and images
+        const roomTypes = await Promise.all(
+          offers.map(async (offer: any) => {
+            const room = offer.room || {};
+            const price = offer.price || {};
+            
+            // ✅ Extract original price
+            let originalPrice = price.total || price.base || 0;
+            const originalCurrency = price.currency || 'GBP';
+            
+            const parsedOriginalPrice = typeof originalPrice === 'string' 
+              ? parseFloat(originalPrice) 
+              : (originalPrice || 0);
+            
+            // ✅ Convert price to target currency
+            let convertedBasePrice: number;
+            let conversionFee: number = 0;
+            let conversionFeePercentage: number = 0;
         
-        // Taxes
-        if (price.taxes && Array.isArray(price.taxes)) {
-          for (const tax of price.taxes) {
+            if (originalCurrency !== targetCurrency) {
+              convertedBasePrice = await this.currencyService.convert(
+                parsedOriginalPrice,
+                originalCurrency,
+                targetCurrency,
+              );
+              const conversionDetails = this.currencyService.calculateConversionFee(
+                convertedBasePrice,
+                originalCurrency,
+                targetCurrency,
+              );
+              conversionFee = conversionDetails.conversionFee;
+              conversionFeePercentage = this.currencyService.getConversionBuffer();
+            } else {
+              convertedBasePrice = parsedOriginalPrice;
+            }
+        
+                    // ✅ FIX: finalPrice is already converted. No extra markup added here.
+        const finalPrice = convertedBasePrice;
+        
+        // ✅ Get room type
+        const roomType = room.type || room.typeEstimated?.category || 'STANDARD';
+            
+            // ✅ Get room images
+            const roomImages = this.getRoomImagesForOffer(hotelRoomImages, roomType);
+            
+            // ✅ Build fees array
+            const fees = [];
+            
+            // Base price
             fees.push({
-              type: 'TAX',
-              amount: parseFloat(tax.amount || 0),
-              currency: tax.currency || price.currency || 'GBP',
-              description: tax.description || tax.type || 'Tax',
-              includedInBase: false,
+              type: 'BASE_RATE',
+              amount: convertedBasePrice,
+              currency: targetCurrency,
+              description: 'Base room rate',
+              includedInBase: true,
             });
-          }
-        }
+            
+            // Taxes from offer
+            if (price.taxes && Array.isArray(price.taxes)) {
+              for (const tax of price.taxes) {
+                let taxAmount = parseFloat(tax.amount || 0);
+                if (tax.currency && tax.currency !== targetCurrency) {
+                  taxAmount = await this.currencyService.convert(taxAmount, tax.currency, targetCurrency);
+                }
+                fees.push({
+                  type: 'TAX',
+                  amount: taxAmount,
+                  currency: targetCurrency,
+                  description: tax.description || tax.type || 'Tax',
+                  includedInBase: false,
+                });
+              }
+            }
+            
+            // Additional fees
+            if (price.additionalFees && Array.isArray(price.additionalFees)) {
+              for (const fee of price.additionalFees) {
+                let feeAmount = parseFloat(fee.amount || 0);
+                if (fee.currency && fee.currency !== targetCurrency) {
+                  feeAmount = await this.currencyService.convert(feeAmount, fee.currency, targetCurrency);
+                }
+                fees.push({
+                  type: fee.type || 'ADDITIONAL_FEE',
+                  amount: feeAmount,
+                  currency: targetCurrency,
+                  description: fee.description || fee.type || 'Additional fee',
+                  includedInBase: false,
+                });
+              }
+            }
+            
+         
+            
+            return {
+              id: offer.id,
+              roomId: room.roomId || offer.id,
+              type: roomType,
+              name: {
+                name: room.description || room.type || 'Standard Room',
+              },
+              description: {
+                text: room.description || null,
+                lang: 'EN',
+              },
+              bedTypes: room.beds?.map((b: any) => ({
+                type: b.type || 'UNKNOWN',
+                quantity: b.quantity || 1,
+              })) || [],
+              occupancy: {
+                maxAdults: room.maxAdultOccupancy || 2,
+                maxChildren: room.maxChildOccupancy || 0,
+                maxOverall: room.maxOverallOccupancy || 2,
+              },
+              price: {
+                base: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
+                total: this.currencyService.formatAmount(finalPrice, targetCurrency),
+                currency: targetCurrency,
+                fees: fees,
+                original_base: parsedOriginalPrice,
+                original_currency: originalCurrency,
+                markup_percentage: 0,
+                markup_amount: 0,     
+                service_fee: 0,       
+                conversion_fee: 0,   
+              },
+
+              rateFamily: offer.rateFamilyEstimated?.code || null,
+              policies: {
+                paymentType: offer.policies?.paymentType || null,
+                guarantee: offer.policies?.guarantee || null,
+                cancellation: offer.policies?.cancellation || null,
+                deposit: offer.policies?.deposit || null,
+              },
+              available: offer.available || true,
+              // ✅ Images from API
+              images: roomImages,
+              primaryImage: roomImages.length > 0 ? roomImages[0]?.uri : null,
+            };
+          })
+        );
         
-        // Additional fees (resort fees, service fees, etc.)
-        if (price.additionalFees && Array.isArray(price.additionalFees)) {
-          for (const fee of price.additionalFees) {
-            fees.push({
-              type: fee.type || 'ADDITIONAL_FEE',
-              amount: parseFloat(fee.amount || 0),
-              currency: fee.currency || price.currency || 'GBP',
-              description: fee.description || fee.type || 'Additional fee',
-              includedInBase: false,
-            });
-          }
-        }
+        // Get all hotel images
+        const allHotelImages = Array.from(hotelRoomImages.values()).flat();
         
         return {
-          id: offer.id,
-          roomId: room.roomId || offer.id,
-          type: room.type || 'STANDARD',
-          name: room.description || room.type || 'Standard Room',
-          description: room.description || null,
-          bedTypes: room.beds?.map((b: any) => ({
-            type: b.type || 'UNKNOWN',
-            quantity: b.quantity || 1,
-          })) || [],
-          occupancy: {
-            maxAdults: room.maxAdultOccupancy || 2,
-            maxChildren: room.maxChildOccupancy || 0,
-            maxOverall: room.maxOverallOccupancy || 2,
-          },
-          price: {
-            base: parseFloat(price.base || 0),
-            total: parseFloat(price.total || 0),
-            currency: price.currency || 'GBP',
-            fees: fees,
-          },
-          rateFamily: offer.rateFamilyEstimated?.code || null,
-          policies: {
-            paymentType: offer.policies?.paymentType || null,
-            guarantee: offer.policies?.guarantee || null,
-            cancellation: offer.policies?.cancellation || null,
-            deposit: offer.policies?.deposit || null,
-          },
-          available: offer.available || false,
+          hotelId: hotel.hotelId,
+          name: hotel.name,
+          chainCode: hotel.chainCode,
+          cityCode: hotel.cityCode,
+          latitude: hotel.latitude,
+          longitude: hotel.longitude,
+          address: hotel.address,
+          roomTypes: roomTypes,
+          totalRoomTypes: roomTypes.length,
+          hotelImages: allHotelImages,
+          primaryHotelImage: allHotelImages.length > 0 ? allHotelImages[0]?.uri : null,
         };
-      });
-      
-      return {
-        hotelId: hotel.hotelId,
-        name: hotel.name,
-        chainCode: hotel.chainCode,
-        cityCode: hotel.cityCode,
-        latitude: hotel.latitude,
-        longitude: hotel.longitude,
-        address: hotel.address,
-        roomTypes: roomTypes,
-        totalRoomTypes: roomTypes.length,
-      };
-    });
+      })
+    );
     
     return {
       success: true,
       data: hotelsWithRoomTypes,
       message: 'Hotels with room types and fees retrieved successfully',
+      images_enriched: true,
+      currency: targetCurrency,
+      markup_percentage: markupPercentage,
+      service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
+      conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${serviceFeeAmount} ${targetCurrency} service fee` : ''}.`,
     };
   }
   
@@ -876,21 +995,20 @@ export class AmadeusService {
     });
   }
   
-  private async fetchHotelImagesBatch(hotelIds: string[]): Promise<Map<string, any[]>> {
-    const imagesMap = new Map<string, any[]>();
+  private async fetchHotelImagesWithRoomsBatch(hotelIds: string[]): Promise<Map<string, { hotelImages: any[], roomImages: Map<string, any[]> }>> {
+    const resultMap = new Map<string, { hotelImages: any[], roomImages: Map<string, any[]> }>();
     
     if (!hotelIds || hotelIds.length === 0) {
-      return imagesMap;
+      return resultMap;
     }
     
     try {
-
       const chunkSize = 10;
       for (let i = 0; i < hotelIds.length; i += chunkSize) {
         const chunk = hotelIds.slice(i, i + chunkSize);
       
         const promises = chunk.map(hotelId => 
-          this.getHotelContent(hotelId, undefined, 'FULL')
+          this.getHotelContent(hotelId, ['rooms', 'basic'], 'FULL')
             .then(response => ({ hotelId, response }))
             .catch(error => {
               this.logger.warn(`Failed to fetch images for hotel ${hotelId}: ${error.message}`);
@@ -901,16 +1019,27 @@ export class AmadeusService {
         const results = await Promise.all(promises);
         
         for (const { hotelId, response } of results) {
-          const images = this.extractImagesFromResponse(response);
-          imagesMap.set(hotelId, images);
+          const hotelImages = this.extractImagesFromResponse(response);
+          const roomImages = this.extractRoomImagesFromResponse(response);
+          
+          resultMap.set(hotelId, {
+            hotelImages,
+            roomImages,
+          });
+          
+          this.logger.log(`Hotel ${hotelId}: ${hotelImages.length} hotel images, ${roomImages.size} room types with images`);
+          
+          if (roomImages.size > 0) {
+            this.logger.log(`  Room types with images: ${Array.from(roomImages.keys()).join(', ')}`);
+          }
         }
       }
       
-      this.logger.log(`✅ Fetched images for ${imagesMap.size} hotels`);
-      return imagesMap;
+      this.logger.log(`✅ Fetched images for ${resultMap.size} hotels with room images`);
+      return resultMap;
     } catch (error) {
       this.logger.error(`Failed to fetch hotel images batch: ${error.message}`);
-      return imagesMap;
+      return resultMap;
     }
   }
 
@@ -1011,6 +1140,228 @@ export class AmadeusService {
     
     return categories;
   }
+  /**
+ * Extract room images from hotel content response
+ */
+private extractRoomImagesFromResponse(response: any): Map<string, any[]> {
+  const roomImagesMap = new Map<string, any[]>();
+  
+  try {
+    if (!response?.data) {
+      return roomImagesMap;
+    }
+    
+    let rooms: any[] = [];
+    
+    if (response.data.rooms && Array.isArray(response.data.rooms)) {
+      rooms = response.data.rooms;
+    } else if (response.data.roomTypes && Array.isArray(response.data.roomTypes)) {
+      rooms = response.data.roomTypes;
+    } else if (response.data.basic?.rooms && Array.isArray(response.data.basic.rooms)) {
+      rooms = response.data.basic.rooms;
+    }
+    
+    if (rooms.length === 0) return roomImagesMap;
+    
+    for (const room of rooms) {
+      const roomType = room.type || room.roomType || room.category || 'STANDARD';
+      const media = room.media || room.images || [];
+      
+      if (!Array.isArray(media) || media.length === 0) continue;
+      
+      const images: any[] = [];
+      
+      for (const mediaItem of media) {
+        let href = null;
+        
+        if (mediaItem.mediaScales?.length > 0) {
+          const largest = mediaItem.mediaScales.sort((a: any, b: any) => {
+            const aSize = (a.dimensions?.height || 0) * (a.dimensions?.width || 0);
+            const bSize = (b.dimensions?.height || 0) * (b.dimensions?.width || 0);
+            return bSize - aSize;
+          })[0];
+          href = largest?.href;
+        } else if (mediaItem.href) {
+          href = mediaItem.href;
+        } else if (mediaItem.url) {
+          href = mediaItem.url;
+        } else if (mediaItem.uri) {
+          href = mediaItem.uri;
+        }
+        
+        if (href) {
+          images.push({
+            uri: href,
+            category: mediaItem.category || 'ROOM',
+            type: 'IMAGE',
+          });
+        }
+      }
+      
+      if (images.length > 0) {
+        roomImagesMap.set(roomType, images);
+      }
+    }
+    
+    return roomImagesMap;
+  } catch (error) {
+    this.logger.error(`Error extracting room images: ${error.message}`);
+    return roomImagesMap;
+  }
+}
+
+/**
+ * Extract all unique room types from the response
+ */
+private extractRoomTypesFromResponse(response: any): string[] {
+  const roomTypes = new Set<string>();
+  
+  try {
+    if (response?.data?.offers && Array.isArray(response.data.offers)) {
+      for (const offer of response.data.offers) {
+        if (offer.room?.type) {
+          roomTypes.add(offer.room.type);
+        }
+      }
+    }
+    
+    if (response?.data?.rooms && Array.isArray(response.data.rooms)) {
+      for (const room of response.data.rooms) {
+        if (room.type) {
+          roomTypes.add(room.type);
+        }
+      }
+    }
+    
+    roomTypes.add('STANDARD');
+    
+    return Array.from(roomTypes);
+  } catch (error) {
+    return ['STANDARD'];
+  }
+}
+
+/**
+ * Get room images for a specific room type
+ */
+private getRoomImagesForOffer(roomImagesMap: Map<string, any[]>, roomType: string): any[] {
+  if (!roomImagesMap || roomImagesMap.size === 0) return [];
+  if (!roomType) return [];
+  
+  // ✅ Clean the room type - remove special characters like *, -, etc.
+  const cleanRoomType = roomType.replace(/^[*\-]/, '').trim();
+  this.logger.debug(`Looking for images for room type: ${roomType} (cleaned: ${cleanRoomType})`);
+  this.logger.debug(`Available room types: ${Array.from(roomImagesMap.keys()).join(', ')}`);
+  
+  // Try exact match with cleaned type
+  if (roomImagesMap.has(cleanRoomType)) {
+    this.logger.debug(`✅ Exact match found for ${cleanRoomType}`);
+    return roomImagesMap.get(cleanRoomType) || [];
+  }
+  
+  // Try exact match with original
+  if (roomImagesMap.has(roomType)) {
+    this.logger.debug(`✅ Exact match found for ${roomType}`);
+    return roomImagesMap.get(roomType) || [];
+  }
+  
+  // Try case-insensitive match
+  const lowerRoomType = cleanRoomType.toLowerCase();
+  for (const [key, images] of roomImagesMap) {
+    if (key.toLowerCase() === lowerRoomType) {
+      this.logger.debug(`✅ Case-insensitive match found for ${roomType} -> ${key}`);
+      return images;
+    }
+  }
+  
+  // Try partial match
+  for (const [key, images] of roomImagesMap) {
+    if (cleanRoomType.includes(key) || key.includes(cleanRoomType)) {
+      this.logger.debug(`✅ Partial match found for ${roomType} -> ${key}`);
+      return images;
+    }
+  }
+  
+  // ✅ Try matching by bed type
+  const bedTypeMap: Record<string, string[]> = {
+    'K': ['KING', 'K', '1K', 'C1K', 'D1K', 'A1K', 'R1K', 'B1K', 'S1K', 'U1K', 'E1K', 'F1K'],
+    'Q': ['QUEEN', 'Q', '1Q', 'C1Q', 'D1Q', 'T1Q', 'H1Q'],
+    'D': ['DOUBLE', 'D', '1D', 'D1K', 'D1Q'],
+    'B': ['TWIN', 'B', '1B', 'T1Q', 'T1K'],
+    'T': ['TWIN', 'T', '1T', 'T1Q', 'T1K'],
+    'S': ['SINGLE', 'S', '1S'],
+    'RH': ['STANDARD', 'STD', 'RH', 'ROOM', 'HOTEL'],
+    '1B': ['TWIN', 'B', '1B', 'STANDARD', 'STD'],
+    '1D': ['DOUBLE', 'D', '1D', 'STANDARD', 'STD'],
+    '1K': ['KING', 'K', '1K', 'STANDARD', 'STD'],
+    '1Q': ['QUEEN', 'Q', '1Q', 'STANDARD', 'STD'],
+  };
+  
+  for (const [bedType, patterns] of Object.entries(bedTypeMap)) {
+    if (patterns.some(p => cleanRoomType.includes(p) || p.includes(cleanRoomType))) {
+      for (const [key, images] of roomImagesMap) {
+        if (patterns.some(p => key.includes(p) || p.includes(key))) {
+          this.logger.debug(`✅ Bed type match found for ${roomType} -> ${key} (${bedType})`);
+          return images;
+        }
+      }
+    }
+  }
+  
+  // ✅ If no match, use STANDARD images if available
+  if (roomImagesMap.has('STANDARD')) {
+    this.logger.debug(`✅ Using STANDARD images as fallback for ${roomType}`);
+    return roomImagesMap.get('STANDARD') || [];
+  }
+  
+  // If no room images found, return the first available images
+  for (const [, images] of roomImagesMap) {
+    if (images.length > 0) {
+      this.logger.debug(`✅ Using first available images as fallback for ${roomType}`);
+      return images;
+    }
+  }
+  
+  this.logger.debug(`❌ No images found for room type ${roomType}`);
+  return [];
+}
+
+private async fetchHotelImagesBatch(hotelIds: string[]): Promise<Map<string, any[]>> {
+  const imagesMap = new Map<string, any[]>();
+  
+  if (!hotelIds || hotelIds.length === 0) {
+    return imagesMap;
+  }
+  
+  try {
+    const chunkSize = 10;
+    for (let i = 0; i < hotelIds.length; i += chunkSize) {
+      const chunk = hotelIds.slice(i, i + chunkSize);
+    
+      const promises = chunk.map(hotelId => 
+        this.getHotelContent(hotelId, undefined, 'FULL')
+          .then(response => ({ hotelId, response }))
+          .catch(error => {
+            this.logger.warn(`Failed to fetch images for hotel ${hotelId}: ${error.message}`);
+            return { hotelId, response: null };
+          })
+      );
+      
+      const results = await Promise.all(promises);
+      
+      for (const { hotelId, response } of results) {
+        const images = this.extractImagesFromResponse(response);
+        imagesMap.set(hotelId, images);
+      }
+    }
+    
+    this.logger.log(`✅ Fetched images for ${imagesMap.size} hotels`);
+    return imagesMap;
+  } catch (error) {
+    this.logger.error(`Failed to fetch hotel images batch: ${error.message}`);
+    return imagesMap;
+  }
+}
 
   async repriceHotelOffer(offerId: string): Promise<any> {
     try {
