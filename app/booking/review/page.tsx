@@ -336,6 +336,121 @@ function processItemPrices(item: ExtendedSearchResult | null, currencyCode: stri
     return item;
   }
 
+
+  const isHotel = item.type?.toLowerCase() === 'hotels' || 
+                  item.hotelId || 
+                  item.hotel ||
+                  item.hotelName ||
+                  item.selectedRoomData ||
+                  item.selectedRoomType;
+
+  if (isHotel) {
+    console.log('🏨 processItemPrices - Hotel detected');
+    
+    let totalAmount = 0;
+    
+    // Try totalAmount first (most reliable for selected room)
+    if (item.totalAmount && item.totalAmount > 0) {
+      totalAmount = item.totalAmount;
+    }
+    // Try final_amount
+    else if (item.final_amount) {
+      totalAmount = parseFloat(item.final_amount);
+    }
+    // Try final_price
+    else if (item.final_price) {
+      totalAmount = parseFloat(item.final_price as string);
+    }
+    // Try originalPriceAmount
+    else if (item.originalPriceAmount && item.originalPriceAmount > 0) {
+      totalAmount = item.originalPriceAmount;
+    }
+    // Try price string
+    else if (item.price && typeof item.price === 'string') {
+      const parsed = parseFloat(item.price.replace(/[^0-9.]/g, ''));
+      if (parsed > 0) {
+        totalAmount = parsed;
+      }
+    }
+    // Try rawPrice
+    else if (item.rawPrice) {
+      totalAmount = item.rawPrice;
+    }
+    // Try priceBreakdown
+    else if (item.priceBreakdown?.totalAmount) {
+      totalAmount = item.priceBreakdown.totalAmount;
+    }
+    
+    if (totalAmount > 0) {
+      const displayCurrency = item.currency || item.originalPriceCurrency || item.selectedCurrency || currencyCode || 'NGN';
+      const formattedPrice = `${displayCurrency} ${totalAmount.toFixed(2)}`;
+      const basePrice = totalAmount / 1.15;
+      const markupAmount = totalAmount * 0.10;
+      const serviceFee = 5000;
+      
+      console.log('🏨 Hotels: Created price breakdown from selected room:', {
+        totalAmount,
+        displayCurrency,
+        basePrice,
+        markupAmount,
+        serviceFee,
+        selectedRoomType: item.selectedRoomType || item.selectedRoomData?.type,
+        hasSelectedRoomData: !!item.selectedRoomData,
+      });
+      
+      return {
+        ...item,
+        custom_messages: item.custom_messages || [],
+        price: formattedPrice,
+        displayPrice: formattedPrice,
+        totalPrice: formattedPrice,
+        currency: displayCurrency,
+        rawPrice: totalAmount,
+        final_amount: totalAmount.toString(),
+        final_price: totalAmount.toString(),
+        service_fee: serviceFee.toString(),
+        base_price: basePrice.toString(),
+        markup_amount: markupAmount.toString(),
+        calculatedBasePrice: basePrice,
+        calculatedServiceFee: serviceFee,
+        calculatedMarkup: markupAmount,
+        calculatedTaxes: markupAmount + serviceFee,
+        calculatedTotal: totalAmount,
+        markup_percentage: 10,
+        service_fee_percentage: 0,
+        basePrice: basePrice,
+        markupAmount: markupAmount,
+        serviceFee: serviceFee,
+        taxes: (markupAmount + serviceFee).toString(),
+        totalAmount: totalAmount,
+        breakdown: `Base: ${basePrice.toFixed(2)} + Markup: ${markupAmount.toFixed(2)} + Service Fee: ${serviceFee} = ${totalAmount.toFixed(2)}`,
+        priceBreakdown: {
+          basePrice: basePrice,
+          markupAmount: markupAmount,
+          markupPercentage: 10,
+          serviceFee: serviceFee,
+          serviceFeePercentage: 0,
+          taxes: markupAmount + serviceFee,
+          taxPercentage: 10,
+          totalAmount: totalAmount,
+          currency: displayCurrency,
+          breakdown: `Base: ${basePrice.toFixed(2)} + Markup: ${markupAmount.toFixed(2)} + Service Fee: ${serviceFee} = ${totalAmount.toFixed(2)}`,
+        },
+        // ✅ CRITICAL: Preserve the selected room data
+        selectedRoomData: item.selectedRoomData,
+        selectedRoomType: item.selectedRoomType || item.selectedRoomData?.type,
+        roomTypeName: item.roomTypeName || item.selectedRoomData?.name,
+      };
+    }
+    
+    console.warn('⚠️ No price found for hotel, returning as is');
+    return {
+      ...item,
+      selectedRoomData: item.selectedRoomData,
+      selectedRoomType: item.selectedRoomType,
+      roomTypeName: item.roomTypeName,
+    };
+  }
   // ============================================================
   // ✅ DUFFEL FLIGHTS - NEW: Process Duffel prices (ONLY DUFFEL CHANGE)
   // ============================================================
@@ -445,164 +560,12 @@ function processItemPrices(item: ExtendedSearchResult | null, currencyCode: stri
       breakdown: `Total fare: ${formattedPrice}`,
     };
   }
-
-  // ============================================================
-  // ✅ HOTELS AND CARS - Keep existing logic (UNCHANGED)
-  // ============================================================
-  if (item.priceBreakdown) {
-    const pb = item.priceBreakdown;
-    const displayCurrency = pb.currency || currencyCode || 'NGN';
-    const formattedPrice = `${displayCurrency} ${pb.totalAmount.toFixed(2)}`;
-    
-    return {
- 
-      ...item,
-      custom_messages: item.custom_messages || [],
-      price: formattedPrice,
-      displayPrice: formattedPrice,
-      totalPrice: formattedPrice,
-      currency: displayCurrency,
-      rawPrice: pb.totalAmount,
-      final_amount: pb.totalAmount.toString(),
-      final_price: pb.totalAmount.toString(),
-      service_fee: pb.serviceFee.toString(),
-      base_price: pb.basePrice.toString(),
-      markup_amount: pb.markupAmount.toString(),
-      calculatedBasePrice: pb.basePrice,
-      calculatedServiceFee: pb.serviceFee,
-      calculatedMarkup: pb.markupAmount,
-      calculatedTaxes: pb.taxes,
-      calculatedTotal: pb.totalAmount,
-      markup_percentage: pb.markupPercentage,
-      service_fee_percentage: pb.serviceFeePercentage,
-      basePrice: pb.basePrice,
-      markupAmount: pb.markupAmount,
-      serviceFee: pb.serviceFee,
-      taxes: pb.taxes.toString(),
-      totalAmount: pb.totalAmount,
-    };
-  }
-
-  if (item.type?.toLowerCase() === 'hotels' || item.hotelId || item.hotel) {
-    // Try to get price from various sources
-    let totalAmount = 0;
-    
-    // Try final_amount
-    if (item.final_amount) {
-      totalAmount = parseFloat(item.final_amount);
-    }
-    
-    // Try final_price
-    if (!totalAmount && item.final_price) {
-      totalAmount = parseFloat(item.final_price as string);
-    }
-    
-    // Try totalAmount
-    if (!totalAmount && item.totalAmount) {
-      totalAmount = item.totalAmount;
-    }
-    
-    // Try originalPriceAmount
-    if (!totalAmount && item.originalPriceAmount) {
-      totalAmount = item.originalPriceAmount;
-    }
-    
-    // Try price string
-    if (!totalAmount && item.price && typeof item.price === 'string') {
-      const parsed = parseFloat(item.price.replace(/[^0-9.]/g, ''));
-      if (parsed > 0) {
-        totalAmount = parsed;
-      }
-    }
-    
-    // Try rawPrice
-    if (!totalAmount && item.rawPrice) {
-      totalAmount = item.rawPrice;
-    }
-    
-    // If we found a price, create the breakdown
-    if (totalAmount > 0) {
-      const displayCurrency = item.currency || currencyCode || 'NGN';
-      const formattedPrice = `${displayCurrency} ${totalAmount.toFixed(2)}`;
-      const basePrice = totalAmount / 1.15; // Approximate base
-      const markupAmount = totalAmount * 0.10; // 10% markup
-      const serviceFee = 5000; // Fixed service fee
-      
-      console.log('💰 Hotels: Created fallback price breakdown:', {
-        totalAmount,
-        displayCurrency,
-        basePrice,
-        markupAmount,
-        serviceFee,
-      });
-      
-      return {
-        ...item,
-        custom_messages: item.custom_messages || [],
-        price: formattedPrice,
-        displayPrice: formattedPrice,
-        totalPrice: formattedPrice,
-        currency: displayCurrency,
-        rawPrice: totalAmount,
-        final_amount: totalAmount.toString(),
-        final_price: totalAmount.toString(),
-        service_fee: serviceFee.toString(),
-        base_price: basePrice.toString(),
-        markup_amount: markupAmount.toString(),
-        calculatedBasePrice: basePrice,
-        calculatedServiceFee: serviceFee,
-        calculatedMarkup: markupAmount,
-        calculatedTaxes: markupAmount + serviceFee,
-        calculatedTotal: totalAmount,
-        markup_percentage: 10,
-        service_fee_percentage: 0,
-        basePrice: basePrice,
-        markupAmount: markupAmount,
-        serviceFee: serviceFee,
-        taxes: (markupAmount + serviceFee).toString(),
-        totalAmount: totalAmount,
-        breakdown: `Base: ${basePrice.toFixed(2)} + Markup: ${markupAmount.toFixed(2)} + Service Fee: ${serviceFee} = ${totalAmount.toFixed(2)}`,
-      };
-    }
-  }
-  
-  
-  if (item.calculatedTotal && item.calculatedTotal > 0) {
-    const displayCurrency = item.currency || currencyCode || 'NGN';
-    const formattedPrice = `${displayCurrency} ${item.calculatedTotal.toFixed(2)}`;
-    
-    return {
-
-      ...item,
-      custom_messages: item.custom_messages || [],
-      price: formattedPrice,
-      displayPrice: formattedPrice,
-      totalPrice: formattedPrice,
-      currency: displayCurrency,
-      rawPrice: item.calculatedTotal,
-      final_amount: item.calculatedTotal.toString(),
-      final_price: item.calculatedTotal.toString(),
-      service_fee: (item.calculatedServiceFee || 0).toString(),
-      base_price: (item.calculatedBasePrice || 0).toString(),
-      markup_amount: (item.calculatedMarkup || 0).toString(),
-      calculatedBasePrice: item.calculatedBasePrice || 0,
-      calculatedServiceFee: item.calculatedServiceFee || 0,
-      calculatedMarkup: item.calculatedMarkup || 0,
-      calculatedTaxes: item.calculatedTaxes || 0,
-      calculatedTotal: item.calculatedTotal,
-      markup_percentage: item.markup_percentage || 10,
-      service_fee_percentage: item.service_fee_percentage || 5,
-      basePrice: item.calculatedBasePrice || 0,
-      markupAmount: item.calculatedMarkup || 0,
-      serviceFee: item.calculatedServiceFee || 0,
-      taxes: (item.calculatedTaxes || 0).toString(),
-      totalAmount: item.calculatedTotal,
-    };
-  }
-  
   return item;
 }
 
+// ============================================================
+// ✅ HELPER: Check if item is an Amadeus hotel
+// ============================================================
 function isAmadeusHotel(item: ExtendedSearchResult): boolean {
   const rawType = (item?.type ?? "").toLowerCase();
   const isHotelType = rawType.includes("hotel");
@@ -857,23 +820,76 @@ export default function BookingReviewPage() {
 
   const [restoredHotelItem, setRestoredHotelItem] = useState<ExtendedSearchResult | null>(null);
 
-  // ✅ ONLY ADD THIS - Restore hotel from sessionStorage
   useEffect(() => {
-    if (!selectedItem) {
-      const storedHotel = sessionStorage.getItem('selectedHotelForBooking');
-      if (storedHotel) {
-        try {
-          const parsed = JSON.parse(storedHotel);
-          if (parsed.type === 'hotels' || parsed.hotelId || parsed.hotel) {
-            console.log('✅ Restored hotel from sessionStorage:', parsed.name || parsed.title);
-            setRestoredHotelItem(parsed as ExtendedSearchResult);
+    if (selectedItem && (selectedItem as any).totalAmount && (selectedItem as any).totalAmount > 500000) {
+      console.log('🏨 Selected item already has correct price, skipping restore:', (selectedItem as any).totalAmount);
+      return;
+    }
+    
+    const storedHotel = sessionStorage.getItem('selectedHotelForBooking');
+    if (storedHotel) {
+      try {
+        const parsed = JSON.parse(storedHotel);
+        console.log('🏨 Restored hotel from sessionStorage:', {
+          name: parsed.name || parsed.title,
+          totalAmount: parsed.totalAmount,
+          currency: parsed.selectedCurrency || parsed.currency,
+          roomType: parsed.selectedRoomType || parsed.roomTypeName,
+          hasSelectedRoomData: !!parsed.selectedRoomData,
+          checkInDate: parsed.checkInDate,
+          checkOutDate: parsed.checkOutDate,
+        });
+        
+        const isHotel = parsed.hotelId || 
+                        parsed.hotelName || 
+                        parsed.hotel || 
+                        parsed.selectedRoomData ||
+                        parsed.selectedRoomType ||
+                        parsed.type === 'hotels';
+        
+        if (isHotel) {
+          if (parsed.totalAmount && parsed.totalAmount > 0) {
+            parsed.final_amount = parsed.totalAmount.toString();
+            parsed.final_price = parsed.totalAmount.toString();
+            parsed.totalAmount = parsed.totalAmount;
+            parsed.currency = parsed.selectedCurrency || parsed.currency || 'USD';
+            parsed.originalPriceAmount = parsed.totalAmount;
+            parsed.originalPriceCurrency = parsed.selectedCurrency || parsed.currency || 'USD';
+            
+            parsed.selectedRoomData = parsed.selectedRoomData || parsed.room;
+            parsed.selectedRoomType = parsed.selectedRoomType || parsed.room?.type || parsed.roomTypeName;
+            parsed.roomTypeName = parsed.roomTypeName || parsed.room?.name || parsed.selectedRoomType;
+            
+            // ✅ CRITICAL: Preserve dates from the parsed data
+            parsed.checkInDate = parsed.checkInDate || parsed.checkIn || searchParams?.checkInDate;
+            parsed.checkOutDate = parsed.checkOutDate || parsed.checkOut || searchParams?.checkOutDate;
+            
+            console.log('💰 Setting hotel price from sessionStorage:', {
+              totalAmount: parsed.totalAmount,
+              currency: parsed.currency,
+              final_amount: parsed.final_amount,
+              selectedRoomType: parsed.selectedRoomType,
+              hasSelectedRoomData: !!parsed.selectedRoomData,
+              checkInDate: parsed.checkInDate,
+              checkOutDate: parsed.checkOutDate,
+            });
           }
-        } catch (e) {
-          console.error('Failed to restore hotel:', e);
+          
+          setRestoredHotelItem(parsed as ExtendedSearchResult);
+          
+          const processed = processItemPrices(parsed, currency.code);
+          setEnhancedItem(processed);
+          
+          sessionStorage.removeItem('selectedHotelForBooking');
+          
+        } else {
+          console.warn('⚠️ Stored item is not a hotel:', parsed);
         }
+      } catch (e) {
+        console.error('Failed to restore hotel:', e);
       }
     }
-  }, [selectedItem]);
+  }, [selectedItem, searchParams, currency.code]);
 
   // ✅ ONLY ADD THIS - Use this for hotel fallback
   const effectiveSelectedItem = selectedItem || restoredHotelItem;
@@ -907,7 +923,11 @@ export default function BookingReviewPage() {
   const getProductType = (item: ExtendedSearchResult | null): "flight" | "hotel" | "car" => {
     if (!item) return "flight";
     const type = item.type?.toLowerCase() || "";
-    if (type.includes("hotel")) return "hotel";
+    
+   
+    if (type.includes("hotel") || item.hotelId || item.hotel || item.selectedRoomData || item.selectedRoomType) {
+      return "hotel";
+    }
     if (type.includes("car")) return "car";
     return "flight";
   };
@@ -996,13 +1016,20 @@ useEffect(() => {
     const item = effectiveSelectedItem as ExtendedSearchResult;
     if (!item) return;
     
-    if (enhancedItem && enhancedItem.currency === currency.code) {
+    // ✅ Only update if the currency changed or if enhancedItem is null
+    if (enhancedItem && enhancedItem.currency === currency.code && enhancedItem.totalAmount === item.totalAmount) {
       return;
     }
     
+    console.log('🔄 useLayoutEffect - Processing item:', {
+      id: item.id,
+      totalAmount: item.totalAmount,
+      selectedRoomType: item.selectedRoomType,
+    });
+    
     const processed = processItemPrices(item, currency.code);
     setEnhancedItem(processed);
-  },[effectiveSelectedItem, currency.code]); 
+  }, [effectiveSelectedItem, currency.code]);
 
   const extendedItem = (enhancedItem || effectiveSelectedItem) as ExtendedSearchResult | null; 
   const isHotel = extendedItem ? getProductType(extendedItem) === "hotel" : false;
@@ -1011,6 +1038,63 @@ useEffect(() => {
 
   const getItemForReview = (): SearchResult => {
     const baseItem = (enhancedItem || effectiveSelectedItem) as ExtendedSearchResult;
+    
+    // ✅ If this is a hotel with selected room data, use the correct price
+    const isHotelWithSelectedRoom = baseItem?.selectedRoomData || 
+                                    baseItem?.selectedRoomType ||
+                                    baseItem?.roomTypeName ||
+                                    baseItem?.totalAmount || 
+                                    baseItem?.originalPriceAmount;
+    
+    if (isHotelWithSelectedRoom) {
+      const totalAmount = baseItem.totalAmount || baseItem.originalPriceAmount || 0;
+      const currency = baseItem.currency || baseItem.selectedCurrency || baseItem.originalPriceCurrency || 'USD';
+      const roomTypeName = baseItem.selectedRoomType || 
+                           baseItem.roomTypeName ||
+                           baseItem.selectedRoomData?.type || 
+                           'Standard Room';
+      
+      console.log('💰 getItemForReview - Using hotel price:', {
+        totalAmount,
+        currency,
+        roomType: roomTypeName,
+        hasSelectedRoomData: !!baseItem.selectedRoomData,
+        source: 'getItemForReview',
+        baseItemKeys: Object.keys(baseItem),
+        id: baseItem.id,
+        title: baseItem.title,
+        type: baseItem.type,
+      });
+      
+      // ✅ CRITICAL: Preserve ALL fields and explicitly set type
+      const result = {
+        ...baseItem,  // Preserve all fields
+        totalAmount: totalAmount,
+        final_amount: totalAmount.toString(),
+        final_price: totalAmount.toString(),
+        price: `${currency} ${totalAmount.toFixed(2)}`,
+        displayPrice: `${currency} ${totalAmount.toFixed(2)}`,
+        totalPrice: `${currency} ${totalAmount.toFixed(2)}`,
+        currency: currency,
+        selectedRoomData: baseItem.selectedRoomData,
+        selectedRoomType: roomTypeName,
+        roomTypeName: roomTypeName,
+        // ✅ EXPLICITLY set type to 'hotels' so ReviewTrip knows it's a hotel
+        type: 'hotels',
+        // ✅ Also ensure provider is set
+        provider: baseItem.provider || 'Premium Hotels',
+      };
+      
+      console.log('📤 Returning hotel result:', {
+        id: result.id,
+        title: result.title,
+        type: result.type,
+        totalAmount: result.totalAmount,
+        selectedRoomType: result.selectedRoomType,
+      });
+      
+      return result as SearchResult;
+    }
     
     // ✅ Extract cancellation policy from baseItem
     let cancellationPolicy = 'Standard cancellation policy applies. Please check during booking for specific terms.';
@@ -1055,7 +1139,6 @@ useEffect(() => {
         price: booking.totalAmount ? `${booking.currency || 'NGN'} ${booking.totalAmount.toFixed(2)}` : baseItem.price,
         displayPrice: booking.totalAmount ? `${booking.currency || 'NGN'} ${booking.totalAmount.toFixed(2)}` : baseItem.displayPrice,
         totalPrice: booking.totalAmount ? `${booking.currency || 'NGN'} ${booking.totalAmount.toFixed(2)}` : baseItem.totalPrice,
-        // ✅ ADD CANCELLATION POLICY TO MERGED ITEM
         cancellationPolicy: cancellationPolicy,
         policies: baseItem.policies || [],
       };
@@ -1072,11 +1155,14 @@ useEffect(() => {
       return mergedItem as SearchResult;
     }
     
+    // ✅ Final return with all fields preserved
     return {
       ...baseItem,
       custom_messages: baseItem.custom_messages || [],
       cancellationPolicy: cancellationPolicy,
       policies: baseItem.policies || [],
+      // ✅ Ensure type is set for any hotel that might not have it
+      ...(baseItem.hotelId || baseItem.selectedRoomData ? { type: 'hotels' } : {}),
     } as SearchResult;
   };
 
@@ -1109,34 +1195,39 @@ useEffect(() => {
     
     const isGuest = !isLoggedIn;
   
-    if (isFlight) {
-      if (!passengerInfo.dateOfBirth) {
-        toast.error("Date of birth is required for flight bookings");
-        return;
-      }
-      if (!passengerInfo.title) {
-        toast.error("Title is required for flight bookings");
-        return;
-      }
-      if (!passengerInfo.gender) {
-        toast.error("Gender is required for flight bookings");
-        return;
-      }
-  
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      if (!dateRegex.test(passengerInfo.dateOfBirth)) {
-        toast.error("Date of birth must be in YYYY-MM-DD format");
-        return;
-      }
-  
-      const dob = new Date(passengerInfo.dateOfBirth);
-      const today = new Date();
-      const age = today.getFullYear() - dob.getFullYear();
-      if (age < 2) {
-        toast.error("Passenger must be at least 2 years old");
-        return;
-      }
-    }
+
+
+// In page.tsx - handleProceedToPayment function
+
+if (isFlight) {
+  // ✅ NO FALLBACKS - strict validation
+  if (!passengerInfo.dateOfBirth) {
+    toast.error("Date of birth is required for flight bookings");
+    return;
+  }
+  if (!passengerInfo.title) {
+    toast.error("Title is required for flight bookings");
+    return;
+  }
+  if (!passengerInfo.gender) {
+    toast.error("Gender is required for flight bookings");
+    return;
+  }
+
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(passengerInfo.dateOfBirth)) {
+    toast.error("Date of birth must be in YYYY-MM-DD format");
+    return;
+  }
+
+  const dob = new Date(passengerInfo.dateOfBirth);
+  const today = new Date();
+  const age = today.getFullYear() - dob.getFullYear();
+  if (age < 2) {
+    toast.error("Passenger must be at least 2 years old");
+    return;
+  }
+}
   
     // ✅ Build base passenger info
     const basePassengerInfo: PassengerInfo = {
@@ -1182,11 +1273,11 @@ useEffect(() => {
           FirstName: passengerInfo.firstName,
           MiddleName: (passengerInfo as any).middleName || '',
           LastName: passengerInfo.lastName,
-          DateOfBirth: passengerInfo.dateOfBirth,
+          DateOfBirth: passengerInfo.dateOfBirth || '',  
           PhoneNumber: passengerInfo.phone,
           Email: passengerInfo.email,
           Gender: passengerInfo.gender === 'm' ? 'Male' : 'Female',
-          Title: passengerInfo.title,
+          Title: passengerInfo.title || '',  
           // ✅ Passport fields go here
           PassportNumber: (passengerInfo as any).PassportNumber || (passengerInfo as any).passportNumber || '',
           ExpiryDate: (passengerInfo as any).ExpiryDate || (passengerInfo as any).expiryDate || '',
@@ -1379,6 +1470,7 @@ useEffect(() => {
             cleanedPassengerInfo,
             testCard,
             isGuest,
+            searchParams,
           );
           setBooking(newBooking);
           setAppliedVoucherCode(voucherCode);

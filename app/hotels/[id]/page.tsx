@@ -162,20 +162,59 @@ export default function HotelDetailsPage() {
     setLoading(false);
   }, [selectedItem, searchParams, router]);
 
-  // ✅ Use useCallback to memoize handleBook
-  const handleBook = useCallback(() => {
-    // ✅ Get the current item from state
-    const currentItem = enrichedItem;
-    
-    console.log('🔄 handleBook called with enrichedItem:', {
-      hasItem: !!currentItem,
-      itemKeys: currentItem ? Object.keys(currentItem) : [],
-      itemId: currentItem?.id,
-      itemTitle: currentItem?.title || currentItem?.name,
+  // ✅ UPDATED: handleBook with bookingData parameter - PRESERVES DATES
+  const handleBook = useCallback((bookingData?: any) => {
+    console.log('🔄 handleBook called with:', {
+      hasBookingData: !!bookingData,
+      bookingDataTotalAmount: bookingData?.totalAmount,
+      bookingDataSelectedRoom: bookingData?.selectedRoomType,
+      bookingDataCheckIn: bookingData?.checkInDate || bookingData?.checkIn,
+      bookingDataCheckOut: bookingData?.checkOutDate || bookingData?.checkOut,
+      hasEnrichedItem: !!enrichedItem,
     });
     
-    // ✅ If no enrichedItem, try to get from sessionStorage
-    let itemToUse = currentItem;
+    // ✅ If bookingData was passed from HotelDetails (with selected room data), USE IT!
+    if (bookingData && bookingData.totalAmount && bookingData.totalAmount > 0) {
+      console.log('✅✅✅ Using booking data from HotelDetails with price:', bookingData.totalAmount);
+      console.log('✅✅✅ Selected room type:', bookingData.selectedRoomType);
+      console.log('✅✅✅ Check-in:', bookingData.checkInDate || bookingData.checkIn);
+      console.log('✅✅✅ Check-out:', bookingData.checkOutDate || bookingData.checkOut);
+      
+      // ✅ Ensure dates are preserved
+      const enrichedBookingData = {
+        ...bookingData,
+        // ✅ Ensure dates are properly set
+        checkInDate: bookingData.checkInDate || bookingData.checkIn,
+        checkOutDate: bookingData.checkOutDate || bookingData.checkOut,
+        // ✅ Ensure type is set
+        type: 'hotels',
+        provider: 'Premium Hotels',
+        // ✅ Ensure all room data is preserved
+        selectedRoomData: bookingData.selectedRoomData,
+        selectedRoomType: bookingData.selectedRoomType || bookingData.selectedRoomData?.type,
+        roomTypeName: bookingData.roomTypeName || bookingData.selectedRoomData?.name,
+        // ✅ Preserve hotel data
+        hotel: bookingData.hotel || {
+          id: bookingData.hotelId,
+          name: bookingData.hotelName,
+        },
+      };
+      
+      // ✅ Store the data with dates preserved
+      sessionStorage.setItem('selectedHotelForBooking', JSON.stringify(enrichedBookingData));
+      console.log('📦 Stored booking data from HotelDetails:', {
+        totalAmount: enrichedBookingData.totalAmount,
+        selectedRoomType: enrichedBookingData.selectedRoomType,
+        checkInDate: enrichedBookingData.checkInDate,
+        checkOutDate: enrichedBookingData.checkOutDate,
+      });
+      
+      router.push('/booking/review');
+      return;
+    }
+    
+    // ✅ If no bookingData, use enrichedItem (fallback)
+    let itemToUse = enrichedItem;
     
     if (!itemToUse) {
       console.warn('⚠️ No enrichedItem, trying sessionStorage...');
@@ -191,14 +230,13 @@ export default function HotelDetailsPage() {
       }
     }
     
-    // ✅ If still no item, show error
     if (!itemToUse) {
       console.error('❌ No hotel data available!');
       toast.error('Hotel data is not available. Please go back and try again.');
       return;
     }
     
-    console.log('🔄 Booking hotel:', itemToUse.name || itemToUse.title);
+    console.log('🔄 Booking hotel (fallback):', itemToUse.name || itemToUse.title);
     
     // ✅ Get price from itemToUse
     let totalPrice = 0;

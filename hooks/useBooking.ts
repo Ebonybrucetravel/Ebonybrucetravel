@@ -779,13 +779,13 @@ console.log('👤 Travellers after population:', {
 });
 // ✅ Build passengerInfo based on flight type (NO passport fields here!)
 let passengerInfo: any = {
-  firstName: passenger.firstName,
-  lastName: passenger.lastName,
-  email: passenger.email,
-  phone: passenger.phone,
-  title: passenger.title || 'Mr',
-  gender: passenger.gender === 'm' ? 'Male' : (passenger.gender || 'Male'),
-  dateOfBirth: passenger.dateOfBirth || '',
+  firstName: passenger.firstName || '',
+  lastName: passenger.lastName || '',
+  email: passenger.email || '',
+  phone: passenger.phone || '',
+  title: passenger.title || '',  
+  gender: passenger.gender === 'm' ? 'Male' : (passenger.gender === 'f' ? 'Female' : ''),  
+  dateOfBirth: passenger.dateOfBirth || '',  
 };
 
 // Add address fields
@@ -873,13 +873,15 @@ console.log('🔍🔍🔍 CRITICAL - passenger object BEFORE buildPassenger:', {
 // ✅ Build passengers with error collection using buildPassengerSafely
 const passengerErrors: string[] = [];
 
-// 1. Build lead passenger
+// In useBooking.ts - createBooking function, around the Wakanow section
+
+// ✅ Build lead passenger with DateOfBirth
 const leadResult = buildPassengerSafely(
   {
     ...passenger,
     FirstName: passenger.firstName,
     LastName: passenger.lastName,
-    DateOfBirth: passenger.dateOfBirth,
+    DateOfBirth: passenger.dateOfBirth || '',  
     PhoneNumber: passenger.phone,
     Email: passenger.email,
   },
@@ -1415,7 +1417,6 @@ try {
     [BASE, booking], // ✅ Add booking to dependencies
   );
 
-
   const createAmadeusHotelBooking = useCallback(
     async (
       item: ExtendedSearchResult,
@@ -1430,12 +1431,34 @@ try {
           }
         | undefined,
       isGuest: boolean,
+      searchParams?: SearchParams | null,
     ): Promise<Booking> => {
       setIsCreating(true);
       setError(null);
   
+      // ✅ Define realData FIRST
+      const realData = item.realData || item;
+      
+      // ✅ Extract dates using searchParams and realData
+      const checkInDate = searchParams?.checkInDate || 
+                        item.checkInDate || 
+                        item.check_in_date || 
+                        realData.checkInDate || 
+                        '';
+                        
+      const checkOutDate = searchParams?.checkOutDate || 
+                         item.checkOutDate || 
+                         item.check_out_date || 
+                         realData.checkOutDate || 
+                         '';
+      
+      // ✅ Validate dates
+      if (!checkInDate || !checkOutDate) {
+        throw new Error('Missing check-in or check-out dates. Please go back and select dates.');
+      }
+  
       try {
-        // ✅ FIX: Extract the offer ID from the correct location
+        // ✅ Extract the offer ID
         let offerId = '';
         
         console.log('🏨 createAmadeusHotelBooking - Input item:', {
@@ -1448,6 +1471,8 @@ try {
           hasPriceBreakdown: !!item.priceBreakdown,
           hotelId: item.hotelId || item.id,
           itemKeys: Object.keys(item),
+          checkInDate,
+          checkOutDate,
         });
         
         // Priority 1: Check for offer in selectedRoom
@@ -1470,7 +1495,7 @@ try {
           offerId = item.hotelData.offers[0]?.id || '';
           console.log('🔑 Found offerId in hotelData.offers:', offerId);
         }
-        // Priority 5: Check if the item itself is an offer ID (not a hotel ID)
+        // Priority 5: Check if the item itself is an offer ID
         else if (item.offerId && item.offerId !== item.hotelId && item.offerId !== item.id) {
           offerId = item.offerId;
           console.log('🔑 Using item.offerId:', offerId);
@@ -1480,7 +1505,7 @@ try {
           offerId = item.priceBreakdown.offerId;
           console.log('🔑 Found offerId in priceBreakdown:', offerId);
         }
-        // Priority 7: Check sessionStorage for hotelOfferId
+        // Priority 7: Check sessionStorage
         else if (typeof window !== 'undefined') {
           const storedOfferId = sessionStorage.getItem('hotelOfferId');
           if (storedOfferId) {
@@ -1491,13 +1516,10 @@ try {
         
         // ✅ If still no offerId, try to find it in the item
         if (!offerId) {
-          // Check if item.id is actually an offer ID (10+ characters, not 8 like hotel ID)
           if (item.id && item.id.length >= 10 && /^[A-Z0-9]{10,}$/i.test(item.id)) {
             offerId = item.id;
             console.log('🔑 Using item.id as offerId:', offerId);
-          }
-          // Check if item.hotelId is actually an offer ID
-          else if (item.hotelId && item.hotelId.length >= 10 && /^[A-Z0-9]{10,}$/i.test(item.hotelId)) {
+          } else if (item.hotelId && item.hotelId.length >= 10 && /^[A-Z0-9]{10,}$/i.test(item.hotelId)) {
             offerId = item.hotelId;
             console.log('🔑 Using item.hotelId as offerId:', offerId);
           }
@@ -1511,7 +1533,7 @@ try {
           hasOffers: item.offers?.length,
         });
         
-        // ✅ Validate the offer ID format
+        // ✅ Validate the offer ID
         if (!offerId) {
           console.error("❌ No offer ID found!");
           console.error("📦 Full item data:", JSON.stringify(item, null, 2));
@@ -1525,7 +1547,6 @@ try {
         const isHotelIdPattern = /^[A-Z]{3}[A-Z0-9]{5}$/i.test(offerId);
         if (isHotelIdPattern) {
           console.warn('⚠️ Offer ID looks like a hotel ID:', offerId);
-          // Try to find a better offer ID from other sources
           const betterOfferId = item.offers?.[0]?.id || 
                                item.hotelData?.offers?.[0]?.id ||
                                item.realData?.offerId;
@@ -1539,9 +1560,8 @@ try {
             );
           }
         }
-  
-        const realData = item.realData || item;
         
+        // ✅ Extract prices
         const originalCurrency = item.original_currency || item.originalPriceCurrency || realData.original_currency || 'GBP';
         let originalPrice: number = 0;
         
@@ -1566,9 +1586,7 @@ try {
           customerPrice = item.final_price;
         }
         
-        const checkInDate = item.checkInDate || item.check_in_date || realData.checkInDate;
-        const checkOutDate = item.checkOutDate || item.check_out_date || realData.checkOutDate;
-        
+        // ✅ Hotel details
         const hotelName = item.title || realData.title || item.name || realData.name || 'Hotel';
         const hotelAddress = item.address || realData.address || item.subtitle || '';
         const hotelCity = item.city || realData.city || item.location || '';
@@ -1580,7 +1598,7 @@ try {
         const hotelPhone = item.phone || realData.phone || '';
         const hotelAmenities = item.amenities || realData.amenities || [];
         
-        // ✅ FIX: Ensure hotelImages is an array of strings
+        // ✅ Hotel images
         let hotelImages: string[] = [];
         if (item.images) {
           if (Array.isArray(item.images)) {
@@ -1596,7 +1614,6 @@ try {
               .map((img: any) => img);
           }
         }
-        // Fallback: try to extract from hotelData
         if (hotelImages.length === 0 && item.hotelData?.images) {
           if (Array.isArray(item.hotelData.images)) {
             hotelImages = item.hotelData.images
@@ -1604,12 +1621,6 @@ try {
               .map((img: any) => img);
           }
         }
-        
-        console.log("🏨 Hotel images:", {
-          count: hotelImages.length,
-          first: hotelImages[0],
-          type: typeof hotelImages[0],
-        });
         
         const roomType = item.roomType || realData.roomType || 'Standard Room';
         const numberOfRooms = item.rooms || realData.rooms || 1;
@@ -1640,6 +1651,7 @@ try {
   
         const token = getStoredAuthToken();
   
+        // ✅ Build booking payload
         const bookingPayload: any = {
           hotelOfferId: offerId.toString(),
           offerPrice: originalPrice,
@@ -1680,7 +1692,6 @@ try {
           hotelCheckOutTime: hotelCheckOutTime,
           hotelPhone: hotelPhone,
           hotelAmenities: hotelAmenities,
-          // ✅ FIX: Ensure hotelImages is an array of strings
           hotelImages: hotelImages,
           roomType: roomType,
           numberOfRooms: numberOfRooms,

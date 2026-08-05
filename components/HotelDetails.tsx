@@ -49,7 +49,7 @@ interface HotelDetailsProps {
   item: SearchResult | null;
   searchParams: SearchParams | null;
   onBack: () => void;
-  onBook: () => void;
+  onBook: (bookingData?: any) => void;
   onFetchImages?: (hotelId: string, hotelName?: string) => Promise<any[]>;
   onFetchSuggestions?: (query: string) => Promise<any[]>;
 }
@@ -184,7 +184,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
       formattedTotal = isNaN(parsed) ? '0.00' : parsed.toFixed(2);
     }
 
-    // ✅ FIX: Corrected the syntax error on the ternary operator
     const currencySymbol = currencyCode === 'NGN' ? '₦' : 
                            currencyCode === 'GBP' ? '£' : 
                            currencyCode === 'USD' ? '$' : 
@@ -352,14 +351,16 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   };
 
   const getCheckInDate = () => {
-    if (searchParams?.checkInDate) return formatDisplayDate(searchParams.checkInDate);
-    if (item?.realData?.checkInDate) return formatDisplayDate(item.realData.checkInDate);
+    if (searchParams?.checkInDate) return searchParams.checkInDate;
+    if (item?.realData?.checkInDate) return item.realData.checkInDate;
+    // ✅ Return a default if needed
     return null;
   };
-
+  
   const getCheckOutDate = () => {
-    if (searchParams?.checkOutDate) return formatDisplayDate(searchParams.checkOutDate);
-    if (item?.realData?.checkOutDate) return formatDisplayDate(item.realData.checkOutDate);
+    if (searchParams?.checkOutDate) return searchParams.checkOutDate;
+    if (item?.realData?.checkOutDate) return item.realData.checkOutDate;
+    // ✅ Return a default if needed
     return null;
   };
 
@@ -373,9 +374,7 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
     return `${count} Room${count > 1 ? 's' : ''}`;
   };
 
-  
   const getNightsCount = (customCheckIn?: string | null, customCheckOut?: string | null) => {
- 
     const checkIn = customCheckIn || getCheckInDate();
     const checkOut = customCheckOut || getCheckOutDate();
     
@@ -392,7 +391,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
         console.warn('Error calculating nights:', e);
       }
     }
-    // Always return at least 1 night
     return 1;
   };
 
@@ -440,7 +438,6 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   
       let fetchedRoomTypes: any[] = [];
       
-      // ✅ Correct path to access room types with images from API
       if (data?.success && data?.data?.data && Array.isArray(data.data.data)) {
         const hotelData = data.data.data[0];
         console.log('✅ Hotel data found:', hotelData?.hotelId);
@@ -452,39 +449,44 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             const price = room.price || {};
             const occupancy = room.occupancy || { maxAdults: 2 };
             
-            // ✅ FIXED - handle nested text
             const roomName = room.name?.text?.text || room.name?.text || room.type || 'Standard Room';
             const roomDescription = room.description?.text?.text || room.description?.text || '';
             
-            // ✅ GET IMAGES FROM THE API
-            const roomImages = room.images || [];
-            const primaryImage = room.primaryImage || '';
-            
-            console.log(`📸 Room ${index} (${room.type}):`);
-            console.log(`  - images from API: ${roomImages.length}`);
-            console.log(`  - primaryImage from API: ${primaryImage ? 'yes' : 'no'}`);
-            console.log(`  - roomName: ${roomName}`);
-            
-            // ✅ Use ONLY API images
-            let roomImage = '';
+            // ✅ GET IMAGES FROM THE API - FIXED
+const roomImages = room.images || [];
+const primaryImage = room.primaryImage || '';
 
-            if (primaryImage) {
-              roomImage = primaryImage;
-            } else if (roomImages && Array.isArray(roomImages) && roomImages.length > 0) {
-              // Loop through images to find the first one with a valid URI
-              for (const img of roomImages) {
-                if (img?.uri) {
-                  roomImage = img.uri;
-                  break;
-                }
-              }
-            }
-            
-            // ✅ If NO image is found, use a local CSS fallback (No external URL)
-            if (!roomImage) {
-              roomImage = ''; // Setting it to empty triggers the CSS placeholder below
-            }
-            
+console.log(`📸 Room ${index} (${room.type}):`);
+console.log(`  - images from API: ${roomImages.length}`);
+console.log(`  - primaryImage from API: ${primaryImage ? 'yes' : 'no'}`);
+console.log(`  - first image URI: ${roomImages.length > 0 ? roomImages[0]?.uri : 'none'}`);
+console.log(`  - roomName: ${roomName}`);
+
+// ✅ Use ONLY API images - check images array first, then primaryImage
+let roomImage = '';
+
+// 1. Try the images array - use different image based on room index
+if (roomImages && Array.isArray(roomImages) && roomImages.length > 0) {
+
+  const imageIndex = index % roomImages.length; // Cycle through available images
+  const selectedImage = roomImages[imageIndex];
+  
+  if (selectedImage?.uri && selectedImage.uri.startsWith('http')) {
+    roomImage = selectedImage.uri;
+    console.log(`  - Using image ${imageIndex + 1}/${roomImages.length} for room ${room.type}`);
+  }
+}
+
+// 2. If no image found, try primaryImage
+if (!roomImage && primaryImage && primaryImage.startsWith('http')) {
+  roomImage = primaryImage;
+}
+
+console.log(`  - roomImage found: ${roomImage ? 'yes' : 'no'}`);
+console.log(`  - roomImage URL: ${roomImage || 'none'}`);
+
+
+
             let bedTypes: any[] = room.bedTypes || [];
             if (bedTypes.length === 0) {
               const type = room.type || '';
@@ -503,21 +505,20 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             }
             
             const total = parseFloat(price.total || '0');
-const currencyCode = price.currency || 'GBP';
-const base = parseFloat(price.base || '0');
+            const currencyCode = price.currency || 'GBP';
+            const base = parseFloat(price.base || '0');
 
-// ✅ FIX 1: Extract the exact markup and fees from the backend response
-let serviceFee = 0;
-let conversionFee = 0;
-let markup = 0;
+            let serviceFee = 0;
+            let conversionFee = 0;
+            let markup = 0;
 
-if (price.fees && Array.isArray(price.fees)) {
-  price.fees.forEach((fee: any) => {
-    if (fee.type === 'SERVICE_FEE') serviceFee = parseFloat(fee.amount || 0);
-    if (fee.type === 'CONVERSION_FEE') conversionFee = parseFloat(fee.amount || 0);
-    if (fee.type === 'MARKUP' || fee.type === 'MARKUP_PERCENTAGE') markup = parseFloat(fee.amount || 0);
-  });
-}
+            if (price.fees && Array.isArray(price.fees)) {
+              price.fees.forEach((fee: any) => {
+                if (fee.type === 'SERVICE_FEE') serviceFee = parseFloat(fee.amount || 0);
+                if (fee.type === 'CONVERSION_FEE') conversionFee = parseFloat(fee.amount || 0);
+                if (fee.type === 'MARKUP' || fee.type === 'MARKUP_PERCENTAGE') markup = parseFloat(fee.amount || 0);
+              });
+            }
             
             const isRefundable = room.policies?.cancellation !== null;
             const cancellationDeadline = room.policies?.cancellation?.deadline || '';
@@ -555,41 +556,36 @@ if (price.fees && Array.isArray(price.fees)) {
         }
       }
       
-// 🟩 REPLACE IT WITH THIS SINGLE BLOCK
-if (fetchedRoomTypes.length > 0) {
-  console.log('✅ Room types loaded:', fetchedRoomTypes.length);
-  
-  // ✅ FIX: Deduplicate rooms BEFORE setting state
-  const uniqueRoomMap = new Map();
-  fetchedRoomTypes.forEach((room) => {
-    // Use the Room Type Code (e.g., "A1D") as the unique key
-    const key = room.type || room.name;
-    if (!uniqueRoomMap.has(key)) {
-      uniqueRoomMap.set(key, room);
-    }
-  });
-  
-  // Convert the map back to an array for rendering
-  const uniqueRoomTypes = Array.from(uniqueRoomMap.values());
-  
-  console.log('✅ Final Unique Rooms:', uniqueRoomTypes.length);
-  
-  // ✅ Only set the state ONCE with the unique rooms
-  setRoomTypes(uniqueRoomTypes);
-  if (!selectedRoomType) {
-    setSelectedRoomType(uniqueRoomTypes[0]);
-  }
-} else {
-  console.warn('⚠️ No room types found in response');
-  setRoomTypes([]);
-}
+      if (fetchedRoomTypes.length > 0) {
+        console.log('✅ Room types loaded:', fetchedRoomTypes.length);
+        
+        const uniqueRoomMap = new Map();
+        fetchedRoomTypes.forEach((room) => {
+          const key = room.type || room.name;
+          if (!uniqueRoomMap.has(key)) {
+            uniqueRoomMap.set(key, room);
+          }
+        });
+        
+        const uniqueRoomTypes = Array.from(uniqueRoomMap.values());
+        
+        console.log('✅ Final Unique Rooms:', uniqueRoomTypes.length);
+        
+        setRoomTypes(uniqueRoomTypes);
+        if (!selectedRoomType) {
+          setSelectedRoomType(uniqueRoomTypes[0]);
+        }
+      } else {
+        console.warn('⚠️ No room types found in response');
+        setRoomTypes([]);
+      }
     } catch (error: any) {
       console.error('❌ Error fetching room types:', error);
       setRoomTypes([]);
     } finally {
       setLoadingRoomTypes(false);
     }
-  }, [item, searchParams, currency.code, selectedRoomType]);
+  }, [item, searchParams, currency.code]);
 
   useEffect(() => {
     if (item?.id) {
@@ -597,6 +593,46 @@ if (fetchedRoomTypes.length > 0) {
     }
   }, [item?.id, fetchRoomTypesWithFees]);
 
+  // AUTO-SET BOOKING CARD PRICE
+  useEffect(() => {
+    if (selectedRoomType) {
+      const perNight = selectedRoomType.price?.total || 0;
+      const originalCurrency = selectedRoomType.price?.currency || 'USD';
+      
+      let calculatedNights = 1;
+      const offerCheckIn = selectedRoomType.raw?.checkInDate || selectedRoomType.raw?.checkIn;
+      const offerCheckOut = selectedRoomType.raw?.checkOutDate || selectedRoomType.raw?.checkOut;
+      
+      if (offerCheckIn && offerCheckOut) {
+        try {
+          const start = new Date(offerCheckIn);
+          const end = new Date(offerCheckOut);
+          if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+            const nightsFromOffer = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+            if (nightsFromOffer > 0) calculatedNights = nightsFromOffer;
+          }
+        } catch (e) {}
+      }
+      
+      const totalForStay = perNight * calculatedNights;
+      
+      setOriginalPriceAmount(totalForStay);
+      setOriginalPriceCurrency(originalCurrency);
+      
+      const updatePrice = async () => {
+        if (originalCurrency !== currency.code) {
+          const converted = await convertPrice(totalForStay, originalCurrency);
+          const formatted = await formatPrice(converted);
+          setBookingCardPrice(formatted);
+        } else {
+          const formatted = await formatPrice(totalForStay, originalCurrency);
+          setBookingCardPrice(formatted);
+        }
+      };
+      updatePrice();
+    }
+  }, [selectedRoomType, currency.code, convertPrice, formatPrice]);
+  
   // ============ MAIN DATA FETCH ============
   useEffect(() => {
     const fetchData = async () => {
@@ -649,36 +685,60 @@ if (fetchedRoomTypes.length > 0) {
           const longitude = hotelData.location?.geoCode?.longitude || null;
           console.log('📍 Coordinates:', { latitude, longitude });
 
-          // Extract images from media with category mapping
+          // ✅ EXTRACT IMAGES FROM API ONLY - NO FALLBACKS
           const extractedImages: HotelImage[] = [];
+
+          console.log('📸 Extracting images from API...');
+
+          // 1️⃣ Try media array (primary source)
           if (hotelData.media && Array.isArray(hotelData.media)) {
-            const imageMedia = hotelData.media.filter((m: any) => 
-              m.mediaScales && Array.isArray(m.mediaScales) && m.mediaScales.length > 0
-            );
+            console.log(`📸 Found ${hotelData.media.length} media items`);
             
-            imageMedia.forEach((mediaItem: any, index: number) => {
-              const largestScale = mediaItem.mediaScales.reduce((a: any, b: any) => {
-                const aSize = (a.dimensions?.width || 0) * (a.dimensions?.height || 0);
-                const bSize = (b.dimensions?.width || 0) * (b.dimensions?.height || 0);
-                return aSize > bSize ? a : b;
-              });
-              
-              if (largestScale?.href) {
-                const category = mediaItem.category || mediaItem.tags?.[0] || 'Hotel View';
-                const displayCategory = categoryMap[category] || category || 'Hotel View';
-                
-                extractedImages.push({
-                  id: mediaItem.id || `img-${index}`,
-                  url: largestScale.href,
-                  caption: displayCategory,
-                  type: category,
-                  category: displayCategory,
+            hotelData.media.forEach((mediaItem: any, index: number) => {
+              if (mediaItem.mediaScales && Array.isArray(mediaItem.mediaScales)) {
+                const largestScale = mediaItem.mediaScales.reduce((a: any, b: any) => {
+                  const aSize = (a.dimensions?.width || 0) * (a.dimensions?.height || 0);
+                  const bSize = (b.dimensions?.width || 0) * (b.dimensions?.height || 0);
+                  return aSize > bSize ? a : b;
                 });
+                
+                if (largestScale?.href) {
+                  const category = mediaItem.category || mediaItem.tags?.[0] || 'Hotel View';
+                  const displayCategory = categoryMap[category] || category || 'Hotel View';
+                  
+                  const isDuplicate = extractedImages.some(img => img.url === largestScale.href);
+                  if (!isDuplicate) {
+                    extractedImages.push({
+                      id: mediaItem.id || `img-${index}`,
+                      url: largestScale.href,
+                      caption: displayCategory,
+                      type: category,
+                      category: displayCategory,
+                    });
+                  }
+                }
+              }
+              
+              if (mediaItem.url) {
+                const isDuplicate = extractedImages.some(img => img.url === mediaItem.url);
+                if (!isDuplicate) {
+                  extractedImages.push({
+                    id: mediaItem.id || `img-url-${index}`,
+                    url: mediaItem.url,
+                    caption: mediaItem.category || 'Hotel View',
+                    type: mediaItem.type || 'image',
+                    category: mediaItem.category || 'Hotel View',
+                  });
+                }
               }
             });
           }
 
+          console.log(`📸 Extracted ${extractedImages.length} images from media`);
+
+          // 2️⃣ If no images from media, try hotelData.images
           if (extractedImages.length === 0 && hotelData.images && Array.isArray(hotelData.images)) {
+            console.log(`📸 Trying hotelData.images: ${hotelData.images.length} images`);
             hotelData.images.forEach((url: string, index: number) => {
               if (url && !url.includes('placehold.co')) {
                 extractedImages.push({
@@ -692,33 +752,80 @@ if (fetchedRoomTypes.length > 0) {
             });
           }
 
-          if (extractedImages.length > 0) {
-            setHotelImages(extractedImages);
-          } else {
-            setHotelImages([
-              {
-                id: 'fallback-1',
-                url: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=1200",
-                caption: "Exterior",
-                type: "exterior",
-                category: "Exterior"
-              },
-              {
-                id: 'fallback-2',
-                url: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=1200",
-                caption: "Lobby",
-                type: "lobby",
-                category: "Lobby"
-              },
-              {
-                id: 'fallback-3',
-                url: "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=1200",
-                caption: "Room",
-                type: "room",
-                category: "Room"
-              }
-            ]);
+          // 3️⃣ Try primaryImage
+          if (extractedImages.length === 0 && hotelData.primaryImage) {
+            console.log('📸 Using primaryImage');
+            extractedImages.push({
+              id: 'primary',
+              url: hotelData.primaryImage,
+              caption: 'Hotel View',
+              type: 'primary',
+              category: 'Hotel View',
+            });
           }
+
+          console.log(`✅ Final API images: ${extractedImages.length}`);
+
+// 4️⃣ Extract room images from roomTypes (if available)
+const roomImagesFromTypes: HotelImage[] = [];
+
+if (roomTypes && Array.isArray(roomTypes) && roomTypes.length > 0) {
+  console.log(`📸 Extracting room images from ${roomTypes.length} room types`);
+  
+  roomTypes.forEach((room: any, index: number) => {
+    if (room.images && Array.isArray(room.images) && room.images.length > 0) {
+      // Get the first image from each room type
+      const firstImage = room.images[0];
+      if (firstImage?.uri) {
+        // Always add room images (even if URLs are the same as hotel images)
+// They have different captions and categories
+roomImagesFromTypes.push({
+  id: `room-${index}`,
+  url: firstImage.uri,
+  caption: `Room ${room.type || index + 1}`,
+  type: 'ROOM_VIEW',
+  category: 'Room View',
+});
+      }
+      
+      // Optionally add the second image from each room for variety
+      if (room.images.length > 1 && room.images[1]?.uri) {
+        const secondImage = room.images[1];
+        const isDuplicate = roomImagesFromTypes.some(img => img.url === secondImage.uri);
+        if (!isDuplicate) {
+          roomImagesFromTypes.push({
+            id: `room-${index}-2`,
+            url: secondImage.uri,
+            caption: `Room ${room.type || index + 1}`,
+            type: 'ROOM_VIEW',
+            category: 'Room View',
+          });
+        }
+      }
+    }
+  });
+  
+  console.log(`📸 Extracted ${roomImagesFromTypes.length} images from room types`);
+}
+
+// 5️⃣ Combine hotel images with room images
+const allImages = [...extractedImages, ...roomImagesFromTypes];
+
+// Remove duplicates based on URL
+const uniqueImages = allImages.filter((img, index, self) => 
+  index === self.findIndex((t) => t.url === img.url)
+);
+
+console.log(`✅ Final combined images: ${uniqueImages.length} (${extractedImages.length} hotel + ${roomImagesFromTypes.length} room)`);
+
+// ✅ ONLY SET IMAGES FROM API - NO FALLBACKS
+if (uniqueImages.length > 0) {
+  setHotelImages(uniqueImages);
+  setCurrentImageIndex(0);
+} else {
+  console.warn('⚠️ No images found from API');
+  setHotelImages([]);
+}
 
           let phoneNumber = '';
           let email = '';
@@ -859,8 +966,57 @@ if (fetchedRoomTypes.length > 0) {
     fetchData();
   }, [item]);
 
-  // ============ RENDER FUNCTIONS ============
-  
+   
+  useEffect(() => {
+    // Only run if we have room types
+    if (roomTypes.length === 0) return;
+    
+    console.log('🔄 Updating gallery with room images from roomTypes...');
+    console.log(`📸 Found ${roomTypes.length} room types`);
+    
+    const roomImagesFromTypes: HotelImage[] = [];
+    const addedUrls = new Set<string>();
+    
+    // First, add existing hotel image URLs to the set to avoid duplicates
+    hotelImages.forEach(img => {
+      if (img.url) addedUrls.add(img.url);
+    });
+    
+    roomTypes.forEach((room: any, index: number) => {
+      if (room.images && Array.isArray(room.images) && room.images.length > 0) {
+        console.log(`  📸 Room ${room.type} has ${room.images.length} images`);
+        
+        // Use the room index to pick a DIFFERENT image from the array
+        const imageIndex = index % room.images.length;
+        const selectedImage = room.images[imageIndex];
+        
+        if (selectedImage?.uri && !addedUrls.has(selectedImage.uri)) {
+          addedUrls.add(selectedImage.uri);
+          roomImagesFromTypes.push({
+            id: `room-${room.type || index}`,
+            url: selectedImage.uri,
+            caption: `Room ${room.type || index + 1}`,
+            type: 'ROOM_VIEW',
+            category: 'Room View',
+          });
+          console.log(`    ✅ Added image ${imageIndex + 1} for room ${room.type}`);
+        }
+      }
+    });
+    
+    if (roomImagesFromTypes.length > 0) {
+      console.log(`📸 Adding ${roomImagesFromTypes.length} unique room images to gallery`);
+      
+      // ✅ ROOM IMAGES FIRST, then hotel images
+      const updatedImages = [...roomImagesFromTypes, ...hotelImages];
+      setHotelImages(updatedImages);
+    } else {
+      console.log('📸 No new unique room images to add');
+    }
+  }, [roomTypes]); // This runs whenever roomTypes changes
+
+
+
   const renderOverview = () => {
     const amenities = fullDetails?.amenities || [];
     const description = getDescriptionText(fullDetails?.description) || '';
@@ -886,7 +1042,6 @@ if (fetchedRoomTypes.length > 0) {
 
     return (
       <div className="space-y-6">
-        {/* About Section */}
         <div>
           <h2 className="text-xl font-bold text-gray-900 mb-3">About the Property</h2>
           <p className="text-gray-600 leading-relaxed text-sm">
@@ -897,7 +1052,6 @@ if (fetchedRoomTypes.length > 0) {
           )}
         </div>
 
-        {/* Map Section */}
         {hasCoordinates && (
           <div>
             <h3 className="text-sm font-bold text-gray-900 mb-3">Location Map</h3>
@@ -935,7 +1089,6 @@ if (fetchedRoomTypes.length > 0) {
           </div>
         )}
 
-        {/* Location & Contact Section */}
         <div className="bg-gray-50 rounded-lg p-4 space-y-3">
           <h3 className="text-sm font-bold text-gray-900">Location & Contact</h3>
           
@@ -1003,7 +1156,6 @@ if (fetchedRoomTypes.length > 0) {
           </div>
         </div>
 
-        {/* Amenities Section */}
         {amenities.length > 0 && (
           <div>
             <h3 className="text-sm font-bold text-gray-900 mb-3">Hotel Amenities</h3>
@@ -1030,22 +1182,20 @@ if (fetchedRoomTypes.length > 0) {
       );
     }
   
-   
-
-if (!roomTypes || roomTypes.length === 0) {
-  return (
-    <div className="text-center py-10 bg-white rounded-xl border border-gray-200">
-      <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
-        <svg className="w-6 h-6 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-        </svg>
-      </div>
-      <p className="text-gray-500 font-medium text-sm">No rooms available</p>
-      <p className="text-xs text-gray-400 mt-1">All rooms are sold out for these dates</p>
-      <p className="text-xs text-gray-400 mt-1">Please try different dates</p>
-    </div>
-  );
-}
+    if (!roomTypes || roomTypes.length === 0) {
+      return (
+        <div className="text-center py-10 bg-white rounded-xl border border-gray-200">
+          <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
+            <svg className="w-6 h-6 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+          </div>
+          <p className="text-gray-500 font-medium text-sm">No rooms available</p>
+          <p className="text-xs text-gray-400 mt-1">All rooms are sold out for these dates</p>
+          <p className="text-xs text-gray-400 mt-1">Please try different dates</p>
+        </div>
+      );
+    }
   
     return (
       <div className="space-y-4">
@@ -1053,7 +1203,6 @@ if (!roomTypes || roomTypes.length === 0) {
           const total = room.price?.total || 0;
           const currencyCode = room.price?.currency || 'GBP';
           const isSelected = selectedRoomType?.type === room.type;
-          // ✅ Check availability - default to true if not specified
           const isAvailable = room.available !== undefined ? room.available : true;
           
           const currencySymbol = currencyCode === 'NGN' ? '₦' : 
@@ -1061,22 +1210,23 @@ if (!roomTypes || roomTypes.length === 0) {
                                 currencyCode === 'USD' ? '$' : 
                                 currencyCode === 'EUR' ? '€' : currencyCode;
           
-          // ✅ Get room name and description
           const roomName = room.name || room.type || 'Standard Room';
           const roomDescription = room.description || '';
           
-          // ✅ Get bed types
           const bedTypes = room.bedTypes || [];
           const bedTypeDisplay = bedTypes.length > 0 
             ? bedTypes.map((b: any) => `${b.type || 'Queen'}${b.quantity > 1 ? ` x${b.quantity}` : ''}`).join(' • ')
             : 'Queen';
           
-          // ✅ Get occupancy
           const maxAdults = room.occupancy?.maxAdults || 2;
-          
-          // ✅ Get room image
           const roomImage = room.image || '';
           
+          // Debug log to see if image is being passed
+          console.log(`🔍 Rendering room ${room.type}: image exists? ${!!roomImage}`);
+          if (roomImage) {
+            console.log(`   Image URL: ${roomImage.substring(0, 60)}...`);
+          }
+  
           return (
             <div 
               key={room.id || index} 
@@ -1088,37 +1238,50 @@ if (!roomTypes || roomTypes.length === 0) {
               onClick={() => isAvailable && setSelectedRoomType(room)}
             >
               <div className="flex flex-col sm:flex-row">
-                {/* Image */}
-                {roomImage && (
-                  <div className="w-full sm:w-[140px] h-[120px] sm:h-[140px] bg-gray-100 relative flex-shrink-0 overflow-hidden">
+                {/* Image - ALWAYS render this container */}
+                <div className="w-full sm:w-[140px] h-[120px] sm:h-[140px] bg-gray-100 relative flex-shrink-0 overflow-hidden">
+                  {roomImage ? (
                     <img 
                       src={roomImage} 
                       alt={roomName}
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
+                        console.warn(`⚠️ Image failed to load for ${room.type}:`, roomImage);
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          const placeholder = parent.querySelector('.room-image-placeholder');
+                          if (placeholder) {
+                            (placeholder as HTMLElement).style.display = 'flex';
+                          }
+                        }
                       }}
                     />
-                    {isSelected && isAvailable && (
-                      <div className="absolute top-1.5 right-1.5 bg-[#33a8da] text-white text-[8px] font-bold px-2 py-0.5 rounded-full shadow-lg">
-                        ✓ Selected
-                      </div>
-                    )}
-                    {!isAvailable && (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                        <span className="text-white text-xs font-bold px-3 py-1 bg-red-600/80 rounded-full">
-                          Sold Out
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
+                  ) : (
+                    <div className="room-image-placeholder w-full h-full flex items-center justify-center bg-gray-100">
+                      <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                  )}
+                  {isSelected && isAvailable && (
+                    <div className="absolute top-1.5 right-1.5 bg-[#33a8da] text-white text-[8px] font-bold px-2 py-0.5 rounded-full shadow-lg">
+                      ✓ Selected
+                    </div>
+                  )}
+                  {!isAvailable && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <span className="text-white text-xs font-bold px-3 py-1 bg-red-600/80 rounded-full">
+                        Sold Out
+                      </span>
+                    </div>
+                  )}
+                </div>
   
-                {/* Content */}
-                <div className={`flex-1 p-3 sm:p-4 ${!roomImage ? 'sm:pl-4' : ''}`}>
+                <div className={`flex-1 p-3 sm:p-4`}>
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      {/* Room Name */}
                       <div className="flex items-start justify-between sm:hidden">
                         <h4 className={`font-bold text-sm leading-tight flex-1 ${!isAvailable ? 'text-gray-500' : 'text-gray-900'}`}>
                           {safeRender(roomName)}
@@ -1132,7 +1295,6 @@ if (!roomTypes || roomTypes.length === 0) {
                         {safeRender(roomName)}
                       </h4>
                       
-                      {/* Room Type and Bed Type */}
                       <div className="flex flex-wrap items-center gap-1.5 mt-1">
                         {room.type && (
                           <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full font-medium">
@@ -1157,16 +1319,12 @@ if (!roomTypes || roomTypes.length === 0) {
                         )}
                       </div>
   
-                      {/* Description */}
                       {roomDescription && (
                         <p className={`text-xs mt-1 line-clamp-2 leading-relaxed ${!isAvailable ? 'text-gray-400' : 'text-gray-500'}`}>
                           {safeRender(roomDescription)}
                         </p>
                       )}
   
-                     
-  
-                      {/* Refundable & Cancellation */}
                       <div className="flex items-center gap-2 mt-1.5">
                         {room.isRefundable ? (
                           <span className="text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full flex items-center gap-0.5">
@@ -1188,91 +1346,105 @@ if (!roomTypes || roomTypes.length === 0) {
                       </div>
                     </div>
   
-                    {/* Price & Action */}
                     <div className="hidden sm:flex sm:flex-col sm:items-end sm:justify-between sm:gap-1 shrink-0">
                       <p className={`text-lg font-bold ${!isAvailable ? 'text-gray-400' : 'text-[#33a8da]'}`}>
                         {currencySymbol}{total.toFixed(2)}
                       </p>
-                      <p className="text-[9px] text-gray-400">per night</p>
+                      <p className="text-[9px] text-gray-400">total for {(() => {
+                        const checkIn = room.raw?.checkInDate || room.raw?.checkIn;
+                        const checkOut = room.raw?.checkOutDate || room.raw?.checkOut;
+                        if (checkIn && checkOut) {
+                          try {
+                            const start = new Date(checkIn);
+                            const end = new Date(checkOut);
+                            if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                              const nights = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                              if (nights > 0) return `${nights} night${nights > 1 ? 's' : ''}`;
+                            }
+                          } catch (e) {}
+                        }
+                        return 'stay';
+                      })()}</p>
                       <button
-onClick={(e) => {
-  e.stopPropagation();
-  if (isAvailable) {
-    // 1. Select the room
-    setSelectedRoomType(room);
-
-    // 2. Calculate the total stay price immediately
-    const perNight = room.price?.total || 0;
-    const originalCurrency = room.price?.currency || 'USD';
-
-    // ✅ FORCE THE CALCULATION TO ALWAYS USE NIGHTS
-    const safeNights = nights && nights > 0 ? nights : 1;
-    const totalForStay = perNight * safeNights;
-
-    // 3. Update the raw numeric states
-    setOriginalPriceAmount(totalForStay);
-    setOriginalPriceCurrency(originalCurrency);
-
-    // 4. Convert and update the displayed string
-    if (originalCurrency !== currency.code) {
-      convertPrice(totalForStay, originalCurrency).then(converted => {
-        formatPrice(converted).then(formatted => {
-          setBookingCardPrice(formatted);
-        });
-      });
-    } else {
-      formatPrice(totalForStay, originalCurrency).then(formatted => {
-        setBookingCardPrice(formatted);
-      });
-    }
-  }
-}}
->
-  {!isAvailable ? 'Sold Out' : isSelected ? '✓ Selected' : 'Select'}
-</button>
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isAvailable) {
+                            setSelectedRoomType(room);
+                            const perNight = room.price?.total || 0;
+                            const originalCurrency = room.price?.currency || 'USD';
+                            let calculatedNights = 1;
+                            const offerCheckIn = room.raw?.checkInDate || room.raw?.checkIn;
+                            const offerCheckOut = room.raw?.checkOutDate || room.raw?.checkOut;
+                            
+                            if (offerCheckIn && offerCheckOut) {
+                              try {
+                                const nightsFromOffer = Math.ceil((new Date(offerCheckOut).getTime() - new Date(offerCheckIn).getTime()) / (1000 * 60 * 60 * 24));
+                                if (nightsFromOffer > 0) calculatedNights = nightsFromOffer;
+                              } catch (e) {}
+                            }
+                            const totalForStay = perNight * calculatedNights;
+                            setOriginalPriceAmount(totalForStay);
+                            setOriginalPriceCurrency(originalCurrency);
+                            if (originalCurrency !== currency.code) {
+                              convertPrice(totalForStay, originalCurrency).then(converted => {
+                                formatPrice(converted).then(formatted => {
+                                  setBookingCardPrice(formatted);
+                                });
+                              });
+                            } else {
+                              formatPrice(totalForStay, originalCurrency).then(formatted => {
+                                setBookingCardPrice(formatted);
+                              });
+                            }
+                          }
+                        }}
+                      >
+                        {!isAvailable ? 'Sold Out' : isSelected ? '✓ Selected' : 'Select'}
+                      </button>
                     </div>
                   </div>
   
-                  {/* Bottom row - Mobile Select */}
                   <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center sm:hidden">
                     <span className="text-[9px] text-gray-400">Includes taxes & charges</span>
-                    
                     <button
-  onClick={(e) => {
-    e.stopPropagation();
-    if (isAvailable) {
-      // 1. Select the room
-      setSelectedRoomType(room);
-  
-      // 2. Calculate the total stay price immediately
-      const perNight = room.price?.total || 0;
-      const originalCurrency = room.price?.currency || 'USD';
-  
-      // ✅ FORCE THE CALCULATION TO ALWAYS USE NIGHTS
-      const safeNights = nights && nights > 0 ? nights : 1;
-      const totalForStay = perNight * safeNights;
-  
-      // 3. Update the raw numeric states
-      setOriginalPriceAmount(totalForStay);
-      setOriginalPriceCurrency(originalCurrency);
-  
-      // 4. Convert and update the displayed string
-      if (originalCurrency !== currency.code) {
-        convertPrice(totalForStay, originalCurrency).then(converted => {
-          formatPrice(converted).then(formatted => {
-            setBookingCardPrice(formatted);
-          });
-        });
-      } else {
-        formatPrice(totalForStay, originalCurrency).then(formatted => {
-          setBookingCardPrice(formatted);
-        });
-      }
-    }
-  }}
->
-  {!isAvailable ? 'Sold Out' : isSelected ? '✓ Selected' : 'Select'}
-</button>
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isAvailable) {
+                          setSelectedRoomType(room);
+                          const perNight = room.price?.total || 0;
+                          const originalCurrency = room.price?.currency || 'USD';
+                          let calculatedNights = 1;
+                          const offerCheckIn = room.raw?.checkInDate || room.raw?.checkIn;
+                          const offerCheckOut = room.raw?.checkOutDate || room.raw?.checkOut;
+                          if (offerCheckIn && offerCheckOut) {
+                            try {
+                              const start = new Date(offerCheckIn);
+                              const end = new Date(offerCheckOut);
+                              if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                                const nightsFromOffer = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                                if (nightsFromOffer > 0) calculatedNights = nightsFromOffer;
+                              }
+                            } catch (e) {}
+                          }
+                          const totalForStay = perNight * calculatedNights;
+                          setOriginalPriceAmount(totalForStay);
+                          setOriginalPriceCurrency(originalCurrency);
+                          if (originalCurrency !== currency.code) {
+                            convertPrice(totalForStay, originalCurrency).then(converted => {
+                              formatPrice(converted).then(formatted => {
+                                setBookingCardPrice(formatted);
+                              });
+                            });
+                          } else {
+                            formatPrice(totalForStay, originalCurrency).then(formatted => {
+                              setBookingCardPrice(formatted);
+                            });
+                          }
+                        }
+                      }}
+                    >
+                      {!isAvailable ? 'Sold Out' : isSelected ? '✓ Selected' : 'Select'}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1282,7 +1454,6 @@ onClick={(e) => {
       </div>
     );
   };
-
 
   const renderAmenities = () => {
     const amenities = fullDetails?.amenities || [];
@@ -1363,7 +1534,6 @@ onClick={(e) => {
   return (
     <div className="bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm text-gray-500 mb-6">
           <button onClick={onBack} className="hover:text-[#33a8da] transition">Home</button>
           <span>/</span>
@@ -1372,7 +1542,6 @@ onClick={(e) => {
           <span className="text-[#33a8da] font-medium">Property Details</span>
         </nav>
 
-        {/* Title & Location */}
         <div className="mb-6">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{safeRender(item.title)}</h1>
           <div className="flex items-center gap-2 mt-1">
@@ -1386,44 +1555,85 @@ onClick={(e) => {
           )}
         </div>
 
-        {/* Gallery */}
+        {/* Gallery - Only API images, NO fallbacks */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 mb-8">
           <div className="lg:col-span-8 h-[350px] md:h-[420px] rounded-xl overflow-hidden bg-gray-100 relative group">
-            <img 
-              src={hotelImages[currentImageIndex]?.url || hotelImages[0]?.url} 
-              className="w-full h-full object-cover"
-              alt={hotelImages[currentImageIndex]?.caption || item.title}
-            />
-            <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full">
-              <span className="text-xs text-white font-medium">
-                {currentImageIndex + 1} / {hotelImages.length || 1}
-              </span>
-            </div>
-            <button 
-              onClick={() => setIsLightboxOpen(true)}
-              className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full text-xs font-medium text-white hover:bg-black/80 transition"
-            >
-              View All Photos
-            </button>
+            {hotelImages.length > 0 ? (
+              <>
+                <img 
+                  src={hotelImages[currentImageIndex]?.url || hotelImages[0]?.url} 
+                  className="w-full h-full object-cover"
+                  alt={hotelImages[currentImageIndex]?.caption || item.title}
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    if (hotelImages.length > 1) {
+                      const nextIndex = (currentImageIndex + 1) % hotelImages.length;
+                      target.src = hotelImages[nextIndex]?.url || '';
+                    } else {
+                      target.style.display = 'none';
+                    }
+                  }}
+                />
+                <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full">
+                  <span className="text-xs text-white font-medium">
+                    {currentImageIndex + 1} / {hotelImages.length}
+                  </span>
+                </div>
+                <button 
+                  onClick={() => setIsLightboxOpen(true)}
+                  className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full text-xs font-medium text-white hover:bg-black/80 transition"
+                >
+                  View All Photos ({hotelImages.length})
+                </button>
+              </>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                <div className="text-center">
+                  <svg className="w-16 h-16 text-gray-300 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <p className="text-gray-400 text-sm font-medium">No images available</p>
+                  <p className="text-gray-300 text-xs mt-1">Images not provided by the hotel</p>
+                </div>
+              </div>
+            )}
           </div>
           <div className="lg:col-span-4 grid grid-cols-2 gap-3 h-[350px] md:h-[420px]">
             {hotelImages.slice(0, 4).map((img, i) => (
               <div 
                 key={img.id || i} 
-                className="rounded-xl overflow-hidden bg-gray-100 cursor-pointer hover:opacity-80 transition"
+                className={`rounded-xl overflow-hidden bg-gray-100 cursor-pointer hover:opacity-80 transition ${
+                  currentImageIndex === i ? 'ring-2 ring-[#33a8da]' : ''
+                }`}
                 onClick={() => setCurrentImageIndex(i)}
               >
-                <img src={img.url} className="w-full h-full object-cover" alt={img.caption || ''} />
+                <img 
+                  src={img.url} 
+                  className="w-full h-full object-cover" 
+                  alt={img.caption || ''}
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                  }}
+                />
               </div>
             ))}
+            {hotelImages.length === 0 && (
+              <>
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="rounded-xl bg-gray-100 flex items-center justify-center">
+                    <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
 
-        {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Details */}
           <div className="lg:col-span-2">
-            {/* Tabs */}
             <div className="border-b border-gray-200 mb-6">
               <div className="flex gap-6 overflow-x-auto">
                 {['overview', 'rooms', 'amenities', 'policies'].map((tab) => (
@@ -1443,17 +1653,13 @@ onClick={(e) => {
                 ))}
               </div>
             </div>
-
-            {/* Tab Content */}
             <div className="min-h-[300px]">
               {renderActiveContent()}
             </div>
           </div>
 
-          {/* Right Column - Booking Card */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 sticky top-24">
-              {/* Dates */}
               <div className="mb-4">
                 <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Check-in</label>
                 <p className="text-sm font-semibold text-gray-900">{checkInDate || 'Select date'}</p>
@@ -1461,71 +1667,123 @@ onClick={(e) => {
                 <p className="text-sm font-semibold text-gray-900">{checkOutDate || 'Select date'}</p>
               </div>
 
-              {/* Guests */}
               <div className="mb-4">
                 <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Guests</label>
                 <p className="text-sm font-semibold text-gray-900">{getGuestsDisplay()}</p>
               </div>
 
-{/* Price */}
-<div className="border-t border-gray-100 pt-4 mb-4">
-  <div className="flex justify-between items-end">
-    <div>
-      <p className="text-xs text-gray-500">
-        Price for {(() => {
-          // If a room is selected, try to get dates from the root of the raw offer
-          if (selectedRoomType) {
-            // ✅ FIX: Amadeus stores checkInOut directly on the root object, NOT inside policies!
-            const offerCheckIn = selectedRoomType.raw?.checkInDate || selectedRoomType.raw?.checkIn;
-            const offerCheckOut = selectedRoomType.raw?.checkOutDate || selectedRoomType.raw?.checkOut;
-            
-            // Use those if available, otherwise use the global search dates
-            const checkIn = offerCheckIn || getCheckInDate();
-            const checkOut = offerCheckOut || getCheckOutDate();
+              <div className="border-t border-gray-100 pt-4 mb-4">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-xs text-gray-500">
+                      Price for {(() => {
+                        if (selectedRoomType) {
+                          const offerCheckIn = selectedRoomType.raw?.checkInDate || selectedRoomType.raw?.checkIn;
+                          const offerCheckOut = selectedRoomType.raw?.checkOutDate || selectedRoomType.raw?.checkOut;
+                          
+                          if (offerCheckIn && offerCheckOut) {
+                            try {
+                              const start = new Date(offerCheckIn);
+                              const end = new Date(offerCheckOut);
+                              if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                                const calculatedNights = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                                if (calculatedNights > 0) {
+                                  return `${calculatedNights} night${calculatedNights > 1 ? 's' : ''}`;
+                                }
+                              }
+                            } catch (e) {}
+                          }
+                        }
+                        return `${nights || 1} night${(nights || 1) > 1 ? 's' : ''}`;
+                      })()}
+                    </p>
+                    <p className="text-2xl font-bold text-[#33a8da]">
+                      {selectedRoomType && bookingCardPrice ? bookingCardPrice : (convertedPrice || 'Price on request')}
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-            if (checkIn && checkOut) {
-              try {
-                const start = new Date(checkIn);
-                const end = new Date(checkOut);
-                const calculatedNights = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-                if (calculatedNights > 0) {
-                  return `${calculatedNights} night${calculatedNights > 1 ? 's' : ''}`;
-                }
-              } catch (e) { /* ignore date error */ }
-            }
-          }
-          // Fallback to the global nights variable
-          return `${nights || 1} night${(nights || 1) > 1 ? 's' : ''}`;
-        })()}
-      </p>
+              {selectedRoomType && (
+                <div className="bg-blue-50 rounded-lg p-3 mb-4 border border-blue-100">
+                  <p className="text-xs font-medium text-blue-600 uppercase tracking-wider">Selected Room</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {safeRender(selectedRoomType.name || selectedRoomType.type || 'Standard Room')}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {formatRoomPrice(selectedRoomType.price)} total for {(() => {
+                      const checkIn = selectedRoomType.raw?.checkInDate || selectedRoomType.raw?.checkIn;
+                      const checkOut = selectedRoomType.raw?.checkOutDate || selectedRoomType.raw?.checkOut;
+                      if (checkIn && checkOut) {
+                        try {
+                          const start = new Date(checkIn);
+                          const end = new Date(checkOut);
+                          if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                            const nights = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                            if (nights > 0) return `${nights} night${nights > 1 ? 's' : ''}`;
+                          }
+                        } catch (e) {}
+                      }
+                      return 'stay';
+                    })()}
+                  </p>
+                </div>
+              )}
 
-      <p className="text-2xl font-bold text-[#33a8da]">
-        {selectedRoomType && bookingCardPrice ? bookingCardPrice : (convertedPrice || 'Price on request')}
-      </p>
-    </div>
-  </div>
-</div>
+<button 
+  onClick={() => {
+    if (selectedRoomType) {
+      // ✅ Store the selected room data with dates
+      const bookingData = {
+        room: selectedRoomType,
+        price: originalPriceAmount,
+        currency: originalPriceCurrency,
+        formattedPrice: bookingCardPrice || convertedPrice,
+        // ✅ INCLUDE DATES - these are critical for the booking
+        checkInDate: searchParams?.checkInDate || checkInDate,
+        checkOutDate: searchParams?.checkOutDate || checkOutDate,
+        checkIn: checkInDate,
+        checkOut: checkOutDate,
+        guests: getGuestsDisplay(),
+        nights: nights,
+        hotelName: item?.title,
+        hotelId: item?.id,
+        selectedRoomData: selectedRoomType,
+        selectedRoomType: selectedRoomType.type || selectedRoomType.name,
+        roomTypeName: selectedRoomType.name || selectedRoomType.type || 'Standard Room',
+        totalAmount: originalPriceAmount,
+        final_amount: originalPriceAmount.toString(),
+        final_price: originalPriceAmount.toString(),
+        selectedCurrency: originalPriceCurrency,
+        offerId: selectedRoomType.raw?.offerId || selectedRoomType.id || item?.id,
+        roomImages: selectedRoomType.images || [],
+        roomPrimaryImage: selectedRoomType.primaryImage || selectedRoomType.image || '',
+        // ✅ Add hotel data
+        hotel: item,
+        // ✅ Ensure type is set
+        type: 'hotels',
+      };
+      
+      console.log('📦 HotelDetails - Calling onBook with:', {
+        totalAmount: bookingData.totalAmount,
+        selectedRoomType: bookingData.selectedRoomType,
+        checkInDate: bookingData.checkInDate,
+        checkOutDate: bookingData.checkOutDate,
+        nights: bookingData.nights,
+      });
+      
+      // ✅ Call onBook with the data
+      onBook(bookingData);
+    } else {
+      onBook();
+    }
+  }}
+  className="w-full bg-[#33a8da] text-white font-bold py-3 rounded-xl hover:bg-[#2c98c7] transition active:scale-95 text-sm"
+>
+  Reserve Room
+</button>
 
-
-{selectedRoomType && (
-  <div className="bg-blue-50 rounded-lg p-3 mb-4 border border-blue-100">
-    <p className="text-xs font-medium text-blue-600 uppercase tracking-wider">Selected Room</p>
-    <p className="text-sm font-semibold text-gray-900">
-      {safeRender(selectedRoomType.name || selectedRoomType.type || 'Standard Room')}
-    </p>
-    <p className="text-xs text-gray-500 mt-1">
-      {formatRoomPrice(selectedRoomType.price)} per night
-    </p>
-  </div>
-)}
-
-              {/* Book Button */}
-              <button 
-                onClick={onBook}
-                className="w-full bg-[#33a8da] text-white font-bold py-3 rounded-xl hover:bg-[#2c98c7] transition active:scale-95 text-sm"
-              >
-                Reserve Room
-              </button>
+                      
 
               {/* Save Button */}
               <button 
@@ -1543,7 +1801,6 @@ onClick={(e) => {
           </div>
         </div>
       </div>
-
       {/* Lightbox Gallery */}
       {isLightboxOpen && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex flex-col animate-in fade-in duration-300">

@@ -319,32 +319,35 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
     
     const extItem = item as ExtendedSearchResult;
+    
+    console.log('🟡 ReviewTrip - Processing item:', {
+      id: extItem.id,
+      title: extItem.title,
+      totalAmount: extItem.totalAmount,
+      selectedRoomType: extItem.selectedRoomType,
+      hasSelectedRoomData: !!extItem.selectedRoomData,
+      final_amount: extItem.final_amount,
+    });
+    
+    // ✅ ALWAYS use the item directly - it has the correct data from getItemForReview
+    setFixedItem(item);
+    
+    // Log what we're using
+    if (extItem.selectedRoomData || extItem.selectedRoomType) {
+      console.log('🟡 ReviewTrip - Hotel with selected room detected:', {
+        selectedRoomType: extItem.selectedRoomType,
+        totalAmount: extItem.totalAmount,
+        roomTypeName: extItem.roomTypeName,
+      });
+    }
+    
     if (extItem.basePrice && extItem.totalAmount) {
       console.log('🟡 ReviewTrip - Item has direct price fields from backend:', {
         basePrice: extItem.basePrice,
         markupAmount: extItem.markupAmount,
-        markupPercentage: extItem.markupPercentage,
-        serviceFee: extItem.serviceFee,
-        serviceFeePercentage: extItem.serviceFeePercentage,
         totalAmount: extItem.totalAmount,
-        breakdown: extItem.breakdown,
       });
-      setFixedItem(item);
-      return;
     }
-    
-    if (extItem.calculatedTotal && extItem.calculatedTotal > 0) {
-      console.log('🟡 ReviewTrip - Item already has calculated prices:', {
-        calculatedTotal: extItem.calculatedTotal,
-        calculatedBasePrice: extItem.calculatedBasePrice,
-        calculatedMarkup: extItem.calculatedMarkup,
-        calculatedServiceFee: extItem.calculatedServiceFee,
-      });
-      setFixedItem(item);
-      return;
-    }
-    
-    setFixedItem(item);
   }, [item]);
 
   const actualItem = fixedItem || item;
@@ -364,13 +367,51 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
 
   const extendedItem = actualItem as ExtendedSearchResult;
 
-  const rawType = (actualItem.type || searchParams?.type || 'flights').toLowerCase();
-  const isHotel = rawType.includes('hotel');
-  const isCar = rawType.includes('car');
-  const isFlight = !isHotel && !isCar;
+
+
+const rawType = (actualItem.type || searchParams?.type || 'flights').toLowerCase();
+
+
+const isAmadeusHotel = (actualItem as any)?.provider?.toLowerCase() === 'amadeus' ||
+                       !!(actualItem as any)?.realData?.offerId ||
+                       !!(actualItem as any)?.offers?.length ||
+                       !!(actualItem as any)?.hotelData?.offerId;
+
+
+const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+                        (actualItem as any)?.isWakanow === true ||
+                        (actualItem as any)?.type?.toLowerCase().includes('wakanow') ||
+                        // ✅ KEEP selectData - it's essential for Wakanow
+                        !!(actualItem as any)?.selectData ||
+                        !!(actualItem as any)?.offer_request_id ||
+                        !!(actualItem as any)?.slices ||
+                        !!(actualItem as any)?.airlineName ||
+                        !!(actualItem as any)?.airlineCode;
+
+let isHotel = rawType.includes('hotel');
+let isCar = rawType.includes('car');
+
+
+if (isWakanowFlight && !isAmadeusHotel) {
+  isHotel = false;
+  isCar = false;
+}
+
+const isFlight = isWakanowFlight || (!isHotel && !isCar);
+
+console.log('🔍 ReviewTrip - Product type detection:', {
+  rawType,
+  isHotel,
+  isCar,
+  isFlight,
+  isWakanowFlight,
+  isAmadeusHotel,
+  hasSelectData: !!(actualItem as any)?.selectData, 
+  provider: (actualItem as any)?.provider,
+});
 
   const firstOffer = extendedItem?.realData?.offers?.[0];
-  const isAmadeusHotel = isHotel && !!firstOffer;
+  //const isAmadeusHotel = isHotel && !!firstOffer;
   const isHBXHotel = isHotel && extendedItem.provider?.toLowerCase() === 'hotelbeds';
 
   const productType = propProductType || (
@@ -601,10 +642,10 @@ const isPassportMandatory = isNorthAmerica;
   useEffect(() => {
     if (user) {
       const parts = (user.name || '').trim().split(/\s+/);
-      if (!firstName) setFirstName(parts[0] || '');
-      if (!lastName) setLastName(parts.slice(1).join(' ') || '');
-      if (!email) setEmail(user.email || '');
-      if (!phone) setPhone(user.phone || '');
+      setFirstName(parts[0] || '');
+      setLastName(parts.slice(1).join(' ') || '');
+      setEmail(user.email || '');
+      setPhone(user.phone || '');
       if (user.dateOfBirth) setDateOfBirth(user.dateOfBirth);
       if (user.gender) setGender(user.gender as 'm' | 'f');
       if ((user as any).title) {
@@ -878,8 +919,26 @@ else if (isWakanow) {
   }
 }
 
-// ✅ HOTELS AND CARS (UNCHANGED)
+
+// ✅ HOTELS AND CARS - UPDATED to use selected room price
 else if (isHotel || isCar) {
+  console.log('💰 ReviewTrip - Hotel/Car detected');
+  
+  // ✅ CRITICAL: Use the item prop directly (it has the correct data)
+  const effectiveItem = (item as ExtendedSearchResult) || extendedItem;
+  
+  console.log('💰 Effective item for hotel:', {
+    totalAmount: effectiveItem?.totalAmount,
+    originalPriceAmount: effectiveItem?.originalPriceAmount,
+    final_amount: effectiveItem?.final_amount,
+    final_price: effectiveItem?.final_price,
+    selectedRoomData: effectiveItem?.selectedRoomData?.type,
+    selectedRoomType: effectiveItem?.selectedRoomType,
+    roomTypeName: effectiveItem?.roomTypeName,
+    // ✅ Log the source
+    sourceTotalAmount: effectiveItem?.totalAmount,
+  });
+  
   if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
     basePrice = extBooking.basePrice || 0;
     markupAmount = extBooking.markupAmount || 0;
@@ -890,26 +949,57 @@ else if (isHotel || isCar) {
     combinedTaxes = extBooking.taxes || markupAmount + serviceFee || 0;
     combinedTaxPercentage = extBooking.taxPercentage || markupPercentage + serviceFeePercentage;
     breakdownDescription = extBooking.breakdown || '';
+    console.log('💰 ReviewTrip - Using booking data:', { totalDue, basePrice });
   } else {
     let priceValue = 0;
-    if (extendedItem.final_amount) {
-      priceValue = parseFloat(extendedItem.final_amount);
-    } else if (extendedItem.final_price) {
-      priceValue = typeof extendedItem.final_price === 'string' 
-        ? parseFloat(extendedItem.final_price) 
-        : extendedItem.final_price;
-    } else if (extendedItem.totalAmount) {
-      priceValue = extendedItem.totalAmount;
-    } else if (extendedItem.price) {
-      priceValue = typeof extendedItem.price === 'string' 
-        ? parseFloat(extendedItem.price) 
-        : extendedItem.price;
-    }
-    totalDue = priceValue;
-    markupPercentage = extendedItem.markup_percentage || 10;
-    serviceFeePercentage = extendedItem.service_fee_percentage || 5;
     
-    if (totalDue > 0 && !extendedItem.basePrice) {
+    // ✅ PRIORITY 1: Use totalAmount from effectiveItem (most reliable)
+    if (effectiveItem?.totalAmount && effectiveItem.totalAmount > 0) {
+      priceValue = effectiveItem.totalAmount;
+      console.log('💰 ReviewTrip - Using totalAmount from effectiveItem:', priceValue);
+    }
+    // ✅ PRIORITY 2: Use originalPriceAmount
+    else if (effectiveItem?.originalPriceAmount && effectiveItem.originalPriceAmount > 0) {
+      priceValue = effectiveItem.originalPriceAmount;
+      console.log('💰 ReviewTrip - Using originalPriceAmount:', priceValue);
+    }
+    // ✅ PRIORITY 3: Use final_amount
+    else if (effectiveItem?.final_amount) {
+      priceValue = parseFloat(effectiveItem.final_amount);
+      console.log('💰 ReviewTrip - Using final_amount:', priceValue);
+    }
+    // ✅ PRIORITY 4: Use final_price
+    else if (effectiveItem?.final_price) {
+      priceValue = typeof effectiveItem.final_price === 'string' 
+        ? parseFloat(effectiveItem.final_price) 
+        : effectiveItem.final_price;
+      console.log('💰 ReviewTrip - Using final_price:', priceValue);
+    }
+    // ✅ PRIORITY 5: Use price string
+    else if (effectiveItem?.price) {
+      priceValue = typeof effectiveItem.price === 'string' 
+        ? parseFloat(effectiveItem.price.replace(/[^0-9.]/g, '')) 
+        : effectiveItem.price;
+      console.log('💰 ReviewTrip - Using price:', priceValue);
+    }
+    
+    totalDue = priceValue;
+    
+    // Get currency from the effective item
+    if (effectiveItem?.currency) {
+      offerCurrency = effectiveItem.currency;
+    } else if (effectiveItem?.originalPriceCurrency) {
+      offerCurrency = effectiveItem.originalPriceCurrency;
+    } else if (effectiveItem?.selectedCurrency) {
+      offerCurrency = effectiveItem.selectedCurrency;
+    }
+    
+    console.log('💰 ReviewTrip - Final hotel price:', { totalDue, currency: offerCurrency });
+    
+    markupPercentage = effectiveItem?.markup_percentage || 10;
+    serviceFeePercentage = effectiveItem?.service_fee_percentage || 5;
+    
+    if (totalDue > 0 && !effectiveItem?.basePrice) {
       const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100);
       basePrice = totalDue / totalFactor;
       markupAmount = (basePrice * markupPercentage) / 100;
@@ -917,9 +1007,9 @@ else if (isHotel || isCar) {
       combinedTaxes = markupAmount + serviceFee;
       combinedTaxPercentage = markupPercentage + serviceFeePercentage;
     } else {
-      basePrice = extendedItem.basePrice || 0;
-      markupAmount = extendedItem.markupAmount || 0;
-      serviceFee = extendedItem.serviceFee || 0;
+      basePrice = effectiveItem?.basePrice || 0;
+      markupAmount = effectiveItem?.markupAmount || 0;
+      serviceFee = effectiveItem?.serviceFee || 0;
       combinedTaxes = markupAmount + serviceFee;
       combinedTaxPercentage = markupPercentage + serviceFeePercentage;
     }
@@ -1087,8 +1177,11 @@ const displayServiceFee = formatPrice(convertedPrices.serviceFee, displayCurrenc
   };
 
 
-const validateAllPassengers = (): boolean => {
 
+
+
+
+const validateAllPassengers = (): boolean => {
   const skipPassportValidation = shouldSkipPassport;
   
   for (let i = 0; i < additionalPassengers.length; i++) {
@@ -1096,7 +1189,7 @@ const validateAllPassengers = (): boolean => {
     const passengerType = p.type || 'adult';
     const label = `${passengerType.toUpperCase()} #${i + 1}`;
     
-    // Basic required fields
+    // Basic required fields - NO FALLBACKS
     if (!p.firstName || !p.firstName.trim()) {
       alert(`${label}: First name is required.`);
       return false;
@@ -1107,14 +1200,17 @@ const validateAllPassengers = (): boolean => {
     }
 
     if (isFlight) {
+      // Title - NO FALLBACK
       if (!p.title) {
         alert(`${label}: Title is required.`);
         return false;
       }
+      // Gender - NO FALLBACK
       if (!p.gender) {
         alert(`${label}: Gender is required.`);
         return false;
       }
+      // Date of Birth - NO FALLBACK
       if (!p.dateOfBirth) {
         alert(`${label}: Date of Birth is required.`);
         return false;
@@ -1134,6 +1230,7 @@ const validateAllPassengers = (): boolean => {
         return false;
       }
 
+      // Passport validation for additional passengers on international flights
       if (!skipPassportValidation && isWakanow && !isDomesticFlightResult) {
         if (!p.passportNumber || !p.passportNumber.trim()) {
           alert(`${label}: Passport number is required for flights to North America.`);
@@ -1148,7 +1245,6 @@ const validateAllPassengers = (): boolean => {
           return false;
         }
       }
-      
     }
   }
   return true;
@@ -1168,32 +1264,63 @@ const handleCompleteBooking = async () => {
 
   if (isBooking || isCreating) return;
 
-  // Validate lead passenger
-  if (!firstName || !lastName || !email || !phone) {
-    alert('All passenger fields are required.');
+  // Validate lead passenger - NO FALLBACKS
+  if (!firstName || !firstName.trim()) {
+    alert('First name is required.');
+    return;
+  }
+  if (!lastName || !lastName.trim()) {
+    alert('Last name is required.');
+    return;
+  }
+  if (!email || !email.trim()) {
+    alert('Email is required.');
+    return;
+  }
+  if (!phone || !phone.trim()) {
+    alert('Phone number is required.');
     return;
   }
 
+
   if (isFlight) {
+    // ✅ Debug log - check all values before validation
+    console.log('🔍 BEFORE VALIDATION - Form values:', {
+      title: title,
+      gender: gender,
+      dateOfBirth: dateOfBirth,
+      firstName: firstName,
+      lastName: lastName,
+      email: email,
+      phone: phone,
+    });
+  
+    // Title validation - NO FALLBACK
     if (!title) {
-      alert('Title is required for flight bookings.');
+      alert('Title is required for flight bookings. Please select your title.');
       return;
     }
+  
+    // Gender validation - NO FALLBACK
     if (!gender) {
-      alert('Gender is required for flight bookings.');
+      alert('Gender is required for flight bookings. Please select your gender.');
       return;
     }
+  
+    // Date of Birth validation - NO FALLBACK
     if (!dateOfBirth) {
-      alert('Date of birth is required for flight bookings.');
+      alert('Date of birth is required for flight bookings. Please enter your date of birth.');
       return;
     }
 
+    // Date format validation
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(dateOfBirth)) {
       alert('Date of birth must be in YYYY-MM-DD format.');
       return;
     }
 
+    // Age validation
     const dob = new Date(dateOfBirth);
     const today = new Date();
     const age = today.getFullYear() - dob.getFullYear();
@@ -1202,20 +1329,26 @@ const handleCompleteBooking = async () => {
       return;
     }
 
+    // International flight passport validation
     const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
                             (actualItem as any)?.type?.toLowerCase().includes('wakanow');
     const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
     const isInternational = isWakanowFlight && !isDomesticFlight;
     
     if (!shouldSkipPassport && isFlight && isInternational) {
-      if (!passportNumber || !passportExpiry || !passportIssuingAuthority) {
-        alert('Passport details are required for international flights.\n\nPlease provide:\n- Passport Number\n- Passport Expiry Date\n- Passport Issuing Authority');
+      if (!passportNumber || !passportNumber.trim()) {
+        alert('Passport number is required for international flights.\n\nPlease provide:\n- Passport Number');
         return;
       }
       
       const passportRegex = /^[A-Za-z][0-9]{7,8}$|^[A-Za-z0-9]{6,9}$/;
       if (!passportRegex.test(passportNumber)) {
         alert('Please enter a valid passport number (e.g., A12345678)');
+        return;
+      }
+      
+      if (!passportExpiry) {
+        alert('Passport expiry date is required for international flights.');
         return;
       }
       
@@ -1227,18 +1360,22 @@ const handleCompleteBooking = async () => {
         return;
       }
       
-      if (!passportIssuingAuthority.trim()) {
-        alert('Passport Issuing Authority is required.');
+      if (!passportIssuingAuthority || !passportIssuingAuthority.trim()) {
+        alert('Passport Issuing Authority is required for international flights.');
         return;
       }
     }
 
+    // Terms & Conditions validation
     if (displayedTerms.length > 0 && !agreedToTerms) {
       alert('Please agree to the Terms & Conditions to continue.');
       return;
     }
   }
 
+  // ============================================================
+  // ✅ HOTEL VALIDATION
+  // ============================================================
   if (isHotel && !agreedToPolicy) {
     alert('Please agree to the cancellation policy to continue.');
     return;
@@ -1253,6 +1390,9 @@ const handleCompleteBooking = async () => {
   try {
     let passengerInfo: PassengerInfo;
 
+    // ============================================================
+    // ✅ BUILD PASSENGER INFO FOR HOTEL OR CAR
+    // ============================================================
     if (isHotel || isCar) {
       passengerInfo = {
         firstName,
@@ -1260,7 +1400,11 @@ const handleCompleteBooking = async () => {
         email,
         phone,
       };
-    } else {
+    } 
+    // ============================================================
+    // ✅ BUILD PASSENGER INFO FOR FLIGHT
+    // ============================================================
+    else {
       passengerInfo = {
         firstName,
         lastName,
@@ -1269,7 +1413,7 @@ const handleCompleteBooking = async () => {
         type: 'adult',
         title: title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr',
         gender: gender as 'm' | 'f',
-        dateOfBirth,
+        dateOfBirth: dateOfBirth,
         address: passportAddress || "221B Baker Street",
         city: passportCity || "London",
         country: passportCountry || "United Kingdom", 
@@ -1605,27 +1749,30 @@ const handleCompleteBooking = async () => {
               </div>
   
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {isFlight && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Title <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr')}
-                      className={inputCls}
-                      disabled={!!extBooking}
-                      required
-                    >
-                      <option value="">Select Title</option>
-                      <option value="mr">Mr</option>
-                      <option value="ms">Ms</option>
-                      <option value="mrs">Mrs</option>
-                      <option value="miss">Miss</option>
-                      <option value="dr">Dr</option>
-                    </select>
-                  </div>
-                )}
+              {isFlight && (
+  <div>
+    <label className="block text-xs font-medium text-gray-500 mb-1">
+      Title <span className="text-red-500">*</span>
+    </label>
+    <select
+      value={title}
+      onChange={(e) => {
+        console.log('🔄 Title changed to:', e.target.value);
+        setTitle(e.target.value as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr');
+      }}
+      className={inputCls}
+      disabled={!!extBooking}
+      required
+    >
+      <option value="">Select Title</option>
+      <option value="mr">Mr</option>
+      <option value="ms">Ms</option>
+      <option value="mrs">Mrs</option>
+      <option value="miss">Miss</option>
+      <option value="dr">Dr</option>
+    </select>
+  </div>
+)}
   
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -1674,21 +1821,24 @@ const handleCompleteBooking = async () => {
                   </div>
                 )}
   
-                {isFlight && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Date of Birth <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      value={dateOfBirth}
-                      onChange={(e) => setDateOfBirth(e.target.value)}
-                      className={inputCls}
-                      readOnly={!!extBooking}
-                      required
-                    />
-                  </div>
-                )}
+  {isFlight && (
+  <div>
+    <label className="block text-xs font-medium text-gray-500 mb-1">
+      Date of Birth <span className="text-red-500">*</span>
+    </label>
+    <input
+      type="date"
+      value={dateOfBirth}
+      onChange={(e) => {
+        console.log('🔄 Date of Birth changed to:', e.target.value);
+        setDateOfBirth(e.target.value);
+      }}
+      className={inputCls}
+      readOnly={!!extBooking}
+      required
+    />
+  </div>
+)}
   
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
