@@ -33,6 +33,15 @@ export class SearchCarRentalsUseCase {
       discountNumbers,
       limit = 20,
       page = 1,
+      // ✅ Add address support
+      startAddressLine,
+      startCityName,
+      startCountryCode,
+      startZip,
+      endAddressLine,
+      endCityName,
+      endCountryCode,
+      endZip,
     } = searchParams;
     
     const effectiveCurrency = currency ?? 'GBP';
@@ -55,6 +64,10 @@ export class SearchCarRentalsUseCase {
       transferType,
       vehicleCategory,
       vehicleCode,
+      startAddressLine,
+      startCityName,
+      endAddressLine,
+      endCityName,
     });
     
     const cached = this.cacheService.get<any>(cacheKey);
@@ -65,8 +78,8 @@ export class SearchCarRentalsUseCase {
     try {
       const formattedStartDateTime = this.formatAmadeusDateTime(pickupDate);
 
-      this.logger.log(`Searching transfers: ${startLocationCode} -> ${endLocationCode || startLocationCode}`);
-      this.logger.log(`Start: ${formattedStartDateTime}, Type: ${transferType}, Passengers: ${passengers}`);
+      this.logger.log(`🔍 Searching transfers: ${startLocationCode || startAddressLine} -> ${endLocationCode || endAddressLine || startLocationCode}`);
+      this.logger.log(`📅 Start: ${formattedStartDateTime}, Type: ${transferType}, Passengers: ${passengers}`);
 
       const transferRequest = this.buildTransferRequest({
         startLocationCode,
@@ -81,6 +94,15 @@ export class SearchCarRentalsUseCase {
         providerCodes,
         baggages,
         discountNumbers,
+        // ✅ Add address support
+        startAddressLine,
+        startCityName,
+        startCountryCode,
+        startZip,
+        endAddressLine,
+        endCityName,
+        endCountryCode,
+        endZip,
       });
 
       const response = await this.amadeusService.searchTransfers(transferRequest);
@@ -129,14 +151,14 @@ export class SearchCarRentalsUseCase {
     testMaxDate.setDate(testMaxDate.getDate() + 7);
     if (pickupDate > testMaxDate) {
       this.logger.warn(
-        `Pickup date is more than 7 days ahead. Amadeus test environment may only support dates within 1-7 days.`,
+        `⚠️ Pickup date is more than 7 days ahead. Amadeus test environment may only support dates within 1-7 days.`,
       );
     }
   }
 
   private buildTransferRequest(params: {
-    startLocationCode: string;
-    endLocationCode: string;
+    startLocationCode?: string;
+    endLocationCode?: string;
     startDateTime: string;
     transferType: TransferType;
     passengers: number;
@@ -147,26 +169,66 @@ export class SearchCarRentalsUseCase {
     providerCodes?: string;
     baggages?: number;
     discountNumbers?: string;
+    startAddressLine?: string;
+    startCityName?: string;
+    startCountryCode?: string;
+    startZip?: string;
+    endAddressLine?: string;
+    endCityName?: string;
+    endCountryCode?: string;
+    endZip?: string;
   }) {
     const request: any = {
-      startLocationCode: params.startLocationCode,
-      endLocationCode: params.endLocationCode,
       startDateTime: params.startDateTime,
       passengers: params.passengers,
       transferType: params.transferType,
       currency: params.effectiveCurrency,
     };
 
+    // ✅ Handle start location (IATA or Address)
+    if (params.startLocationCode) {
+      request.startLocationCode = params.startLocationCode;
+    } else if (params.startAddressLine && params.startCityName && params.startCountryCode) {
+      request.startAddressLine = params.startAddressLine;
+      request.startCityName = params.startCityName;
+      request.startCountryCode = params.startCountryCode;
+      if (params.startZip) {
+        request.startZip = params.startZip;
+      }
+    } else {
+      throw new BadRequestException(
+        'Either startLocationCode or startAddressLine with startCityName and startCountryCode is required',
+      );
+    }
+
+    // ✅ Handle end location (IATA or Address)
+    if (params.endLocationCode) {
+      request.endLocationCode = params.endLocationCode;
+    } else if (params.endAddressLine && params.endCityName && params.endCountryCode) {
+      request.endAddressLine = params.endAddressLine;
+      request.endCityName = params.endCityName;
+      request.endCountryCode = params.endCountryCode;
+      if (params.endZip) {
+        request.endZip = params.endZip;
+      }
+    } else if (params.startLocationCode) {
+      // ✅ If no end provided, use start as round-trip
+      request.endLocationCode = params.startLocationCode;
+    } else {
+      throw new BadRequestException(
+        'Either endLocationCode or endAddressLine with endCityName and endCountryCode is required',
+      );
+    }
+
     if (params.duration) {
       request.duration = params.duration;
     }
 
-    // ✅ Directly use VehicleCategory enum values (ST, BU, FC)
+    // ✅ Vehicle filters
     if (params.vehicleCategory) {
       request.vehicleCategory = params.vehicleCategory;
     }
 
-    // ✅ Directly use VehicleCode enum values
     if (params.vehicleCode) {
       request.vehicleCode = params.vehicleCode;
     }
@@ -183,7 +245,7 @@ export class SearchCarRentalsUseCase {
       request.discountNumbers = params.discountNumbers;
     }
 
-    this.logger.log(`Amadeus transfer request: ${JSON.stringify(request)}`);
+    this.logger.log(`📤 Amadeus transfer request: ${JSON.stringify(request)}`);
 
     return request;
   }
@@ -199,8 +261,25 @@ export class SearchCarRentalsUseCase {
   }
 
   private generateCacheKey(params: any): string {
-    const { startLocationCode, endLocationCode, startDateTime, passengers, effectiveCurrency, transferType, vehicleCategory, vehicleCode } = params;
-    return `transfer:${startLocationCode}:${endLocationCode || startLocationCode}:${startDateTime}:${passengers}:${effectiveCurrency}:${transferType}:${vehicleCategory || 'all'}:${vehicleCode || 'all'}`;
+    const { 
+      startLocationCode, 
+      endLocationCode, 
+      startDateTime, 
+      passengers, 
+      effectiveCurrency, 
+      transferType, 
+      vehicleCategory, 
+      vehicleCode,
+      startAddressLine,
+      startCityName,
+      endAddressLine,
+      endCityName,
+    } = params;
+    
+    const startKey = startLocationCode || `${startAddressLine}:${startCityName}`;
+    const endKey = endLocationCode || `${endAddressLine}:${endCityName}`;
+    
+    return `transfer:${startKey}:${endKey}:${startDateTime}:${passengers}:${effectiveCurrency}:${transferType}:${vehicleCategory || 'all'}:${vehicleCode || 'all'}`;
   }
 
   private hasErrors(response: any): boolean {
@@ -209,7 +288,7 @@ export class SearchCarRentalsUseCase {
 
   private handleApiErrors(response: any, pickupDate: Date, currency: string, limit: number, page: number) {
     const firstError = response.errors[0];
-    this.logger.error(`Amadeus API error: ${JSON.stringify(response.errors)}`);
+    this.logger.error(`❌ Amadeus API error: ${JSON.stringify(response.errors)}`);
 
     const errorMap: Record<string, { message: string; suggestion: string }> = {
       '4926': { 
@@ -295,12 +374,16 @@ export class SearchCarRentalsUseCase {
   }) {
     const { response, effectiveCurrency, limit, page, cacheKey } = params;
 
-    const offers = Array.isArray(response.data) ? response.data : [];
+    // ✅ Extract offers from response.data or response
+    const offers = Array.isArray(response.data) ? response.data : 
+                   Array.isArray(response) ? response : [];
     
     if (offers.length === 0) {
-      this.logger.warn('No transfer offers found');
+      this.logger.warn('⚠️ No transfer offers found');
       return this.createEmptyResponse(effectiveCurrency, limit, page);
     }
+
+    this.logger.log(`✅ Found ${offers.length} transfer offers`);
 
     const processedResults = await this.processOffers(offers, effectiveCurrency);
 
@@ -336,14 +419,46 @@ export class SearchCarRentalsUseCase {
     return await Promise.all(
       offers.map(async (offer: any) => {
         try {
+          // ✅ Extract offer ID for booking
+          const offerId = offer.id || offer.offerId || null;
+          
           const quotation = offer.quotation || {};
           const originalPrice = parseFloat(quotation.monetaryAmount || '0');
           const originalCurrency = quotation.currencyCode || 'USD';
 
+          // ✅ Extract vehicle details
+          const vehicle = offer.vehicle || {};
+          const serviceProvider = offer.serviceProvider || {};
+          
+          // ✅ Extract cancellation rules
+          const cancellationRules = offer.cancellationRules || [];
+
+          // ✅ Extract start/end locations
+          const start = offer.start || {};
+          const end = offer.end || {};
+
           if (originalPrice <= 0) {
-            return offer;
+            return {
+              ...offer,
+              offerId,
+              original_price: originalPrice,
+              original_currency: originalCurrency,
+              currency: targetCurrency,
+              price: {
+                currency: targetCurrency,
+                base: '0',
+                total: '0',
+                original_total: originalPrice,
+                original_currency: originalCurrency,
+              },
+              markup_percentage: 0,
+              markup_amount: '0',
+              service_fee: '0',
+              final_price: '0',
+            };
           }
 
+          // ✅ Convert price
           let convertedBasePrice = originalPrice;
           if (originalCurrency !== targetCurrency) {
             try {
@@ -354,7 +469,7 @@ export class SearchCarRentalsUseCase {
               );
             } catch (error) {
               this.logger.warn(
-                `Failed to convert ${originalPrice} ${originalCurrency} to ${targetCurrency}, using fallback`,
+                `⚠️ Failed to convert ${originalPrice} ${originalCurrency} to ${targetCurrency}, using fallback`,
                 error,
               );
               const converted = offer.converted || {};
@@ -365,10 +480,14 @@ export class SearchCarRentalsUseCase {
             }
           }
 
+          // ✅ Calculate markup
           const markupResult = await this.calculateMarkup(convertedBasePrice, targetCurrency);
 
+          // ✅ Build enhanced response with all details
           return {
             ...offer,
+            offerId, // ✅ Preserve offer ID for booking
+            id: offerId, // ✅ Also set as id for convenience
             original_price: originalPrice.toString(),
             original_currency: originalCurrency,
             base_price: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
@@ -379,44 +498,98 @@ export class SearchCarRentalsUseCase {
               total: markupResult.final_price,
               original_total: originalPrice.toString(),
               original_currency: originalCurrency,
+              breakdown: {
+                base_price: convertedBasePrice,
+                markup: markupResult.markup_amount,
+                service_fee: markupResult.service_fee,
+                final_price: markupResult.final_price,
+              },
             },
             ...markupResult,
+            // ✅ Vehicle details
+            vehicle: {
+              code: vehicle.code,
+              category: vehicle.category,
+              description: vehicle.description,
+              seats: vehicle.seats,
+              baggages: vehicle.baggages,
+              imageURL: vehicle.imageURL || null,
+            },
+            // ✅ Service provider
+            serviceProvider: {
+              code: serviceProvider.code,
+              name: serviceProvider.name,
+              logoUrl: serviceProvider.logoUrl,
+              termsUrl: serviceProvider.termsUrl,
+              contacts: serviceProvider.contacts,
+            },
+            // ✅ Cancellation rules
+            cancellationRules,
+            // ✅ Start/End locations
+            start: {
+              dateTime: start.dateTime,
+              locationCode: start.locationCode,
+              address: start.address,
+              name: start.name,
+            },
+            end: {
+              dateTime: end.dateTime,
+              locationCode: end.locationCode,
+              address: end.address,
+              name: end.name,
+            },
+            // ✅ Transfer type
+            transferType: offer.transferType,
+            // ✅ Passenger info
+            passengers: offer.passengers,
+            passengerCharacteristics: offer.passengerCharacteristics,
+            // ✅ Distance
+            distance: offer.distance,
           };
         } catch (error) {
-          this.logger.error('Error processing offer:', error);
-          return offer;
+          this.logger.error('❌ Error processing offer:', error);
+          return {
+            ...offer,
+            offerId: offer.id || offer.offerId || null,
+          };
         }
       }),
     );
   }
 
-  private async calculateMarkup(basePrice: number, currency: string) {
-    let markupPercentage = 0;
-    let serviceFeeAmount = 0;
 
-    try {
-      const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
-        ProductType.CAR_RENTAL,
-        currency,
-      );
-      if (markupConfig) {
-        markupPercentage = markupConfig.markupPercentage || 0;
-        serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
-      }
-    } catch (error) {
-      this.logger.warn(`Could not fetch markup config for CAR_RENTAL in ${currency}`, error);
+private async calculateMarkup(basePrice: number, currency: string) {
+  let markupPercentage = 0;
+  let serviceFeePercentage = 0;  // ✅ Changed from serviceFeeAmount
+  let serviceFeeAmount = 0;
+
+  try {
+    const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
+      ProductType.CAR_RENTAL,
+      currency,
+    );
+    if (markupConfig) {
+      markupPercentage = markupConfig.markupPercentage || 0;
+      serviceFeePercentage = markupConfig.serviceFeePercentage || 0;  // ✅ Changed
+      
+      // ✅ Calculate service fee as percentage of base price
+      serviceFeeAmount = (basePrice * serviceFeePercentage) / 100;
     }
-
-    const markupAmount = (basePrice * markupPercentage) / 100;
-    const finalPrice = basePrice + markupAmount + serviceFeeAmount;
-
-    return {
-      markup_percentage: markupPercentage,
-      markup_amount: this.currencyService.formatAmount(markupAmount, currency),
-      service_fee: this.currencyService.formatAmount(serviceFeeAmount, currency),
-      final_price: this.currencyService.formatAmount(finalPrice, currency), 
-    };
+  } catch (error) {
+    this.logger.warn(`⚠️ Could not fetch markup config for CAR_RENTAL in ${currency}`, error);
   }
+
+  const markupAmount = (basePrice * markupPercentage) / 100;
+  const finalPrice = basePrice + markupAmount + serviceFeeAmount;
+
+  return {
+    markup_percentage: markupPercentage,
+    markup_amount: this.currencyService.formatAmount(markupAmount, currency),
+    service_fee_percentage: serviceFeePercentage,  // ✅ Added
+    service_fee: this.currencyService.formatAmount(serviceFeeAmount, currency),
+    final_price: this.currencyService.formatAmount(finalPrice, currency),
+  };
+}
 
   private createEmptyResponse(currency: string, limit: number, page: number) {
     return {

@@ -1,3 +1,4 @@
+
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { MarkupConfig } from '@domains/markup/entities/markup-config.entity';
@@ -8,7 +9,6 @@ import { toNumber } from '@common/utils/decimal.util';
 export class MarkupRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Find all configs (active and inactive) for admin listing */
   async findAll(options?: { productType?: ProductType; currency?: string }): Promise<MarkupConfig[]> {
     const where: any = {};
     if (options?.productType) where.productType = options.productType;
@@ -65,7 +65,8 @@ export class MarkupRepository {
   async create(data: {
     productType: ProductType;
     markupPercentage: number;
-    serviceFeeAmount: number;
+    serviceFeePercentage: number;  // ✅ Changed
+    taxPercentage?: number;        // ✅ Added
     currency: string;
     description?: string;
     createdBy?: string;
@@ -75,7 +76,8 @@ export class MarkupRepository {
       data: {
         productType: data.productType,
         markupPercentage: data.markupPercentage,
-        serviceFeeAmount: data.serviceFeeAmount,
+        serviceFeePercentage: data.serviceFeePercentage,  // ✅ Changed
+        taxPercentage: data.taxPercentage ?? 15,          // ✅ Added
         currency: data.currency,
         description: data.description,
         createdBy: data.createdBy,
@@ -86,12 +88,12 @@ export class MarkupRepository {
     return this.mapToMarkupConfig(config);
   }
 
-  /** End current config and create a new one (audit-friendly); or update in place if no future bookings depend on it */
   async update(
     id: string,
     data: {
       markupPercentage?: number;
-      serviceFeeAmount?: number;
+      serviceFeePercentage?: number;  // ✅ Changed
+      taxPercentage?: number;        // ✅ Added
       description?: string;
       isActive?: boolean;
     },
@@ -102,7 +104,8 @@ export class MarkupRepository {
       where: { id },
       data: {
         ...(data.markupPercentage != null && { markupPercentage: data.markupPercentage }),
-        ...(data.serviceFeeAmount != null && { serviceFeeAmount: data.serviceFeeAmount }),
+        ...(data.serviceFeePercentage != null && { serviceFeePercentage: data.serviceFeePercentage }),  // ✅ Changed
+        ...(data.taxPercentage != null && { taxPercentage: data.taxPercentage }),                      // ✅ Added
         ...(data.description !== undefined && { description: data.description }),
         ...(data.isActive !== undefined && { isActive: data.isActive }),
       },
@@ -110,7 +113,6 @@ export class MarkupRepository {
     return this.mapToMarkupConfig(updated);
   }
 
-  /** Deactivate by setting effectiveTo = now (keeps history) */
   async deactivate(id: string) {
     const existing = await this.prisma.markupConfig.findUnique({ where: { id } });
     if (!existing) return null;
@@ -121,16 +123,13 @@ export class MarkupRepository {
     return this.mapToMarkupConfig(updated);
   }
 
-  /**
-   * Map Prisma markup config result to MarkupConfig entity
-   * Converts Decimal types to numbers
-   */
   private mapToMarkupConfig(prismaConfig: any): MarkupConfig {
     return {
       id: prismaConfig.id,
       productType: prismaConfig.productType,
       markupPercentage: toNumber(prismaConfig.markupPercentage),
-      serviceFeeAmount: toNumber(prismaConfig.serviceFeeAmount),
+      serviceFeePercentage: toNumber(prismaConfig.serviceFeePercentage),  // ✅ Changed
+      taxPercentage: toNumber(prismaConfig.taxPercentage ?? 15),         // ✅ Added
       currency: prismaConfig.currency,
       isActive: prismaConfig.isActive,
       effectiveFrom: prismaConfig.effectiveFrom,

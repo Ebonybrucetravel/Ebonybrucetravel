@@ -40,12 +40,12 @@ export class CancelCarRentalBookingUseCase {
         );
       }
 
-      // ✅ Check if booking has providerBookingId
+      // Check if booking has providerBookingId
       if (!booking.providerBookingId) {
         throw new BadRequestException('No Amadeus order found for this booking');
       }
 
-      // ✅ Extract confirmation number from bookingData
+      // Extract confirmation number from bookingData
       const bookingData = booking.bookingData as any;
       const confirmNbr = bookingData?.confirmNbr;
 
@@ -61,11 +61,11 @@ export class CancelCarRentalBookingUseCase {
         try {
           this.logger.log(`Cancelling Amadeus transfer order ${booking.providerBookingId} with confirmNbr: ${confirmNbr || 'not provided'}`);
           
-          // ✅ Fix: Only pass 1 argument to cancelTransfer
-          // The confirmNbr should be handled inside the service
-          const amadeusResponse = await this.amadeusService.cancelTransfer(
-            booking.providerBookingId,
-          );
+          // ✅ FIXED: Pass both orderId and confirmNbr as an object
+          const amadeusResponse = await this.amadeusService.cancelTransfer({
+            orderId: booking.providerBookingId,
+            confirmNbr: confirmNbr, // Use the extracted confirmNbr
+          });
           
           cancellationResult = amadeusResponse.data || amadeusResponse;
           this.logger.log(`✅ Amadeus cancellation successful: ${JSON.stringify(cancellationResult)}`);
@@ -73,7 +73,7 @@ export class CancelCarRentalBookingUseCase {
           this.logger.error(`Failed to cancel booking in Amadeus:`, error);
           cancellationError = error;
           
-          // ✅ Check if cancellation is not allowed due to cancellation rules
+          // Check if cancellation is not allowed due to cancellation rules
           if (error instanceof Error && error.message.includes('cancellation')) {
             throw new BadRequestException(
               `Cannot cancel this booking due to cancellation policy. ${error.message}`,
@@ -84,17 +84,17 @@ export class CancelCarRentalBookingUseCase {
         }
       }
 
-      // ✅ Determine refund status based on provider response or default to PENDING
+      // Determine refund status based on provider response or default to PENDING
       let refundStatus: RefundStatus = RefundStatus.PENDING;
       let cancellationFee = 0;
       let refundAmount = 0;
 
-      // ✅ Fix: Safely parse totalAmount for arithmetic operations
+      // Safely parse totalAmount for arithmetic operations
       const totalAmount = typeof booking.totalAmount === 'string' 
         ? parseFloat(booking.totalAmount) 
         : Number(booking.totalAmount) || 0;
 
-      // ✅ Check cancellation rules from booking data
+      // Check cancellation rules from booking data
       const cancellationRules = bookingData?.cancellationRules || [];
       if (cancellationRules.length > 0) {
         // Find applicable cancellation rule based on time before pickup
@@ -110,7 +110,7 @@ export class CancelCarRentalBookingUseCase {
         }
       }
 
-      // ✅ If cancellation was successful and no error
+      // If cancellation was successful and no error
       if (cancellationResult && !cancellationError) {
         // Check if cancellation response indicates refund eligibility
         if (cancellationResult.reservationStatus === 'CANCELLED') {
@@ -126,7 +126,7 @@ export class CancelCarRentalBookingUseCase {
         }
       }
 
-      // ✅ Build updated provider data
+      // Build updated provider data
       const updatedProviderData = {
         ...(booking.providerData as any),
         cancellation: {
@@ -143,7 +143,7 @@ export class CancelCarRentalBookingUseCase {
         },
       };
 
-      // ✅ Update booking status
+      // Update booking status
       const updatedBooking = await this.prisma.booking.update({
         where: { id: bookingId },
         data: {
@@ -166,7 +166,7 @@ export class CancelCarRentalBookingUseCase {
 
       this.logger.log(`✅ Car rental booking ${bookingId} cancelled successfully`);
 
-      // ✅ Build response message based on cancellation result
+      // Build response message based on cancellation result
       let message = 'Car rental booking cancelled successfully';
       if (cancellationError) {
         message = 'Booking cancelled locally but provider cancellation failed. Please contact support.';
@@ -220,12 +220,12 @@ export class CancelCarRentalBookingUseCase {
     // Calculate hours until pickup
     const hoursUntilPickup = (pickupDate.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    // ✅ Safely get totalAmount for fee calculation
+    // Safely get totalAmount for fee calculation
     const totalAmount = typeof booking.totalAmount === 'string' 
       ? parseFloat(booking.totalAmount) 
       : Number(booking.totalAmount) || 0;
 
-    // ✅ Check each cancellation rule
+    // Check each cancellation rule
     for (const rule of cancellationRules) {
       const metricMin = parseInt(rule.metricMin) || 0;
       const metricMax = parseInt(rule.metricMax) || 0;

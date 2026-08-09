@@ -238,7 +238,7 @@ export class SearchHotelbedsUseCase {
         const markupToApply = supplierMarkup || defaultMarkup;
         return {
             markupPercentage: markupToApply ? Number(markupToApply.markupPercentage) : 0,
-            markupFlatFee: markupToApply ? Number(markupToApply.serviceFeeAmount) : 0,
+            markupFlatFee: markupToApply ? Number(markupToApply.serviceFeePercentage) : 0,
         };
     }
 

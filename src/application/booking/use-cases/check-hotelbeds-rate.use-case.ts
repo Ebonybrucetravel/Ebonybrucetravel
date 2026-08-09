@@ -36,7 +36,7 @@ export class CheckHotelbedsRateUseCase {
 
             const markupToApply = supplierMarkup || defaultMarkup;
             const markupPercentage = markupToApply ? Number(markupToApply.markupPercentage) : 0;
-            const markupFlatFee = markupToApply ? Number(markupToApply.serviceFeeAmount) : 0;
+            const markupFlatFee = markupToApply ? Number(markupToApply.serviceFeePercentage) : 0;
 
             const unifiedOffers = await Promise.all((hotel.rooms || []).flatMap((room: any) =>
                 (room.rates || []).map(async (rate: any) => {

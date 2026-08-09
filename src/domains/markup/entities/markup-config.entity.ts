@@ -1,10 +1,13 @@
+
+
 import { ProductType } from '@prisma/client';
 
 export class MarkupConfig {
   id: string;
   productType: ProductType;
-  markupPercentage: number;
-  serviceFeeAmount: number;
+  markupPercentage: number;        
+  serviceFeePercentage: number;    
+  taxPercentage: number;           
   currency: string;
   isActive: boolean;
   effectiveFrom: Date;

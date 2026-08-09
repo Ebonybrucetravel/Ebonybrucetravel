@@ -76,35 +76,46 @@ export class CreateAmadeusHotelBookingUseCase {
         throw new BadRequestException('Invalid cancellation deadline. Use ISO 8601 format (e.g. 2026-02-14T23:59:00.000Z).');
       }
 
-      const markupConfig = await this.markupRepository.findActiveMarkupByProductType('HOTEL', currency);
+     // ==================== PRICING CALCULATION (FIXED) ====================
 
-      if (!markupConfig) {
-        throw new NotFoundException(`No active markup configuration found for HOTEL in ${currency}`);
-      }
+const markupConfig = await this.markupRepository.findActiveMarkupByProductType('HOTEL', currency);
 
-      const frontendTotalAmount = typeof offerPrice === 'number' 
-        ? offerPrice 
-        : parseFloat(offerPrice as any || '0');
+if (!markupConfig) {
+  throw new NotFoundException(`No active markup configuration found for HOTEL in ${currency}`);
+}
 
-      const serviceFee = markupConfig.serviceFeeAmount || 0;
-      const markupPercentage = markupConfig.markupPercentage || 0;
+const frontendTotalAmount = typeof offerPrice === 'number' 
+  ? offerPrice 
+  : parseFloat(offerPrice as any || '0');
 
-      const calculatedBasePrice = (frontendTotalAmount - serviceFee) / (1 + markupPercentage / 100);
+// ✅ Get percentages from markup config
+const markupPercentage = markupConfig.markupPercentage || 0;
+const serviceFeePercentage = markupConfig.serviceFeePercentage || 0;
 
-      if (calculatedBasePrice <= 0) {
-        throw new BadRequestException('Invalid offer price. Price must be greater than 0.');
-      }
+// ✅ Calculate base price correctly
+// totalAmount = basePrice + (basePrice * markupPercentage / 100) + (basePrice * serviceFeePercentage / 100)
+// totalAmount = basePrice * (1 + markupPercentage/100 + serviceFeePercentage/100)
+const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100);
+const calculatedBasePrice = frontendTotalAmount / totalFactor;
 
-      const calculatedMarkupAmount = (calculatedBasePrice * markupPercentage) / 100;
+if (calculatedBasePrice <= 0) {
+  throw new BadRequestException('Invalid offer price. Price must be greater than 0.');
+}
 
-      const pricing = {
-        basePrice: calculatedBasePrice,
-        markupAmount: calculatedMarkupAmount,
-        serviceFee: serviceFee,
-        totalAmount: frontendTotalAmount,
-      };
+// ✅ Calculate all components
+const calculatedMarkupAmount = (calculatedBasePrice * markupPercentage) / 100;
+const calculatedServiceFee = (calculatedBasePrice * serviceFeePercentage) / 100;
+const calculatedTotal = calculatedBasePrice + calculatedMarkupAmount + calculatedServiceFee;
 
-      this.logger.log(`Price breakdown - Base: ${pricing.basePrice}, Markup: ${pricing.markupAmount}, Service Fee: ${pricing.serviceFee}, Total: ${pricing.totalAmount}`);
+const pricing = {
+  basePrice: calculatedBasePrice,
+  markupAmount: calculatedMarkupAmount,
+  serviceFee: calculatedServiceFee,
+  totalAmount: calculatedTotal, // Should match frontendTotalAmount
+};
+
+this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pricing.markupAmount} (${markupPercentage}%), Service Fee: ${pricing.serviceFee} (${serviceFeePercentage}%), Total: ${pricing.totalAmount}`);
+
 
       const leadGuest = dto.guests[0];
       const passengerInfo = {
@@ -196,7 +207,7 @@ export class CreateAmadeusHotelBookingUseCase {
           frontend_total: frontendTotalAmount,
           markup_config_used: {
             markupPercentage,
-            serviceFee,
+            serviceFeePercentage,
             currency,
           },
           original_offer_price: {

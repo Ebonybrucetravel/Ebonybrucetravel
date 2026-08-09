@@ -47,7 +47,7 @@ export class CreateHotelbedsBookingUseCase {
             }
 
 
-            const serviceFee = Number(markupConfig.serviceFeeAmount || 0);
+            const serviceFee = Number(markupConfig.serviceFeePercentage || 0);
             const markupPercentage = Number(markupConfig.markupPercentage || 0);
             const basePrice = (totalAmount - serviceFee) / (1 + markupPercentage / 100);
 

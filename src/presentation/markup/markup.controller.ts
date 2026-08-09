@@ -1,3 +1,4 @@
+
 import {
   Controller,
   Get,
@@ -54,7 +55,8 @@ export class MarkupController {
     body: {
       productType: ProductType;
       markupPercentage: number;
-      serviceFeeAmount: number;
+      serviceFeePercentage: number;  
+      taxPercentage?: number;       
       currency?: string;
       description?: string;
     },
@@ -63,22 +65,27 @@ export class MarkupController {
     if (
       body.markupPercentage == null ||
       body.markupPercentage < 0 ||
-      body.serviceFeeAmount == null ||
-      body.serviceFeeAmount < 0
+      body.serviceFeePercentage == null ||  // ✅ Changed
+      body.serviceFeePercentage < 0         // ✅ Changed
     ) {
       throw new BadRequestException(
-        'markupPercentage and serviceFeeAmount must be non-negative numbers',
+        'markupPercentage and serviceFeePercentage must be non-negative numbers',  // ✅ Updated
       );
     }
+    
     const currency = body.currency ?? 'GBP';
+    const taxPercentage = body.taxPercentage ?? 15; // Default tax percentage
+    
     const created = await this.markupRepository.create({
       productType: body.productType,
       markupPercentage: body.markupPercentage,
-      serviceFeeAmount: body.serviceFeeAmount,
+      serviceFeePercentage: body.serviceFeePercentage,  // ✅ Changed from serviceFeeAmount
+      taxPercentage: taxPercentage,                    // ✅ Added
       currency,
       description: body.description,
       createdBy: req.user?.id,
     });
+    
     await this.prisma.auditLog.create({
       data: {
         userId: req.user.id,
@@ -88,11 +95,13 @@ export class MarkupController {
         changes: {
           productType: created.productType,
           markupPercentage: created.markupPercentage,
-          serviceFeeAmount: created.serviceFeeAmount,
+          serviceFeePercentage: created.serviceFeePercentage,  // ✅ Changed
+          taxPercentage: created.taxPercentage,                // ✅ Added
           currency: created.currency,
         },
       },
     });
+    
     return {
       success: true,
       data: created,
@@ -107,7 +116,8 @@ export class MarkupController {
     @Body()
     body: {
       markupPercentage?: number;
-      serviceFeeAmount?: number;
+      serviceFeePercentage?: number;  // ✅ Changed from serviceFeeAmount
+      taxPercentage?: number;        // ✅ Added
       description?: string;
       isActive?: boolean;
     },
@@ -115,19 +125,24 @@ export class MarkupController {
   ) {
     const existing = await this.markupRepository.findById(id);
     if (!existing) throw new NotFoundException('Markup configuration not found');
+    
     if (
       (body.markupPercentage != null && body.markupPercentage < 0) ||
-      (body.serviceFeeAmount != null && body.serviceFeeAmount < 0)
+      (body.serviceFeePercentage != null && body.serviceFeePercentage < 0)  // ✅ Changed
     ) {
-      throw new BadRequestException('markupPercentage and serviceFeeAmount must be non-negative');
+      throw new BadRequestException('markupPercentage and serviceFeePercentage must be non-negative');  // ✅ Updated
     }
+    
     const updated = await this.markupRepository.update(id, {
       markupPercentage: body.markupPercentage,
-      serviceFeeAmount: body.serviceFeeAmount,
+      serviceFeePercentage: body.serviceFeePercentage,  // ✅ Changed
+      taxPercentage: body.taxPercentage,                // ✅ Added
       description: body.description,
       isActive: body.isActive,
     });
+    
     if (!updated) throw new NotFoundException('Markup configuration not found');
+    
     await this.prisma.auditLog.create({
       data: {
         userId: req.user.id,
@@ -139,6 +154,7 @@ export class MarkupController {
         ) as Prisma.InputJsonValue,
       },
     });
+    
     return {
       success: true,
       data: updated,

@@ -12,7 +12,7 @@ import { SearchWakanowFlightsDto } from '@presentation/booking/dto/wakanow-fligh
 export class SearchWakanowFlightsUseCase {
   private readonly logger = new Logger(SearchWakanowFlightsUseCase.name);
   
-  private markupConfigCache: Map<string, { markupPercentage: number; serviceFeeAmount: number }> = new Map();
+  private markupConfigCache: Map<string, { markupPercentage: number; serviceFeePercentage: number }> = new Map();
   private readonly VALID_SELECT_DATA_MAX_LENGTH = 500;
   private readonly INVALID_SELECT_DATA_PREFIXES = ['7h4AAB+LCAAAAAAABAD', 'H4sI'];
 
@@ -134,7 +134,7 @@ export class SearchWakanowFlightsUseCase {
     // ✅ Get markup config ONCE
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
     const markupConfig = await this.getMarkupConfig(productType, displayCurrency);
-    const { markupPercentage, serviceFeeAmount } = markupConfig;
+    const { markupPercentage, serviceFeePercentage } = markupConfig; 
 
     // ✅ Get conversion details ONCE (not per offer)
     let conversionRate = 1;
@@ -152,8 +152,9 @@ export class SearchWakanowFlightsUseCase {
           const conversionDetails = this.currencyService.calculateConversionFee(1, baseCurrency, displayCurrency);
           conversionFee = conversionDetails.conversionFee;
           totalWithFee = conversionDetails.totalWithFee;
-        } catch (error) {
-          this.logger.warn(`⚠️ Currency conversion failed, using 1:1 rate: ${error.message}`);
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.logger.warn(`⚠️ Currency conversion failed, using 1:1 rate: ${errorMessage}`);
           conversionRate = 1;
           conversionFee = 0;
           totalWithFee = 1;
@@ -172,7 +173,7 @@ export class SearchWakanowFlightsUseCase {
       isDomestic,
       displayCurrency,
       markupPercentage,
-      serviceFeeAmount,
+      serviceFeePercentage,
       conversionRate,
       conversionFee,
       totalWithFee,
@@ -201,29 +202,26 @@ export class SearchWakanowFlightsUseCase {
     };
   }
 
-  /**
-   * ✅ Get markup config with caching
-   */
-  private async getMarkupConfig(productType: ProductType, currency: string) {
-    const cacheKey = `markup:${productType}:${currency}`;
-    
-    if (this.markupConfigCache.has(cacheKey)) {
-      return this.markupConfigCache.get(cacheKey)!;
-    }
-
-    try {
-      const config = await this.markupRepository.findActiveMarkupByProductType(productType, currency);
-      const result = {
-        markupPercentage: config?.markupPercentage || 10,
-        serviceFeeAmount: config?.serviceFeeAmount || 0,
-      };
-      this.markupConfigCache.set(cacheKey, result);
-      return result;
-    } catch (error) {
-      this.logger.warn(`Could not fetch markup config for ${currency}, using default 10%`);
-      return { markupPercentage: 10, serviceFeeAmount: 0 };
-    }
+private async getMarkupConfig(productType: ProductType, currency: string) {
+  const cacheKey = `markup:${productType}:${currency}`;
+  
+  if (this.markupConfigCache.has(cacheKey)) {
+    return this.markupConfigCache.get(cacheKey)!;
   }
+
+  try {
+    const config = await this.markupRepository.findActiveMarkupByProductType(productType, currency);
+    const result = {
+      markupPercentage: config?.markupPercentage || 10,
+      serviceFeePercentage: config?.serviceFeePercentage || 0,  // ✅ Keep this
+    };
+    this.markupConfigCache.set(cacheKey, result);
+    return result;
+  } catch (error) {
+    this.logger.warn(`Could not fetch markup config for ${currency}, using default 10%`);
+    return { markupPercentage: 10, serviceFeePercentage: 0 };  // ✅ Changed
+  }
+}
 
   /**
    * ✅ Batch normalize offers - SYNCHRONOUS for speed
@@ -233,7 +231,7 @@ export class SearchWakanowFlightsUseCase {
     isDomestic: boolean,
     displayCurrency: string,
     markupPercentage: number,
-    serviceFeeAmount: number,
+    serviceFeePercentage: number,
     conversionRate: number,
     conversionFee: number,
     totalWithFee: number,
@@ -252,7 +250,7 @@ export class SearchWakanowFlightsUseCase {
         isDomestic,
         displayCurrency,
         markupPercentage,
-        serviceFeeAmount,
+        serviceFeePercentage,
         conversionRate,
         conversionFee,
         totalWithFee,
@@ -275,7 +273,7 @@ export class SearchWakanowFlightsUseCase {
     isDomestic: boolean,
     displayCurrency: string,
     markupPercentage: number,
-    serviceFeeAmount: number,
+    serviceFeePercentage: number,
     conversionRate: number,
     conversionFee: number,
     totalWithFee: number,
@@ -291,7 +289,8 @@ export class SearchWakanowFlightsUseCase {
     const convertedTotalWithFee = basePrice * totalWithFee;
     const convertedConversionFee = basePrice * conversionFee;
     const markupAmount = convertedTotalWithFee * markupPercentage / 100;
-    const finalPrice = convertedTotalWithFee + markupAmount + serviceFeeAmount;
+const serviceFeeAmount = convertedTotalWithFee * serviceFeePercentage / 100;
+const finalPrice = convertedTotalWithFee + markupAmount + serviceFeeAmount;
 
     // ✅ Calculate tax once
     let totalBaseFare = 0;
@@ -365,7 +364,7 @@ export class SearchWakanowFlightsUseCase {
     const roundedServiceFee = Math.round(serviceFeeAmount * 100) / 100;
     const roundedTotal = Math.round(finalPrice * 100) / 100;
     const roundedTaxes = Math.round((roundedMarkup + roundedServiceFee) * 100) / 100;
-    const combinedTaxPercentage = markupPercentage + 5;
+    const combinedTaxPercentage = markupPercentage + serviceFeePercentage;
 
     const selectData = result.SelectData || '';
 
@@ -389,6 +388,7 @@ export class SearchWakanowFlightsUseCase {
       conversion_fee_percentage: baseCurrency !== displayCurrency ? 5 : 0,
       markup_percentage: markupPercentage,
       markup_amount: roundedMarkup.toFixed(2),
+      service_fee_percentage: serviceFeePercentage, 
       service_fee: roundedServiceFee.toFixed(2),
       total_amount: convertedTotalWithFee.toFixed(2),
       final_amount: roundedTotal.toFixed(2),
@@ -400,12 +400,12 @@ export class SearchWakanowFlightsUseCase {
         markupAmount: roundedMarkup,
         markupPercentage: markupPercentage,
         serviceFee: roundedServiceFee,
-        serviceFeePercentage: 5,
+        serviceFeePercentage: serviceFeePercentage,
         taxes: roundedTaxes,
         taxPercentage: combinedTaxPercentage,
         totalAmount: roundedTotal,
         currency: displayCurrency,
-        breakdown: `${roundedBasePrice} + ${roundedMarkup} (${markupPercentage}% markup) + ${roundedServiceFee} (5% service fee) = ${roundedTotal}`,
+       breakdown: `${roundedBasePrice} + ${roundedMarkup} (${markupPercentage}% markup) + ${roundedServiceFee} (${serviceFeePercentage}% service fee) = ${roundedTotal}`,
       },
       
       price_details: combo.PriceDetails.map((pd) => ({

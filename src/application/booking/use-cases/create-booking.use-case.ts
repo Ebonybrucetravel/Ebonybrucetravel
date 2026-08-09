@@ -314,35 +314,41 @@ if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
       this.logger.log(`📦 Stored Duffel offer data for authenticated booking: ${dto.offerId} with ${passengersToStore.length} passengers`);
     }
 
-  
-    const isHotelProvider =
-      dto.productType === ProductType.HOTEL &&
-      (dto.provider === Provider.AMADEUS || dto.provider === Provider.HOTELBEDS);
 
-    if (isHotelProvider) {
-      const serviceFee = markupConfig.serviceFeeAmount || 0;
-      const markupPct = markupConfig.markupPercentage || 0;
-      const baseFromFinal = (dto.basePrice - serviceFee) / (1 + markupPct / 100);
-      if (baseFromFinal > 0) {
-        pricing = this.markupCalculationService.calculateTotal(
-          baseFromFinal,
-          dto.productType,
-          dto.currency,
-          markupConfig,
-        );
+   const isHotelProvider =
+  dto.productType === ProductType.HOTEL &&
+  (dto.provider === Provider.AMADEUS || dto.provider === Provider.HOTELBEDS);
+
+if (isHotelProvider) {
+  // ✅ Get percentages from markup config
+  const markupPercentage = markupConfig.markupPercentage || 0;
+  const serviceFeePercentage = markupConfig.serviceFeePercentage || 0;
+  
+  // ✅ Calculate base price from the total
+  // totalAmount = basePrice + (basePrice * markupPercentage / 100) + (basePrice * serviceFeePercentage / 100)
+  // totalAmount = basePrice * (1 + markupPercentage/100 + serviceFeePercentage/100)
+  const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100);
+  const calculatedBasePrice = dto.basePrice / totalFactor;
+  
+  if (calculatedBasePrice > 0) {
+    pricing = this.markupCalculationService.calculateTotal(
+      calculatedBasePrice,
+      dto.productType,
+      dto.currency,
+      markupConfig,
+    );
  
-        if (bookingData.offerId && !bookingData.amadeus_offer_id) {
-          bookingData = { ...bookingData, amadeus_offer_id: bookingData.offerId };
-        }
-      } else {
-        pricing = this.markupCalculationService.calculateTotal(
-          dto.basePrice,
-          dto.productType,
-          dto.currency,
-          markupConfig,
-        );
-      }
-    } else {
+    if (bookingData.offerId && !bookingData.amadeus_offer_id) {
+      bookingData = { ...bookingData, amadeus_offer_id: bookingData.offerId };
+    }
+  } else {
+    pricing = this.markupCalculationService.calculateTotal(
+      dto.basePrice,
+      dto.productType,
+      dto.currency,
+      markupConfig,
+    );
+  } } else {
  
       pricing = this.markupCalculationService.calculateTotal(
         dto.basePrice,

@@ -200,7 +200,8 @@ if (getAll) {
         allResults.push(...chunkResponse.data);
       }
     } catch (error) {
-      this.logger.warn(`Failed to fetch chunk ${i}: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Failed to fetch chunk ${i}: ${errorMessage}`);
     }
   }
   
@@ -261,7 +262,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
         );
         if (markupConfig) {
           markupPercentage = markupConfig.markupPercentage || 2.5;
-          serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
+          serviceFeeAmount = markupConfig.serviceFeePercentage || 0;
         } else {
           this.logger.warn(`No markup config found for ${targetCurrency}, using default ${markupPercentage}%`);
         }
@@ -387,9 +388,10 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
     } catch (error) {
       this.logger.error('Error searching Amadeus hotels:', error);
       
+      const anyError = error as any;
       // Handle specific Amadeus errors
-      if (error.response?.data?.errors) {
-        const amadeusError = error.response.data.errors[0];
+      if (anyError.response?.data?.errors) {
+        const amadeusError = anyError.response.data.errors[0];
         
         // Handle VERIFY CHAIN/REP CODE error
         if (amadeusError.code === '1351' || amadeusError.detail?.includes('VERIFY CHAIN/REP CODE')) {
@@ -583,7 +585,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
       );
       if (markupConfig) {
         markupPercentage = markupConfig.markupPercentage || 2.5;
-        serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
+        serviceFeeAmount = markupConfig.serviceFeePercentage || 0;
       }
     } catch (error) {
       this.logger.warn(`Could not fetch markup config, using default ${markupPercentage}%:`, error);
@@ -759,7 +761,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
       );
       if (markupConfig) {
         markupPercentage = markupConfig.markupPercentage || 2.5;
-        serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
+        serviceFeeAmount = markupConfig.serviceFeePercentage || 0;
       }
     } catch (error) {
       this.logger.warn(`Could not fetch markup config, using default ${markupPercentage}%:`, error);
@@ -881,7 +883,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
       );
       if (markupConfig) {
         markupPercentage = markupConfig.markupPercentage || 2.5;
-        serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
+        serviceFeeAmount = markupConfig.serviceFeePercentage || 0;
       }
     } catch (error) {
       this.logger.warn(`Could not fetch markup config, using default ${markupPercentage}%:`, error);

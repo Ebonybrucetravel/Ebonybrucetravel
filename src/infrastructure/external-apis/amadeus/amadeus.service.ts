@@ -39,15 +39,10 @@ export class AmadeusService {
     
     this.logger.log(`AmadeusService initialized with base URL: ${this.baseUrl}`);
     this.logger.log(`Office ID: ${this.officeId}, Org ID: ${this.orgId}, User ID: ${this.userId}`);
-    // ✅ ADD THESE 3 LINES AT THE END OF THE CONSTRUCTOR
-    this.accessToken = null;
-    this.tokenExpiresAt = 0;
-    this.logger.log('🔄 Amadeus token cache cleared on startup - will fetch fresh token on first request');
-
-    
+    // NOTE: Removed redundant token reset here as it is already initialized at the top.
   }
 
-  private async getAccessToken(): Promise<string> {
+private async getAccessToken(): Promise<string> {
     if (this.accessToken && Date.now() < this.tokenExpiresAt) {
       this.logger.debug('Using cached access token');
       return this.accessToken;
@@ -106,6 +101,7 @@ export class AmadeusService {
       );
     }
   }
+
   private async makeRequest(
     endpoint: string,
     options: {
@@ -182,6 +178,7 @@ export class AmadeusService {
     }
   }
 
+
   
   async searchHotelNames(params: {
     keyword: string;
@@ -213,11 +210,10 @@ export class AmadeusService {
       cityCode: params.cityCode 
     };
     
-    // ✅ CHANGE: Default radius to 200 KM (MAX)
     if (params.radius) {
-      queryParams.radius = Math.min(params.radius, 200).toString(); // Cap at 200
+      queryParams.radius = Math.min(params.radius, 200).toString();
     } else {
-      queryParams.radius = '200'; // ← CHANGE FROM '30' TO '200'
+      queryParams.radius = '200';
     }
     
     if (params.radiusUnit) {
@@ -251,14 +247,13 @@ export class AmadeusService {
     radius?: number;
     radiusUnit?: 'KM' | 'MILE';
     chainCodes?: string[];
-    limit?: number; // 👈 ADD THIS
+    limit?: number;
   }): Promise<any> {
     const queryParams: Record<string, string> = {
       latitude: params.latitude.toString(),
       longitude: params.longitude.toString(),
     };
     
-    // 👇 SET BETTER DEFAULTS
     if (params.radius) {
       queryParams.radius = params.radius.toString();
     } else {
@@ -270,12 +265,6 @@ export class AmadeusService {
     } else {
       queryParams.radiusUnit = 'KM';
     }
-    
-    //if (params.limit) {
-      //queryParams['page[limit]'] = params.limit.toString();
-    //} else {
-      //queryParams['page[limit]'] = '50';
-    //}
     
     if (params.chainCodes?.length) queryParams.chainCodes = params.chainCodes.join(',');
     
@@ -378,7 +367,9 @@ export class AmadeusService {
       this.logger.log(`Found ${images.length} images for hotel ${hotelId}`);
       return images;
     } catch (error) {
-      this.logger.error(`Failed to fetch images for hotel ${hotelId}:`, error);
+      // ✅ FIXED: Type guard for 'unknown' error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to fetch images for hotel ${hotelId}: ${errorMessage}`);
       return [];
     }
   }
@@ -419,7 +410,9 @@ export class AmadeusService {
       this.logger.warn(`No images found for hotel ${hotelId}`);
       return null;
     } catch (error) {
-      this.logger.error(`Failed to fetch primary image for hotel ${hotelId}:`, error);
+      // ✅ FIXED: Type guard for 'unknown' error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to fetch primary image for hotel ${hotelId}: ${errorMessage}`);
       return null;
     }
   }
@@ -536,9 +529,11 @@ export class AmadeusService {
       };
     } catch (error) {
       this.logger.error(`Failed to get complete hotel details for ${hotelId}:`, error);
+      // ✅ FIXED: Type guard for 'unknown' error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       throw new HttpException(
         {
-          message: `Failed to fetch hotel details: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          message: `Failed to fetch hotel details: ${errorMessage}`,
           statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
         },
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -623,6 +618,7 @@ export class AmadeusService {
     
     return response;
   }
+
   async getHotelOffersWithRoomTypes(params: {
     hotelIds?: string[];
     cityCode?: string;
@@ -643,7 +639,6 @@ export class AmadeusService {
       );
     }
     
-    // Step 1: Get hotel offers
     const queryParams: Record<string, string> = {
       checkInDate: params.checkInDate,
       checkOutDate: params.checkOutDate,
@@ -675,7 +670,6 @@ export class AmadeusService {
       };
     }
   
-    // Step 2: Fetch hotel images and room images
     let roomImagesMap = new Map<string, Map<string, any[]>>();
     try {
       const hotelIds = response.data
@@ -690,13 +684,14 @@ export class AmadeusService {
         this.logger.log(`✅ Fetched room images for ${roomImagesMap.size} hotels`);
       }
     } catch (error) {
-      this.logger.warn(`Failed to fetch room images, continuing without them: ${error.message}`);
+      // ✅ FIXED: Type guard for 'unknown' error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(`Failed to fetch room images, continuing without them: ${errorMessage}`);
     }
   
-    // Step 3: Fetch markup configuration
     const targetCurrency = params.currency || 'NGN';
     let markupPercentage = 2.5;
-    let serviceFeeAmount = 0;
+    let serviceFeePercentage = 0;
     try {
       const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
         ProductType.HOTEL,
@@ -704,28 +699,24 @@ export class AmadeusService {
       );
       if (markupConfig) {
         markupPercentage = markupConfig.markupPercentage || 2.5;
-        serviceFeeAmount = markupConfig.serviceFeeAmount || 0;
+        serviceFeePercentage = markupConfig.serviceFeePercentage || 0;
       }
     } catch (error) {
       this.logger.warn(`Could not fetch markup config, using default ${markupPercentage}%:`, error);
     }
   
-    // Step 4: Process each hotel's offers with images and prices
     const hotelsWithRoomTypes = await Promise.all(
       response.data.map(async (hotelOffer: any) => {
         const hotel = hotelOffer.hotel || {};
         const offers = hotelOffer.offers || [];
         
-        // Get room images for this hotel
         const hotelRoomImages = roomImagesMap.get(hotel.hotelId) || new Map<string, any[]>();
         
-        // Process each room type with price and images
         const roomTypes = await Promise.all(
           offers.map(async (offer: any) => {
             const room = offer.room || {};
             const price = offer.price || {};
             
-            // ✅ Extract original price
             let originalPrice = price.total || price.base || 0;
             const originalCurrency = price.currency || 'GBP';
             
@@ -733,7 +724,6 @@ export class AmadeusService {
               ? parseFloat(originalPrice) 
               : (originalPrice || 0);
             
-            // ✅ Convert price to target currency
             let convertedBasePrice: number;
             let conversionFee: number = 0;
             let conversionFeePercentage: number = 0;
@@ -755,19 +745,14 @@ export class AmadeusService {
               convertedBasePrice = parsedOriginalPrice;
             }
         
-                    // ✅ FIX: finalPrice is already converted. No extra markup added here.
-        const finalPrice = convertedBasePrice;
+            const markupAmount = convertedBasePrice * (markupPercentage / 100);
+            const finalPrice = convertedBasePrice + markupAmount + serviceFeePercentage  + conversionFee;
         
-        // ✅ Get room type
-        const roomType = room.type || room.typeEstimated?.category || 'STANDARD';
+            const roomType = room.type || room.typeEstimated?.category || 'STANDARD';
             
-            // ✅ Get room images
             const roomImages = this.getRoomImagesForOffer(hotelRoomImages, roomType);
             
-            // ✅ Build fees array
             const fees = [];
-            
-            // Base price
             fees.push({
               type: 'BASE_RATE',
               amount: convertedBasePrice,
@@ -776,7 +761,6 @@ export class AmadeusService {
               includedInBase: true,
             });
             
-            // Taxes from offer
             if (price.taxes && Array.isArray(price.taxes)) {
               for (const tax of price.taxes) {
                 let taxAmount = parseFloat(tax.amount || 0);
@@ -793,7 +777,6 @@ export class AmadeusService {
               }
             }
             
-            // Additional fees
             if (price.additionalFees && Array.isArray(price.additionalFees)) {
               for (const fee of price.additionalFees) {
                 let feeAmount = parseFloat(fee.amount || 0);
@@ -809,8 +792,6 @@ export class AmadeusService {
                 });
               }
             }
-            
-         
             
             return {
               id: offer.id,
@@ -839,12 +820,11 @@ export class AmadeusService {
                 fees: fees,
                 original_base: parsedOriginalPrice,
                 original_currency: originalCurrency,
-                markup_percentage: 0,
-                markup_amount: 0,     
-                service_fee: 0,       
-                conversion_fee: 0,   
+                markup_percentage: markupPercentage,
+                markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),     
+                service_fee: this.currencyService.formatAmount(serviceFeePercentage, targetCurrency),       
+                conversion_fee: this.currencyService.formatAmount(conversionFee, targetCurrency),   
               },
-
               rateFamily: offer.rateFamilyEstimated?.code || null,
               policies: {
                 paymentType: offer.policies?.paymentType || null,
@@ -853,14 +833,12 @@ export class AmadeusService {
                 deposit: offer.policies?.deposit || null,
               },
               available: offer.available || true,
-              // ✅ Images from API
               images: roomImages,
               primaryImage: roomImages.length > 0 ? roomImages[0]?.uri : null,
             };
           })
         );
         
-        // Get all hotel images
         const allHotelImages = Array.from(hotelRoomImages.values()).flat();
         
         return {
@@ -886,15 +864,11 @@ export class AmadeusService {
       images_enriched: true,
       currency: targetCurrency,
       markup_percentage: markupPercentage,
-      service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
-      conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${serviceFeeAmount} ${targetCurrency} service fee` : ''}.`,
+      service_fee: this.currencyService.formatAmount(serviceFeePercentage, targetCurrency),
+      conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeePercentage > 0 ? ` and ${serviceFeePercentage}% service fee` : ''}.`,
     };
   }
   
-  /**
-   * Get detailed pricing for a specific offer with all fees
-   * This is the pricing confirmation step from the documentation
-   */
   async getHotelOfferPricingWithFees(offerId: string, currency?: string): Promise<any> {
     if (!offerId) {
       throw new HttpException('Offer ID is required', HttpStatus.BAD_REQUEST);
@@ -903,7 +877,6 @@ export class AmadeusService {
     const queryParams: Record<string, string> = {};
     if (currency) queryParams.currency = currency;
     
-    // This is the pricing endpoint from the documentation (page 14)
     const response = await this.makeRequest(`/v3/shopping/hotel-offers/${offerId}`, {
       method: 'GET',
       params: queryParams,
@@ -917,7 +890,6 @@ export class AmadeusService {
     const price = offer.price || {};
     const room = offer.room || {};
     
-    // Extract detailed fees
     const fees = [];
     
     if (price.base) {
@@ -985,7 +957,6 @@ export class AmadeusService {
     };
   }
   
-  // ✅ EXISTING METHOD - Keep this as-is
   async getHotelOfferPricing(params: { offerId: string; lang?: string }): Promise<any> {
     const queryParams: Record<string, string> = {};
     if (params.lang) queryParams.lang = params.lang;
@@ -1011,7 +982,9 @@ export class AmadeusService {
           this.getHotelContent(hotelId, ['rooms', 'basic'], 'FULL')
             .then(response => ({ hotelId, response }))
             .catch(error => {
-              this.logger.warn(`Failed to fetch images for hotel ${hotelId}: ${error.message}`);
+              // ✅ FIXED: Type guard for 'unknown' error
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+              this.logger.warn(`Failed to fetch images for hotel ${hotelId}: ${errorMessage}`);
               return { hotelId, response: null };
             })
         );
@@ -1038,7 +1011,9 @@ export class AmadeusService {
       this.logger.log(`✅ Fetched images for ${resultMap.size} hotels with room images`);
       return resultMap;
     } catch (error) {
-      this.logger.error(`Failed to fetch hotel images batch: ${error.message}`);
+      // ✅ FIXED: Type guard for 'unknown' error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to fetch hotel images batch: ${errorMessage}`);
       return resultMap;
     }
   }
@@ -1073,7 +1048,9 @@ export class AmadeusService {
         }
       }
     } catch (error) {
-      this.logger.error(`Error extracting images: ${error.message}`);
+      // ✅ FIXED: Type guard for 'unknown' error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Error extracting images: ${errorMessage}`);
     }
     
     return images;
@@ -1140,228 +1117,218 @@ export class AmadeusService {
     
     return categories;
   }
-  /**
- * Extract room images from hotel content response
- */
-private extractRoomImagesFromResponse(response: any): Map<string, any[]> {
-  const roomImagesMap = new Map<string, any[]>();
-  
-  try {
-    if (!response?.data) {
+
+  private extractRoomImagesFromResponse(response: any): Map<string, any[]> {
+    const roomImagesMap = new Map<string, any[]>();
+    
+    try {
+      if (!response?.data) {
+        return roomImagesMap;
+      }
+      
+      let rooms: any[] = [];
+      
+      if (response.data.rooms && Array.isArray(response.data.rooms)) {
+        rooms = response.data.rooms;
+      } else if (response.data.roomTypes && Array.isArray(response.data.roomTypes)) {
+        rooms = response.data.roomTypes;
+      } else if (response.data.basic?.rooms && Array.isArray(response.data.basic.rooms)) {
+        rooms = response.data.basic.rooms;
+      }
+      
+      if (rooms.length === 0) return roomImagesMap;
+      
+      for (const room of rooms) {
+        const roomType = room.type || room.roomType || room.category || 'STANDARD';
+        const media = room.media || room.images || [];
+        
+        if (!Array.isArray(media) || media.length === 0) continue;
+        
+        const images: any[] = [];
+        
+        for (const mediaItem of media) {
+          let href = null;
+          
+          if (mediaItem.mediaScales?.length > 0) {
+            const largest = mediaItem.mediaScales.sort((a: any, b: any) => {
+              const aSize = (a.dimensions?.height || 0) * (a.dimensions?.width || 0);
+              const bSize = (b.dimensions?.height || 0) * (b.dimensions?.width || 0);
+              return bSize - aSize;
+            })[0];
+            href = largest?.href;
+          } else if (mediaItem.href) {
+            href = mediaItem.href;
+          } else if (mediaItem.url) {
+            href = mediaItem.url;
+          } else if (mediaItem.uri) {
+            href = mediaItem.uri;
+          }
+          
+          if (href) {
+            images.push({
+              uri: href,
+              category: mediaItem.category || 'ROOM',
+              type: 'IMAGE',
+            });
+          }
+        }
+        
+        if (images.length > 0) {
+          roomImagesMap.set(roomType, images);
+        }
+      }
+      
+      return roomImagesMap;
+    } catch (error) {
+      // ✅ FIXED: Type guard for 'unknown' error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Error extracting room images: ${errorMessage}`);
       return roomImagesMap;
     }
+  }
+
+  private extractRoomTypesFromResponse(response: any): string[] {
+    const roomTypes = new Set<string>();
     
-    let rooms: any[] = [];
-    
-    if (response.data.rooms && Array.isArray(response.data.rooms)) {
-      rooms = response.data.rooms;
-    } else if (response.data.roomTypes && Array.isArray(response.data.roomTypes)) {
-      rooms = response.data.roomTypes;
-    } else if (response.data.basic?.rooms && Array.isArray(response.data.basic.rooms)) {
-      rooms = response.data.basic.rooms;
-    }
-    
-    if (rooms.length === 0) return roomImagesMap;
-    
-    for (const room of rooms) {
-      const roomType = room.type || room.roomType || room.category || 'STANDARD';
-      const media = room.media || room.images || [];
-      
-      if (!Array.isArray(media) || media.length === 0) continue;
-      
-      const images: any[] = [];
-      
-      for (const mediaItem of media) {
-        let href = null;
-        
-        if (mediaItem.mediaScales?.length > 0) {
-          const largest = mediaItem.mediaScales.sort((a: any, b: any) => {
-            const aSize = (a.dimensions?.height || 0) * (a.dimensions?.width || 0);
-            const bSize = (b.dimensions?.height || 0) * (b.dimensions?.width || 0);
-            return bSize - aSize;
-          })[0];
-          href = largest?.href;
-        } else if (mediaItem.href) {
-          href = mediaItem.href;
-        } else if (mediaItem.url) {
-          href = mediaItem.url;
-        } else if (mediaItem.uri) {
-          href = mediaItem.uri;
-        }
-        
-        if (href) {
-          images.push({
-            uri: href,
-            category: mediaItem.category || 'ROOM',
-            type: 'IMAGE',
-          });
+    try {
+      if (response?.data?.offers && Array.isArray(response.data.offers)) {
+        for (const offer of response.data.offers) {
+          if (offer.room?.type) {
+            roomTypes.add(offer.room.type);
+          }
         }
       }
       
+      if (response?.data?.rooms && Array.isArray(response.data.rooms)) {
+        for (const room of response.data.rooms) {
+          if (room.type) {
+            roomTypes.add(room.type);
+          }
+        }
+      }
+      
+      roomTypes.add('STANDARD');
+      
+      return Array.from(roomTypes);
+    } catch (error) {
+      return ['STANDARD'];
+    }
+  }
+
+  private getRoomImagesForOffer(roomImagesMap: Map<string, any[]>, roomType: string): any[] {
+    if (!roomImagesMap || roomImagesMap.size === 0) return [];
+    if (!roomType) return [];
+    
+    const cleanRoomType = roomType.replace(/^[*\-]/, '').trim();
+    this.logger.debug(`Looking for images for room type: ${roomType} (cleaned: ${cleanRoomType})`);
+    this.logger.debug(`Available room types: ${Array.from(roomImagesMap.keys()).join(', ')}`);
+    
+    if (roomImagesMap.has(cleanRoomType)) {
+      this.logger.debug(`✅ Exact match found for ${cleanRoomType}`);
+      return roomImagesMap.get(cleanRoomType) || [];
+    }
+    
+    if (roomImagesMap.has(roomType)) {
+      this.logger.debug(`✅ Exact match found for ${roomType}`);
+      return roomImagesMap.get(roomType) || [];
+    }
+    
+    const lowerRoomType = cleanRoomType.toLowerCase();
+    for (const [key, images] of roomImagesMap) {
+      if (key.toLowerCase() === lowerRoomType) {
+        this.logger.debug(`✅ Case-insensitive match found for ${roomType} -> ${key}`);
+        return images;
+      }
+    }
+    
+    for (const [key, images] of roomImagesMap) {
+      if (cleanRoomType.includes(key) || key.includes(cleanRoomType)) {
+        this.logger.debug(`✅ Partial match found for ${roomType} -> ${key}`);
+        return images;
+      }
+    }
+    
+    const bedTypeMap: Record<string, string[]> = {
+      'K': ['KING', 'K', '1K', 'C1K', 'D1K', 'A1K', 'R1K', 'B1K', 'S1K', 'U1K', 'E1K', 'F1K'],
+      'Q': ['QUEEN', 'Q', '1Q', 'C1Q', 'D1Q', 'T1Q', 'H1Q'],
+      'D': ['DOUBLE', 'D', '1D', 'D1K', 'D1Q'],
+      'B': ['TWIN', 'B', '1B', 'T1Q', 'T1K'],
+      'T': ['TWIN', 'T', '1T', 'T1Q', 'T1K'],
+      'S': ['SINGLE', 'S', '1S'],
+      'RH': ['STANDARD', 'STD', 'RH', 'ROOM', 'HOTEL'],
+      '1B': ['TWIN', 'B', '1B', 'STANDARD', 'STD'],
+      '1D': ['DOUBLE', 'D', '1D', 'STANDARD', 'STD'],
+      '1K': ['KING', 'K', '1K', 'STANDARD', 'STD'],
+      '1Q': ['QUEEN', 'Q', '1Q', 'STANDARD', 'STD'],
+    };
+    
+    for (const [bedType, patterns] of Object.entries(bedTypeMap)) {
+      if (patterns.some(p => cleanRoomType.includes(p) || p.includes(cleanRoomType))) {
+        for (const [key, images] of roomImagesMap) {
+          if (patterns.some(p => key.includes(p) || p.includes(key))) {
+            this.logger.debug(`✅ Bed type match found for ${roomType} -> ${key} (${bedType})`);
+            return images;
+          }
+        }
+      }
+    }
+    
+    if (roomImagesMap.has('STANDARD')) {
+      this.logger.debug(`✅ Using STANDARD images as fallback for ${roomType}`);
+      return roomImagesMap.get('STANDARD') || [];
+    }
+    
+    for (const [, images] of roomImagesMap) {
       if (images.length > 0) {
-        roomImagesMap.set(roomType, images);
+        this.logger.debug(`✅ Using first available images as fallback for ${roomType}`);
+        return images;
       }
     }
     
-    return roomImagesMap;
-  } catch (error) {
-    this.logger.error(`Error extracting room images: ${error.message}`);
-    return roomImagesMap;
+    this.logger.debug(`❌ No images found for room type ${roomType}`);
+    return [];
   }
-}
 
-/**
- * Extract all unique room types from the response
- */
-private extractRoomTypesFromResponse(response: any): string[] {
-  const roomTypes = new Set<string>();
-  
-  try {
-    if (response?.data?.offers && Array.isArray(response.data.offers)) {
-      for (const offer of response.data.offers) {
-        if (offer.room?.type) {
-          roomTypes.add(offer.room.type);
-        }
-      }
+  private async fetchHotelImagesBatch(hotelIds: string[]): Promise<Map<string, any[]>> {
+    const imagesMap = new Map<string, any[]>();
+    
+    if (!hotelIds || hotelIds.length === 0) {
+      return imagesMap;
     }
     
-    if (response?.data?.rooms && Array.isArray(response.data.rooms)) {
-      for (const room of response.data.rooms) {
-        if (room.type) {
-          roomTypes.add(room.type);
-        }
-      }
-    }
-    
-    roomTypes.add('STANDARD');
-    
-    return Array.from(roomTypes);
-  } catch (error) {
-    return ['STANDARD'];
-  }
-}
-
-/**
- * Get room images for a specific room type
- */
-private getRoomImagesForOffer(roomImagesMap: Map<string, any[]>, roomType: string): any[] {
-  if (!roomImagesMap || roomImagesMap.size === 0) return [];
-  if (!roomType) return [];
-  
-  // ✅ Clean the room type - remove special characters like *, -, etc.
-  const cleanRoomType = roomType.replace(/^[*\-]/, '').trim();
-  this.logger.debug(`Looking for images for room type: ${roomType} (cleaned: ${cleanRoomType})`);
-  this.logger.debug(`Available room types: ${Array.from(roomImagesMap.keys()).join(', ')}`);
-  
-  // Try exact match with cleaned type
-  if (roomImagesMap.has(cleanRoomType)) {
-    this.logger.debug(`✅ Exact match found for ${cleanRoomType}`);
-    return roomImagesMap.get(cleanRoomType) || [];
-  }
-  
-  // Try exact match with original
-  if (roomImagesMap.has(roomType)) {
-    this.logger.debug(`✅ Exact match found for ${roomType}`);
-    return roomImagesMap.get(roomType) || [];
-  }
-  
-  // Try case-insensitive match
-  const lowerRoomType = cleanRoomType.toLowerCase();
-  for (const [key, images] of roomImagesMap) {
-    if (key.toLowerCase() === lowerRoomType) {
-      this.logger.debug(`✅ Case-insensitive match found for ${roomType} -> ${key}`);
-      return images;
-    }
-  }
-  
-  // Try partial match
-  for (const [key, images] of roomImagesMap) {
-    if (cleanRoomType.includes(key) || key.includes(cleanRoomType)) {
-      this.logger.debug(`✅ Partial match found for ${roomType} -> ${key}`);
-      return images;
-    }
-  }
-  
-  // ✅ Try matching by bed type
-  const bedTypeMap: Record<string, string[]> = {
-    'K': ['KING', 'K', '1K', 'C1K', 'D1K', 'A1K', 'R1K', 'B1K', 'S1K', 'U1K', 'E1K', 'F1K'],
-    'Q': ['QUEEN', 'Q', '1Q', 'C1Q', 'D1Q', 'T1Q', 'H1Q'],
-    'D': ['DOUBLE', 'D', '1D', 'D1K', 'D1Q'],
-    'B': ['TWIN', 'B', '1B', 'T1Q', 'T1K'],
-    'T': ['TWIN', 'T', '1T', 'T1Q', 'T1K'],
-    'S': ['SINGLE', 'S', '1S'],
-    'RH': ['STANDARD', 'STD', 'RH', 'ROOM', 'HOTEL'],
-    '1B': ['TWIN', 'B', '1B', 'STANDARD', 'STD'],
-    '1D': ['DOUBLE', 'D', '1D', 'STANDARD', 'STD'],
-    '1K': ['KING', 'K', '1K', 'STANDARD', 'STD'],
-    '1Q': ['QUEEN', 'Q', '1Q', 'STANDARD', 'STD'],
-  };
-  
-  for (const [bedType, patterns] of Object.entries(bedTypeMap)) {
-    if (patterns.some(p => cleanRoomType.includes(p) || p.includes(cleanRoomType))) {
-      for (const [key, images] of roomImagesMap) {
-        if (patterns.some(p => key.includes(p) || p.includes(key))) {
-          this.logger.debug(`✅ Bed type match found for ${roomType} -> ${key} (${bedType})`);
-          return images;
-        }
-      }
-    }
-  }
-  
-  // ✅ If no match, use STANDARD images if available
-  if (roomImagesMap.has('STANDARD')) {
-    this.logger.debug(`✅ Using STANDARD images as fallback for ${roomType}`);
-    return roomImagesMap.get('STANDARD') || [];
-  }
-  
-  // If no room images found, return the first available images
-  for (const [, images] of roomImagesMap) {
-    if (images.length > 0) {
-      this.logger.debug(`✅ Using first available images as fallback for ${roomType}`);
-      return images;
-    }
-  }
-  
-  this.logger.debug(`❌ No images found for room type ${roomType}`);
-  return [];
-}
-
-private async fetchHotelImagesBatch(hotelIds: string[]): Promise<Map<string, any[]>> {
-  const imagesMap = new Map<string, any[]>();
-  
-  if (!hotelIds || hotelIds.length === 0) {
-    return imagesMap;
-  }
-  
-  try {
-    const chunkSize = 10;
-    for (let i = 0; i < hotelIds.length; i += chunkSize) {
-      const chunk = hotelIds.slice(i, i + chunkSize);
-    
-      const promises = chunk.map(hotelId => 
-        this.getHotelContent(hotelId, undefined, 'FULL')
-          .then(response => ({ hotelId, response }))
-          .catch(error => {
-            this.logger.warn(`Failed to fetch images for hotel ${hotelId}: ${error.message}`);
-            return { hotelId, response: null };
-          })
-      );
+    try {
+      const chunkSize = 10;
+      for (let i = 0; i < hotelIds.length; i += chunkSize) {
+        const chunk = hotelIds.slice(i, i + chunkSize);
       
-      const results = await Promise.all(promises);
-      
-      for (const { hotelId, response } of results) {
-        const images = this.extractImagesFromResponse(response);
-        imagesMap.set(hotelId, images);
+        const promises = chunk.map(hotelId => 
+          this.getHotelContent(hotelId, undefined, 'FULL')
+            .then(response => ({ hotelId, response }))
+            .catch(error => {
+              // ✅ FIXED: Type guard for 'unknown' error
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+              this.logger.warn(`Failed to fetch images for hotel ${hotelId}: ${errorMessage}`);
+              return { hotelId, response: null };
+            })
+        );
+        
+        const results = await Promise.all(promises);
+        
+        for (const { hotelId, response } of results) {
+          const images = this.extractImagesFromResponse(response);
+          imagesMap.set(hotelId, images);
+        }
       }
+      
+      this.logger.log(`✅ Fetched images for ${imagesMap.size} hotels`);
+      return imagesMap;
+    } catch (error) {
+      // ✅ FIXED: Type guard for 'unknown' error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to fetch hotel images batch: ${errorMessage}`);
+      return imagesMap;
     }
-    
-    this.logger.log(`✅ Fetched images for ${imagesMap.size} hotels`);
-    return imagesMap;
-  } catch (error) {
-    this.logger.error(`Failed to fetch hotel images batch: ${error.message}`);
-    return imagesMap;
   }
-}
 
   async repriceHotelOffer(offerId: string): Promise<any> {
     try {
@@ -1376,7 +1343,6 @@ private async fetchHotelImagesBatch(hotelIds: string[]): Promise<Map<string, any
       
       this.logger.log(`✅ Re-pricing successful for offer: ${offerId}`);
       
-      // ✅ Return in a consistent format
       return {
         data: {
           price: response?.data?.price || response?.price || response?.included?.price,
@@ -1442,7 +1408,6 @@ private async fetchHotelImagesBatch(hotelIds: string[]): Promise<Map<string, any
         requestBody.data.accommodationSpecialRequests = params.accommodationSpecialRequests;
       }
       
-      // ✅ FIX: Convert price strings to numbers
       if (params.price) {
         requestBody.data.price = {
           currency: params.price.currency,
@@ -1626,189 +1591,342 @@ private async fetchHotelImagesBatch(hotelIds: string[]): Promise<Map<string, any
     
     return this.makeRequest(endpoint, { method: 'POST', body: { data: {} } });
   }
+// ==================== TRANSFERS / CAR RENTAL API (v1) ====================
 
-  // ==================== TRANSFERS / CAR RENTAL API (v1) ====================
-
-  async searchTransfers(params: {
-    startLocationCode?: string;
-    endLocationCode?: string;
-    startDateTime: string;
-    passengers: number;
-    transferType?: string;
-    duration?: string;
-    currency?: string;
-    startAddressLine?: string;
-    startCityName?: string;
-    startCountryCode?: string;
-    endAddressLine?: string;
-    endCityName?: string;
-    endCountryCode?: string;
-  }): Promise<any> {
-    const requestBody: any = {
-      startDateTime: params.startDateTime,
-      passengers: params.passengers,
-    };
-    
-    if (params.startLocationCode) {
-      requestBody.startLocationCode = params.startLocationCode;
-    } else if (params.startAddressLine && params.startCityName && params.startCountryCode) {
-      requestBody.startAddressLine = params.startAddressLine;
-      requestBody.startCityName = params.startCityName;
-      requestBody.startCountryCode = params.startCountryCode;
-    } else {
-      throw new HttpException(
-        'Either startLocationCode or startAddressLine with startCityName and startCountryCode is required',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    
-    if (params.endLocationCode) {
-      requestBody.endLocationCode = params.endLocationCode;
-    } else if (params.endAddressLine && params.endCityName && params.endCountryCode) {
-      requestBody.endAddressLine = params.endAddressLine;
-      requestBody.endCityName = params.endCityName;
-      requestBody.endCountryCode = params.endCountryCode;
-    } else if (params.startLocationCode) {
-      requestBody.endLocationCode = params.startLocationCode;
-    } else {
-      throw new HttpException(
-        'Either endLocationCode or endAddressLine with endCityName and endCountryCode is required',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    
-    if (params.transferType) requestBody.transferType = params.transferType;
-    if (params.duration) requestBody.duration = params.duration;
-    if (params.currency) requestBody.currency = params.currency;
-    
-    this.logger.log(`Transfers request: ${JSON.stringify(requestBody)}`);
-    
-    return this.makeRequest('/v1/shopping/transfer-offers', { 
-      method: 'POST', 
-      body: requestBody,
-      useAmadeusJson: true, 
-    });
+async searchTransfers(params: {
+  startLocationCode?: string;
+  endLocationCode?: string;
+  startDateTime: string;
+  passengers: number;
+  transferType?: string;
+  duration?: string;
+  currency?: string;
+  startAddressLine?: string;
+  startCityName?: string;
+  startCountryCode?: string;
+  endAddressLine?: string;
+  endCityName?: string;
+  endCountryCode?: string;
+}): Promise<any> {
+  const requestBody: any = {
+    startDateTime: params.startDateTime,
+    passengers: params.passengers,
+  };
+  
+  if (params.startLocationCode) {
+    requestBody.startLocationCode = params.startLocationCode;
+  } else if (params.startAddressLine && params.startCityName && params.startCountryCode) {
+    requestBody.startAddressLine = params.startAddressLine;
+    requestBody.startCityName = params.startCityName;
+    requestBody.startCountryCode = params.startCountryCode;
+  } else {
+    throw new HttpException(
+      'Either startLocationCode or startAddressLine with startCityName and startCountryCode is required',
+      HttpStatus.BAD_REQUEST,
+    );
   }
+  
+  if (params.endLocationCode) {
+    requestBody.endLocationCode = params.endLocationCode;
+  } else if (params.endAddressLine && params.endCityName && params.endCountryCode) {
+    requestBody.endAddressLine = params.endAddressLine;
+    requestBody.endCityName = params.endCityName;
+    requestBody.endCountryCode = params.endCountryCode;
+  } else if (params.startLocationCode) {
+    requestBody.endLocationCode = params.startLocationCode;
+  } else {
+    throw new HttpException(
+      'Either endLocationCode or endAddressLine with endCityName and endCountryCode is required',
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+  
+  if (params.transferType) requestBody.transferType = params.transferType;
+  if (params.duration) requestBody.duration = params.duration;
+  if (params.currency) requestBody.currency = params.currency;
+  
+  this.logger.log(`🔍 Transfers request: ${JSON.stringify(requestBody)}`);
+  
+  // 1. Fetch data from Amadeus
+  const rawResponse = await this.makeRequest('/v1/shopping/transfer-offers', { 
+    method: 'POST', 
+    body: requestBody,
+    useAmadeusJson: true, 
+  });
+
+  // 2. Determine Target Currency & Markup
+  const targetCurrency = params.currency || 'NGN';
+  let markupPercentage = 0;
+  let serviceFeePercentage = 0;
+  try {
+    const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
+      ProductType.CAR_RENTAL, 
+      targetCurrency,
+    );
+    if (markupConfig) {
+      markupPercentage = markupConfig.markupPercentage || 0;
+      serviceFeePercentage = markupConfig.serviceFeePercentage || 0;
+    }
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+    this.logger.warn(`Could not fetch markup config for transfers, using default ${markupPercentage}%: ${errMsg}`);
+  }
+
+  // 3. Extract raw data safely (Flatten any nested data.data)
+  let rawOffers = rawResponse?.data || [];
+  // If Amadeus returned a nested structure, flatten it:
+  if (Array.isArray(rawOffers) && rawOffers.length === 1 && rawOffers[0]?.data && Array.isArray(rawOffers[0].data)) {
+    rawOffers = rawOffers[0].data;
+  }
+
+  // 4. Process offers and apply markups
+  const processedOffers = rawOffers.map((offer: any) => {
+    // Use the total monetaryAmount (not base) to guarantee price matching
+    const sourcePrice = offer.converted || offer.quotation || offer.price || {};
+    const baseAmount = parseFloat(sourcePrice.monetaryAmount || sourcePrice.base?.monetaryAmount || 0);
+    const originalCurrency = sourcePrice.currencyCode || sourcePrice.currency || 'USD';
+    const originalTotal = offer.original_price || sourcePrice.monetaryAmount || baseAmount;
+
+    // Calculate markups and final price
+    const markupAmount = baseAmount * (markupPercentage / 100);
+    const serviceFeeAmount = baseAmount * (serviceFeePercentage / 100);
+    const finalPrice = baseAmount + markupAmount + serviceFeeAmount;
+
+    return {
+      ...offer,
+      // Standardized Pricing Output
+      currency: targetCurrency,
+      base_price: baseAmount.toFixed(2),
+      final_price: finalPrice.toFixed(2),
+      markup_percentage: markupPercentage,
+      markup_amount: markupAmount.toFixed(2),
+      service_fee: serviceFeeAmount.toFixed(2),
+      
+      // Keep original details for reference
+      original_price: originalTotal,
+      original_currency: originalCurrency,
+      price: {
+        currency: targetCurrency,
+        base: baseAmount.toFixed(2),
+        total: finalPrice.toFixed(2),
+        original_total: originalTotal,
+        original_currency: originalCurrency,
+      }
+    };
+  });
+
+  // 5. Return completely flattened successful response
+  return {
+    success: true,
+    data: processedOffers, // 👈 This is now a flat array, NOT nested!
+    meta: rawResponse.meta || {
+      count: processedOffers.length,
+      total: processedOffers.length,
+      limit: 20,
+      page: 1,
+      hasMore: false,
+    },
+    currency: targetCurrency,
+    conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeePercentage > 0 ? ` and ${serviceFeePercentage}% service fee` : ''}.`,
+    cached: false,
+    message: 'Car rentals/transfers retrieved successfully',
+  };
+}
 
   async createTransferBooking(params: {
     offerId: string;
     passengers: Array<{
-      name: { title: string; firstName: string; lastName: string };
-      contact: { phone: string; email: string };
+      firstName: string;
+      lastName: string;
+      title: string;  // MR, MS, MRS
+      phoneNumber: string;
+      email: string;
     }>;
-    payment?: {
+    payment: {
       methodOfPayment: 'CREDIT_CARD' | 'INVOICE';
       creditCard?: {
-        vendorCode: string;      // VI, MC, AX, etc.
-        cardNumber: string;
+        vendorCode: string;
+        number: string;
         holderName: string;
-        expiryDate: string;      // YYYY-MM
+        expiryDate: string;
         cvv?: string;
       };
-      paymentReference?: string; // For INVOICE method
+      paymentReference?: string;
     };
     billingAddress?: {
-      line?: string;
-      zip?: string;
-      cityName?: string;
-      countryCode?: string;
+      line: string;
+      zip: string;
+      cityName: string;
+      countryCode: string;
     };
+    note?: string;
     flightNumber?: string;
-    specialRequests?: string;
+    agencyEmail?: string;
+    extraServices?: Array<{ code: string; itemId?: string }>;
+    equipment?: Array<{ code: string }>;
+    corporation?: {
+      address?: {
+        line?: string;
+        zip?: string;
+        cityName?: string;
+        countryCode?: string;
+      };
+      info?: {
+        AU?: string; // Accounting Unit
+        ON?: string; // Order Number
+        DC?: string; // Department Code
+        CC?: string; // Company Code
+        CN?: string; // Company Name
+        IA?: string; // Internal Account
+        CE?: string; // Cost Centre
+        EN?: string; // Employee Number
+        PN?: string; // Project Number
+      };
+    };
+    reference?: string;  
   }): Promise<any> {
-    // ✅ Build request with proper passenger structure
+
     const requestBody: any = {
       data: {
-        offerId: params.offerId,
-        passengers: params.passengers.map((p, index) => ({
-          id: (index + 1).toString(), // ✅ Add passenger ID
-          name: {
-            title: p.name.title,
-            firstName: p.name.firstName,
-            lastName: p.name.lastName,
-          },
-          contact: {
-            phoneNumber: p.contact.phone,
-            email: p.contact.email,
+        passengers: params.passengers.map((p) => ({
+          firstName: p.firstName,
+          lastName: p.lastName,
+          title: p.title,
+          contacts: {
+            phoneNumber: p.phoneNumber,
+            email: p.email,
           },
         })),
+        payment: {
+          methodOfPayment: params.payment.methodOfPayment,
+        },
       },
     };
-  
-    // ✅ Add payment if provided
-    if (params.payment) {
-      const paymentData: any = {
-        methodOfPayment: params.payment.methodOfPayment,
+
+
+    if (params.payment.methodOfPayment === 'CREDIT_CARD' && params.payment.creditCard) {
+      requestBody.data.payment.creditCard = {
+        number: params.payment.creditCard.number,
+        holderName: params.payment.creditCard.holderName,
+        vendorCode: params.payment.creditCard.vendorCode,
+        expiryDate: params.payment.creditCard.expiryDate,
       };
-  
-      if (params.payment.methodOfPayment === 'CREDIT_CARD' && params.payment.creditCard) {
-        paymentData.creditCard = {
-          vendorCode: params.payment.creditCard.vendorCode,
-          cardNumber: params.payment.creditCard.cardNumber,
-          holderName: params.payment.creditCard.holderName,
-          expiryDate: params.payment.creditCard.expiryDate,
-        };
-        if (params.payment.creditCard.cvv) {
-          paymentData.creditCard.cvv = params.payment.creditCard.cvv;
-        }
+      if (params.payment.creditCard.cvv) {
+        requestBody.data.payment.creditCard.cvv = params.payment.creditCard.cvv;
       }
-  
-      if (params.payment.methodOfPayment === 'INVOICE' && params.payment.paymentReference) {
-        paymentData.paymentReference = params.payment.paymentReference;
-      }
-  
-      requestBody.data.payment = paymentData;
     }
-  
-    // ✅ Add billing address if provided
+
+    if (params.payment.methodOfPayment === 'INVOICE' && params.payment.paymentReference) {
+      requestBody.data.payment.paymentReference = params.payment.paymentReference;
+    }
+
+
     if (params.billingAddress) {
-      requestBody.data.billingAddress = {};
-      if (params.billingAddress.line) requestBody.data.billingAddress.line = params.billingAddress.line;
-      if (params.billingAddress.zip) requestBody.data.billingAddress.zip = params.billingAddress.zip;
-      if (params.billingAddress.cityName) requestBody.data.billingAddress.cityName = params.billingAddress.cityName;
-      if (params.billingAddress.countryCode) requestBody.data.billingAddress.countryCode = params.billingAddress.countryCode;
+      if (!requestBody.data.passengers[0]) {
+        requestBody.data.passengers[0] = {};
+      }
+      requestBody.data.passengers[0].billingAddress = {
+        line: params.billingAddress.line,
+        zip: params.billingAddress.zip,
+        cityName: params.billingAddress.cityName,
+        countryCode: params.billingAddress.countryCode,
+      };
     }
-  
-    // ✅ Add flight number if provided
-    if (params.flightNumber) {
-      requestBody.data.flightNumber = params.flightNumber;
+
+
+    if (params.note) requestBody.data.note = params.note;
+    if (params.flightNumber) requestBody.data.flightNumber = params.flightNumber;
+    
+    if (params.agencyEmail) {
+      requestBody.data.agency = {
+        contacts: [{ email: { address: params.agencyEmail } }],
+      };
     }
-  
-    // ✅ Add special requests if provided
-    if (params.specialRequests) {
-      requestBody.data.specialRequests = params.specialRequests;
+
+    if (params.extraServices && params.extraServices.length > 0) {
+      requestBody.data.extraServices = params.extraServices;
     }
-  
-    this.logger.log(`📤 Sending transfer booking to Amadeus: ${JSON.stringify(requestBody, null, 2)}`);
-  
-    const response = await this.makeRequest('/v1/ordering/transfer-orders', {
+
+    if (params.equipment && params.equipment.length > 0) {
+      requestBody.data.equipment = params.equipment;
+    }
+
+    if (params.corporation) {
+      requestBody.data.corporation = {};
+      if (params.corporation.address) {
+        requestBody.data.corporation.address = params.corporation.address;
+      }
+      if (params.corporation.info) {
+        requestBody.data.corporation.info = params.corporation.info;
+      }
+    }
+
+    const queryParams: Record<string, string> = {
+      offerId: params.offerId,
+    };
+    
+    if (params.reference) {
+      queryParams.reference = params.reference.toUpperCase();
+    }
+
+    this.logger.log(`📤 Sending transfer booking: ${JSON.stringify(requestBody, null, 2)}`);
+
+    return this.makeRequest('/v1/ordering/transfer-orders', {
       method: 'POST',
       body: requestBody,
-      useAmadeusJson: true, 
+      params: queryParams,
+      useAmadeusJson: true,
     });
-  
-    this.logger.log(`✅ Amadeus transfer booking response: ${JSON.stringify(response, null, 2)}`);
-  
-    return response;
   }
 
-  async getTransferBooking(orderId: string): Promise<any> {
-    if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
+  async getTransferBooking(orderId: string, currency?: string): Promise<any> {
+    if (!orderId) {
+      throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
+    }
+    
+    const queryParams: Record<string, string> = {};
+    if (currency) queryParams.currency = currency;
+    if (this.officeId) queryParams.officeId = this.officeId;
+    
     return this.makeRequest(`/v1/ordering/transfer-orders/${orderId}`, { 
       method: 'GET',
+      params: queryParams,
       useAmadeusJson: true, 
     });
   }
 
-  async getTransferBookingByPNR(params: { pnr: string; firstName: string; lastName: string }): Promise<any> {
-    if (!params.pnr || !params.firstName || !params.lastName) {
-      throw new HttpException('PNR, first name, and last name are required', HttpStatus.BAD_REQUEST);
+  async getTransferBookingByPNR(params: { 
+    reference: string;
+    firstName: string; 
+    lastName: string;
+    confirmNbr?: string;
+    currency?: string;
+  }): Promise<any> {
+    if (!params.reference || !params.firstName || !params.lastName) {
+      throw new HttpException('Reference, first name, and last name are required', HttpStatus.BAD_REQUEST);
     }
+    
+    const queryParams: Record<string, string> = {};
+    if (params.currency) queryParams.currency = params.currency;
+    if (this.officeId) queryParams.officeId = this.officeId;
+    
+    const requestBody: any = {
+      reference: params.reference.toUpperCase(),
+      firstName: params.firstName,
+      lastName: params.lastName,
+    };
+    
+    if (params.confirmNbr) {
+      requestBody.confirmNbr = params.confirmNbr;
+    }
+    
+    this.logger.log(`🔍 Retrieving transfer by PNR: ${params.reference}`);
     
     return this.makeRequest('/v1/ordering/transfer-orders/retrieve', {
       method: 'POST',
-      body: { pnr: params.pnr.toUpperCase(), firstName: params.firstName, lastName: params.lastName },
-      useAmadeusJson: true, 
+      body: requestBody,
+      params: queryParams,
+      useAmadeusJson: true,
     });
   }
 
@@ -1817,93 +1935,155 @@ private async fetchHotelImagesBatch(hotelIds: string[]): Promise<Map<string, any
     params: {
       offerId: string;
       passengers: Array<{
-        name: { title: string; firstName: string; lastName: string };
-        contact: { phone: string; email: string };
+        firstName: string;
+        lastName: string;
+        title: string;
+        phoneNumber: string;
+        email: string;
       }>;
-      payment?: {
+      payment: {
         methodOfPayment: 'CREDIT_CARD' | 'INVOICE';
         creditCard?: {
           vendorCode: string;
-          cardNumber: string;
+          number: string;
           holderName: string;
           expiryDate: string;
           cvv?: string;
         };
         paymentReference?: string;
       };
+      billingAddress?: {
+        line: string;
+        zip: string;
+        cityName: string;
+        countryCode: string;
+      };
+      note?: string;
+      flightNumber?: string;
     }
   ): Promise<any> {
-    if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
+    if (!orderId) {
+      throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
+    }
     
     const requestBody: any = {
       data: {
-        offerId: params.offerId,
-        passengers: params.passengers.map((p, index) => ({
-          id: (index + 1).toString(),
-          name: {
-            title: p.name.title,
-            firstName: p.name.firstName,
-            lastName: p.name.lastName,
-          },
-          contact: {
-            phoneNumber: p.contact.phone,
-            email: p.contact.email,
+        passengers: params.passengers.map((p) => ({
+          firstName: p.firstName,
+          lastName: p.lastName,
+          title: p.title,
+          contacts: {
+            phoneNumber: p.phoneNumber,
+            email: p.email,
           },
         })),
+        payment: {
+          methodOfPayment: params.payment.methodOfPayment,
+        },
       },
     };
-  
-    // ✅ Add payment if provided
-    if (params.payment) {
-      const paymentData: any = {
-        methodOfPayment: params.payment.methodOfPayment,
+
+
+    if (params.payment.methodOfPayment === 'CREDIT_CARD' && params.payment.creditCard) {
+      requestBody.data.payment.creditCard = {
+        number: params.payment.creditCard.number,
+        holderName: params.payment.creditCard.holderName,
+        vendorCode: params.payment.creditCard.vendorCode,
+        expiryDate: params.payment.creditCard.expiryDate,
       };
-  
-      if (params.payment.methodOfPayment === 'CREDIT_CARD' && params.payment.creditCard) {
-        paymentData.creditCard = {
-          vendorCode: params.payment.creditCard.vendorCode,
-          cardNumber: params.payment.creditCard.cardNumber,
-          holderName: params.payment.creditCard.holderName,
-          expiryDate: params.payment.creditCard.expiryDate,
-        };
-        if (params.payment.creditCard.cvv) {
-          paymentData.creditCard.cvv = params.payment.creditCard.cvv;
-        }
+      if (params.payment.creditCard.cvv) {
+        requestBody.data.payment.creditCard.cvv = params.payment.creditCard.cvv;
       }
-  
-      if (params.payment.methodOfPayment === 'INVOICE' && params.payment.paymentReference) {
-        paymentData.paymentReference = params.payment.paymentReference;
-      }
-  
-      requestBody.data.payment = paymentData;
     }
-  
+
+    if (params.payment.methodOfPayment === 'INVOICE' && params.payment.paymentReference) {
+      requestBody.data.payment.paymentReference = params.payment.paymentReference;
+    }
+
+
+    if (params.billingAddress) {
+      if (!requestBody.data.passengers[0]) {
+        requestBody.data.passengers[0] = {};
+      }
+      requestBody.data.passengers[0].billingAddress = {
+        line: params.billingAddress.line,
+        zip: params.billingAddress.zip,
+        cityName: params.billingAddress.cityName,
+        countryCode: params.billingAddress.countryCode,
+      };
+    }
+
+    if (params.note) requestBody.data.note = params.note;
+    if (params.flightNumber) requestBody.data.flightNumber = params.flightNumber;
+
+    const queryParams: Record<string, string> = {
+      offerId: params.offerId,
+    };
+
+    this.logger.log(`📤 Adding transfer to existing order ${orderId}: ${JSON.stringify(requestBody, null, 2)}`);
+
     return this.makeRequest(`/v1/ordering/transfer-orders/${orderId}`, {
       method: 'POST',
       body: requestBody,
-      useAmadeusJson: true, 
+      params: queryParams,
+      useAmadeusJson: true,
     });
   }
 
+  async cancelTransfer(params: {
+    orderId: string;
+    confirmNbr: string;
+  }): Promise<any> {
+    if (!params.orderId) {
+      throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
+    }
+    if (!params.confirmNbr) {
+      throw new HttpException('Confirmation number is required for cancellation', HttpStatus.BAD_REQUEST);
+    }
+    
+    const queryParams: Record<string, string> = {
+      confirmNbr: params.confirmNbr,
+    };
+    
+    if (this.officeId) {
+      queryParams.officeId = this.officeId;
+    }
+    
+    this.logger.log(`🗑️ Cancelling transfer: orderId=${params.orderId}, confirmNbr=${params.confirmNbr}`);
+    
+    return this.makeRequest(
+      `/v1/ordering/transfer-orders/${params.orderId}/transfers/cancellation`,
+      {
+        method: 'POST',
+        params: queryParams,
+        useAmadeusJson: true,
+      }
+    );
+  }
 
-async cancelTransfer(orderId: string): Promise<any> {
-  if (!orderId) throw new HttpException('Order ID is required', HttpStatus.BAD_REQUEST);
-  return this.makeRequest(`/v1/ordering/transfer-orders/${orderId}/transfers/cancellation`, { 
-    method: 'POST',
-    body: {},
-    useAmadeusJson: true, 
-  });
-}
-
-  async listTransferBookings(params?: { page?: number; limit?: number }): Promise<any> {
+  async listTransferBookings(params?: { 
+    page?: number; 
+    limit?: number;
+    currency?: string;
+  }): Promise<any> {
     const queryParams: Record<string, string> = {};
     if (params?.page) queryParams.page = params.page.toString();
     if (params?.limit) queryParams.limit = params.limit.toString();
+    if (params?.currency) queryParams.currency = params.currency;
+    if (this.officeId) queryParams.officeId = this.officeId;
     
     return this.makeRequest('/v1/ordering/transfer-orders', { 
       method: 'GET', 
       params: queryParams,
       useAmadeusJson: true, 
     });
+  }
+
+
+  async cancelTransferByConfirmNbr(
+    orderId: string,
+    confirmNbr: string
+  ): Promise<any> {
+    return this.cancelTransfer({ orderId, confirmNbr });
   }
 }

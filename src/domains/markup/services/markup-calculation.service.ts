@@ -4,10 +4,7 @@ import { MarkupConfig } from '@domains/markup/entities/markup-config.entity';
 
 @Injectable()
 export class MarkupCalculationService {
-  /**
-   * Calculate markup and total amount for a booking
-   * Markup is from the config, Service Fee is fixed at 5%
-   */
+ 
   calculateTotal(
     basePrice: number,
     productType: ProductType,
@@ -17,9 +14,11 @@ export class MarkupCalculationService {
     basePrice: number;
     markupAmount: number;
     serviceFee: number;
+    taxAmount: number;
     totalAmount: number;
     markupPercentage: number;
     serviceFeePercentage: number;
+    taxPercentage: number;
   } {
     // ✅ Markup percentage from config
     const markupPercentage = markupConfig.markupPercentage || 10;
@@ -29,16 +28,22 @@ export class MarkupCalculationService {
     const serviceFeePercentage = 5;
     const serviceFee = (basePrice * serviceFeePercentage) / 100;
     
-    // ✅ Calculate total
-    const totalAmount = basePrice + markupAmount + serviceFee;
+    // ✅ Tax is always 15%
+    const taxPercentage = 15;
+    const taxAmount = (basePrice * taxPercentage) / 100;
+    
+    // ✅ FIX: Calculate total - MUST include ALL components!
+    const totalAmount = basePrice + markupAmount + serviceFee + taxAmount;
 
     return {
       basePrice,
       markupAmount: Number(markupAmount.toFixed(2)),
       serviceFee: Number(serviceFee.toFixed(2)),
+      taxAmount: Number(taxAmount.toFixed(2)),
       totalAmount: Number(totalAmount.toFixed(2)),
       markupPercentage: Number(markupPercentage.toFixed(2)),
       serviceFeePercentage: Number(serviceFeePercentage.toFixed(2)),
+      taxPercentage: Number(taxPercentage.toFixed(2)),
     };
   }
 

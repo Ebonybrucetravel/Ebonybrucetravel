@@ -49,7 +49,8 @@ export class CreateDuffelOrderUseCase {
         const parsed = JSON.parse(passengers);
         return this.normalizePassengers(parsed);
       } catch (error) {
-        this.logger.error(`Failed to parse passengers JSON: ${error.message}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Failed to parse passengers JSON: ${errorMessage}`);
         return [];
       }
     }
@@ -193,7 +194,8 @@ export class CreateDuffelOrderUseCase {
           this.logger.warn(`No offers found for request: ${offerId}`);
         }
       } catch (error: any) {
-        this.logger.warn(`Failed to fetch offers from Duffel: ${error.message}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Failed to fetch offers from Duffel: ${errorMessage}`);
       }
 
       // Last resort: search the entire JSON string
@@ -205,7 +207,8 @@ export class CreateDuffelOrderUseCase {
           return matches[0];
         }
       } catch (error) {
-        this.logger.warn(`Failed to search JSON for offer ID: ${error.message}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Failed to search JSON for offer ID: ${errorMessage}`);
       }
     }
 
@@ -287,7 +290,8 @@ export class CreateDuffelOrderUseCase {
         offer = offerResponse.data;
         this.logger.log(`✅ Successfully fetched offer ${validatedOfferId}`);
       } catch (error: any) {
-        this.logger.warn(`Failed to fetch offer ${validatedOfferId}: ${error.message}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Failed to fetch offer ${validatedOfferId}: ${errorMessage}`);
         offerExpired = true;
         
         if (bookingData.offerData || bookingData.selectedOffer || bookingData.duffelOffer) {
@@ -511,6 +515,7 @@ export class CreateDuffelOrderUseCase {
         orderData,
       };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to create Duffel order for booking ${bookingId}:`, error);
 
       try {
@@ -518,7 +523,7 @@ export class CreateDuffelOrderUseCase {
           status: BookingStatus.FAILED,
           providerData: {
             ...(booking.providerData as any),
-            orderCreationError: error instanceof Error ? error.message : 'Unknown error',
+            orderCreationError: errorMessage,
             orderCreationFailedAt: new Date().toISOString(),
           },
         });
@@ -530,7 +535,7 @@ export class CreateDuffelOrderUseCase {
         throw error;
       }
 
-      if (error.message && error.message.includes('expired')) {
+      if (errorMessage.includes('expired')) {
         throw new HttpException(
           'The flight offer has expired. Please search for flights again and complete a new booking.',
           HttpStatus.GONE,
@@ -538,7 +543,7 @@ export class CreateDuffelOrderUseCase {
       }
 
       throw new HttpException(
-        error.message || 'Failed to create Duffel order. Please contact support.',
+        errorMessage || 'Failed to create Duffel order. Please contact support.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

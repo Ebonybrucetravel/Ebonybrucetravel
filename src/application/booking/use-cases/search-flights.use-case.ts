@@ -178,82 +178,86 @@ export class SearchFlightsUseCase {
         offers = offers.slice(0, limit);
       }
 
-      const offersWithMarkup = await Promise.all(
-        offers.map(async (offer) => {
-          const duffelCurrency = offer.total_currency;
-          const basePrice = parseFloat(offer.total_amount);
-          const baseAmount = parseFloat(offer.base_amount);
-          const taxAmount = offer.tax_amount ? parseFloat(offer.tax_amount) : 0;
+   const offersWithMarkup = await Promise.all(
+  offers.map(async (offer) => {
+    const duffelCurrency = offer.total_currency;
+    const basePrice = parseFloat(offer.total_amount);
+    const baseAmount = parseFloat(offer.base_amount);
+    const taxAmount = offer.tax_amount ? parseFloat(offer.tax_amount) : 0;
 
-          const convertedBasePrice = await this.currencyService.convert(
-            basePrice,
-            duffelCurrency,
-            targetCurrency,
-          );
-          const convertedBaseAmount = await this.currencyService.convert(
-            baseAmount,
-            duffelCurrency,
-            targetCurrency,
-          );
-          const convertedTaxAmount = offer.tax_amount
-            ? await this.currencyService.convert(taxAmount, duffelCurrency, targetCurrency)
-            : 0;
+    const convertedBasePrice = await this.currencyService.convert(
+      basePrice,
+      duffelCurrency,
+      targetCurrency,
+    );
+    const convertedBaseAmount = await this.currencyService.convert(
+      baseAmount,
+      duffelCurrency,
+      targetCurrency,
+    );
+    const convertedTaxAmount = offer.tax_amount
+      ? await this.currencyService.convert(taxAmount, duffelCurrency, targetCurrency)
+      : 0;
 
-          const conversionDetails = this.currencyService.calculateConversionFee(
-            convertedBasePrice,
-            duffelCurrency,
-            targetCurrency,
-          );
+    const conversionDetails = this.currencyService.calculateConversionFee(
+      convertedBasePrice,
+      duffelCurrency,
+      targetCurrency,
+    );
 
-          let markupPercentage = 0;
-          let serviceFeeAmount = 0;
-          try {
-            const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
-              ProductType.FLIGHT_INTERNATIONAL,
-              targetCurrency,
-            );
-            markupPercentage = markupConfig?.markupPercentage || 0;
-            serviceFeeAmount = markupConfig?.serviceFeeAmount || 0;
-          } catch (error) {
-            console.warn(`Could not fetch markup config for ${targetCurrency}, using 0%:`, error);
-          }
-
-          const markupAmount = (conversionDetails.totalWithFee * markupPercentage) / 100;
-          const finalPrice = conversionDetails.totalWithFee + markupAmount + serviceFeeAmount;
-
-          return {
-            ...offer,
-            original_amount: offer.total_amount,
-            original_currency: duffelCurrency,
-            base_amount: this.currencyService.formatAmount(convertedBaseAmount, targetCurrency),
-            base_currency: targetCurrency,
-            tax_amount: offer.tax_amount
-              ? this.currencyService.formatAmount(convertedTaxAmount, targetCurrency)
-              : null,
-            tax_currency: offer.tax_amount ? targetCurrency : null,
-            conversion_fee: this.currencyService.formatAmount(
-              conversionDetails.conversionFee,
-              targetCurrency,
-            ),
-            conversion_fee_percentage:
-              duffelCurrency !== targetCurrency ? this.currencyService.getConversionBuffer() : 0,
-            price_after_conversion: this.currencyService.formatAmount(
-              conversionDetails.totalWithFee,
-              targetCurrency,
-            ),
-            total_amount: this.currencyService.formatAmount(
-              conversionDetails.totalWithFee,
-              targetCurrency,
-            ),
-            total_currency: targetCurrency,
-            markup_percentage: markupPercentage,
-            markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
-            service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
-            final_amount: this.currencyService.formatAmount(finalPrice, targetCurrency),
-            currency: targetCurrency,
-          };
-        }),
+    // ✅ Get markup config
+    let markupPercentage = 0;
+    let serviceFeePercentage = 0;  // ✅ Changed from serviceFeeAmount
+    try {
+      const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
+        ProductType.FLIGHT_INTERNATIONAL,
+        targetCurrency,
       );
+      markupPercentage = markupConfig?.markupPercentage || 0;
+      serviceFeePercentage = markupConfig?.serviceFeePercentage || 0;  // ✅ Changed
+    } catch (error) {
+      console.warn(`Could not fetch markup config for ${targetCurrency}, using 0%:`, error);
+    }
+
+    // ✅ Calculate amounts correctly
+    const markupAmount = (conversionDetails.totalWithFee * markupPercentage) / 100;
+    const serviceFeeAmount = (conversionDetails.totalWithFee * serviceFeePercentage) / 100;  // ✅ Calculate from percentage
+    const finalPrice = conversionDetails.totalWithFee + markupAmount + serviceFeeAmount;
+
+    return {
+      ...offer,
+      original_amount: offer.total_amount,
+      original_currency: duffelCurrency,
+      base_amount: this.currencyService.formatAmount(convertedBaseAmount, targetCurrency),
+      base_currency: targetCurrency,
+      tax_amount: offer.tax_amount
+        ? this.currencyService.formatAmount(convertedTaxAmount, targetCurrency)
+        : null,
+      tax_currency: offer.tax_amount ? targetCurrency : null,
+      conversion_fee: this.currencyService.formatAmount(
+        conversionDetails.conversionFee,
+        targetCurrency,
+      ),
+      conversion_fee_percentage:
+        duffelCurrency !== targetCurrency ? this.currencyService.getConversionBuffer() : 0,
+      price_after_conversion: this.currencyService.formatAmount(
+        conversionDetails.totalWithFee,
+        targetCurrency,
+      ),
+      total_amount: this.currencyService.formatAmount(
+        conversionDetails.totalWithFee,
+        targetCurrency,
+      ),
+      total_currency: targetCurrency,
+      markup_percentage: markupPercentage,
+      markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
+      service_fee_percentage: serviceFeePercentage,  // ✅ Added
+      service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
+      final_amount: this.currencyService.formatAmount(finalPrice, targetCurrency),
+      currency: targetCurrency,
+    };
+  }),
+);
 
       this.cacheService.cacheOffers(response.data.id, offersWithMarkup, 2 * 60 * 1000);
 
