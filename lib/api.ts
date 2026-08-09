@@ -2326,8 +2326,6 @@ export async function searchCarRentalsWithPagination(
   }
 }
 
-// Update transformCarRentalToSearchResult
-
 export function transformCarRentalToSearchResult(
   car: CarRentalOffer | null | undefined,
   pickupLocation: string,
@@ -2430,11 +2428,8 @@ export function transformCarRentalToSearchResult(
   const pickupCode = carInfo.start?.locationCode || "Unknown";
   const dropoffCode = carInfo.end?.locationCode || "Unknown";
 
-  // CRITICAL: Get the image URL from the API response
+  // ✅ Get the real image URL from the Amadeus API payload
   const imageUrl = carInfo.vehicle?.imageURL || null;
-
-  // Log for debugging (remove in production)
-  console.log(`Car ${vehicleType} image URL:`, imageUrl);
 
   return {
     id: carInfo.id || `car-${index}`,
@@ -2444,14 +2439,11 @@ export function transformCarRentalToSearchResult(
     price: `${priceSymbol}${Math.round(pricePerDay).toLocaleString()}/day`,
     totalPrice: `${priceSymbol}${Math.round(finalPrice).toLocaleString()} total`,
     rating: parseFloat(rating.toFixed(1)),
-    // Set the image to the API URL, fallback to Unsplash if not available
-    image:
-      imageUrl ||
-      getCarImage(carInfo.vehicle?.code, carInfo.vehicle?.category, index),
-    // Also pass provider logo separately
-    providerLogo:
-      carInfo.serviceProvider?.logoUrl ||
-      carInfo.partnerInfo?.serviceProvider?.logoUrl,
+    
+    // ✅ Passes the real image URL to the UI (or uses fallback)
+    image: imageUrl || getCarImage(carInfo.vehicle?.code, carInfo.vehicle?.category, index),
+    providerLogo: carInfo.serviceProvider?.logoUrl || carInfo.partnerInfo?.serviceProvider?.logoUrl,
+    
     amenities: amenities.slice(0, 6),
     features: [
       `${seats} seats`,
@@ -2462,7 +2454,6 @@ export function transformCarRentalToSearchResult(
     ],
     type: "car-rentals" as const,
 
-    // Car-specific fields
     vehicleCode: carInfo.vehicle?.code,
     vehicleCategory: carInfo.vehicle?.category,
     seats: seats,
@@ -2490,6 +2481,7 @@ export function transformCarRentalToSearchResult(
       ? `Includes ${carInfo.conversion_fee_percentage}% conversion fee`
       : undefined,
 
+    // ✅ CLEANED UP realData - fully compatible with your booking flow
     realData: {
       offerId: carInfo.id,
       pickupLocation: pickupCode,
@@ -2518,14 +2510,9 @@ export function transformCarRentalToSearchResult(
       finalPrice: finalPrice,
       markupAmount: parseFloat(carInfo.markup_amount || "0"),
       serviceFee: parseFloat(carInfo.service_fee || "0"),
-      // Include vehicle.imageURL in realData for component access
-      vehicle: {
-        imageURL: carInfo.vehicle?.imageURL,
-      },
     },
   };
 }
-
 // Helper function to extract car amenities
 function extractCarAmenities(
   category?: string,

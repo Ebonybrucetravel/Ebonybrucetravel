@@ -1492,35 +1492,106 @@ if (isFlight) {
       setShowAmadeusPayment(true);
       return;
     }
-  
+     // ============================================================
+    // ✅ CAR RENTAL FLOW
+    // ============================================================
     if (isCar) {
       try {
         console.log("🚗 Creating car rental booking...");
+        
+        // ✅ Get the correct price from the item
+        let finalAmount = extendedItem.final_amount ? parseFloat(extendedItem.final_amount) : 0;
+        if (!finalAmount || finalAmount === 0) {
+          finalAmount = extendedItem.priceBreakdown?.totalAmount || 0;
+        }
+        if (!finalAmount || finalAmount === 0) {
+          finalAmount = extendedItem.calculatedTotal || 0;
+        }
+        if (!finalAmount || finalAmount === 0) {
+          finalAmount = extendedItem.totalAmount || 0;
+        }
+        if (!finalAmount || finalAmount === 0) {
+          if (extendedItem.price && typeof extendedItem.price === 'string') {
+            const parsed = parseFloat(extendedItem.price.replace(/[^0-9.]/g, ''));
+            if (parsed > 0) {
+              finalAmount = parsed;
+            }
+          }
+        }
+        
+        const basePrice = extendedItem.priceBreakdown?.basePrice ||
+                          extendedItem.calculatedBasePrice || 
+                          extendedItem.basePrice || 
+                          (finalAmount > 0 ? finalAmount / 1.15 : 0);
+        
+        const markupAmount = extendedItem.priceBreakdown?.markupAmount ||
+                             extendedItem.calculatedMarkup || 
+                             extendedItem.markupAmount || 
+                             (finalAmount > 0 ? finalAmount * 0.10 : 0);
+        
+        const serviceFee = extendedItem.priceBreakdown?.serviceFee ||
+                           extendedItem.calculatedServiceFee || 
+                           extendedItem.serviceFee || 
+                           (finalAmount > 0 ? finalAmount * 0.05 : 0);
+        
         const correctedItem = {
           ...extendedItem,
           provider: 'AMADEUS',
           productTypeOverride: 'CAR_RENTAL',
+          basePrice: basePrice,
+          markupAmount: markupAmount,
+          serviceFee: serviceFee,
+          totalAmount: finalAmount,
+          vehicle: extendedItem.vehicle,
+          serviceProvider: extendedItem.serviceProvider,
+          cancellationRules: extendedItem.cancellationRules,
+          distance: extendedItem.distance,
+          start: extendedItem.start,
+          end: extendedItem.end,
         };
+        
+        console.log("🚗 Car rental booking prices:", {
+          basePrice,
+          markupAmount,
+          serviceFee,
+          finalAmount,
+        });
+
         const newBooking = await createBooking(
           correctedItem,
           searchParams,
           cleanedPassengerInfo,
           isGuest,
           {
-            taxes: 0,
-            basePrice: 0,
-            finalAmount: 0,
+            taxes: serviceFee,
+            basePrice: basePrice,
+            finalAmount: finalAmount,
           },
         );
+
         setBooking(newBooking);
         setAppliedVoucherCode(voucherCode);
         setShowPayment(true);
+        
+        if (newBooking) {
+          sessionStorage.setItem('booking_price_breakdown', JSON.stringify({
+            basePrice: newBooking.basePrice || basePrice,
+            markupAmount: newBooking.markupAmount || markupAmount,
+            serviceFee: newBooking.serviceFee || serviceFee,
+            totalAmount: newBooking.totalAmount || finalAmount,
+            currency: newBooking.currency || 'NGN',
+            markupPercentage: correctedItem.markup_percentage || 10,
+            serviceFeePercentage: correctedItem.service_fee_percentage || 5,
+          }));
+        }
+        
       } catch (err: any) {
+        console.error('Car rental booking error:', err);
         toast.error(err.message ?? "We couldn't create your car rental booking. Please try again.");
       } finally {
         setIsProcessingPayment(false);
-        return;
       }
+      return;
     }
 
   

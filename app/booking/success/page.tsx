@@ -915,6 +915,322 @@ if (checkedBags.length > 0) {
     );
   };
 
+
+  // ==================== RENDER CAR RENTAL DETAILS ====================
+const renderCarRentalDetails = () => {
+  if (!booking) return null;
+  
+  const isCarRental = booking?.productType === 'CAR_RENTAL';
+  if (!isCarRental) return null;
+  
+  const bookingData = booking.bookingData as any;
+  
+  // Extract car rental details
+  const offerId = bookingData?.offerId || bookingData?.amadeus_offer_id || 'N/A';
+  const offerPrice = bookingData?.offer_price || bookingData?.offerPrice || 0;
+  
+  // Vehicle details
+  const vehicle = bookingData?.vehicle || {};
+  const vehicleDescription = vehicle?.description || bookingData?.vehicleDescription || 'Vehicle';
+  const vehicleCategory = vehicle?.category || bookingData?.vehicleCategory || 'Standard';
+  const vehicleCode = vehicle?.code || bookingData?.vehicleCode || '';
+  const seats = vehicle?.seats?.[0]?.count || bookingData?.seats || 'N/A';
+  const baggage = vehicle?.baggages?.[0]?.count || bookingData?.baggage || 'N/A';
+  const vehicleImage = vehicle?.imageURL || bookingData?.vehicleImage || '';
+  
+  // Service provider
+  const serviceProvider = bookingData?.serviceProvider || {};
+  const providerName = serviceProvider?.name || bookingData?.providerName || 'Car Rental Provider';
+  const providerCode = serviceProvider?.code || bookingData?.providerCode || '';
+  const providerLogo = serviceProvider?.logoUrl || bookingData?.providerLogo || '';
+  const termsUrl = serviceProvider?.termsUrl || bookingData?.termsUrl || '';
+  
+  // Pickup and dropoff
+  const start = bookingData?.start || {};
+  const end = bookingData?.end || {};
+  
+  const pickupLocation = start?.locationCode || bookingData?.pickupLocation || 'N/A';
+  const pickupAddress = start?.address || bookingData?.pickupAddress || '';
+  const pickupDateTime = start?.dateTime || bookingData?.pickupDateTime || '';
+  const pickupName = start?.name || bookingData?.pickupName || '';
+  
+  const dropoffLocation = end?.locationCode || bookingData?.dropoffLocation || 'N/A';
+  const dropoffAddress = end?.address || bookingData?.dropoffAddress || '';
+  const dropoffDateTime = end?.dateTime || bookingData?.dropoffDateTime || '';
+  const dropoffName = end?.name || bookingData?.dropoffName || '';
+  
+  // Transfer type
+  const transferType = bookingData?.transferType || bookingData?.transfer_type || 'PRIVATE';
+  
+  // Cancellation rules
+  const cancellationRules = bookingData?.cancellationRules || [];
+  
+  // Passenger info
+  const passengers = bookingData?.passengers || [];
+  const passengerCount = passengers.length || 1;
+  
+  // Price breakdown from booking
+  const basePrice = booking?.basePrice || 0;
+  const markupAmount = booking?.markupAmount || 0;
+  const serviceFee = booking?.serviceFee || 0;
+  const totalAmount = booking?.totalAmount || 0;
+  const currency = booking?.currency || 'NGN';
+  
+  // Calculate rental days
+  const rentalDays = calculateRentalDays(pickupDateTime, dropoffDateTime);
+  
+  // Format date time helper
+  const formatDateTime = (dateTime: string): string => {
+    if (!dateTime) return 'N/A';
+    try {
+      const date = new Date(dateTime);
+      return date.toLocaleString('en-GB', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return dateTime;
+    }
+  };
+  
+  // Get category display name
+  const getCategoryName = (category: string): string => {
+    const map: Record<string, string> = {
+      'ST': 'Standard',
+      'BU': 'Business',
+      'FC': 'First Class',
+      'PR': 'Premium',
+      'EL': 'Electric',
+      'SUV': 'SUV',
+      'VAN': 'Van',
+      'CAR': 'Car',
+      'LMS': 'Limousine',
+      'BUS': 'Bus'
+    };
+    return map[category] || category || 'Standard';
+  };
+  
+  // Get transfer type display
+  const getTransferTypeDisplay = (type: string): string => {
+    const map: Record<string, string> = {
+      'PRIVATE': 'Private Transfer',
+      'SHARED': 'Shared Transfer',
+      'TAXI': 'Taxi',
+      'HOURLY': 'Hourly Rental',
+      'AIRPORT': 'Airport Transfer'
+    };
+    return map[type] || type || 'Private Transfer';
+  };
+  
+  return (
+    <div className="space-y-6">
+      {/* Provider Badge */}
+      <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-4 rounded-lg">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm opacity-90">Powered by</p>
+            <p className="font-bold text-xl">Amadeus • Car Rental</p>
+          </div>
+          <div className="text-3xl">🚗</div>
+        </div>
+      </div>
+      
+      {/* Offer ID */}
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <p className="text-sm text-gray-500">Offer ID</p>
+            <p className="font-mono font-bold text-md text-emerald-600 break-all">{offerId}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Transfer Type</p>
+            <p className="font-medium">{getTransferTypeDisplay(transferType)}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Rental Duration</p>
+            <p className="font-medium">{rentalDays} day{rentalDays > 1 ? 's' : ''}</p>
+          </div>
+        </div>
+      </div>
+      
+      {/* Vehicle Details */}
+      <div className="border-b border-gray-200 pb-4">
+        <h4 className="font-semibold text-gray-900 mb-3 text-lg">Vehicle Details</h4>
+        
+        {/* Vehicle Image */}
+        {vehicleImage && (
+          <div className="mb-4">
+            <img 
+              src={vehicleImage} 
+              alt={vehicleDescription} 
+              className="w-full max-h-48 object-contain rounded-lg bg-gray-50"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          </div>
+        )}
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          <div className="bg-gray-50 rounded-lg p-3 text-center">
+            <p className="text-xs text-gray-500">Category</p>
+            <p className="font-semibold text-gray-900">{getCategoryName(vehicleCategory)}</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3 text-center">
+            <p className="text-xs text-gray-500">Seats</p>
+            <p className="font-semibold text-gray-900">{seats}</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3 text-center">
+            <p className="text-xs text-gray-500">Baggage</p>
+            <p className="font-semibold text-gray-900">{baggage}</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3 text-center">
+            <p className="text-xs text-gray-500">Vehicle Code</p>
+            <p className="font-mono font-semibold text-gray-900">{vehicleCode || 'N/A'}</p>
+          </div>
+        </div>
+        
+        <p className="text-gray-700 font-medium">{vehicleDescription}</p>
+      </div>
+      
+      {/* Service Provider */}
+      <div className="border-b border-gray-200 pb-4">
+        <h4 className="font-semibold text-gray-900 mb-3 text-lg">Service Provider</h4>
+        <div className="flex items-center gap-4">
+          {providerLogo && (
+            <img 
+              src={providerLogo} 
+              alt={providerName} 
+              className="w-12 h-12 object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          )}
+          <div>
+            <p className="font-semibold text-lg">{providerName}</p>
+            <p className="text-sm text-gray-500">Code: {providerCode}</p>
+            {termsUrl && (
+              <a 
+                href={termsUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-xs text-emerald-600 hover:underline"
+              >
+                View Terms & Conditions
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Pickup & Dropoff */}
+      <div className="border-b border-gray-200 pb-4">
+        <h4 className="font-semibold text-gray-900 mb-3 text-lg">Pickup & Dropoff</h4>
+        
+        {/* Pickup */}
+        <div className="bg-blue-50 p-4 rounded-lg mb-3">
+          <div className="flex items-start gap-2">
+            <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Pickup</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
+                <div>
+                  <p className="font-bold text-lg">{pickupLocation}</p>
+                  <p className="text-sm text-gray-600">{pickupName || pickupAddress}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Date & Time</p>
+                  <p className="font-semibold">{formatDateTime(pickupDateTime)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Dropoff */}
+        <div className="bg-green-50 p-4 rounded-lg">
+          <div className="flex items-start gap-2">
+            <svg className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-xs font-bold text-green-700 uppercase tracking-wider">Dropoff</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
+                <div>
+                  <p className="font-bold text-lg">{dropoffLocation}</p>
+                  <p className="text-sm text-gray-600">{dropoffName || dropoffAddress}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Date & Time</p>
+                  <p className="font-semibold">{formatDateTime(dropoffDateTime)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Cancellation Policy */}
+      {cancellationRules && cancellationRules.length > 0 && (
+        <div className="border-b border-gray-200 pb-4">
+          <h4 className="font-semibold text-gray-900 mb-3 text-lg">Cancellation Policy</h4>
+          <div className="space-y-2">
+            {cancellationRules.map((rule: any, index: number) => (
+              <div key={index} className={`p-3 rounded-lg border ${rule.feeValue === '0' || rule.feeValue === '0%' ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                <p className="text-sm text-gray-700">{rule.ruleDescription}</p>
+                <p className="text-xs mt-1">
+                  {rule.feeValue === '0' || rule.feeValue === '0%' ? (
+                    <span className="text-green-600 font-medium">✓ Free cancellation</span>
+                  ) : (
+                    <span className="text-yellow-700">
+                      Fee: {rule.feeValue}% {rule.feeType || ''}
+                      {rule.metricMin && rule.metricMax && ` (${rule.metricMin} - ${rule.metricMax} ${rule.metricType})`}
+                      {rule.metricMin && !rule.metricMax && ` (${rule.metricMin}+ ${rule.metricType})`}
+                    </span>
+                  )}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* Passenger Info */}
+      {passengers.length > 0 && (
+        <div className="border-b border-gray-200 pb-4">
+          <h4 className="font-semibold text-gray-900 mb-3 text-lg">Passengers</h4>
+          <div className="space-y-2">
+            {passengers.map((passenger: any, index: number) => (
+              <div key={index} className="bg-gray-50 p-3 rounded-lg flex items-center justify-between">
+                <div>
+                  <p className="font-medium">
+                    {passenger.name?.firstName} {passenger.name?.lastName}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {passenger.name?.title || 'MR'} • {passenger.contact?.phone || 'N/A'}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-gray-500">Passenger {index + 1}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
   const renderWakanowDetails = () => {
     if (!booking) return null;
     
@@ -1588,6 +1904,7 @@ const extractAllPassengers = () => {
   const isWakanow = booking?.provider === 'WAKANOW';
   const isDuffel = booking?.provider === 'DUFFEL';
   const isHotelBooking = booking?.productType === 'HOTEL';
+  const isCarRental = booking?.productType === 'CAR_RENTAL';
   const productType = booking?.productType || '';
   const isConfirmed = ['CONFIRMED', 'COMPLETED', 'PAID'].includes(booking?.status || '');
   const isPending = ['PENDING', 'PROCESSING'].includes(booking?.status || '');
@@ -1861,13 +2178,14 @@ const extractAllPassengers = () => {
 
       {/* Trip details - Hotel OR Flight */}
       {booking && (
-        <div className="bg-white rounded-xl shadow p-6 mb-8 border border-gray-100">
-          <h3 className="text-xl font-bold mb-4">Trip Details</h3>
-          {isHotelBooking ? renderHotelDetails() : 
-           isDuffel ? renderDuffelDetails() : 
-           renderWakanowDetails()}
-        </div>
-      )}
+  <div className="bg-white rounded-xl shadow p-6 mb-8 border border-gray-100">
+    <h3 className="text-xl font-bold mb-4">Trip Details</h3>
+    {isHotelBooking ? renderHotelDetails() : 
+     isCarRental ? renderCarRentalDetails() :
+     isDuffel ? renderDuffelDetails() : 
+     renderWakanowDetails()}
+  </div>
+)}
 
       {/* Price breakdown */}
       {booking && booking.basePrice && (

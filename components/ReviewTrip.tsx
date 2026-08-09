@@ -93,6 +93,46 @@ interface ExtendedSearchResult extends SearchResult {
     currency: string;
     breakdown?: string;
   };
+  // ✅ CAR RENTAL FIELDS
+  vehicle?: {
+    code: string;
+    category: string;
+    description: string;
+    imageURL?: string;
+    seats?: Array<{ count: number }>;
+    baggages?: Array<{ count: number; size?: string }>;
+  };
+  serviceProvider?: {
+    code: string;
+    name: string;
+    logoUrl?: string;
+    termsUrl?: string;
+  };
+  cancellationRules?: Array<{
+    ruleDescription: string;
+    feeType?: string;
+    feeValue?: string;
+    metricType?: string;
+    metricMin?: string;
+    metricMax?: string;
+  }>;
+  distance?: { value: number; unit: string };
+  start?: { dateTime: string; locationCode: string; address?: { countryCode?: string } };
+  end?: { dateTime: string; locationCode: string; address?: { countryCode?: string } };
+  methodsOfPaymentAccepted?: string[];
+  supportedPaymentInstruments?: Array<{ vendorCode: string; description: string }>;
+  extraServices?: Array<{
+    code: string;
+    description: string;
+    quotation: { monetaryAmount: string; currencyCode: string };
+    isBookable: boolean;
+    includedInTotal: boolean;
+  }>;
+  conditionSummary?: Array<{
+    descriptions?: Array<{ descriptionType: string; text: string }>;
+  }>;
+  transferType?: string;
+  duration?: string;
   [key: string]: any;
 }
 
@@ -228,8 +268,6 @@ const isDomesticFlight = (origin: string, destination: string): boolean => {
   return !!normalizedOrigin && !!normalizedDest && normalizedOrigin === normalizedDest;
 };
 
-
-
 const isNorthAmericanDestination = (item: ExtendedSearchResult, searchParams: SearchParams | null): boolean => {
   
   const destination = 
@@ -282,9 +320,6 @@ const isNorthAmericanDestination = (item: ExtendedSearchResult, searchParams: Se
   
   return isNorthAmerica;
 };
-
-
-
 
 const ReviewTrip: React.FC<ReviewTripProps> = ({
   item,
@@ -366,35 +401,50 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   }
 
   const extendedItem = actualItem as ExtendedSearchResult;
-
-
-
 const rawType = (actualItem.type || searchParams?.type || 'flights').toLowerCase();
-
 
 const isAmadeusHotel = (actualItem as any)?.provider?.toLowerCase() === 'amadeus' ||
                        !!(actualItem as any)?.realData?.offerId ||
                        !!(actualItem as any)?.offers?.length ||
                        !!(actualItem as any)?.hotelData?.offerId;
 
-
 const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
                         (actualItem as any)?.isWakanow === true ||
                         (actualItem as any)?.type?.toLowerCase().includes('wakanow') ||
-                        // ✅ KEEP selectData - it's essential for Wakanow
                         !!(actualItem as any)?.selectData ||
                         !!(actualItem as any)?.offer_request_id ||
                         !!(actualItem as any)?.slices ||
                         !!(actualItem as any)?.airlineName ||
                         !!(actualItem as any)?.airlineCode;
 
-let isHotel = rawType.includes('hotel');
-let isCar = rawType.includes('car');
+// ✅ FIRST: Check if it's a car rental by looking for vehicle data
+const hasVehicle = !!(actualItem as any)?.vehicle;
+const hasServiceProvider = !!(actualItem as any)?.serviceProvider;
+const isCarRental = rawType.includes('car') || 
+                    rawType.includes('car-rentals') || 
+                    hasVehicle ||
+                    hasServiceProvider ||
+                    (actualItem as any)?.type === 'car-rentals';
 
+// ✅ SECOND: Check if it's a hotel - ONLY if it has hotel data AND is NOT a car
+const hasHotelData = !!(actualItem as any)?.hotelData || 
+                     !!(actualItem as any)?.offers?.length ||
+                     !!(actualItem as any)?.realData?.offerId ||
+                     rawType.includes('hotel');
 
+// ✅ Set isHotel ONLY if it has hotel data and is NOT a car
+let isHotel = hasHotelData && !isCarRental;
+
+// ✅ Set isCar based on car detection
+let isCar = isCarRental;
+
+// ✅ Wakanow logic - but DON'T override car rentals
 if (isWakanowFlight && !isAmadeusHotel) {
-  isHotel = false;
-  isCar = false;
+  // ✅ ONLY reset isHotel if it's NOT a car
+  if (!isCarRental) {
+    isHotel = false;
+    isCar = false;
+  }
 }
 
 const isFlight = isWakanowFlight || (!isHotel && !isCar);
@@ -408,10 +458,14 @@ console.log('🔍 ReviewTrip - Product type detection:', {
   isAmadeusHotel,
   hasSelectData: !!(actualItem as any)?.selectData, 
   provider: (actualItem as any)?.provider,
+  hasVehicle: !!(actualItem as any)?.vehicle,
+  hasServiceProvider: !!(actualItem as any)?.serviceProvider,
+  hasHotelData,
+  isCarRental,
 });
 
+
   const firstOffer = extendedItem?.realData?.offers?.[0];
-  //const isAmadeusHotel = isHotel && !!firstOffer;
   const isHBXHotel = isHotel && extendedItem.provider?.toLowerCase() === 'hotelbeds';
 
   const productType = propProductType || (
@@ -469,13 +523,23 @@ console.log('🔍 ReviewTrip - Product type detection:', {
   const [isCheckingPassport, setIsCheckingPassport] = useState(false);
   const [passportError, setPassportError] = useState<string | null>(null);
 
+  const [carPriceBreakdown, setCarPriceBreakdown] = useState<{
+  basePrice: number;
+  markupAmount: number;
+  serviceFee: number;
+  totalDue: number;
+  markupPercentage: number;
+  serviceFeePercentage: number;
+  combinedTaxes: number;
+  combinedTaxPercentage: number;
+} | null>(null);
+
+
   const isWakanow = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+                    (actualItem as any)?.type?.toLowerCase().includes('wakanow');
 
-  (actualItem as any)?.type?.toLowerCase().includes('wakanow');
-
-const isDuffel = (actualItem as any)?.provider?.toUpperCase() === 'DUFFEL' ||
-  (actualItem as any)?.type?.toLowerCase().includes('duffel');
-
+  const isDuffel = (actualItem as any)?.provider?.toUpperCase() === 'DUFFEL' ||
+                   (actualItem as any)?.type?.toLowerCase().includes('duffel');
 
   const [convertedPrices, setConvertedPrices] = useState({
     basePrice: 0,
@@ -485,36 +549,29 @@ const isDuffel = (actualItem as any)?.provider?.toUpperCase() === 'DUFFEL' ||
     currency: currency.code,
   });
   const [isConverting, setIsConverting] = useState(false);
-  
 
-const originCode = extendedItem.departureAirport || 
-                   extendedItem.origin || 
-                   searchParams?.segments?.[0]?.from ||
-                   '';
-                   
-const destinationCode = extendedItem.arrivalAirport || 
-                        extendedItem.destination || 
-                        searchParams?.segments?.[0]?.to ||
-                        '';
+  const originCode = extendedItem.departureAirport || 
+                     extendedItem.origin || 
+                     searchParams?.segments?.[0]?.from ||
+                     '';
+                     
+  const destinationCode = extendedItem.arrivalAirport || 
+                          extendedItem.destination || 
+                          searchParams?.segments?.[0]?.to ||
+                          '';
 
-const isDomesticByAirport = originCode && destinationCode && isDomesticFlight(originCode, destinationCode);
-const isDomesticByProduct = (actualItem as any)?.productType === 'FLIGHT_DOMESTIC';
-const isDomesticFlightResult = isDomesticByAirport || isDomesticByProduct;
+  const isDomesticByAirport = originCode && destinationCode && isDomesticFlight(originCode, destinationCode);
+  const isDomesticByProduct = (actualItem as any)?.productType === 'FLIGHT_DOMESTIC';
+  const isDomesticFlightResult = isDomesticByAirport || isDomesticByProduct;
 
-const isNorthAmerica = isFlight && isWakanow && isNorthAmericanDestination(extendedItem, searchParams);
-
-const showPassportSection = isFlight && isWakanow && isNorthAmerica;
-
-const passportRequired = showPassportSection;
-
-const requiresPassport = isNorthAmerica;
-
-const isPassportMandatory = isNorthAmerica;
-
+  const isNorthAmerica = isFlight && isWakanow && isNorthAmericanDestination(extendedItem, searchParams);
+  const showPassportSection = isFlight && isWakanow && isNorthAmerica;
+  const passportRequired = showPassportSection;
+  const requiresPassport = isNorthAmerica;
+  const isPassportMandatory = isNorthAmerica;
   const shouldSkipPassport = isDuffel || (isFlight && !isWakanow);
-
-
   const isPassportIncompleteForDuffel = false; 
+
   useEffect(() => {
     if (!extBooking) {
       let adults = 1;
@@ -537,7 +594,6 @@ const isPassportMandatory = isNorthAmerica;
       if (totalAdditional > 0) {
         const initial: PassengerInfo[] = [];
         
-        // ✅ Check if passport is required for this flight (ALL international flights)
         const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
                                 (actualItem as any)?.type?.toLowerCase().includes('wakanow');
         const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
@@ -556,7 +612,6 @@ const isPassportMandatory = isNorthAmerica;
           initial.push({ 
             firstName: '', lastName: '', email: '', phone: '', 
             type: 'adult', title: 'mr', gender: 'm', dateOfBirth: '',
-            // ✅ Add passport fields if needed
             ...(needsPassport && {
               passportNumber: '',
               passportExpiry: '',
@@ -575,7 +630,6 @@ const isPassportMandatory = isNorthAmerica;
           initial.push({ 
             firstName: '', lastName: '', email: '', phone: '', 
             type: 'child', title: 'miss', gender: 'f', dateOfBirth: '',
-            // ✅ Add passport fields if needed
             ...(needsPassport && {
               passportNumber: '',
               passportExpiry: '',
@@ -594,7 +648,6 @@ const isPassportMandatory = isNorthAmerica;
           initial.push({ 
             firstName: '', lastName: '', email: '', phone: '', 
             type: 'infant', title: 'miss', gender: 'f', dateOfBirth: '',
-            // ✅ Add passport fields if needed
             ...(needsPassport && {
               passportNumber: '',
               passportExpiry: '',
@@ -656,7 +709,6 @@ const isPassportMandatory = isNorthAmerica;
 
   // ✅ DUFFEL: Skip passport loading
   useEffect(() => {
-    // ✅ Skip passport check for Duffel
     if (shouldSkipPassport || extBooking) return;
     
     if (!passportRequired || !isLoggedIn) return;
@@ -709,225 +761,204 @@ const isPassportMandatory = isNorthAmerica;
     }
   }, [extendedItem, actualItem]);
 
-
   // ==================== PRICE CALCULATION ====================
-let basePrice = 0;
-let markupAmount = 0;
-let serviceFee = 0;
-let totalDue = 0;
-let markupPercentage = 10;
-let serviceFeePercentage = 5;
-let combinedTaxes = 0;
-let combinedTaxPercentage = 15;
-let breakdownDescription = '';
+  let basePrice = 0;
+  let markupAmount = 0;
+  let serviceFee = 0;
+  let totalDue = 0;
+  let markupPercentage = 10;
+  let serviceFeePercentage = 5;
+  let combinedTaxes = 0;
+  let combinedTaxPercentage = 15;
+  let breakdownDescription = '';
 
-
-
-// ✅ DUFFEL FLIGHT - NEW: Process Duffel prices
-if (isDuffel) {
-  console.log('💰 ReviewTrip - Duffel flight detected');
-  
-  // Try to get price from various sources
-  if (extendedItem.totalAmount && extendedItem.totalAmount > 0) {
-    totalDue = extendedItem.totalAmount;
-    basePrice = extendedItem.basePrice || totalDue / 1.15;
-    markupAmount = extendedItem.markupAmount || (totalDue * 0.10);
-    serviceFee = extendedItem.serviceFee || (totalDue * 0.05);
-    markupPercentage = extendedItem.markupPercentage || 10;
-    serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
-    breakdownDescription = extendedItem.breakdown || `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
-    console.log('💰 ReviewTrip - Duffel: Using totalAmount', { totalDue });
-  } else if (extendedItem.final_amount) {
-    totalDue = parseFloat(extendedItem.final_amount);
-    basePrice = extendedItem.basePrice || totalDue / 1.15;
-    markupAmount = extendedItem.markupAmount || (totalDue * 0.10);
-    serviceFee = extendedItem.serviceFee || (totalDue * 0.05);
-    markupPercentage = extendedItem.markupPercentage || 10;
-    serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
-    breakdownDescription = extendedItem.breakdown || `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
-    console.log('💰 ReviewTrip - Duffel: Using final_amount', { totalDue });
-  } else if (extendedItem.final_price) {
-    totalDue = parseFloat(extendedItem.final_price);
-    basePrice = extendedItem.basePrice || totalDue / 1.15;
-    markupAmount = extendedItem.markupAmount || (totalDue * 0.10);
-    serviceFee = extendedItem.serviceFee || (totalDue * 0.05);
-    markupPercentage = extendedItem.markupPercentage || 10;
-    serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
-    breakdownDescription = extendedItem.breakdown || `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
-    console.log('💰 ReviewTrip - Duffel: Using final_price', { totalDue });
-  } else if (extendedItem.price && typeof extendedItem.price === 'string') {
-    const parsed = parseFloat(extendedItem.price.replace(/[^0-9.]/g, ''));
-    if (parsed > 0) {
-      totalDue = parsed;
+  // ✅ DUFFEL FLIGHT
+  if (isDuffel) {
+    console.log('💰 ReviewTrip - Duffel flight detected');
+    
+    if (extendedItem.totalAmount && extendedItem.totalAmount > 0) {
+      totalDue = extendedItem.totalAmount;
       basePrice = extendedItem.basePrice || totalDue / 1.15;
       markupAmount = extendedItem.markupAmount || (totalDue * 0.10);
       serviceFee = extendedItem.serviceFee || (totalDue * 0.05);
       markupPercentage = extendedItem.markupPercentage || 10;
       serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
       breakdownDescription = extendedItem.breakdown || `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
-      console.log('💰 ReviewTrip - Duffel: Using price string', { totalDue });
+      console.log('💰 ReviewTrip - Duffel: Using totalAmount', { totalDue });
+    } else if (extendedItem.final_amount) {
+      totalDue = parseFloat(extendedItem.final_amount);
+      basePrice = extendedItem.basePrice || totalDue / 1.15;
+      markupAmount = extendedItem.markupAmount || (totalDue * 0.10);
+      serviceFee = extendedItem.serviceFee || (totalDue * 0.05);
+      markupPercentage = extendedItem.markupPercentage || 10;
+      serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
+      breakdownDescription = extendedItem.breakdown || `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
+      console.log('💰 ReviewTrip - Duffel: Using final_amount', { totalDue });
+    } else if (extendedItem.final_price) {
+      totalDue = parseFloat(extendedItem.final_price);
+      basePrice = extendedItem.basePrice || totalDue / 1.15;
+      markupAmount = extendedItem.markupAmount || (totalDue * 0.10);
+      serviceFee = extendedItem.serviceFee || (totalDue * 0.05);
+      markupPercentage = extendedItem.markupPercentage || 10;
+      serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
+      breakdownDescription = extendedItem.breakdown || `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
+      console.log('💰 ReviewTrip - Duffel: Using final_price', { totalDue });
+    } else if (extendedItem.price && typeof extendedItem.price === 'string') {
+      const parsed = parseFloat(extendedItem.price.replace(/[^0-9.]/g, ''));
+      if (parsed > 0) {
+        totalDue = parsed;
+        basePrice = extendedItem.basePrice || totalDue / 1.15;
+        markupAmount = extendedItem.markupAmount || (totalDue * 0.10);
+        serviceFee = extendedItem.serviceFee || (totalDue * 0.05);
+        markupPercentage = extendedItem.markupPercentage || 10;
+        serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
+        breakdownDescription = extendedItem.breakdown || `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
+        console.log('💰 ReviewTrip - Duffel: Using price string', { totalDue });
+      }
+    }
+    
+    if (totalDue === 0 && extendedItem.priceBreakdown) {
+      const pb = extendedItem.priceBreakdown;
+      totalDue = pb.totalAmount || 0;
+      basePrice = pb.basePrice || 0;
+      markupAmount = pb.markupAmount || 0;
+      serviceFee = pb.serviceFee || 0;
+      markupPercentage = pb.markupPercentage || 10;
+      serviceFeePercentage = pb.serviceFeePercentage || 5;
+      combinedTaxes = pb.taxes || 0;
+      combinedTaxPercentage = pb.taxPercentage || 15;
+      breakdownDescription = pb.breakdown || '';
+      console.log('💰 ReviewTrip - Duffel: Using priceBreakdown', { totalDue, basePrice, markupAmount, serviceFee });
+    }
+    
+    if (totalDue === 0 && extendedItem.calculatedTotal && extendedItem.calculatedTotal > 0) {
+      totalDue = extendedItem.calculatedTotal;
+      basePrice = extendedItem.calculatedBasePrice || totalDue / 1.15;
+      markupAmount = extendedItem.calculatedMarkup || (totalDue * 0.10);
+      serviceFee = extendedItem.calculatedServiceFee || (totalDue * 0.05);
+      markupPercentage = extendedItem.markup_percentage || 10;
+      serviceFeePercentage = extendedItem.service_fee_percentage || 5;
+      breakdownDescription = `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
+      console.log('💰 ReviewTrip - Duffel: Using calculatedTotal', { totalDue });
+    }
+    
+    if (extendedItem.currency) {
+      offerCurrency = extendedItem.currency;
+    } else if (extendedItem.priceBreakdown?.currency) {
+      offerCurrency = extendedItem.priceBreakdown.currency;
+    }
+    
+    combinedTaxes = markupAmount + serviceFee;
+    combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+    
+    console.log('💰 ReviewTrip - Duffel: Final prices', {
+      basePrice,
+      markupAmount,
+      serviceFee,
+      totalDue,
+      combinedTaxes,
+      combinedTaxPercentage,
+      currency: offerCurrency,
+      breakdown: breakdownDescription,
+    });
+  }
+  // ✅ WAKANOW FLIGHTS
+  else if (isWakanow) {
+    console.log('💰 ReviewTrip - Wakanow flight detected', {
+      hasWakanowData: !!extendedItem._wakanowData,
+      hasPriceBreakdown: !!extendedItem._wakanowData?.priceBreakdown,
+      itemBasePrice: extendedItem.basePrice,
+      itemTotalAmount: extendedItem.totalAmount,
+    });
+    
+    if (extendedItem._wakanowData?.priceBreakdown) {
+      const pb = extendedItem._wakanowData.priceBreakdown;
+      basePrice = pb.basePrice || 0;
+      markupAmount = pb.markupAmount || 0;
+      markupPercentage = pb.markupPercentage || 10;
+      serviceFee = pb.serviceFee || 0;
+      serviceFeePercentage = pb.serviceFeePercentage || 5;
+      combinedTaxes = pb.taxes || 0;
+      combinedTaxPercentage = pb.taxPercentage || 15;
+      totalDue = pb.totalAmount || 0;
+      breakdownDescription = pb.breakdown || '';
+      offerCurrency = pb.currency || 'NGN';
+      
+      console.log('💰 ReviewTrip - Wakanow: Using _wakanowData.priceBreakdown:', {
+        basePrice,
+        markupAmount,
+        serviceFee,
+        combinedTaxes,
+        totalDue,
+      });
+    } else if (extendedItem.priceBreakdown) {
+      const pb = extendedItem.priceBreakdown;
+      basePrice = pb.basePrice || 0;
+      markupAmount = pb.markupAmount || 0;
+      markupPercentage = pb.markupPercentage || 10;
+      serviceFee = pb.serviceFee || 0;
+      serviceFeePercentage = pb.serviceFeePercentage || 5;
+      combinedTaxes = pb.taxes || 0;
+      combinedTaxPercentage = pb.taxPercentage || 15;
+      totalDue = pb.totalAmount || 0;
+      breakdownDescription = pb.breakdown || '';
+      offerCurrency = pb.currency || 'NGN';
+      
+      console.log('💰 ReviewTrip - Wakanow: Using priceBreakdown:', {
+        basePrice,
+        markupAmount,
+        serviceFee,
+        combinedTaxes,
+        totalDue,
+      });
+    } else if (extendedItem.totalAmount && extendedItem.totalAmount > 0) {
+      totalDue = extendedItem.totalAmount;
+      markupPercentage = extendedItem.markupPercentage || 10;
+      serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
+      combinedTaxPercentage = extendedItem.taxPercentage || 15;
+      
+      const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100) + (combinedTaxPercentage / 100);
+      basePrice = totalDue / totalFactor;
+      markupAmount = (basePrice * markupPercentage) / 100;
+      serviceFee = (basePrice * serviceFeePercentage) / 100;
+      combinedTaxes = (basePrice * combinedTaxPercentage) / 100;
+      offerCurrency = extendedItem.currency || 'NGN';
+      
+      console.log('💰 ReviewTrip - Wakanow: Calculated from totalAmount:', {
+        totalDue,
+        basePrice,
+        markupAmount,
+        serviceFee,
+        combinedTaxes,
+      });
+    } else if (extendedItem.basePrice && extendedItem.basePrice > 0) {
+      basePrice = extendedItem.basePrice;
+      markupAmount = extendedItem.markupAmount || 0;
+      markupPercentage = extendedItem.markupPercentage || 10;
+      serviceFee = extendedItem.serviceFee || 0;
+      serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
+      combinedTaxes = extendedItem.taxes ? parseFloat(extendedItem.taxes as any) : 0;
+      combinedTaxPercentage = extendedItem.taxPercentage || 15;
+      totalDue = extendedItem.totalAmount || 0;
+      breakdownDescription = extendedItem.breakdown || '';
+      offerCurrency = extendedItem.currency || 'NGN';
+      
+      console.log('💰 ReviewTrip - Wakanow: Using direct fields:', {
+        basePrice,
+        markupAmount,
+        serviceFee,
+        combinedTaxes,
+        totalDue,
+      });
     }
   }
-  
-  // Check priceBreakdown
-  if (totalDue === 0 && extendedItem.priceBreakdown) {
-    const pb = extendedItem.priceBreakdown;
-    totalDue = pb.totalAmount || 0;
-    basePrice = pb.basePrice || 0;
-    markupAmount = pb.markupAmount || 0;
-    serviceFee = pb.serviceFee || 0;
-    markupPercentage = pb.markupPercentage || 10;
-    serviceFeePercentage = pb.serviceFeePercentage || 5;
-    combinedTaxes = pb.taxes || 0;
-    combinedTaxPercentage = pb.taxPercentage || 15;
-    breakdownDescription = pb.breakdown || '';
-    console.log('💰 ReviewTrip - Duffel: Using priceBreakdown', { totalDue, basePrice, markupAmount, serviceFee });
-  }
-  
-  // Check calculatedTotal
-  if (totalDue === 0 && extendedItem.calculatedTotal && extendedItem.calculatedTotal > 0) {
-    totalDue = extendedItem.calculatedTotal;
-    basePrice = extendedItem.calculatedBasePrice || totalDue / 1.15;
-    markupAmount = extendedItem.calculatedMarkup || (totalDue * 0.10);
-    serviceFee = extendedItem.calculatedServiceFee || (totalDue * 0.05);
-    markupPercentage = extendedItem.markup_percentage || 10;
-    serviceFeePercentage = extendedItem.service_fee_percentage || 5;
-    breakdownDescription = `Total fare: ${extendedItem.currency || 'GBP'} ${totalDue.toFixed(2)}`;
-    console.log('💰 ReviewTrip - Duffel: Using calculatedTotal', { totalDue });
-  }
-  
-  // Set currency from item
-  if (extendedItem.currency) {
-    offerCurrency = extendedItem.currency;
-  } else if (extendedItem.priceBreakdown?.currency) {
-    offerCurrency = extendedItem.priceBreakdown.currency;
-  }
-  
-  combinedTaxes = markupAmount + serviceFee;
-  combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-  
-  console.log('💰 ReviewTrip - Duffel: Final prices', {
-    basePrice,
-    markupAmount,
-    serviceFee,
-    totalDue,
-    combinedTaxes,
-    combinedTaxPercentage,
-    currency: offerCurrency,
-    breakdown: breakdownDescription,
-  });
-}
-// ✅ END DUFFEL
-
-// ✅ WAKANOW FLIGHTS - Use _wakanowData.priceBreakdown FIRST
-else if (isWakanow) {
-  console.log('💰 ReviewTrip - Wakanow flight detected', {
-    hasWakanowData: !!extendedItem._wakanowData,
-    hasPriceBreakdown: !!extendedItem._wakanowData?.priceBreakdown,
-    itemBasePrice: extendedItem.basePrice,
-    itemTotalAmount: extendedItem.totalAmount,
-  });
-  
-  // ✅ FIRST: Use _wakanowData.priceBreakdown (MOST ACCURATE)
-  if (extendedItem._wakanowData?.priceBreakdown) {
-    const pb = extendedItem._wakanowData.priceBreakdown;
-    basePrice = pb.basePrice || 0;
-    markupAmount = pb.markupAmount || 0;
-    markupPercentage = pb.markupPercentage || 10;
-    serviceFee = pb.serviceFee || 0;
-    serviceFeePercentage = pb.serviceFeePercentage || 5;
-    combinedTaxes = pb.taxes || 0;
-    combinedTaxPercentage = pb.taxPercentage || 15;
-    totalDue = pb.totalAmount || 0;
-    breakdownDescription = pb.breakdown || '';
-    offerCurrency = pb.currency || 'NGN';
-    
-    console.log('💰 ReviewTrip - Wakanow: Using _wakanowData.priceBreakdown:', {
-      basePrice,
-      markupAmount,
-      serviceFee,
-      combinedTaxes,
-      totalDue,
-    });
-  } 
-  // ✅ SECOND: Use priceBreakdown (fallback)
-  else if (extendedItem.priceBreakdown) {
-    const pb = extendedItem.priceBreakdown;
-    basePrice = pb.basePrice || 0;
-    markupAmount = pb.markupAmount || 0;
-    markupPercentage = pb.markupPercentage || 10;
-    serviceFee = pb.serviceFee || 0;
-    serviceFeePercentage = pb.serviceFeePercentage || 5;
-    combinedTaxes = pb.taxes || 0;
-    combinedTaxPercentage = pb.taxPercentage || 15;
-    totalDue = pb.totalAmount || 0;
-    breakdownDescription = pb.breakdown || '';
-    offerCurrency = pb.currency || 'NGN';
-    
-    console.log('💰 ReviewTrip - Wakanow: Using priceBreakdown:', {
-      basePrice,
-      markupAmount,
-      serviceFee,
-      combinedTaxes,
-      totalDue,
-    });
-  } 
-  // ✅ THIRD: Calculate from totalAmount if we have it (but no breakdown)
-  else if (extendedItem.totalAmount && extendedItem.totalAmount > 0) {
-    totalDue = extendedItem.totalAmount;
-    // Try to get markup and service fee percentages from item
-    markupPercentage = extendedItem.markupPercentage || 10;
-    serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
-    combinedTaxPercentage = extendedItem.taxPercentage || 15;
-    
-    // Calculate breakdown from total
-    const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100) + (combinedTaxPercentage / 100);
-    basePrice = totalDue / totalFactor;
-    markupAmount = (basePrice * markupPercentage) / 100;
-    serviceFee = (basePrice * serviceFeePercentage) / 100;
-    combinedTaxes = (basePrice * combinedTaxPercentage) / 100;
-    offerCurrency = extendedItem.currency || 'NGN';
-    
-    console.log('💰 ReviewTrip - Wakanow: Calculated from totalAmount:', {
-      totalDue,
-      basePrice,
-      markupAmount,
-      serviceFee,
-      combinedTaxes,
-    });
-  }
-  // ✅ FOURTH: Use direct fields (fallback)
-  else if (extendedItem.basePrice && extendedItem.basePrice > 0) {
-    basePrice = extendedItem.basePrice;
-    markupAmount = extendedItem.markupAmount || 0;
-    markupPercentage = extendedItem.markupPercentage || 10;
-    serviceFee = extendedItem.serviceFee || 0;
-    serviceFeePercentage = extendedItem.serviceFeePercentage || 5;
-    combinedTaxes = extendedItem.taxes ? parseFloat(extendedItem.taxes as any) : 0;
-    combinedTaxPercentage = extendedItem.taxPercentage || 15;
-    totalDue = extendedItem.totalAmount || 0;
-    breakdownDescription = extendedItem.breakdown || '';
-    offerCurrency = extendedItem.currency || 'NGN';
-    
-    console.log('💰 ReviewTrip - Wakanow: Using direct fields:', {
-      basePrice,
-      markupAmount,
-      serviceFee,
-      combinedTaxes,
-      totalDue,
-    });
-  }
-}
-
-
-// ✅ HOTELS AND CARS - UPDATED to use selected room price
+// ✅ HOTELS AND CARS - FIXED FOR CARS (WITHOUT priceBreakdown OVERRIDE)
 else if (isHotel || isCar) {
   console.log('💰 ReviewTrip - Hotel/Car detected');
   
-  // ✅ CRITICAL: Use the item prop directly (it has the correct data)
   const effectiveItem = (item as ExtendedSearchResult) || extendedItem;
   
-  console.log('💰 Effective item for hotel:', {
+  console.log('💰 Effective item for hotel/car:', {
     totalAmount: effectiveItem?.totalAmount,
     originalPriceAmount: effectiveItem?.originalPriceAmount,
     final_amount: effectiveItem?.final_amount,
@@ -935,8 +966,8 @@ else if (isHotel || isCar) {
     selectedRoomData: effectiveItem?.selectedRoomData?.type,
     selectedRoomType: effectiveItem?.selectedRoomType,
     roomTypeName: effectiveItem?.roomTypeName,
-    // ✅ Log the source
     sourceTotalAmount: effectiveItem?.totalAmount,
+    isCar: isCar,
   });
   
   if (extBooking && extBooking.id && extBooking.totalAmount > 0) {
@@ -983,9 +1014,27 @@ else if (isHotel || isCar) {
       console.log('💰 ReviewTrip - Using price:', priceValue);
     }
     
-    totalDue = priceValue;
+    // ✅ Get markup and service fee percentages from item
+    const markupPercent = effectiveItem?.markup_percentage || effectiveItem?.markupPercentage || 10;
+    const serviceFeePercent = effectiveItem?.service_fee_percentage || effectiveItem?.serviceFeePercentage || 5;
+    const taxPercent = effectiveItem?.taxPercentage || 15;
     
-    // Get currency from the effective item
+    // ✅ Set the percentages
+    markupPercentage = markupPercent;
+    serviceFeePercentage = serviceFeePercent;
+    combinedTaxPercentage = taxPercent;
+    
+    // ✅ Calculate base price from total
+    const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100) + (combinedTaxPercentage / 100);
+    basePrice = priceValue / totalFactor;
+    markupAmount = (basePrice * markupPercentage) / 100;
+    serviceFee = (basePrice * serviceFeePercentage) / 100;
+    combinedTaxes = (basePrice * combinedTaxPercentage) / 100;
+    
+    // ✅ CRITICAL FIX: totalDue MUST be the sum of all components
+    totalDue = basePrice + markupAmount + serviceFee + combinedTaxes;
+    
+    // ✅ Get currency from the effective item
     if (effectiveItem?.currency) {
       offerCurrency = effectiveItem.currency;
     } else if (effectiveItem?.originalPriceCurrency) {
@@ -994,36 +1043,135 @@ else if (isHotel || isCar) {
       offerCurrency = effectiveItem.selectedCurrency;
     }
     
-    console.log('💰 ReviewTrip - Final hotel price:', { totalDue, currency: offerCurrency });
+    // ❌ REMOVE THIS BLOCK - It's overriding your calculation with incorrect values!
+    // if (effectiveItem?.priceBreakdown) {
+    //   const pb = effectiveItem.priceBreakdown;
+    //   basePrice = pb.basePrice || basePrice;
+    //   markupAmount = pb.markupAmount || markupAmount;
+    //   markupPercentage = pb.markupPercentage || markupPercentage;
+    //   serviceFee = pb.serviceFee || serviceFee;
+    //   serviceFeePercentage = pb.serviceFeePercentage || serviceFeePercentage;
+    //   combinedTaxes = pb.taxes || combinedTaxes;
+    //   combinedTaxPercentage = pb.taxPercentage || combinedTaxPercentage;
+    //   totalDue = pb.totalAmount || totalDue;  // ❌ This is setting totalDue to 175682!
+    //   offerCurrency = pb.currency || offerCurrency;
+    //   breakdownDescription = pb.breakdown || breakdownDescription;
+    // }
     
-    markupPercentage = effectiveItem?.markup_percentage || 10;
-    serviceFeePercentage = effectiveItem?.service_fee_percentage || 5;
+    console.log('💰 ReviewTrip - Final car/hotel price (WITHOUT priceBreakdown override):', { 
+      basePrice, 
+      markupAmount, 
+      markupPercentage, 
+      serviceFee, 
+      serviceFeePercentage,
+      combinedTaxes,
+      combinedTaxPercentage,
+      totalDue,  // ✅ Now correctly calculated as the sum
+      currency: offerCurrency,
+      isCar,
+    });
     
-    if (totalDue > 0 && !effectiveItem?.basePrice) {
-      const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100);
-      basePrice = totalDue / totalFactor;
-      markupAmount = (basePrice * markupPercentage) / 100;
-      serviceFee = (basePrice * serviceFeePercentage) / 100;
-      combinedTaxes = markupAmount + serviceFee;
-      combinedTaxPercentage = markupPercentage + serviceFeePercentage;
-    } else {
-      basePrice = effectiveItem?.basePrice || 0;
-      markupAmount = effectiveItem?.markupAmount || 0;
-      serviceFee = effectiveItem?.serviceFee || 0;
-      combinedTaxes = markupAmount + serviceFee;
-      combinedTaxPercentage = markupPercentage + serviceFeePercentage;
+    // ✅ Store car breakdown for later use
+    if (isCar && !carPriceBreakdown) {
+      setCarPriceBreakdown({
+        basePrice,
+        markupAmount,
+        serviceFee,
+        totalDue,  // ✅ Now correctly set to the sum
+        markupPercentage,
+        serviceFeePercentage,
+        combinedTaxes,
+        combinedTaxPercentage,
+      });
     }
   }
 }
 
 
+// ✅ Price conversion effect - FIXED FOR CARS
 useEffect(() => {
   const convertPrices = async () => {
     const userCurrency = currency.code;
     const originalCurrency = offerCurrency || 'GBP';
     
-  
+    console.log('💰 Converting prices:', {
+      isCar,
+      carPriceBreakdown,
+      totalDue,
+      basePrice,
+      serviceFee,
+      markupAmount,
+      combinedTaxes,
+      originalCurrency,
+      userCurrency,
+    });
+    
+    // ✅ For cars: Use the stored breakdown
+    if (isCar && carPriceBreakdown) {
+      const { basePrice: bp, serviceFee: sf, combinedTaxes: ct, totalDue: td } = carPriceBreakdown;
+      
+      // If no price or same currency
+      if (td <= 0) {
+        setConvertedPrices({
+          basePrice: 0,
+          totalDue: 0,
+          combinedTaxes: 0,
+          serviceFee: 0,
+          currency: userCurrency,
+        });
+        return;
+      }
+      
+      // ✅ If same currency, use the values directly
+      if (userCurrency === originalCurrency) {
+        setConvertedPrices({
+          basePrice: bp,
+          totalDue: td,
+          combinedTaxes: ct,  // ✅ This should be set
+          serviceFee: sf,
+          currency: userCurrency,
+        });
+        return;
+      }
+      
+      setIsConverting(true);
+      try {
+        console.log('💰 Converting car prices from', originalCurrency, 'to', userCurrency);
+        
+        const [convertedBase, convertedService, convertedTaxes, convertedTotal] = await Promise.all([
+          convertPrice(bp, originalCurrency),
+          convertPrice(sf, originalCurrency),
+          convertPrice(ct, originalCurrency),  // ✅ Convert combinedTaxes
+          convertPrice(td, originalCurrency),
+        ]);
+        
+        setConvertedPrices({
+          basePrice: convertedBase || bp,
+          totalDue: convertedTotal || td,
+          combinedTaxes: convertedTaxes || ct,  // ✅ Set combinedTaxes
+          serviceFee: convertedService || sf,
+          currency: userCurrency,
+        });
+        
+        console.log('✅ Car prices converted to', userCurrency);
+      } catch (error) {
+        console.error('Failed to convert car prices:', error);
+        setConvertedPrices({
+          basePrice: bp,
+          totalDue: td,
+          combinedTaxes: ct,  // ✅ Set combinedTaxes
+          serviceFee: sf,
+          currency: originalCurrency,
+        });
+      } finally {
+        setIsConverting(false);
+      }
+      return;
+    }
+    
+    // ✅ For flights and hotels
     if (totalDue <= 0) return;
+    
     if (userCurrency === originalCurrency) {
       setConvertedPrices({
         basePrice: basePrice,
@@ -1070,16 +1218,18 @@ useEffect(() => {
   };
   
   convertPrices();
-}, [basePrice, totalDue, combinedTaxes, serviceFee, offerCurrency, currency.code]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [basePrice, totalDue, combinedTaxes, serviceFee, offerCurrency, currency.code, isCar, carPriceBreakdown]);
 
-const displayCurrency = convertedPrices.currency || currency.code || 'GBP';
-const displayBasePrice = formatPrice(convertedPrices.basePrice, displayCurrency);
-const displayCombinedTaxes = formatPrice(convertedPrices.combinedTaxes, displayCurrency);
-const displayTotalDue = formatPrice(convertedPrices.totalDue, displayCurrency);
-const displayServiceFee = formatPrice(convertedPrices.serviceFee, displayCurrency);
+
+  const displayCurrency = convertedPrices.currency || currency.code || 'GBP';
+  const displayBasePrice = formatPrice(convertedPrices.basePrice, displayCurrency);
+  const displayCombinedTaxes = formatPrice(convertedPrices.combinedTaxes, displayCurrency);
+  const displayTotalDue = formatPrice(convertedPrices.totalDue, displayCurrency);
+  const displayServiceFee = formatPrice(convertedPrices.serviceFee, displayCurrency);
   const formattedDiscountedTotal = appliedPromo?.discountAmount 
-  ? formatPrice(appliedPromo.discountAmount, offerCurrency) 
-  : '';
+    ? formatPrice(appliedPromo.discountAmount, offerCurrency) 
+    : '';
 
   const productTypeForVoucher = (() => {
     if (isHotel) return 'HOTEL';
@@ -1123,9 +1273,7 @@ const displayServiceFee = formatPrice(convertedPrices.serviceFee, displayCurrenc
 
   // ✅ DUFFEL: Skip passport validation
   const validatePassport = (): boolean => {
-    // ✅ Duffel doesn't need passport validation
     if (shouldSkipPassport) return true;
-    
     if (!requiresPassport) return true;
     
     setPassportError(null);
@@ -1176,419 +1324,390 @@ const displayServiceFee = formatPrice(convertedPrices.serviceFee, displayCurrenc
     return true;
   };
 
-
-
-
-
-
-const validateAllPassengers = (): boolean => {
-  const skipPassportValidation = shouldSkipPassport;
-  
-  for (let i = 0; i < additionalPassengers.length; i++) {
-    const p = additionalPassengers[i];
-    const passengerType = p.type || 'adult';
-    const label = `${passengerType.toUpperCase()} #${i + 1}`;
+  const validateAllPassengers = (): boolean => {
+    const skipPassportValidation = shouldSkipPassport;
     
-    // Basic required fields - NO FALLBACKS
-    if (!p.firstName || !p.firstName.trim()) {
-      alert(`${label}: First name is required.`);
-      return false;
+    for (let i = 0; i < additionalPassengers.length; i++) {
+      const p = additionalPassengers[i];
+      const passengerType = p.type || 'adult';
+      const label = `${passengerType.toUpperCase()} #${i + 1}`;
+      
+      if (!p.firstName || !p.firstName.trim()) {
+        alert(`${label}: First name is required.`);
+        return false;
+      }
+      if (!p.lastName || !p.lastName.trim()) {
+        alert(`${label}: Last name is required.`);
+        return false;
+      }
+
+      if (isFlight) {
+        if (!p.title) {
+          alert(`${label}: Title is required.`);
+          return false;
+        }
+        if (!p.gender) {
+          alert(`${label}: Gender is required.`);
+          return false;
+        }
+        if (!p.dateOfBirth) {
+          alert(`${label}: Date of Birth is required.`);
+          return false;
+        }
+        
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(p.dateOfBirth)) {
+          alert(`${label}: Date of birth must be in YYYY-MM-DD format.`);
+          return false;
+        }
+
+        const dob = new Date(p.dateOfBirth);
+        const today = new Date();
+        const age = today.getFullYear() - dob.getFullYear();
+        if (age < 2) {
+          alert(`${label}: Passenger must be at least 2 years old for flight bookings.`);
+          return false;
+        }
+
+        if (!skipPassportValidation && isWakanow && !isDomesticFlightResult) {
+          if (!p.passportNumber || !p.passportNumber.trim()) {
+            alert(`${label}: Passport number is required for flights to North America.`);
+            return false;
+          }
+          if (!p.passportExpiry) {
+            alert(`${label}: Passport expiry date is required for flights to North America.`);
+            return false;
+          }
+          if (!p.passportIssuingAuthority || !p.passportIssuingAuthority.trim()) {
+            alert(`${label}: Passport issuing authority is required for flights to North America.`);
+            return false;
+          }
+        }
+      }
     }
-    if (!p.lastName || !p.lastName.trim()) {
-      alert(`${label}: Last name is required.`);
-      return false;
+    return true;
+  };
+
+  // ==================== HANDLE COMPLETE BOOKING ====================
+  const handleCompleteBooking = async () => {
+    console.log('🔍🔍🔍 CRITICAL DEBUG - Passport State Values:', {
+      passportNumber: passportNumber || '(empty)',
+      passportExpiry: passportExpiry || '(empty)',
+      passportIssuingAuthority: passportIssuingAuthority || '(empty)',
+      passportIssueCountry: passportIssueCountry || '(empty)',
+      isWakanowFlight: (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW',
+      isNorthAmerica: isNorthAmericanDestination(extendedItem, searchParams),
+      isDomestic: isDomesticByAirport || isDomesticByProduct,
+    });
+
+    if (isBooking || isCreating) return;
+
+    if (!firstName || !firstName.trim()) {
+      alert('First name is required.');
+      return;
     }
+    if (!lastName || !lastName.trim()) {
+      alert('Last name is required.');
+      return;
+    }
+    if (!email || !email.trim()) {
+      alert('Email is required.');
+      return;
+    }
+    if (!phone || !phone.trim()) {
+      alert('Phone number is required.');
+      return;
+    }
+
+    if (isCar && !agreedToPolicy) {
+    alert('Please agree to the Rental Terms & Conditions and Cancellation Policy to continue.');
+    return;
+  }
 
     if (isFlight) {
-      // Title - NO FALLBACK
-      if (!p.title) {
-        alert(`${label}: Title is required.`);
-        return false;
+      console.log('🔍 BEFORE VALIDATION - Form values:', {
+        title: title,
+        gender: gender,
+        dateOfBirth: dateOfBirth,
+        firstName: firstName,
+        lastName: lastName,
+        email: email,
+        phone: phone,
+      });
+  
+      if (!title) {
+        alert('Title is required for flight bookings. Please select your title.');
+        return;
       }
-      // Gender - NO FALLBACK
-      if (!p.gender) {
-        alert(`${label}: Gender is required.`);
-        return false;
+  
+      if (!gender) {
+        alert('Gender is required for flight bookings. Please select your gender.');
+        return;
       }
-      // Date of Birth - NO FALLBACK
-      if (!p.dateOfBirth) {
-        alert(`${label}: Date of Birth is required.`);
-        return false;
-      }
-      
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      if (!dateRegex.test(p.dateOfBirth)) {
-        alert(`${label}: Date of birth must be in YYYY-MM-DD format.`);
-        return false;
+  
+      if (!dateOfBirth) {
+        alert('Date of birth is required for flight bookings. Please enter your date of birth.');
+        return;
       }
 
-      const dob = new Date(p.dateOfBirth);
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(dateOfBirth)) {
+        alert('Date of birth must be in YYYY-MM-DD format.');
+        return;
+      }
+
+      const dob = new Date(dateOfBirth);
       const today = new Date();
       const age = today.getFullYear() - dob.getFullYear();
       if (age < 2) {
-        alert(`${label}: Passenger must be at least 2 years old for flight bookings.`);
-        return false;
-      }
-
-      // Passport validation for additional passengers on international flights
-      if (!skipPassportValidation && isWakanow && !isDomesticFlightResult) {
-        if (!p.passportNumber || !p.passportNumber.trim()) {
-          alert(`${label}: Passport number is required for flights to North America.`);
-          return false;
-        }
-        if (!p.passportExpiry) {
-          alert(`${label}: Passport expiry date is required for flights to North America.`);
-          return false;
-        }
-        if (!p.passportIssuingAuthority || !p.passportIssuingAuthority.trim()) {
-          alert(`${label}: Passport issuing authority is required for flights to North America.`);
-          return false;
-        }
-      }
-    }
-  }
-  return true;
-};
-
-// ==================== HANDLE COMPLETE BOOKING ====================
-const handleCompleteBooking = async () => {
-  console.log('🔍🔍🔍 CRITICAL DEBUG - Passport State Values:', {
-    passportNumber: passportNumber || '(empty)',
-    passportExpiry: passportExpiry || '(empty)',
-    passportIssuingAuthority: passportIssuingAuthority || '(empty)',
-    passportIssueCountry: passportIssueCountry || '(empty)',
-    isWakanowFlight: (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW',
-    isNorthAmerica: isNorthAmericanDestination(extendedItem, searchParams),
-    isDomestic: isDomesticByAirport || isDomesticByProduct,
-  });
-
-  if (isBooking || isCreating) return;
-
-  // Validate lead passenger - NO FALLBACKS
-  if (!firstName || !firstName.trim()) {
-    alert('First name is required.');
-    return;
-  }
-  if (!lastName || !lastName.trim()) {
-    alert('Last name is required.');
-    return;
-  }
-  if (!email || !email.trim()) {
-    alert('Email is required.');
-    return;
-  }
-  if (!phone || !phone.trim()) {
-    alert('Phone number is required.');
-    return;
-  }
-
-
-  if (isFlight) {
-    // ✅ Debug log - check all values before validation
-    console.log('🔍 BEFORE VALIDATION - Form values:', {
-      title: title,
-      gender: gender,
-      dateOfBirth: dateOfBirth,
-      firstName: firstName,
-      lastName: lastName,
-      email: email,
-      phone: phone,
-    });
-  
-    // Title validation - NO FALLBACK
-    if (!title) {
-      alert('Title is required for flight bookings. Please select your title.');
-      return;
-    }
-  
-    // Gender validation - NO FALLBACK
-    if (!gender) {
-      alert('Gender is required for flight bookings. Please select your gender.');
-      return;
-    }
-  
-    // Date of Birth validation - NO FALLBACK
-    if (!dateOfBirth) {
-      alert('Date of birth is required for flight bookings. Please enter your date of birth.');
-      return;
-    }
-
-    // Date format validation
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(dateOfBirth)) {
-      alert('Date of birth must be in YYYY-MM-DD format.');
-      return;
-    }
-
-    // Age validation
-    const dob = new Date(dateOfBirth);
-    const today = new Date();
-    const age = today.getFullYear() - dob.getFullYear();
-    if (age < 2) {
-      alert('Passenger must be at least 2 years old for flight bookings.');
-      return;
-    }
-
-    // International flight passport validation
-    const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
-                            (actualItem as any)?.type?.toLowerCase().includes('wakanow');
-    const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
-    const isInternational = isWakanowFlight && !isDomesticFlight;
-    
-    if (!shouldSkipPassport && isFlight && isInternational) {
-      if (!passportNumber || !passportNumber.trim()) {
-        alert('Passport number is required for international flights.\n\nPlease provide:\n- Passport Number');
+        alert('Passenger must be at least 2 years old for flight bookings.');
         return;
       }
-      
-      const passportRegex = /^[A-Za-z][0-9]{7,8}$|^[A-Za-z0-9]{6,9}$/;
-      if (!passportRegex.test(passportNumber)) {
-        alert('Please enter a valid passport number (e.g., A12345678)');
-        return;
-      }
-      
-      if (!passportExpiry) {
-        alert('Passport expiry date is required for international flights.');
-        return;
-      }
-      
-      const expiryDate = new Date(passportExpiry);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (expiryDate < today) {
-        alert('Your passport has expired. Please renew your passport.');
-        return;
-      }
-      
-      if (!passportIssuingAuthority || !passportIssuingAuthority.trim()) {
-        alert('Passport Issuing Authority is required for international flights.');
-        return;
-      }
-    }
 
-    // Terms & Conditions validation
-    if (displayedTerms.length > 0 && !agreedToTerms) {
-      alert('Please agree to the Terms & Conditions to continue.');
-      return;
-    }
-  }
-
-  // ============================================================
-  // ✅ HOTEL VALIDATION
-  // ============================================================
-  if (isHotel && !agreedToPolicy) {
-    alert('Please agree to the cancellation policy to continue.');
-    return;
-  }
-
-  // ✅ Validate all additional passengers
-  if (!validateAllPassengers()) {
-    return;
-  }
-
-  setIsBooking(true);
-  try {
-    let passengerInfo: PassengerInfo;
-
-    // ============================================================
-    // ✅ BUILD PASSENGER INFO FOR HOTEL OR CAR
-    // ============================================================
-    if (isHotel || isCar) {
-      passengerInfo = {
-        firstName,
-        lastName,
-        email,
-        phone,
-      };
-    } 
-    // ============================================================
-    // ✅ BUILD PASSENGER INFO FOR FLIGHT
-    // ============================================================
-    else {
-      passengerInfo = {
-        firstName,
-        lastName,
-        email,
-        phone,
-        type: 'adult',
-        title: title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr',
-        gender: gender as 'm' | 'f',
-        dateOfBirth: dateOfBirth,
-        address: passportAddress || "221B Baker Street",
-        city: passportCity || "London",
-        country: passportCountry || "United Kingdom", 
-        countryCode: passportCountryCode || "GB",
-        postalCode: passportPostalCode || "NW1 6XE",
-      };
-      
       const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
                               (actualItem as any)?.type?.toLowerCase().includes('wakanow');
-      
       const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
-      const needsPassport = isWakanowFlight && !isDomesticFlight;
+      const isInternational = isWakanowFlight && !isDomesticFlight;
       
-      console.log('🔍 Passport condition check in handleCompleteBooking:', {
-        isWakanowFlight,
-        isDomesticFlight,
-        needsPassport,
-        passportNumber,
-        passportExpiry,
-        passportIssuingAuthority,
-      });
-      
-      if (needsPassport) {
-        (passengerInfo as any).PassportNumber = passportNumber;
-        (passengerInfo as any).ExpiryDate = passportExpiry;
-        (passengerInfo as any).PassportIssuingAuthority = passportIssuingAuthority;
-        (passengerInfo as any).PassportIssueCountryCode = passportIssueCountry || 'Nigeria';
+      if (!shouldSkipPassport && isFlight && isInternational) {
+        if (!passportNumber || !passportNumber.trim()) {
+          alert('Passport number is required for international flights.\n\nPlease provide:\n- Passport Number');
+          return;
+        }
         
-        (passengerInfo as any).passportNumber = passportNumber;
-        (passengerInfo as any).passportExpiry = passportExpiry;
-        (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
-        (passengerInfo as any).passportIssueCountry = passportIssueCountry || 'Nigeria';
+        const passportRegex = /^[A-Za-z][0-9]{7,8}$|^[A-Za-z0-9]{6,9}$/;
+        if (!passportRegex.test(passportNumber)) {
+          alert('Please enter a valid passport number (e.g., A12345678)');
+          return;
+        }
         
-        console.log('📄 Adding passport fields to lead passenger:', {
-          PassportNumber: (passengerInfo as any).PassportNumber,
-          ExpiryDate: (passengerInfo as any).ExpiryDate,
-          PassportIssuingAuthority: (passengerInfo as any).PassportIssuingAuthority,
-          PassportIssueCountryCode: (passengerInfo as any).PassportIssueCountryCode,
-        });
+        if (!passportExpiry) {
+          alert('Passport expiry date is required for international flights.');
+          return;
+        }
+        
+        const expiryDate = new Date(passportExpiry);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (expiryDate < today) {
+          alert('Your passport has expired. Please renew your passport.');
+          return;
+        }
+        
+        if (!passportIssuingAuthority || !passportIssuingAuthority.trim()) {
+          alert('Passport Issuing Authority is required for international flights.');
+          return;
+        }
+      }
+
+      if (displayedTerms.length > 0 && !agreedToTerms) {
+        alert('Please agree to the Terms & Conditions to continue.');
+        return;
       }
     }
-    
-    // ✅ CRITICAL: Attach additional passengers
-    if (additionalPassengers.length > 0) {
-      const isWakanowFlightForTravellers = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
-                                           (actualItem as any)?.type?.toLowerCase().includes('wakanow');
-      const isDomesticFlightForTravellers = isDomesticByAirport || isDomesticByProduct;
-      const needsPassportForTraveller = isWakanowFlightForTravellers && !isDomesticFlightForTravellers;
-      
-      // Build formatted travellers
-      const travellers = additionalPassengers.map((p) => {
-        let passengerType = 'Adult';
-        const typeLower = (p.type || 'adult').toLowerCase();
-        if (typeLower === 'child') {
-          passengerType = 'Child';
-        } else if (typeLower === 'infant') {
-          passengerType = 'Infant';
-        }
-        
-        let dateOfBirth = p.dateOfBirth || '';
-        if (!dateOfBirth) {
-          const today = new Date();
-          let yearOffset = 0;
-          if (passengerType === 'Child') {
-            yearOffset = 8;
-          } else if (passengerType === 'Infant') {
-            yearOffset = 1;
-          }
-          if (yearOffset > 0) {
-            const defaultDate = new Date(today);
-            defaultDate.setFullYear(today.getFullYear() - yearOffset);
-            defaultDate.setMonth(6);
-            defaultDate.setDate(15);
-            dateOfBirth = defaultDate.toISOString().split('T')[0];
-          }
-        }
-        
-        const traveller: any = {
-          PassengerType: passengerType,
-          FirstName: p.firstName || '',
-          LastName: p.lastName || '',
-          DateOfBirth: dateOfBirth,
-          PhoneNumber: p.phone || phone,
-          Email: p.email || email,
-          Gender: p.gender === 'f' ? 'Female' : 'Male',
-          Title: p.title || 'Mr',
-          Address: p.address || passportAddress || '123 Fake Street',
-          Country: p.country || passportCountry || 'Nigeria',
-          CountryCode: p.countryCode || passportCountryCode || 'NG',
-          City: p.city || passportCity || 'Lagos',
-          PostalCode: p.postalCode || passportPostalCode || '100001',
+
+    if (isHotel && !agreedToPolicy) {
+      alert('Please agree to the cancellation policy to continue.');
+      return;
+    }
+
+    if (!validateAllPassengers()) {
+      return;
+    }
+
+    setIsBooking(true);
+    try {
+      let passengerInfo: PassengerInfo;
+
+      if (isHotel || isCar) {
+        passengerInfo = {
+          firstName,
+          lastName,
+          email,
+          phone,
+        };
+      } else {
+        passengerInfo = {
+          firstName,
+          lastName,
+          email,
+          phone,
+          type: 'adult',
+          title: title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr',
+          gender: gender as 'm' | 'f',
+          dateOfBirth: dateOfBirth,
+          address: passportAddress || "221B Baker Street",
+          city: passportCity || "London",
+          country: passportCountry || "United Kingdom", 
+          countryCode: passportCountryCode || "GB",
+          postalCode: passportPostalCode || "NW1 6XE",
         };
         
-        if (needsPassportForTraveller) {
-          traveller.PassportNumber = p.passportNumber || '';
-          traveller.ExpiryDate = p.passportExpiry || '';
-          traveller.PassportIssuingAuthority = p.passportIssuingAuthority || '';
-          traveller.PassportIssueCountryCode = p.passportIssueCountry || 'NG';
-          
-          traveller.passportNumber = p.passportNumber || '';
-          traveller.passportExpiry = p.passportExpiry || '';
-          traveller.passportIssuingAuthority = p.passportIssuingAuthority || '';
-          traveller.passportIssueCountry = p.passportIssueCountry || 'NG';
-        }
+        const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+                                (actualItem as any)?.type?.toLowerCase().includes('wakanow');
         
-        return traveller;
-      });
+        const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
+        const needsPassport = isWakanowFlight && !isDomesticFlight;
+        
+        console.log('🔍 Passport condition check in handleCompleteBooking:', {
+          isWakanowFlight,
+          isDomesticFlight,
+          needsPassport,
+          passportNumber,
+          passportExpiry,
+          passportIssuingAuthority,
+        });
+        
+        if (needsPassport) {
+          (passengerInfo as any).PassportNumber = passportNumber;
+          (passengerInfo as any).ExpiryDate = passportExpiry;
+          (passengerInfo as any).PassportIssuingAuthority = passportIssuingAuthority;
+          (passengerInfo as any).PassportIssueCountryCode = passportIssueCountry || 'Nigeria';
+          
+          (passengerInfo as any).passportNumber = passportNumber;
+          (passengerInfo as any).passportExpiry = passportExpiry;
+          (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
+          (passengerInfo as any).passportIssueCountry = passportIssueCountry || 'Nigeria';
+          
+          console.log('📄 Adding passport fields to lead passenger:', {
+            PassportNumber: (passengerInfo as any).PassportNumber,
+            ExpiryDate: (passengerInfo as any).ExpiryDate,
+            PassportIssuingAuthority: (passengerInfo as any).PassportIssuingAuthority,
+            PassportIssueCountryCode: (passengerInfo as any).PassportIssueCountryCode,
+          });
+        }
+      }
       
-      // ✅ Attach both arrays to passengerInfo
-      (passengerInfo as any).additionalPassengers = additionalPassengers;
-      (passengerInfo as any).travellers = travellers;
+      if (additionalPassengers.length > 0) {
+        const isWakanowFlightForTravellers = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+                                             (actualItem as any)?.type?.toLowerCase().includes('wakanow');
+        const isDomesticFlightForTravellers = isDomesticByAirport || isDomesticByProduct;
+        const needsPassportForTraveller = isWakanowFlightForTravellers && !isDomesticFlightForTravellers;
+        
+        const travellers = additionalPassengers.map((p) => {
+          let passengerType = 'Adult';
+          const typeLower = (p.type || 'adult').toLowerCase();
+          if (typeLower === 'child') {
+            passengerType = 'Child';
+          } else if (typeLower === 'infant') {
+            passengerType = 'Infant';
+          }
+          
+          let dateOfBirth = p.dateOfBirth || '';
+          if (!dateOfBirth) {
+            const today = new Date();
+            let yearOffset = 0;
+            if (passengerType === 'Child') {
+              yearOffset = 8;
+            } else if (passengerType === 'Infant') {
+              yearOffset = 1;
+            }
+            if (yearOffset > 0) {
+              const defaultDate = new Date(today);
+              defaultDate.setFullYear(today.getFullYear() - yearOffset);
+              defaultDate.setMonth(6);
+              defaultDate.setDate(15);
+              dateOfBirth = defaultDate.toISOString().split('T')[0];
+            }
+          }
+          
+          const traveller: any = {
+            PassengerType: passengerType,
+            FirstName: p.firstName || '',
+            LastName: p.lastName || '',
+            DateOfBirth: dateOfBirth,
+            PhoneNumber: p.phone || phone,
+            Email: p.email || email,
+            Gender: p.gender === 'f' ? 'Female' : 'Male',
+            Title: p.title || 'Mr',
+            Address: p.address || passportAddress || '123 Fake Street',
+            Country: p.country || passportCountry || 'Nigeria',
+            CountryCode: p.countryCode || passportCountryCode || 'NG',
+            City: p.city || passportCity || 'Lagos',
+            PostalCode: p.postalCode || passportPostalCode || '100001',
+          };
+          
+          if (needsPassportForTraveller) {
+            traveller.PassportNumber = p.passportNumber || '';
+            traveller.ExpiryDate = p.passportExpiry || '';
+            traveller.PassportIssuingAuthority = p.passportIssuingAuthority || '';
+            traveller.PassportIssueCountryCode = p.passportIssueCountry || 'NG';
+            
+            traveller.passportNumber = p.passportNumber || '';
+            traveller.passportExpiry = p.passportExpiry || '';
+            traveller.passportIssuingAuthority = p.passportIssuingAuthority || '';
+            traveller.passportIssueCountry = p.passportIssueCountry || 'NG';
+          }
+          
+          return traveller;
+        });
+        
+        (passengerInfo as any).additionalPassengers = additionalPassengers;
+        (passengerInfo as any).travellers = travellers;
+        
+        console.log('👤 Attached additional passengers:', {
+          additionalCount: additionalPassengers.length,
+          travellersCount: travellers.length,
+        });
+      }
+
+      if (isFlight && displayedTerms.length > 0) {
+        (passengerInfo as any).policyAccepted = agreedToTerms;
+        (passengerInfo as any).policyAcceptedAt = new Date().toISOString();
+      }
       
-      console.log('👤 Attached additional passengers:', {
-        additionalCount: additionalPassengers.length,
-        travellersCount: travellers.length,
+      let hbxMetadata: any = undefined;
+      if (isHBXHotel && hbxQuote) {
+        const quoteData = hbxQuote?.data?.data || hbxQuote?.data;
+        const firstOfferData = quoteData?.offers?.[0];
+        hbxMetadata = {
+          totalAmount: totalDue,
+          currency: (firstOfferData?.price?.currency || actualItem.currency || 'GBP').toUpperCase(),
+          cancellationPolicySnapshot: "Standard policy",
+          cancellationDeadline: firstOfferData?.policies?.cancellations?.[0]?.deadline || new Date().toISOString(),
+          policyAccepted: true
+        };
+      }
+
+      if (isHBXHotel && additionalPassengers.length > 0) {
+        (passengerInfo as any).guests = [
+          {
+            name: { firstName, lastName, title: (title || 'mr').toUpperCase() },
+            travelerId: 1
+          },
+          ...additionalPassengers.map((g, idx) => ({
+            name: { firstName: g.firstName, lastName: g.lastName, title: (g.title || 'mr').toUpperCase() },
+            travelerId: idx + 2
+          }))
+        ];
+      }
+
+      console.log('👥 Sending to payment with passengers:', {
+        provider: isDuffel ? 'DUFFEL' : isWakanow ? 'WAKANOW' : 'OTHER',
+        lead: `${firstName} ${lastName}`,
+        additionalCount: (passengerInfo as any).additionalPassengers?.length || 0,
+        travellersCount: (passengerInfo as any).travellers?.length || 0,
       });
-    }
+      console.log('🛫 FINAL passengerInfo BEFORE sending to onProceedToPayment:', {
+        passengerInfo,
+        hasAdditionalPassengers: !!(passengerInfo as any).additionalPassengers?.length,
+        hasTravellers: !!(passengerInfo as any).travellers?.length,
+        travellersCount: (passengerInfo as any).travellers?.length || 0,
+        PassportNumber: (passengerInfo as any).PassportNumber,
+      });
 
-    if (isFlight && displayedTerms.length > 0) {
-      (passengerInfo as any).policyAccepted = agreedToTerms;
-      (passengerInfo as any).policyAcceptedAt = new Date().toISOString();
+      await onProceedToPayment(
+        passengerInfo,
+        voucherApplied?.valid ? voucherCode.trim() : undefined,
+        hbxMetadata
+      );
+    } catch (error: any) {
+      console.error('Booking preparation error:', error);
+      alert('Failed to prepare booking. Please try again.');
+    } finally {
+      setIsBooking(false);
     }
-    
-    let hbxMetadata: any = undefined;
-    if (isHBXHotel && hbxQuote) {
-      const quoteData = hbxQuote?.data?.data || hbxQuote?.data;
-      const firstOfferData = quoteData?.offers?.[0];
-      hbxMetadata = {
-        totalAmount: totalDue,
-        currency: (firstOfferData?.price?.currency || actualItem.currency || 'GBP').toUpperCase(),
-        cancellationPolicySnapshot: "Standard policy",
-        cancellationDeadline: firstOfferData?.policies?.cancellations?.[0]?.deadline || new Date().toISOString(),
-        policyAccepted: true
-      };
-    }
-
-    if (isHBXHotel && additionalPassengers.length > 0) {
-      (passengerInfo as any).guests = [
-        {
-          name: { firstName, lastName, title: (title || 'mr').toUpperCase() },
-          travelerId: 1
-        },
-        ...additionalPassengers.map((g, idx) => ({
-          name: { firstName: g.firstName, lastName: g.lastName, title: (g.title || 'mr').toUpperCase() },
-          travelerId: idx + 2
-        }))
-      ];
-    }
-
-    console.log('👥 Sending to payment with passengers:', {
-      provider: isDuffel ? 'DUFFEL' : isWakanow ? 'WAKANOW' : 'OTHER',
-      lead: `${firstName} ${lastName}`,
-      additionalCount: (passengerInfo as any).additionalPassengers?.length || 0,
-      travellersCount: (passengerInfo as any).travellers?.length || 0,
-    });
-    console.log('🛫 FINAL passengerInfo BEFORE sending to onProceedToPayment:', {
-      passengerInfo,
-      hasAdditionalPassengers: !!(passengerInfo as any).additionalPassengers?.length,
-      hasTravellers: !!(passengerInfo as any).travellers?.length,
-      travellersCount: (passengerInfo as any).travellers?.length || 0,
-      PassportNumber: (passengerInfo as any).PassportNumber,
-    });
-
-    await onProceedToPayment(
-      passengerInfo,
-      voucherApplied?.valid ? voucherCode.trim() : undefined,
-      hbxMetadata
-    );
-  } catch (error: any) {
-    console.error('Booking preparation error:', error);
-    alert('Failed to prepare booking. Please try again.');
-  } finally {
-    setIsBooking(false);
-  }
-};
+  };
 
   const inputCls = 'w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/30 focus:border-[#33a8da] transition-all text-sm font-medium text-gray-900 placeholder-gray-400';
   const bookingReference = extBooking?.reference;
@@ -1749,30 +1868,30 @@ const handleCompleteBooking = async () => {
               </div>
   
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {isFlight && (
-  <div>
-    <label className="block text-xs font-medium text-gray-500 mb-1">
-      Title <span className="text-red-500">*</span>
-    </label>
-    <select
-      value={title}
-      onChange={(e) => {
-        console.log('🔄 Title changed to:', e.target.value);
-        setTitle(e.target.value as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr');
-      }}
-      className={inputCls}
-      disabled={!!extBooking}
-      required
-    >
-      <option value="">Select Title</option>
-      <option value="mr">Mr</option>
-      <option value="ms">Ms</option>
-      <option value="mrs">Mrs</option>
-      <option value="miss">Miss</option>
-      <option value="dr">Dr</option>
-    </select>
-  </div>
-)}
+                {isFlight && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Title <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={title}
+                      onChange={(e) => {
+                        console.log('🔄 Title changed to:', e.target.value);
+                        setTitle(e.target.value as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr');
+                      }}
+                      className={inputCls}
+                      disabled={!!extBooking}
+                      required
+                    >
+                      <option value="">Select Title</option>
+                      <option value="mr">Mr</option>
+                      <option value="ms">Ms</option>
+                      <option value="mrs">Mrs</option>
+                      <option value="miss">Miss</option>
+                      <option value="dr">Dr</option>
+                    </select>
+                  </div>
+                )}
   
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -1821,24 +1940,24 @@ const handleCompleteBooking = async () => {
                   </div>
                 )}
   
-  {isFlight && (
-  <div>
-    <label className="block text-xs font-medium text-gray-500 mb-1">
-      Date of Birth <span className="text-red-500">*</span>
-    </label>
-    <input
-      type="date"
-      value={dateOfBirth}
-      onChange={(e) => {
-        console.log('🔄 Date of Birth changed to:', e.target.value);
-        setDateOfBirth(e.target.value);
-      }}
-      className={inputCls}
-      readOnly={!!extBooking}
-      required
-    />
-  </div>
-)}
+                {isFlight && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Date of Birth <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={dateOfBirth}
+                      onChange={(e) => {
+                        console.log('🔄 Date of Birth changed to:', e.target.value);
+                        setDateOfBirth(e.target.value);
+                      }}
+                      className={inputCls}
+                      readOnly={!!extBooking}
+                      required
+                    />
+                  </div>
+                )}
   
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -2141,217 +2260,354 @@ const handleCompleteBooking = async () => {
               </div>
             )}
   
-            {/* ========== TRIP SUMMARY ========== */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Trip summary</h2>
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
-                  {isHotel ? (
-                    <svg className="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" /></svg>
-                  ) : isFlight ? (
-                    <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-                  ) : (
-                    <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" /></svg>
-                  )}
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900">{actualItem.title}</h3>
-                  <p className="text-sm text-gray-500">{actualItem.subtitle}</p>
-                  <p className="text-xs text-gray-400 mt-1">{actualItem.provider}</p>
-                </div>
-  
+           {/* ========== TRIP SUMMARY ========== */}
+<div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+  <h2 className="text-lg font-semibold text-gray-900 mb-4">Trip summary</h2>
+  <div className="flex items-start gap-4">
+    <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
+      {isHotel ? (
+        <svg className="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" /></svg>
+      ) : isFlight ? (
+        <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+      ) : (
+        <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" /></svg>
+      )}
+    </div>
+    <div className="flex-1">
+      <h3 className="font-semibold text-gray-900">{actualItem.title}</h3>
+      <p className="text-sm text-gray-500">{actualItem.subtitle}</p>
+      <p className="text-xs text-gray-400 mt-1">{actualItem.provider}</p>
+    </div>
+  </div>
 
-              </div>
-  
-              {isHotel && (
-                <div className="mt-6 pt-6 border-t border-gray-100">
-                  <h3 className="text-md font-semibold text-gray-900 mb-3">Cancellation Policy</h3>
-                  <div className="space-y-3">
-                    {/* ✅ DISPLAY THE ACTUAL CANCELLATION POLICY FROM THE ITEM */}
-                    {(actualItem as any)?.cancellationPolicy ? (
-                      <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-                        <p className="text-sm text-gray-700 leading-relaxed">
-                          {(actualItem as any).cancellationPolicy}
-                        </p>
-                      </div>
+  {/* ✅ CAR RENTAL DETAILS */}
+  {isCar && (
+    <div className="mt-4 pt-4 border-t border-gray-100">
+      <h3 className="text-md font-semibold text-gray-900 mb-3">Vehicle Details</h3>
+      
+      {/* Vehicle Specs - Compact Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        <div className="bg-gray-50 rounded-lg p-2 text-center">
+          <p className="text-[10px] text-gray-500">Category</p>
+          <p className="text-sm font-medium text-gray-900">
+            {extendedItem.vehicle?.category === 'ST' ? 'Standard' : 
+             extendedItem.vehicle?.category === 'BU' ? 'Business' : 
+             extendedItem.vehicle?.category === 'FC' ? 'First Class' : 
+             extendedItem.vehicle?.category || 'Standard'}
+          </p>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-2 text-center">
+          <p className="text-[10px] text-gray-500">Seats</p>
+          <p className="text-sm font-medium text-gray-900">
+            {extendedItem.vehicle?.seats?.[0]?.count || 'N/A'}
+          </p>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-2 text-center">
+          <p className="text-[10px] text-gray-500">Baggage</p>
+          <p className="text-sm font-medium text-gray-900">
+            {extendedItem.vehicle?.baggages?.[0]?.count || 'N/A'}
+          </p>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-2 text-center">
+          <p className="text-[10px] text-gray-500">Provider</p>
+          <p className="text-sm font-medium text-gray-900">
+            {extendedItem.serviceProvider?.name || extendedItem.provider || 'N/A'}
+          </p>
+        </div>
+      </div>
+      
+      {/* Pickup & Dropoff - Compact */}
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="bg-gray-50 rounded-lg p-2">
+          <p className="text-[10px] text-gray-500">Pickup</p>
+          <p className="text-sm font-medium text-gray-900">
+            {extendedItem.start?.locationCode || 'N/A'}
+          </p>
+          <p className="text-[10px] text-gray-400">
+            {extendedItem.start?.dateTime ? new Date(extendedItem.start.dateTime).toLocaleString() : ''}
+          </p>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-2">
+          <p className="text-[10px] text-gray-500">Dropoff</p>
+          <p className="text-sm font-medium text-gray-900">
+            {extendedItem.end?.locationCode || 'N/A'}
+          </p>
+          <p className="text-[10px] text-gray-400">
+            {extendedItem.end?.dateTime ? new Date(extendedItem.end.dateTime).toLocaleString() : ''}
+          </p>
+        </div>
+      </div>
+      
+      {/* ✅ CANCELLATION POLICY - FULL DETAILS */}
+      {extendedItem.cancellationRules && extendedItem.cancellationRules.length > 0 && (
+        <div className="mt-3">
+          <h4 className="text-sm font-semibold text-gray-700 mb-2">Cancellation Policy</h4>
+          <div className="space-y-2">
+            {extendedItem.cancellationRules.map((rule: {
+              ruleDescription: string;
+              feeType?: string;
+              feeValue?: string;
+              metricType?: string;
+              metricMin?: string;
+              metricMax?: string;
+            }, idx: number) => (
+              <div key={idx} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-sm text-gray-700">{rule.ruleDescription}</p>
+                {rule.feeType && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {rule.feeValue === '0' || (rule.feeValue === '0%') ? (
+                      <span className="text-green-600 font-medium">✓ Free cancellation</span>
                     ) : (
-                      <p className="text-sm text-gray-600">Please review the cancellation policy carefully.</p>
+                      <span>Fee: {rule.feeValue}% {rule.feeType} 
+                        {rule.metricMin && rule.metricMax && ` (${rule.metricMin} - ${rule.metricMax} ${rule.metricType})`}
+                        {rule.metricMin && !rule.metricMax && ` (${rule.metricMin}+ ${rule.metricType})`}
+                      </span>
                     )}
-                    
-                    {/* ✅ SHOW ALL POLICIES IF AVAILABLE */}
-                    {(actualItem as any)?.policies && (actualItem as any).policies.length > 0 && (
-                      <div className="mt-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
-                        <p className="text-xs font-semibold text-blue-800 mb-2">Additional Policies:</p>
-                        <ul className="space-y-1">
-                          {(actualItem as any).policies.map((policy: any, idx: number) => (
-                            <li key={idx} className="text-xs text-blue-700">
-                              • {policy.type?.replace(/_/g, ' ')}: {policy.text}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    
-                    <div className="flex items-start gap-2 mt-4 p-3 bg-gray-50 rounded-lg">
-                      <input
-                        type="checkbox"
-                        id="cancellationPolicy"
-                        checked={agreedToPolicy}
-                        onChange={(e) => setAgreedToPolicy(e.target.checked)}
-                        className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
-                        required
-                        disabled={!!extBooking}
-                      />
-                      <label htmlFor="cancellationPolicy" className="text-sm text-gray-700">
-                        I have read and agree to the cancellation policy.
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              )}
-  
-              {displayedTerms.length > 0 && !extBooking && isFlight && (
-                <div className="mt-6 pt-6 border-t border-gray-100">
-                  <h3 className="text-md font-semibold text-gray-900 mb-3">Terms & Conditions</h3>
-                  <div className="max-h-60 overflow-y-auto bg-gray-50 rounded-xl p-4 mb-4">
-                    <ul className="space-y-2">
-                      {displayedTerms.map((term, idx) => (
-                        <li key={idx} className="text-xs text-gray-600 flex gap-2">
-                          <span className="text-[#33a8da] font-bold">•</span>
-                          <span>{term}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
-            </div>
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      
+{/* Car Rental Agreement Checkbox */}
+<div className="mt-3 flex items-start gap-2 p-3 bg-gray-50 rounded-lg">
+  <input
+    type="checkbox"
+    id="carRentalPolicy"
+    checked={agreedToPolicy}  // ✅ This should be linked
+    onChange={(e) => setAgreedToPolicy(e.target.checked)}  // ✅ This updates the state
+    className="mt-0.5 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
+    required
+    disabled={!!extBooking}
+  />
+  <label htmlFor="carRentalPolicy" className="text-xs text-gray-700">
+    I have read and agree to the <span className="font-semibold">Rental Terms & Conditions</span> and 
+    <span className="font-semibold"> Cancellation Policy</span>.
+  </label>
+</div>
+    </div>
+  )}
+
+  {/* ✅ HOTEL CANCELLATION POLICY - ONLY FOR HOTELS */}
+  {isHotel && (
+    <div className="mt-6 pt-6 border-t border-gray-100">
+      <h3 className="text-md font-semibold text-gray-900 mb-3">Cancellation Policy</h3>
+      <div className="space-y-3">
+        {(actualItem as any)?.cancellationPolicy ? (
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-sm text-gray-700 leading-relaxed">
+              {(actualItem as any).cancellationPolicy}
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-600">Please review the cancellation policy carefully.</p>
+        )}
+        
+        {(actualItem as any)?.policies && (actualItem as any).policies.length > 0 && (
+          <div className="mt-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
+            <p className="text-xs font-semibold text-blue-800 mb-2">Additional Policies:</p>
+            <ul className="space-y-1">
+              {(actualItem as any).policies.map((policy: any, idx: number) => (
+                <li key={idx} className="text-xs text-blue-700">
+                  • {policy.type?.replace(/_/g, ' ')}: {policy.text}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        
+        <div className="flex items-start gap-2 mt-4 p-3 bg-gray-50 rounded-lg">
+          <input
+            type="checkbox"
+            id="cancellationPolicy"
+            checked={agreedToPolicy}
+            onChange={(e) => setAgreedToPolicy(e.target.checked)}
+            className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
+            required
+            disabled={!!extBooking}
+          />
+          <label htmlFor="cancellationPolicy" className="text-sm text-gray-700">
+            I have read and agree to the cancellation policy.
+          </label>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* ✅ TERMS & CONDITIONS - ONLY FOR FLIGHTS */}
+  {displayedTerms.length > 0 && !extBooking && isFlight && (
+    <div className="mt-6 pt-6 border-t border-gray-100">
+      <h3 className="text-md font-semibold text-gray-900 mb-3">Terms & Conditions</h3>
+      <div className="max-h-60 overflow-y-auto bg-gray-50 rounded-xl p-4 mb-4">
+        <ul className="space-y-2">
+          {displayedTerms.map((term, idx) => (
+            <li key={idx} className="text-xs text-gray-600 flex gap-2">
+              <span className="text-[#33a8da] font-bold">•</span>
+              <span>{term}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )}
+</div>
           </div>
   
-          {/* ========== PRICE SIDEBAR ========== */}
-          <aside className="w-full lg:w-[380px]">
-            <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-24 border border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Price details</h3>
-  
-              <div className="mb-4 text-xs text-gray-500 flex items-center gap-1">
-                <span> All prices in {currency.code} ({currency.symbol})</span>
-              </div>
-  
-              <div className="space-y-3 mb-6">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-medium text-gray-500">Base Fare</span>
-                  <span className="text-sm font-semibold text-gray-900">{displayBasePrice}</span>
-                </div>
-  
-                {isFlight && combinedTaxes > 0 && (
-                  <div className="flex justify-between items-center pt-1 border-t border-gray-100">
-                    <span className="text-xs font-medium text-gray-500">Taxes</span>
-                    <span className="text-sm font-semibold text-gray-900">{displayCombinedTaxes}</span>
-                  </div>
-                )}
-  
-                {isHotel && serviceFee > 0 && (
-                  <div className="flex justify-between items-center pt-1 border-t border-gray-100">
-                    <span className="text-xs font-medium text-gray-500">Service Fee</span>
-                    <span className="text-sm font-semibold text-gray-900">{displayServiceFee}</span>
-                  </div>
-                )}
-  
-                {appliedPromo && (
-                  <div className="flex justify-between items-center text-xs font-bold text-green-600 pt-1">
-                    <span>Discount ({appliedPromo.code})</span>
-                    <span>- {formattedDiscountedTotal}</span>
-                  </div>
-                )}
-  
-                <div className="flex justify-between items-center pt-3 border-t border-gray-100">
-                  <span className="text-sm font-bold text-gray-900">Total Fare</span>
-                  <span className="text-xl font-black text-[#33a8da]">{displayTotalDue}</span>
-                </div>
-  
-                {breakdownDescription && (
-                  <div className="mt-2 text-[10px] text-gray-400 border-t border-gray-50 pt-2 text-center">
-                  </div>
-                )}
-              </div>
-  
-              {!extBooking && (
-                <div className="pt-3 border-t border-gray-100">
-                  <label className="block text-xs font-medium text-gray-500 mb-2">Voucher code</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={voucherCode}
-                      onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
-                      placeholder="Enter code"
-                      className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]"
-                    />
-                    <button
-                      type="button"
-                      disabled={isValidatingVoucher || !voucherCode.trim()}
-                      onClick={handleApplyVoucher}
-                      className="px-4 py-2 bg-[#33a8da] text-white text-sm font-medium rounded-lg hover:bg-[#2c98c7] disabled:opacity-50"
-                    >
-                      Apply
-                    </button>
-                  </div>
-                  {voucherError && <p className="mt-1 text-xs text-red-500">{voucherError}</p>}
-                  {voucherApplied?.valid && (
-                    <p className="mt-1 text-xs text-green-600">
-                      Discount: {currencySymbol(offerCurrency)}{voucherApplied.discountAmount?.toLocaleString()} off
-                    </p>
-                  )}
-                </div>
-              )}
-  
-              {displayedTerms.length > 0 && !extBooking && isFlight && (
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-xl">
-                    <input
-                      type="checkbox"
-                      id="termsAndConditions"
-                      checked={agreedToTerms}
-                      onChange={(e) => setAgreedToTerms(e.target.checked)}
-                      className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
-                      required
-                    />
-                    <label htmlFor="termsAndConditions" className="text-sm text-gray-700">
-                      I have read and agree to the <span className="font-semibold">Terms & Conditions</span> and
-                      <span className="font-semibold"> Cancellation Policy</span>.
-                    </label>
-                  </div>
-                </div>
-              )}
-  
-  <button
-  onClick={handleCompleteBooking}
-  disabled={
-    isBooking || isCreating ||
-    (isHotel && !agreedToPolicy) ||
-    (isFlight && displayedTerms.length > 0 && !agreedToTerms) ||
-    (passportRequired && isLoggedIn && isPassportIncomplete && !shouldSkipPassport) ||
-    isCheckingPassport
-  }
-                className="w-full bg-[#33a8da] text-white font-medium py-3 rounded-xl hover:bg-[#2c98c7] transition disabled:opacity-50 mt-4"
-              >
-                {isCheckingPassport ? 'Checking passport...' :
-                  isCreating ? 'Creating Booking...' :
-                    isBooking ? 'Please wait...' :
-                      extBooking ? 'Proceed to Payment' : 'Continue to payment'}
-              </button>
-  
-              <p className="mt-4 text-xs text-gray-400 text-center flex items-center justify-center gap-1">
-                <svg className="w-3 h-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001z" clipRule="evenodd" />
-                </svg>
-                Secure checkout
-              </p>
-            </div>
-          </aside>
+{/* ========== PRICE SIDEBAR ========== */}
+<aside className="w-full lg:w-[380px]">
+  <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-24 border border-gray-100">
+    <h3 className="text-lg font-semibold text-gray-900 mb-4">Price details</h3>
+
+    <div className="mb-4 text-xs text-gray-500 flex items-center gap-1">
+      <span> All prices in {currency.code} ({currency.symbol})</span>
+    </div>
+
+    <div className="space-y-3 mb-6">
+      {/* Base Price */}
+      <div className="flex justify-between items-center">
+        <span className="text-xs font-medium text-gray-500">
+          {isCar ? 'Base Rate' : isFlight ? 'Base Fare' : 'Base Price'}
+        </span>
+        <span className="text-sm font-semibold text-gray-900">{displayBasePrice}</span>
+      </div>
+
+ {/* ✅ Car Rental: Combined Service Fee - FIXED */}
+{(isCar && carPriceBreakdown && (carPriceBreakdown.markupAmount > 0 || carPriceBreakdown.serviceFee > 0 || carPriceBreakdown.combinedTaxes > 0)) && (
+  <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+    <span className="text-xs font-medium text-gray-500">
+      Service Fee ({carPriceBreakdown.markupPercentage + carPriceBreakdown.serviceFeePercentage + carPriceBreakdown.combinedTaxPercentage}%)
+    </span>
+    <span className="text-sm font-semibold text-gray-900">
+      {formatPrice(
+        convertedPrices.serviceFee + convertedPrices.combinedTaxes,
+        displayCurrency
+      )}
+    </span>
+  </div>
+)}
+
+      {/* Flight: Taxes */}
+      {isFlight && combinedTaxes > 0 && (
+        <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+          <span className="text-xs font-medium text-gray-500">Taxes</span>
+          <span className="text-sm font-semibold text-gray-900">{displayCombinedTaxes}</span>
+        </div>
+      )}
+
+      {/* Hotel: Service Fee */}
+      {isHotel && serviceFee > 0 && (
+        <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+          <span className="text-xs font-medium text-gray-500">Service Fee</span>
+          <span className="text-sm font-semibold text-gray-900">{displayServiceFee}</span>
+        </div>
+      )}
+
+      {/* Applied Promo/Discount */}
+      {appliedPromo && (
+        <div className="flex justify-between items-center text-xs font-bold text-green-600 pt-1">
+          <span>Discount ({appliedPromo.code})</span>
+          <span>- {formattedDiscountedTotal}</span>
+        </div>
+      )}
+
+      {/* Total Fare */}
+      <div className="flex justify-between items-center pt-3 border-t border-gray-100">
+        <span className="text-sm font-bold text-gray-900">Total Fare</span>
+        <span className="text-xl font-black text-[#33a8da]">{displayTotalDue}</span>
+      </div>
+
+      {/* Breakdown Description */}
+      {breakdownDescription && (
+        <div className="mt-2 text-[10px] text-gray-400 border-t border-gray-50 pt-2 text-center">
+          {breakdownDescription}
+        </div>
+      )}
+    </div>
+
+    {/* Voucher Section */}
+    {!extBooking && (
+      <div className="pt-3 border-t border-gray-100">
+        <label className="block text-xs font-medium text-gray-500 mb-2">Voucher code</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={voucherCode}
+            onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+            placeholder="Enter code"
+            className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]"
+          />
+          <button
+            type="button"
+            disabled={isValidatingVoucher || !voucherCode.trim()}
+            onClick={handleApplyVoucher}
+            className="px-4 py-2 bg-[#33a8da] text-white text-sm font-medium rounded-lg hover:bg-[#2c98c7] disabled:opacity-50"
+          >
+            Apply
+          </button>
+        </div>
+        {voucherError && <p className="mt-1 text-xs text-red-500">{voucherError}</p>}
+        {voucherApplied?.valid && (
+          <p className="mt-1 text-xs text-green-600">
+            Discount: {currencySymbol(offerCurrency)}{voucherApplied.discountAmount?.toLocaleString()} off
+          </p>
+        )}
+      </div>
+    )}
+
+    {/* Terms & Conditions Checkbox (Flights only) */}
+    {displayedTerms.length > 0 && !extBooking && isFlight && (
+      <div className="mt-4 pt-4 border-t border-gray-100">
+        <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-xl">
+          <input
+            type="checkbox"
+            id="termsAndConditions"
+            checked={agreedToTerms}
+            onChange={(e) => setAgreedToTerms(e.target.checked)}
+            className="mt-1 w-4 h-4 text-[#33a8da] border-gray-300 rounded focus:ring-[#33a8da]"
+            required
+          />
+          <label htmlFor="termsAndConditions" className="text-sm text-gray-700">
+            I have read and agree to the <span className="font-semibold">Terms & Conditions</span> and
+            <span className="font-semibold"> Cancellation Policy</span>.
+          </label>
+        </div>
+      </div>
+    )}
+
+    {/* Proceed Button */}
+    <button
+      onClick={handleCompleteBooking}
+      disabled={
+        isBooking || isCreating ||
+        (isHotel && !agreedToPolicy) ||
+        (isFlight && displayedTerms.length > 0 && !agreedToTerms) ||
+        (passportRequired && isLoggedIn && isPassportIncomplete && !shouldSkipPassport) ||
+        isCheckingPassport
+      }
+      className="w-full bg-[#33a8da] text-white font-medium py-3 rounded-xl hover:bg-[#2c98c7] transition disabled:opacity-50 mt-4"
+    >
+      {isCheckingPassport ? 'Checking passport...' :
+        isCreating ? 'Creating Booking...' :
+          isBooking ? 'Please wait...' :
+            extBooking ? 'Proceed to Payment' : 'Continue to payment'}
+    </button>
+
+    {/* Secure Checkout */}
+    <p className="mt-4 text-xs text-gray-400 text-center flex items-center justify-center gap-1">
+      <svg className="w-3 h-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001z" clipRule="evenodd" />
+      </svg>
+      Secure checkout
+    </p>
+  </div>
+</aside>
         </div>
       </div>
     </div>
   );
-  };
+};
   
-  export default ReviewTrip;
+export default ReviewTrip;

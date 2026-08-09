@@ -1356,69 +1356,118 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return searchParams?.destination || (processedFlights[0]?.arrivalCity) || 'London';
   }, [searchParams, processedFlights]);
 
-  const hotelAndCarResults = useMemo(() => {
-    if (searchType === 'flights') return [];
+const hotelAndCarResults = useMemo(() => {
+  if (searchType === 'flights') return [];
 
-    let items: ExtendedSearchResult[] = [];
-    
-    if (Array.isArray(results)) {
-      items = results.map((r: ExtendedSearchResult) => ({
-        ...r,
-        type: r.type || searchType
-      }));
-    } else if (results && typeof results === 'object' && 'results' in results && Array.isArray((results as any).results)) {
-      items = (results as any).results.map((r: ExtendedSearchResult) => ({
-        ...r,
-        type: r.type || searchType
-      }));
-    } else if (results && typeof results === 'object' && 'data' in results && Array.isArray((results as any).data)) {
-      items = (results as any).data.map((r: ExtendedSearchResult) => ({
-        ...r,
-        type: r.type || searchType
-      }));
-    } else if (results && typeof results === 'object') {
-      const possibleArray = Object.values(results);
-      if (possibleArray.length > 0 && possibleArray[0] && typeof possibleArray[0] === 'object') {
-        items = possibleArray as ExtendedSearchResult[];
+  let items: ExtendedSearchResult[] = [];
+  
+  if (Array.isArray(results)) {
+    items = results.map((r: ExtendedSearchResult) => ({
+      ...r,
+      type: (r.type || searchType) as "flights" | "hotels" | "car-rentals"
+    }));
+  } else if (results && typeof results === 'object' && 'results' in results && Array.isArray((results as any).results)) {
+    items = (results as any).results.map((r: ExtendedSearchResult) => ({
+      ...r,
+      type: (r.type || searchType) as "flights" | "hotels" | "car-rentals"
+    }));
+  } else if (results && typeof results === 'object' && 'data' in results && Array.isArray((results as any).data)) {
+    items = (results as any).data.map((r: ExtendedSearchResult) => ({
+      ...r,
+      type: (r.type || searchType) as "flights" | "hotels" | "car-rentals"
+    }));
+  } else if (results && typeof results === 'object') {
+    const possibleArray = Object.values(results);
+    if (possibleArray.length > 0 && possibleArray[0] && typeof possibleArray[0] === 'object') {
+      items = possibleArray as ExtendedSearchResult[];
+    }
+  }
+
+  return items.map((item: ExtendedSearchResult) => {
+    let originalPrice = 0;
+    let originalCurrency = 'GBP';
+
+    if (item.final_amount) {
+      originalPrice = parseFloat(item.final_amount);
+      originalCurrency = item.currency || 'GBP';
+    } else if (item.original_amount) {
+      originalPrice = parseFloat(item.original_amount);
+      originalCurrency = item.original_currency || 'GBP';
+    } else if (item.final_price) {
+      originalPrice = parseFloat(item.final_price);
+      originalCurrency = item.currency || 'GBP';
+    } else if (item.price) {
+      if (typeof item.price === 'string') {
+        originalPrice = parseFloat(item.price.replace(/[^\d.]/g, '')) || 0;
+      } else if (typeof item.price === 'number') {
+        originalPrice = item.price;
+      } else if (typeof item.price === 'object' && item.price.total) {
+        originalPrice = parseFloat(item.price.total);
+        originalCurrency = item.price.currency || 'GBP';
+      }
+    } else if (item.totalPrice) {
+      const priceMatch = item.totalPrice.match(/[\d,]+\.?\d*/);
+      if (priceMatch) {
+        originalPrice = parseFloat(priceMatch[0].replace(/,/g, ''));
       }
     }
 
-    return items.map((item: ExtendedSearchResult) => {
-      let originalPrice = 0;
-      let originalCurrency = 'GBP';
-
-      if (item.final_amount) {
-        originalPrice = parseFloat(item.final_amount);
-        originalCurrency = item.currency || 'GBP';
-      } else if (item.original_amount) {
-        originalPrice = parseFloat(item.original_amount);
-        originalCurrency = item.original_currency || 'GBP';
-      } else if (item.final_price) {
-        originalPrice = parseFloat(item.final_price);
-        originalCurrency = item.currency || 'GBP';
-      } else if (item.price) {
-        if (typeof item.price === 'string') {
-          originalPrice = parseFloat(item.price.replace(/[^\d.]/g, '')) || 0;
-        } else if (typeof item.price === 'number') {
-          originalPrice = item.price;
-        } else if (typeof item.price === 'object' && item.price.total) {
-          originalPrice = parseFloat(item.price.total);
-          originalCurrency = item.price.currency || 'GBP';
-        }
-      } else if (item.totalPrice) {
-        const priceMatch = item.totalPrice.match(/[\d,]+\.?\d*/);
-        if (priceMatch) {
-          originalPrice = parseFloat(priceMatch[0].replace(/,/g, ''));
-        }
-      }
-
+    // ✅ For car rentals, preserve ALL car rental fields
+    if (searchType === 'car-rentals' || item.type === 'car-rentals') {
       return {
         ...item,
+        type: 'car-rentals' as const,
         originalPriceAmount: originalPrice,
         originalPriceCurrency: originalCurrency,
+        vehicle: item.vehicle,
+        serviceProvider: item.serviceProvider || item.partnerInfo?.serviceProvider,
+        cancellationRules: item.cancellationRules || [],
+        distance: item.distance,
+        start: item.start,
+        end: item.end,
+        methodsOfPaymentAccepted: item.methodsOfPaymentAccepted || [],
+        supportedPaymentInstruments: item.supportedPaymentInstruments || [],
+        extraServices: item.extraServices || [],
+        duration: item.duration,
+        offerId: item.offerId || item.id,
+        offer_id: item.offerId || item.id,
+        realData: {
+          ...item.realData,
+          offerId: item.offerId || item.id,
+          pickupLocation: item.start?.locationCode,
+          dropoffLocation: item.end?.locationCode,
+          pickupDateTime: item.start?.dateTime,
+          dropoffDateTime: item.end?.dateTime,
+          vehicleType: item.vehicle?.description,
+          vehicleCategory: item.vehicle?.category,
+          seats: item.vehicle?.seats?.[0]?.count,
+          baggage: item.vehicle?.baggages?.reduce((total: number, bag: any) => total + (bag.count || 0), 0),
+        }
       };
-    });
-  }, [results, searchType]);
+    }
+
+    return {
+      ...item,
+      type: searchType as "flights" | "hotels" | "car-rentals",
+      originalPriceAmount: originalPrice,
+      originalPriceCurrency: originalCurrency,
+      realData: {
+        offerId: item.offerId || item.id,
+        pickupLocation: item.start?.locationCode || item.pickupLocation,
+        dropoffLocation: item.end?.locationCode || item.dropoffLocation,
+        pickupDateTime: item.start?.dateTime || item.pickupDateTime,
+        dropoffDateTime: item.end?.dateTime || item.dropoffDateTime,
+        price: originalPrice,
+        currency: originalCurrency,
+        vehicleType: item.vehicle?.description,
+        vehicleCategory: item.vehicle?.category,
+        seats: item.vehicle?.seats?.[0]?.count,
+        baggage: item.vehicle?.baggages?.reduce((total: number, bag: any) => total + (bag.count || 0), 0),
+        finalPrice: originalPrice,
+      }
+    };
+  });
+}, [results, searchType]);
 
   useEffect(() => {
     const convertHotelCarPrices = async () => {
@@ -2209,169 +2258,333 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
   
+const renderCarCard = (item: ExtendedSearchResult) => {
+  const start = item.start;
+  const end = item.end;
+  const vehicle = item.vehicle || {};
+  const serviceProvider = item.serviceProvider || item.partnerInfo?.serviceProvider || {};
+  const duration = formatDuration(item.duration);
+  const isLongDistance = (() => {
+    if (!item.distance) return false;
+    return item.distance.unit === 'MI';
+  })();
+  const baggageCount = vehicle.baggages?.reduce((total: number, bag: any) =>
+    total + (bag.count || 0), 0) || 0;
+  const seats = vehicle.seats?.[0]?.count || 0;
+  const carImageUrl = vehicle.imageURL || item.image || serviceProvider.logoUrl;
+  const displayPrice = hotelCarPrices[item.id] || 'Price on request';
 
+  if (!start?.locationCode || !end?.locationCode) {
+    return null;
+  }
 
+  // ✅ Calculate price as number with fallback
+  const priceAmount = typeof item.totalAmount === 'number' ? item.totalAmount :
+                      typeof item.originalPriceAmount === 'number' ? item.originalPriceAmount :
+                      typeof item.final_amount === 'string' ? parseFloat(item.final_amount) :
+                      typeof item.final_price === 'string' ? parseFloat(item.final_price) :
+                      typeof item.final_price === 'number' ? item.final_price :
+                      0;
 
-  const renderCarCard = (item: ExtendedSearchResult) => {
-    const start = item.start;
-    const end = item.end;
-    const vehicle = item.vehicle || {};
-    const serviceProvider = item.serviceProvider || item.partnerInfo?.serviceProvider || {};
-    const duration = formatDuration(item.duration);
-    const isLongDistance = (() => {
-      if (!item.distance) return false;
-      return item.distance.unit === 'MI';
-    })();
-    const baggageCount = vehicle.baggages?.reduce((total: number, bag: any) =>
-      total + (bag.count || 0), 0) || 0;
-    const seats = vehicle.seats?.[0]?.count || 0;
-    const carImageUrl = vehicle.imageURL || item.image || serviceProvider.logoUrl;
-    const displayPrice = hotelCarPrices[item.id] || 'Price on request';
+  const currencyCode = item.originalPriceCurrency || item.currency || 'GBP';
 
-    if (!start?.locationCode || !end?.locationCode) {
-      return null;
-    }
+  // ✅ Build the complete car data object with ALL fields for booking
+  const carDataForBooking: ExtendedSearchResult = {
+    ...item,
+    type: 'car-rentals' as 'car-rentals',
+    provider: 'AMADEUS',
+    // ✅ Vehicle details
+    vehicle: {
+      code: vehicle.code || '',
+      category: vehicle.category || '',
+      description: vehicle.description || '',
+      imageURL: vehicle.imageURL || '',
+      baggages: vehicle.baggages || [],
+      seats: vehicle.seats || [],
+    },
+    // ✅ Provider details
+    serviceProvider: {
+      code: serviceProvider.code || '',
+      name: serviceProvider.name || '',
+      logoUrl: serviceProvider.logoUrl || '',
+      termsUrl: serviceProvider.termsUrl || '',
+    },
+    // ✅ Trip details
+    start: {
+      locationCode: start.locationCode || '',
+      dateTime: start.dateTime || '',
+      address: start.address || {},
+    },
+    end: {
+      locationCode: end.locationCode || '',
+      dateTime: end.dateTime || '',
+      address: end.address || {},
+    },
+    // ✅ Cancellation rules
+    cancellationRules: item.cancellationRules || [],
+    // ✅ Distance - properly typed
+    distance: item.distance ? { 
+      value: item.distance.value || 0, 
+      unit: item.distance.unit || 'KM' 
+    } : undefined,
+    // ✅ Payment methods
+    methodsOfPaymentAccepted: item.methodsOfPaymentAccepted || [],
+    supportedPaymentInstruments: item.supportedPaymentInstruments || [],
+    // ✅ Extra services
+    extraServices: item.extraServices || [],
+    // ✅ Price fields - ensure numbers
+    totalAmount: priceAmount,
+    currency: currencyCode,
+    originalPriceAmount: priceAmount,
+    originalPriceCurrency: currencyCode,
+    priceBreakdown: {
+      basePrice: priceAmount || 0,
+      markupAmount: 0,
+      markupPercentage: 0,
+      serviceFee: 0,
+      serviceFeePercentage: 0,
+      taxes: 0,
+      taxPercentage: 0,
+      totalAmount: priceAmount || 0,
+      currency: currencyCode,
+      breakdown: 'Base rate',
+    },
+    // ✅ Offer ID
+    offerId: item.offerId || item.id,
+    offer_id: item.offerId || item.id,
+    // ✅ Duration
+    duration: item.duration,
+    // ✅ Real data for booking
+    realData: {
+      ...item.realData,
+      offerId: item.offerId || item.id,
+      pickupLocation: start.locationCode,
+      dropoffLocation: end.locationCode,
+      pickupDateTime: start.dateTime,
+      dropoffDateTime: end.dateTime,
+      vehicleType: vehicle.description,
+      vehicleCategory: vehicle.category,
+      seats: seats,
+      baggage: baggageCount,
+      price: priceAmount,
+      currency: currencyCode,
+      finalPrice: priceAmount,
+    },
+    // ✅ Car rental specific fields (matches SearchResult interface)
+    pickupLocation: start.locationCode,
+    dropoffLocation: end.locationCode,
+    pickupDateTime: start.dateTime,
+    dropoffDateTime: end.dateTime,
+    vehicleCode: vehicle.code,
+    vehicleCategory: vehicle.category,
+    seats: seats,
+    // ✅ Ensure these are numbers
+    rawPrice: priceAmount,
+    displayPrice: '',
+  };
 
-    return (
-      <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
-        <div className="flex flex-col md:flex-row">
-          <div className="w-full md:w-[320px] h-56 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-8 relative">
-            {carImageUrl ? (
+  // ✅ Debug log
+  console.log('🚗 Car data for booking:', {
+    id: carDataForBooking.id,
+    type: carDataForBooking.type,
+    hasVehicle: !!carDataForBooking.vehicle,
+    vehicleDescription: carDataForBooking.vehicle?.description,
+    hasServiceProvider: !!carDataForBooking.serviceProvider,
+    serviceProviderName: carDataForBooking.serviceProvider?.name,
+    hasStart: !!carDataForBooking.start,
+    hasEnd: !!carDataForBooking.end,
+    hasCancellationRules: carDataForBooking.cancellationRules?.length > 0,
+    totalAmount: carDataForBooking.totalAmount,
+    currency: carDataForBooking.currency,
+  });
+
+  return (
+    <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
+      <div className="flex flex-col md:flex-row">
+        {/* Vehicle Image Section */}
+        <div className="w-full md:w-[320px] h-56 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-8 relative">
+          {carImageUrl ? (
+            <img
+              src={carImageUrl}
+              className="max-w-full max-h-full object-contain group-hover:scale-105 transition duration-300"
+              alt={vehicle.description || item.title || 'Car'}
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <span className="text-gray-400 text-xs">No image</span>
+            </div>
+          )}
+
+          {serviceProvider.logoUrl && serviceProvider.logoUrl !== carImageUrl && (
+            <div className="absolute top-4 left-4 bg-white rounded-lg p-2 shadow-md">
               <img
-                src={carImageUrl}
-                className="max-w-full max-h-full object-contain group-hover:scale-105 transition duration-300"
-                alt={vehicle.description || item.title || 'Car'}
+                src={serviceProvider.logoUrl}
+                alt={serviceProvider.name}
+                className="w-8 h-8 object-contain"
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
                 }}
               />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <span className="text-gray-400 text-xs">No image</span>
-              </div>
-            )}
+            </div>
+          )}
 
-            {serviceProvider.logoUrl && serviceProvider.logoUrl !== carImageUrl && (
-              <div className="absolute top-4 left-4 bg-white rounded-lg p-2 shadow-md">
-                <img
-                  src={serviceProvider.logoUrl}
-                  alt={serviceProvider.name}
-                  className="w-8 h-8 object-contain"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                  }}
-                />
-              </div>
-            )}
+          <div className="absolute top-4 right-4 bg-[#33a8da]/90 backdrop-blur-sm text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider">
+            {vehicle.code || vehicle.category || 'CAR'}
+          </div>
+        </div>
 
-            <div className="absolute top-4 right-4 bg-[#33a8da]/90 backdrop-blur-sm text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider">
-              {vehicle.code || vehicle.category || 'CAR'}
+        {/* Vehicle Details Section */}
+        <div className="flex-1 p-8">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h3 className="text-xl font-black text-gray-900 group-hover:text-[#33a8da] transition">
+                {vehicle.description || item.title || 'Vehicle'}
+              </h3>
+              <p className="text-[11px] font-bold text-gray-400 uppercase mt-1">
+                {serviceProvider.name || item.provider} • {vehicle.category || 'Standard'}
+              </p>
             </div>
           </div>
 
-          <div className="flex-1 p-8">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-xl font-black text-gray-900 group-hover:text-[#33a8da] transition">
-                  {vehicle.description || item.title || 'Vehicle'}
-                </h3>
-                <p className="text-[11px] font-bold text-gray-400 uppercase mt-1">
-                  {serviceProvider.name || item.provider} • {vehicle.category || 'Standard'}
-                </p>
+          {/* Vehicle Specs */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            {seats > 0 && (
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path d="M12 4.5v15m7.5-7.5h-15" strokeWidth={1.5} />
+                </svg>
+                <span className="text-[10px] font-bold text-gray-600 uppercase">
+                  {seats} Seats
+                </span>
               </div>
-            </div>
+            )}
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              {seats > 0 && (
-                <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path d="M12 4.5v15m7.5-7.5h-15" strokeWidth={1.5} />
-                  </svg>
-                  <span className="text-[10px] font-bold text-gray-600 uppercase">
-                    {seats} Seats
-                  </span>
-                </div>
-              )}
-
-              {baggageCount > 0 && (
-                <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeWidth={1.5} />
-                  </svg>
-                  <span className="text-[10px] font-bold text-gray-600 uppercase">
-                    {baggageCount} Bags
-                  </span>
-                </div>
-              )}
-
-              {duration && (
-                <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth={1.5} />
-                  </svg>
-                  <span className="text-[10px] font-bold text-gray-600 uppercase">
-                    {duration}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-gray-50 rounded-xl p-4 mb-6">
-              <div className="flex items-center justify-between text-[10px]">
-                <div>
-                  <p className="text-gray-500 font-bold uppercase">Pick-up</p>
-                  <p className="font-bold text-gray-900 mt-1">
-                    {start.locationCode}
-                  </p>
-                  {start.dateTime && (
-                    <p className="text-gray-500 text-[9px] mt-0.5">
-                      {new Date(start.dateTime).toLocaleDateString()}
-                    </p>
-                  )}
-                </div>
-                <div className="text-[#33a8da]">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeWidth={2} stroke="currentColor" fill="none" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-gray-500 font-bold uppercase">Drop-off</p>
-                  <p className="font-bold text-gray-900 mt-1">
-                    {end.locationCode}
-                  </p>
-                  {end.dateTime && (
-                    <p className="text-gray-500 text-[9px] mt-0.5">
-                      {new Date(end.dateTime).toLocaleDateString()}
-                    </p>
-                  )}
-                </div>
+            {baggageCount > 0 && (
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeWidth={1.5} />
+                </svg>
+                <span className="text-[10px] font-bold text-gray-600 uppercase">
+                  {baggageCount} Bags
+                </span>
               </div>
-            </div>
+            )}
 
-            <div className="flex items-end justify-between pt-4 border-t border-gray-100">
+            {duration && (
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth={1.5} />
+                </svg>
+                <span className="text-[10px] font-bold text-gray-600 uppercase">
+                  {duration}
+                </span>
+              </div>
+            )}
+
+            {vehicle.category && (
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth={1.5} />
+                </svg>
+                <span className="text-[10px] font-bold text-gray-600 uppercase">
+                  {vehicle.category === 'ST' ? 'Standard' : 
+                   vehicle.category === 'BU' ? 'Business' : 
+                   vehicle.category === 'FC' ? 'First Class' : vehicle.category}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Pickup/Dropoff Details */}
+          <div className="bg-gray-50 rounded-xl p-4 mb-6">
+            <div className="flex items-center justify-between text-[10px]">
               <div>
-                <p className="text-2xl font-black text-[#33a8da]">
-                  {displayPrice}
+                <p className="text-gray-500 font-bold uppercase">Pick-up</p>
+                <p className="font-bold text-gray-900 mt-1">
+                  {start.locationCode}
                 </p>
-                {isLoadingRates && (
-                  <p className="text-[9px] text-gray-400 mt-1">Converting...</p>
+                {start.dateTime && (
+                  <p className="text-gray-500 text-[9px] mt-0.5">
+                    {new Date(start.dateTime).toLocaleDateString()} {new Date(start.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 )}
-                <p className="text-[9px] font-bold text-gray-400 mt-1">
-                  {isLongDistance ? 'Total for transfer' : 'Total for duration'}
-                </p>
               </div>
-              <button
-                onClick={() => onSelect?.(item)}
-                className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px] shadow-lg hover:shadow-xl"
-              >
-                {isLongDistance ? 'Book Transfer' : 'Rent Now'}
-              </button>
+              <div className="text-[#33a8da]">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeWidth={2} stroke="currentColor" fill="none" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-gray-500 font-bold uppercase">Drop-off</p>
+                <p className="font-bold text-gray-900 mt-1">
+                  {end.locationCode}
+                </p>
+                {end.dateTime && (
+                  <p className="text-gray-500 text-[9px] mt-0.5">
+                    {new Date(end.dateTime).toLocaleDateString()} {new Date(end.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                )}
+              </div>
             </div>
+
+            {/* Distance */}
+            {item.distance && (
+              <div className="mt-3 pt-3 border-t border-gray-200 flex justify-between">
+                <span className="text-[9px] text-gray-500 font-bold uppercase">Distance</span>
+                <span className="text-[9px] font-bold text-gray-900">
+                  {item.distance.value} {item.distance.unit}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Cancellation Policy Preview */}
+          {item.cancellationRules && item.cancellationRules.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center gap-2">
+                <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span className="text-[9px] font-bold text-gray-600">
+                  {item.cancellationRules.some((r: any) => r.feeValue === '0' || r.feeValue === '0%') 
+                    ? 'Free cancellation available' 
+                    : 'Cancellation fees may apply'}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Book Button with Full Car Data */}
+          <div className="flex items-end justify-between pt-4 border-t border-gray-100">
+            <div>
+              <p className="text-2xl font-black text-[#33a8da]">
+                {displayPrice}
+              </p>
+              {isLoadingRates && (
+                <p className="text-[9px] text-gray-400 mt-1">Converting...</p>
+              )}
+              <p className="text-[9px] font-bold text-gray-400 mt-1">
+                {isLongDistance ? 'Total for transfer' : 'Total for duration'}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                console.log('🚗 Book Now clicked, passing car data:', carDataForBooking);
+                onSelect?.(carDataForBooking);
+              }}
+              className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px] shadow-lg hover:shadow-xl"
+            >
+              {isLongDistance ? 'Book Transfer' : 'Rent Now'}
+            </button>
           </div>
         </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   const renderRightSidebarAds = () => (
     <div className="w-full lg:w-[260px] shrink-0 space-y-4">
@@ -3113,7 +3326,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
               <div className="space-y-4">
                 {filteredHotelAndCarResults.length > 0 ? (
-                  filteredHotelAndCarResults.slice(0, visibleCount).map(item => renderCarCard(item))
+                  filteredHotelAndCarResults.slice(0, visibleCount).map(item => renderCarCard(item as any))
                 ) : (
                   <div className="bg-white rounded-[32px] p-20 text-center border-2 border-dashed border-gray-100">
                     <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">

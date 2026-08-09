@@ -480,35 +480,25 @@ const getAdultsCount = (params: SearchParams): number => {
   return 1;
 };
 
-// ==================== CAR RENTAL SEARCH - FIXED ====================
+// ==================== CAR RENTAL SEARCH - COMPLETE FIX ====================
 const searchCars = async (params: SearchParams) => {
   try {
-    // ✅ Support both old and new parameter formats
-    const pickupLocationCode = params.startLocationCode || params.pickupLocationCode;
-    const dropoffLocationCode = params.endLocationCode || params.dropoffLocationCode;
-    const pickupDateTime = params.startDateTime || params.pickupDateTime;
-    const dropoffDateTime = params.endDateTime || params.dropoffDateTime;
+    // ✅ FIXED: Use correct parameter names
+    const pickupLocationCode = params.pickupLocationCode || params.startLocationCode;
+    const dropoffLocationCode = params.dropoffLocationCode || params.endLocationCode;
+    const pickupDateTime = params.pickupDateTime || params.startDateTime;
+    const dropoffDateTime = params.dropoffDateTime || params.endDateTime;
 
-    // ✅ Log what we received for debugging
-    console.log('🚗 Car search params received:', {
+    console.log('🚗 Car search params:', {
       pickupLocationCode,
       dropoffLocationCode,
       pickupDateTime,
       dropoffDateTime,
       transferType: params.transferType,
-      duration: params.duration,
-      vehicleCategory: params.vehicleCategory,
-      vehicleCode: params.vehicleCode,
-      baggages: params.baggages,
     });
 
     if (!pickupLocationCode || !dropoffLocationCode || !pickupDateTime || !dropoffDateTime) {
-      console.error('❌ Missing required car rental parameters', {
-        pickupLocationCode,
-        dropoffLocationCode,
-        pickupDateTime,
-        dropoffDateTime
-      });
+      console.error('❌ Missing required car rental parameters');
       setSearchResults([]);
       setSearchError('Missing location or date information. Please try again.');
       return;
@@ -526,43 +516,28 @@ const searchCars = async (params: SearchParams) => {
       }
     }
 
-    // ✅ Build car params with ALL fields
     const carParams: any = {
-      pickupLocationCode: pickupLocationCode,
-      dropoffLocationCode: dropoffLocationCode,
-      pickupDateTime: pickupDateTime,
-      dropoffDateTime: dropoffDateTime,
+      pickupLocationCode,
+      dropoffLocationCode,
+      pickupDateTime,
+      dropoffDateTime,
       passengers: passengerCount,
       currency: 'NGN',
     };
 
-    // ✅ Add transfer type if provided
-    if (params.transferType) {
-      carParams.transferType = params.transferType;
-    }
-
-    // ✅ Add duration if provided
-    if (params.duration) {
-      carParams.duration = params.duration;
-    }
-
-    // ✅ Add vehicle filters if provided
-    if (params.vehicleCategory) {
-      carParams.vehicleCategory = params.vehicleCategory;
-    }
-    if (params.vehicleCode) {
-      carParams.vehicleCode = params.vehicleCode;
-    }
-    if (params.baggages !== undefined && params.baggages > 0) {
-      carParams.baggages = params.baggages;
-    }
+    if (params.transferType) carParams.transferType = params.transferType;
+    if (params.duration) carParams.duration = params.duration;
+    if (params.vehicleCategory) carParams.vehicleCategory = params.vehicleCategory;
+    if (params.vehicleCode) carParams.vehicleCode = params.vehicleCode;
+    if (params.baggages !== undefined && params.baggages > 0) carParams.baggages = params.baggages;
 
     console.log('🚗 Car rental API request:', carParams);
 
     const response = await api.carApi.searchCarRentals(carParams);
 
     if (response.success && response.data?.data) {
-      const processedResults = await Promise.all(response.data.data.map(async (item: any) => {
+      // ✅ First, map all items to results with placeholder prices
+      const mappedResults = response.data.data.map((item: any) => {
         const startDate = new Date(item.start?.dateTime);
         const endDate = new Date(item.end?.dateTime);
         const hoursDiff = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
@@ -585,7 +560,7 @@ const searchCars = async (params: SearchParams) => {
         const taxes = 0;
         const serviceFeeFromBackend = parseFloat(item.service_fee) || 0;
         
-        const totalServiceFee = calculateTotalServiceFee(markupAmount, conversionFee, taxes);
+        const totalServiceFee = markupAmount + conversionFee + taxes;
         const finalServiceFee = serviceFeeFromBackend > 0 ? serviceFeeFromBackend : totalServiceFee;
         const finalPriceNGN = parseFloat(item.final_price || item.price?.total || item.converted?.monetaryAmount || '0');
         
@@ -594,48 +569,162 @@ const searchCars = async (params: SearchParams) => {
           serviceFeePercentage = (finalServiceFee / basePrice) * 100;
         }
 
-        const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalPriceNGN, 'NGN');
-        const formattedDisplayPrice = await formatPriceInUserCurrency(finalPriceNGN, 'NGN');
-
-        console.log(`🚗 Car rental - Service Fee Breakdown:`, {
-          vehicle: item.vehicle?.description,
-          basePriceNGN: `₦${basePrice}`,
-          markupAmountNGN: `₦${markupAmount}`,
-          conversionFeeNGN: `₦${conversionFee}`,
-          totalServiceFeeNGN: `₦${finalServiceFee}`,
-          serviceFeePercentage: `${serviceFeePercentage}%`,
-          finalPriceNGN: `₦${finalPriceNGN}`,
-          displayPriceInUserCurrency: formattedDisplayPrice,
-        });
-
+        // ✅ Return ALL car rental fields with placeholder prices
         return {
-          ...item,
+          id: item.id || item.offerId || `car-${Date.now()}-${Math.random()}`,
           type: 'car-rentals' as const,
-          rentalType,
-          displayType,
-          rentalDays: daysDiff,
-          rentalHours: hoursDiff,
-          requestedDays: daysDiff,
-          isMultiDay: daysDiff >= 1,
-          isTransfer: daysDiff < 1,
+          provider: item.serviceProvider?.name || item.provider || 'Car Rental Provider',
+          title: item.vehicle?.description || 'Car Rental',
+          subtitle: `${item.start?.locationCode || ''} → ${item.end?.locationCode || ''}`,
+          price: 'Loading...',
+          totalPrice: 'Loading...',
+          image: item.vehicle?.imageURL || item.serviceProvider?.logoUrl || '',
+          
+          // ✅ VEHICLE - CRITICAL for ReviewTrip
+          vehicle: item.vehicle || {
+            code: '',
+            category: '',
+            description: '',
+            imageURL: '',
+            seats: [],
+            baggages: [],
+          },
+          
+          // ✅ SERVICE PROVIDER - CRITICAL for ReviewTrip
+          serviceProvider: item.serviceProvider || item.partnerInfo?.serviceProvider || {
+            code: '',
+            name: '',
+            logoUrl: '',
+            termsUrl: '',
+          },
+          
+          // ✅ TRIP DETAILS - CRITICAL for ReviewTrip
+          start: item.start || { 
+            dateTime: pickupDateTime, 
+            locationCode: pickupLocationCode,
+            address: item.start?.address || {}
+          },
+          end: item.end || { 
+            dateTime: dropoffDateTime, 
+            locationCode: dropoffLocationCode,
+            address: item.end?.address || {}
+          },
+          
+          // ✅ CANCELLATION RULES - CRITICAL for ReviewTrip
+          cancellationRules: item.cancellationRules || [],
+          
+          // ✅ DISTANCE - CRITICAL for ReviewTrip
+          distance: item.distance,
+          
+          // ✅ DURATION - CRITICAL for ReviewTrip
+          duration: item.duration,
+          
+          // ✅ TRANSFER TYPE - CRITICAL for ReviewTrip
+          transferType: item.transferType || params.transferType || 'PRIVATE',
+          
+          // ✅ PAYMENT METHODS - CRITICAL for ReviewTrip
+          methodsOfPaymentAccepted: item.methodsOfPaymentAccepted || [],
+          supportedPaymentInstruments: item.supportedPaymentInstruments || [],
+          
+          // ✅ EXTRA SERVICES - CRITICAL for ReviewTrip
+          extraServices: item.extraServices || [],
+          
+          // ✅ CONDITION SUMMARY - CRITICAL for ReviewTrip
+          conditionSummary: item.conditionSummary || [],
+          
+          // ✅ Price fields
           original_amount: basePrice.toString(),
           original_currency: 'NGN',
           markup_amount: markupAmount.toString(),
+          markup_percentage: 0,
           conversion_fee: conversionFee.toString(),
+          conversion_fee_percentage: 0,
           taxes: taxes.toString(),
           service_fee: finalServiceFee.toString(),
           service_fee_percentage: serviceFeePercentage,
           final_amount: finalPriceNGN.toString(),
           currency: 'NGN',
           rawPrice: finalPriceNGN,
+          displayPrice: 'Loading...',
+          displayPriceRaw: 0,
+          
+          // ✅ Offer ID
+          offerId: item.offerId || item.id,
+          offer_id: item.offerId || item.id,
+          
+          // ✅ Rental type
+          rentalType,
+          displayType,
+          rentalDays: daysDiff,
+          rentalHours: hoursDiff,
+          isMultiDay: daysDiff >= 1,
+          isTransfer: daysDiff < 1,
+          
+          // ✅ Real data for booking
+          realData: {
+            ...item,
+            offerId: item.offerId || item.id,
+            pickupLocation: pickupLocationCode,
+            dropoffLocation: dropoffLocationCode,
+            pickupDateTime: pickupDateTime,
+            dropoffDateTime: dropoffDateTime,
+            vehicleType: item.vehicle?.description,
+            vehicleCategory: item.vehicle?.category,
+            seats: item.vehicle?.seats?.[0]?.count,
+            baggage: item.vehicle?.baggages?.reduce((total: number, bag: any) => total + (bag.count || 0), 0),
+            price: finalPriceNGN,
+            currency: 'NGN',
+            finalPrice: finalPriceNGN,
+          },
+          
+          // ✅ Car rental specific fields
+          pickupLocation: pickupLocationCode,
+          dropoffLocation: dropoffLocationCode,
+          pickupDateTime: pickupDateTime,
+          dropoffDateTime: dropoffDateTime,
+          vehicleCode: item.vehicle?.code,
+          vehicleCategory: item.vehicle?.category,
+          seats: item.vehicle?.seats?.[0]?.count,
+        };
+      });
+
+      // ✅ Now process prices asynchronously
+      const processedResults = await Promise.all(mappedResults.map(async (result: any) => {
+        const finalPriceNGN = parseFloat(result.final_amount || '0');
+        const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalPriceNGN, 'NGN');
+        const formattedDisplayPrice = await formatPriceInUserCurrency(finalPriceNGN, 'NGN');
+        
+        return {
+          ...result,
           price: formattedDisplayPrice,
           totalPrice: formattedDisplayPrice,
+          displayPrice: formattedDisplayPrice,
           displayPriceRaw: displayPriceInUserCurrency,
+          rawPrice: displayPriceInUserCurrency,
         };
       }));
 
       setSearchResults(processedResults);
-      console.log(`✅ Processed ${processedResults.length} car rentals with merged service fee`);
+      console.log(`✅ Processed ${processedResults.length} car rentals with ALL fields for ReviewTrip`);
+      
+      // ✅ Verify the data is set correctly
+      if (processedResults.length > 0) {
+        const firstCar = processedResults[0];
+        console.log('🔍 Car data verification:', {
+          id: firstCar.id,
+          type: firstCar.type,
+          hasVehicle: !!firstCar.vehicle,
+          vehicleDescription: firstCar.vehicle?.description,
+          hasServiceProvider: !!firstCar.serviceProvider,
+          serviceProviderName: firstCar.serviceProvider?.name,
+          hasCancellationRules: firstCar.cancellationRules?.length > 0,
+          hasStart: !!firstCar.start,
+          hasEnd: !!firstCar.end,
+          hasDistance: !!firstCar.distance,
+          hasDuration: !!firstCar.duration,
+          hasTransferType: !!firstCar.transferType,
+        });
+      }
     } else {
       setSearchResults([]);
       setSearchError(response.message || 'No car rentals found');
@@ -1614,6 +1703,21 @@ const _searchImpl = async (params: SearchParams) => {
     
     // ✅ Type guard to check if it's a Wakanow item with extra fields
     const isWakanowItem = (item as any).isWakanow === true;
+
+
+    const isCarRental = item.type === 'car-rentals' || (item as any).vehicle;
+  
+  // ✅ For car rentals, just set the item directly without any API calls
+  if (isCarRental) {
+    console.log('🚗 Car rental selected, passing through:', {
+      id: item.id,
+      hasVehicle: !!(item as any).vehicle,
+      hasServiceProvider: !!(item as any).serviceProvider,
+      hasCancellationRules: !!(item as any).cancellationRules?.length,
+    });
+    setSelectedItem(item);
+    return;
+  }
     
     if (isWakanowItem) {
       try {
