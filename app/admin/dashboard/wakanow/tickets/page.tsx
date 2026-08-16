@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ticketWakanowPNR } from '@/lib/wakanow-api';
+import { issueWakanowTicket } from '@/lib/adminApi';
 import { listBookings } from '@/lib/adminApi';
 
 export default function IssueTicketsPage() {
@@ -32,6 +32,7 @@ export default function IssueTicketsPage() {
     }
   };
 
+
   const handleIssueTicket = async (bookingId: string) => {
     if (!pnrNumber) {
       setMessage({ type: 'error', text: 'Please enter PNR number' });
@@ -40,10 +41,12 @@ export default function IssueTicketsPage() {
 
     try {
       setIssuingTicket(true);
-      const response = await ticketWakanowPNR(bookingId, pnrNumber);
+      const token = localStorage.getItem('adminToken') ?? undefined;
+      const response = await issueWakanowTicket(bookingId, pnrNumber, token);
+      
       console.log('Ticket response:', response);
       
-      if (response.success !== false) {
+      if (response.success) {
         setMessage({ type: 'success', text: 'Ticket issued successfully!' });
         setSelectedBooking(null);
         setPnrNumber('');

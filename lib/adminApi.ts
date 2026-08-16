@@ -343,7 +343,7 @@ export async function getBookingDisputeEvidence(bookingId: string) {
  * @param bookingId - The booking ID from your system
  * @param pnrNumber - The PNR number from the book response
  */
-export async function issueWakanowTicket(bookingId: string, pnrNumber: string) {
+export async function issueWakanowTicket(bookingId: string, pnrNumber: string, authToken?: string) {
   const token = localStorage.getItem('adminToken');
   
   if (!token) {
@@ -365,11 +365,10 @@ export async function issueWakanowTicket(bookingId: string, pnrNumber: string) {
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ 
-        bookingId, 
-        pnrNumber,
-        localBookingId: bookingId,
-        pnr: pnrNumber,
-      }),
+  bookingId, 
+  pnrNumber,
+  localBookingId: bookingId,
+}),
     });
 
     const data = await response.json();

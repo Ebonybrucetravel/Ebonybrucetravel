@@ -553,8 +553,7 @@ const parts = userName.trim().split(/\s+/);
   );
 };
 
-// Helper function to extract flight details from booking
-// Helper function to extract details from booking (supports HOTELS, FLIGHTS, CARS)
+
 const extractFlightDetails = (booking: Booking) => {
   const providerData = booking.providerData as any;
   const bookingData = booking.bookingData as any;

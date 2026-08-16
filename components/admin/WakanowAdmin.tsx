@@ -48,12 +48,13 @@ export function WakanowAdminPanel() {
     }
   };
 
-  // Issue ticket
+
   const handleIssueTicket = async (bookingId: string, pnrNumber: string) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await issueWakanowTicket(bookingId, pnrNumber);
+      const token = localStorage.getItem('adminToken') ?? undefined;
+      const response = await issueWakanowTicket(bookingId, pnrNumber, token); 
       if (response.success) {
         setTicketStatus(response.data);
         console.log('Ticket issued:', response.data);
