@@ -313,7 +313,7 @@ export class BookingController {
   @ApiResponse({ status: 201, description: 'Booking created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid booking data or missing price breakdown' })
   async create(@Body() createBookingDto: CreateBookingDto, @Request() req) {
-    // ✅ DUFFEL ONLY: Validate and correct offer ID
+ 
     if (createBookingDto.provider === 'DUFFEL') {
       const fixedOfferId = this.validateAndFixDuffelOfferId(
         createBookingDto.offerId,
@@ -360,31 +360,51 @@ export class BookingController {
       message: 'Booking created successfully',
     };
   }
+@Get()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth()
+@ApiOperation({ 
+  summary: 'Get all bookings (with optional customer filter)',
+  description: 'Admins can filter by customerId query parameter to get bookings for a specific customer.'
+})
+@ApiResponse({ status: 200, description: 'Bookings retrieved successfully' })
+@ApiQuery({ 
+  name: 'customerId', 
+  required: false, 
+  description: 'Filter by customer ID (admin only)' 
+})
+async findAll(@Request() req, @Query('customerId') customerId?: string) {
+  const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
+  
 
-  @Get()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all bookings' })
-  @ApiResponse({ status: 200, description: 'Bookings retrieved successfully' })
-  async findAll(@Request() req, @Query() query: any) {
-    const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
-    if (isAdmin) {
-      const bookings = await this.bookingService.getAllBookings();
-      return {
-        success: true,
-        data: bookings,
-        message: 'Bookings retrieved successfully',
-      };
-    } else {
-      const bookings = await this.bookingService.getUserBookings(req.user.id);
-      return {
-        success: true,
-        data: bookings,
-        message: 'Your bookings retrieved successfully',
-      };
-    }
+  if (isAdmin && customerId) {
+    this.logger.log(`🔍 Admin filtering bookings by customerId: ${customerId}`);
+    const bookings = await this.bookingService.getBookingsByCustomerId(customerId);
+    return {
+      success: true,
+      data: bookings,
+      message: 'Customer bookings retrieved successfully',
+    };
   }
+  
 
+  if (isAdmin) {
+    const bookings = await this.bookingService.getAllBookings();
+    return {
+      success: true,
+      data: bookings,
+      message: 'All bookings retrieved successfully',
+    };
+  }
+  
+ 
+  const bookings = await this.bookingService.getUserBookings(req.user.id);
+  return {
+    success: true,
+    data: bookings,
+    message: 'Your bookings retrieved successfully',
+  };
+}
 
   @Public()
 @Get('public/by-reference/:reference')

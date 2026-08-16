@@ -120,6 +120,7 @@ export class CreateBookingUseCase {
       
         const wakanowResult = await this.bookWakanowFlightUseCase.execute(wakanowDto, userId);
         this.logger.log(`✅ Wakanow booking created. PNR: ${wakanowResult.bookingData?.pnrReferenceNumber}`);
+        wakanowResult.bookingData.destination = dto.bookingData?.destination || 'Unknown City';
         return wakanowResult;
       }
       // ✅ HANDLE CAR RENTAL FOR AUTHENTICATED USERS
@@ -200,6 +201,7 @@ if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
         totalAmount: dto.getTotalAmount ? dto.getTotalAmount() : (dto.totalAmount || pricing.totalAmount),
         currency: currency,
       },
+       destination: bookingData.pickupLocation || bookingData.dropoffLocation || 'Unknown City',
     },
     passengerInfo: {
       firstName: driver?.firstName || dto.passengerInfo?.firstName || 'Guest',
@@ -310,6 +312,7 @@ if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
         offerTotalAmount: offerTotalAmount,
         offerCurrency: dto.offerData?.total_currency || dto.offerData?.currency || dto.currency || 'GBP',
         storedOfferDataAt: new Date().toISOString(),
+        destination: dto.offerData?.arrivalCity || dto.offerData?.destinationCity || 'Unknown City',
       };
       this.logger.log(`📦 Stored Duffel offer data for authenticated booking: ${dto.offerId} with ${passengersToStore.length} passengers`);
     }
@@ -348,7 +351,9 @@ if (isHotelProvider) {
       dto.currency,
       markupConfig,
     );
-  } } else {
+  } 
+bookingData.destination = bookingData.hotelCity || bookingData.city || 'Unknown City';
+} else {
  
       pricing = this.markupCalculationService.calculateTotal(
         dto.basePrice,

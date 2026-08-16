@@ -3,6 +3,7 @@ generator client {
   output              = "../generated/prisma"
   moduleFormat        = "cjs"
   importFileExtension = ""
+  previewFeatures     = ["filteringUnchecked"] 
 }
 
 datasource db {

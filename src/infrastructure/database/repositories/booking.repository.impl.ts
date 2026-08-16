@@ -213,6 +213,30 @@ export class BookingRepositoryImpl implements BookingRepository {
     return bookings.map((booking) => this.mapToBooking(booking));
   }
 
+async findByCustomerId(customerId: string): Promise<Booking[]> {
+  const bookings = await this.prisma.booking.findMany({
+    where: {
+      userId: customerId,  // ✅ Use userId only (customerId doesn't exist in schema)
+      deletedAt: null,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          phone: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  return bookings.map((booking) => this.mapToBooking(booking));
+}
+
   async update(id: string, data: Partial<Booking>): Promise<Booking> {
     const updated = await this.prisma.booking.update({
       where: { id },

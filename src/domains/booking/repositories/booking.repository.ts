@@ -6,6 +6,7 @@ export interface BookingRepository {
   create(booking: Partial<Booking>): Promise<Booking>;
   findById(id: string): Promise<Booking | null>;
   findByReference(reference: string): Promise<Booking | null>;
+  findByCustomerId(customerId: string): Promise<Booking[]>;
   findByUserId(userId: string): Promise<Booking[]>;
   findByProviderBookingId(providerBookingId: string): Promise<Booking | null>;
   findByOfferIdInBookingData(offerId: string): Promise<Booking | null>;

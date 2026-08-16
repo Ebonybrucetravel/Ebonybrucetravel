@@ -54,16 +54,22 @@ export class DashboardController {
       1,
       Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)),
     );
-    const productFilter: Prisma.BookingWhereInput =
-      productType && productType.trim()
-        ? { productType: productType.trim() as ProductType }
-        : {};
+    
+    // Product filter
+    const productFilter: Prisma.BookingWhereInput = {};
+    if (productType && productType.trim()) {
+      productFilter.productType = productType.trim() as ProductType;
+    }
+
     const dateRange = { gte: start, lte: end };
     const baseWhere: Prisma.BookingWhereInput = {
       deletedAt: null,
       createdAt: dateRange,
-      ...productFilter,
     };
+    
+    if (Object.keys(productFilter).length > 0) {
+      baseWhere.AND = productFilter;
+    }
 
     // Total bookings
     const totalBookings = await this.prisma.booking.count({ where: baseWhere });
@@ -75,7 +81,7 @@ export class DashboardController {
     });
     const totalRevenue = Number(revenueResult._sum.totalAmount || 0);
 
-    // Active users (customers who had at least one booking in period, or all CUSTOMERs created in period)
+    // Active users
     const activeUsersInPeriod = await this.prisma.user.count({
       where: {
         role: 'CUSTOMER',
@@ -88,7 +94,7 @@ export class DashboardController {
       },
     });
 
-    // Previous period (same length) for % change
+    // Previous period comparison
     let previousPeriod: { totalBookings: number; totalRevenue: number } | null = null;
     let percentChange: { totalBookings: number | null; totalRevenue: number | null } = {
       totalBookings: null,
@@ -100,8 +106,11 @@ export class DashboardController {
       const prevWhere: Prisma.BookingWhereInput = {
         deletedAt: null,
         createdAt: { gte: prevStart, lte: prevEnd },
-        ...productFilter,
       };
+      if (Object.keys(productFilter).length > 0) {
+        prevWhere.AND = productFilter;
+      }
+      
       const [prevBookings, prevRevenueResult] = await Promise.all([
         this.prisma.booking.count({ where: prevWhere }),
         this.prisma.booking.aggregate({
@@ -153,8 +162,11 @@ export class DashboardController {
     const recentBookingsWhere: Prisma.BookingWhereInput = {
       deletedAt: null,
       createdAt: dateRange,
-      ...productFilter,
     };
+    if (Object.keys(productFilter).length > 0) {
+      recentBookingsWhere.AND = productFilter;
+    }
+    
     const recentBookings = await this.prisma.booking.findMany({
       where: recentBookingsWhere,
       include: {
@@ -171,12 +183,55 @@ export class DashboardController {
       _count: { id: true },
     });
 
+    // ==========================================
+    // ✅ TOP LOCATIONS (Pulls real data from Supabase View)
+    // ==========================================
+    let topLocations = [];
+    try {
+      const topLocationsRaw = await this.prisma.$queryRaw<any[]>`
+        SELECT * FROM top_locations_view
+      `;
+      topLocations = topLocationsRaw.map((item: any) => ({
+        name: item.name || 'Unknown',
+        bookings: Number(item.bookings) || 0,
+        revenue: Number(item.revenue) || 0,
+        currency: 'NGN',
+        growth: '+0%',
+      }));
+    } catch (error) {
+      console.warn('Could not fetch top locations:', error);
+      topLocations = [];
+    }
+
+    // ==========================================
+    // ✅ MONTHLY REVENUE (Dynamic by Date Range for Chart)
+    // ==========================================
+    let monthlyRevenue = [];
+    try {
+      monthlyRevenue = await this.prisma.$queryRaw<any[]>`
+        SELECT 
+          TO_CHAR("createdAt", 'YYYY-MM') as month,
+          SUM("totalAmount")::float as value
+        FROM public.bookings
+        WHERE "deletedAt" IS NULL 
+          AND "paymentStatus" = 'COMPLETED'
+          AND "createdAt" >= ${start}
+          AND "createdAt" <= ${end}
+        GROUP BY month
+        ORDER BY month ASC
+      `;
+    } catch (error) {
+      console.warn('Could not fetch monthly revenue:', error);
+      monthlyRevenue = [];
+    }
+
     return {
       success: true,
       data: {
         period: { start: start.toISOString(), end: end.toISOString() },
         totalBookings,
         totalRevenue,
+        currency: 'NGN',
         activeUsers: activeUsersInPeriod,
         ...(previousPeriod && { previousPeriod }),
         ...(previousPeriod && { percentChange }),
@@ -192,10 +247,11 @@ export class DashboardController {
             acc[item.productType] = {
               count: item._count.id,
               revenue: Number(item._sum.totalAmount || 0),
+              currency: 'NGN',
             };
             return acc;
           },
-          {} as Record<string, { count: number; revenue: number }>,
+          {} as Record<string, { count: number; revenue: number; currency: string }>,
         ),
         bookingsByProvider: bookingsByProvider.reduce(
           (acc, item) => {
@@ -217,10 +273,12 @@ export class DashboardController {
           productType: b.productType,
           status: b.status,
           totalAmount: Number(b.totalAmount),
-          currency: b.currency,
+          currency: 'NGN', // Force NGN
           user: b.user ?? null,
           createdAt: b.createdAt,
         })),
+        topLocations,
+        monthlyRevenue,
       },
       message: 'Dashboard statistics retrieved successfully',
     };

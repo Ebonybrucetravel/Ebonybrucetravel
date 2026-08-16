@@ -375,6 +375,13 @@ export class BookingService {
     return this.bookingRepository.findByUserId(userId);
   }
 
+  async getBookingsByCustomerId(customerId: string): Promise<Booking[]> {
+  this.logger.log(`📡 Finding bookings for customer: ${customerId}`);
+  const bookings = await this.bookingRepository.findByCustomerId(customerId);
+  this.logger.log(`✅ Found ${bookings.length} bookings for customer ${customerId}`);
+  return bookings;
+}
+
   async updateBookingStatus(
     id: string,
     status: BookingStatus,

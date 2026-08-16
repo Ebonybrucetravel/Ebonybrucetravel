@@ -60,12 +60,9 @@ export class CreateGuestBookingUseCase {
           ...cleanedBookingData,
           offerId: dto.offerId,
           offerRequestId: dto.offerRequestId || cleanedBookingData.offer_request_id,
-          // Store the full offer data
           offerData: offerDataToStore,
           storedOfferDataAt: new Date().toISOString(),
-          // CRITICAL FIX: Store passengers as an array
           passengers: passengersToStore,
-          // Also store any passenger data from the offer
           offerPassengers: dto.offerData?.passengers || [],
           offerTotalAmount: dto.offerData?.total_amount || dto.totalAmount || 0,
           offerCurrency: dto.offerData?.total_currency || dto.currency || 'GBP',
@@ -188,6 +185,7 @@ if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
         totalAmount: totalAmount,
         currency: currency,
       },
+destination: bookingData.pickupLocation || bookingData.dropoffLocation || 'Unknown City'
     },
     passengerInfo: {
       firstName: driver?.firstName || passengerInfo?.firstName || 'Guest',
@@ -327,6 +325,7 @@ if (isWakanowFlight) {
   );
 
   this.logger.log(`✅ Wakanow booking created. PNR: ${wakanowResult.bookingData?.pnrReferenceNumber}`);
+   wakanowResult.bookingData.destination = dto.bookingData?.destination || 'Unknown City';
   return wakanowResult;
 }
 
@@ -472,7 +471,10 @@ if (isWakanowFlight) {
       taxPercentage,
       totalAmount,
       currency,
-      bookingData: cleanedBookingData, // Contains passengers array for Duffel
+       bookingData: {
+        ...cleanedBookingData,
+        destination: dto.offerData?.arrivalCity || dto.offerData?.destinationCity || 'Unknown City',
+      },
       passengerInfo: passengerInfo,  
       bookingId: dto.bookingId,
       selectData: dto.selectData,
