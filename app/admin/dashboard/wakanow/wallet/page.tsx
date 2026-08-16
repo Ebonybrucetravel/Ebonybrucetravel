@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getWakanowWalletBalance } from '@/lib/wakanow-api';
 
 export default function WalletBalancePage() {
   const [walletBalance, setWalletBalance] = useState<{ Balance: number; Currency: string } | null>(null);
@@ -17,16 +16,40 @@ export default function WalletBalancePage() {
       setLoading(true);
       setError(null);
       
-      const token = localStorage.getItem('adminToken') || undefined;
-      const balance = await getWakanowWalletBalance(token);
+      const token = localStorage.getItem('adminToken');
       
-      if (balance?.success && balance?.data) {
-        setWalletBalance(balance.data);
+      const response = await fetch('http://localhost:3001/api/v1/bookings/wakanow/wallet-balance', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ FRONTEND RECEIVED DATA:', data);
+
+      // ✅ FIX: Extract the main object (it could be 'data' or root)
+      const extractedData = data.data || data;
+
+      // ✅ FIX: Check for BOTH uppercase and lowercase keys
+      const balanceFound = extractedData.Balance ?? extractedData.balance ?? extractedData.availableBalance ?? null;
+      const currencyFound = extractedData.Currency ?? extractedData.currency ?? 'NGN';
+
+      if (balanceFound !== null && typeof balanceFound === 'number') {
+        setWalletBalance({
+          Balance: Number(balanceFound),
+          Currency: currencyFound
+        });
       } else {
-        setWalletBalance(null);
+        console.error('❌ Could not find Balance in:', extractedData);
+        setError('Could not find Balance property in response.');
       }
     } catch (err: any) {
-      console.error('Failed to fetch wallet balance:', err);
+      console.error('❌ Failed to fetch wallet balance:', err);
       setError(err.message || 'Failed to fetch wallet balance');
     } finally {
       setLoading(false);

@@ -1,11 +1,3 @@
-// lib/api-admin.ts
-
-/**
- * Admin API – centralized client for all admin endpoints.
- * Base: /api/v1/admin (except dashboard: /api/v1/dashboard)
- * Auth: Bearer token (adminToken)
- */
-
 import { config } from './config';
 
 const BASE = config.apiBaseUrl;
@@ -165,16 +157,30 @@ export async function listBookings(params?: {
   productType?: string;
   provider?: string;
   userId?: string;
+  customerId?: string;  // ✅ Alias for userId
   startDate?: string;
   endDate?: string;
   page?: number;
   limit?: number;
 }) {
   const q = new URLSearchParams();
+  
+  // ✅ Handle both userId and customerId
+  const userId = params?.customerId || params?.userId;
+  
+  // Add all params except customerId (handled separately)
   Object.entries(params ?? {}).forEach(([k, v]) => {
+    if (k === 'customerId') return; // Skip, handled above
     if (v != null && v !== '') q.set(k, String(v));
   });
+  
+  // Add userId if present
+  if (userId) {
+    q.set('userId', userId);
+  }
+  
   const query = q.toString();
+  console.log(`📡 listBookings URL: /api/v1/admin/bookings${query ? `?${query}` : ''}`);
   return adminFetch<any>(`/api/v1/admin/bookings${query ? `?${query}` : ''}`);
 }
 

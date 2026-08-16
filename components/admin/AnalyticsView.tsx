@@ -422,69 +422,70 @@ export function AnalyticsView({
           </div>
         </div>
 
-        {/* Recent Activity - Now with real booking data */}
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-lg transition-all">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-gray-900">Recent Bookings</h3>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-medium text-emerald-600">Live</span>
-            </span>
-          </div>
-          
-          <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar">
-            {isLoadingBookings ? (
-              <div className="flex justify-center py-8">
-                <div className="w-8 h-8 border-4 border-[#33a8da] border-t-transparent rounded-full animate-spin" />
+      {/* Recent Activity - Now with real booking data and currency conversion */}
+<div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-lg transition-all">
+  <div className="flex items-center justify-between mb-6">
+    <h3 className="text-lg font-semibold text-gray-900">Recent Bookings</h3>
+    <span className="flex items-center gap-1.5">
+      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+      <span className="text-xs font-medium text-emerald-600">Live</span>
+    </span>
+  </div>
+  
+  <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar">
+    {isLoadingBookings ? (
+      <div className="flex justify-center py-8">
+        <div className="w-8 h-8 border-4 border-[#33a8da] border-t-transparent rounded-full animate-spin" />
+      </div>
+    ) : recentBookings.length > 0 ? (
+      recentBookings.map((booking: any, index: number) => (
+        <div 
+          key={booking.id || index} 
+          className="relative group cursor-pointer hover:bg-gray-50 transition-colors rounded-xl"
+          onClick={() => router.push(`/admin/bookings/${booking.id}`)}
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-gray-50 to-transparent rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="relative flex items-start gap-3 p-3">
+            <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${getServiceColor(booking.productType || booking.serviceType)} bg-opacity-10 flex items-center justify-center text-lg`}>
+              {getServiceIcon(booking.productType || booking.serviceType)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900">
+                {booking.customerName || booking.user?.name || 'Guest'}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
+                {booking.productType === 'flight' && `Flight to ${booking.destination || booking.flight?.destination || 'Unknown'}`}
+                {booking.productType === 'hotel' && `Hotel in ${booking.destination || booking.hotel?.location || 'Unknown'}`}
+                {booking.productType === 'car' && `Car rental in ${booking.destination || booking.car?.location || 'Unknown'}`}
+                {!booking.productType && !booking.serviceType && 'New booking created'}
+              </p>
+              <div className="flex items-center justify-between mt-1.5">
+                <p className="text-xs font-medium text-[#33a8da]">
+                  {/* ✅ FIXED: Use ₦ instead of £ */}
+                  {booking.totalAmount ? `₦${Number(booking.totalAmount).toLocaleString()}` : ''}
+                </p>
+                <p className="text-xs text-gray-400">
+                  {formatTimeAgo(booking.createdAt)}
+                </p>
               </div>
-            ) : recentBookings.length > 0 ? (
-              recentBookings.map((booking: any, index: number) => (
-                <div 
-                  key={booking.id || index} 
-                  className="relative group cursor-pointer hover:bg-gray-50 transition-colors rounded-xl"
-                  onClick={() => router.push(`/admin/bookings/${booking.id}`)}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-gray-50 to-transparent rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
-                  <div className="relative flex items-start gap-3 p-3">
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${getServiceColor(booking.productType || booking.serviceType)} bg-opacity-10 flex items-center justify-center text-lg`}>
-                      {getServiceIcon(booking.productType || booking.serviceType)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900">
-                        {booking.customerName || booking.user?.name || 'Guest'}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
-                        {booking.productType === 'flight' && `Flight to ${booking.destination || booking.flight?.destination || 'Unknown'}`}
-                        {booking.productType === 'hotel' && `Hotel in ${booking.destination || booking.hotel?.location || 'Unknown'}`}
-                        {booking.productType === 'car' && `Car rental in ${booking.destination || booking.car?.location || 'Unknown'}`}
-                        {!booking.productType && !booking.serviceType && 'New booking created'}
-                      </p>
-                      <div className="flex items-center justify-between mt-1.5">
-                        <p className="text-xs font-medium text-[#33a8da]">
-                          {booking.totalAmount ? `£${Number(booking.totalAmount).toLocaleString()}` : ''}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {formatTimeAgo(booking.createdAt)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-gray-500 text-sm">
-                No recent bookings found
-              </div>
-            )}
+            </div>
           </div>
-
-          <button 
-            onClick={handleViewAllBookings}
-            className="w-full mt-4 py-3 text-sm font-medium text-[#33a8da] hover:text-[#2c8fc0] border-t border-gray-100 hover:bg-gray-50 transition rounded-b-2xl"
-          >
-            View All Bookings
-          </button>
         </div>
+      ))
+    ) : (
+      <div className="text-center py-8 text-gray-500 text-sm">
+        No recent bookings found
+      </div>
+    )}
+  </div>
+
+  <button 
+    onClick={handleViewAllBookings}
+    className="w-full mt-4 py-3 text-sm font-medium text-[#33a8da] hover:text-[#2c8fc0] border-t border-gray-100 hover:bg-gray-50 transition rounded-b-2xl"
+  >
+    View All Bookings
+  </button>
+</div>
       </div>
 
       <style jsx>{`

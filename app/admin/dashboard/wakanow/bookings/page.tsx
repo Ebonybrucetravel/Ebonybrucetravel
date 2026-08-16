@@ -1,4 +1,3 @@
-// app/admin/dashboard/wakanow/bookings/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -20,6 +19,7 @@ export default function WakanowBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchWakanowBookings();
@@ -28,28 +28,41 @@ export default function WakanowBookingsPage() {
   const fetchWakanowBookings = async () => {
     try {
       setLoading(true);
+      setError(null);
       
       const token = localStorage.getItem('adminToken');
       
-      const response = await fetch('/api/v1/admin/bookings', {
+      // ✅ PRODUCTION-READY: Uses Environment Variable
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const url = `${baseUrl}/api/v1/admin/bookings`;
+
+      console.log(`📡 Fetching bookings from: ${url}`);
+
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP Error ${response.status}: ${response.statusText}`);
+      }
       
       const data = await response.json();
       
       if (data.success && data.data) {
-        // Filter for Wakanow bookings
         const wakanowBookings = data.data.filter((booking: any) => 
           booking.provider === 'WAKANOW' || 
           booking.provider?.toUpperCase() === 'WAKANOW'
         );
         setBookings(wakanowBookings);
+      } else {
+        setError(data.message || 'API returned unsuccessful response');
       }
-    } catch (error) {
-      console.error('Failed to fetch bookings:', error);
+    } catch (error: any) {
+      console.error('❌ Failed to fetch bookings:', error);
+      setError(error.message || 'Failed to fetch bookings');
     } finally {
       setLoading(false);
     }
@@ -69,7 +82,18 @@ export default function WakanowBookingsPage() {
         <p className="text-gray-600 mt-1">View and manage all Wakanow bookings</p>
       </div>
 
-      {/* Search Bar */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          <p className="font-bold">Error: {error}</p>
+          <button 
+            onClick={fetchWakanowBookings}
+            className="mt-2 text-sm underline hover:no-underline"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
       <div className="mb-6">
         <input
           type="text"
@@ -80,17 +104,16 @@ export default function WakanowBookingsPage() {
         />
       </div>
 
-      {/* Refresh Button */}
       <div className="mb-4 flex justify-end">
         <button
           onClick={fetchWakanowBookings}
-          className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          disabled={loading}
+          className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
         >
-          Refresh
+          {loading ? 'Loading...' : 'Refresh'}
         </button>
       </div>
 
-      {/* Bookings Table */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -121,7 +144,8 @@ export default function WakanowBookingsPage() {
                     <span className={`px-2 py-1 text-xs rounded-full ${
                       booking.status === 'CONFIRMED' ? 'bg-green-100 text-green-700' :
                       booking.status === 'PENDING' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-red-100 text-red-700'
+                      booking.status === 'CANCELLED' ? 'bg-red-100 text-red-700' :
+                      'bg-gray-100 text-gray-600'
                     }`}>
                       {booking.status}
                     </span>
@@ -131,7 +155,7 @@ export default function WakanowBookingsPage() {
                   </td>
                 </tr>
               ))}
-              {filteredBookings.length === 0 && !loading && (
+              {filteredBookings.length === 0 && !loading && !error && (
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
                     No Wakanow bookings found

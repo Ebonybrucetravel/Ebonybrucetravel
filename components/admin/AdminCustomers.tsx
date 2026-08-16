@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { listCustomers } from '@/lib/adminApi';
+import { listCustomers, listBookings } from '@/lib/adminApi';
 
 export default function AdminCustomers() {
   const router = useRouter();
@@ -17,6 +17,7 @@ export default function AdminCustomers() {
     limit: 20,
   });
 
+  // ✅ FIXED LOAD FUNCTION: Removed the limit to get the true count
   const load = async () => {
     setLoading(true);
     setError(null);
@@ -27,7 +28,38 @@ export default function AdminCustomers() {
         page: filters.page,
         limit: filters.limit,
       });
-      setData(Array.isArray(res.data) ? res.data : []);
+
+      let customersData = Array.isArray(res.data) ? res.data : [];
+
+      // ✅ REMOVED "limit: 1" so the API returns all bookings for counting
+      const updatedData = await Promise.all(
+        customersData.map(async (customer) => {
+          try {
+            const bookingRes = await listBookings({ userId: customer.id });
+            let realCount = 0;
+            
+            if (bookingRes?.data) {
+              // If the API returns a pagination meta object, use that first (fastest)
+              if (bookingRes.meta?.total) {
+                realCount = bookingRes.meta.total;
+              } 
+              // Otherwise, fallback to counting the array length
+              else if (Array.isArray(bookingRes.data)) {
+                realCount = bookingRes.data.length;
+              } else if (bookingRes.data.bookings) {
+                realCount = bookingRes.data.bookings.length;
+              } else if (bookingRes.data.items) {
+                realCount = bookingRes.data.items.length;
+              }
+            }
+            return { ...customer, bookingsCount: realCount };
+          } catch (err) {
+            return customer; 
+          }
+        })
+      );
+
+      setData(updatedData);
       setMeta(res.meta ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load customers');
@@ -99,7 +131,7 @@ export default function AdminCustomers() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full text-left min-w-[640px]">
+              <table className="w-full text-left min-w-[740px]">
                 <thead>
                   <tr className="bg-[#f8fbfe] border-b border-gray-100">
                     <th className="px-6 lg:px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Identity</th>
@@ -107,19 +139,19 @@ export default function AdminCustomers() {
                     <th className="px-6 lg:px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Bookings</th>
                     <th className="px-6 lg:px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Points</th>
                     <th className="px-6 lg:px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
+                    <th className="px-6 lg:px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right w-[120px]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {data.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-8 py-16 text-center text-gray-400 font-bold">No customers found</td>
+                      <td colSpan={6} className="px-8 py-16 text-center text-gray-400 font-bold">No customers found</td>
                     </tr>
                   ) : (
                     data.map((c) => (
                       <tr
                         key={c.id}
-                        className="hover:bg-blue-50/10 transition cursor-pointer"
-                        onClick={() => router.push(`/admin/dashboard/customers/${c.id}`)}
+                        className="hover:bg-blue-50/10 transition"
                       >
                         <td className="px-6 lg:px-8 py-6">
                           <div className="flex items-center gap-3">
@@ -135,8 +167,15 @@ export default function AdminCustomers() {
                         <td className="px-6 lg:px-8 py-6 text-xs font-bold text-gray-500">
                           {formatDate(c.registeredDate || c.createdAt)}
                         </td>
-                        <td className="px-6 lg:px-8 py-6 text-sm font-black text-gray-900">{c.bookingsCount ?? 0}</td>
-                        <td className="px-6 lg:px-8 py-6 text-sm font-black text-gray-900">{c.points ?? c.loyaltyPoints ?? 0}</td>
+                        
+                        <td className="px-6 lg:px-8 py-6 text-sm font-black text-gray-900">
+                          {c.bookingsCount !== undefined && c.bookingsCount !== null ? c.bookingsCount : '—'}
+                        </td>
+
+                        <td className="px-6 lg:px-8 py-6 text-sm font-black text-gray-900">
+                          {c.points ?? c.loyaltyPoints ?? '—'}
+                        </td>
+
                         <td className="px-6 lg:px-8 py-6">
                           <span
                             className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase border ${
@@ -147,6 +186,15 @@ export default function AdminCustomers() {
                           >
                             {c.status || 'ACTIVE'}
                           </span>
+                        </td>
+                        
+                        <td className="px-6 lg:px-8 py-6 text-right">
+                          <button
+                            onClick={() => router.push(`/admin/dashboard/customers/${c.id}`)}
+                            className="text-[11px] font-bold text-[#33a8da] hover:text-[#2c98c7] hover:underline transition-colors"
+                          >
+                            View Details →
+                          </button>
                         </td>
                       </tr>
                     ))

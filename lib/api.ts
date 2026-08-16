@@ -2513,6 +2513,7 @@ export function transformCarRentalToSearchResult(
     },
   };
 }
+
 // Helper function to extract car amenities
 function extractCarAmenities(
   category?: string,

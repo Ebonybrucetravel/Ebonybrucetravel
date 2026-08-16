@@ -381,7 +381,7 @@ export default function UserProfilePage() {
             <path d="M15 19l-7-7 7-7" strokeWidth={2} />
           </svg>
         </div>
-        <span className="text-sm font-medium">Back to Users</span>
+        <span className="text-sm font-medium">Back to Customers</span>
       </button>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

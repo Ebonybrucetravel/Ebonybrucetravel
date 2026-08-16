@@ -13,7 +13,7 @@ interface Markup {
   id: string;
   productType: string;
   markupPercentage: number;
-  serviceFeeAmount: number;
+ serviceFeePercentage: number;
   currency: string;
   description: string;
   isActive: boolean;
@@ -33,7 +33,7 @@ export default function MarkupsPage() {
   const [formData, setFormData] = useState({
     productType: 'FLIGHT_DOMESTIC' as const,
     markupPercentage: '',
-    serviceFeeAmount: '',
+    serviceFeePercentage: '',
     currency: 'GBP',
     description: '',
     isActive: true,
@@ -76,7 +76,7 @@ export default function MarkupsPage() {
       const markupData = {
         productType: formData.productType,
         markupPercentage: parseFloat(formData.markupPercentage),
-        serviceFeeAmount: parseFloat(formData.serviceFeeAmount),
+        serviceFeeAmount: parseFloat(formData.serviceFeePercentage),
         currency: formData.currency,
         description: formData.description,
         ...(editingMarkup && { isActive: formData.isActive }),
@@ -123,7 +123,7 @@ export default function MarkupsPage() {
     setFormData({
       productType: markup.productType as any,
       markupPercentage: markup.markupPercentage.toString(),
-      serviceFeeAmount: markup.serviceFeeAmount.toString(),
+      serviceFeePercentage: markup.serviceFeePercentage.toString(),
       currency: markup.currency,
       description: markup.description,
       isActive: markup.isActive,
@@ -135,7 +135,7 @@ export default function MarkupsPage() {
     setFormData({
       productType: 'FLIGHT_DOMESTIC',
       markupPercentage: '',
-      serviceFeeAmount: '',
+      serviceFeePercentage: '',
       currency: 'GBP',
       description: '',
       isActive: true,
@@ -263,7 +263,7 @@ export default function MarkupsPage() {
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
                     <span className="text-sm text-gray-500">Service Fee</span>
                     <span className="font-semibold text-gray-900">
-                      {markup.currency} {markup.serviceFeeAmount.toFixed(2)}
+                      {markup.currency} {markup.serviceFeePercentage ?? 0}%
                     </span>
                   </div>
                 </div>
@@ -347,7 +347,7 @@ export default function MarkupsPage() {
                       type="number"
                       step="0.01"
                       min="0"
-                      value={formData.serviceFeeAmount}
+                      value={formData.serviceFeePercentage}
                       onChange={(e) => setFormData(prev => ({ ...prev, serviceFeeAmount: e.target.value }))}
                       placeholder="10.00"
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da]"
