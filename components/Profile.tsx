@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
-// Remove Stripe imports
+import { useRouter } from 'next/navigation';
 import type { User, Booking } from '@/lib/types'; // Updated import
 import ManageBookingModal from './ManageBookingModal';
 import { useLanguage } from '../context/LanguageContext';
@@ -725,6 +725,8 @@ const Profile: React.FC<ProfileProps> = ({
   onCloseDrawer,
   initialActiveTab = 'details'
 }) => {
+  const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState('');
   const { language: currentLang, setLanguage, currency: currentCurr, setCurrency } = useLanguage();
   const [activeTab, setActiveTab] = useState<ProfileTab>((initialActiveTab as ProfileTab) || 'details');
   const [formData, setFormData] = useState<Partial<ExtendedUser>>(() => {
@@ -1588,11 +1590,38 @@ const Profile: React.FC<ProfileProps> = ({
   };
 
   const filteredBookings = bookings.filter(b => {
-    if (bookingFilter === 'All') return true;
+  // First filter by type
+  if (bookingFilter !== 'All') {
     const type = b.productType?.includes('HOTEL') ? 'Hotel' : 
                  b.productType?.includes('CAR') ? 'Car' : 'Flight';
-    return type === bookingFilter;
-  });
+    if (type !== bookingFilter) return false;
+  }
+  
+  // Then filter by search query
+  if (searchQuery.trim()) {
+    const query = searchQuery.toLowerCase().trim();
+    const searchableFields = [
+      b.reference,
+      b.pnrNumber,
+      b.id,
+      // Hotel fields
+      b.bookingData?.hotelName,
+      b.bookingData?.hotel?.name,
+      b.bookingData?.hotel_name,
+      // Flight fields
+      b.bookingData?.origin,
+      b.bookingData?.destination,
+      b.bookingData?.airline,
+      b.bookingData?.flightNumber,
+    ];
+    
+    return searchableFields.some(field => 
+      String(field || '').toLowerCase().includes(query)
+    );
+  }
+  
+  return true;
+});
 
   // ✅ UPDATED: Render booking card with safe string conversion
 const renderBookingCard = (booking: Booking) => {
@@ -1719,12 +1748,12 @@ const renderBookingCard = (booking: Booking) => {
             {safeStr(booking.currency)} <span className="text-lg">{formattedPrice}</span>
           </p>
           <div className="flex items-center justify-center md:justify-end gap-5">
-            <button 
-              onClick={() => handleManageBooking(booking)} 
-              className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition"
-            >
-              Details
-            </button>
+           <button 
+  onClick={() => router.push(`/booking/success?id=${booking.id}&ref=${booking.reference}&provider=${booking.provider}`)} 
+  className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition"
+>
+  Full Details
+</button>
             <button 
               onClick={() => handleManageBooking(booking)} 
               className="px-8 py-3 bg-[#33a8da] text-white rounded-xl text-[11px] font-black uppercase hover:bg-[#2c98c7] transition shadow-lg active:scale-95"
@@ -1796,12 +1825,12 @@ const renderBookingCard = (booking: Booking) => {
             {safeStr(booking.currency)} <span className="text-lg">{formattedPrice}</span>
           </p>
           <div className="flex items-center justify-center md:justify-end gap-5">
-            <button 
-              onClick={() => handleManageBooking(booking)} 
-              className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition"
-            >
-              Details
-            </button>
+           <button 
+  onClick={() => router.push(`/booking/success?id=${booking.id}&ref=${booking.reference}&provider=${booking.provider}`)} 
+  className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition"
+>
+  Full Details
+</button>
             <button 
               onClick={() => handleManageBooking(booking)} 
               className="px-8 py-3 bg-[#33a8da] text-white rounded-xl text-[11px] font-black uppercase hover:bg-[#2c98c7] transition shadow-lg active:scale-95"
@@ -1856,11 +1885,11 @@ const renderBookingCard = (booking: Booking) => {
         </p>
         <div className="flex items-center justify-center md:justify-end gap-5">
           <button 
-            onClick={() => handleManageBooking(booking)} 
-            className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition"
-          >
-            Details
-          </button>
+  onClick={() => router.push(`/booking/success?id=${booking.id}&ref=${booking.reference}&provider=${booking.provider}`)} 
+  className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition"
+>
+  Full Details
+</button>
           <button 
             onClick={() => handleManageBooking(booking)} 
             className="px-8 py-3 bg-[#33a8da] text-white rounded-xl text-[11px] font-black uppercase hover:bg-[#2c98c7] transition shadow-lg active:scale-95"
@@ -2421,48 +2450,106 @@ const renderBookingCard = (booking: Booking) => {
               </div>
             )}
 
-            {activeTab === 'bookings' && (
-              <div className="animate-in fade-in duration-500 space-y-8">
-                <div className="bg-white rounded-[24px] p-8 md:p-10 shadow-sm border border-gray-100/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                  <div>
-                    <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Booking History</h1>
-                    <p className="text-gray-400 font-bold text-sm mt-1">Manage your upcoming and past travels.</p>
-                  </div>
-                  <div className="relative" ref={filterRef}>
-                    <button onClick={() => setShowFilterDropdown(!showFilterDropdown)} className="px-5 py-2.5 bg-white border border-gray-100 rounded-xl text-xs font-bold text-gray-500 flex items-center gap-2 hover:border-[#33a8da] transition shadow-sm">
-                      {bookingFilter === 'All' ? 'All Bookings' : `${bookingFilter}s`}
-                      <svg className={`w-3.5 h-3.5 transition-transform ${showFilterDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {showFilterDropdown && (
-                      <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
-                        {['All', 'Flight', 'Hotel', 'Car'].map((f) => (
-                          <button key={f} onClick={() => { setBookingFilter(f as any); setShowFilterDropdown(false); }} className={`w-full text-left px-5 py-3 text-xs font-bold ${bookingFilter === f ? 'text-[#33a8da] bg-blue-50' : 'text-gray-500 hover:bg-gray-50'}`}>
-                            {f === 'All' ? 'All Bookings' : `${f}s`}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  {isLoadingBookings ? (
-                    <div className="bg-white rounded-[24px] p-16 text-center border border-gray-100">
-                      <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
-                      <p className="text-gray-500 font-bold">Loading your bookings…</p>
-                    </div>
-                  ) : filteredBookings.length > 0 ? (
-                    filteredBookings.map(renderBookingCard)
-                  ) : (
-                    <div className="bg-white rounded-[24px] p-16 text-center border-2 border-dashed border-gray-100">
-                      <h3 className="text-xl font-bold text-gray-900 mb-2">No bookings yet</h3>
-                      <p className="text-gray-400 font-bold">Your upcoming and past trips will appear here.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+           {activeTab === 'bookings' && (
+  <div className="animate-in fade-in duration-500 space-y-8">
+    <div className="bg-white rounded-[24px] p-8 md:p-10 shadow-sm border border-gray-100/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+      <div>
+        <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Booking History</h1>
+        <p className="text-gray-400 font-bold text-sm mt-1">Manage your upcoming and past travels.</p>
+      </div>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto">
+        {/* ✅ SEARCH INPUT */}
+        <div className="relative w-full sm:w-56">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search bookings..."
+            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] transition pl-9"
+          />
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+        
+        {/* Filter Dropdown */}
+        <div className="relative" ref={filterRef}>
+          <button onClick={() => setShowFilterDropdown(!showFilterDropdown)} className="px-5 py-2.5 bg-white border border-gray-100 rounded-xl text-xs font-bold text-gray-500 flex items-center gap-2 hover:border-[#33a8da] transition shadow-sm whitespace-nowrap">
+            {bookingFilter === 'All' ? 'All Bookings' : `${bookingFilter}s`}
+            <svg className={`w-3.5 h-3.5 transition-transform ${showFilterDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showFilterDropdown && (
+            <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
+              {['All', 'Flight', 'Hotel', 'Car'].map((f) => (
+                <button key={f} onClick={() => { setBookingFilter(f as any); setShowFilterDropdown(false); }} className={`w-full text-left px-5 py-3 text-xs font-bold ${bookingFilter === f ? 'text-[#33a8da] bg-blue-50' : 'text-gray-500 hover:bg-gray-50'}`}>
+                  {f === 'All' ? 'All Bookings' : `${f}s`}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+    
+    {/* Results count */}
+    {!isLoadingBookings && filteredBookings.length > 0 && (
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-bold text-gray-400">
+          {filteredBookings.length} {filteredBookings.length === 1 ? 'booking' : 'bookings'} found
+        </span>
+        {searchQuery && (
+          <button 
+            onClick={() => setSearchQuery('')} 
+            className="text-xs font-bold text-[#33a8da] hover:underline"
+          >
+            Clear search
+          </button>
+        )}
+      </div>
+    )}
+    
+    <div className="space-y-4">
+      {isLoadingBookings ? (
+        <div className="bg-white rounded-[24px] p-16 text-center border border-gray-100">
+          <div className="animate-spin w-8 h-8 border-3 border-[#33a8da] border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-gray-500 font-bold">Loading your bookings…</p>
+        </div>
+      ) : filteredBookings.length > 0 ? (
+        filteredBookings.map(renderBookingCard)
+      ) : (
+        <div className="bg-white rounded-[24px] p-16 text-center border-2 border-dashed border-gray-100">
+          {searchQuery ? (
+            <>
+              <svg className="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">No results found</h3>
+              <p className="text-gray-400 font-bold">We couldn't find any bookings matching "{searchQuery}"</p>
+              <button onClick={() => setSearchQuery('')} className="mt-4 text-[#33a8da] font-bold hover:underline">Clear search</button>
+            </>
+          ) : (
+            <>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">No bookings yet</h3>
+              <p className="text-gray-400 font-bold">Your upcoming and past trips will appear here.</p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
             {activeTab === 'saved' && (
               <div className="animate-in fade-in duration-500 space-y-8">

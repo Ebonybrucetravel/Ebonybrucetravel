@@ -2474,19 +2474,23 @@ useEffect(() => {
         <span className="text-sm font-semibold text-gray-900">{displayBasePrice}</span>
       </div>
 
- {/* ✅ Car Rental: Combined Service Fee - FIXED */}
-{(isCar && carPriceBreakdown && (carPriceBreakdown.markupAmount > 0 || carPriceBreakdown.serviceFee > 0 || carPriceBreakdown.combinedTaxes > 0)) && (
-  <div className="flex justify-between items-center pt-1 border-t border-gray-100">
-    <span className="text-xs font-medium text-gray-500">
-      Service Fee ({carPriceBreakdown.markupPercentage + carPriceBreakdown.serviceFeePercentage + carPriceBreakdown.combinedTaxPercentage}%)
-    </span>
-    <span className="text-sm font-semibold text-gray-900">
-      {formatPrice(
-        convertedPrices.serviceFee + convertedPrices.combinedTaxes,
-        displayCurrency
-      )}
-    </span>
-  </div>
+      {/* ✅ CAR RENTAL: Combined Service Fee (Markup + Service Fee) */}
+{isCar && carPriceBreakdown && (
+  <>
+    {carPriceBreakdown.markupAmount > 0 || carPriceBreakdown.serviceFee > 0 ? (
+      <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+        <span className="text-xs font-medium text-gray-500">
+          Service Fee 
+        </span>
+        <span className="text-sm font-semibold text-gray-900">
+          {formatPrice(
+            carPriceBreakdown.markupAmount + carPriceBreakdown.serviceFee,
+            displayCurrency
+          )}
+        </span>
+      </div>
+    ) : null}
+  </>
 )}
 
       {/* Flight: Taxes */}

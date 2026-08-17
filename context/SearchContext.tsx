@@ -536,8 +536,8 @@ const searchCars = async (params: SearchParams) => {
     const response = await api.carApi.searchCarRentals(carParams);
 
     if (response.success && response.data?.data) {
-      // ✅ First, map all items to results with placeholder prices
-      const mappedResults = response.data.data.map((item: any) => {
+      // ✅ Process each item with async conversion
+      const mappedResults = await Promise.all(response.data.data.map(async (item: any) => {
         const startDate = new Date(item.start?.dateTime);
         const endDate = new Date(item.end?.dateTime);
         const hoursDiff = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
@@ -554,22 +554,80 @@ const searchCars = async (params: SearchParams) => {
           displayType = 'Long Transfer';
         }
 
-        const basePrice = parseFloat(item.base_price || item.original_price || item.price?.base || '0');
-        const markupAmount = parseFloat(item.markup_amount) || 0;
+        // ✅ Get base price in EUR from Amadeus
+        const basePriceEUR = parseFloat(
+          item.quotation?.base?.monetaryAmount || 
+          item.original_price || 
+          item.price?.base || 
+          item.base_price || 
+          '0'
+        );
+
+        // ✅ Get the user's currency from context
+        const userCurrency = currency.code || 'NGN';
+        const originalCurrency = item.quotation?.currencyCode || 'EUR';
+
+        // ✅ Convert to user's currency using currency service
+        let basePriceInUserCurrency = 0;
+        if (basePriceEUR > 0) {
+          try {
+            // ✅ Convert from EUR to user's currency
+            basePriceInUserCurrency = await convertPrice(basePriceEUR, originalCurrency);
+            console.log('💰 Converted to user currency:', { 
+              basePriceEUR, 
+              originalCurrency,
+              userCurrency,
+              basePriceInUserCurrency 
+            });
+          } catch (error) {
+            console.warn(`⚠️ Failed to convert ${originalCurrency} to ${userCurrency}, using fallback`, error);
+            // Fallback: use converted amount from API
+            basePriceInUserCurrency = parseFloat(item.converted?.monetaryAmount || '0');
+            if (basePriceInUserCurrency <= 0) {
+              basePriceInUserCurrency = basePriceEUR * 1567.50;
+            }
+          }
+        }
+
+        // ✅ If conversion failed, use API's converted amount
+        if (basePriceInUserCurrency <= 0) {
+          basePriceInUserCurrency = parseFloat(item.converted?.monetaryAmount || '0');
+        }
+
+        // ✅ If still no price, use a fallback
+        if (basePriceInUserCurrency <= 0) {
+          basePriceInUserCurrency = 1000;
+        }
+
+        // ✅ Calculate markup and service fee in user's currency
+        const markupPercentage = 10;
+        const serviceFeePercentage = 5;
+
+        const markupAmount = basePriceInUserCurrency * (markupPercentage / 100);
+        const serviceFeeAmount = basePriceInUserCurrency * (serviceFeePercentage / 100);
+        const finalPrice = basePriceInUserCurrency + markupAmount + serviceFeeAmount;
+
+        console.log(`🚗 Car price breakdown (${userCurrency}):`, {
+          basePriceEUR,
+          originalCurrency,
+          userCurrency,
+          basePriceInUserCurrency,
+          markupPercentage,
+          markupAmount,
+          serviceFeePercentage,
+          serviceFeeAmount,
+          finalPrice,
+        });
+
         const conversionFee = parseFloat(item.conversion_fee) || 0;
         const taxes = 0;
         const serviceFeeFromBackend = parseFloat(item.service_fee) || 0;
         
-        const totalServiceFee = markupAmount + conversionFee + taxes;
-        const finalServiceFee = serviceFeeFromBackend > 0 ? serviceFeeFromBackend : totalServiceFee;
-        const finalPriceNGN = parseFloat(item.final_price || item.price?.total || item.converted?.monetaryAmount || '0');
-        
-        let serviceFeePercentage = 0;
-        if (basePrice > 0 && finalServiceFee > 0) {
-          serviceFeePercentage = (finalServiceFee / basePrice) * 100;
+        let serviceFeePercentageFromBackend = 0;
+        if (basePriceInUserCurrency > 0 && serviceFeeFromBackend > 0) {
+          serviceFeePercentageFromBackend = (serviceFeeFromBackend / basePriceInUserCurrency) * 100;
         }
 
-        // ✅ Return ALL car rental fields with placeholder prices
         return {
           id: item.id || item.offerId || `car-${Date.now()}-${Math.random()}`,
           type: 'car-rentals' as const,
@@ -580,7 +638,6 @@ const searchCars = async (params: SearchParams) => {
           totalPrice: 'Loading...',
           image: item.vehicle?.imageURL || item.serviceProvider?.logoUrl || '',
           
-          // ✅ VEHICLE - CRITICAL for ReviewTrip
           vehicle: item.vehicle || {
             code: '',
             category: '',
@@ -590,7 +647,6 @@ const searchCars = async (params: SearchParams) => {
             baggages: [],
           },
           
-          // ✅ SERVICE PROVIDER - CRITICAL for ReviewTrip
           serviceProvider: item.serviceProvider || item.partnerInfo?.serviceProvider || {
             code: '',
             name: '',
@@ -598,7 +654,6 @@ const searchCars = async (params: SearchParams) => {
             termsUrl: '',
           },
           
-          // ✅ TRIP DETAILS - CRITICAL for ReviewTrip
           start: item.start || { 
             dateTime: pickupDateTime, 
             locationCode: pickupLocationCode,
@@ -610,49 +665,34 @@ const searchCars = async (params: SearchParams) => {
             address: item.end?.address || {}
           },
           
-          // ✅ CANCELLATION RULES - CRITICAL for ReviewTrip
           cancellationRules: item.cancellationRules || [],
-          
-          // ✅ DISTANCE - CRITICAL for ReviewTrip
           distance: item.distance,
-          
-          // ✅ DURATION - CRITICAL for ReviewTrip
           duration: item.duration,
-          
-          // ✅ TRANSFER TYPE - CRITICAL for ReviewTrip
           transferType: item.transferType || params.transferType || 'PRIVATE',
-          
-          // ✅ PAYMENT METHODS - CRITICAL for ReviewTrip
           methodsOfPaymentAccepted: item.methodsOfPaymentAccepted || [],
           supportedPaymentInstruments: item.supportedPaymentInstruments || [],
-          
-          // ✅ EXTRA SERVICES - CRITICAL for ReviewTrip
           extraServices: item.extraServices || [],
-          
-          // ✅ CONDITION SUMMARY - CRITICAL for ReviewTrip
           conditionSummary: item.conditionSummary || [],
           
-          // ✅ Price fields
-          original_amount: basePrice.toString(),
-          original_currency: 'NGN',
+          // ✅ Price fields - NOW IN USER'S CURRENCY
+          original_amount: basePriceEUR.toString(),
+          original_currency: originalCurrency,
           markup_amount: markupAmount.toString(),
-          markup_percentage: 0,
+          markup_percentage: markupPercentage,
           conversion_fee: conversionFee.toString(),
           conversion_fee_percentage: 0,
           taxes: taxes.toString(),
-          service_fee: finalServiceFee.toString(),
+          service_fee: serviceFeeAmount.toString(),
           service_fee_percentage: serviceFeePercentage,
-          final_amount: finalPriceNGN.toString(),
-          currency: 'NGN',
-          rawPrice: finalPriceNGN,
+          final_amount: finalPrice.toString(),
+          currency: userCurrency,
+          rawPrice: finalPrice,
           displayPrice: 'Loading...',
           displayPriceRaw: 0,
           
-          // ✅ Offer ID
           offerId: item.offerId || item.id,
           offer_id: item.offerId || item.id,
           
-          // ✅ Rental type
           rentalType,
           displayType,
           rentalDays: daysDiff,
@@ -660,24 +700,29 @@ const searchCars = async (params: SearchParams) => {
           isMultiDay: daysDiff >= 1,
           isTransfer: daysDiff < 1,
           
-          // ✅ Real data for booking
           realData: {
-            ...item,
-            offerId: item.offerId || item.id,
-            pickupLocation: pickupLocationCode,
-            dropoffLocation: dropoffLocationCode,
-            pickupDateTime: pickupDateTime,
-            dropoffDateTime: dropoffDateTime,
-            vehicleType: item.vehicle?.description,
-            vehicleCategory: item.vehicle?.category,
-            seats: item.vehicle?.seats?.[0]?.count,
-            baggage: item.vehicle?.baggages?.reduce((total: number, bag: any) => total + (bag.count || 0), 0),
-            price: finalPriceNGN,
-            currency: 'NGN',
-            finalPrice: finalPriceNGN,
-          },
-          
-          // ✅ Car rental specific fields
+  ...item,
+  offerId: item.offerId || item.id,
+  pickupLocation: pickupLocationCode,
+  dropoffLocation: dropoffLocationCode,
+  pickupDateTime: pickupDateTime,
+  dropoffDateTime: dropoffDateTime,
+  vehicleType: item.vehicle?.description,
+  vehicleCategory: item.vehicle?.category,
+  seats: item.vehicle?.seats?.[0]?.count,
+  baggage: item.vehicle?.baggages?.reduce((total: number, bag: any) => total + (bag.count || 0), 0),
+  // ✅ Store both EUR and user currency
+  basePriceEUR: basePriceEUR,                  
+  basePrice: basePriceInUserCurrency,         
+  price: finalPrice,                              
+  currency: userCurrency,                       
+  finalPrice: finalPrice,                        
+  markupAmount: markupAmount,                    
+  markupPercentage: markupPercentage,            
+  serviceFee: serviceFeeAmount,               
+  serviceFeePercentage: serviceFeePercentage,    
+  originalCurrency: originalCurrency,           
+},
           pickupLocation: pickupLocationCode,
           dropoffLocation: dropoffLocationCode,
           pickupDateTime: pickupDateTime,
@@ -686,28 +731,29 @@ const searchCars = async (params: SearchParams) => {
           vehicleCategory: item.vehicle?.category,
           seats: item.vehicle?.seats?.[0]?.count,
         };
-      });
+      }));
 
-      // ✅ Now process prices asynchronously
+      // ✅ Process prices for display - THIS MUST BE INSIDE THE searchCars FUNCTION
       const processedResults = await Promise.all(mappedResults.map(async (result: any) => {
-        const finalPriceNGN = parseFloat(result.final_amount || '0');
-        const displayPriceInUserCurrency = await getDisplayPriceInUserCurrency(finalPriceNGN, 'NGN');
-        const formattedDisplayPrice = await formatPriceInUserCurrency(finalPriceNGN, 'NGN');
+        const finalPrice = parseFloat(result.final_amount || '0');
+        const userCurrency = currency.code || 'NGN';
+        
+        // ✅ Use formatPrice from useLanguage (it uses the current currency)
+        const formattedDisplayPrice = formatPrice(finalPrice);
         
         return {
           ...result,
           price: formattedDisplayPrice,
           totalPrice: formattedDisplayPrice,
           displayPrice: formattedDisplayPrice,
-          displayPriceRaw: displayPriceInUserCurrency,
-          rawPrice: displayPriceInUserCurrency,
+          displayPriceRaw: finalPrice,
+          rawPrice: finalPrice,
         };
       }));
 
       setSearchResults(processedResults);
-      console.log(`✅ Processed ${processedResults.length} car rentals with ALL fields for ReviewTrip`);
+      console.log(`✅ Processed ${processedResults.length} car rentals in ${currency.code || 'NGN'}`);
       
-      // ✅ Verify the data is set correctly
       if (processedResults.length > 0) {
         const firstCar = processedResults[0];
         console.log('🔍 Car data verification:', {
@@ -723,6 +769,13 @@ const searchCars = async (params: SearchParams) => {
           hasDistance: !!firstCar.distance,
           hasDuration: !!firstCar.duration,
           hasTransferType: !!firstCar.transferType,
+          realData: {
+            basePrice: firstCar.realData?.basePrice,
+            markupPercentage: firstCar.realData?.markupPercentage,
+            serviceFeePercentage: firstCar.realData?.serviceFeePercentage,
+            finalPrice: firstCar.realData?.finalPrice,
+            currency: firstCar.realData?.currency,
+          },
         });
       }
     } else {

@@ -683,6 +683,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         for (const combination of flightOffers as any[]) {
           const flightCombination = combination.FlightCombination;
           const selectData = combination.SelectData;
+           const bookingId = combination.BookingId;
           const flightModels = flightCombination?.FlightModels || [];
 
           if (flightModels.length === 0) continue;
@@ -757,6 +758,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             isWakanow: true,
             isWakanowDomestic: true,
             selectData: selectData,
+            bookingId: bookingId || selectData,
             provider: 'wakanow',
             airlineCode: outboundFlight.Airline || '',
             airlineName: outboundFlight.AirlineName || outboundFlight.Airline || 'Unknown Airline',
