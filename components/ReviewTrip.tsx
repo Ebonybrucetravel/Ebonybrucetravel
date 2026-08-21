@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '../context/LanguageContext';
 import type { SearchResult, SearchParams, PassengerInfo, User, Booking } from '../lib/types';
@@ -385,6 +385,7 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
     }
   }, [item]);
 
+
   const actualItem = fixedItem || item;
   
   if (!actualItem) {
@@ -504,9 +505,18 @@ console.log('🔍 ReviewTrip - Product type detection:', {
   const [hbxQuote, setHbxQuote] = useState<any | null>(null);
   const [isQuoting, setIsQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
-  const [additionalPassengers, setAdditionalPassengers] = useState<PassengerInfo[]>([]);
-  const [agreedToPolicy, setAgreedToPolicy] = useState(false);
-  const [appliedPromo, setAppliedPromo] = useState<any | null>(null);
+  const [additionalPassengers, setAdditionalPassengers] = useState<PassengerInfo[]>([]);  
+  useEffect(() => {
+  console.log('🔍 ADDITIONAL PASSENGERS DOB:', additionalPassengers.map((p, i) => ({
+    index: i,
+    type: p.type,
+    firstName: p.firstName,
+    dateOfBirth: p.dateOfBirth || '(empty)',
+    dateOfBirthFormat: p.dateOfBirth ? (p.dateOfBirth.match(/^\d{2}\/\d{2}\/\d{4}$/) ? 'MM/DD/YYYY' : 'OTHER') : 'NONE',
+  })));
+}, [additionalPassengers]);
+const [agreedToPolicy, setAgreedToPolicy] = useState(false);
+const [appliedPromo, setAppliedPromo] = useState<any | null>(null);  
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [displayedTerms, setDisplayedTerms] = useState<string[]>([]);
   const [passportNumber, setPassportNumber] = useState('');
@@ -534,7 +544,48 @@ console.log('🔍 ReviewTrip - Product type detection:', {
   combinedTaxPercentage: number;
 } | null>(null);
 
+const hasInitializedPassengersRef = useRef(false);
+useEffect(() => {
 
+  if (hasInitializedPassengersRef.current) {
+    console.log('⏭️ Already initialized, skipping restore');
+    return;
+  }
+  
+  const stored = sessionStorage.getItem('additional_passengers');
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // ✅ Check if we actually need additional passengers
+        let adults = 1;
+        let children = 0;
+        let infants = 0;
+        
+        if (typeof searchParams?.passengers === 'object') {
+          adults = searchParams.passengers.adults || 1;
+          children = searchParams.passengers.children || 0;
+          infants = searchParams.passengers.infants || 0;
+        }
+        
+        const totalAdditional = (adults - 1) + children + infants;
+        
+        // ✅ Only restore if there are additional passengers needed
+        if (totalAdditional > 0) {
+          console.log('📦 Restored additional passengers from sessionStorage:', parsed.length);
+          setAdditionalPassengers(parsed);
+          hasInitializedPassengersRef.current = true;
+        } else {
+          // ✅ Clear sessionStorage if no additional passengers needed
+          console.log('🗑️ Clearing stale additional_passengers from sessionStorage (no passengers needed)');
+          sessionStorage.removeItem('additional_passengers');
+        }
+      }
+    } catch (e) {
+      console.error('Failed to restore passengers:', e);
+    }
+  }
+}, [searchParams]);
   const isWakanow = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
                     (actualItem as any)?.type?.toLowerCase().includes('wakanow');
 
@@ -572,12 +623,14 @@ console.log('🔍 ReviewTrip - Product type detection:', {
   const shouldSkipPassport = isDuffel || (isFlight && !isWakanow);
   const isPassportIncompleteForDuffel = false; 
 
+
   useEffect(() => {
-    if (!extBooking) {
+    if (!extBooking && !hasInitializedPassengersRef.current) {
       let adults = 1;
       let children = 0;
       let infants = 0;
   
+      // ✅ Check if passengers object exists and has explicit values
       if (typeof searchParams?.passengers === 'object') {
         adults = searchParams.passengers.adults || 1;
         children = searchParams.passengers.children || 0;
@@ -589,9 +642,19 @@ console.log('🔍 ReviewTrip - Product type detection:', {
         adults = searchParams.guests;
       }
   
+      // ✅ LOG what's being passed
+      console.log('🔍 Passenger counts from searchParams:', {
+        adults,
+        children,
+        infants,
+        searchParams,
+      });
+  
       const totalAdditional = (adults - 1) + children + infants;
       
+      // ✅ Only create if there are ACTUAL additional passengers
       if (totalAdditional > 0) {
+        // ✅ ACTUAL CODE TO CREATE ADDITIONAL PASSENGERS
         const initial: PassengerInfo[] = [];
         
         const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
@@ -599,15 +662,17 @@ console.log('🔍 ReviewTrip - Product type detection:', {
         const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
         const needsPassport = isWakanowFlight && !isDomesticFlight && isFlight;
         
-        console.log('👶 Initializing additional passengers with needsPassport:', {
+        console.log('👶 Creating additional passengers with needsPassport:', {
           needsPassport,
           isWakanowFlight,
           isDomesticFlight,
           adults,
           children,
           infants,
+          totalAdditional,
         });
         
+        // Add extra adults (beyond the first one)
         for (let i = 0; i < adults - 1; i++) {
           initial.push({ 
             firstName: '', lastName: '', email: '', phone: '', 
@@ -626,13 +691,14 @@ console.log('🔍 ReviewTrip - Product type detection:', {
           });
         }
         
+        // Add children
         for (let i = 0; i < children; i++) {
           initial.push({ 
             firstName: '', lastName: '', email: '', phone: '', 
             type: 'child', title: 'miss', gender: 'f', dateOfBirth: '',
             ...(needsPassport && {
               passportNumber: '',
-              passportExpiry: '',
+              passportExpiry: '',  
               passportIssuingAuthority: '',
               passportIssueCountry: '',
               address: '',
@@ -644,6 +710,7 @@ console.log('🔍 ReviewTrip - Product type detection:', {
           });
         }
         
+        // Add infants
         for (let i = 0; i < infants; i++) {
           initial.push({ 
             firstName: '', lastName: '', email: '', phone: '', 
@@ -663,8 +730,17 @@ console.log('🔍 ReviewTrip - Product type detection:', {
         }
         
         setAdditionalPassengers(initial);
+        sessionStorage.setItem('additional_passengers', JSON.stringify(initial)); 
+        hasInitializedPassengersRef.current = true;
+        
+        console.log('👶 Created additional passengers:', initial.length);
       } else {
-        setAdditionalPassengers([]);
+        console.log('✅ No additional passengers needed');
+        // ✅ Clear any existing additional passengers if search is for 1 adult only
+        if (additionalPassengers.length > 0) {
+          setAdditionalPassengers([]);
+          sessionStorage.removeItem('additional_passengers');
+        }
       }
     }
   }, [searchParams, extBooking, actualItem, extendedItem, isFlight, isDomesticByAirport, isDomesticByProduct]);
@@ -706,6 +782,16 @@ console.log('🔍 ReviewTrip - Product type detection:', {
       }
     }
   }, [user]);
+
+  useEffect(() => {
+    console.log('🔍🔍🔍 PASSPORT STATE DEBUG:', {
+      passportNumber: passportNumber || '(empty)',
+      passportExpiry: passportExpiry || '(empty)',
+      passportExpiryType: typeof passportExpiry,
+      passportExpiryLength: passportExpiry?.length || 0,
+      passportIssuingAuthority: passportIssuingAuthority || '(empty)',
+    });
+  }, [passportNumber, passportExpiry, passportIssuingAuthority]);
 
   // ✅ DUFFEL: Skip passport loading
   useEffect(() => {
@@ -1222,6 +1308,17 @@ useEffect(() => {
 }, [basePrice, totalDue, combinedTaxes, serviceFee, offerCurrency, currency.code, isCar, carPriceBreakdown]);
 
 
+useEffect(() => {
+  console.log('🔍 ADDITIONAL PASSENGERS STATE:', additionalPassengers.map((p, i) => ({
+    index: i,
+    type: p.type,
+    firstName: p.firstName,
+    passportNumber: p.passportNumber,
+    passportExpiry: p.passportExpiry || '(empty)',
+    passportIssuingAuthority: p.passportIssuingAuthority,
+  })));
+}, [additionalPassengers]);
+
   const displayCurrency = convertedPrices.currency || currency.code || 'GBP';
   const displayBasePrice = formatPrice(convertedPrices.basePrice, displayCurrency);
   const displayCombinedTaxes = formatPrice(convertedPrices.combinedTaxes, displayCurrency);
@@ -1326,12 +1423,27 @@ useEffect(() => {
 
   const validateAllPassengers = (): boolean => {
     const skipPassportValidation = shouldSkipPassport;
+    const isInternationalWakanow = isWakanow && !isDomesticFlightResult && isFlight;
+    
+    // Get booking date (today)
+    const bookingDate = new Date();
+    const bookingDateStr = bookingDate.toISOString().split('T')[0];
+    
+    // Get return date
+    let returnDateStr = '';
+    if (searchParams?.segments && searchParams.segments.length > 1) {
+      returnDateStr = searchParams.segments[1].date || '';
+    } else if (searchParams?.returnDate) {
+      returnDateStr = searchParams.returnDate;
+    }
+    const travelDateStr = returnDateStr || searchParams?.segments?.[0]?.date || bookingDateStr;
     
     for (let i = 0; i < additionalPassengers.length; i++) {
       const p = additionalPassengers[i];
       const passengerType = p.type || 'adult';
       const label = `${passengerType.toUpperCase()} #${i + 1}`;
       
+      // ✅ Validate name fields
       if (!p.firstName || !p.firstName.trim()) {
         alert(`${label}: First name is required.`);
         return false;
@@ -1340,8 +1452,9 @@ useEffect(() => {
         alert(`${label}: Last name is required.`);
         return false;
       }
-
+  
       if (isFlight) {
+        // ✅ Validate flight-specific fields
         if (!p.title) {
           alert(`${label}: Title is required.`);
           return false;
@@ -1350,364 +1463,599 @@ useEffect(() => {
           alert(`${label}: Gender is required.`);
           return false;
         }
-        if (!p.dateOfBirth) {
+        
+        // ✅ Date of Birth is required for all passengers
+        if (!p.dateOfBirth || !p.dateOfBirth.trim()) {
           alert(`${label}: Date of Birth is required.`);
           return false;
         }
         
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(p.dateOfBirth)) {
-          alert(`${label}: Date of birth must be in YYYY-MM-DD format.`);
-          return false;
+        const dateRegex = /^\d{1,2}\/\d{1,2}\/\d{4}$/;
+if (!dateRegex.test(p.dateOfBirth)) {
+  alert(`${label}: Date of birth must be in MM/DD/YYYY format.`);
+  return false;
+}
+        
+const dob = new Date(p.dateOfBirth);
+if (isNaN(dob.getTime())) {
+  alert(`${label}: Please enter a valid date of birth.`);
+  return false;
+}
+        
+        // Calculate age on booking date
+        let ageOnBooking = new Date(bookingDateStr).getFullYear() - dob.getFullYear();
+        const monthDiffBooking = new Date(bookingDateStr).getMonth() - dob.getMonth();
+        if (monthDiffBooking < 0 || (monthDiffBooking === 0 && new Date(bookingDateStr).getDate() < dob.getDate())) {
+          ageOnBooking--;
         }
+        
+        // Calculate age on travel date
+        let ageOnTravel = new Date(travelDateStr).getFullYear() - dob.getFullYear();
+        const monthDiffTravel = new Date(travelDateStr).getMonth() - dob.getMonth();
+        if (monthDiffTravel < 0 || (monthDiffTravel === 0 && new Date(travelDateStr).getDate() < dob.getDate())) {
+          ageOnTravel--;
+        }
+        
+        // ✅ ADULT: Must be 12 or above on travel return date
+        if (passengerType === 'adult') {
+          if (ageOnTravel < 12) {
+            alert(`${label}: Adult passenger must be at least 12 years old on the travel date. Current age: ${ageOnTravel} years.`);
+            return false;
+          }
+        }
+        
+        // ✅ CHILD: Must be between 2 and 12 on travel return date
+        if (passengerType === 'child') {
+          if (ageOnTravel < 2 || ageOnTravel > 12) {
+            alert(`${label}: Child passenger must be between 2 and 12 years old on the travel date. Current age: ${ageOnTravel} years.`);
+            return false;
+          }
+        }
+        
+        // ✅ INFANT: Must be less than 2 on booking date
+        if (passengerType === 'infant') {
+          if (ageOnBooking >= 2) {
+            alert(`${label}: Infant passenger must be less than 2 years old on the booking date. Current age: ${ageOnBooking} years.`);
+            return false;
+          }
+        }
+        
+       // ✅ PASSPORT VALIDATION - FOR ALL PASSENGERS ON INTERNATIONAL FLIGHTS
+const isAdult = passengerType === 'adult';
+const isInfant = passengerType === 'infant';
+const isChild = passengerType === 'child';
 
-        const dob = new Date(p.dateOfBirth);
-        const today = new Date();
-        const age = today.getFullYear() - dob.getFullYear();
-        if (age < 2) {
-          alert(`${label}: Passenger must be at least 2 years old for flight bookings.`);
-          return false;
-        }
+if (!skipPassportValidation && isInternationalWakanow) {
+  if (isAdult || isInfant || isChild) {
+    // ✅ Get DOM values for ALL passport fields
+    const numberInput = document.querySelector(`#passenger-${i}-number`) as HTMLInputElement;
+    const expiryInput = document.querySelector(`#passenger-${i}-expiry`) as HTMLInputElement;
+    const issuingInput = document.querySelector(`#passenger-${i}-issuing`) as HTMLInputElement;
+    
+    const actualNumber = numberInput?.value || p.passportNumber;
+    const actualExpiry = expiryInput?.value || p.passportExpiry;
+    const actualIssuing = issuingInput?.value || p.passportIssuingAuthority;
+    
+    console.log(`🔍 Passenger ${i + 1} (${passengerType}) - Passport State:`, {
+      number: actualNumber || '(empty)',
+      expiry: actualExpiry || '(empty)',
+      issuing: actualIssuing || '(empty)',
+    });
+    
+    // ✅ Validate Passport Number
+    if (!actualNumber || !actualNumber.trim()) {
+      alert(`${label}: Passport number is required for international flights to North America.`);
+      return false;
+    }
+    
+   // ✅ Validate Passport Expiry - Check BOTH state AND DOM
+const hasExpiry = p.passportExpiry && p.passportExpiry.trim();
+const hasDomExpiry = actualExpiry && actualExpiry.trim();
 
-        if (!skipPassportValidation && isWakanow && !isDomesticFlightResult) {
-          if (!p.passportNumber || !p.passportNumber.trim()) {
-            alert(`${label}: Passport number is required for flights to North America.`);
-            return false;
-          }
-          if (!p.passportExpiry) {
-            alert(`${label}: Passport expiry date is required for flights to North America.`);
-            return false;
-          }
-          if (!p.passportIssuingAuthority || !p.passportIssuingAuthority.trim()) {
-            alert(`${label}: Passport issuing authority is required for flights to North America.`);
-            return false;
-          }
-        }
+console.log(`🔍 Passenger ${i + 1} (${passengerType}) - Expiry Check:`, {
+  stateExpiry: p.passportExpiry || '(empty)',
+  domExpiry: actualExpiry || '(empty)',
+  hasExpiry,
+  hasDomExpiry,
+  // Check if the date is actually valid
+  isValidDate: p.passportExpiry ? !isNaN(new Date(p.passportExpiry).getTime()) : false,
+});
+
+// ✅ If the date is in state but invalid, try to fix it
+if (p.passportExpiry && isNaN(new Date(p.passportExpiry).getTime())) {
+  console.warn(`⚠️ Passenger ${i + 1} has invalid expiry date:`, p.passportExpiry);
+  alert(`${label}: Please enter a valid passport expiry date.`);
+  return false;
+}
+
+if (!hasExpiry && !hasDomExpiry) {
+  alert(`${label}: Passport expiry date is required for international flights to North America.`);
+  return false;
+}
+
+    
+    // ✅ Sync DOM values to state if needed
+    if (!p.passportNumber && actualNumber) {
+      const updated = [...additionalPassengers];
+      updated[i] = { ...updated[i], passportNumber: actualNumber };
+      setAdditionalPassengers(updated);
+      sessionStorage.setItem('additional_passengers', JSON.stringify(updated));
+    }
+    if (!p.passportExpiry && actualExpiry) {
+      console.log(`🔄 Syncing passenger ${i + 1} expiry from DOM to state:`, actualExpiry);
+      const updated = [...additionalPassengers];
+      updated[i] = { ...updated[i], passportExpiry: actualExpiry };
+      setAdditionalPassengers(updated);
+    }
+    if (!p.passportIssuingAuthority && actualIssuing) {
+      const updated = [...additionalPassengers];
+      updated[i] = { ...updated[i], passportIssuingAuthority: actualIssuing };
+      setAdditionalPassengers(updated);
+    }
+    
+    // ✅ Validate Passport Issuing Authority
+    if (!actualIssuing || !actualIssuing.trim()) {
+      alert(`${label}: Passport issuing authority is required for international flights to North America.`);
+      return false;
+    }
+  }
+}
       }
     }
     return true;
   };
 
-  // ==================== HANDLE COMPLETE BOOKING ====================
-  const handleCompleteBooking = async () => {
-    console.log('🔍🔍🔍 CRITICAL DEBUG - Passport State Values:', {
-      passportNumber: passportNumber || '(empty)',
-      passportExpiry: passportExpiry || '(empty)',
-      passportIssuingAuthority: passportIssuingAuthority || '(empty)',
-      passportIssueCountry: passportIssueCountry || '(empty)',
-      isWakanowFlight: (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW',
-      isNorthAmerica: isNorthAmericanDestination(extendedItem, searchParams),
-      isDomestic: isDomesticByAirport || isDomesticByProduct,
-    });
+// ==================== HANDLE COMPLETE BOOKING ====================
+const handleCompleteBooking = async () => {
+  console.log('🔍🔍🔍 CRITICAL DEBUG - Passport State Values:', {
+    passportNumber: passportNumber || '(empty)',
+    passportExpiry: passportExpiry || '(empty)',
+    passportIssuingAuthority: passportIssuingAuthority || '(empty)',
+    passportIssueCountry: passportIssueCountry || '(empty)',
+    isWakanowFlight: (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW',
+    isNorthAmerica: isNorthAmericanDestination(extendedItem, searchParams),
+    isDomestic: isDomesticByAirport || isDomesticByProduct,
+  });
 
-    if (isBooking || isCreating) return;
+  if (isBooking || isCreating) return;
 
-    if (!firstName || !firstName.trim()) {
-      alert('First name is required.');
-      return;
-    }
-    if (!lastName || !lastName.trim()) {
-      alert('Last name is required.');
-      return;
-    }
-    if (!email || !email.trim()) {
-      alert('Email is required.');
-      return;
-    }
-    if (!phone || !phone.trim()) {
-      alert('Phone number is required.');
-      return;
-    }
+  // Validate basic fields
+  if (!firstName || !firstName.trim()) {
+    alert('First name is required.');
+    return;
+  }
+  if (!lastName || !lastName.trim()) {
+    alert('Last name is required.');
+    return;
+  }
+  if (!email || !email.trim()) {
+    alert('Email is required.');
+    return;
+  }
+  if (!phone || !phone.trim()) {
+    alert('Phone number is required.');
+    return;
+  }
 
-    if (isCar && !agreedToPolicy) {
+  if (isCar && !agreedToPolicy) {
     alert('Please agree to the Rental Terms & Conditions and Cancellation Policy to continue.');
     return;
   }
 
-    if (isFlight) {
-      console.log('🔍 BEFORE VALIDATION - Form values:', {
-        title: title,
-        gender: gender,
-        dateOfBirth: dateOfBirth,
-        firstName: firstName,
-        lastName: lastName,
-        email: email,
-        phone: phone,
-      });
-  
-      if (!title) {
-        alert('Title is required for flight bookings. Please select your title.');
-        return;
-      }
-  
-      if (!gender) {
-        alert('Gender is required for flight bookings. Please select your gender.');
-        return;
-      }
-  
-      if (!dateOfBirth) {
-        alert('Date of birth is required for flight bookings. Please enter your date of birth.');
-        return;
-      }
+  // ✅ FLIGHT VALIDATION
+  if (isFlight) {
+    console.log('🔍 BEFORE VALIDATION - Form values:', {
+      title: title,
+      gender: gender,
+      dateOfBirth: dateOfBirth,
+      firstName: firstName,
+      lastName: lastName,
+      email: email,
+      phone: phone,
+    });
 
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      if (!dateRegex.test(dateOfBirth)) {
-        alert('Date of birth must be in YYYY-MM-DD format.');
-        return;
-      }
+    if (!title) {
+      alert('Title is required for flight bookings. Please select your title.');
+      return;
+    }
 
-      const dob = new Date(dateOfBirth);
-      const today = new Date();
-      const age = today.getFullYear() - dob.getFullYear();
-      if (age < 2) {
-        alert('Passenger must be at least 2 years old for flight bookings.');
-        return;
-      }
+    if (!gender) {
+      alert('Gender is required for flight bookings. Please select your gender.');
+      return;
+    }
 
+    if (!dateOfBirth) {
+      alert('Date of birth is required for flight bookings. Please enter your date of birth.');
+      return;
+    }
+
+    // ✅ Accept MM/DD/YYYY format
+const dateRegex = /^\d{1,2}\/\d{1,2}\/\d{4}$/;
+if (!dateRegex.test(dateOfBirth)) {
+  alert('Date of birth must be in MM/DD/YYYY format.');
+  return;
+}
+
+    const dob = new Date(dateOfBirth);
+    const today = new Date();
+    const age = today.getFullYear() - dob.getFullYear();
+    if (age < 2) {
+      alert('Passenger must be at least 2 years old for flight bookings.');
+      return;
+    }
+
+    const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+                            (actualItem as any)?.type?.toLowerCase().includes('wakanow');
+    const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
+    const isInternational = isWakanowFlight && !isDomesticFlight;
+    
+   
+// ✅ ✅ ✅ PASSPORT VALIDATION FOR LEAD PASSENGER (ADULT)
+if (!shouldSkipPassport && isFlight && isInternational) {
+  console.log('🔍🔍🔍 DEBUG - Lead Passenger Passport State:', {
+    passportNumber: passportNumber || '(empty)',
+    passportExpiry: passportExpiry || '(empty)',
+    passportExpiryType: typeof passportExpiry,
+    passportExpiryLength: passportExpiry?.length || 0,
+    passportIssuingAuthority: passportIssuingAuthority || '(empty)',
+  });
+  
+  // ✅ Get DOM value as backup
+  const expiryInput = document.querySelector('#lead-passport-expiry') as HTMLInputElement;
+  const actualExpiryValue = expiryInput?.value || passportExpiry;
+  
+  console.log('🔍 DOM Expiry value:', actualExpiryValue);
+  
+  // ✅ Check what's missing
+  const missingFields: string[] = [];
+  
+  if (!passportNumber || !passportNumber.trim()) {
+    missingFields.push('Passport Number');
+  }
+  
+  // ✅ Check BOTH state AND DOM
+  const hasExpiry = passportExpiry && passportExpiry.trim();
+  const hasDomExpiry = actualExpiryValue && actualExpiryValue.trim();
+  
+  if (!hasExpiry && !hasDomExpiry) {
+    missingFields.push('Passport Expiry Date');
+  }
+  
+  if (!passportIssuingAuthority || !passportIssuingAuthority.trim()) {
+    missingFields.push('Passport Issuing Authority');
+  }
+  
+  // ✅ Show ALL missing fields at once
+  if (missingFields.length > 0) {
+    alert(
+      `Please fill in the following required fields:\n\n` +
+      missingFields.map(f => `• ${f}`).join('\n') +
+      `\n\nPlease go back and complete your passport details.`
+    );
+    return;
+  }
+  
+  // ✅ If state is empty but DOM has value, sync it
+  if (!hasExpiry && hasDomExpiry) {
+    console.log('🔄 Syncing expiry from DOM to state:', actualExpiryValue);
+    setPassportExpiry(actualExpiryValue);
+  }
+  
+  // ✅ Use the actual value for validation
+  const expiryToValidate = hasExpiry ? passportExpiry : actualExpiryValue;
+  
+  // ✅ Validate passport number format
+  const passportRegex = /^[A-Za-z][0-9]{7,8}$|^[A-Za-z0-9]{6,9}$/;
+  if (!passportRegex.test(passportNumber)) {
+    alert('Please enter a valid passport number (e.g., A12345678)');
+    return;
+  }
+  
+  // ✅ Validate passport is not expired
+  const expiryDate = new Date(expiryToValidate);
+  if (isNaN(expiryDate.getTime())) {
+    alert('Please enter a valid passport expiry date.');
+    return;
+  }
+  
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+  if (expiryDate < todayDate) {
+    alert('Your passport has expired. Please renew your passport.');
+    return;
+  }
+  
+  // ✅ Validate 6-month validity rule for North America
+  if (isNorthAmericanDestination(extendedItem, searchParams)) {
+    let travelDate = new Date();
+    if (searchParams?.segments?.[0]?.date) {
+      travelDate = new Date(searchParams.segments[0].date);
+    } else if (searchParams?.departureDate) {
+      travelDate = new Date(searchParams.departureDate);
+    }
+    const sixMonthsFromTravel = new Date(travelDate);
+    sixMonthsFromTravel.setMonth(sixMonthsFromTravel.getMonth() + 6);
+    
+    if (expiryDate < sixMonthsFromTravel) {
+      alert('Your passport must be valid for at least 6 months from your travel date for travel to North America.');
+      return;
+    }
+  }
+}
+
+    if (displayedTerms.length > 0 && !agreedToTerms) {
+      alert('Please agree to the Terms & Conditions to continue.');
+      return;
+    }
+  }
+
+  if (isHotel && !agreedToPolicy) {
+    alert('Please agree to the cancellation policy to continue.');
+    return;
+  }
+
+  // ✅ Validate all additional passengers
+  if (!validateAllPassengers()) {
+    return;
+  }
+
+  setIsBooking(true);
+  try {
+    let passengerInfo: PassengerInfo;
+
+    if (isHotel || isCar) {
+      passengerInfo = {
+        firstName,
+        lastName,
+        email,
+        phone,
+      };
+    } else {
+// ✅ FIX: Format date as YYYY-MM-DD for Wakanow API
+const formatDateForWakanow = (dateStr: string): string => {
+  if (!dateStr) return '';
+  
+  // If already in YYYY-MM-DD format, return as is
+  if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    return dateStr;
+  }
+  
+  // If in MM/DD/YYYY format, convert to YYYY-MM-DD
+  if (dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
+    const parts = dateStr.split('/');
+    const month = String(parseInt(parts[0])).padStart(2, '0');
+    const day = String(parseInt(parts[1])).padStart(2, '0');
+    const year = parts[2];
+    return `${year}-${month}-${day}`;
+  }
+  
+  return dateStr;
+};
+
+passengerInfo = {
+  firstName,
+  lastName,
+  email,
+  phone,
+  type: 'adult',
+  title: title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr',
+  gender: gender as 'm' | 'f',
+  dateOfBirth: formatDateForWakanow(dateOfBirth),
+  address: passportAddress || "221B Baker Street",
+  city: passportCity || "London",
+  country: passportCountry || "United Kingdom", 
+  countryCode: passportCountryCode || "GB",
+  postalCode: passportPostalCode || "NW1 6XE",
+};
+      
       const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
                               (actualItem as any)?.type?.toLowerCase().includes('wakanow');
+      
       const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
-      const isInternational = isWakanowFlight && !isDomesticFlight;
+      const needsPassport = isWakanowFlight && !isDomesticFlight;
       
-      if (!shouldSkipPassport && isFlight && isInternational) {
-        if (!passportNumber || !passportNumber.trim()) {
-          alert('Passport number is required for international flights.\n\nPlease provide:\n- Passport Number');
-          return;
-        }
-        
-        const passportRegex = /^[A-Za-z][0-9]{7,8}$|^[A-Za-z0-9]{6,9}$/;
-        if (!passportRegex.test(passportNumber)) {
-          alert('Please enter a valid passport number (e.g., A12345678)');
-          return;
-        }
-        
-        if (!passportExpiry) {
-          alert('Passport expiry date is required for international flights.');
-          return;
-        }
-        
-        const expiryDate = new Date(passportExpiry);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        if (expiryDate < today) {
-          alert('Your passport has expired. Please renew your passport.');
-          return;
-        }
-        
-        if (!passportIssuingAuthority || !passportIssuingAuthority.trim()) {
-          alert('Passport Issuing Authority is required for international flights.');
-          return;
-        }
-      }
-
-      if (displayedTerms.length > 0 && !agreedToTerms) {
-        alert('Please agree to the Terms & Conditions to continue.');
-        return;
-      }
-    }
-
-    if (isHotel && !agreedToPolicy) {
-      alert('Please agree to the cancellation policy to continue.');
-      return;
-    }
-
-    if (!validateAllPassengers()) {
-      return;
-    }
-
-    setIsBooking(true);
-    try {
-      let passengerInfo: PassengerInfo;
-
-      if (isHotel || isCar) {
-        passengerInfo = {
-          firstName,
-          lastName,
-          email,
-          phone,
-        };
-      } else {
-        passengerInfo = {
-          firstName,
-          lastName,
-          email,
-          phone,
-          type: 'adult',
-          title: title as 'mr' | 'ms' | 'mrs' | 'miss' | 'dr',
-          gender: gender as 'm' | 'f',
-          dateOfBirth: dateOfBirth,
-          address: passportAddress || "221B Baker Street",
-          city: passportCity || "London",
-          country: passportCountry || "United Kingdom", 
-          countryCode: passportCountryCode || "GB",
-          postalCode: passportPostalCode || "NW1 6XE",
-        };
-        
-        const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
-                                (actualItem as any)?.type?.toLowerCase().includes('wakanow');
-        
-        const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
-        const needsPassport = isWakanowFlight && !isDomesticFlight;
-        
-        console.log('🔍 Passport condition check in handleCompleteBooking:', {
-          isWakanowFlight,
-          isDomesticFlight,
-          needsPassport,
-          passportNumber,
-          passportExpiry,
-          passportIssuingAuthority,
-        });
-        
-        if (needsPassport) {
-          (passengerInfo as any).PassportNumber = passportNumber;
-          (passengerInfo as any).ExpiryDate = passportExpiry;
-          (passengerInfo as any).PassportIssuingAuthority = passportIssuingAuthority;
-          (passengerInfo as any).PassportIssueCountryCode = passportIssueCountry || 'Nigeria';
-          
-          (passengerInfo as any).passportNumber = passportNumber;
-          (passengerInfo as any).passportExpiry = passportExpiry;
-          (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
-          (passengerInfo as any).passportIssueCountry = passportIssueCountry || 'Nigeria';
-          
-          console.log('📄 Adding passport fields to lead passenger:', {
-            PassportNumber: (passengerInfo as any).PassportNumber,
-            ExpiryDate: (passengerInfo as any).ExpiryDate,
-            PassportIssuingAuthority: (passengerInfo as any).PassportIssuingAuthority,
-            PassportIssueCountryCode: (passengerInfo as any).PassportIssueCountryCode,
-          });
-        }
-      }
-      
-      if (additionalPassengers.length > 0) {
-        const isWakanowFlightForTravellers = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
-                                             (actualItem as any)?.type?.toLowerCase().includes('wakanow');
-        const isDomesticFlightForTravellers = isDomesticByAirport || isDomesticByProduct;
-        const needsPassportForTraveller = isWakanowFlightForTravellers && !isDomesticFlightForTravellers;
-        
-        const travellers = additionalPassengers.map((p) => {
-          let passengerType = 'Adult';
-          const typeLower = (p.type || 'adult').toLowerCase();
-          if (typeLower === 'child') {
-            passengerType = 'Child';
-          } else if (typeLower === 'infant') {
-            passengerType = 'Infant';
-          }
-          
-          let dateOfBirth = p.dateOfBirth || '';
-          if (!dateOfBirth) {
-            const today = new Date();
-            let yearOffset = 0;
-            if (passengerType === 'Child') {
-              yearOffset = 8;
-            } else if (passengerType === 'Infant') {
-              yearOffset = 1;
-            }
-            if (yearOffset > 0) {
-              const defaultDate = new Date(today);
-              defaultDate.setFullYear(today.getFullYear() - yearOffset);
-              defaultDate.setMonth(6);
-              defaultDate.setDate(15);
-              dateOfBirth = defaultDate.toISOString().split('T')[0];
-            }
-          }
-          
-          const traveller: any = {
-            PassengerType: passengerType,
-            FirstName: p.firstName || '',
-            LastName: p.lastName || '',
-            DateOfBirth: dateOfBirth,
-            PhoneNumber: p.phone || phone,
-            Email: p.email || email,
-            Gender: p.gender === 'f' ? 'Female' : 'Male',
-            Title: p.title || 'Mr',
-            Address: p.address || passportAddress || '123 Fake Street',
-            Country: p.country || passportCountry || 'Nigeria',
-            CountryCode: p.countryCode || passportCountryCode || 'NG',
-            City: p.city || passportCity || 'Lagos',
-            PostalCode: p.postalCode || passportPostalCode || '100001',
-          };
-          
-          if (needsPassportForTraveller) {
-            traveller.PassportNumber = p.passportNumber || '';
-            traveller.ExpiryDate = p.passportExpiry || '';
-            traveller.PassportIssuingAuthority = p.passportIssuingAuthority || '';
-            traveller.PassportIssueCountryCode = p.passportIssueCountry || 'NG';
-            
-            traveller.passportNumber = p.passportNumber || '';
-            traveller.passportExpiry = p.passportExpiry || '';
-            traveller.passportIssuingAuthority = p.passportIssuingAuthority || '';
-            traveller.passportIssueCountry = p.passportIssueCountry || 'NG';
-          }
-          
-          return traveller;
-        });
-        
-        (passengerInfo as any).additionalPassengers = additionalPassengers;
-        (passengerInfo as any).travellers = travellers;
-        
-        console.log('👤 Attached additional passengers:', {
-          additionalCount: additionalPassengers.length,
-          travellersCount: travellers.length,
-        });
-      }
-
-      if (isFlight && displayedTerms.length > 0) {
-        (passengerInfo as any).policyAccepted = agreedToTerms;
-        (passengerInfo as any).policyAcceptedAt = new Date().toISOString();
-      }
-      
-      let hbxMetadata: any = undefined;
-      if (isHBXHotel && hbxQuote) {
-        const quoteData = hbxQuote?.data?.data || hbxQuote?.data;
-        const firstOfferData = quoteData?.offers?.[0];
-        hbxMetadata = {
-          totalAmount: totalDue,
-          currency: (firstOfferData?.price?.currency || actualItem.currency || 'GBP').toUpperCase(),
-          cancellationPolicySnapshot: "Standard policy",
-          cancellationDeadline: firstOfferData?.policies?.cancellations?.[0]?.deadline || new Date().toISOString(),
-          policyAccepted: true
-        };
-      }
-
-      if (isHBXHotel && additionalPassengers.length > 0) {
-        (passengerInfo as any).guests = [
-          {
-            name: { firstName, lastName, title: (title || 'mr').toUpperCase() },
-            travelerId: 1
-          },
-          ...additionalPassengers.map((g, idx) => ({
-            name: { firstName: g.firstName, lastName: g.lastName, title: (g.title || 'mr').toUpperCase() },
-            travelerId: idx + 2
-          }))
-        ];
-      }
-
-      console.log('👥 Sending to payment with passengers:', {
-        provider: isDuffel ? 'DUFFEL' : isWakanow ? 'WAKANOW' : 'OTHER',
-        lead: `${firstName} ${lastName}`,
-        additionalCount: (passengerInfo as any).additionalPassengers?.length || 0,
-        travellersCount: (passengerInfo as any).travellers?.length || 0,
+      console.log('🔍 Passport condition check in handleCompleteBooking:', {
+        isWakanowFlight,
+        isDomesticFlight,
+        needsPassport,
+        passportNumber,
+        passportExpiry,
+        passportIssuingAuthority,
       });
-      console.log('🛫 FINAL passengerInfo BEFORE sending to onProceedToPayment:', {
-        passengerInfo,
-        hasAdditionalPassengers: !!(passengerInfo as any).additionalPassengers?.length,
-        hasTravellers: !!(passengerInfo as any).travellers?.length,
-        travellersCount: (passengerInfo as any).travellers?.length || 0,
-        PassportNumber: (passengerInfo as any).PassportNumber,
-      });
-
-      await onProceedToPayment(
-        passengerInfo,
-        voucherApplied?.valid ? voucherCode.trim() : undefined,
-        hbxMetadata
-      );
-    } catch (error: any) {
-      console.error('Booking preparation error:', error);
-      alert('Failed to prepare booking. Please try again.');
-    } finally {
-      setIsBooking(false);
+      
+      // ✅ ✅ ✅ FIX: Properly map passport fields for the API (Wakanow v2.3)
+      if (needsPassport) {
+        // ✅ Standard fields (used by Wakanow API)
+        (passengerInfo as any).PassportNumber = passportNumber;
+        (passengerInfo as any).ExpiryDate = passportExpiry;
+        (passengerInfo as any).PassportIssuingAuthority = passportIssuingAuthority;
+        (passengerInfo as any).PassportIssueCountryCode = passportIssueCountry || 'Nigeria';
+        
+        // ✅ Backup fields (for compatibility)
+        (passengerInfo as any).passportNumber = passportNumber;
+        (passengerInfo as any).passportExpiry = passportExpiry;
+        (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
+        (passengerInfo as any).passportIssueCountry = passportIssueCountry || 'Nigeria';
+        
+        console.log('📄 Adding passport fields to lead passenger:', {
+          PassportNumber: (passengerInfo as any).PassportNumber,
+          ExpiryDate: (passengerInfo as any).ExpiryDate,
+          PassportIssuingAuthority: (passengerInfo as any).PassportIssuingAuthority,
+          PassportIssueCountryCode: (passengerInfo as any).PassportIssueCountryCode,
+        });
+      }
     }
-  };
+    
+// ✅ Process additional passengers with proper passport mapping
+if (additionalPassengers.length > 0) {
+  const isWakanowFlightForTravellers = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
+                                       (actualItem as any)?.type?.toLowerCase().includes('wakanow');
+  const isDomesticFlightForTravellers = isDomesticByAirport || isDomesticByProduct;
+  const needsPassportForTraveller = isWakanowFlightForTravellers && !isDomesticFlightForTravellers;
+  
+  const travellers = additionalPassengers.map((p, index) => {
+    let passengerType = 'Adult';
+    const typeLower = (p.type || 'adult').toLowerCase();
+    if (typeLower === 'child') {
+      passengerType = 'Child';
+    } else if (typeLower === 'infant') {
+      passengerType = 'Infant';
+    }
+    
+    // ✅ USE THE USER'S DATE OF BIRTH - KEEP IN MM/DD/YYYY FOR WAKANOW API
+let dateOfBirth = p.dateOfBirth || '';
+
+// ✅ Validate that date of birth is filled
+if (!dateOfBirth || dateOfBirth === 'mm/dd/yyyy' || dateOfBirth === 'MM/DD/YYYY') {
+  throw new Error(
+    `Date of birth is required for ${passengerType} "${p.firstName || 'Passenger ' + (index + 1)}". ` +
+    `Please go back and enter the date of birth.`
+  );
+}
+
+// ✅ Format date to MM/DD/YYYY for Wakanow API
+const formatDateToMMDDYYYY = (dateStr: string): string => {
+  // If already in MM/DD/YYYY format, normalize
+  if (dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
+    const parts = dateStr.split('/');
+    return `${String(parseInt(parts[0])).padStart(2, '0')}/${String(parseInt(parts[1])).padStart(2, '0')}/${parts[2]}`;
+  }
+  // If in YYYY-MM-DD format, convert to MM/DD/YYYY
+  if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const parts = dateStr.split('-');
+    return `${parts[1]}/${parts[2]}/${parts[0]}`;
+  }
+  // If year is 2 digits (MM/DD/YY), convert to MM/DD/YYYY
+  if (dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{2}$/)) {
+    const parts = dateStr.split('/');
+    const year = parseInt(parts[2]) < 100 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
+    return `${String(parseInt(parts[0])).padStart(2, '0')}/${String(parseInt(parts[1])).padStart(2, '0')}/${year}`;
+  }
+  return dateStr;
+};
+
+const formattedDateOfBirth = formatDateToMMDDYYYY(dateOfBirth);
+console.log(`📅 Date of birth for ${passengerType} "${p.firstName || 'Unknown'}": ${formattedDateOfBirth}`);
+
+// ✅ Validate date format (should now be MM/DD/YYYY)
+const dateRegex = /^\d{2}\/\d{2}\/\d{4}$/;
+if (!dateRegex.test(formattedDateOfBirth)) {
+  throw new Error(
+    `Invalid date of birth format for ${passengerType} "${p.firstName || 'Passenger ' + (index + 1)}". ` +
+    `Date must be in MM/DD/YYYY format.`
+  );
+}
+    
+    console.log(`📅 Date of birth for ${passengerType} "${p.firstName || 'Unknown'}":`, dateOfBirth);
+    
+    const traveller: any = {
+      PassengerType: passengerType,
+      FirstName: p.firstName || '',
+      LastName: p.lastName || '',
+      DateOfBirth: formattedDateOfBirth,
+      PhoneNumber: p.phone || phone,
+      Email: p.email || email,
+      Gender: p.gender === 'f' ? 'Female' : 'Male',
+      Title: p.title || 'Mr',
+      Address: p.address || passportAddress || '123 Fake Street',
+      Country: p.country || passportCountry || 'Nigeria',
+      CountryCode: p.countryCode || passportCountryCode || 'NG',
+      City: p.city || passportCity || 'Lagos',
+      PostalCode: p.postalCode || passportPostalCode || '100001',
+    };
+    
+    // ✅ Add passport fields for ALL passengers on international flights
+    if (needsPassportForTraveller) {
+      traveller.PassportNumber = p.passportNumber || '';
+      traveller.ExpiryDate = p.passportExpiry || '';
+      traveller.PassportIssuingAuthority = p.passportIssuingAuthority || '';
+      traveller.PassportIssueCountryCode = p.passportIssueCountry || 'NG';
+      
+      // Backup fields
+      traveller.passportNumber = p.passportNumber || '';
+      traveller.passportExpiry = p.passportExpiry || '';
+      traveller.passportIssuingAuthority = p.passportIssuingAuthority || '';
+      traveller.passportIssueCountry = p.passportIssueCountry || 'NG';
+      
+      console.log(`📄 Added passport for ${passengerType} "${p.firstName}":`, {
+        PassportNumber: traveller.PassportNumber,
+        ExpiryDate: traveller.ExpiryDate,
+      });
+    }
+    
+    return traveller;
+  });
+  
+  (passengerInfo as any).additionalPassengers = additionalPassengers;
+  (passengerInfo as any).travellers = travellers;
+  
+  console.log('👤 Attached additional passengers:', {
+    additionalCount: additionalPassengers.length,
+    travellersCount: travellers.length,
+    dateOfBirths: travellers.map(t => ({ type: t.PassengerType, dob: t.DateOfBirth })),
+  });
+}
+
+    if (isFlight && displayedTerms.length > 0) {
+      (passengerInfo as any).policyAccepted = agreedToTerms;
+      (passengerInfo as any).policyAcceptedAt = new Date().toISOString();
+    }
+    
+    let hbxMetadata: any = undefined;
+    if (isHBXHotel && hbxQuote) {
+      const quoteData = hbxQuote?.data?.data || hbxQuote?.data;
+      const firstOfferData = quoteData?.offers?.[0];
+      hbxMetadata = {
+        totalAmount: totalDue,
+        currency: (firstOfferData?.price?.currency || actualItem.currency || 'GBP').toUpperCase(),
+        cancellationPolicySnapshot: "Standard policy",
+        cancellationDeadline: firstOfferData?.policies?.cancellations?.[0]?.deadline || new Date().toISOString(),
+        policyAccepted: true
+      };
+    }
+
+    if (isHBXHotel && additionalPassengers.length > 0) {
+      (passengerInfo as any).guests = [
+        {
+          name: { firstName, lastName, title: (title || 'mr').toUpperCase() },
+          travelerId: 1
+        },
+        ...additionalPassengers.map((g, idx) => ({
+          name: { firstName: g.firstName, lastName: g.lastName, title: (g.title || 'mr').toUpperCase() },
+          travelerId: idx + 2
+        }))
+      ];
+    }
+
+    console.log('👥 Sending to payment with passengers:', {
+      provider: isDuffel ? 'DUFFEL' : isWakanow ? 'WAKANOW' : 'OTHER',
+      lead: `${firstName} ${lastName}`,
+      additionalCount: (passengerInfo as any).additionalPassengers?.length || 0,
+      travellersCount: (passengerInfo as any).travellers?.length || 0,
+      hasPassport: !!(passengerInfo as any).PassportNumber,
+    });
+    
+    console.log('🛫 FINAL passengerInfo BEFORE sending to onProceedToPayment:', {
+      passengerInfo,
+      hasAdditionalPassengers: !!(passengerInfo as any).additionalPassengers?.length,
+      hasTravellers: !!(passengerInfo as any).travellers?.length,
+      travellersCount: (passengerInfo as any).travellers?.length || 0,
+      PassportNumber: (passengerInfo as any).PassportNumber,
+      ExpiryDate: (passengerInfo as any).ExpiryDate,
+    });
+
+    await onProceedToPayment(
+      passengerInfo,
+      voucherApplied?.valid ? voucherCode.trim() : undefined,
+      hbxMetadata
+    );
+  } catch (error: any) {
+    console.error('Booking preparation error:', error);
+    alert('Failed to prepare booking. Please try again.');
+  } finally {
+    setIsBooking(false);
+  }
+};
 
   const inputCls = 'w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/30 focus:border-[#33a8da] transition-all text-sm font-medium text-gray-900 placeholder-gray-400';
   const bookingReference = extBooking?.reference;
@@ -1946,16 +2294,47 @@ useEffect(() => {
                       Date of Birth <span className="text-red-500">*</span>
                     </label>
                     <input
-                      type="date"
-                      value={dateOfBirth}
-                      onChange={(e) => {
-                        console.log('🔄 Date of Birth changed to:', e.target.value);
-                        setDateOfBirth(e.target.value);
-                      }}
-                      className={inputCls}
-                      readOnly={!!extBooking}
-                      required
-                    />
+  type="date"
+  value={(() => {
+    // Convert MM/DD/YYYY back to YYYY-MM-DD for the date input
+    if (dateOfBirth && dateOfBirth.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+      const parts = dateOfBirth.split('/');
+      return `${parts[2]}-${parts[0]}-${parts[1]}`;
+    }
+    return dateOfBirth;
+  })()}
+  onChange={(e) => {
+    const value = e.target.value;
+    console.log('🔄 Date of Birth changed to:', value);
+    // Convert YYYY-MM-DD to MM/DD/YYYY for storage
+    if (value) {
+      const parts = value.split('-');
+      const formattedDate = `${parts[1]}/${parts[2]}/${parts[0]}`;
+      console.log('📅 Formatted date (MM/DD/YYYY):', formattedDate);
+      setDateOfBirth(formattedDate);
+    } else {
+      setDateOfBirth('');
+    }
+  }}
+  className={inputCls}
+  readOnly={!!extBooking}
+  required
+  max={(() => {
+    let travelDate = new Date();
+    if (searchParams?.segments?.[0]?.date) {
+      travelDate = new Date(searchParams.segments[0].date);
+    } else if (searchParams?.departureDate) {
+      travelDate = new Date(searchParams.departureDate);
+    }
+    // ✅ Infant must be LESS than 2 years old on travel date
+    // So max date is 2 years AND 1 day before travel date
+    const maxDate = new Date(travelDate);
+    maxDate.setFullYear(maxDate.getFullYear() - 2);
+    maxDate.setDate(maxDate.getDate() - 1);
+    return maxDate.toISOString().split('T')[0];
+  })()}
+  
+/>
                   </div>
                 )}
   
@@ -1989,69 +2368,89 @@ useEffect(() => {
               </div>
             </div>
   
-            {/* ========== PASSPORT FIELDS - WAKANOW INTERNATIONAL FLIGHTS ========== */}
-            {isFlight && isWakanow && !isDomesticFlightResult && !extBooking && !shouldSkipPassport && (
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                <h3 className="text-md font-semibold text-gray-900 mb-3">
-                  Passport Details <span className="text-red-500">*</span>
-                </h3>
-                <p className="text-sm text-gray-500 mb-4">
-                  Passport details are required for international flights.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Passport Number <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={passportNumber}
-                      onChange={(e) => setPassportNumber(e.target.value)}
-                      className={inputCls}
-                      placeholder="A12345678"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Passport Expiry <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      value={passportExpiry}
-                      onChange={(e) => setPassportExpiry(e.target.value)}
-                      className={inputCls}
-                      required
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Passport Issuing Authority <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={passportIssuingAuthority}
-                      onChange={(e) => setPassportIssuingAuthority(e.target.value)}
-                      className={inputCls}
-                      placeholder="e.g., Nigerian Immigration Service"
-                      required
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Passport Issue Country
-                    </label>
-                    <input
-                      type="text"
-                      value={passportIssueCountry}
-                      onChange={(e) => setPassportIssueCountry(e.target.value)}
-                      className={inputCls}
-                      placeholder="Nigeria"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
+{/* ========== PASSPORT FIELDS - WAKANOW INTERNATIONAL FLIGHTS ========== */}
+{isFlight && isWakanow && !isDomesticFlightResult && !extBooking && !shouldSkipPassport && (
+  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+    <h3 className="text-md font-semibold text-gray-900 mb-3">
+      Passport Details <span className="text-red-500">*</span>
+    </h3>
+    <p className="text-sm text-gray-500 mb-4">
+      Passport details are required for international flights.
+    </p>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Passport Number <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          value={passportNumber}
+          onChange={(e) => {
+            console.log('🛂 Passport number set to:', e.target.value);
+            setPassportNumber(e.target.value);
+          }}
+          className={inputCls}
+          placeholder="A12345678"
+          required
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Passport Expiry <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="date"
+          id="lead-passport-expiry"
+          name="lead-passport-expiry"
+          value={passportExpiry || ''}
+          onChange={(e) => {
+            const value = e.target.value;
+            console.log('📅 Passport expiry set to:', value);
+            setPassportExpiry(value);
+          }}
+          onBlur={(e) => {
+            const value = e.target.value;
+            if (value && value !== passportExpiry) {
+              console.log('📅 Passport expiry synced on blur:', value);
+              setPassportExpiry(value);
+            }
+          }}
+          className={inputCls}
+          required
+          min={new Date().toISOString().split('T')[0]}
+        />
+      </div>
+      <div className="md:col-span-2">
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Passport Issuing Authority <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          value={passportIssuingAuthority}
+          onChange={(e) => {
+            console.log('🏛️ Passport issuing authority set to:', e.target.value);
+            setPassportIssuingAuthority(e.target.value);
+          }}
+          className={inputCls}
+          placeholder="e.g., Nigerian Immigration Service"
+          required
+        />
+      </div>
+      <div className="md:col-span-2">
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Passport Issue Country
+        </label>
+        <input
+          type="text"
+          value={passportIssueCountry}
+          onChange={(e) => setPassportIssueCountry(e.target.value)}
+          className={inputCls}
+          placeholder="Nigeria"
+        />
+      </div>
+    </div>
+  </div>
+)}
   
             {/* ✅ DUFFEL: Show message that passport not required */}
             {isDuffel && isFlight && !extBooking && (
@@ -2071,192 +2470,327 @@ useEffect(() => {
                 </h3>
                 
                 {additionalPassengers.map((p, index) => {
-                  const passengerType = p.type || 'adult';
-                  const label = `${passengerType.toUpperCase()} #${index + 1}`;
-                  
-                  // ✅ Check if passport is required for this passenger
-                  const showPassport = isFlight && isWakanow && !isDomesticFlightResult && !shouldSkipPassport;
-                  
-                  return (
-                    <div key={index} className="border border-gray-200 rounded-xl p-4 mb-4 last:mb-0">
-                      <h4 className="font-semibold text-gray-800 mb-3">{label}</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">
-                            First Name <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            value={p.firstName || ''}
-                            onChange={(e) => {
-                              const updated = [...additionalPassengers];
-                              updated[index].firstName = e.target.value;
-                              setAdditionalPassengers(updated);
-                            }}
-                            className={inputCls}
-                            placeholder="John"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">
-                            Last Name <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            value={p.lastName || ''}
-                            onChange={(e) => {
-                              const updated = [...additionalPassengers];
-                              updated[index].lastName = e.target.value;
-                              setAdditionalPassengers(updated);
-                            }}
-                            className={inputCls}
-                            placeholder="Doe"
-                            required
-                          />
-                        </div>
-                        
-                        {isFlight && (
-                          <>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">
-                                Title <span className="text-red-500">*</span>
-                              </label>
-                              <select
-                                value={p.title || 'mr'}
-                                onChange={(e) => {
-                                  const updated = [...additionalPassengers];
-                                  updated[index].title = e.target.value as any;
-                                  setAdditionalPassengers(updated);
-                                }}
-                                className={inputCls}
-                                required
-                              >
-                                <option value="mr">Mr</option>
-                                <option value="ms">Ms</option>
-                                <option value="mrs">Mrs</option>
-                                <option value="miss">Miss</option>
-                                <option value="dr">Dr</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">
-                                Gender <span className="text-red-500">*</span>
-                              </label>
-                              <select
-                                value={p.gender || 'm'}
-                                onChange={(e) => {
-                                  const updated = [...additionalPassengers];
-                                  updated[index].gender = e.target.value as any;
-                                  setAdditionalPassengers(updated);
-                                }}
-                                className={inputCls}
-                                required
-                              >
-                                <option value="m">Male</option>
-                                <option value="f">Female</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">
-                                Date of Birth <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="date"
-                                value={p.dateOfBirth || ''}
-                                onChange={(e) => {
-                                  const updated = [...additionalPassengers];
-                                  updated[index].dateOfBirth = e.target.value;
-                                  setAdditionalPassengers(updated);
-                                }}
-                                className={inputCls}
-                                required
-                              />
-                            </div>
-                          </>
-                        )}
-                      </div>
+  const passengerType = p.type || 'adult';
+  const label = `${passengerType.toUpperCase()} #${index + 1}`;
+  const showPassport = isFlight && isWakanow && !isDomesticFlightResult && !shouldSkipPassport;
   
-                      {/* ✅ PASSPORT FIELDS FOR ADDITIONAL PASSENGERS */}
-                      {showPassport && (
-                        <div className="mt-4 pt-4 border-t border-gray-200">
-                          <h5 className="text-sm font-semibold text-gray-700 mb-3">
-                            Passport Details for {p.firstName || 'Passenger'}
-                            <span className="text-red-500 ml-1">*</span>
-                          </h5>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">
-                                Passport Number <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="text"
-                                value={p.passportNumber || ''}
-                                onChange={(e) => {
-                                  const updated = [...additionalPassengers];
-                                  updated[index].passportNumber = e.target.value;
-                                  setAdditionalPassengers(updated);
-                                }}
-                                className={inputCls}
-                                placeholder="A12345678"
-                                required
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">
-                                Passport Expiry <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="date"
-                                value={p.passportExpiry || ''}
-                                onChange={(e) => {
-                                  const updated = [...additionalPassengers];
-                                  updated[index].passportExpiry = e.target.value;
-                                  setAdditionalPassengers(updated);
-                                }}
-                                className={inputCls}
-                                required
-                              />
-                            </div>
-                            <div className="md:col-span-2">
-                              <label className="block text-xs font-medium text-gray-500 mb-1">
-                                Passport Issuing Authority <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="text"
-                                value={p.passportIssuingAuthority || ''}
-                                onChange={(e) => {
-                                  const updated = [...additionalPassengers];
-                                  updated[index].passportIssuingAuthority = e.target.value;
-                                  setAdditionalPassengers(updated);
-                                }}
-                                className={inputCls}
-                                placeholder="e.g., Nigerian Immigration Service"
-                                required
-                              />
-                            </div>
-                            <div className="md:col-span-2">
-                              <label className="block text-xs font-medium text-gray-500 mb-1">
-                                Passport Issue Country
-                              </label>
-                              <input
-                                type="text"
-                                value={p.passportIssueCountry || ''}
-                                onChange={(e) => {
-                                  const updated = [...additionalPassengers];
-                                  updated[index].passportIssueCountry = e.target.value;
-                                  setAdditionalPassengers(updated);
-                                }}
-                                className={inputCls}
-                                placeholder="Nigeria"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+  return (
+    <div key={index} className="border border-gray-200 rounded-xl p-4 mb-4 last:mb-0">
+      <h4 className="font-semibold text-gray-800 mb-3">{label}</h4>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">
+            First Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={p.firstName || ''}
+            onChange={(e) => {
+              const updated = [...additionalPassengers];
+              updated[index] = { ...updated[index], firstName: e.target.value };
+              setAdditionalPassengers(updated);
+            }}
+            className={inputCls}
+            placeholder="John"
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">
+            Last Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={p.lastName || ''}
+            onChange={(e) => {
+              const updated = [...additionalPassengers];
+              updated[index] = { ...updated[index], lastName: e.target.value };
+              setAdditionalPassengers(updated);
+            }}
+            className={inputCls}
+            placeholder="Doe"
+            required
+          />
+        </div>
+        
+        {isFlight && (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Title <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={p.title || 'mr'}
+                onChange={(e) => {
+                  const updated = [...additionalPassengers];
+                  updated[index] = { ...updated[index], title: e.target.value as any };
+                  setAdditionalPassengers(updated);
+                }}
+                className={inputCls}
+                required
+              >
+                <option value="mr">Mr</option>
+                <option value="ms">Ms</option>
+                <option value="mrs">Mrs</option>
+                <option value="miss">Miss</option>
+                <option value="dr">Dr</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Gender <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={p.gender || 'm'}
+                onChange={(e) => {
+                  const updated = [...additionalPassengers];
+                  updated[index] = { ...updated[index], gender: e.target.value as any };
+                  setAdditionalPassengers(updated);
+                }}
+                className={inputCls}
+                required
+              >
+                <option value="m">Male</option>
+                <option value="f">Female</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Date of Birth <span className="text-red-500">*</span>
+              </label>
+              <input
+  type="date"
+  value={(() => {
+    // If date is in MM/DD/YYYY format, convert to YYYY-MM-DD for the date picker
+    if (p.dateOfBirth && p.dateOfBirth.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
+      const parts = p.dateOfBirth.split('/');
+      const month = String(parseInt(parts[0])).padStart(2, '0');
+      const day = String(parseInt(parts[1])).padStart(2, '0');
+      const year = parts[2];
+      const result = `${year}-${month}-${day}`;
+      console.log(`🔍 Passenger ${index + 1} date conversion: ${p.dateOfBirth} -> ${result}`);
+      return result;
+    }
+    // If date is already in YYYY-MM-DD format, return as is
+    if (p.dateOfBirth && p.dateOfBirth.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return p.dateOfBirth;
+    }
+    // If no date, return empty string
+    console.log(`🔍 Passenger ${index + 1} has NO date:`, p.dateOfBirth);
+    return '';
+  })()}
+  onChange={(e) => {
+    const value = e.target.value;
+    console.log(`🔄 Passenger ${index + 1} (${passengerType}) Date of Birth changed to:`, value);
+    if (value) {
+      // Convert YYYY-MM-DD to MM/DD/YYYY for storage
+      const parts = value.split('-');
+      const formattedDate = `${parts[1]}/${parts[2]}/${parts[0]}`;
+      console.log(`📅 Formatted date (MM/DD/YYYY):`, formattedDate);
+      const updated = [...additionalPassengers];
+      updated[index] = { ...updated[index], dateOfBirth: formattedDate };
+      setAdditionalPassengers(updated);
+    } else {
+      const updated = [...additionalPassengers];
+      updated[index] = { ...updated[index], dateOfBirth: '' };
+      setAdditionalPassengers(updated);
+    }
+  }}
+  className={inputCls}
+  required
+  placeholder="Select date"
+  max={(() => {
+    // ✅ Get travel date and subtract 2 years
+    let travelDate = new Date();
+    if (searchParams?.segments?.[0]?.date) {
+      travelDate = new Date(searchParams.segments[0].date);
+    } else if (searchParams?.departureDate) {
+      travelDate = new Date(searchParams.departureDate);
+    }
+    const minAgeDate = new Date(travelDate);
+    minAgeDate.setFullYear(minAgeDate.getFullYear() - 2);
+    return minAgeDate.toISOString().split('T')[0];
+  })()}
+/>
+
+            </div>
+          </>
+        )}
+      </div>
+
+{/* Passport fields for additional passengers */}
+{showPassport && (
+  <div className="mt-4 pt-4 border-t border-gray-200">
+    <h5 className="text-sm font-semibold text-gray-700 mb-3">
+  Passport Details for {p.firstName || 'Passenger'}
+  <span className="text-red-500 ml-1">*</span>
+</h5>
+<p className="text-xs text-red-500 mb-3">
+
+</p>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Passport Number 
+          <span className="text-red-500 ml-1">
+            {isNorthAmerica ? '*' : (p.type === 'adult' ? '*' : '')}
+          </span>
+        </label>
+        <input
+  type="text"
+  id={`passenger-${index}-number`}
+  name={`passenger-${index}-number`}
+  value={p.passportNumber || ''}
+  onChange={(e) => {
+    const value = e.target.value;
+    console.log(`📄 Passenger ${index + 1} passport number set to:`, value);
+    const updated = [...additionalPassengers];
+    updated[index] = { ...updated[index], passportNumber: value };
+    setAdditionalPassengers(updated);
+  }}
+  onBlur={(e) => {
+    const value = e.target.value;
+    if (value && value !== p.passportNumber) {
+      console.log(`📄 Passenger ${index + 1} passport number synced on blur:`, value);
+      const updated = [...additionalPassengers];
+      updated[index] = { ...updated[index], passportNumber: value };
+      setAdditionalPassengers(updated);
+    }
+  }}
+  className={inputCls}
+  placeholder={p.type === 'adult' ? "A2003341" : "A2003341"}
+  required={isNorthAmerica || p.type === 'adult'}
+/>
+        {isNorthAmerica ? (
+          <p className="text-[10px] text-red-500 mt-1">
+            Required for North America travel
+          </p>
+        ) : (
+          p.type !== 'adult' && (
+            <p className="text-[10px] text-gray-400 mt-1">
+              {p.type === 'child' ? 'Optional - can travel on parent\'s passport' : 'Not required for infants'}
+            </p>
+          )
+        )}
+      </div>
+    <div>
+  <label className="block text-xs font-medium text-gray-500 mb-1">
+    Passport Expiry
+    <span className="text-red-500 ml-1">
+      {isNorthAmerica ? '*' : (p.type === 'adult' ? '*' : '')}
+    </span>
+  </label>
+  <input
+  type="date"
+  id={`passenger-${index}-expiry`}
+  name={`passenger-${index}-expiry`}
+  key={`expiry-${index}-${p.passportExpiry}`}
+  value={p.passportExpiry || ''}
+  onChange={(e) => {
+    const value = e.target.value;
+    console.log(`📅 Passenger ${index + 1} (${passengerType}) expiry set to:`, value);
+    const updated = additionalPassengers.map((passenger, idx) => {
+      if (idx === index) {
+        return { ...passenger, passportExpiry: value };
+      }
+      return passenger;
+    });
+    setAdditionalPassengers(updated);
+  }}
+  onBlur={(e) => {
+    const value = e.target.value;
+    if (value && value !== p.passportExpiry) {
+      console.log(`📅 Passenger ${index + 1} (${passengerType}) expiry synced on blur:`, value);
+      const updated = additionalPassengers.map((passenger, idx) => {
+        if (idx === index) {
+          return { ...passenger, passportExpiry: value };
+        }
+        return passenger;
+      });
+      setAdditionalPassengers(updated);
+    }
+  }}
+  className={inputCls}
+  required={isNorthAmerica}  // ✅ Always required for North America
+  disabled={false}  // ✅ Never disabled for North America
+  min={new Date().toISOString().split('T')[0]}
+/>
+
+</div>
+
+      <div className="md:col-span-2">
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Passport Issuing Authority
+          <span className="text-red-500 ml-1">
+            {isNorthAmerica ? '*' : (p.type === 'adult' ? '*' : '')}
+          </span>
+        </label>
+       <input
+  type="text"
+  id={`passenger-${index}-issuing`}
+  name={`passenger-${index}-issuing`}
+  value={p.passportIssuingAuthority || ''}
+  onChange={(e) => {
+    const value = e.target.value;
+    console.log(`🏛️ Passenger ${index + 1} (${passengerType}) issuing authority set to:`, value);
+    const updated = [...additionalPassengers];
+    updated[index] = { ...updated[index], passportIssuingAuthority: value };
+    setAdditionalPassengers(updated);
+  }}
+  onBlur={(e) => {
+    const value = e.target.value;
+    if (value && value !== p.passportIssuingAuthority) {
+      console.log(`🏛️ Passenger ${index + 1} (${passengerType}) issuing authority synced on blur:`, value);
+      const updated = [...additionalPassengers];
+      updated[index] = { ...updated[index], passportIssuingAuthority: value };
+      setAdditionalPassengers(updated);
+    }
+  }}
+  className={inputCls}
+  placeholder="e.g., Nigerian Immigration Service"
+  required={isNorthAmerica} 
+  disabled={false}  
+/>
+      </div>
+     <div className="md:col-span-2">
+  <label className="block text-xs font-medium text-gray-500 mb-1">
+    Passport Issue Country
+  </label>
+  <input
+    type="text"
+    id={`passenger-${index}-country`}
+    name={`passenger-${index}-country`}
+    value={p.passportIssueCountry || ''}
+    onChange={(e) => {
+      const value = e.target.value;
+      console.log(`🌍 Passenger ${index + 1} (${passengerType}) issue country set to:`, value);
+      const updated = [...additionalPassengers];
+      updated[index] = { ...updated[index], passportIssueCountry: value };
+      setAdditionalPassengers(updated);
+    }}
+    onBlur={(e) => {
+      const value = e.target.value;
+      if (value && value !== p.passportIssueCountry) {
+        console.log(`🌍 Passenger ${index + 1} (${passengerType}) issue country synced on blur:`, value);
+        const updated = [...additionalPassengers];
+        updated[index] = { ...updated[index], passportIssueCountry: value };
+        setAdditionalPassengers(updated);
+      }
+    }}
+    className={inputCls}
+    placeholder="Nigeria"
+    disabled={false}
+  />
+</div>
+
+    </div>
+  </div>
+)}
+
+    </div>
+  );
+})}
               </div>
             )}
   
@@ -2274,11 +2808,173 @@ useEffect(() => {
       )}
     </div>
     <div className="flex-1">
-      <h3 className="font-semibold text-gray-900">{actualItem.title}</h3>
-      <p className="text-sm text-gray-500">{actualItem.subtitle}</p>
+      <h3 className="font-semibold text-gray-900">
+        {(actualItem as any)?.isMultiCity ? 'Multi-City Flight' : actualItem.title}
+      </h3>
+      <p className="text-sm text-gray-500">
+        {(actualItem as any)?.isMultiCity && (actualItem as any)?.allSegments ? (
+          (actualItem as any).allSegments.map((s: any, i: number, arr: any[]) => 
+            `${s.from || s.Departure} → ${s.to || s.Destination}${i < arr.length - 1 ? ', ' : ''}`
+          )
+        ) : actualItem.subtitle}
+      </p>
       <p className="text-xs text-gray-400 mt-1">{actualItem.provider}</p>
     </div>
   </div>
+
+  {/* ========== FLIGHT ROUTE WITH STOPS ========== */}
+  {isFlight && (actualItem as any)?.stopInformation && (
+    <div className="mt-4 pt-4 border-t border-gray-100">
+      <h4 className="text-sm font-semibold text-gray-700 mb-3">Route</h4>
+      
+      {/* Get departure and arrival codes */}
+      {(() => {
+        const depCode = extendedItem.departureAirport?.substring(0, 3) || 
+                        extendedItem.origin?.substring(0, 3) || 
+                        searchParams?.segments?.[0]?.from?.substring(0, 3) || 
+                        'DEP';
+                        
+        const arrCode = extendedItem.arrivalAirport?.substring(0, 3) || 
+                        extendedItem.destination?.substring(0, 3) || 
+                        searchParams?.segments?.[0]?.to?.substring(0, 3) || 
+                        'ARR';
+        
+        const depName = extendedItem.departureAirport || 
+                        extendedItem.origin || 
+                        searchParams?.segments?.[0]?.from || 
+                        'Departure';
+                        
+        const arrName = extendedItem.arrivalAirport || 
+                        extendedItem.destination || 
+                        searchParams?.segments?.[0]?.to || 
+                        'Arrival';
+        
+        const stops = (actualItem as any)?.stopInformation?.stopsList || [];
+        const totalStops = (actualItem as any)?.stopInformation?.totalStops || 0;
+        
+        return (
+          <div>
+            {/* Route visualization */}
+            <div className="relative">
+              {/* Flight path line */}
+              <div className="absolute top-1/2 left-0 right-0 h-[2px] bg-gray-300 -translate-y-1/2 z-0"></div>
+              
+              <div className="relative z-10 flex items-center justify-between">
+                {/* Departure */}
+                <div className="text-center flex-shrink-0">
+                  <div className="w-12 h-12 rounded-full bg-blue-100 border-2 border-blue-400 flex items-center justify-center mx-auto shadow-sm">
+                    <span className="text-xs font-bold text-blue-700">{depCode}</span>
+                  </div>
+                  <p className="text-[10px] font-medium text-gray-600 mt-1 max-w-[80px] truncate">{depName}</p>
+                  <p className="text-[8px] text-gray-400">Departure</p>
+                </div>
+                
+                {/* Stops */}
+                {stops.length > 0 ? (
+                  <div className="flex-1 flex items-center justify-center px-2">
+                    {stops.map((stop: any, idx: number) => (
+                      <div key={idx} className="flex items-center flex-1">
+                        <div className="flex flex-col items-center flex-1">
+                          <div className="relative">
+                            <div className="w-4 h-4 rounded-full bg-amber-500 border-2 border-white shadow-md z-10"></div>
+                            <div className="absolute -top-1 -right-1 w-3 h-3">
+                              <div className="animate-ping absolute w-3 h-3 rounded-full bg-amber-400 opacity-75"></div>
+                            </div>
+                          </div>
+                          <p className="text-[10px] font-medium text-amber-700 mt-1">{stop.location?.substring(0, 15) || 'Stop'}</p>
+                          <p className="text-[8px] text-gray-400">{stop.duration || 'N/A'}</p>
+                          <p className="text-[8px] text-gray-400">{stop.airline} {stop.flightNumber}</p>
+                        </div>
+                        
+                        {idx < stops.length - 1 && (
+                          <div className="flex-1 h-[2px] bg-gray-300 relative">
+                            <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-gray-400"></div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  /* Non-stop flight */
+                  <div className="flex-1 flex items-center justify-center px-4">
+                    <div className="flex-1 h-[2px] bg-green-400 relative">
+                      <div className="absolute -top-1 left-1/2 transform -translate-x-1/2">
+                        <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-medium text-green-600 bg-green-50 px-3 py-1 rounded-full ml-2 whitespace-nowrap">
+                      ✈️ Non-stop
+                    </span>
+                  </div>
+                )}
+                
+                {/* Arrival */}
+                <div className="text-center flex-shrink-0">
+                  <div className="w-12 h-12 rounded-full bg-green-100 border-2 border-green-400 flex items-center justify-center mx-auto shadow-sm">
+                    <span className="text-xs font-bold text-green-700">{arrCode}</span>
+                  </div>
+                  <p className="text-[10px] font-medium text-gray-600 mt-1 max-w-[80px] truncate">{arrName}</p>
+                  <p className="text-[8px] text-gray-400">Arrival</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Stop summary */}
+            {stops.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                <span className="text-xs text-amber-600 bg-amber-50 px-3 py-1 rounded-full flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" />
+                  </svg>
+                  {stops.length} stop{stops.length > 1 ? 's' : ''}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {stops.map((s: any) => s.location).join(' → ')}
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+    </div>
+  )}
+
+  {/* ========== MULTI-CITY ROUTE DISPLAY ========== */}
+  {isFlight && (actualItem as any)?.isMultiCity && (actualItem as any)?.allSegments && (
+    <div className="mt-4 pt-4 border-t border-gray-100">
+      <h4 className="text-sm font-semibold text-gray-700 mb-3">Multi-City Route</h4>
+      <div className="space-y-3">
+        {(actualItem as any).allSegments.map((segment: any, idx: number) => (
+          <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700">
+              {idx + 1}
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-900">{segment.from || segment.Departure}</span>
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+                <span className="font-semibold text-gray-900">{segment.to || segment.Destination}</span>
+              </div>
+              <p className="text-xs text-gray-500">
+                {segment.date || segment.DepartureDate ? new Date(segment.date || segment.DepartureDate).toLocaleDateString(undefined, { 
+                  weekday: 'short', 
+                  month: 'short', 
+                  day: 'numeric' 
+                }) : 'Date TBD'}
+              </p>
+            </div>
+          </div>
+        ))}
+        <div className="text-xs text-gray-400 italic">
+          {(actualItem as any).allSegments.length} segments • Multi-city booking
+        </div>
+      </div>
+    </div>
+  )}
 
   {/* ✅ CAR RENTAL DETAILS */}
   {isCar && (

@@ -126,7 +126,6 @@ export interface WakanowSearchResponse {
   };
   message: string;
 }
-
 export interface WakanowSelectResponse {
   success: boolean;
   data: {
@@ -154,6 +153,126 @@ export interface WakanowSelectResponse {
     };
     custom_messages: string[];
     message: string;
+    // ✅ ADD THIS - stop_information from backend
+    stop_information?: {
+      totalStops: number;
+      stopDetails: Array<{
+        airline: string;
+        stops: number;
+        stopTime: string;
+        stopCity: string | null;
+        legs: Array<{
+          departureCode: string;
+          destinationCode: string;
+          hasStop: boolean;
+          stopLocation: string | null;
+          stopDuration: string;
+          isStop: boolean;
+          hasTechnicalStops: boolean;
+          technicalStops: Array<{
+            airline?: string;
+            flightNumber?: string;
+            legFrom?: string;
+            legFromName?: string;
+            legTo?: string;
+            legToName?: string;
+            stopLocation?: string;
+            stopCode?: string | null;
+            stopDuration?: string;
+            arrivalTime?: string | null;
+            departureTime?: string | null;
+          }>;
+        }>;
+      }>;
+      technicalStops: Array<{
+        airline?: string;
+        flightNumber?: string;
+        legFrom?: string;
+        legFromName?: string;
+        legTo?: string;
+        legToName?: string;
+        stopLocation?: string;
+        stopCode?: string | null;
+        stopDuration?: string;
+        arrivalTime?: string | null;
+        departureTime?: string | null;
+      }>;
+      layoversList: Array<{
+        airline: string;
+        flightNumber: string;
+        layoverLocation: string;
+        layoverDuration: string;
+        arrivalCode: string;
+        arrivalName: string;
+        departureCode: string;
+        departureName: string;
+      }>;
+      summary: {
+        totalLayovers: number;
+        totalTechnicalStops: number;
+        hasTechnicalStops: boolean;
+      };
+    } | null;
+    // ✅ Also add as stopInformation for safety
+    stopInformation?: {
+      totalStops: number;
+      stopDetails: Array<{
+        airline: string;
+        stops: number;
+        stopTime: string;
+        stopCity: string | null;
+        legs: Array<{
+          departureCode: string;
+          destinationCode: string;
+          hasStop: boolean;
+          stopLocation: string | null;
+          stopDuration: string;
+          isStop: boolean;
+          hasTechnicalStops: boolean;
+          technicalStops: Array<{
+            airline?: string;
+            flightNumber?: string;
+            legFrom?: string;
+            legFromName?: string;
+            legTo?: string;
+            legToName?: string;
+            stopLocation?: string;
+            stopCode?: string | null;
+            stopDuration?: string;
+            arrivalTime?: string | null;
+            departureTime?: string | null;
+          }>;
+        }>;
+      }>;
+      technicalStops: Array<{
+        airline?: string;
+        flightNumber?: string;
+        legFrom?: string;
+        legFromName?: string;
+        legTo?: string;
+        legToName?: string;
+        stopLocation?: string;
+        stopCode?: string | null;
+        stopDuration?: string;
+        arrivalTime?: string | null;
+        departureTime?: string | null;
+      }>;
+      layoversList: Array<{
+        airline: string;
+        flightNumber: string;
+        layoverLocation: string;
+        layoverDuration: string;
+        arrivalCode: string;
+        arrivalName: string;
+        departureCode: string;
+        departureName: string;
+      }>;
+      summary: {
+        totalLayovers: number;
+        totalTechnicalStops: number;
+        hasTechnicalStops: boolean;
+      };
+    } | null;
   };
   message: string;
 }

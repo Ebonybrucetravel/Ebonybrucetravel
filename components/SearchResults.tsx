@@ -19,6 +19,10 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
     original_total?: string;
     original_currency?: string;
   };
+  technicalStops?: any[];
+  hasTechnicalStops?: boolean;
+  totalTechnicalStops?: number;
+  stopInformation?: any;
   bookingId?: string;
   terms_and_conditions?: {
     TermsAndConditions: string[];
@@ -502,22 +506,44 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     if (searchData.type === 'flights') {
       params.set('type', 'flights');
       params.set('tripType', searchData.tripType);
-      params.set('origin', searchData.segments[0].from);
-      params.set('destination', searchData.segments[0].to);
-      params.set('departureDate', searchData.segments[0].date);
-      if (searchData.returnDate) {
-        params.set('returnDate', searchData.returnDate);
+      
+      // ✅ Check if this is a multi-city search
+      const isMultiCity = searchData.tripType === 'multi-city' && searchData.segments?.length > 1;
+      
+      if (isMultiCity) {
+        // ✅ Store ALL segments as JSON
+        params.set('segments', JSON.stringify(searchData.segments));
+        
+        // Set origin/destination from first and last for display
+        params.set('origin', searchData.segments[0].from);
+        params.set('destination', searchData.segments[searchData.segments.length - 1].to);
+        params.set('departureDate', searchData.segments[0].date);
+        
+        console.log('🔄 Multi-city search with', searchData.segments.length, 'segments:', 
+          searchData.segments.map((s: any) => `${s.from} → ${s.to}`).join(' | '));
+        
+      } else {
+        // Regular round-trip or one-way
+        params.set('origin', searchData.segments[0].from);
+        params.set('destination', searchData.segments[0].to);
+        params.set('departureDate', searchData.segments[0].date);
+        if (searchData.returnDate) {
+          params.set('returnDate', searchData.returnDate);
+        }
       }
+      
       params.set('adults', searchData.passengers.adults.toString());
       params.set('children', searchData.passengers.children.toString());
       params.set('infants', searchData.passengers.infants.toString());
       params.set('cabinClass', searchData.cabinClass);
+      
     } else if (searchData.type === 'hotels') {
       params.set('type', 'hotels');
       params.set('destination', searchData.location);
       params.set('checkInDate', searchData.checkInDate);
       params.set('checkOutDate', searchData.checkOutDate);
       params.set('guests', searchData.travellers.adults.toString());
+      
     } else if (searchData.type === 'car-rentals') {
       params.set('type', 'cars');
       params.set('pickupLocation', searchData.pickupLocationCode);
@@ -751,6 +777,76 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               baggageText = `${outboundFlight.FreeBaggage.Weight} ${outboundFlight.FreeBaggage.WeightUnit || 'kg'} baggage`;
             }
           }
+          const allTechnicalStops: any[] = [];
+
+          // ✅ 1. FIRST: Check slices from the search response
+          const slices = combination.slices || flightCombination?.slices || [];
+          for (const slice of slices) {
+            const segments = slice.segments || [];
+            for (const segment of segments) {
+              // ✅ Check BOTH snake_case AND camelCase
+              const stops = segment.technical_stops || segment.technicalStops || [];
+              if (Array.isArray(stops) && stops.length > 0) {
+                stops.forEach((stop: any) => {
+                  allTechnicalStops.push({
+                    AirportCode: stop.AirportCode || stop.airportCode || '',
+                    AirportName: stop.AirportName || stop.airportName || '',
+                    ArrivalDate: stop.ArrivalDate || stop.arrivalDate || '',
+                    DepartureDate: stop.DepartureDate || stop.departureDate || '',
+                    Duration: stop.Duration || stop.duration || '',
+                  });
+                });
+              }
+            }
+          }
+          
+          // ✅ 2. SECOND: Check FlightLegs (both formats)
+          if (allTechnicalStops.length === 0) {
+            outboundFlight.FlightLegs?.forEach((leg: any) => {
+              // Check both PascalCase and camelCase
+              const stops = leg.TechnicalStops || leg.technicalStops || [];
+              if (Array.isArray(stops) && stops.length > 0) {
+                stops.forEach((stop: any) => {
+                  allTechnicalStops.push({
+                    AirportCode: stop.AirportCode || stop.airportCode || '',
+                    AirportName: stop.AirportName || stop.airportName || '',
+                    ArrivalDate: stop.ArrivalDate || stop.arrivalDate || '',
+                    DepartureDate: stop.DepartureDate || stop.departureDate || '',
+                    Duration: stop.Duration || stop.duration || '',
+                  });
+                });
+              }
+            });
+          }
+          
+          // ✅ 3. Also check return flight
+          if (allTechnicalStops.length === 0 && returnFlight) {
+            returnFlight.FlightLegs?.forEach((leg: any) => {
+              const stops = leg.TechnicalStops || leg.technicalStops || [];
+              if (Array.isArray(stops) && stops.length > 0) {
+                stops.forEach((stop: any) => {
+                  allTechnicalStops.push({
+                    AirportCode: stop.AirportCode || stop.airportCode || '',
+                    AirportName: stop.AirportName || stop.airportName || '',
+                    ArrivalDate: stop.ArrivalDate || stop.arrivalDate || '',
+                    DepartureDate: stop.DepartureDate || stop.departureDate || '',
+                    Duration: stop.Duration || stop.duration || '',
+                  });
+                });
+              }
+            });
+          }
+          
+          const hasTechnicalStops = allTechnicalStops.length > 0;
+          const totalTechnicalStops = allTechnicalStops.length;
+          
+          if (allTechnicalStops.length > 0) {
+            console.log(`🔍 Technical stops found: ${allTechnicalStops.length}`);
+            console.log('📋 Technical stops details:', allTechnicalStops);
+          } else {
+            console.log('ℹ️ No technical stops found for this flight');
+          }
+
 
           const processedOffer: ExtendedSearchResult = {
             id: `${outboundFlight.Airline}-${outboundFlight.Name}-${Date.now()}-${Math.random()}`,
@@ -760,6 +856,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             selectData: selectData,
             bookingId: bookingId || selectData,
             provider: 'wakanow',
+            technicalStops: allTechnicalStops,     
+  hasTechnicalStops: hasTechnicalStops,  
+  totalTechnicalStops: totalTechnicalStops, 
+  stopInformation: null,    
             airlineCode: outboundFlight.Airline || '',
             airlineName: outboundFlight.AirlineName || outboundFlight.Airline || 'Unknown Airline',
             airlineLogo: airlineLogo,
@@ -1312,43 +1412,51 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   };
 
   const routeTitle = useMemo(() => {
+    // ✅ Check if this is a multi-city search
+    const isMultiCity = searchParams?.tripType === 'multi-city' && searchParams?.segments?.length > 1;
+    
+    if (isMultiCity && searchParams?.segments) {
+      const segments = searchParams.segments;
+      const route = segments.map((s: any) => `${s.from} → ${s.to}`).join(' | ');
+      return `Multi-City: ${route}`;
+    }
+    
     const origin = searchParams?.origin || '';
     const destination = searchParams?.destination || '';
     const tripType = searchParams?.tripType || 'Round Trip';
-
+  
     if (origin && destination) {
-      if (tripType === 'Round Trip') {
+      if (tripType === 'Round Trip' || tripType === 'round-trip') {
         return `From ${origin} to ${destination} and back`;
       }
       return `${origin} to ${destination}`;
     }
-
+  
     if (processedFlights.length > 0) {
       const firstFlight = processedFlights[0];
       if (firstFlight.departureCity && firstFlight.arrivalCity) {
         const originCity = firstFlight.departureCity;
         const destinationCity = firstFlight.arrivalCity;
-
+  
         if (firstFlight.isRoundTrip || (firstFlight.slices?.length || 0) > 1) {
           return `From ${originCity} to ${destinationCity} and back`;
         }
         return `${originCity} to ${destinationCity}`;
       }
-
+  
       if (firstFlight.departureAirport && firstFlight.arrivalAirport) {
         const originCode = firstFlight.departureAirport;
         const destinationCode = firstFlight.arrivalAirport;
-
+  
         if (firstFlight.isRoundTrip || (firstFlight.slices?.length || 0) > 1) {
           return `From ${originCode} to ${destinationCode} and back`;
         }
         return `${originCode} to ${destinationCode}`;
       }
     }
-
+  
     return 'Flights';
   }, [searchParams, processedFlights]);
-
   
   const origin = useMemo(() => {
     return searchParams?.origin || (processedFlights[0]?.departureCity) || 'Lagos';
@@ -1652,7 +1760,6 @@ const hotelAndCarResults = useMemo(() => {
     e.stopPropagation();
     
     if (flight.isWakanow && flight.selectData) {
-      // ✅ Check if we already have cached data
       if (flight._wakanowData || flight.fare_rules?.length > 0) {
         console.log('✅ Already have cached data, navigating directly');
         sessionStorage.setItem('selectedFlightDetails', JSON.stringify(flight));
@@ -1672,11 +1779,38 @@ const hotelAndCarResults = useMemo(() => {
           
           const flightSummary = responseData.flight_summary;
           const priceBreakdown = responseData.priceBreakdown;
-          
-          // ✅ Get slices from the response
           const slices = flightSummary?.slices || flight.slices || [];
           
-          // ✅ Get freeBaggage from the first slice
+          // ✅ Extract technical stops from select response
+          const stopInfo = responseData.stop_information || null;
+          const technicalStops = stopInfo?.technicalStops || [];
+          const hasTechnicalStops = stopInfo?.summary?.hasTechnicalStops || false;
+          const totalTechnicalStops = stopInfo?.summary?.totalTechnicalStops || 0;
+          
+          // Also check segments for technical stops
+          let allTechnicalStops = [...technicalStops];
+          if (!hasTechnicalStops && responseData.flight_summary?.slices) {
+            for (const slice of responseData.flight_summary.slices) {
+              for (const segment of (slice.segments || [])) {
+                const stops = segment.technicalStops || segment.technical_stops || [];
+                if (stops.length > 0) {
+                  allTechnicalStops = allTechnicalStops.concat(stops.map((stop: any) => ({
+                    AirportCode: stop.AirportCode || stop.airportCode || '',
+                    AirportName: stop.AirportName || stop.airportName || '',
+                    ArrivalDate: stop.ArrivalDate || stop.arrivalDate || '',
+                    DepartureDate: stop.DepartureDate || stop.departureDate || '',
+                    Duration: stop.Duration || stop.duration || '',
+                  })));
+                }
+              }
+            }
+          }
+          
+          // ✅ Use combined data
+          const finalTechnicalStops = allTechnicalStops;
+          const finalHasTechnicalStops = hasTechnicalStops || allTechnicalStops.length > 0;
+          const finalTotalTechnicalStops = totalTechnicalStops || allTechnicalStops.length;
+          
           let freeBaggage = null;
           if (slices.length > 0) {
             freeBaggage = slices[0]?.freeBaggage || 
@@ -1684,14 +1818,10 @@ const hotelAndCarResults = useMemo(() => {
                           null;
           }
           
-          // ✅ Get isRefundable
           const isRefundable = flightSummary?.isRefundable || false;
-          
-          // ✅ Get fare_rules and penalty_rules
           const fareRules = responseData.fare_rules || [];
           const penaltyRules = responseData.penalty_rules || [];
           
-          // ✅ Get custom_messages
           const rawMessages = responseData.custom_messages || [];
           let customMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
           
@@ -1711,16 +1841,13 @@ const hotelAndCarResults = useMemo(() => {
             ...flight,
             bookingId: responseData.booking_id || flight.id,
             selectData: responseData.select_data || flight.selectData,
-            // ✅ CRITICAL: Store the slices from the response
             slices: slices,
             flight_summary: flightSummary,
-            // ✅ CRITICAL: Store freeBaggage
             freeBaggage: freeBaggage,
             isRefundable: isRefundable,
             fare_rules: fareRules,
             penalty_rules: penaltyRules,
             terms_and_conditions: responseData.terms_and_conditions || null,
-            // ✅ Store price breakdown
             priceBreakdown: priceBreakdown || undefined,
             basePrice: priceBreakdown?.basePrice || 0,
             markupAmount: priceBreakdown?.markupAmount || 0,
@@ -1731,24 +1858,24 @@ const hotelAndCarResults = useMemo(() => {
             taxPercentage: priceBreakdown?.taxPercentage || 15,
             totalAmount: priceBreakdown?.totalAmount || 0,
             currency: priceBreakdown?.currency || 'NGN',
-            // ✅ Store custom messages
             custom_messages: customMessages,
-            // ✅ Store raw data
             _wakanowData: responseData,
+            // ✅ Now defined!
+            technicalStops: finalTechnicalStops,
+            hasTechnicalStops: finalHasTechnicalStops,
+            totalTechnicalStops: finalTotalTechnicalStops,
+            stopInformation: stopInfo,
             _isRealData: true,
           };
           
           toast.success('Flight details loaded!', { id: 'view-details' });
           
-          // ✅ Store in sessionStorage
           sessionStorage.setItem('selectedFlightDetails', JSON.stringify(enrichedFlight));
           
-          // ✅ Update the flight in the processedFlights array
           setProcessedFlights(prev => 
             prev.map(f => f.id === flight.id ? enrichedFlight : f)
           );
           
-          // ✅ Navigate to FlightDetails page
           router.push(`/flights/${encodeURIComponent(flight.id)}`);
           return;
         }
@@ -1758,11 +1885,10 @@ const hotelAndCarResults = useMemo(() => {
       }
     }
     
-    // ✅ Fallback
     sessionStorage.setItem('selectedFlightDetails', JSON.stringify(flight));
     router.push(`/flights/${encodeURIComponent(flight.id)}`);
   }, [router]);
- 
+
   const buildDuffelOfferData = useCallback((flight: ExtendedSearchResult) => {
    
     const actualOfferId = flight.offer_id || flight.id;
@@ -2011,6 +2137,29 @@ const hotelAndCarResults = useMemo(() => {
                   <span className="text-sm text-gray-500">{flight.cabin}</span>
                 </div>
               )}
+              
+ {/* ✅ TECHNICAL STOPS INDICATOR - ALWAYS SHOWS */}
+{flight.hasTechnicalStops !== undefined && (
+  <div className="flex items-center gap-1">
+    {flight.hasTechnicalStops ? (
+      <>
+        <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span className="text-sm text-amber-600 font-medium">
+          {flight.totalTechnicalStops || flight.technicalStops?.length || 0} technical stop{(flight.totalTechnicalStops || flight.technicalStops?.length || 0) > 1 ? 's' : ''}
+        </span>
+      </>
+    ) : (
+      <>
+        <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+        <span className="text-sm text-green-600 font-medium">No technical stops</span>
+      </>
+    )}
+  </div>
+)}
 
               {isRefundable ? (
                 <div className="flex items-center gap-1">

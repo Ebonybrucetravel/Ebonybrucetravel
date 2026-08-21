@@ -202,6 +202,76 @@ export interface HotelSearchResponse {
   [key: string]: any;
 }
 
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value: string | null) => void;
+  reject: (reason?: any) => void;
+}> = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+export const refreshAuthToken = async (): Promise<string | null> => {
+  try {
+    const refreshToken = typeof window !== "undefined" 
+      ? localStorage.getItem('refreshToken') 
+      : null;
+      
+    if (!refreshToken) {
+      console.log('No refresh token available');
+      return null;
+    }
+    
+    console.log('🔄 Attempting to refresh token...');
+    
+    const response = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ refreshToken }),
+    });
+    
+    if (!response.ok) {
+      console.error('Refresh token request failed:', response.status);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('travelToken');
+      }
+      return null;
+    }
+    
+    const data = await response.json();
+    const newToken = data.token || data.accessToken || data.access_token;
+    const newRefreshToken = data.refreshToken || data.refresh_token || data.refresh;
+    
+    if (newToken && typeof window !== "undefined") {
+      localStorage.setItem('authToken', newToken);
+      localStorage.setItem('travelToken', newToken);
+      if (newRefreshToken) {
+        localStorage.setItem('refreshToken', newRefreshToken);
+      }
+      console.log('✅ Token refreshed successfully');
+      return newToken;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Failed to refresh token:', error);
+    return null;
+  }
+};
+
 // Hotel booking interfaces
 export interface HotelGuest {
   name: {
@@ -596,7 +666,7 @@ async function request<T>(
   config.signal = controller.signal;
 
   try {
-    const response = await fetch(url, config);
+    let response = await fetch(url, config);
     const contentType = response.headers.get("content-type");
     let data: any;
 
@@ -607,24 +677,112 @@ async function request<T>(
       data = { message: text || response.statusText };
     }
 
-    if (response.status === 401) {
-      const currentToken = getAuthToken();
-      if (!currentToken || currentToken.trim() === "") {
-        throw new ApiError(
-          "Invalid credentials. Please check your email and password.",
-          401,
-          "INVALID_CREDENTIALS",
-        );
+      // ✅ REPLACED 401 BLOCK WITH TOKEN REFRESH LOGIC
+      if (response.status === 401) {
+        const currentToken = getAuthToken();
+        
+        // If no token, it's invalid credentials
+        if (!currentToken || currentToken.trim() === "") {
+          if (data?.code === "INVALID_CREDENTIALS") {
+            clearAuthToken();
+            window.dispatchEvent(new CustomEvent("auth-expired"));
+            throw new ApiError(
+              "Invalid credentials. Please check your email and password.",
+              401,
+              "INVALID_CREDENTIALS",
+            );
+          }
+          clearAuthToken();
+          window.dispatchEvent(new CustomEvent("auth-expired"));
+          throw new ApiError(
+            "Session expired. Please sign in again.",
+            401,
+            "UNAUTHORIZED",
+          );
+        }
+        
+        // ✅ Try to refresh the token
+        console.log('🔄 Token expired, attempting to refresh...');
+        
+        if (!isRefreshing) {
+          isRefreshing = true;
+          try {
+            const newToken = await refreshAuthToken();
+            if (newToken) {
+              processQueue(null, newToken);
+              // Retry the original request with new token
+              const retryHeaders = { ...headers };
+              retryHeaders['Authorization'] = `Bearer ${newToken}`;
+              const retryConfig = { ...config, headers: retryHeaders };
+              response = await fetch(url, retryConfig);
+              
+              // Parse the retry response
+              if (contentType && contentType.includes("application/json")) {
+                data = await response.json();
+              } else {
+                const text = await response.text();
+                data = { message: text || response.statusText };
+              }
+              
+              if (response.ok) {
+                return data as T;
+              }
+            }
+            
+            // Refresh failed - clear tokens and throw
+            processQueue(new Error('Refresh failed'), null);
+            clearAuthToken();
+            if (typeof window !== "undefined") {
+              localStorage.removeItem('refreshToken');
+            }
+            window.dispatchEvent(new CustomEvent("auth-expired"));
+            throw new ApiError(
+              "Session expired. Please sign in again.",
+              401,
+              "UNAUTHORIZED"
+            );
+          } catch (refreshError) {
+            processQueue(refreshError, null);
+            clearAuthToken();
+            if (typeof window !== "undefined") {
+              localStorage.removeItem('refreshToken');
+            }
+            window.dispatchEvent(new CustomEvent("auth-expired"));
+            throw new ApiError(
+              "Session expired. Please sign in again.",
+              401,
+              "UNAUTHORIZED"
+            );
+          } finally {
+            isRefreshing = false;
+          }
+        } else {
+          // If already refreshing, wait for the new token
+          return new Promise((resolve, reject) => {
+            failedQueue.push({ resolve, reject });
+          }).then(async (newToken: any) => {
+            if (newToken) {
+              const retryHeaders = { ...headers };
+              retryHeaders['Authorization'] = `Bearer ${newToken}`;
+              const retryConfig = { ...config, headers: retryHeaders };
+              const retryResponse = await fetch(url, retryConfig);
+              if (contentType && contentType.includes("application/json")) {
+                const retryData = await retryResponse.json();
+                return retryData as T;
+              } else {
+                const text = await retryResponse.text();
+                return { message: text || retryResponse.statusText } as T;
+              }
+            } else {
+              throw new ApiError(
+                "Session expired. Please sign in again.",
+                401,
+                "UNAUTHORIZED"
+              );
+            }
+          });
+        }
       }
-      clearAuthToken();
-      window.dispatchEvent(new CustomEvent("auth-expired"));
-      throw new ApiError(
-        "Session expired. Please sign in again.",
-        401,
-        "UNAUTHORIZED",
-      );
-    }
-
     if (response.status === 403) {
       throw new ApiError(
         "You do not have permission to perform this action.",
@@ -679,10 +837,14 @@ async function request<T>(
   }
 }
 
-export function setAuthToken(token: string, user?: User) {
+export function setAuthToken(token: string, user?: User, refreshToken?: string) {
   if (typeof window !== "undefined") {
     localStorage.setItem("travelToken", token);
     sessionStorage.setItem("authToken", token);
+
+    if (refreshToken) {
+      localStorage.setItem("refreshToken", refreshToken);
+    }
 
     if (user) {
       localStorage.setItem("travelUser", JSON.stringify({ ...user, token }));
@@ -699,6 +861,7 @@ export function clearAuthToken() {
     localStorage.removeItem("travelToken");
     localStorage.removeItem("authToken");
     localStorage.removeItem("travelUser");
+    localStorage.removeItem("refreshToken"); 
     sessionStorage.removeItem("authToken");
     window.dispatchEvent(new CustomEvent("auth-token-cleared"));
   }
@@ -3582,9 +3745,11 @@ export const authApi = {
       body: JSON.stringify(credentials),
     }).then((response) => {
       if (response.token && response.user) {
-        setAuthToken(response.token, response.user);
+        const refreshToken = response.refreshToken || response.data?.refreshToken;
+        setAuthToken(response.token, response.user, refreshToken);
       } else if (response.data?.token && response.data?.user) {
-        setAuthToken(response.data.token, response.data.user);
+        const refreshToken = response.data.refreshToken || response.refreshToken;
+        setAuthToken(response.data.token, response.data.user, refreshToken);
       }
       return response;
     });
@@ -3596,9 +3761,11 @@ export const authApi = {
       body: JSON.stringify(userData),
     }).then((response) => {
       if (response.token && response.user) {
-        setAuthToken(response.token, response.user);
+        const refreshToken = response.refreshToken || response.data?.refreshToken;
+        setAuthToken(response.token, response.user, refreshToken);
       } else if (response.data?.token && response.data?.user) {
-        setAuthToken(response.data.token, response.data.user);
+        const refreshToken = response.data.refreshToken || response.refreshToken;
+        setAuthToken(response.data.token, response.data.user, refreshToken);
       }
       return response;
     });
@@ -3661,30 +3828,33 @@ export const authApi = {
     );
   },
 
-  // Social login endpoints (if supported)
   googleLogin: (accessToken: string) => {
     return request<any>("/api/v1/auth/google", {
       method: "POST",
       body: JSON.stringify({ accessToken }),
     }).then((response) => {
       if (response.token && response.user) {
-        setAuthToken(response.token, response.user);
+        const refreshToken = response.refreshToken || response.data?.refreshToken;
+        setAuthToken(response.token, response.user, refreshToken);
       } else if (response.data?.token && response.data?.user) {
-        setAuthToken(response.data.token, response.data.user);
+        const refreshToken = response.data.refreshToken || response.refreshToken;
+        setAuthToken(response.data.token, response.data.user, refreshToken);
       }
       return response;
     });
   },
-
+  
   facebookLogin: (accessToken: string) => {
     return request<any>("/api/v1/auth/facebook", {
       method: "POST",
       body: JSON.stringify({ accessToken }),
     }).then((response) => {
       if (response.token && response.user) {
-        setAuthToken(response.token, response.user);
+        const refreshToken = response.refreshToken || response.data?.refreshToken;
+        setAuthToken(response.token, response.user, refreshToken);
       } else if (response.data?.token && response.data?.user) {
-        setAuthToken(response.data.token, response.data.user);
+        const refreshToken = response.data.refreshToken || response.refreshToken;
+        setAuthToken(response.data.token, response.data.user, refreshToken);
       }
       return response;
     });
@@ -4802,6 +4972,8 @@ export const supportApi = {
     });
   },
 };
+
+
 
 // Utility functions
 export async function fetchUserProfile(): Promise<User | null> {

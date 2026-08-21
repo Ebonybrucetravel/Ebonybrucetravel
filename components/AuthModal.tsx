@@ -7,7 +7,7 @@ import api from '../lib/api';
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLoginSuccess: (user: { name: string; email: string; token?: string; expiresIn?: number }) => void;
+  onLoginSuccess: (user: { name: string; email: string; token?: string; refreshToken?: string; expiresIn?: number }) => void;
   onSocialLogin?: (provider: 'google' | 'facebook') => void;
   initialMode?: 'login' | 'register' | 'forgot-password' | 'reset-password' | 'verify-email';
   resetToken?: string;
@@ -62,13 +62,19 @@ const AuthModal: React.FC<AuthModalProps> = ({
   // ✅ Listen for auth success events from the callback page
   useEffect(() => {
     const handleAuthSuccess = (event: CustomEvent) => {
-      const { token, user } = event.detail;
+      const { token, user, refreshToken } = event.detail; 
+    
       
       console.log('Auth success event received:', { token, user });
       
       if (token) {
         // Set auth token
         api.setAuthToken(token);
+
+        if (refreshToken) {
+          localStorage.setItem('refreshToken', refreshToken);
+          console.log('✅ Refresh token stored from auth event');
+        }
         
         // Store user data if available
         if (user) {
@@ -282,6 +288,11 @@ const AuthModal: React.FC<AuthModalProps> = ({
                     response?.data?.token || 
                     response?.accessToken || 
                     response?.access_token;
+
+
+    const refreshToken = response?.refreshToken || 
+                    response?.data?.refreshToken || 
+                    response?.refresh_token;
       
       if (!token) {
         console.error('No token in response:', response);
@@ -291,6 +302,11 @@ const AuthModal: React.FC<AuthModalProps> = ({
       
       // Set auth token
       api.setAuthToken(token);
+
+      if (refreshToken) {
+        localStorage.setItem('refreshToken', refreshToken);
+        console.log('✅ Refresh token stored');
+      }
       
       // Extract user data - adjust based on your actual response structure
       const userData = response?.user || 
@@ -304,7 +320,8 @@ const AuthModal: React.FC<AuthModalProps> = ({
       onLoginSuccess({ 
         name: userData.name || userData.fullName || name || email.split('@')[0], 
         email: userData.email || email, 
-        token 
+        token,
+        refreshToken
       });
       
       // Clear pending booking data

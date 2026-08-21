@@ -25,6 +25,14 @@ interface HotelDestination {
   image?: string;
 }
 
+// ✅ Multi-City Segment interface
+interface MultiCitySegment {
+  id: string;
+  from: string;
+  to: string;
+  date: string;
+}
+
 const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
   onSearch,
   loading,
@@ -46,7 +54,18 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
   const [flightTo, setFlightTo] = useState('');
   const [flightDate, setFlightDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
-  const [tripType, setTripType] = useState<'round-trip' | 'one-way'>('round-trip');
+  const [tripType, setTripType] = useState<'round-trip' | 'one-way' | 'multi-city'>('round-trip');
+  
+  // ✅ Multi-City states
+  const [multiCitySegments, setMultiCitySegments] = useState<MultiCitySegment[]>([
+    { id: '1', from: '', to: '', date: '' },
+    { id: '2', from: '', to: '', date: '' },
+  ]);
+  const [showSegmentFromDropdown, setShowSegmentFromDropdown] = useState<Record<string, boolean>>({});
+  const [showSegmentToDropdown, setShowSegmentToDropdown] = useState<Record<string, boolean>>({});
+  const [segmentFromSuggestions, setSegmentFromSuggestions] = useState<Record<string, Airport[]>>({});
+  const [segmentToSuggestions, setSegmentToSuggestions] = useState<Record<string, Airport[]>>({});
+  
   const [showFromDropdown, setShowFromDropdown] = useState(false);
   const [showToDropdown, setShowToDropdown] = useState(false);
   const [fromSuggestions, setFromSuggestions] = useState<Airport[]>([]);
@@ -83,7 +102,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
   const [carDropoffSuggestions, setCarDropoffSuggestions] = useState<Airport[]>([]);
   const [loadingCarSuggestions, setLoadingCarSuggestions] = useState(false);
 
-  // Memoize popular airports to prevent recreation
+  // Memoize popular airports
   const popularAirports = useMemo<Airport[]>(() => [
     { code: 'LOS', name: 'Murtala Muhammed International Airport', city: 'Lagos', country: 'Nigeria', type: 'airport' },
     { code: 'LHR', name: 'Heathrow Airport', city: 'London', country: 'UK', type: 'airport' },
@@ -93,6 +112,9 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     { code: 'FRA', name: 'Frankfurt Airport', city: 'Frankfurt', country: 'Germany', type: 'airport' },
     { code: 'AMS', name: 'Schiphol Airport', city: 'Amsterdam', country: 'Netherlands', type: 'airport' },
     { code: 'IST', name: 'Istanbul Airport', city: 'Istanbul', country: 'Turkey', type: 'airport' },
+    { code: 'ABV', name: 'Nnamdi Azikiwe International Airport', city: 'Abuja', country: 'Nigeria', type: 'airport' },
+    { code: 'PHC', name: 'Port Harcourt International Airport', city: 'Port Harcourt', country: 'Nigeria', type: 'airport' },
+    { code: 'KAN', name: 'Mallam Aminu Kano International Airport', city: 'Kano', country: 'Nigeria', type: 'airport' },
   ], []);
 
   const popularHotelDestinations = useMemo<HotelDestination[]>(() => [
@@ -165,7 +187,6 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     try {
       setLoadingHotelSuggestions(true);
       
-      // Call Amadeus API via backend for destination suggestions
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ebony-bruce-production.up.railway.app'}/api/v1/bookings/hotels/destinations/suggestions?query=${encodeURIComponent(query)}`
       );
@@ -177,7 +198,6 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
         }
       }
       
-      // Fallback to local popular destinations
       const lowerQuery = query.toLowerCase();
       const filtered = popularHotelDestinations.filter(dest =>
         dest.city.toLowerCase().includes(lowerQuery) ||
@@ -257,7 +277,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     }
   }, [popularAirports]);
 
-  // Debounced handlers
+  // Debounced handlers for regular flight
   const debouncedFromChange = useMemo(
     () => debounce(async (value: string) => {
       if (value.length >= 1) {
@@ -284,6 +304,33 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
       }
     }, 300),
     [debounce, fetchAirportSuggestions, popularAirports]
+  );
+
+  // ✅ Debounced handlers for Multi-City segments
+  const debouncedSegmentFromChange = useMemo(
+    () => debounce(async (segmentId: string, value: string) => {
+      if (value.length >= 1) {
+        const suggestions = await fetchAirportSuggestions(value);
+        setSegmentFromSuggestions(prev => ({ ...prev, [segmentId]: suggestions }));
+        setShowSegmentFromDropdown(prev => ({ ...prev, [segmentId]: true }));
+      } else {
+        setShowSegmentFromDropdown(prev => ({ ...prev, [segmentId]: value.length > 0 }));
+      }
+    }, 300),
+    [debounce, fetchAirportSuggestions]
+  );
+
+  const debouncedSegmentToChange = useMemo(
+    () => debounce(async (segmentId: string, value: string) => {
+      if (value.length >= 1) {
+        const suggestions = await fetchAirportSuggestions(value);
+        setSegmentToSuggestions(prev => ({ ...prev, [segmentId]: suggestions }));
+        setShowSegmentToDropdown(prev => ({ ...prev, [segmentId]: true }));
+      } else {
+        setShowSegmentToDropdown(prev => ({ ...prev, [segmentId]: value.length > 0 }));
+      }
+    }, 300),
+    [debounce, fetchAirportSuggestions]
   );
 
   const debouncedHotelChange = useMemo(
@@ -326,7 +373,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     [debounce, fetchAirportSuggestions]
   );
 
-  // Handle input changes
+  // Handle input changes for regular flight
   const handleFromChange = useCallback((value: string) => {
     setFlightFrom(value);
     debouncedFromChange(value);
@@ -336,6 +383,27 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     setFlightTo(value);
     debouncedToChange(value);
   }, [debouncedToChange]);
+
+  // ✅ Handle input changes for Multi-City segments
+  const handleSegmentFromChange = useCallback((segmentId: string, value: string) => {
+    setMultiCitySegments(prev => prev.map(seg => 
+      seg.id === segmentId ? { ...seg, from: value } : seg
+    ));
+    debouncedSegmentFromChange(segmentId, value);
+  }, [debouncedSegmentFromChange]);
+
+  const handleSegmentToChange = useCallback((segmentId: string, value: string) => {
+    setMultiCitySegments(prev => prev.map(seg => 
+      seg.id === segmentId ? { ...seg, to: value } : seg
+    ));
+    debouncedSegmentToChange(segmentId, value);
+  }, [debouncedSegmentToChange]);
+
+  const handleSegmentDateChange = useCallback((segmentId: string, value: string) => {
+    setMultiCitySegments(prev => prev.map(seg => 
+      seg.id === segmentId ? { ...seg, date: value } : seg
+    ));
+  }, []);
 
   const handleHotelChange = useCallback((value: string) => {
     setHotelLocation(value);
@@ -353,7 +421,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     debouncedCarDropoffChange(value);
   }, [debouncedCarDropoffChange]);
 
-  // Handle selections
+  // Handle selections for regular flight
   const handleAirportSelect = useCallback((airport: Airport, type: 'from' | 'to') => {
     const displayValue = `${airport.code} - ${airport.city}, ${airport.country}`;
     if (type === 'from') {
@@ -362,6 +430,19 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     } else {
       setFlightTo(displayValue);
       setShowToDropdown(false);
+    }
+  }, []);
+
+  // ✅ Handle selections for Multi-City segments
+  const handleSegmentAirportSelect = useCallback((segmentId: string, airport: Airport, type: 'from' | 'to') => {
+    const displayValue = `${airport.code} - ${airport.city}, ${airport.country}`;
+    setMultiCitySegments(prev => prev.map(seg => 
+      seg.id === segmentId ? { ...seg, [type === 'from' ? 'from' : 'to']: displayValue } : seg
+    ));
+    if (type === 'from') {
+      setShowSegmentFromDropdown(prev => ({ ...prev, [segmentId]: false }));
+    } else {
+      setShowSegmentToDropdown(prev => ({ ...prev, [segmentId]: false }));
     }
   }, []);
 
@@ -381,6 +462,20 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
       setShowCarDropoffDropdown(false);
     }
   }, []);
+
+  // ✅ Multi-City segment management
+  const addSegment = useCallback(() => {
+    const newId = Date.now().toString();
+    setMultiCitySegments(prev => [...prev, { id: newId, from: '', to: '', date: '' }]);
+  }, []);
+
+  const removeSegment = useCallback((segmentId: string) => {
+    if (multiCitySegments.length <= 2) {
+      // Don't remove below 2 segments
+      return;
+    }
+    setMultiCitySegments(prev => prev.filter(seg => seg.id !== segmentId));
+  }, [multiCitySegments.length]);
 
   const updatePassengers = useCallback((type: 'adults' | 'children' | 'infants', delta: number) => {
     setPassengers(prev => {
@@ -450,6 +545,12 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     setCarPickupDate(tomorrowStr);
     setCarDropoffDate(nextWeekStr);
     
+    // ✅ Set multi-city segment dates
+    setMultiCitySegments(prev => prev.map((seg, index) => ({
+      ...seg,
+      date: new Date(tomorrow.getTime() + index * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    })));
+    
     if (initialParams) {
       console.log('📦 Initial params received:', initialParams);
       if (initialParams.type === 'flights') {
@@ -498,22 +599,48 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     let searchData: any = {};
     
     if (activeTab === 'flights') {
-      const fromCode = extractCode(flightFrom);
-      const toCode = extractCode(flightTo);
-      
-      searchData = {
-        type: 'flights',
-        tripType,
-        segments: [{ from: fromCode, to: toCode, date: flightDate }],
-        passengers: { adults: passengers.adults, children: passengers.children, infants: passengers.infants },
-        cabinClass: cabinClass,
-      };
-      
-      if (tripType === 'round-trip') {
-        searchData.returnDate = returnDate;
+      if (tripType === 'multi-city') {
+        // ✅ Multi-City search
+        const segments = multiCitySegments.map(seg => ({
+          from: extractCode(seg.from),
+          to: extractCode(seg.to),
+          date: seg.date,
+        })).filter(seg => seg.from && seg.to && seg.date);
+        
+        if (segments.length < 2) {
+          alert('Please add at least 2 segments for a multi-city trip.');
+          return;
+        }
+        
+        searchData = {
+          type: 'flights',
+          tripType: 'multi-city',
+          segments: segments,
+          passengers: { adults: passengers.adults, children: passengers.children, infants: passengers.infants },
+          cabinClass: cabinClass,
+        };
+        
+        console.log('🔄 Multi-City Search Data:', searchData);
+        
+      } else {
+        // Regular round-trip or one-way
+        const fromCode = extractCode(flightFrom);
+        const toCode = extractCode(flightTo);
+        
+        searchData = {
+          type: 'flights',
+          tripType,
+          segments: [{ from: fromCode, to: toCode, date: flightDate }],
+          passengers: { adults: passengers.adults, children: passengers.children, infants: passengers.infants },
+          cabinClass: cabinClass,
+        };
+        
+        if (tripType === 'round-trip') {
+          searchData.returnDate = returnDate;
+        }
+        
+        console.log('✈️ Flight Search Data:', searchData);
       }
-      
-      console.log('✈️ Flight Search Data:', searchData);
       
     } else if (activeTab === 'hotels') {
       const cityCode = getCityCodeFromLocation(hotelLocation);
@@ -546,7 +673,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     }
     
     onSearch(searchData);
-  }, [activeTab, extractCode, getCityCodeFromLocation, flightFrom, flightTo, flightDate, tripType, returnDate, passengers, cabinClass, hotelLocation, checkIn, checkOut, guests, carPickup, carDropoff, carPickupDate, carDropoffDate, onSearch]);
+  }, [activeTab, extractCode, getCityCodeFromLocation, flightFrom, flightTo, flightDate, tripType, returnDate, passengers, cabinClass, hotelLocation, checkIn, checkOut, guests, carPickup, carDropoff, carPickupDate, carDropoffDate, multiCitySegments, onSearch]);
 
   const renderDropdown = useCallback((suggestions: Airport[], onSelect: (airport: Airport) => void, isLoading: boolean) => (
     <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 max-h-64 overflow-y-auto z-50">
@@ -619,164 +746,288 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     </div>
   ), [hotelSuggestions, loadingHotelSuggestions, handleHotelSelect]);
 
-  const renderFlightCompact = useMemo(() => (
-    <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">
-      <div className="flex flex-col gap-1.5 min-w-[100px]">
-        <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">TRIP TYPE</span>
-        <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2 border border-gray-200">
-          <label className="flex items-center gap-1.5 cursor-pointer">
-            <input
-              type="radio"
-              name="tripType"
-              checked={tripType === 'round-trip'}
-              onChange={() => setTripType('round-trip')}
-              className="w-3.5 h-3.5 text-[#33a8da] focus:ring-[#33a8da]"
-            />
-            <span className="text-xs font-medium text-gray-700">Round</span>
-          </label>
-          <label className="flex items-center gap-1.5 cursor-pointer">
-            <input
-              type="radio"
-              name="tripType"
-              checked={tripType === 'one-way'}
-              onChange={() => setTripType('one-way')}
-              className="w-3.5 h-3.5 text-[#33a8da] focus:ring-[#33a8da]"
-            />
-            <span className="text-xs font-medium text-gray-700">One way</span>
-          </label>
-        </div>
-      </div>
-
-      <div className="flex-1 min-w-[120px] relative" ref={flightFromRef}>
-        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">FROM</label>
-        <input
-          type="text"
-          value={flightFrom}
-          onChange={(e) => handleFromChange(e.target.value)}
-          onFocus={() => {
-            if (flightFrom.length < 2) {
-              setFromSuggestions(popularAirports.slice(0, 8));
-            }
-            setShowFromDropdown(true);
-          }}
-          placeholder="Lagos"
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-        />
-        {showFromDropdown && renderDropdown(fromSuggestions, (airport) => handleAirportSelect(airport, 'from'), loadingSuggestions)}
-      </div>
-
-      <div className="flex-1 min-w-[120px] relative" ref={flightToRef}>
-        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">TO</label>
-        <input
-          type="text"
-          value={flightTo}
-          onChange={(e) => handleToChange(e.target.value)}
-          onFocus={() => {
-            if (flightTo.length < 2) {
-              setToSuggestions(popularAirports.slice(0, 8));
-            }
-            setShowToDropdown(true);
-          }}
-          placeholder="London"
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-        />
-        {showToDropdown && renderDropdown(toSuggestions, (airport) => handleAirportSelect(airport, 'to'), loadingSuggestions)}
-      </div>
-
-      <div className="flex-1 min-w-[130px]">
-        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">DEPARTURE</label>
-        <input
-          type="date"
-          value={flightDate}
-          onChange={(e) => setFlightDate(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-        />
-      </div>
-
-      {tripType === 'round-trip' && (
-        <div className="flex-1 min-w-[130px]">
-          <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">RETURN</label>
+  // ✅ Render Multi-City trip type selector
+  const renderTripTypeSelector = useCallback(() => (
+    <div className="flex flex-col gap-1.5 min-w-[100px]">
+      <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">TRIP TYPE</span>
+      <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2 border border-gray-200 flex-wrap">
+        <label className="flex items-center gap-1.5 cursor-pointer">
           <input
-            type="date"
-            value={returnDate}
-            onChange={(e) => setReturnDate(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+            type="radio"
+            name="tripType"
+            checked={tripType === 'round-trip'}
+            onChange={() => setTripType('round-trip')}
+            className="w-3.5 h-3.5 text-[#33a8da] focus:ring-[#33a8da]"
           />
-        </div>
-      )}
+          <span className="text-xs font-medium text-gray-700">Round</span>
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="radio"
+            name="tripType"
+            checked={tripType === 'one-way'}
+            onChange={() => setTripType('one-way')}
+            className="w-3.5 h-3.5 text-[#33a8da] focus:ring-[#33a8da]"
+          />
+          <span className="text-xs font-medium text-gray-700">One way</span>
+        </label>
+        {/* ✅ ADD MULTI-CITY OPTION */}
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="radio"
+            name="tripType"
+            checked={tripType === 'multi-city'}
+            onChange={() => setTripType('multi-city')}
+            className="w-3.5 h-3.5 text-[#33a8da] focus:ring-[#33a8da]"
+          />
+          <span className="text-xs font-medium text-gray-700">Multi-City</span>
+        </label>
+      </div>
+    </div>
+  ), [tripType]);
 
-      <div className="min-w-[160px] relative" ref={passengerDropdownRef}>
-        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">PASSENGER</label>
+  // ✅ Render Multi-City segments
+  const renderMultiCitySegments = useCallback(() => (
+    <div className="w-full space-y-3">
+      {multiCitySegments.map((segment, index) => (
+        <div key={segment.id} className="flex items-start gap-3 flex-wrap lg:flex-nowrap">
+          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#33a8da]/10 text-[#33a8da] font-bold text-xs flex-shrink-0 mt-1">
+            {index + 1}
+          </div>
+          
+          <div className="flex-1 min-w-[120px] relative">
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">FROM</label>
+            <input
+              type="text"
+              value={segment.from}
+              onChange={(e) => handleSegmentFromChange(segment.id, e.target.value)}
+              onFocus={() => {
+                setShowSegmentFromDropdown(prev => ({ ...prev, [segment.id]: true }));
+              }}
+              placeholder="Lagos"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+            />
+            {showSegmentFromDropdown[segment.id] && renderDropdown(
+              segmentFromSuggestions[segment.id] || [],
+              (airport) => handleSegmentAirportSelect(segment.id, airport, 'from'),
+              loadingSuggestions
+            )}
+          </div>
+
+          <div className="flex-1 min-w-[120px] relative">
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">TO</label>
+            <input
+              type="text"
+              value={segment.to}
+              onChange={(e) => handleSegmentToChange(segment.id, e.target.value)}
+              onFocus={() => {
+                setShowSegmentToDropdown(prev => ({ ...prev, [segment.id]: true }));
+              }}
+              placeholder="London"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+            />
+            {showSegmentToDropdown[segment.id] && renderDropdown(
+              segmentToSuggestions[segment.id] || [],
+              (airport) => handleSegmentAirportSelect(segment.id, airport, 'to'),
+              loadingSuggestions
+            )}
+          </div>
+
+          <div className="flex-1 min-w-[130px]">
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">DATE</label>
+            <input
+              type="date"
+              value={segment.date}
+              onChange={(e) => handleSegmentDateChange(segment.id, e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+            />
+          </div>
+
+          {multiCitySegments.length > 2 && (
+            <div className="flex flex-col gap-1.5 pt-5">
+              <button
+                type="button"
+                onClick={() => removeSegment(segment.id)}
+                className="text-red-500 hover:text-red-700 p-1"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+      
+      <div className="flex justify-start">
         <button
           type="button"
-          onClick={() => setShowPassengerDropdown(!showPassengerDropdown)}
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white text-left flex justify-between items-center"
+          onClick={addSegment}
+          className="text-[#33a8da] text-sm font-medium hover:underline flex items-center gap-1"
         >
-          <span>{passengerDisplayText}</span>
-          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-        </button>
-
-        {showPassengerDropdown && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-200 z-50 p-4 min-w-[280px]">
-            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-              <div>
-                <div className="font-medium text-gray-900 text-sm">Adults</div>
-                <div className="text-xs text-gray-400">Age 12+</div>
-              </div>
-              <div className="flex items-center gap-3">
-                <button type="button" onClick={() => updatePassengers('adults', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.adults <= 1}>-</button>
-                <span className="w-5 text-center text-sm font-medium">{passengers.adults}</span>
-                <button type="button" onClick={() => updatePassengers('adults', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
-              </div>
-            </div>
-            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-              <div>
-                <div className="font-medium text-gray-900 text-sm">Children</div>
-                <div className="text-xs text-gray-400">Age 2-11</div>
-              </div>
-              <div className="flex items-center gap-3">
-                <button type="button" onClick={() => updatePassengers('children', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.children <= 0}>-</button>
-                <span className="w-5 text-center text-sm font-medium">{passengers.children}</span>
-                <button type="button" onClick={() => updatePassengers('children', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
-              </div>
-            </div>
-            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-              <div>
-                <div className="font-medium text-gray-900 text-sm">Infants</div>
-                <div className="text-xs text-gray-400">Under 2</div>
-              </div>
-              <div className="flex items-center gap-3">
-                <button type="button" onClick={() => updatePassengers('infants', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.infants <= 0}>-</button>
-                <span className="w-5 text-center text-sm font-medium">{passengers.infants}</span>
-                <button type="button" onClick={() => updatePassengers('infants', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
-              </div>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <div className="font-medium text-gray-900 text-sm">Cabin Class</div>
-              </div>
-              <select value={cabinClass} onChange={(e) => setCabinClass(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#33a8da] bg-gray-50">
-                <option value="economy">Economy</option>
-                <option value="premium-economy">Premium Economy</option>
-                <option value="business">Business</option>
-                <option value="first">First Class</option>
-              </select>
-            </div>
-            <button type="button" onClick={() => setShowPassengerDropdown(false)} className="w-full mt-3 bg-[#33a8da] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#2c98c7] transition">Done</button>
-          </div>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[10px] font-semibold text-transparent uppercase tracking-wider">.</span>
-        <button type="submit" disabled={loading || !flightFrom || !flightTo || !flightDate} className="bg-[#33a8da] text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#2c98c7] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap">
-          {loading ? '...' : 'Search'}
+          Add Segment
         </button>
       </div>
     </div>
-  ), [tripType, flightFrom, flightTo, flightDate, returnDate, showFromDropdown, showToDropdown, fromSuggestions, toSuggestions, loadingSuggestions, showPassengerDropdown, passengerDisplayText, passengers.adults, passengers.children, passengers.infants, cabinClass, loading, handleFromChange, handleToChange, handleAirportSelect, renderDropdown, updatePassengers, popularAirports]);
+  ), [multiCitySegments, showSegmentFromDropdown, showSegmentToDropdown, segmentFromSuggestions, segmentToSuggestions, loadingSuggestions, handleSegmentFromChange, handleSegmentToChange, handleSegmentDateChange, handleSegmentAirportSelect, renderDropdown, addSegment, removeSegment]);
+
+  // ✅ Render passenger and cabin class dropdown
+  const renderPassengerDropdown = useCallback(() => (
+    <div className="min-w-[160px] relative" ref={passengerDropdownRef}>
+      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">PASSENGER</label>
+      <button
+        type="button"
+        onClick={() => setShowPassengerDropdown(!showPassengerDropdown)}
+        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white text-left flex justify-between items-center"
+      >
+        <span>{passengerDisplayText}</span>
+        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {showPassengerDropdown && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-200 z-50 p-4 min-w-[280px]">
+          <div className="flex items-center justify-between py-2 border-b border-gray-100">
+            <div>
+              <div className="font-medium text-gray-900 text-sm">Adults</div>
+              <div className="text-xs text-gray-400">Age 12+</div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => updatePassengers('adults', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.adults <= 1}>-</button>
+              <span className="w-5 text-center text-sm font-medium">{passengers.adults}</span>
+              <button type="button" onClick={() => updatePassengers('adults', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between py-2 border-b border-gray-100">
+            <div>
+              <div className="font-medium text-gray-900 text-sm">Children</div>
+              <div className="text-xs text-gray-400">Age 2-11</div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => updatePassengers('children', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.children <= 0}>-</button>
+              <span className="w-5 text-center text-sm font-medium">{passengers.children}</span>
+              <button type="button" onClick={() => updatePassengers('children', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between py-2 border-b border-gray-100">
+            <div>
+              <div className="font-medium text-gray-900 text-sm">Infants</div>
+              <div className="text-xs text-gray-400">Under 2</div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => updatePassengers('infants', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.infants <= 0}>-</button>
+              <span className="w-5 text-center text-sm font-medium">{passengers.infants}</span>
+              <button type="button" onClick={() => updatePassengers('infants', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <div className="font-medium text-gray-900 text-sm">Cabin Class</div>
+            </div>
+            <select value={cabinClass} onChange={(e) => setCabinClass(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#33a8da] bg-gray-50">
+              <option value="economy">Economy</option>
+              <option value="premium-economy">Premium Economy</option>
+              <option value="business">Business</option>
+              <option value="first">First Class</option>
+            </select>
+          </div>
+          <button type="button" onClick={() => setShowPassengerDropdown(false)} className="w-full mt-3 bg-[#33a8da] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#2c98c7] transition">Done</button>
+        </div>
+      )}
+    </div>
+  ), [showPassengerDropdown, passengerDisplayText, passengers.adults, passengers.children, passengers.infants, cabinClass, updatePassengers]);
+
+  // ✅ Render Flight Compact with Multi-City support
+  const renderFlightCompact = useMemo(() => (
+    <div className="flex flex-col gap-4">
+      {/* Trip Type Selector + Passenger + Search Button */}
+      <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">
+        {renderTripTypeSelector()}
+        
+        {tripType !== 'multi-city' && (
+          <>
+            <div className="flex-1 min-w-[120px] relative" ref={flightFromRef}>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">FROM</label>
+              <input
+                type="text"
+                value={flightFrom}
+                onChange={(e) => handleFromChange(e.target.value)}
+                onFocus={() => {
+                  if (flightFrom.length < 2) {
+                    setFromSuggestions(popularAirports.slice(0, 8));
+                  }
+                  setShowFromDropdown(true);
+                }}
+                placeholder="Lagos"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+              />
+              {showFromDropdown && renderDropdown(fromSuggestions, (airport) => handleAirportSelect(airport, 'from'), loadingSuggestions)}
+            </div>
+
+            <div className="flex-1 min-w-[120px] relative" ref={flightToRef}>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">TO</label>
+              <input
+                type="text"
+                value={flightTo}
+                onChange={(e) => handleToChange(e.target.value)}
+                onFocus={() => {
+                  if (flightTo.length < 2) {
+                    setToSuggestions(popularAirports.slice(0, 8));
+                  }
+                  setShowToDropdown(true);
+                }}
+                placeholder="London"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+              />
+              {showToDropdown && renderDropdown(toSuggestions, (airport) => handleAirportSelect(airport, 'to'), loadingSuggestions)}
+            </div>
+
+            <div className="flex-1 min-w-[130px]">
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">DEPARTURE</label>
+              <input
+                type="date"
+                value={flightDate}
+                onChange={(e) => setFlightDate(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+              />
+            </div>
+
+            {tripType === 'round-trip' && (
+              <div className="flex-1 min-w-[130px]">
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">RETURN</label>
+                <input
+                  type="date"
+                  value={returnDate}
+                  onChange={(e) => setReturnDate(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {renderPassengerDropdown()}
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[10px] font-semibold text-transparent uppercase tracking-wider">.</span>
+          <button type="submit" disabled={loading} className="bg-[#33a8da] text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#2c98c7] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap">
+            {loading ? '...' : 'Search'}
+          </button>
+        </div>
+      </div>
+
+      {/* ✅ Multi-City Segments (shown when tripType is multi-city) */}
+      {tripType === 'multi-city' && (
+        <div className="mt-2 pt-4 border-t border-gray-100">
+          {renderMultiCitySegments()}
+        </div>
+      )}
+    </div>
+  ), [tripType, flightFrom, flightTo, flightDate, returnDate, showFromDropdown, showToDropdown, fromSuggestions, toSuggestions, loadingSuggestions, showPassengerDropdown, passengerDisplayText, passengers.adults, passengers.children, passengers.infants, cabinClass, loading, handleFromChange, handleToChange, handleAirportSelect, renderDropdown, renderTripTypeSelector, renderPassengerDropdown, renderMultiCitySegments, popularAirports]);
 
   const renderHotelCompact = useMemo(() => (
     <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">

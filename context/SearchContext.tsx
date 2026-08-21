@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode, use
 import { config } from '@/lib/config';
 import { extractAirportCode, transformWakanowToDuffelFormat } from '@/lib/utils';
 import type { Airline } from '@/lib/duffel-airlines';
-import type { SearchParams, SearchResult, SelectedSeat } from '@/lib/types';
+import type { SearchParams, SearchResult, SelectedSeat, TechnicalStop, StopInformation } from '@/lib/types';
 import api from '@/lib/api';
 import { type WakanowFlightSearchParams } from '@/lib/wakanow-api';
 import { useLanguage } from '@/context/LanguageContext';
@@ -366,6 +366,10 @@ interface SearchContextType {
   clearSelectedSeats: () => void;
   seatTotalPrice: number;
   seatCurrency: string;
+  technicalStops: TechnicalStop[];
+  hasTechnicalStops: boolean;
+  totalTechnicalStops: number;
+  stopInformation: StopInformation | null;
 }
 
 const SearchContext = createContext<SearchContextType | undefined>(undefined);
@@ -385,6 +389,11 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const [selectedSeats, setSelectedSeats] = useState<SelectedSeat[]>([]);
 const [seatTotalPrice, setSeatTotalPrice] = useState(0);
 const [seatCurrency, setSeatCurrency] = useState('NGN');
+
+const [technicalStops, setTechnicalStops] = useState<TechnicalStop[]>([]);
+const [hasTechnicalStops, setHasTechnicalStops] = useState<boolean>(false);
+const [totalTechnicalStops, setTotalTechnicalStops] = useState<number>(0);
+const [stopInformation, setStopInformation] = useState<StopInformation | null>(null);
 
   const { currency, convertPrice, formatPrice, isLoadingRates } = useLanguage();
 
@@ -997,8 +1006,61 @@ const searchHotels = async (params: SearchParams) => {
       if (!offer.slices && (offer.FlightLegs || offer.flightLegs || offer.legs || offer.DepartureCode)) {
         offer = transformWakanowToDuffelFormat(offer);
       }
-  
+
       const slices = offer.slices || [];
+      let allTechnicalStops: TechnicalStop[] = [];
+      let totalTechnicalStops = 0;
+      let hasTechnicalStops = false;
+      let stopInformation = offer.stopInformation || null;
+
+      for (const slice of slices) {
+        const segments = slice.segments || [];
+        for (const segment of segments) {
+          // ✅ Check if the segment has technical_stops (with underscore)
+          if (segment.technical_stops && Array.isArray(segment.technical_stops)) {
+            const segmentStops = segment.technical_stops.map((stop: any) => ({
+              AirportCode: stop.AirportCode || stop.airportCode || '',
+              AirportName: stop.AirportName || stop.airportName || '',
+              ArrivalDate: stop.ArrivalDate || stop.arrivalDate || '',
+              DepartureDate: stop.DepartureDate || stop.departureDate || '',
+              Duration: stop.Duration || stop.duration || '',
+            }));
+            
+            if (segmentStops.length > 0) {
+              allTechnicalStops = allTechnicalStops.concat(segmentStops);
+              totalTechnicalStops += segmentStops.length;
+              hasTechnicalStops = true;
+            }
+          }
+        }
+      }
+
+      // ✅ Fallback: also check offer-level stopInformation (if it exists)
+      if (offer.stopInformation) {
+        stopInformation = offer.stopInformation;
+        if (offer.stopInformation.technicalStops && Array.isArray(offer.stopInformation.technicalStops)) {
+          const extraStops = offer.stopInformation.technicalStops.map((stop: any) => ({
+            AirportCode: stop.AirportCode || stop.airportCode || '',
+            AirportName: stop.AirportName || stop.airportName || '',
+            ArrivalDate: stop.ArrivalDate || stop.arrivalDate || '',
+            DepartureDate: stop.DepartureDate || stop.departureDate || '',
+            Duration: stop.Duration || stop.duration || '',
+          }));
+          allTechnicalStops = allTechnicalStops.concat(extraStops);
+          totalTechnicalStops += extraStops.length;
+          hasTechnicalStops = hasTechnicalStops || extraStops.length > 0;
+        }
+        if (offer.stopInformation.summary) {
+          hasTechnicalStops = hasTechnicalStops || offer.stopInformation.summary.hasTechnicalStops || false;
+          totalTechnicalStops = Math.max(totalTechnicalStops, offer.stopInformation.summary.totalTechnicalStops || 0);
+        }
+      }
+
+      // ✅ Debug log
+      if (allTechnicalStops.length > 0) {
+        console.log(`🔍 Technical stops found: ${allTechnicalStops.length} stops across segments`);
+      }
+
       const outboundSlice = slices[0];
       const returnSlice = slices.length > 1 ? slices[1] : null;
       
@@ -1108,26 +1170,24 @@ const searchHotels = async (params: SearchParams) => {
       }
       
       const offerId = offer.id || offer.offer_id || `wakanow-${Date.now()}-${results.length}`;
-     // ✅ Get the ORIGINAL short selectData - prefer select_data (underscore)
-// The short one is usually in select_data, the compressed one is in SelectData
-const shortSelectData = offer.select_data || '';
-const compressedSelectData = offer.SelectData || offer.selectData || '';
+      
+      // ✅ Get the ORIGINAL short selectData - prefer select_data (underscore)
+      const shortSelectData = offer.select_data || '';
+      const compressedSelectData = offer.SelectData || offer.selectData || '';
 
-// ✅ Use the SHORT one if available and not compressed
-let selectDataValue = shortSelectData;
+      let selectDataValue = shortSelectData;
 
-// If short is empty or compressed, try the compressed one
-if (!selectDataValue || selectDataValue.length > 500) {
-  selectDataValue = compressedSelectData;
-}
+      if (!selectDataValue || selectDataValue.length > 500) {
+        selectDataValue = compressedSelectData;
+      }
 
-// ✅ If we have a short version (less than 200 chars), use it instead
-if (shortSelectData && shortSelectData.length < 200 && shortSelectData.length > 0) {
-  selectDataValue = shortSelectData;
-  console.log('✅ Using short selectData (length: ' + shortSelectData.length + ')');
-} else if (selectDataValue && selectDataValue.length > 500) {
-  console.warn('⚠️ Only compressed selectData available (length: ' + selectDataValue.length + ')');
-}
+      if (shortSelectData && shortSelectData.length < 200 && shortSelectData.length > 0) {
+        selectDataValue = shortSelectData;
+        console.log('✅ Using short selectData (length: ' + shortSelectData.length + ')');
+      } else if (selectDataValue && selectDataValue.length > 500) {
+        console.warn('⚠️ Only compressed selectData available (length: ' + selectDataValue.length + ')');
+      }
+      
       const offerRequestId = offer.offer_request_id || `wakanow-req-${offerId}`;
       
       results.push({
@@ -1192,7 +1252,14 @@ if (shortSelectData && shortSelectData.length < 200 && shortSelectData.length > 
         _normalizedAirline: airlineName.toLowerCase().trim(),
         _normalizedDepartureTime: outboundDepartureTime,
         _normalizedArrivalAirport: outboundDestination,
+        
+        // ✅ CORRECTED: Use the extracted technical stops
+        technicalStops: allTechnicalStops,
+        hasTechnicalStops: hasTechnicalStops,
+        totalTechnicalStops: totalTechnicalStops,
+        stopInformation: stopInformation,
       });
+      
     }
     
     return results;
@@ -1389,7 +1456,170 @@ if (shortSelectData && shortSelectData.length < 200 && shortSelectData.length > 
   };
 // ==================== SEARCH FLIGHTS - WAKANOW + DUFFEL ====================
 const searchFlights = async (params: SearchParams) => {
-  if (!params.segments?.[0]?.from || !params.segments?.[0]?.to) {
+  // ✅ FIX: Check if segments exists and has at least one item
+  if (!params.segments || params.segments.length === 0) {
+    setSearchResults([]);
+    setSearchError('No flight segments provided');
+    return;
+  }
+
+  const isMultiCity = params.tripType === 'multi-city' && params.segments.length > 1;
+  
+  console.log(`✈️ Fetching flights - ${isMultiCity ? 'MULTI-CITY' : 'ONE-WAY/ROUND-TRIP'} with ${params.segments.length} segments`);
+
+  // ✅ For multi-city, pass ALL segments to the backend
+  if (isMultiCity) {
+    console.log(`🔄 Multi-city with ${params.segments.length} segments:`, params.segments.map(s => `${s.from} → ${s.to}`));
+    await searchMultiCityFlights(params);
+    return;
+  }
+
+  // ✅ For single segment (one-way or round-trip) - existing logic
+  await searchSingleSegmentFlights(params);
+};
+
+// ✅ New function for multi-city searches
+const searchMultiCityFlights = async (params: SearchParams) => {
+  // ✅ FIX: Check if segments exists
+  if (!params.segments || params.segments.length === 0) {
+    setSearchResults([]);
+    setSearchError('No flight segments provided');
+    return;
+  }
+
+  const BASE = config.apiBaseUrl;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    console.warn('⏰ Multi-city search timeout after 60s, aborting...');
+    controller.abort();
+  }, 60000);
+
+  try {
+    // ✅ Build itineraries from ALL segments
+    const itineraries = params.segments.map((segment) => ({
+      Departure: extractAirportCode(segment.from),
+      Destination: extractAirportCode(segment.to),
+      DepartureDate: segment.date || new Date().toISOString().split('T')[0],
+    }));
+
+    // ✅ Validate all segments
+    for (const it of itineraries) {
+      if (!it.Departure || !it.Destination) {
+        setSearchError('Invalid airport code in one of your segments');
+        setSearchResults([]);
+        return;
+      }
+    }
+
+    let cabinClass = (params.cabinClass ?? 'economy').toLowerCase();
+    if (!['economy', 'premium_economy', 'business', 'first'].includes(cabinClass)) cabinClass = 'economy';
+
+    let adults = 1, children = 0, infants = 0;
+    if (params.passengers) {
+      if (typeof params.passengers === 'number') {
+        adults = params.passengers;
+      } else if (typeof params.passengers === 'object') {
+        adults = params.passengers.adults || 0;
+        children = params.passengers.children || 0;
+        infants = params.passengers.infants || 0;
+      }
+    }
+
+    let ticketClass: 'F' | 'C' | 'W' | 'Y' = 'Y';
+    if (cabinClass === 'premium_economy') ticketClass = 'W';
+    else if (cabinClass === 'business') ticketClass = 'C';
+    else if (cabinClass === 'first') ticketClass = 'F';
+
+    // ✅ Check if ALL segments are domestic
+    const allDomestic = itineraries.every(it => 
+      isDomesticFlightGlobal(it.Departure, it.Destination)
+    );
+
+    console.log(`✈️ Multi-city: ${itineraries.length} segments, Domestic: ${allDomestic}`);
+
+    let wakanowResults: SearchResult[] = [];
+    
+    // ✅ Search Wakanow for multi-city
+    try {
+      const { searchWakanowFlights } = await import('@/lib/wakanow-api');
+      
+      const wakanowSearchParams: WakanowFlightSearchParams = {
+        FlightSearchType: 'Multidestination',
+        Ticketclass: ticketClass,
+        Adults: adults,
+        Children: children,
+        Infants: infants,
+        TargetCurrency: 'NGN',
+        Itineraries: itineraries.map(it => ({
+          Departure: it.Departure,
+          Destination: it.Destination,
+          DepartureDate: formatDateForWakanow(it.DepartureDate),
+        })),
+      };
+
+      console.log('📤 Wakanow Multi-city search params:', wakanowSearchParams);
+
+      const result = await searchWakanowFlights(wakanowSearchParams);
+      
+      if (result?.data?.offers && Array.isArray(result.data.offers)) {
+        const wakanowOffers = result.data.offers;
+        console.log(`📦 Wakanow multi-city offers: ${wakanowOffers.length}`);
+        
+        // ✅ Transform offers with multi-city context
+        wakanowResults = await transformWakanowOffers(
+          wakanowOffers, 
+          undefined, 
+          cabinClass, 
+          allDomestic
+        );
+        
+        // ✅ Tag results as multi-city with ALL data preserved
+        wakanowResults = wakanowResults.map((result: any) => ({
+          ...result,
+          isMultiCity: true,
+          isWakanow: true,
+          segmentCount: itineraries.length,
+          multiCitySegments: itineraries,
+          allSegments: params.segments, // ✅ Store original segments for review
+          tripType: 'multi-city',
+          searchParams: params,
+          // Also store the full itineraries for display
+          itineraries: itineraries.map((it, idx) => ({
+            ...it,
+            segmentIndex: idx,
+            from: it.Departure,
+            to: it.Destination,
+            date: it.DepartureDate,
+          })),
+        }));
+        
+        console.log(`✅ Wakanow multi-city: ${wakanowResults.length} results with ${itineraries.length} segments`);
+      }
+    } catch (err: any) {
+      console.error('❌ Wakanow multi-city search failed:', err.message);
+    }
+
+    clearTimeout(timeoutId);
+
+    if (wakanowResults.length === 0) {
+      setSearchError('No multi-city flights found. Please try different routes or dates.');
+      setSearchResults([]);
+    } else {
+      console.log(`✅ Multi-city final results: ${wakanowResults.length} offers`);
+      setSearchResults(wakanowResults);
+    }
+
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    console.error('❌ Multi-city search failed:', error);
+    setSearchError('Failed to search multi-city flights. Please try again.');
+    setSearchResults([]);
+  }
+};
+// ✅ The existing search logic (renamed for single segment)
+const searchSingleSegmentFlights = async (params: SearchParams) => {
+  // ✅ FIX: Check if segments exists and has first item
+  if (!params.segments || !params.segments[0]?.from || !params.segments[0]?.to) {
     setSearchResults([]);
     return;
   }
@@ -1459,7 +1689,7 @@ const searchFlights = async (params: SearchParams) => {
     let wakanowResults: SearchResult[] = [];
     let duffelResults: SearchResult[] = [];
 
-    // ✅ WAKANOW FETCH - FIXED
+    // ✅ WAKANOW FETCH
     const wakanowFetchPromise = (async (): Promise<SearchResult[]> => {
       try {
         if (controller.signal.aborted) {
@@ -1508,23 +1738,18 @@ const searchFlights = async (params: SearchParams) => {
           return [];
         }
         
-        // ✅ FIXED: Access offers from result.data.offers using the correct type
         let wakanowOffers: any[] = [];
         
-        // ✅ result is WakanowSearchResponse, so access data.offers
         if (result?.data?.offers && Array.isArray(result.data.offers)) {
           wakanowOffers = result.data.offers;
           console.log(`📦 Wakanow offers from data.offers: ${wakanowOffers.length}`);
         } else if (result?.data && Array.isArray(result.data)) {
-          // Sometimes the data might be an array directly
           wakanowOffers = result.data;
           console.log(`📦 Wakanow offers from data array: ${wakanowOffers.length}`);
         }
         
-        // ✅ Also check if there's a selectData in the response (for backward compatibility)
         if (wakanowOffers.length === 0 && result?.data?.selectData) {
           console.log('📦 No offers found, but selectData exists. This might be a direct selection response.');
-          // Try to see if the data itself is an offer
           const dataObj = result.data as any;
           if (dataObj.FlightCombination || dataObj.slices || dataObj.FlightLegs) {
             wakanowOffers = [dataObj];
@@ -1532,9 +1757,7 @@ const searchFlights = async (params: SearchParams) => {
           }
         }
         
-        // ✅ If we have offers, check if they have the right structure
         if (wakanowOffers.length > 0) {
-          // If offers don't have slices but have FlightCombination, transform them
           const firstOffer = wakanowOffers[0];
           if (!firstOffer?.slices && firstOffer?.FlightCombination) {
             wakanowOffers = wakanowOffers.map((offer: any) => ({
@@ -1717,6 +1940,7 @@ const searchFlights = async (params: SearchParams) => {
   }
 };
 
+
 const _searchImpl = async (params: SearchParams) => {
   console.log('🔍 Search called with params:', params);
   setSearchParams(params);
@@ -1724,6 +1948,21 @@ const _searchImpl = async (params: SearchParams) => {
   setSearchResults([]);
   setSearchError(null);
   setSearchCompleted(false);
+
+  // ✅ Store multi-city search params for later use
+  if (params.tripType === 'multi-city' && params.segments && params.segments.length > 1) {
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem('multiCitySearchParams', JSON.stringify(params));
+        console.log('📦 Stored multi-city search params:', {
+          segments: params.segments.length,
+          tripType: params.tripType,
+        });
+      } catch (e) {
+        console.warn('Could not store multi-city search params:', e);
+      }
+    }
+  }
 
   try {
     // ✅ Check for both 'cars' and 'car-rentals' types
@@ -1754,24 +1993,77 @@ const _searchImpl = async (params: SearchParams) => {
   const selectItem = useCallback(async (item: SearchResult) => {
     const itemWithMessages = { ...item };
     
+    // ✅ FIRST: Check if it's a multi-city item
+    const isMultiCity = (item as any).isMultiCity === true || 
+                        (item as any).tripType === 'multi-city' ||
+                        !!(item as any).multiCitySegments ||
+                        !!(item as any).allSegments ||
+                        ((item as any).segmentCount && (item as any).segmentCount > 1);
+    
+    // ✅ For multi-city, preserve ALL data and skip API calls
+    if (isMultiCity) {
+      console.log('🔄 Multi-city flight selected:', {
+        segmentCount: (item as any).segmentCount || (item as any).multiCitySegments?.length || (item as any).allSegments?.length,
+        hasSegments: !!(item as any).multiCitySegments || !!(item as any).allSegments,
+        title: item.title,
+        id: item.id,
+        provider: item.provider,
+      });
+      
+      // ✅ Ensure all multi-city data is preserved
+      const multiCityItem = {
+        ...item,
+        isMultiCity: true,
+        isWakanow: true,
+        tripType: 'multi-city',
+        // Preserve all multi-city data
+        multiCitySegments: (item as any).multiCitySegments || (item as any).allSegments || (item as any).itineraries,
+        allSegments: (item as any).allSegments || (item as any).multiCitySegments || (item as any).itineraries,
+        segmentCount: (item as any).segmentCount || 
+                      ((item as any).multiCitySegments?.length || 
+                       (item as any).allSegments?.length || 
+                       (item as any).itineraries?.length || 1),
+        // Preserve search params for review
+        _searchParams: (item as any)._searchParams,
+        // Keep all existing data
+        slices: (item as any).slices,
+        priceBreakdown: (item as any).priceBreakdown,
+        final_amount: (item as any).final_amount,
+        currency: (item as any).currency,
+      };
+      
+      // ✅ Store in sessionStorage for persistence
+      if (typeof window !== 'undefined') {
+        try {
+          sessionStorage.setItem('selectedMultiCityItem', JSON.stringify(multiCityItem));
+        } catch (e) {
+          console.warn('Could not store multi-city item:', e);
+        }
+      }
+      
+      console.log('✅ Multi-city item stored with', multiCityItem.segmentCount, 'segments');
+      setSelectedItem(multiCityItem);
+      return;
+    }
+    
     // ✅ Type guard to check if it's a Wakanow item with extra fields
     const isWakanowItem = (item as any).isWakanow === true;
-
-
-    const isCarRental = item.type === 'car-rentals' || (item as any).vehicle;
   
-  // ✅ For car rentals, just set the item directly without any API calls
-  if (isCarRental) {
-    console.log('🚗 Car rental selected, passing through:', {
-      id: item.id,
-      hasVehicle: !!(item as any).vehicle,
-      hasServiceProvider: !!(item as any).serviceProvider,
-      hasCancellationRules: !!(item as any).cancellationRules?.length,
-    });
-    setSelectedItem(item);
-    return;
-  }
+    const isCarRental = item.type === 'car-rentals' || (item as any).vehicle;
     
+    // ✅ For car rentals, just set the item directly without any API calls
+    if (isCarRental) {
+      console.log('🚗 Car rental selected, passing through:', {
+        id: item.id,
+        hasVehicle: !!(item as any).vehicle,
+        hasServiceProvider: !!(item as any).serviceProvider,
+        hasCancellationRules: !!(item as any).cancellationRules?.length,
+      });
+      setSelectedItem(item);
+      return;
+    }
+    
+    // ✅ For Wakanow items (single segment flights)
     if (isWakanowItem) {
       try {
         const selectDataValue = (item as any).selectData;
@@ -1811,12 +2103,33 @@ const _searchImpl = async (params: SearchParams) => {
             const result = await selectWakanowFlight(selectDataValue, 'NGN');
             
             if (result?.data) {
-              // ✅ Get the NEW short selectData from the response
+            
               const newSelectData = result.data.select_data || result.data.select_data || '';
               if (newSelectData && newSelectData.length < 500) {
                 (itemWithMessages as any).selectData = newSelectData;
                 console.log('✅ Got new short selectData (length: ' + newSelectData.length + ')');
+                const stopInfo = result.data.stop_information || result.data.stopInformation || null;
+                if (stopInfo) {
+                  setStopInformation(stopInfo);
+                  setTechnicalStops(stopInfo.technicalStops || []);
+                  setHasTechnicalStops(stopInfo.summary?.hasTechnicalStops || false);
+                  setTotalTechnicalStops(stopInfo.summary?.totalTechnicalStops || 0);
+                  
+                  console.log('✅ Technical Stops extracted:', {
+                    count: stopInfo.technicalStops?.length || 0,
+                    hasTechnicalStops: stopInfo.summary?.hasTechnicalStops,
+                    total: stopInfo.summary?.totalTechnicalStops,
+                  });
+                }
+                
+                // ✅ Also store technical stops on the item itself
+                (itemWithMessages as any).technicalStops = stopInfo?.technicalStops || [];
+                (itemWithMessages as any).hasTechnicalStops = stopInfo?.summary?.hasTechnicalStops || false;
+                (itemWithMessages as any).totalTechnicalStops = stopInfo?.summary?.totalTechnicalStops || 0;
+                (itemWithMessages as any).stopInformation = stopInfo;
               }
+
+              
               
               // ✅ Get custom_messages
               if (result.data.custom_messages) {
@@ -1889,6 +2202,7 @@ const _searchImpl = async (params: SearchParams) => {
     setSelectedItem(itemWithMessages);
   }, []);
 
+
   const clearSearch = useCallback(() => {
     setSearchResults([]);
     setSelectedItem(null);
@@ -1927,10 +2241,15 @@ const _searchImpl = async (params: SearchParams) => {
         searchError,
         searchCompleted,
         selectedSeats,
-      setSelectedSeats,
-      clearSelectedSeats,
-      seatTotalPrice,
-      seatCurrency
+        setSelectedSeats,
+        clearSelectedSeats,
+        seatTotalPrice,
+        seatCurrency,
+        // ✅ ADD TECHNICAL STOPS
+        technicalStops,
+        hasTechnicalStops,
+        totalTechnicalStops,
+        stopInformation,
       }}
     >
       {children}

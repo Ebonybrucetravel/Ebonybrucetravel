@@ -1039,6 +1039,58 @@ useEffect(() => {
   const getItemForReview = (): SearchResult => {
     const baseItem = (enhancedItem || effectiveSelectedItem) as ExtendedSearchResult;
     
+    // ✅ FIRST: Check if it's a multi-city flight
+    const isMultiCity = (baseItem as any).isMultiCity === true || 
+                        (baseItem as any).tripType === 'multi-city' ||
+                        !!(baseItem as any).multiCitySegments ||
+                        !!(baseItem as any).allSegments ||
+                        ((baseItem as any).segmentCount && (baseItem as any).segmentCount > 1);
+    
+    if (isMultiCity) {
+      console.log('🔄 Multi-city flight detected in getItemForReview:', {
+        segmentCount: (baseItem as any).segmentCount || (baseItem as any).multiCitySegments?.length || (baseItem as any).allSegments?.length,
+        hasSegments: !!(baseItem as any).multiCitySegments || !!(baseItem as any).allSegments,
+        title: baseItem.title,
+        id: baseItem.id,
+        provider: baseItem.provider,
+      });
+      
+      // ✅ Preserve ALL multi-city data
+      const multiCityItem = {
+        ...baseItem,
+        type: 'flights',
+        isMultiCity: true,
+        isWakanow: true,
+        tripType: 'multi-city',
+        multiCitySegments: (baseItem as any).multiCitySegments || (baseItem as any).allSegments || (baseItem as any).itineraries,
+        allSegments: (baseItem as any).allSegments || (baseItem as any).multiCitySegments || (baseItem as any).itineraries,
+        segmentCount: (baseItem as any).segmentCount || 
+                      ((baseItem as any).multiCitySegments?.length || 
+                       (baseItem as any).allSegments?.length || 
+                       (baseItem as any).itineraries?.length || 1),
+        // Keep all existing data
+        slices: (baseItem as any).slices,
+        priceBreakdown: (baseItem as any).priceBreakdown,
+        final_amount: (baseItem as any).final_amount,
+        currency: (baseItem as any).currency,
+        custom_messages: (baseItem as any).custom_messages || [],
+        // Ensure provider is set correctly
+        provider: baseItem.provider || 'wakanow',
+        // Keep the title and subtitle
+        title: baseItem.title || `Multi-City Flight (${(baseItem as any).segmentCount || 1} segments)`,
+        subtitle: baseItem.subtitle || `${(baseItem as any).allSegments?.[0]?.from || ''} → ${(baseItem as any).allSegments?.[(baseItem as any).allSegments?.length - 1]?.to || ''}`,
+      };
+      
+      console.log('📤 Returning multi-city result:', {
+        id: multiCityItem.id,
+        isMultiCity: multiCityItem.isMultiCity,
+        segmentCount: multiCityItem.segmentCount,
+        hasAllSegments: !!multiCityItem.allSegments,
+      });
+      
+      return multiCityItem as SearchResult;
+    }
+    
     // ✅ If this is a hotel with selected room data, use the correct price
     const isHotelWithSelectedRoom = baseItem?.selectedRoomData || 
                                     baseItem?.selectedRoomType ||
@@ -1155,13 +1207,13 @@ useEffect(() => {
       return mergedItem as SearchResult;
     }
     
-    // ✅ Final return with all fields preserved
+   
     return {
       ...baseItem,
       custom_messages: baseItem.custom_messages || [],
       cancellationPolicy: cancellationPolicy,
       policies: baseItem.policies || [],
-      // ✅ Ensure type is set for any hotel that might not have it
+      
       ...(baseItem.hotelId || baseItem.selectedRoomData ? { type: 'hotels' } : {}),
     } as SearchResult;
   };
@@ -1214,11 +1266,11 @@ if (isFlight) {
     return;
   }
 
-  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!dateRegex.test(passengerInfo.dateOfBirth)) {
-    toast.error("Date of birth must be in YYYY-MM-DD format");
-    return;
-  }
+  //const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  //if (!dateRegex.test(passengerInfo.dateOfBirth)) {
+    //toast.error("Date of birth must be in YYYY-MM-DD format");
+    //return;
+  //}
 
   const dob = new Date(passengerInfo.dateOfBirth);
   const today = new Date();
@@ -1228,6 +1280,27 @@ if (isFlight) {
     return;
   }
 }
+// // ✅ ADD THIS FUNCTION RIGHT HERE - after the validation block
+const formatDateToYYYYMMDD = (dateStr: string | undefined): string => {
+  if (!dateStr) return '';
+  // If already in YYYY-MM-DD format, return as is
+  if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) return dateStr;
+  // If in MM/DD/YYYY format, convert to YYYY-MM-DD
+  if (dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
+    const parts = dateStr.split('/');
+    const month = String(parseInt(parts[0])).padStart(2, '0');
+    const day = String(parseInt(parts[1])).padStart(2, '0');
+    const year = parts[2];
+    const result = `${year}-${month}-${day}`;
+    console.log(`📅 Formatted date to YYYY-MM-DD: ${result}`);
+    return result;
+  }
+  return dateStr;
+};
+
+// ✅ FORMAT THE DATE BEFORE BUILDING THE TRAVELLER
+const formattedDateOfBirth = formatDateToYYYYMMDD(passengerInfo.dateOfBirth);
+console.log(`📅 Lead passenger DOB formatted: ${formattedDateOfBirth}`);
   
     // ✅ Build base passenger info
     const basePassengerInfo: PassengerInfo = {
@@ -1273,7 +1346,7 @@ if (isFlight) {
           FirstName: passengerInfo.firstName,
           MiddleName: (passengerInfo as any).middleName || '',
           LastName: passengerInfo.lastName,
-          DateOfBirth: passengerInfo.dateOfBirth || '',  
+          DateOfBirth: formattedDateOfBirth,
           PhoneNumber: passengerInfo.phone,
           Email: passengerInfo.email,
           Gender: passengerInfo.gender === 'm' ? 'Male' : 'Female',
@@ -1301,7 +1374,7 @@ if (isFlight) {
           ...basePassengerInfo,
           title: passengerInfo.title,
           gender: passengerInfo.gender,
-          dateOfBirth: passengerInfo.dateOfBirth,
+          dateOfBirth: formattedDateOfBirth,
           // ✅ Passport fields at TOP LEVEL for useBooking.ts
           PassportNumber: (passengerInfo as any).PassportNumber || (passengerInfo as any).passportNumber || '',
           ExpiryDate: (passengerInfo as any).ExpiryDate || (passengerInfo as any).expiryDate || '',

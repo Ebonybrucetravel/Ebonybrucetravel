@@ -63,6 +63,10 @@ interface ExtendedSearchResult {
   airlineCode?: string;
   bookingId?: string;
   totalAmount?: number;
+  technicalStops?: any[];
+  hasTechnicalStops?: boolean;
+  totalTechnicalStops?: number;
+  stopInformation?: any;
   priceBreakdown?: {
     basePrice: number;
     markupAmount: number;
@@ -300,6 +304,9 @@ const getPassportField = (
   return value;
 };
 
+// ============================================================
+// ✅ FIXED: isPassportRequired - ALL international flights require passport for ALL passengers
+// ============================================================
 const isPassportRequired = (
   isDomestic: boolean,
   isNorthAmerica: boolean,
@@ -307,34 +314,14 @@ const isPassportRequired = (
   airlineRequiresPassport: boolean = false,
   specialRoutes: string[] = []
 ): boolean => {
-  // ✅ RULE 1: MANDATORY for North American destinations (from checklist)
-  if (isNorthAmerica) {
-    console.log('📍 Passport MANDATORY: North American destination');
-    return true;
-  }
-  
-  // ✅ RULE 2: Required if airline requires it (from checklist)
-  if (airlineRequiresPassport) {
-    console.log('📍 Passport REQUIRED: Airline requires it');
-    return true;
-  }
-  
-  // ✅ RULE 3: International flights (excluding North America) - depends on airline
+  // ✅ RULE 1: ALL international flights require passport for ALL passengers
+  // This includes North America AND all other international destinations
   if (!isDomestic) {
-    // Most international flights require passport, but let the airline/API decide
-    // If the airline didn't explicitly say it requires it, check if it's a common requirement
-    const commonPassportCountries = ['GB', 'AE', 'FR', 'DE', 'IT', 'ES', 'SG', 'MY', 'TH'];
-    const destCountry = getCountryCodeFromAirport(destinationCode);
-    if (destCountry && commonPassportCountries.includes(destCountry)) {
-      console.log('📍 Passport REQUIRED: Common international destination');
-      return true;
-    }
-    // For other international destinations, default to requiring passport
-    // since most international flights need it
+    console.log('📍 Passport MANDATORY: International flight (ALL passengers)');
     return true;
   }
   
-  // ✅ RULE 4: Domestic flights - only if airline requires it or special route
+  // ✅ RULE 2: Domestic flights - only if airline requires it or special route
   if (isDomestic) {
     // Check special routes (like Russia, China internal flights)
     if (specialRoutes.includes(destinationCode)) {
@@ -346,14 +333,11 @@ const isPassportRequired = (
     return false;
   }
   
-  // Default: no passport required
+ 
   return false;
 };
 
 
-// ============================================================
-// ✅ UPDATED: buildPassenger with auto-generated dates for children/infants
-// ============================================================
 const buildPassenger = (
   p: any,
   isDomestic: boolean,
@@ -363,9 +347,8 @@ const buildPassenger = (
   specialRoutes: string[] = []
 ) => {
   const destinationCode = p.destinationCode || p.destination || '';
-  const destinationRaw = p.destinationRaw || p.destination || '';
   
-  // ✅ Determine if passport is required based on checklist rules
+
   const requiresPassport = isPassportRequired(
     isDomestic,
     isNorthAmerica,
@@ -374,101 +357,127 @@ const buildPassenger = (
     specialRoutes
   );
   
-  // Get passport fields
-  const passportNumber = p.PassportNumber || 
-                        p.passportNumber || 
-                        p.passport_number || 
-                        p.passportNum ||
-                        p.Passport ||
-                        p.passport ||
-                        '';
-                        
-  const expiryDate = p.ExpiryDate || 
-                    p.expiryDate || 
-                    p.expiry_date ||
-                    p.PassportExpiry ||
-                    p.passportExpiry ||
-                    '';
-                    
-  const issuingAuthority = p.PassportIssuingAuthority || 
-                          p.passportIssuingAuthority || 
-                          p.issuingAuthority ||
-                          p.IssuingAuthority ||
-                          '';
-                          
-  const issueCountryCode = p.PassportIssueCountryCode || 
-                          p.passportIssueCountryCode || 
-                          p.issueCountryCode ||
-                          p.passportIssueCountry ||
-                          p.IssueCountryCode ||
-                          'NG';
-
-
-  let dateOfBirth = p.DateOfBirth || p.dateOfBirth || '';
+  // Get passenger type
+  const passengerType = p.PassengerType || p.passengerType || 'Adult';
+  const passengerName = p.FirstName || p.firstName || 'Unknown';
   
-  // ✅ If dateOfBirth is empty, generate based on passenger type
-  if (!dateOfBirth) {
-    const passengerType = p.PassengerType || p.passengerType || 'Adult';
-    const today = new Date();
-    let yearOffset = 0;
-    let monthOffset = 6; // Default to middle of year
-    let dayOffset = 15; // Default to middle of month
-    
-    if (passengerType === 'Child' || passengerType === 'child') {
-      // Child should be between 2-11, use 8 years old
-      yearOffset = 8;
-      monthOffset = 6;
-      dayOffset = 15;
-    } else if (passengerType === 'Infant' || passengerType === 'infant') {
-      // Infant should be under 2, use 1 year old
-      yearOffset = 1;
-      monthOffset = 6;
-      dayOffset = 15;
+  // ✅ Get passport fields from ALL possible sources
+  const passportNumber = 
+    p.PassportNumber || 
+    p.passportNumber || 
+    p.passport_number || 
+    p.passportNum ||
+    p.Passport ||
+    p.passport ||
+    '';
+                        
+  const expiryDate = 
+    p.ExpiryDate || 
+    p.expiryDate || 
+    p.expiry_date ||
+    p.PassportExpiry ||
+    p.passportExpiry ||
+    '';
+                    
+  const issuingAuthority = 
+    p.PassportIssuingAuthority || 
+    p.passportIssuingAuthority || 
+    p.issuingAuthority ||
+    p.IssuingAuthority ||
+    '';
+                          
+  const issueCountryCode = 
+    p.PassportIssueCountryCode || 
+    p.passportIssueCountryCode || 
+    p.issueCountryCode ||
+    p.passportIssueCountry ||
+    p.IssueCountryCode ||
+    'NG';
+
+    let dateOfBirth = p.DateOfBirth || p.dateOfBirth || '';
+
+
+    if (!dateOfBirth) {
+      const passengerName = p.FirstName || p.firstName || 'Unknown';
+      throw new Error(
+        `Date of birth is required for ${passengerType} "${passengerName}". ` +
+        `Please go back and enter the date of birth.`
+      );
     }
-    
-    if (yearOffset > 0) {
-      const defaultDate = new Date(today);
-      defaultDate.setFullYear(today.getFullYear() - yearOffset);
-      defaultDate.setMonth(monthOffset);
-      defaultDate.setDate(dayOffset);
-      dateOfBirth = defaultDate.toISOString().split('T')[0];
-      console.log(`📅 Auto-generated date of birth for ${passengerType}: ${dateOfBirth} (${yearOffset} years old)`);
-    }
-  }
+
+    const formatDateForWakanow = (dateStr: string): string => {
+      if (!dateStr) return '';
+      
+      // If already in YYYY-MM-DD format, return as is
+      if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return dateStr;
+      }
+
+      if (dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
+        const parts = dateStr.split('/');
+        const month = String(parseInt(parts[0])).padStart(2, '0');
+        const day = String(parseInt(parts[1])).padStart(2, '0');
+        const year = parts[2];
+        const result = `${year}-${month}-${day}`;
+        console.log(`📅 Converted date from MM/DD/YYYY to YYYY-MM-DD: ${result}`);
+        return result;
+      }
+
+      if (dateStr.match(/^\d{1,2}-\d{1,2}-\d{4}$/)) {
+        const parts = dateStr.split('-');
+        const day = String(parseInt(parts[0])).padStart(2, '0');
+        const month = String(parseInt(parts[1])).padStart(2, '0');
+        const year = parts[2];
+        return `${year}-${month}-${day}`;
+      }
+      
+      return dateStr;
+    };
+
 
   console.log('📋 buildPassenger - passenger details:', {
     requiresPassport,
-    passengerType: p.PassengerType || p.passengerType || 'Adult',
-    passengerName: `${p.FirstName || p.firstName || ''} ${p.LastName || p.lastName || ''}`,
+    passengerType,
+    passengerName,
     dateOfBirth: dateOfBirth || '(empty)',
     passportNumber: passportNumber || '(empty)',
+    expiryDate: expiryDate || '(empty)',
+    issuingAuthority: issuingAuthority || '(empty)',
+    isDomestic,
+    isNorthAmerica,
   });
 
+  // ✅ CRITICAL: If international flight, REQUIRE passport for ALL passengers
   if (requiresPassport && !passportNumber) {
-    const passengerName = p.FirstName || p.firstName || 'Unknown';
-    let reason = '';
+    let reason = 'international travel';
     if (isNorthAmerica) {
-      reason = 'North American destination (mandatory requirement)';
+      reason = 'North American destination (mandatory requirement for all passengers)';
     } else if (airlineRequiresPassport) {
       reason = 'airline requirement';
-    } else if (!isDomestic) {
-      reason = 'international travel';
-    } else {
-      reason = 'special route requirement';
     }
     throw new Error(
-      `PassportNumber is required for passenger "${passengerName}" on this flight. ` +
+      `PassportNumber is required for ${passengerType} "${passengerName}" on this flight. ` +
       `This is required due to ${reason}. Please provide a valid passport number.`
     );
   }
 
- 
+  // ✅ Also check expiry for international flights
   if (requiresPassport && !expiryDate) {
-    console.warn(`⚠️ Passport expiry date missing for ${p.FirstName || p.firstName || 'passenger'}`);
+    throw new Error(
+      `Passport expiry date is required for ${passengerType} "${passengerName}" on this international flight.`
+    );
   }
 
-  return {
-    passengerType: p.PassengerType || p.passengerType || 'Adult',
+  
+  if (requiresPassport && !issuingAuthority) {
+    throw new Error(
+      `Passport issuing authority is required for ${passengerType} "${passengerName}" on this international flight.`
+    );
+  }
+
+ 
+  const passenger: any = {
+    passengerType: passengerType,
     firstName: p.FirstName || p.firstName || '',
     middleName: p.MiddleName || p.middleName || '',
     lastName: p.LastName || p.lastName || '',
@@ -477,20 +486,22 @@ const buildPassenger = (
     email: p.Email || p.email || '',
     gender: p.Gender || p.gender || 'Male',
     title: p.Title || p.title || 'Mr',
-  
-    ...(requiresPassport && {
-      PassportNumber: passportNumber,
-      ExpiryDate: expiryDate,
-      PassportIssuingAuthority: issuingAuthority,
-      PassportIssueCountryCode: issueCountryCode,
-    }),
-
     address: p.Address || p.address || defaultAddress?.address || '123 Fake Street',
     country: p.Country || p.country || defaultAddress?.country || 'Nigeria',
     countryCode: p.CountryCode || p.countryCode || defaultAddress?.countryCode || 'NG',
     city: p.City || p.city || defaultAddress?.city || 'Lagos',
     postalCode: p.PostalCode || p.postalCode || defaultAddress?.postalCode || '100001',
   };
+
+  
+  if (requiresPassport) {
+    passenger.PassportNumber = passportNumber;
+    passenger.ExpiryDate = expiryDate;
+    passenger.PassportIssuingAuthority = issuingAuthority;
+    passenger.PassportIssueCountryCode = issueCountryCode;
+  }
+
+  return passenger;
 };
 
 
@@ -564,6 +575,48 @@ export function useBooking() {
         
         const originCode = extractAirportCode(originRaw);
         const destinationCode = extractAirportCode(destinationRaw);
+        const finalOrigin = originCode || "LOS";
+        const finalDestination = destinationCode || "ABV";
+
+        // ==================== MULTI-CITY DETECTION ====================
+// Check if this is a multi-city booking
+const segments = searchParams?.segments || [];
+const isMultiCity = segments.length > 1 || 
+                    (item as any)?.isMultiCity === true ||
+                    (item as any)?.allSegments?.length > 1;
+
+// Build all segments for multi-city
+let allSegments: Array<{from: string, to: string, date: string, airline?: string, flightNumber?: string}> = [];
+
+if (isMultiCity && segments.length > 0) {
+  // Build from searchParams segments
+  allSegments = segments.map((seg: any) => ({
+    from: seg.from || '',
+    to: seg.to || '',
+    date: seg.date || '',
+    airline: seg.airline || '',
+    flightNumber: seg.flightNumber || '',
+  }));
+} else if ((item as any)?.allSegments?.length > 0) {
+  // Use existing allSegments from item
+  allSegments = (item as any).allSegments;
+} else {
+  // Single segment - use origin/destination
+  allSegments = [{
+    from: finalOrigin,
+    to: finalDestination,
+    date: searchParams?.segments?.[0]?.date ?? today(),
+    airline: item.airlineName || '',
+    flightNumber: item.flightNumber || '',
+  }];
+}
+
+console.log('🔄 MULTI-CITY DETECTION:', {
+  isMultiCity,
+  segmentsCount: segments.length,
+  allSegmentsCount: allSegments.length,
+  allSegments,
+});
         
         const isFlight = 
           item.type === 'flights' || 
@@ -727,30 +780,133 @@ let firstTraveller: any = {};
 const existingTravellers = (passenger as any).travellers || [];
 const additionalPassengersFromPassenger = (passenger as any).additionalPassengers || [];
 
-// ✅ Build travellers from all sources
+// ✅ Add this function right here - around line 580-590
+const formatDateForWakanow = (dateStr: string): string => {
+  if (!dateStr) return '';
+  // If already in YYYY-MM-DD format, return as is
+  if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) return dateStr;
+  // If in MM/DD/YYYY format, convert to YYYY-MM-DD
+  if (dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
+    const parts = dateStr.split('/');
+    const month = String(parseInt(parts[0])).padStart(2, '0');
+    const day = String(parseInt(parts[1])).padStart(2, '0');
+    const year = parts[2];
+    return `${year}-${month}-${day}`;
+  }
+  return dateStr;
+};
+
+// ✅ DEBUG: Log what passengers are being passed
+console.log('🔍 Passenger data for booking:', {
+  existingTravellers: existingTravellers.length,
+  additionalPassengersFromPassenger: additionalPassengersFromPassenger.length,
+  hasAdditional: additionalPassengersFromPassenger.length > 0,
+  passengerObject: passenger,
+  searchParamsPassengers: searchParams?.passengers,
+});
+
+// ✅ Get the total passenger count from searchParams (handles both number and object formats)
+let searchPassengerCount = 1;
+if (searchParams?.passengers) {
+  if (typeof searchParams.passengers === 'number') {
+    searchPassengerCount = searchParams.passengers;
+  } else if (typeof searchParams.passengers === 'object') {
+    // If it's an object with adults, children, infants
+    const passengersObj = searchParams.passengers as any;
+    searchPassengerCount = (passengersObj.adults || 0) + 
+                          (passengersObj.children || 0) + 
+                          (passengersObj.infants || 0);
+  }
+}
+console.log('📊 Total passenger count from search:', searchPassengerCount);
+
+
+// Build travellers from all sources
 if (existingTravellers.length > 0) {
+  // Use existing travellers (including lead passenger)
   travellers = existingTravellers;
+  console.log('📋 Using existing travellers:', travellers.length);
 } else if (additionalPassengersFromPassenger.length > 0) {
-  // Convert additionalPassengers to travellers format
-  travellers = additionalPassengersFromPassenger.map((p: any) => ({
-    PassengerType: p.type === 'child' ? 'Child' : p.type === 'infant' ? 'Infant' : 'Adult',
-    FirstName: p.firstName || '',
-    LastName: p.lastName || '',
-    DateOfBirth: p.dateOfBirth || '',
-    PhoneNumber: p.phone || passenger.phone || '',
-    Email: p.email || passenger.email || '',
-    Gender: p.gender === 'f' ? 'Female' : p.gender === 'm' ? 'Male' : 'Male',
-    Title: p.title || 'Mr',
-    PassportNumber: p.passportNumber || '',
-    ExpiryDate: p.passportExpiry || '',
-    PassportIssuingAuthority: p.passportIssuingAuthority || '',
-    PassportIssueCountryCode: p.passportIssueCountry || 'NG',
-    Address: p.address || passenger.address || '123 Fake Street',
-    Country: p.country || passenger.country || 'Nigeria',
-    CountryCode: p.countryCode || passenger.countryCode || 'NG',
-    City: p.city || passenger.city || 'Lagos',
-    PostalCode: p.postalCode || passenger.postalCode || '100001',
-  }));
+  // ✅ CRITICAL: Only use additional passengers if the search was for more than 1 passenger
+  // AND the additional passengers are NOT just duplicates of the lead passenger
+  const filteredAdditional = additionalPassengersFromPassenger.filter((p: any) => {
+    // Check if this passenger is the same as the lead passenger
+    const isLead = p.firstName === passenger.firstName && 
+                   p.lastName === passenger.lastName &&
+                   p.email === passenger.email;
+    // Also check if this passenger has actual data (not empty)
+    const hasData = p.firstName || p.lastName || p.email;
+    return !isLead && hasData;
+  });
+  
+  console.log('🔍 Filtered additional passengers:', {
+    originalCount: additionalPassengersFromPassenger.length,
+    filteredCount: filteredAdditional.length,
+    searchPassengerCount: searchPassengerCount,
+  });
+  
+  // Only use additional passengers if:
+  // 1. We have filtered additional passengers
+  // 2. The search was for more than 1 passenger (or we have valid additional passengers)
+  if (filteredAdditional.length > 0 && (searchPassengerCount > 1 || filteredAdditional.length > 0)) {
+    // Convert additional passengers to travellers format
+    travellers = filteredAdditional.map((p: any) => ({
+      PassengerType: p.type === 'child' ? 'Child' : p.type === 'infant' ? 'Infant' : 'Adult',
+      FirstName: p.firstName || '',
+      LastName: p.lastName || '',
+      DateOfBirth: formatDateForWakanow(p.dateOfBirth || ''),
+      PhoneNumber: p.phone || passenger.phone || '',
+      Email: p.email || passenger.email || '',
+      Gender: p.gender === 'f' ? 'Female' : p.gender === 'm' ? 'Male' : 'Male',
+      Title: p.title || 'Mr',
+      PassportNumber: p.passportNumber || '',
+      ExpiryDate: p.passportExpiry || '',
+      PassportIssuingAuthority: p.passportIssuingAuthority || '',
+      PassportIssueCountryCode: p.passportIssueCountry || 'NG',
+      Address: p.address || passenger.address || '123 Fake Street',
+      Country: p.country || passenger.country || 'Nigeria',
+      CountryCode: p.countryCode || passenger.countryCode || 'NG',
+      City: p.city || passenger.city || 'Lagos',
+      PostalCode: p.postalCode || passenger.postalCode || '100001',
+    }));
+    console.log('📋 Built additional passengers:', travellers.length);
+  } else {
+    console.log('📋 No valid additional passengers to add');
+  }
+}
+
+// ✅ If no travellers and we have a lead passenger, create one
+if (travellers.length === 0 && passenger.firstName) {
+  // Build lead passenger
+  const leadPassenger = {
+    PassengerType: 'Adult',
+    FirstName: passenger.firstName || '',
+    LastName: passenger.lastName || '',
+    DateOfBirth: formatDateForWakanow(passenger.dateOfBirth || ''),
+    PhoneNumber: passenger.phone || '',
+    Email: passenger.email || '',
+    Gender: passenger.gender === 'f' ? 'Female' : passenger.gender === 'm' ? 'Male' : 'Male',
+    Title: passenger.title || 'Mr',
+    PassportNumber: (passenger as any).passportNumber || '',
+    ExpiryDate: (passenger as any).passportExpiry || '',
+    PassportIssuingAuthority: (passenger as any).passportIssuingAuthority || '',
+    PassportIssueCountryCode: (passenger as any).passportIssueCountry || 'NG',
+    Address: passenger.address || '123 Fake Street',
+    Country: passenger.country || 'Nigeria',
+    CountryCode: passenger.countryCode || 'NG',
+    City: passenger.city || 'Lagos',
+    PostalCode: passenger.postalCode || '100001',
+  };
+  travellers = [leadPassenger];
+  console.log('📋 Created lead passenger only:', travellers.length);
+}
+
+// ✅ Ensure we only have the number of passengers from the search
+// If search was for 1 passenger, but we have more, log a warning
+if (searchPassengerCount === 1 && travellers.length > 1) {
+  console.warn('⚠️ Search was for 1 passenger but we have', travellers.length, 'passengers. This may be incorrect.');
+  // Keep only the lead passenger if search was for 1
+  travellers = travellers.slice(0, 1);
 }
 
 // ✅ Ensure firstTraveller is set for passport fields if needed
@@ -772,11 +928,14 @@ if (travellers.length > 0) {
   travellers = [firstTraveller];
 }
 
+console.log('👤 FINAL travellers count:', travellers.length);
 console.log('👤 Travellers after population:', {
   count: travellers.length,
   first: travellers[0]?.FirstName || travellers[0]?.firstName,
   hasPassport: !!(travellers[0]?.PassportNumber || travellers[0]?.passportNumber),
 });
+
+
 // ✅ Build passengerInfo based on flight type (NO passport fields here!)
 let passengerInfo: any = {
   firstName: passenger.firstName || '',
@@ -810,8 +969,7 @@ console.log('📄 passengerInfo built (NO passport fields):', {
 
 
 if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC") {
-          const finalOrigin = originCode || "LOS";
-          const finalDestination = destinationCode || "ABV";
+       
           
           let offerId = "";
           let offerRequestId = "";
@@ -835,10 +993,6 @@ if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC")
             
 
 const passengersArray = [];
-
-
-
-
 
 // Default address for passengers
 const defaultAddress = {
@@ -922,8 +1076,19 @@ if (travellers && travellers.length > 1) {
 const additionalPassengers = (passenger as any).additionalPassengers || [];
 if (Array.isArray(additionalPassengers) && additionalPassengers.length > 0) {
   for (let i = 0; i < additionalPassengers.length; i++) {
+    const ap = additionalPassengers[i];
+    
+    // ✅ Validate date of birth is provided
+    const typeLabel = ap.type || 'passenger';
+    if (!ap.dateOfBirth || ap.dateOfBirth === 'mm/dd/yyyy' || ap.dateOfBirth === 'MM/DD/YYYY') {
+      throw new Error(
+        `Date of birth is required for ${typeLabel} #${i + 1}. ` +
+        `Please go back and select a date of birth.`
+      );
+    }
+    
     const result = buildPassengerSafely(
-      additionalPassengers[i],
+      ap,
       isDomestic,
       isNorthAmerica,
       defaultAddress,
@@ -953,6 +1118,19 @@ console.log("👤 Passengers built successfully:", passengersArray.length);
             
             // ✅ STORE selectData at TOP LEVEL
             body.selectData = offerId;
+
+            const technicalStops = item.technicalStops || [];
+const hasTechnicalStops = item.hasTechnicalStops || false;
+const totalTechnicalStops = item.totalTechnicalStops || 0;
+const stopInformation = item.stopInformation || null;
+
+console.log('🛑 Technical stops in booking:', {
+  hasTechnicalStops,
+  totalTechnicalStops,
+  technicalStopsCount: technicalStops.length,
+  hasStopInformation: !!stopInformation,
+});
+
             
             // ✅ ALL Wakanow-specific fields go INSIDE bookingData
             body.bookingData = {
@@ -960,6 +1138,8 @@ console.log("👤 Passengers built successfully:", passengersArray.length);
               origin: finalOrigin,
               destination: finalDestination,
               departureDate: searchParams?.segments?.[0]?.date ?? today(),
+              isMultiCity: isMultiCity,
+              allSegments: allSegments,
               createWithoutPayment: options?.createWithoutPayment || false,
               passengers: passengersArray,
               bookingId: wakanowBookingId,
@@ -969,6 +1149,10 @@ console.log("👤 Passengers built successfully:", passengersArray.length);
   isNorthAmerica: isNorthAmerica,
   passportRequirement: isDomestic ? 'EMPTY' : (isNorthAmerica ? 'MANDATORY' : 'OPTIONAL'),
               destinationCode: destinationCode,
+              technicalStops: technicalStops,
+              hasTechnicalStops: hasTechnicalStops,
+              totalTechnicalStops: totalTechnicalStops,
+              stopInformation: stopInformation,
               priceBreakdown: {
                 basePrice: basePrice,
                 markupAmount: markupAmount,
@@ -985,6 +1169,7 @@ console.log("👤 Passengers built successfully:", passengersArray.length);
                 flightNumber: item.realData.flightNumber,
                 phoneNumber: passenger.phone, 
               }),
+              
               cabinClass: searchParams?.cabinClass ?? "economy",
               passengersCount: searchParams?.passengers ?? 1,
               basePrice: basePrice,
@@ -1086,6 +1271,8 @@ console.log("💰 Wakanow total amount (with positive check):", {
               origin: finalOrigin,
               destination: finalDestination,
               departureDate: searchParams?.segments?.[0]?.date ?? today(),
+              isMultiCity: isMultiCity,
+              allSegments: allSegments,
               ...(item.realData?.airline && { airline: item.realData.airline }),
               ...(item.realData?.flightNumber && {
                 flightNumber: item.realData.flightNumber,
@@ -1257,165 +1444,269 @@ console.log('🔍 PASSPORT CHECK BEFORE SEND:', {
         // ✅ ADD THIS - Log the full request body
         console.log('🚀🚀🚀 FINAL REQUEST BODY:', JSON.stringify(body, null, 2));
         
-        // ✅ ADD THIS - Specifically check TravellerDetails
-        //if (body.passengerInfo?.TravellerDetails) {
-          //console.log('✅ TravellerDetails found in passengerInfo:', {
-            //count: body.passengerInfo.TravellerDetails.length,
-            //first: body.passengerInfo.TravellerDetails[0],
-          //});
-        //} else {
-          //console.warn('⚠️ No TravellerDetails in passengerInfo!');
-        //}
-        
-        //if (body.bookingData?.TravellerDetails) {
-          //console.log('✅ TravellerDetails found in bookingData:', {
-            //count: body.bookingData.TravellerDetails.length,
-            //first: body.bookingData.TravellerDetails[0],
-          //});
-        //} else {
-          //console.warn('⚠️ No TravellerDetails in bookingData!');
-        //}
+
         
         const res = await fetch(`${BASE}${endpoint}`, {
           method: "POST",
           headers,
           body: JSON.stringify(body),
         });
-  
+        
         let data: any;
-try {
-  data = await res.json();
-  // ✅ ADD THIS
-  console.log('📥 API RESPONSE:', {
-    status: res.status,
-    ok: res.ok,
-    data: data,
-  });
-} catch (e) {
-  const text = await res.text();
-  console.error("Non-JSON response:", text);
-  throw new Error(`Server returned ${res.status}: ${text.substring(0, 100)}`);
-}
-  
+        try {
+          data = await res.json();
+          // ✅ ADD THIS
+          console.log('📥 API RESPONSE:', {
+            status: res.status,
+            ok: res.ok,
+            data: data,
+          });
+        } catch (e) {
+          const text = await res.text();
+          console.error("Non-JSON response:", text);
+          throw new Error(`Server returned ${res.status}: ${text.substring(0, 100)}`);
+        }
+        
         if (!res.ok) {
           const msg = data.message ?? data.error ?? "Booking creation failed";
           console.error("Booking creation failed:", data);
           throw new Error(msg);
         }
-  
         const created: Booking = data.data ?? data;
 
-        if (created && provider === 'WAKANOW') {
-          if (!created.passengerInfo?.email && passenger?.email) {
-            created.passengerInfo = {
-              ...(created.passengerInfo || {}),
-              email: passenger.email,
-            };
+        // ✅ FIX: Extract PNR from response for BOTH guest and authenticated users
+        // Use 'any' type to access properties that might not be on Booking type
+        let pnrNumber = null;
+        
+        // 1. Check top-level fields (using type assertion)
+        const createdAny = created as any;
+        
+        if (createdAny.reference) {
+          pnrNumber = createdAny.reference;
+          console.log('✅ Found reference at top level:', pnrNumber);
+        } else if (createdAny.bookingReference) {
+          pnrNumber = createdAny.bookingReference;
+          console.log('✅ Found bookingReference at top level:', pnrNumber);
+        } else if (createdAny.pnr) {
+          pnrNumber = createdAny.pnr;
+          console.log('✅ Found pnr at top level:', pnrNumber);
+        } else if (createdAny.Pnr) {
+          pnrNumber = createdAny.Pnr;
+          console.log('✅ Found Pnr at top level:', pnrNumber);
+        } else if (createdAny.confirmationNumber) {
+          pnrNumber = createdAny.confirmationNumber;
+          console.log('✅ Found confirmationNumber at top level:', pnrNumber);
+        } else if (createdAny.bookingId) {
+          pnrNumber = createdAny.bookingId;
+          console.log('✅ Found bookingId at top level:', pnrNumber);
+        }
+        
+        // 2. Check in data.booking (common for authenticated users)
+        if (!pnrNumber && data?.data?.booking) {
+          const booking = data.data.booking;
+          pnrNumber = booking.reference || booking.bookingReference || booking.pnr || booking.Pnr || booking.confirmationNumber || booking.bookingId;
+          if (pnrNumber) console.log('✅ Found PNR in data.booking:', pnrNumber);
+        }
+        
+        // 3. Check in data.bookingData
+        if (!pnrNumber && data?.data?.bookingData) {
+          const bookingData = data.data.bookingData;
+          pnrNumber = bookingData.pnrNumber || bookingData.reference || bookingData.bookingId || bookingData.pnr;
+          if (pnrNumber) console.log('✅ Found PNR in data.bookingData:', pnrNumber);
+        }
+        
+        // 4. Check in created.bookingData (using type assertion)
+        if (!pnrNumber && createdAny.bookingData) {
+          pnrNumber = createdAny.bookingData.pnrNumber || createdAny.bookingData.reference || createdAny.bookingData.bookingId || createdAny.bookingData.pnr;
+          if (pnrNumber) console.log('✅ Found PNR in created.bookingData:', pnrNumber);
+        }
+        
+        // 5. Check in data.booking (if it's an object)
+        if (!pnrNumber && data?.booking) {
+          pnrNumber = data.booking.reference || data.booking.pnr || data.booking.bookingReference || data.booking.confirmationNumber || data.booking.bookingId;
+          if (pnrNumber) console.log('✅ Found PNR in data.booking:', pnrNumber);
+        }
+        
+        // 6. Check in response root for Wakanow-specific fields
+        if (!pnrNumber && data?.pnrNumber) {
+          pnrNumber = data.pnrNumber;
+          console.log('✅ Found PNR in response root pnrNumber:', pnrNumber);
+        }
+        
+        // ✅ If we found a PNR, store it at the top level using type assertion
+        if (pnrNumber) {
+          (created as any).reference = pnrNumber;
+          (created as any).pnr = pnrNumber;
+          // Also store in bookingData if it exists
+          if ((created as any).bookingData) {
+            (created as any).bookingData.pnrNumber = pnrNumber;
+            (created as any).bookingData.reference = pnrNumber;
           }
-        }
-  
-        if (!created?.id) {
-          console.error("Invalid booking response:", data);
-          throw new Error("Invalid response from server - missing booking ID");
-        }
-  
-        setBooking(created);
-        return created;
-      } catch (err: any) {
-        const message = err?.message ?? "Booking failed";
-        console.error("Booking creation error:", err);
-        setError(message);
-        throw err;
-      } finally {
-        setIsCreating(false);
-      }
-    },
-    [BASE],
-  );
-  
-  // ============ REST OF THE FUNCTIONS (UNCHANGED) ============
-  
-  const createPaymentIntent = useCallback(
-    async (
-      bookingId: string,
-      isGuest: boolean,
-      guestEmail?: string,
-      bookingReference?: string,
-      voucherCode?: string,
-      provider?: string,
-    ) => {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      };
-      
-      let endpoint: string;
-      let body: Record<string, any>;
-  
-      if (provider === 'WAKANOW') {
-        endpoint = "/api/v1/payments/stripe/create-intent/guest";
-        
-        let email = guestEmail;
-        
-        if (!email && booking) {
-          email = (booking as any)?.passengerInfo?.email;
+          console.log('✅ PNR extracted and stored:', pnrNumber);
+        } else {
+          console.warn('⚠️ No PNR found in response. Full response structure:', {
+            topLevelKeys: Object.keys(created),
+            dataKeys: data?.data ? Object.keys(data.data) : null,
+            hasBooking: !!data?.data?.booking,
+            hasBookingData: !!data?.data?.bookingData,
+            responseRootKeys: Object.keys(data),
+          });
         }
         
-        if (!email) {
-          throw new Error('Passenger email is required for payment. Please provide a valid email address.');
+        // ✅ If we have a booking ID but no reference, use booking ID as fallback
+        if (!(created as any).reference && created.id) {
+          (created as any).reference = created.id;
+          console.log('ℹ️ Using bookingId as reference:', created.id);
         }
         
-        const ref = bookingReference || booking?.reference;
+        // Store the PNR in a separate variable for later use
+        const pnrValue = pnrNumber || (created as any).reference || created.id || null;
         
-        if (!ref) {
-          throw new Error('Booking reference is required for payment.');
-        }
+        console.log('📋 Final booking object:', {
+          id: created.id,
+          reference: (created as any).reference,
+          pnr: (created as any).pnr,
+          status: created.status,
+          provider: provider,
+          pnrValue: pnrValue,
+        });
         
-        body = { 
-          bookingReference: ref,
-          email: email,
-        };
-      } 
-      else if (isGuest) {
-        endpoint = "/api/v1/payments/stripe/create-intent/guest";
-        body = { bookingReference: bookingReference!, email: guestEmail! };
-      } 
-      else {
-        endpoint = "/api/v1/payments/stripe/create-intent";
-        body = {
-          bookingId,
-          ...(voucherCode && { voucherCode }),
-        };
-        const token = getStoredAuthToken();
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
-      }
+                // Add the PNR to the created object for use in the response
+                (created as any).pnrValue = pnrValue;
+        
+                console.log('📋 Final booking object:', {
+                  id: created.id,
+                  reference: (created as any).reference,
+                  pnr: (created as any).pnr,
+                  status: created.status,
+                  provider: provider,
+                  pnrValue: pnrValue,
+                });
+                
+                // ✅ FIX: Set the booking state and return the created object
+                setBooking(created);
+                return created;
+                
+              } catch (err: any) {
+                const message = err?.message ?? "Booking failed";
+                console.error("Booking creation error:", err);
+                setError(message);
+                throw err;
+              } finally {
+                setIsCreating(false);
+              }
+            },
+            [BASE],
+          );
   
-      console.log(`💰 Creating payment intent via ${endpoint} for booking ${bookingId}`);
-      console.log('💰 Payment body:', body);
-      
-      const res = await fetch(`${BASE}${endpoint}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-      });
-  
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message ?? "Failed to create payment intent");
-      }
-      if (!data.clientSecret) {
-        throw new Error("No client secret received");
-      }
-      return data as {
-        clientSecret: string;
-        paymentIntentId: string;
-        voucherApplied?: any;
-      };
-    },
-    [BASE, booking], // ✅ Add booking to dependencies
-  );
+          const createPaymentIntent = useCallback(
+            async (
+              bookingId: string,
+              isGuest: boolean,
+              guestEmail?: string,
+              bookingReference?: string,
+              voucherCode?: string,
+              provider?: string,
+            ) => {
+              const headers: Record<string, string> = {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              };
+              
+              let endpoint: string;
+              let body: Record<string, any>;
+          
+              // ✅ FIX: Try multiple sources for email
+              let email = guestEmail;
+              
+              // Try to get email from booking object (with type assertion)
+              if (!email && booking) {
+                const bookingAny = booking as any;
+                // Try different possible locations for email
+                email = bookingAny.passengerInfo?.email ||
+                        bookingAny.email ||
+                        bookingAny.bookingData?.email ||
+                        bookingAny.passengerInfo?.email ||
+                        (bookingAny.passengerInfo as any)?.email;
+              }
+              
+              // Try to get email from sessionStorage
+              if (!email && typeof window !== 'undefined') {
+                email = sessionStorage.getItem('guest_booking_email') || '';
+              }
+              
+              // ✅ Log what we found
+              console.log('🔍 Email sources check:', {
+                guestEmailProvided: !!guestEmail,
+                bookingEmail: booking?.passengerInfo?.email || (booking as any)?.email,
+                bookingDataEmail: (booking as any)?.bookingData?.email,
+                sessionStorageEmail: sessionStorage.getItem('guest_booking_email'),
+                finalEmail: email,
+                bookingKeys: booking ? Object.keys(booking) : [],
+              });
+          
+              if (provider === 'WAKANOW') {
+                endpoint = "/api/v1/payments/stripe/create-intent/guest";
+                
+                // ✅ Final email check - if still no email, show a better error
+                if (!email) {
+                  console.error('❌ No email found. Booking object:', booking);
+                  throw new Error(
+                    'Passenger email is required for payment. Please make sure you entered your email address when booking.'
+                  );
+                }
+                
+                const ref = bookingReference || booking?.reference;
+                
+                if (!ref) {
+                  throw new Error('Booking reference is required for payment.');
+                }
+                
+                body = { 
+                  bookingReference: ref,
+                  email: email,
+                };
+              } 
+              else if (isGuest) {
+                endpoint = "/api/v1/payments/stripe/create-intent/guest";
+                body = { bookingReference: bookingReference!, email: guestEmail! };
+              } 
+              else {
+                endpoint = "/api/v1/payments/stripe/create-intent";
+                body = {
+                  bookingId,
+                  ...(voucherCode && { voucherCode }),
+                };
+                const token = getStoredAuthToken();
+                if (token) {
+                  headers["Authorization"] = `Bearer ${token}`;
+                }
+              }
+          
+              console.log(`💰 Creating payment intent via ${endpoint} for booking ${bookingId}`);
+              console.log('💰 Payment body:', body);
+              
+              const res = await fetch(`${BASE}${endpoint}`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify(body),
+              });
+          
+              const data = await res.json();
+              if (!res.ok) {
+                throw new Error(data.message ?? "Failed to create payment intent");
+              }
+              if (!data.clientSecret) {
+                throw new Error("No client secret received");
+              }
+              return data as {
+                clientSecret: string;
+                paymentIntentId: string;
+                voucherApplied?: any;
+              };
+            },
+            [BASE, booking],
+          );
 
   const createAmadeusHotelBooking = useCallback(
     async (

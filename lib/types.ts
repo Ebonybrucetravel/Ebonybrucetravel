@@ -86,6 +86,10 @@ export interface SearchResult {
     iata_code?: string;
     logo_symbol_url?: string;
   };
+  stopInformation?: StopInformation | null;
+  hasTechnicalStops?: boolean;
+  totalTechnicalStops?: number;
+  technicalStops?: TechnicalStop[];
 
   // ✅ PRICE FIELDS
   original_amount?: string;
@@ -141,6 +145,8 @@ export interface SearchResult {
   // ✅ Wakanow specific fields
   isWakanow?: boolean;
   isWakanowDomestic?: boolean;
+  bookingId?: string;          
+  _wakanowData?: any;  
   selectData?: string;
   legs?: any[];
   outboundLegs?: any[];
@@ -362,8 +368,9 @@ export interface Booking {
   currency: string;
   cancellationDeadline?: string | null;
   cancellationPolicySnapshot?: string | null;
-
-  // ✅ TAXES FIELD
+  technicalStops?: TechnicalStop[];
+  hasTechnicalStops?: boolean;
+  totalTechnicalStops?: number;
   taxes?: number;
 
 
@@ -671,6 +678,8 @@ export interface WakanowFlightLeg {
   IsStop: boolean;
   LayerOrder?: string | null;
   LayerDuration?: string;
+  Layover?: string | null;        
+  LayoverDuration?: string;        
   BookingClass: string;
   CabinClass: string;
   CabinClassName: string;
@@ -681,6 +690,8 @@ export interface WakanowFlightLeg {
   Aircraft: string;
   FareType: string;
   FarebasisCode: string;
+  TechnicalStops?: TechnicalStop[];
+  HasTechnicalStops?: boolean;
 }
 
 export interface WakanowRawFlight {
@@ -724,6 +735,9 @@ export interface WakanowRawFlight {
   DownPaymentDetailInPercentage: number;
   PaySmallSmallLockDownPrice: number;
   ConnectionCode: string;
+
+  hasTechnicalStops?: boolean;
+  totalTechnicalStops?: number;
 }
 
 export interface WakanowSearchResponse {
@@ -750,6 +764,7 @@ export interface WakanowSelectResponse {
   ProductTermsAndConditions?: {
     TermsAndConditions: string[];
   };
+  stop_information?: StopInformation | null;
 }
 
 export interface WakanowPassenger {
@@ -1115,5 +1130,57 @@ export interface WakanowNormalizedFlight {
     totalAmount: number;
     currency: string;
     breakdown?: string;
+  };
+}
+
+// ============ TECHNICAL STOPS TYPES ============
+
+export interface TechnicalStop {
+  airline?: string;
+  flightNumber?: string;
+  legFrom?: string;
+  legFromName?: string;
+  legTo?: string;
+  legToName?: string;
+  stopLocation?: string;
+  stopCode?: string | null;
+  stopDuration?: string;
+  arrivalTime?: string | null;
+  departureTime?: string | null;
+}
+
+export interface StopInformation {
+  totalStops: number;
+  stopDetails: Array<{
+    airline: string;
+    stops: number;
+    stopTime: string;
+    stopCity: string | null;
+    legs: Array<{
+      departureCode: string;
+      destinationCode: string;
+      hasStop: boolean;
+      stopLocation: string | null;
+      stopDuration: string;
+      isStop: boolean;
+      hasTechnicalStops: boolean;
+      technicalStops: TechnicalStop[];
+    }>;
+  }>;
+  technicalStops: TechnicalStop[];
+  layoversList: Array<{
+    airline: string;
+    flightNumber: string;
+    layoverLocation: string;
+    layoverDuration: string;
+    arrivalCode: string;
+    arrivalName: string;
+    departureCode: string;
+    departureName: string;
+  }>;
+  summary: {
+    totalLayovers: number;
+    totalTechnicalStops: number;
+    hasTechnicalStops: boolean;
   };
 }

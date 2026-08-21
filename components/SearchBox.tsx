@@ -1067,6 +1067,21 @@ const [showBaggagesDropdown, setShowBaggagesDropdown] = useState(false);
     setCarDropOffDate(nextWeekStr);
   }, []);
 
+ 
+useEffect(() => {
+  if (activeTab === 'flights') {
+   
+    setTravellers({ adults: 1, children: 0, infants: 0 });
+    
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('additional_passengers');
+      console.log('🗑️ Cleared additional_passengers from sessionStorage');
+    }
+    
+    console.log('🔄 Reset travellers for flights tab:', { adults: 1, children: 0, infants: 0 });
+  }
+}, [activeTab]);
+
   useEffect(() => {
     if (segments[0].date && returnDate && segments[0].date > returnDate) {
       setReturnDate(segments[0].date);
@@ -1296,6 +1311,10 @@ if (activeTab === 'cars') {
           date: segment.date
         };
       });
+
+      if (tripType === 'multi-city' && flightSegments.length < 2) {
+        errors.push(t('search.minTwoSegments') || 'Please add at least 2 segments for multi-city travel');
+      }
 
       if (tripType === 'round-trip' && !returnDate) {
         errors.push(t('search.returnDateRequired') || 'Return date is required for round-trip flights');
