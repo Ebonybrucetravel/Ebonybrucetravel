@@ -45,27 +45,38 @@ export class BookWakanowFlightUseCase {
     this.validatePassengers(passengers);
   
     
-    const initialWakanowPassengers: WakanowPassengerDetail[] = passengers.map((p) => ({
-      PassengerType: p.passengerType || 'Adult',
-      FirstName: p.firstName,
-      MiddleName: p.middleName || '',
-      LastName: p.lastName,
-      DateOfBirth: p.dateOfBirth,
-      PhoneNumber: p.phoneNumber,
-      Email: p.email,
-      Gender: p.gender,
-      Title: p.title,
-      PassportNumber: p.PassportNumber || '',
-      ExpiryDate: p.ExpiryDate || '',
-      PassportIssuingAuthority: p.PassportIssuingAuthority || '',
-      PassportIssueCountryCode: p.PassportIssueCountryCode || '',
-      Address: p.address || '123 Fake Street',
-      Country: p.country || 'Nigeria',
-      CountryCode: p.countryCode || 'NG',
-      City: p.city || 'Lagos',
-      PostalCode: p.postalCode || '100001',
-      IsWakapointRegister: false,
-    }));
+   // ✅ Normalize all passenger dates before sending to Wakanow
+const normalizedPassengers = passengers.map((p) => ({
+  ...p,
+  dateOfBirth: this.normalizeDate(p.dateOfBirth),
+}));
+
+// ✅ Log the normalized dates for debugging
+normalizedPassengers.forEach((p, idx) => {
+  this.logger.log(`🔍 Passenger ${idx + 1} normalized DOB: "${p.dateOfBirth}"`);
+});
+
+const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.map((p) => ({
+  PassengerType: p.passengerType || 'Adult',
+  FirstName: p.firstName,
+  MiddleName: p.middleName || '',
+  LastName: p.lastName,
+  DateOfBirth: p.dateOfBirth,  // ✅ Now normalized to YYYY-MM-DD
+  PhoneNumber: p.phoneNumber,
+  Email: p.email,
+  Gender: p.gender,
+  Title: p.title,
+  PassportNumber: p.PassportNumber || '',
+  ExpiryDate: p.ExpiryDate || '',
+  PassportIssuingAuthority: p.PassportIssuingAuthority || '',
+  PassportIssueCountryCode: p.PassportIssueCountryCode || '',
+  Address: p.address || '123 Fake Street',
+  Country: p.country || 'Nigeria',
+  CountryCode: p.countryCode || 'NG',
+  City: p.city || 'Lagos',
+  PostalCode: p.postalCode || '100001',
+  IsWakapointRegister: false,
+}));
   
     const initialRequest: WakanowBookRequest = {
       PassengerDetails: initialWakanowPassengers,
@@ -209,6 +220,16 @@ export class BookWakanowFlightUseCase {
       if (!p.dateOfBirth) {
         throw new BadRequestException(`Passenger ${i + 1}: Date of birth is required`);
       }
+      
+      // ✅ NORMALIZE DATE FORMAT HERE
+      const normalizedDate = this.normalizeDate(p.dateOfBirth);
+      const dateObj = new Date(normalizedDate);
+      if (isNaN(dateObj.getTime())) {
+        throw new BadRequestException(`Passenger ${i + 1}: Date of birth is not valid - received: "${p.dateOfBirth}"`);
+      }
+      // ✅ Update with normalized date
+      p.dateOfBirth = normalizedDate;
+      
       if (!p.title) {
         throw new BadRequestException(`Passenger ${i + 1}: Title is required`);
       }
@@ -218,6 +239,51 @@ export class BookWakanowFlightUseCase {
     }
   }
 
+  private normalizeDate(dateStr: string): string {
+    if (!dateStr) return '';
+  
+    this.logger.log(`🔍 Normalizing date: "${dateStr}"`);
+  
+    // If already in YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      this.logger.log(`✅ Date already in YYYY-MM-DD: ${dateStr}`);
+      return dateStr;
+    }
+  
+    // If in MM/DD/YYYY format (e.g., 01/19/1990)
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
+      const parts = dateStr.split('/');
+      const month = String(parseInt(parts[0])).padStart(2, '0');
+      const day = String(parseInt(parts[1])).padStart(2, '0');
+      const year = parts[2];
+      const result = `${year}-${month}-${day}`;
+      this.logger.log(`✅ Converted MM/DD/YYYY to YYYY-MM-DD: ${dateStr} -> ${result}`);
+      return result;
+    }
+  
+    // If in MM/DD/YY format (2 digit year)
+    if (/^\d{1,2}\/\d{1,2}\/\d{2}$/.test(dateStr)) {
+      const parts = dateStr.split('/');
+      const month = String(parseInt(parts[0])).padStart(2, '0');
+      const day = String(parseInt(parts[1])).padStart(2, '0');
+      const year = parseInt(parts[2]) < 100 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
+      const result = `${year}-${month}-${day}`;
+      this.logger.log(`✅ Converted MM/DD/YY to YYYY-MM-DD: ${dateStr} -> ${result}`);
+      return result;
+    }
+  
+    // Try JavaScript Date parsing
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      const result = date.toISOString().split('T')[0];
+      this.logger.log(`✅ Parsed with Date constructor: ${dateStr} -> ${result}`);
+      return result;
+    }
+  
+    // If all fails, log warning and return original
+    this.logger.warn(`⚠️ Unable to parse date: ${dateStr}`);
+    return dateStr;
+  }
 
   private buildExistingBookingResponse(existingBooking: any): any {
     return {
@@ -421,6 +487,15 @@ export class BookWakanowFlightUseCase {
     // ✅ Get the first passenger's email for bookingData
     const firstPassengerEmail = formattedPassengers[0]?.email || 'guest@example.com';
   
+    // ✅ EXTRACT TECHNICAL STOPS
+    const technicalStops = this.extractTechnicalStops(combo);
+    const hasTechnicalStops = this.hasTechnicalStops(combo);
+    const totalTechnicalStops = this.countTechnicalStops(combo);
+  
+    if (hasTechnicalStops) {
+      this.logger.log(`⚠️ Flight has ${totalTechnicalStops} technical stop(s)`);
+    }
+  
     const bookingData = {
       wakanowBookingId: bookResponse.BookingId,
       pnrReferenceNumber: pnr,
@@ -429,8 +504,11 @@ export class BookWakanowFlightUseCase {
       targetCurrency,
       ticketStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.TicketStatus || 'PENDING',
       pnrStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.PnrStatus || 'PENDING',
-      // ✅ Store email in bookingData
       passengerEmail: firstPassengerEmail,
+      // ✅ ADD TECHNICAL STOPS
+      technicalStops: technicalStops,
+      hasTechnicalStops: hasTechnicalStops,
+      totalTechnicalStops: totalTechnicalStops,
       priceBreakdown: {
         basePrice: prices.basePrice,
         markupAmount: prices.markupAmount,
@@ -547,4 +625,55 @@ private isNorthAmericaDestination(firstDep: string, firstArr: string, dto: BookW
   
   return false;
 }
+
+private extractTechnicalStops(combo: any): any[] {
+  const flightModels = combo?.FlightModels || [];
+  const technicalStops: any[] = [];
+  
+  flightModels.forEach((fm: any) => {
+    (fm.FlightLegs || []).forEach((leg: any) => {
+      if (leg.TechnicalStops && leg.TechnicalStops.length > 0) {
+        leg.TechnicalStops.forEach((stop: any) => {
+          technicalStops.push({
+            airline: fm.AirlineName,
+            flightNumber: leg.FlightNumber,
+            legFrom: leg.DepartureCode,
+            legFromName: leg.DepartureName,
+            legTo: leg.DestinationCode,
+            legToName: leg.DestinationName,
+            stopLocation: stop.Location || stop.City || 'Unknown',
+            stopCode: stop.Code || stop.AirportCode || null,
+            stopDuration: stop.Duration || 'N/A',
+            arrivalTime: stop.ArrivalTime || null,
+            departureTime: stop.DepartureTime || null,
+          });
+        });
+      }
+    });
+  });
+  
+  return technicalStops;
 }
+
+private hasTechnicalStops(combo: any): boolean {
+  const flightModels = combo?.FlightModels || [];
+  return flightModels.some((fm: any) =>
+    (fm.FlightLegs || []).some((leg: any) =>
+      (leg.TechnicalStops || []).length > 0
+    )
+  );
+}
+
+private countTechnicalStops(combo: any): number {
+  const flightModels = combo?.FlightModels || [];
+  let count = 0;
+  flightModels.forEach((fm: any) => {
+    (fm.FlightLegs || []).forEach((leg: any) => {
+      count += (leg.TechnicalStops || []).length;
+    });
+  });
+  return count;
+}
+
+}
+

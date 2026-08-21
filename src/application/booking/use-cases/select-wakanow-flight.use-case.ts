@@ -152,6 +152,33 @@ export class SelectWakanowFlightUseCase {
       this.logger.error('No FlightModels in response:', JSON.stringify(combo));
       throw new BadRequestException('No flight segments found. Please search again.');
     }
+   // ✅ CORRECTED STOP INFORMATION LOGGING
+this.logger.log('=== WAKANOW STOP INFORMATION DEBUG ===');
+combo.FlightModels?.forEach((fm: any, index: number) => {
+  this.logger.log(`Flight ${index + 1}: ${fm.AirlineName} (${fm.Airline})`);
+  this.logger.log(`  Total Stops (Layovers): ${fm.Stops}`);
+  this.logger.log(`  Total Layover Time: ${fm.StopTime}`);
+  this.logger.log(`  Layover City: ${fm.StopCity || 'N/A'}`);
+  
+  fm.FlightLegs?.forEach((leg: any, legIndex: number) => {
+    this.logger.log(`  Leg ${legIndex + 1}: ${leg.DepartureCode} -> ${leg.DestinationCode}`);
+    this.logger.log(`    Duration: ${leg.Duration}`);
+    this.logger.log(`    Has Layover: ${leg.Layover ? 'Yes' : 'No'}`);
+    if (leg.Layover) {
+      this.logger.log(`    Layover Location: ${leg.Layover}`);
+      this.logger.log(`    Layover Duration: ${leg.LayoverDuration}`);
+    }
+    // ✅ Properly check for TECHNICAL STOPS
+    const hasTechnicalStops = leg.TechnicalStops && leg.TechnicalStops.length > 0;
+    this.logger.log(`    Has Technical Stops: ${hasTechnicalStops ? 'Yes' : 'No'}`);
+    if (hasTechnicalStops) {
+      this.logger.log(`    Technical Stops: ${JSON.stringify(leg.TechnicalStops)}`);
+    }
+    this.logger.log(`    IsStop flag: ${leg.IsStop}`);
+  });
+});
+this.logger.log('=== END DEBUG ===');
+
 
     const totalAmount = combo.Price?.Amount || 0;
     const currency = combo.Price?.CurrencyCode || targetCurrency || 'NGN';
@@ -263,6 +290,8 @@ export class SelectWakanowFlightUseCase {
           arrivalName: fm.ArrivalName || '',
           arrivalTime: fm.ArrivalTime || '',
           stops: fm.Stops || 0,
+          stopTime: fm.StopTime || '',
+          stopCity: fm.StopCity || null,
           tripDuration: fm.TripDuration || '',
           segments: (fm.FlightLegs || []).map((leg) => ({
             flightNumber: leg.FlightNumber || '',
@@ -276,10 +305,31 @@ export class SelectWakanowFlightUseCase {
             cabinClass: leg.CabinClassName || '',
             operatingCarrier: leg.OperatingCarrierName || '',
             aircraft: leg.Aircraft || '',
-            layover: leg.Layover || null,
-            layoverDuration: leg.LayoverDuration || '',
+            isStop: leg.IsStop || false,
+            layover: leg.Layer || leg.Layover || null,
+            layoverDuration: leg.LayerDuration || leg.LayoverDuration || '',
+            bookingClass: leg.BookingClass || '',
+            fareType: leg.FareType || '',
+            fareBasisCode: leg.FarebasisCode || '',
+            technicalStops: leg.TechnicalStops || [],
+            hasTechnicalStops: (leg.TechnicalStops || []).length > 0,
           })),
           freeBaggage: fm.FreeBaggage || null,
+          stopDetails: {
+            hasStop: (fm.Stops || 0) > 0,
+            stopCount: fm.Stops || 0,
+            totalStopTime: fm.StopTime || '',
+            stopLocations: (fm.FlightLegs || [])
+              .filter(leg => leg.IsStop || leg.Layer || leg.Layover)
+              .map(leg => ({
+                location: leg.Layer || leg.Layover || '',
+                duration: leg.LayerDuration || leg.LayoverDuration || '',
+                arrivalCode: leg.DestinationCode || '',
+                arrivalName: leg.DestinationName || '',
+                departureCode: leg.DepartureCode || '',
+                departureName: leg.DepartureName || '',
+              })),
+          },
         })),
         price: combo.Price || { Amount: 0, CurrencyCode: currency },
         priceDetails: combo.PriceDetails || [],
@@ -287,15 +337,84 @@ export class SelectWakanowFlightUseCase {
       },
       fareRules: combo.FareRules || [],
       penaltyRules: combo.PenaltyRules || null,
-
+    
       termsAndConditions: {
         TermsAndConditions: displayTerms,
         TermsAndConditionImportantNotice: selectResponse.ProductTermsAndConditions?.TermsAndConditionImportantNotice || '',
       },
       customMessages: selectResponse.CustomMessages || [],
       message: 'Flight pricing confirmed',
-    };
-  }
+      
+
+      stopInformation: {
+        totalStops: combo.FlightModels?.reduce((acc: number, fm: any) => acc + (fm.Stops || 0), 0) || 0,
+        
+        stopDetails: combo.FlightModels?.map((fm: any) => ({
+          airline: fm.AirlineName,
+          stops: fm.Stops || 0,
+          stopTime: fm.StopTime || '',
+          stopCity: fm.StopCity || null,
+          legs: (fm.FlightLegs || []).map((leg: any) => ({
+            departureCode: leg.DepartureCode,
+            destinationCode: leg.DestinationCode,
+            hasStop: !!(leg.Layer || leg.Layover),
+            stopLocation: leg.Layer || leg.Layover || null,
+            stopDuration: leg.LayerDuration || leg.LayoverDuration || '',
+            isStop: leg.IsStop || false,
+            hasTechnicalStops: (leg.TechnicalStops || []).length > 0,
+            technicalStops: leg.TechnicalStops || [],
+          })),
+        })),
+      
+        technicalStops: (combo.FlightModels || []).flatMap((fm: any) => 
+          (fm.FlightLegs || [])
+            .filter((leg: any) => (leg.TechnicalStops || []).length > 0)
+            .flatMap((leg: any) => 
+              (leg.TechnicalStops || []).map((stop: any) => ({
+                airline: fm.AirlineName,
+                flightNumber: leg.FlightNumber,
+                legFrom: leg.DepartureCode,
+                legFromName: leg.DepartureName,
+                legTo: leg.DestinationCode,
+                legToName: leg.DestinationName,
+                stopLocation: stop.Location || stop.City || 'Unknown',
+                stopCode: stop.Code || stop.AirportCode || null,
+                stopDuration: stop.Duration || 'N/A',
+                arrivalTime: stop.ArrivalTime || null,
+                departureTime: stop.DepartureTime || null,
+              }))
+            )
+        ),
+      
+        layoversList: (combo.FlightModels || []).flatMap((fm: any) => 
+          (fm.FlightLegs || [])
+            .filter((leg: any) => leg.Layer || leg.Layover)
+            .map((leg: any) => ({
+              airline: fm.AirlineName,
+              flightNumber: leg.FlightNumber,
+              layoverLocation: leg.Layer || leg.Layover,
+              layoverDuration: leg.LayerDuration || leg.LayoverDuration,
+              arrivalCode: leg.DestinationCode,
+              arrivalName: leg.DestinationName,
+              departureCode: leg.DepartureCode,
+              departureName: leg.DepartureName,
+            }))
+        ),
+        
+        summary: {
+          totalLayovers: combo.FlightModels?.reduce((acc: number, fm: any) => acc + (fm.Stops || 0), 0) || 0,
+          totalTechnicalStops: (combo.FlightModels || []).reduce((acc: number, fm: any) => {
+            return acc + (fm.FlightLegs || []).reduce((legAcc: number, leg: any) => {
+              return legAcc + (leg.TechnicalStops || []).length;
+            }, 0);
+          }, 0),
+          hasTechnicalStops: (combo.FlightModels || []).some((fm: any) => 
+            (fm.FlightLegs || []).some((leg: any) => (leg.TechnicalStops || []).length > 0)
+            ),
+          },
+        },
+      }; 
+    } 
 
   private generateSelectDataVariants(originalSelectData: string): Array<{ name: string; data: string }> {
     const variants: Array<{ name: string; data: string }> = [];
@@ -307,7 +426,7 @@ export class SelectWakanowFlightUseCase {
       variants.push({ name: 'Trimmed', data: trimmed });
     }
   
-    // 👇 ADD THIS COMPRESSED VARIANT
+
     const compressed = originalSelectData.replace(/\s+/g, '');
     if (compressed !== originalSelectData && compressed.length > 10) {
       if (!variants.some(v => v.data === compressed)) {
@@ -319,3 +438,4 @@ export class SelectWakanowFlightUseCase {
     return variants;
   }
 }
+  

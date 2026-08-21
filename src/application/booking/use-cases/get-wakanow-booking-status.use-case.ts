@@ -27,8 +27,16 @@ export class GetWakanowBookingStatusUseCase {
       };
     }
 
-
     const bookingData = booking.bookingData as any || {};
+
+    // ✅ EXTRACT TECHNICAL STOPS FROM BOOKING DATA
+    const technicalStops = bookingData.technicalStops || [];
+    const hasTechnicalStops = bookingData.hasTechnicalStops || false;
+    const totalTechnicalStops = bookingData.totalTechnicalStops || 0;
+
+    if (hasTechnicalStops) {
+      this.logger.log(`📌 Booking ${localBookingId} has ${totalTechnicalStops} technical stop(s)`);
+    }
 
     const status = {
       id: booking.id,
@@ -38,33 +46,31 @@ export class GetWakanowBookingStatusUseCase {
       provider: booking.provider,
       providerBookingId: booking.providerBookingId,
       
-  
+      // ✅ ADD TECHNICAL STOPS TO STATUS
+      technicalStops: technicalStops,
+      hasTechnicalStops: hasTechnicalStops,
+      totalTechnicalStops: totalTechnicalStops,
+
       pnr: bookingData.pnrReferenceNumber || null,
       pnrStatus: bookingData.pnrStatus || null,
       ticketStatus: bookingData.ticketStatus || null,
       ticketingStatus: bookingData.ticketingStatus || null,
-      
 
       paymentReference: bookingData.payment?.reference || null,
       paymentConfirmedAt: bookingData.payment?.confirmedAt || null,
-      
 
       createdAt: booking.createdAt,
       updatedAt: booking.updatedAt,
       ticketIssuedAt: bookingData.ticketIssuedAt || null,
-      
 
       totalAmount: booking.totalAmount,
       currency: booking.currency,
-      
 
       canPay: booking.paymentStatus === PaymentStatus.PENDING,
       canTicket: booking.paymentStatus === PaymentStatus.COMPLETED && 
                  booking.status !== BookingStatus.CONFIRMED,
       isComplete: booking.status === BookingStatus.CONFIRMED,
       isCancelled: booking.status === BookingStatus.CANCELLED,
-      
-    
       isExpired: false, 
       nextSteps: [],
     };
@@ -98,7 +104,16 @@ export class GetWakanowBookingStatusUseCase {
       });
     }
 
-   
+    // ✅ Add technical stops info to next steps if present
+    if (hasTechnicalStops) {
+      status.nextSteps.push({
+        action: 'view_technical_stops',
+        label: 'View Technical Stops',
+        description: `This flight has ${totalTechnicalStops} technical stop(s). Check flight details for more information.`,
+        priority: 3,
+      });
+    }
+
     if (status.isExpired) {
       status.nextSteps.push({
         action: 'search_again',

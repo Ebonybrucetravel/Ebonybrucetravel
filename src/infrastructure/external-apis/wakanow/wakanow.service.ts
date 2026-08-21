@@ -60,8 +60,10 @@ export interface WakanowFlightLeg {
   EndTime: string;
   Duration: string;
   IsStop: boolean;
+  Layer: string | null;          
+  LayerDuration: string | null;  
   Layover: string | null;
-  LayoverDuration: string;
+  LayoverDuration: string | null;
   BookingClass: string;
   CabinClass: string;
   CabinClassName: string;
@@ -973,7 +975,7 @@ export class WakanowService {
     }
   }
  
-extractSeatDataFromResponse(response: any): {
+  private extractSeatDataFromResponse(response: any): {
   outboundFlight: any;
   returnFlight?: any;
   priceBreakdown: {
@@ -1041,9 +1043,11 @@ extractSeatDataFromResponse(response: any): {
         CabinClassName: leg.CabinClassName || 'Economy',
         BookingClass: leg.BookingClass || '',
         IsStop: leg.IsStop || false,
-        Layover: leg.Layover || null,
-        LayoverDuration: leg.LayoverDuration || '00:00:00',
-        Seats: (leg.Seats || []).map((seat: any) => ({
+  Layover: leg.Layer || leg.Layover || null,
+  LayoverDuration: leg.LayerDuration || leg.LayoverDuration || '00:00:00',  
+  TechnicalStops: leg.TechnicalStops || [], 
+  HasTechnicalStops: (leg.TechnicalStops || []).length > 0, 
+  Seats: (leg.Seats || []).map((seat: any) => ({
           SeatName: seat.SeatName || '',
           RowNumber: seat.RowNumber || 0,
           ColumnName: seat.ColumnName || '',
@@ -1085,81 +1089,83 @@ extractSeatDataFromResponse(response: any): {
     },
   };
 
-  // Add return flight if it exists
-  if (returnFlight.FlightId) {
-    result.returnFlight = {
-      FlightId: returnFlight.FlightId || '2',
-      Name: returnFlight.Name || '',
-      Airline: returnFlight.Airline || '',
-      AirlineName: returnFlight.AirlineName || '',
-      AirlineLogoUrl: returnFlight.AirlineLogoUrl || '',
-      DepartureCode: returnFlight.DepartureCode || '',
-      DepartureName: returnFlight.DepartureName || '',
-      DepartureTime: returnFlight.DepartureTime || '',
-      ArrivalCode: returnFlight.ArrivalCode || '',
-      ArrivalName: returnFlight.ArrivalName || '',
-      ArrivalTime: returnFlight.ArrivalTime || '',
-      Stops: returnFlight.Stops || 0,
-      TripDuration: returnFlight.TripDuration || '',
-      FlightLegs: returnLegs.map((leg: any) => ({
-        FlightLegNumber: leg.FlightLegNumber || '',
-        DepartureCode: leg.DepartureCode || '',
-        DepartureName: leg.DepartureName || '',
-        DestinationCode: leg.DestinationCode || '',
-        DestinationName: leg.DestinationName || '',
-        StartTime: leg.StartTime || '',
-        EndTime: leg.EndTime || '',
-        Duration: leg.Duration || '',
-        FlightNumber: leg.FlightNumber || '',
-        Airline: leg.OperatingCarrier || leg.MarketingCarrier || '',
-        AirlineName: leg.OperatingCarrierName || leg.AirlineName || '',
-        Aircraft: leg.Aircraft || '',
-        CabinClassName: leg.CabinClassName || 'Economy',
-        BookingClass: leg.BookingClass || '',
-        IsStop: leg.IsStop || false,
-        Layover: leg.Layover || null,
-        LayoverDuration: leg.LayoverDuration || '00:00:00',
-        Seats: (leg.Seats || []).map((seat: any) => ({
-          SeatName: seat.SeatName || '',
-          RowNumber: seat.RowNumber || 0,
-          ColumnName: seat.ColumnName || '',
-          IsOccupied: seat.IsOccupied || false,
-          IsValidRow: seat.IsValidRow || false,
-          IsValidSeat: seat.IsValidSeat || false,
-          IsInfantSeat: seat.IsInfantSeat || false,
-          IsAdultWithInfantSeat: seat.IsAdultWithInfantSeat || false,
-          IsChargeableSeat: seat.IsChargeableSeat || false,
-          Price: seat.Price ? {
-            Amount: seat.Price.Amount || 0,
-            CurrencyCode: seat.Price.CurrencyCode || 'NGN',
-          } : undefined,
-          PriceInSourceCurrency: seat.PriceInSourceCurrency ? {
-            Amount: seat.PriceInSourceCurrency.Amount || 0,
-            CurrencyCode: seat.PriceInSourceCurrency.CurrencyCode || 'NGN',
-          } : undefined,
-          ActualPrice: seat.ActualPrice ? {
-            Amount: seat.ActualPrice.Amount || 0,
-            CurrencyCode: seat.ActualPrice.CurrencyCode || 'NGN',
-          } : undefined,
-          MarkUpPrice: seat.MarkUpPrice ? {
-            Amount: seat.MarkUpPrice.Amount || 0,
-            CurrencyCode: seat.MarkUpPrice.CurrencyCode || 'NGN',
-          } : undefined,
-          SeatTypeDescription: seat.SeatTypeDescription || {},
-        })),
-        FreeBaggage: leg.FreeBaggage ? {
-          BagCount: leg.FreeBaggage.BagCount || 0,
-          Weight: leg.FreeBaggage.Weight || 0,
-          WeightUnit: leg.FreeBaggage.WeightUnit || null,
-        } : null,
+
+if (returnFlight.FlightId) {
+  result.returnFlight = {
+    FlightId: returnFlight.FlightId || '2',
+    Name: returnFlight.Name || '',
+    Airline: returnFlight.Airline || '',
+    AirlineName: returnFlight.AirlineName || '',
+    AirlineLogoUrl: returnFlight.AirlineLogoUrl || '',
+    DepartureCode: returnFlight.DepartureCode || '',
+    DepartureName: returnFlight.DepartureName || '',
+    DepartureTime: returnFlight.DepartureTime || '',
+    ArrivalCode: returnFlight.ArrivalCode || '',
+    ArrivalName: returnFlight.ArrivalName || '',
+    ArrivalTime: returnFlight.ArrivalTime || '',
+    Stops: returnFlight.Stops || 0,
+    TripDuration: returnFlight.TripDuration || '',
+    FlightLegs: returnLegs.map((leg: any) => ({
+      FlightLegNumber: leg.FlightLegNumber || '',
+      DepartureCode: leg.DepartureCode || '',
+      DepartureName: leg.DepartureName || '',
+      DestinationCode: leg.DestinationCode || '',
+      DestinationName: leg.DestinationName || '',
+      StartTime: leg.StartTime || '',
+      EndTime: leg.EndTime || '',
+      Duration: leg.Duration || '',
+      FlightNumber: leg.FlightNumber || '',
+      Airline: leg.OperatingCarrier || leg.MarketingCarrier || '',
+      AirlineName: leg.OperatingCarrierName || leg.AirlineName || '',
+      Aircraft: leg.Aircraft || '',
+      CabinClassName: leg.CabinClassName || 'Economy',
+      BookingClass: leg.BookingClass || '',
+      IsStop: leg.IsStop || false,
+      Layover: leg.Layer || leg.Layover || null,  // ✅ FIXED
+      LayoverDuration: leg.LayerDuration || leg.LayoverDuration || '00:00:00',
+      TechnicalStops: leg.TechnicalStops || [],  // ✅ ADDED
+      HasTechnicalStops: (leg.TechnicalStops || []).length > 0,  // ✅ ADDED
+      Seats: (leg.Seats || []).map((seat: any) => ({
+        SeatName: seat.SeatName || '',
+        RowNumber: seat.RowNumber || 0,
+        ColumnName: seat.ColumnName || '',
+        IsOccupied: seat.IsOccupied || false,
+        IsValidRow: seat.IsValidRow || false,
+        IsValidSeat: seat.IsValidSeat || false,
+        IsInfantSeat: seat.IsInfantSeat || false,
+        IsAdultWithInfantSeat: seat.IsAdultWithInfantSeat || false,
+        IsChargeableSeat: seat.IsChargeableSeat || false,
+        Price: seat.Price ? {
+          Amount: seat.Price.Amount || 0,
+          CurrencyCode: seat.Price.CurrencyCode || 'NGN',
+        } : undefined,
+        PriceInSourceCurrency: seat.PriceInSourceCurrency ? {
+          Amount: seat.PriceInSourceCurrency.Amount || 0,
+          CurrencyCode: seat.PriceInSourceCurrency.CurrencyCode || 'NGN',
+        } : undefined,
+        ActualPrice: seat.ActualPrice ? {
+          Amount: seat.ActualPrice.Amount || 0,
+          CurrencyCode: seat.ActualPrice.CurrencyCode || 'NGN',
+        } : undefined,
+        MarkUpPrice: seat.MarkUpPrice ? {
+          Amount: seat.MarkUpPrice.Amount || 0,
+          CurrencyCode: seat.MarkUpPrice.CurrencyCode || 'NGN',
+        } : undefined,
+        SeatTypeDescription: seat.SeatTypeDescription || {},
       })),
-      FreeBaggage: returnFlight.FreeBaggage ? {
-        BagCount: returnFlight.FreeBaggage.BagCount || 0,
-        Weight: returnFlight.FreeBaggage.Weight || 0,
-        WeightUnit: returnFlight.FreeBaggage.WeightUnit || null,
+      FreeBaggage: leg.FreeBaggage ? {
+        BagCount: leg.FreeBaggage.BagCount || 0,
+        Weight: leg.FreeBaggage.Weight || 0,
+        WeightUnit: leg.FreeBaggage.WeightUnit || null,
       } : null,
-    };
-  }
+    })),
+    FreeBaggage: returnFlight.FreeBaggage ? {
+      BagCount: returnFlight.FreeBaggage.BagCount || 0,
+      Weight: returnFlight.FreeBaggage.Weight || 0,
+      WeightUnit: returnFlight.FreeBaggage.WeightUnit || null,
+    } : null,
+  };
+}
 
   const price = flightCombination.Price || summaryModel.Price || {};
   const basePrice = price.Amount || 0;
@@ -1196,9 +1202,24 @@ extractSeatDataFromResponse(response: any): {
   this.logger.log(`✅ Extracted seat data: ${result.outboundFlight.FlightLegs.length} legs, ${result.outboundFlight.FlightLegs.reduce((acc: number, leg: any) => acc + leg.Seats.length, 0)} total seats`);
 
   return result;
-}
 
-async getSeatDataForBooking(bookingId: string, providerData: any): Promise<any> {
+}
+async getSeatDataForBooking(bookingId: string, providerData: any): Promise<{
+  bookingId: string;
+  outboundFlight: any;
+  returnFlight?: any;
+  priceBreakdown: {
+    basePrice: number;
+    markupAmount: number;
+    markupPercentage: number;
+    serviceFee: number;
+    serviceFeePercentage: number;
+    taxes: number;
+    taxPercentage: number;
+    totalAmount: number;
+    currency: string;
+  };
+}> {
   this.logger.log(`Getting seat data for booking: ${bookingId}`);
 
   if (!providerData) {

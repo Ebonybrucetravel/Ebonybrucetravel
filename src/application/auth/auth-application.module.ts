@@ -22,7 +22,7 @@ import { QueueModule } from '@infrastructure/queue/queue.module';
                 }
                 return {
                     secret: secret || 'dev-secret-key-change-in-production',
-                    signOptions: { expiresIn: '15m' },
+                    signOptions: { expiresIn: '7d' },
                 };
             },
         }),

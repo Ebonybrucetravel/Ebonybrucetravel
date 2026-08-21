@@ -149,6 +149,11 @@ export class BookingWakanowController {
 
       this.logger.log(`Flight selected successfully. Booking ID: ${result.bookingId}`);
 
+      console.log('🔍🔍🔍 DEBUG: stopInformation exists?', !!result.stopInformation);
+    console.log('🔍🔍🔍 DEBUG: stopInformation keys:', result.stopInformation ? Object.keys(result.stopInformation) : 'null');
+    console.log('🔍🔍🔍 DEBUG: stopInformation sample:', result.stopInformation ? JSON.stringify(result.stopInformation).substring(0, 200) : 'null');
+
+
       return {
         success: true,
         data: {
@@ -178,6 +183,7 @@ export class BookingWakanowController {
           },
           custom_messages: result.customMessages || [],
           message: result.message || 'Flight pricing confirmed',
+          stop_information: result.stopInformation || null,
         },
         message: 'Flight pricing confirmed. Use the returned selectData and bookingId to book.',
       };

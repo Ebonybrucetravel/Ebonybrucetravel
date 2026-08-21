@@ -416,7 +416,68 @@ export interface WakanowSelectResponse {
     taxPercentage: number | null;
     totalAmount: number | null;
     currency: string;
-    flight_summary: any | null;
+    flight_summary: {
+      slices: Array<{
+        airline: string;
+        airlineCode: string;
+        airlineLogo: string;
+        departureCode: string;
+        departureName: string;
+        departureTime: string;
+        arrivalCode: string;
+        arrivalName: string;
+        arrivalTime: string;
+        stops: number;
+        stopTime: string;
+        stopCity: string | null;
+        tripDuration: string;
+        segments: Array<{
+          flightNumber: string;
+          departureCode: string;
+          departureName: string;
+          destinationCode: string;
+          destinationName: string;
+          startTime: string;
+          endTime: string;
+          duration: string;
+          cabinClass: string;
+          operatingCarrier: string;
+          aircraft: string;
+          isStop: boolean;
+          layover: string | null;
+          layoverDuration: string;
+          bookingClass: string;
+          fareType: string;
+          fareBasisCode: string;
+          technicalStops: any[];        
+          hasTechnicalStops: boolean;   
+        }>;
+        freeBaggage: {
+          BagCount: number;
+          Weight: number;
+          WeightUnit: string | null;
+        } | null;
+        stopDetails: {
+          hasStop: boolean;
+          stopCount: number;
+          totalStopTime: string;
+          stopLocations: Array<{
+            location: string;
+            duration: string;
+            arrivalCode: string;
+            arrivalName: string;
+            departureCode: string;
+            departureName: string;
+          }>;
+        };
+      }>;
+      price: {
+        Amount: number;
+        CurrencyCode: string;
+      };
+      priceDetails: any[];
+      isRefundable: boolean;
+    } | null;  
     fare_rules: string[];
     penalty_rules: string[] | null;
     terms_and_conditions: {
@@ -520,5 +581,106 @@ export interface WakanowCompleteBookingResponse {
   nextStep: {
     action: string;
     description: string;
+  };
+}
+
+export class TechnicalStopDto {
+  @ApiPropertyOptional({ description: 'Airline name', example: 'Turkish Airlines' })
+  @IsOptional()
+  @IsString()
+  airline?: string;
+
+  @ApiPropertyOptional({ description: 'Flight number', example: 'TK626' })
+  @IsOptional()
+  @IsString()
+  flightNumber?: string;
+
+  @ApiPropertyOptional({ description: 'Leg origin code', example: 'LOS' })
+  @IsOptional()
+  @IsString()
+  legFrom?: string;
+
+  @ApiPropertyOptional({ description: 'Leg origin name', example: 'Lagos' })
+  @IsOptional()
+  @IsString()
+  legFromName?: string;
+
+  @ApiPropertyOptional({ description: 'Leg destination code', example: 'IST' })
+  @IsOptional()
+  @IsString()
+  legTo?: string;
+
+  @ApiPropertyOptional({ description: 'Leg destination name', example: 'Istanbul' })
+  @IsOptional()
+  @IsString()
+  legToName?: string;
+
+  @ApiPropertyOptional({ description: 'Technical stop location', example: 'Accra' })
+  @IsOptional()
+  @IsString()
+  stopLocation?: string;
+
+  @ApiPropertyOptional({ description: 'Technical stop airport code', example: 'ACC' })
+  @IsOptional()
+  @IsString()
+  stopCode?: string;
+
+  @ApiPropertyOptional({ description: 'Technical stop duration', example: '01:30:00' })
+  @IsOptional()
+  @IsString()
+  stopDuration?: string;
+
+  @ApiPropertyOptional({ description: 'Arrival time at technical stop' })
+  @IsOptional()
+  @IsString()
+  arrivalTime?: string;
+
+  @ApiPropertyOptional({ description: 'Departure time from technical stop' })
+  @IsOptional()
+  @IsString()
+  departureTime?: string;
+}
+
+export class StopInformationDto {
+  @ApiProperty({ description: 'Total number of layovers across all flights', example: 1 })
+  @IsNumber()
+  totalStops: number;
+
+  @ApiPropertyOptional({ 
+    description: 'Details of stops for each flight',
+    type: 'array' 
+  })
+  @IsOptional()
+  @IsArray()
+  stopDetails?: any[];
+
+  @ApiPropertyOptional({ 
+    description: 'List of all technical stops',
+    type: [TechnicalStopDto] 
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TechnicalStopDto)
+  technicalStops?: TechnicalStopDto[];
+
+  @ApiPropertyOptional({ 
+    description: 'List of all layovers',
+    type: 'array' 
+  })
+  @IsOptional()
+  @IsArray()
+  layoversList?: any[];
+
+  @ApiPropertyOptional({ 
+    description: 'Summary of stops',
+    type: 'object' 
+  })
+  @IsOptional()
+  @IsObject()
+  summary?: {
+    totalLayovers: number;
+    totalTechnicalStops: number;
+    hasTechnicalStops: boolean;
   };
 }

@@ -328,8 +328,12 @@ const finalPrice = convertedTotalWithFee + markupAmount + serviceFeeAmount;
           operating_carrier_code: leg.OperatingCarrier,
           marketing_carrier: leg.MarketingCarrier,
           aircraft: leg.Aircraft,
-          layover: leg.Layover,
-          layover_duration: leg.LayoverDuration,
+        
+          layover: leg.Layer || leg.Layover,
+          layover_duration: leg.LayerDuration || leg.LayoverDuration,
+          // Also add these for completeness
+          is_stop: leg.IsStop || false,
+          technical_stops: leg.TechnicalStops || [],
         };
       }
       
