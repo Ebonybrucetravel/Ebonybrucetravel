@@ -234,16 +234,27 @@ if (isInternational) {
       if (!p.phoneNumber) {
         throw new BadRequestException(`Passenger ${i + 1}: Phone is required`);
       }
-      if (!p.dateOfBirth) {
-        throw new BadRequestException(`Passenger ${i + 1}: Date of birth is required`);
+      
+      // ✅ CHECK FOR EMPTY DATE FIRST
+      if (!p.dateOfBirth || p.dateOfBirth === '' || p.dateOfBirth === 'mm/dd/yyyy' || p.dateOfBirth === 'MM/DD/YYYY') {
+        throw new BadRequestException(
+          `Passenger ${i + 1}: Date of birth is required for ${p.passengerType || 'passenger'} "${p.firstName} ${p.lastName}". ` +
+          `Please go back and select a valid date of birth.`
+        );
       }
       
-      // ✅ NORMALIZE DATE FORMAT HERE
+      // ✅ NORMALIZE DATE FORMAT
       const normalizedDate = this.normalizeDate(p.dateOfBirth);
+      
+      // ✅ VALIDATE THE NORMALIZED DATE
       const dateObj = new Date(normalizedDate);
       if (isNaN(dateObj.getTime())) {
-        throw new BadRequestException(`Passenger ${i + 1}: Date of birth is not valid - received: "${p.dateOfBirth}"`);
+        throw new BadRequestException(
+          `Passenger ${i + 1}: Date of birth is not valid - received: "${p.dateOfBirth}" for ${p.passengerType || 'passenger'} "${p.firstName} ${p.lastName}". ` +
+          `Please use MM/DD/YYYY format.`
+        );
       }
+      
       // ✅ Update with normalized date
       p.dateOfBirth = normalizedDate;
       
@@ -255,19 +266,26 @@ if (isInternational) {
       }
     }
   }
-
   private normalizeDate(dateStr: string): string {
     if (!dateStr) return '';
-  
+    
+    // Trim whitespace
+    dateStr = dateStr.trim();
+    
+    // Check for placeholder values
+    if (dateStr === 'mm/dd/yyyy' || dateStr === 'MM/DD/YYYY' || dateStr === '--/--/----') {
+      return '';
+    }
+    
     this.logger.log(`🔍 Normalizing date: "${dateStr}"`);
-  
+    
     // If already in YYYY-MM-DD format
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       this.logger.log(`✅ Date already in YYYY-MM-DD: ${dateStr}`);
       return dateStr;
     }
-  
-    // If in MM/DD/YYYY format (e.g., 01/19/1990)
+    
+    // If in MM/DD/YYYY format (e.g., 01/19/1990 or 09/20/2024)
     if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
       const parts = dateStr.split('/');
       const month = String(parseInt(parts[0])).padStart(2, '0');
@@ -277,26 +295,53 @@ if (isInternational) {
       this.logger.log(`✅ Converted MM/DD/YYYY to YYYY-MM-DD: ${dateStr} -> ${result}`);
       return result;
     }
-  
+    
+    // If in DD/MM/YYYY format (common in some countries)
+    if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(dateStr)) {
+      const parts = dateStr.split('.');
+      const day = String(parseInt(parts[0])).padStart(2, '0');
+      const month = String(parseInt(parts[1])).padStart(2, '0');
+      const year = parts[2];
+      const result = `${year}-${month}-${day}`;
+      this.logger.log(`✅ Converted DD.MM.YYYY to YYYY-MM-DD: ${dateStr} -> ${result}`);
+      return result;
+    }
+    
     // If in MM/DD/YY format (2 digit year)
     if (/^\d{1,2}\/\d{1,2}\/\d{2}$/.test(dateStr)) {
       const parts = dateStr.split('/');
       const month = String(parseInt(parts[0])).padStart(2, '0');
       const day = String(parseInt(parts[1])).padStart(2, '0');
-      const year = parseInt(parts[2]) < 100 ? 2000 + parseInt(parts[2]) : parseInt(parts[2]);
+      // Assume 20xx for 2-digit years (e.g., 24 -> 2024)
+      const year = 2000 + parseInt(parts[2]);
       const result = `${year}-${month}-${day}`;
       this.logger.log(`✅ Converted MM/DD/YY to YYYY-MM-DD: ${dateStr} -> ${result}`);
       return result;
     }
-  
-    // Try JavaScript Date parsing
-    const date = new Date(dateStr);
-    if (!isNaN(date.getTime())) {
-      const result = date.toISOString().split('T')[0];
-      this.logger.log(`✅ Parsed with Date constructor: ${dateStr} -> ${result}`);
+    
+    // If in YYYY/MM/DD format
+    if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(dateStr)) {
+      const parts = dateStr.split('/');
+      const year = parts[0];
+      const month = String(parseInt(parts[1])).padStart(2, '0');
+      const day = String(parseInt(parts[2])).padStart(2, '0');
+      const result = `${year}-${month}-${day}`;
+      this.logger.log(`✅ Converted YYYY/MM/DD to YYYY-MM-DD: ${dateStr} -> ${result}`);
       return result;
     }
-  
+    
+    // Try JavaScript Date parsing as last resort
+    try {
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        const result = date.toISOString().split('T')[0];
+        this.logger.log(`✅ Parsed with Date constructor: ${dateStr} -> ${result}`);
+        return result;
+      }
+    } catch (e) {
+      // Ignore
+    }
+    
     // If all fails, log warning and return original
     this.logger.warn(`⚠️ Unable to parse date: ${dateStr}`);
     return dateStr;
