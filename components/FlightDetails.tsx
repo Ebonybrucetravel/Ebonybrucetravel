@@ -358,38 +358,148 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     return currentItem;
   }, [currentItem]);
 
-  // ✅ renderStopDetails
-  const renderStopDetails = () => {
-    const stopInfo = stopInformation;
-    
-    const hasTechnicalStops = stopInfo?.hasTechnicalStops || false;
-    const technicalStops = stopInfo?.technicalStops || [];
-    const totalTechnicalStops = stopInfo?.totalTechnicalStops || 0;
-    
-    console.log('🔍 renderStopDetails:', {
-      hasTechnicalStops,
-      totalTechnicalStops,
-      technicalStopsCount: technicalStops.length,
+  
+// Replace the renderStopDetails function with this improved version:
+
+const renderStopDetails = () => {
+  const stopInfo = stopInformation;
+  
+  const hasTechnicalStops = stopInfo?.hasTechnicalStops || false;
+  const technicalStops = stopInfo?.technicalStops || [];
+  const totalTechnicalStops = stopInfo?.totalTechnicalStops || 0;
+  
+  // Try to get technical stops from flight_summary slices if stopInfo doesn't have good data
+  const slices = transformedItem?.slices || [];
+  let enrichedTechnicalStops = [...technicalStops];
+  
+  // If we have slices, try to extract technical stop info from segments
+  if (slices.length > 0 && (!hasTechnicalStops || technicalStops.length === 0 || technicalStops[0]?.stopLocation === 'Unknown')) {
+    slices.forEach((slice: any) => {
+      const segments = slice?.segments || [];
+      segments.forEach((segment: any) => {
+        // Check for technical stops in the segment
+        if (segment.hasTechnicalStops && segment.technicalStops && segment.technicalStops.length > 0) {
+          segment.technicalStops.forEach((ts: any) => {
+            const airportCode = ts.AirportCode || ts.stopCode || '';
+            const airportName = ts.AirportName || ts.stopLocation || '';
+            const duration = ts.Duration || ts.stopDuration || '';
+            
+            // Check if this technical stop already exists in our list
+            const exists = enrichedTechnicalStops.some(
+              (existing: any) => existing.stopCode === airportCode || existing.stopLocation === airportName
+            );
+            
+            if (!exists && (airportCode || airportName)) {
+              enrichedTechnicalStops.push({
+                stopLocation: airportName || airportCode,
+                stopCode: airportCode,
+                stopDuration: duration,
+                arrivalTime: ts.ArrivalDate || ts.arrivalTime || null,
+                departureTime: ts.DepartureDate || ts.departureTime || null,
+              });
+            }
+          });
+        }
+      });
     });
-    
-    return (
-      <div className="mt-8 pt-6 border-t border-gray-100">
-        <div className="flex items-center gap-2 mb-4">
-          <div className={`h-px flex-1 ${hasTechnicalStops ? 'bg-amber-200' : 'bg-gray-200'}`}></div>
-          <div className="flex items-center gap-2">
-            <svg className={`w-4 h-4 ${hasTechnicalStops ? 'text-amber-500' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <h4 className={`text-xs font-black uppercase tracking-wider ${hasTechnicalStops ? 'text-amber-600' : 'text-gray-400'}`}>
-              Technical Stops {hasTechnicalStops ? `(${totalTechnicalStops})` : ''}
-            </h4>
-          </div>
-          <div className={`h-px flex-1 ${hasTechnicalStops ? 'bg-amber-200' : 'bg-gray-200'}`}></div>
+  }
+  
+  // Also check flight_summary slices directly
+  const flightSummary = transformedItem?.flight_summary;
+  if (flightSummary?.slices) {
+    flightSummary.slices.forEach((slice: any) => {
+      const segments = slice?.segments || [];
+      segments.forEach((segment: any) => {
+        if (segment.hasTechnicalStops && segment.technicalStops && segment.technicalStops.length > 0) {
+          segment.technicalStops.forEach((ts: any) => {
+            const airportCode = ts.AirportCode || ts.stopCode || '';
+            const airportName = ts.AirportName || ts.stopLocation || '';
+            const duration = ts.Duration || ts.stopDuration || '';
+            
+            const exists = enrichedTechnicalStops.some(
+              (existing: any) => existing.stopCode === airportCode || existing.stopLocation === airportName
+            );
+            
+            if (!exists && (airportCode || airportName)) {
+              enrichedTechnicalStops.push({
+                stopLocation: airportName || airportCode,
+                stopCode: airportCode,
+                stopDuration: duration,
+                arrivalTime: ts.ArrivalDate || ts.arrivalTime || null,
+                departureTime: ts.DepartureDate || ts.departureTime || null,
+              });
+            }
+          });
+        }
+      });
+    });
+  }
+  
+  const finalTechnicalStops = enrichedTechnicalStops.length > 0 ? enrichedTechnicalStops : technicalStops;
+  const hasValidTechnicalStops = finalTechnicalStops.some(
+    (stop: any) => stop.stopLocation && stop.stopLocation !== 'Unknown'
+  );
+  
+  // If we have valid technical stops, show them
+  const showTechnicalStops = hasValidTechnicalStops || (hasTechnicalStops && finalTechnicalStops.length > 0);
+  
+  return (
+    <div className="mt-8 pt-6 border-t border-gray-100">
+      <div className="flex items-center gap-2 mb-4">
+        <div className={`h-px flex-1 ${showTechnicalStops ? 'bg-amber-200' : 'bg-gray-200'}`}></div>
+        <div className="flex items-center gap-2">
+          <svg className={`w-4 h-4 ${showTechnicalStops ? 'text-amber-500' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <h4 className={`text-xs font-black uppercase tracking-wider ${showTechnicalStops ? 'text-amber-600' : 'text-gray-400'}`}>
+            Technical Stops {showTechnicalStops ? `(${finalTechnicalStops.length})` : ''}
+          </h4>
         </div>
-        
-        {hasTechnicalStops && technicalStops.length > 0 ? (
-          <div className="space-y-3">
-            {technicalStops.map((stop: any, idx: number) => (
+        <div className={`h-px flex-1 ${showTechnicalStops ? 'bg-amber-200' : 'bg-gray-200'}`}></div>
+      </div>
+      
+      {showTechnicalStops && finalTechnicalStops.length > 0 ? (
+        <div className="space-y-3">
+          {finalTechnicalStops.map((stop: any, idx: number) => {
+            // Determine the display name - prefer stopCode if stopLocation is "Unknown"
+            let displayName = stop.stopLocation || stop.location || 'Unknown';
+            if (displayName === 'Unknown' && stop.stopCode) {
+              // Try to get airport name from the code
+              const airportNames: Record<string, string> = {
+                'FCO': 'Rome (FCO)',
+                'LHR': 'London (LHR)',
+                'CDG': 'Paris (CDG)',
+                'AMS': 'Amsterdam (AMS)',
+                'DXB': 'Dubai (DXB)',
+                'DOH': 'Doha (DOH)',
+                'AUH': 'Abu Dhabi (AUH)',
+                'IST': 'Istanbul (IST)',
+                'JFK': 'New York (JFK)',
+                'EWR': 'Newark (EWR)',
+                'ORD': 'Chicago (ORD)',
+                'ATL': 'Atlanta (ATL)',
+                'LAX': 'Los Angeles (LAX)',
+                'SFO': 'San Francisco (SFO)',
+                'MIA': 'Miami (MIA)',
+                'YYZ': 'Toronto (YYZ)',
+                'YVR': 'Vancouver (YVR)',
+                'YUL': 'Montreal (YUL)',
+                'ADD': 'Addis Ababa (ADD)',
+                'LOS': 'Lagos (LOS)',
+                'NBO': 'Nairobi (NBO)',
+                'JNB': 'Johannesburg (JNB)',
+                'CPT': 'Cape Town (CPT)',
+                'DUR': 'Durban (DUR)',
+              };
+              displayName = airportNames[stop.stopCode] || `${stop.stopCode} (Technical Stop)`;
+            } else if (displayName === 'Unknown' && stop.airport) {
+              displayName = stop.airport;
+            }
+            
+            // Get stop duration
+            let durationDisplay = stop.stopDuration || stop.duration || '';
+            
+            return (
               <div key={idx} className="bg-amber-50 rounded-xl border border-amber-100 p-4">
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
@@ -398,29 +508,46 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <p className="text-base font-black text-gray-900">{stop.stopLocation || stop.location || 'Unknown'}</p>
-                    {stop.stopDuration && (
-                      <span className="text-xs text-amber-700">⏱ {formatStopTime(stop.stopDuration)}</span>
-                    )}
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <p className="text-base font-black text-gray-900">{displayName}</p>
+                      {stop.stopCode && displayName !== stop.stopCode && (
+                        <span className="text-xs text-gray-500">({stop.stopCode})</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 flex-wrap">
+                      {durationDisplay && (
+                        <span className="text-xs text-amber-700">⏱ {formatStopTime(durationDisplay)}</span>
+                      )}
+                      {stop.arrivalTime && (
+                        <span className="text-xs text-gray-500">Arrives: {formatTime(stop.arrivalTime)}</span>
+                      )}
+                      {stop.departureTime && (
+                        <span className="text-xs text-gray-500">Departs: {formatTime(stop.departureTime)}</span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-2">
+                      Technical stop • Passengers remain on board
+                    </p>
                   </div>
                 </div>
               </div>
-            ))}
+            );
+          })}
+        </div>
+      ) : (
+        <div className="bg-green-50 rounded-xl border border-green-100 p-4 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <p className="text-sm text-green-600 font-medium">No technical stops on this route</p>
           </div>
-        ) : (
-          <div className="bg-green-50 rounded-xl border border-green-100 p-4 text-center">
-            <div className="flex items-center justify-center gap-2">
-              <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-              <p className="text-sm text-green-600 font-medium">No technical stops on this route</p>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">This flight does not have any technical stops (fuel stops where passengers stay on board).</p>
-          </div>
-        )}
-      </div>
-    );
-  };
+          <p className="text-xs text-gray-500 mt-1">This flight does not have any technical stops (fuel stops where passengers stay on board).</p>
+        </div>
+      )}
+    </div>
+  );
+};
 
   // Handle book click
   const handleBookClick = async () => {
