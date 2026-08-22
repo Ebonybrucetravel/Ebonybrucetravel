@@ -12,11 +12,10 @@ interface FlightDetailsProps {
   onBook: () => void;
 }
 
-// ✅ NEW: Helper to format duration display
+// ✅ Helper to format duration display
 const formatDurationDisplay = (duration?: string): string => {
   if (!duration) return '';
   
-  // Handle "1.00:15:00" format (days.hours:minutes:seconds)
   if (duration.includes('.')) {
     const parts = duration.split('.');
     const days = parseInt(parts[0]);
@@ -32,7 +31,6 @@ const formatDurationDisplay = (duration?: string): string => {
     }
   }
   
-  // Handle HH:MM:SS format
   if (duration.includes(':') && !duration.includes('.')) {
     const parts = duration.split(':');
     if (parts.length === 3) {
@@ -46,33 +44,6 @@ const formatDurationDisplay = (duration?: string): string => {
   }
   
   return duration;
-};
-
-// ✅ NEW: Helper to extract stop details from API response
-const extractStopDetails = (item: any) => {
-  // Check for stop_information from the API response
-  if (item._wakanowData?.stop_information) {
-    return item._wakanowData.stop_information;
-  }
-  
-  // Check for stop_information directly on the item
-  if (item.stop_information) {
-    return item.stop_information;
-  }
-  
-  // Check for stopDetails on slices
-  const slices = item.slices || item.flight_summary?.slices || [];
-  const stopDetails = slices.map((slice: any) => slice.stopDetails).filter(Boolean);
-  
-  if (stopDetails.length > 0) {
-    return {
-      totalStops: stopDetails.reduce((total: number, s: any) => total + (s.stopCount || 0), 0),
-      stopDetails: stopDetails,
-      stopsList: stopDetails.flatMap((s: any) => s.stopLocations || [])
-    };
-  }
-  
-  return null;
 };
 
 const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBack, onBook }) => {
@@ -119,11 +90,9 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     return formatDurationDisplay(String(duration));
   };
 
-  // ✅ NEW: Format stop time for display
   const formatStopTime = (duration?: string): string => {
     if (!duration) return '';
     
-    // Handle "05:30:00" format
     if (duration.includes(':')) {
       const parts = duration.split(':');
       if (parts.length >= 2) {
@@ -188,32 +157,41 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     convertFlightPrice();
   }, [currentItem, currency.code, formatPrice]);
 
-  // ✅ NEW: Extract stop information from the item
+  // ✅ stopInformation useMemo
   const stopInformation = useMemo(() => {
     if (!currentItem) return null;
     
-    // Try to get stop information from various sources
-    const stopInfo = extractStopDetails(currentItem);
+    let stopInfo = null;
     
-    if (stopInfo) {
-      console.log('🛑 Found stop information:', stopInfo);
-      return stopInfo;
+    if (currentItem._wakanowData?.stop_information) {
+      stopInfo = currentItem._wakanowData.stop_information;
+    } else if (currentItem.stop_information) {
+      stopInfo = currentItem.stop_information;
+    } else if (currentItem.flight_summary?.stop_information) {
+      stopInfo = currentItem.flight_summary.stop_information;
     }
     
-    // Check for stopDetails directly on slices
-    const slices = currentItem.slices || [];
-    if (slices.length > 0 && slices[0]?.stopDetails) {
+    if (stopInfo) {
+      console.log('🛑 Found stop_information:', stopInfo);
+      
+      const technicalStops = stopInfo.technicalStops || [];
+      const hasTechnicalStops = stopInfo.summary?.hasTechnicalStops || false;
+      const totalTechnicalStops = stopInfo.summary?.totalTechnicalStops || 0;
+      const totalLayovers = stopInfo.totalStops || 0;
+      const layoversList = stopInfo.layoversList || [];
+      
       return {
-        totalStops: slices.reduce((total: number, s: any) => total + (s.stopDetails?.stopCount || 0), 0),
-        stopDetails: slices.map((s: any) => s.stopDetails).filter(Boolean),
-        stopsList: slices.flatMap((s: any) => s.stopDetails?.stopLocations || [])
+        totalLayovers: totalLayovers,
+        layoversList: layoversList,
+        technicalStops: technicalStops,
+        hasTechnicalStops: hasTechnicalStops,
+        totalTechnicalStops: totalTechnicalStops,
+        raw: stopInfo
       };
     }
     
     return null;
   }, [currentItem]);
-
-
 
   // Helper function to extract stopover airports from segments
   const getStopoverAirports = (segments: any[]) => {
@@ -246,8 +224,6 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
         }
       }
       
-      const incomingFlightNum = segment.marketing_carrier_flight_number || segment.flightNumber || segment.flight_number || '';
-      const incomingAirline = segment.operating_carrier?.name || segment.airline || segment.airlineName || '';
       const outgoingFlightNum = nextSegment?.marketing_carrier_flight_number || nextSegment?.flightNumber || nextSegment?.flight_number || '';
       const outgoingAirline = nextSegment?.operating_carrier?.name || nextSegment?.airline || nextSegment?.airlineName || '';
       
@@ -260,8 +236,6 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
         layoverDuration: layoverDuration,
         flightNumber: outgoingFlightNum,
         airline: outgoingAirline,
-        incomingFlightNumber: incomingFlightNum,
-        incomingAirline: incomingAirline
       };
     });
   };
@@ -270,7 +244,6 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
   const transformedItem = useMemo(() => {
     if (!currentItem) return null;
     
-    // If we have Wakanow data from the API, use it
     if (currentItem._wakanowData) {
       const wakanowData = currentItem._wakanowData;
       const flightSummary = wakanowData.flight_summary;
@@ -309,7 +282,6 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
             destination: segments[segments.length - 1]?.destination || slice.destination,
             departure_time: segments[0]?.departing_at || slice.departure_time || slice.departureTime,
             arrival_time: segments[segments.length - 1]?.arriving_at || slice.arrival_time || slice.arrivalTime,
-            // ✅ PRESERVE stopDetails
             stopDetails: slice.stopDetails || null,
           };
         });
@@ -317,7 +289,8 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
         return {
           ...currentItem,
           slices: processedSlices,
-          isRoundTrip: processedSlices.length > 1,
+          isRoundTrip: processedSlices.length === 2,
+          isMultiCity: processedSlices.length > 2,
           totalAmount: wakanowData.totalAmount || currentItem.totalAmount || 0,
           basePrice: wakanowData.basePrice || currentItem.basePrice || 0,
           markupAmount: wakanowData.markupAmount || currentItem.markupAmount || 0,
@@ -339,14 +312,12 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                        processedSlices[0]?.freeBaggage ||
                        currentItem.freeBaggage ||
                        null,
-          // ✅ PRESERVE stop_information
           stop_information: wakanowData.stop_information || currentItem.stop_information || null,
           _wakanowData: wakanowData,
         };
       }
     }
     
-    // If we have already enriched data
     if (currentItem.fare_rules?.length > 0 || currentItem.penalty_rules?.length > 0 || currentItem.isRefundable) {
       const slices = currentItem.slices || [];
       const processedSlices = slices.map((slice: any) => {
@@ -376,7 +347,8 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
       return {
         ...currentItem,
         slices: processedSlices.length > 0 ? processedSlices : currentItem.slices,
-        isRoundTrip: (processedSlices.length > 1) || currentItem.isRoundTrip || false,
+        isRoundTrip: processedSlices.length === 2,
+        isMultiCity: processedSlices.length > 2,
         freeBaggage: currentItem.freeBaggage || null,
         custom_messages: (currentItem as any).custom_messages || [],
         stop_information: currentItem.stop_information || null,
@@ -386,16 +358,20 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     return currentItem;
   }, [currentItem]);
 
-
+  // ✅ renderStopDetails
   const renderStopDetails = () => {
     const stopInfo = stopInformation;
     
-    // ✅ If stopInfo is null, still show the section with "No technical stops"
-    const hasTechnicalStops = stopInfo?.summary?.hasTechnicalStops || false;
+    const hasTechnicalStops = stopInfo?.hasTechnicalStops || false;
     const technicalStops = stopInfo?.technicalStops || [];
-    const totalTechnicalStops = stopInfo?.summary?.totalTechnicalStops || 0;
+    const totalTechnicalStops = stopInfo?.totalTechnicalStops || 0;
     
-    // ✅ ALWAYS render the section, even if stopInfo is null
+    console.log('🔍 renderStopDetails:', {
+      hasTechnicalStops,
+      totalTechnicalStops,
+      technicalStopsCount: technicalStops.length,
+    });
+    
     return (
       <div className="mt-8 pt-6 border-t border-gray-100">
         <div className="flex items-center gap-2 mb-4">
@@ -424,7 +400,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                   <div className="flex-1">
                     <p className="text-base font-black text-gray-900">{stop.stopLocation || stop.location || 'Unknown'}</p>
                     {stop.stopDuration && (
-                      <span className="text-xs text-amber-700">⏱ {stop.stopDuration}</span>
+                      <span className="text-xs text-amber-700">⏱ {formatStopTime(stop.stopDuration)}</span>
                     )}
                   </div>
                 </div>
@@ -569,13 +545,18 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     );
   };
 
-  // Render a journey with stopovers
-  const renderJourney = (slice: any, title: string, date: string) => {
+  // ✅ Updated: Render a journey with stopovers (supports multi-city)
+  const renderJourney = (slice: any, title: string, date: string, journeyNumber: number) => {
     if (!slice) {
       return (
         <div>
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{title}</h3>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 flex items-center justify-center text-[#33a8da] font-black text-sm flex-shrink-0">
+                {journeyNumber}
+              </div>
+              <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{title}</h3>
+            </div>
             <p className="text-xs font-bold text-gray-600">{date}</p>
           </div>
           <div className="text-center py-8 text-gray-400">No flight information available</div>
@@ -587,14 +568,18 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     const stopovers = getStopoverAirports(segments);
     const hasStopovers = stopovers.length > 0;
     
-    // ✅ Check if this slice has stopDetails from the API
     const hasStopDetails = slice.stopDetails && slice.stopDetails.stopLocations?.length > 0;
     
     if (segments.length === 0) {
       return (
         <div>
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{title}</h3>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 flex items-center justify-center text-[#33a8da] font-black text-sm flex-shrink-0">
+                {journeyNumber}
+              </div>
+              <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{title}</h3>
+            </div>
             <p className="text-xs font-bold text-gray-600">{date}</p>
           </div>
           <div className="text-center py-8 text-gray-400">No flight information available</div>
@@ -605,13 +590,17 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     return (
       <div>
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{title}</h3>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 flex items-center justify-center text-[#33a8da] font-black text-sm flex-shrink-0">
+              {journeyNumber}
+            </div>
+            <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{title}</h3>
+          </div>
           <p className="text-xs font-bold text-gray-600">{date}</p>
         </div>
         
         {segments.map((segment: any, idx: number) => renderSegment(segment, idx, idx === segments.length - 1))}
         
-        {/* ✅ Render stopovers from segments */}
         {hasStopovers && !hasStopDetails && (
           <div className="mt-6">
             <div className="flex items-center gap-2 mb-3">
@@ -717,19 +706,32 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     );
   }
 
-  const isRoundTrip = transformedItem.slices && transformedItem.slices.length > 1;
-  const outboundSlice = transformedItem.slices?.[0];
-  const returnSlice = transformedItem.slices?.[1];
+  const isRoundTrip = transformedItem.isRoundTrip || false;
+  const isMultiCity = transformedItem.isMultiCity || false;
+  const slices = transformedItem.slices || [];
+  const sliceCount = slices.length;
 
-  const firstSegment = outboundSlice?.segments?.[0] || {};
+  // ✅ Determine trip type label
+  let tripTypeLabel = 'One-way';
+  if (isMultiCity) {
+    tripTypeLabel = 'Multi-city';
+  } else if (isRoundTrip) {
+    tripTypeLabel = 'Round trip';
+  }
+
+  const firstSegment = slices[0]?.segments?.[0] || {};
   const airlineName = transformedItem.airlineName || firstSegment?.operating_carrier?.name || transformedItem.provider || 'Airline';
   const airlineCode = transformedItem.airlineCode || firstSegment?.operating_carrier?.iata_code || '';
   const airlineLogo = transformedItem.airlineLogo;
   const flightNumber = transformedItem.flightNumber || firstSegment?.marketing_carrier_flight_number || '';
-  const stopCount = outboundSlice?.segments?.length ? outboundSlice.segments.length - 1 : 0;
-  const stopText = stopCount === 0 ? 'Direct' : `${stopCount} stop${stopCount > 1 ? 's' : ''}`;
   
-  const baggageInfo = outboundSlice?.segments?.[0]?.freeBaggage || transformedItem.freeBaggage;
+  // ✅ Calculate total stops across all slices
+  const totalStopsAcrossSlices = slices.reduce((total: number, slice: any) => {
+    return total + (slice.segments?.length ? slice.segments.length - 1 : 0);
+  }, 0);
+  const stopText = totalStopsAcrossSlices === 0 ? 'Direct' : `${totalStopsAcrossSlices} stop${totalStopsAcrossSlices > 1 ? 's' : ''}`;
+  
+  const baggageInfo = slices[0]?.segments?.[0]?.freeBaggage || transformedItem.freeBaggage;
   const isRefundable = transformedItem.isRefundable || transformedItem.flight_summary?.isRefundable || false;
   const providerBadge = transformedItem.isWakanow ? 'Wakanow' : '';
   const fareRules = transformedItem.fare_rules || [];
@@ -737,8 +739,8 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
 
   // ✅ Get stop information from the API
   const stopInfo = stopInformation;
-  const totalStops = stopInfo?.totalStops || 0;
-  const hasTechnicalStops = totalStops > 0;
+  const hasTechnicalStops = stopInfo?.hasTechnicalStops || false;
+  const totalTechnicalStops = stopInfo?.totalTechnicalStops || 0;
 
   return (
     <div className="bg-[#f8fbfe] min-h-screen py-12">
@@ -776,14 +778,16 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{flightNumber || 'Flight'}</p>
                     <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{tripTypeLabel}</p>
+                    <span className="w-1 h-1 rounded-full bg-gray-300"></span>
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{stopText}</p>
                     
-                    {/* ✅ Show technical stop indicator */}
-                    {hasTechnicalStops && (
+                    {/* ✅ Only show technical stop badge if there are actual technical stops */}
+                    {hasTechnicalStops && totalTechnicalStops > 0 && (
                       <>
                         <span className="w-1 h-1 rounded-full bg-gray-300"></span>
                         <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-                          🛑 {totalStops} technical stop{totalStops > 1 ? 's' : ''}
+                          🛑 {totalTechnicalStops} technical stop{totalTechnicalStops > 1 ? 's' : ''}
                         </span>
                       </>
                     )}
@@ -814,88 +818,64 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
               </div>
             </div>
 
-            {baggageInfo && baggageInfo.BagCount > 0 && (
-              <div className="mb-4 p-3 bg-green-50 rounded-xl border border-green-100 flex items-center gap-3">
-                <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
-                <span className="text-sm font-bold text-gray-700">
-                  Baggage Allowance: <span className="text-green-700">{baggageInfo.BagCount} bag{baggageInfo.BagCount > 1 ? 's' : ''} included</span>
-                  {baggageInfo.Weight > 0 && ` (${baggageInfo.Weight} ${baggageInfo.WeightUnit || 'kg'} per bag)`}
-                </span>
-              </div>
-            )}
+            
 
-            {/* Flight Summary */}
-            {isRoundTrip && outboundSlice && returnSlice ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-gray-100">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 flex items-center justify-center text-[#33a8da] font-black text-sm flex-shrink-0">1</div>
-                  <div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="font-black text-gray-900">{outboundSlice.segments?.[0]?.origin?.iata_code || '--'}</span>
-                      <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                      </svg>
-                      <span className="font-black text-gray-900">{outboundSlice.segments?.[outboundSlice.segments.length - 1]?.destination?.iata_code || '--'}</span>
+            {/* ✅ Multi-City Summary */}
+            <div className="pt-6 border-t border-gray-100">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {slices.map((slice: any, idx: number) => {
+                  const origin = slice.origin?.iata_code || slice.departureCode || '--';
+                  const destination = slice.destination?.iata_code || slice.arrivalCode || '--';
+                  const depTime = formatTime(slice.segments?.[0]?.departing_at || slice.departure_time || slice.departureTime);
+                  const arrTime = formatTime(slice.segments?.[slice.segments.length - 1]?.arriving_at || slice.arrival_time || slice.arrivalTime);
+                  const segmentCount = slice.segments?.length || 1;
+                  const stops = segmentCount > 1 ? `${segmentCount - 1} stop` : 'Direct';
+                  
+                  return (
+                    <div key={idx} className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-black text-gray-900">{origin}</span>
+                        <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                        <span className="font-black text-gray-900">{destination}</span>
+                      </div>
+                      <p className="text-xs font-bold text-gray-500 mt-1">
+                        {depTime} - {arrTime}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        {stops} • {calculateDuration(slice.duration || slice.tripDuration)}
+                      </p>
                     </div>
-                    <p className="text-xs font-bold text-gray-500 mt-1">
-                      {formatTime(outboundSlice.segments?.[0]?.departing_at)} - {formatTime(outboundSlice.segments?.[outboundSlice.segments.length - 1]?.arriving_at)}
-                    </p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                      {outboundSlice.segments?.length > 1 ? `${outboundSlice.segments.length - 1} stop` : 'Direct'} • {calculateDuration(outboundSlice.duration)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 flex items-center justify-center text-[#33a8da] font-black text-sm flex-shrink-0">2</div>
-                  <div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="font-black text-gray-900">{returnSlice.segments?.[0]?.origin?.iata_code || '--'}</span>
-                      <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                      </svg>
-                      <span className="font-black text-gray-900">{returnSlice.segments?.[returnSlice.segments.length - 1]?.destination?.iata_code || '--'}</span>
-                    </div>
-                    <p className="text-xs font-bold text-gray-500 mt-1">
-                      {formatTime(returnSlice.segments?.[0]?.departing_at)} - {formatTime(returnSlice.segments?.[returnSlice.segments.length - 1]?.arriving_at)}
-                    </p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                      {returnSlice.segments?.length > 1 ? `${returnSlice.segments.length - 1} stop` : 'Direct'} • {calculateDuration(returnSlice.duration)}
-                    </p>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
-            ) : (
-              <div className="mt-8 flex items-start gap-3 pt-6 border-t border-gray-100">
-                <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 flex items-center justify-center text-[#33a8da] font-black text-sm flex-shrink-0">1</div>
-                <div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="font-black text-gray-900">{outboundSlice?.segments?.[0]?.origin?.iata_code || transformedItem.departureAirport || '--'}</span>
-                    <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                    <span className="font-black text-gray-900">{outboundSlice?.segments?.[outboundSlice.segments.length - 1]?.destination?.iata_code || transformedItem.arrivalAirport || '--'}</span>
-                  </div>
-                  <p className="text-xs font-bold text-gray-500 mt-1">
-                    {formatTime(outboundSlice?.segments?.[0]?.departing_at || transformedItem.departureTime)} - {formatTime(outboundSlice?.segments?.[outboundSlice.segments.length - 1]?.arriving_at || transformedItem.arrivalTime)}
-                  </p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">
-                    {stopCount === 0 ? 'Direct' : `${stopCount} stop${stopCount > 1 ? 's' : ''}`} • {calculateDuration(outboundSlice?.duration || transformedItem.duration)}
-                  </p>
-                </div>
-              </div>
-            )}
+            </div>
           </div>
 
-          {/* Journey Details */}
+          {/* Journey Details - Multi-City Support */}
           <div className="p-8 md:p-12 space-y-12">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
-              {renderJourney(outboundSlice, 'Outbound Journey', formatDate(outboundSlice?.segments?.[0]?.departing_at || transformedItem.departureTime))}
-              {isRoundTrip && returnSlice && renderJourney(returnSlice, 'Return Journey', formatDate(returnSlice.segments?.[0]?.departing_at))}
+            <div className="grid grid-cols-1 gap-8 md:gap-12">
+              {slices.map((slice: any, idx: number) => {
+                const journeyNumber = idx + 1;
+                let title = `Journey ${journeyNumber}`;
+                let date = formatDate(slice.segments?.[0]?.departing_at || slice.departure_time || slice.departureTime);
+                
+                // ✅ Customize title based on slice position
+                if (isRoundTrip) {
+                  if (idx === 0) title = 'Outbound Journey';
+                  else if (idx === 1) title = 'Return Journey';
+                } else if (isMultiCity) {
+                  const origin = slice.origin?.iata_code || slice.departureCode || '--';
+                  const destination = slice.destination?.iata_code || slice.arrivalCode || '--';
+                  title = `${origin} → ${destination}`;
+                }
+                
+                return renderJourney(slice, title, date, journeyNumber);
+              })}
             </div>
 
-            {/* ✅ NEW: Render Technical Stop Details from API */}
+            {/* Render Technical Stop Details from API */}
             {renderStopDetails()}
 
             {/* Fare Rules Section */}
@@ -941,8 +921,9 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
                   </svg>
                 </div>
                 <p className="text-sm font-bold text-gray-600">
-                  {isRoundTrip ? 'Round trip' : 'One-way'} • {stopText} • Seats confirmed for immediate booking.
-                  {hasTechnicalStops && ` • ${totalStops} technical stop${totalStops > 1 ? 's' : ''}`}
+                  {tripTypeLabel} • {stopText} • Seats confirmed for immediate booking.
+                  {/* ✅ Only show technical stops if they actually exist */}
+                  {hasTechnicalStops && totalTechnicalStops > 0 && ` • ${totalTechnicalStops} technical stop${totalTechnicalStops > 1 ? 's' : ''}`}
                 </p>
               </div>
               <button 

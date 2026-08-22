@@ -779,12 +779,12 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           }
           const allTechnicalStops: any[] = [];
 
-          // ✅ 1. FIRST: Check slices from the search response
+        
           const slices = combination.slices || flightCombination?.slices || [];
           for (const slice of slices) {
             const segments = slice.segments || [];
             for (const segment of segments) {
-              // ✅ Check BOTH snake_case AND camelCase
+              
               const stops = segment.technical_stops || segment.technicalStops || [];
               if (Array.isArray(stops) && stops.length > 0) {
                 stops.forEach((stop: any) => {
@@ -799,11 +799,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               }
             }
           }
-          
-          // ✅ 2. SECOND: Check FlightLegs (both formats)
+      
           if (allTechnicalStops.length === 0) {
             outboundFlight.FlightLegs?.forEach((leg: any) => {
-              // Check both PascalCase and camelCase
+           
               const stops = leg.TechnicalStops || leg.technicalStops || [];
               if (Array.isArray(stops) && stops.length > 0) {
                 stops.forEach((stop: any) => {
@@ -1138,7 +1137,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     processFlights();
   }, [searchType, flightOffers, areResultsProcessed, airlinesMap]);
 
-  // Convert flight prices when currency changes (UNCHANGED)
   useEffect(() => {
     const convertFlightPrices = async () => {
       if (!formatPriceWithCurrency || processedFlights.length === 0) return;
@@ -1522,7 +1520,6 @@ const hotelAndCarResults = useMemo(() => {
       }
     }
 
-    // ✅ For car rentals, preserve ALL car rental fields
     if (searchType === 'car-rentals' || item.type === 'car-rentals') {
       return {
         ...item,
@@ -1718,7 +1715,7 @@ const hotelAndCarResults = useMemo(() => {
   const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
     if (flight._isBooking) return;
     
-    // ✅ Validate selectData exists
+ 
     if (!flight.selectData) {
       toast.error('Missing flight selection data. Please search again.', { id: 'flight-select' });
       return;
@@ -1735,8 +1732,7 @@ const hotelAndCarResults = useMemo(() => {
     setBookingFlightId(flight.id);
     
     try {
-      // ✅ NO API CALL - Just use whatever data we have
-      // The review page will fetch price breakdown if needed
+     
       
       const bookingData: ExtendedSearchResult = {
         ...flight,
@@ -1745,7 +1741,7 @@ const hotelAndCarResults = useMemo(() => {
       
       toast.success('Proceeding to booking!', { id: 'flight-select' });
       
-      // ✅ Navigate to Review page
+ 
       onSelect?.(bookingData);
       
     } catch (error: any) {
@@ -1781,13 +1777,13 @@ const hotelAndCarResults = useMemo(() => {
           const priceBreakdown = responseData.priceBreakdown;
           const slices = flightSummary?.slices || flight.slices || [];
           
-          // ✅ Extract technical stops from select response
+          
           const stopInfo = responseData.stop_information || null;
           const technicalStops = stopInfo?.technicalStops || [];
           const hasTechnicalStops = stopInfo?.summary?.hasTechnicalStops || false;
           const totalTechnicalStops = stopInfo?.summary?.totalTechnicalStops || 0;
           
-          // Also check segments for technical stops
+         
           let allTechnicalStops = [...technicalStops];
           if (!hasTechnicalStops && responseData.flight_summary?.slices) {
             for (const slice of responseData.flight_summary.slices) {
@@ -1806,7 +1802,7 @@ const hotelAndCarResults = useMemo(() => {
             }
           }
           
-          // ✅ Use combined data
+       
           const finalTechnicalStops = allTechnicalStops;
           const finalHasTechnicalStops = hasTechnicalStops || allTechnicalStops.length > 0;
           const finalTotalTechnicalStops = totalTechnicalStops || allTechnicalStops.length;
@@ -1917,13 +1913,11 @@ const hotelAndCarResults = useMemo(() => {
 
 
   const renderFlightCard = (flight: ExtendedSearchResult) => {
-  
     const isRefundable = flight.isWakanow 
       ? (flight.isRefundable || flight._wakanowData?.flight_summary?.isRefundable || false)
       : (flight.conditions?.refund_before_departure?.allowed || false);
     
     const baggageText = getBaggageText(flight);
-    const hasReturn = flight.isRoundTrip && flight.returnFlight?.departureTime;
     const displayPrice = flightPrices[flight.id] || 'Loading...';
     const isBookingThisFlight = bookingFlightId === flight.id;
   
@@ -1931,42 +1925,44 @@ const hotelAndCarResults = useMemo(() => {
     const isWakanowInternational = flight.isWakanow && (flight as any).isWakanowDomestic === false;
     const isDuffelFlight = !flight.isWakanow;
   
+   
+    const slices = flight.slices || [];
+    const isMultiCity = slices.length > 2;
+    const isRoundTrip = flight.isRoundTrip || slices.length === 2;
+  
+
+    const allSegments: any[] = [];
+    slices.forEach((slice: any) => {
+      if (slice.segments) {
+        slice.segments.forEach((seg: any) => {
+          allSegments.push({
+            ...seg,
+            sliceIndex: slices.indexOf(slice),
+            isLastSegment: seg === slice.segments[slice.segments.length - 1],
+          });
+        });
+      }
+    });
+  
     const handleBookClick = async (e: React.MouseEvent) => {
       e.stopPropagation();
       if (isBookingThisFlight) return;
-      
-
+  
       if (isDuffelFlight) {
-
         const offerData = buildDuffelOfferData(flight);
-        
-
         if (!offerData.id?.startsWith('off_')) {
           console.error('❌ DUFFEL: Invalid offer ID:', offerData.id);
           toast.error('Invalid flight offer. Please search again.');
           return;
         }
-        
         const flightWithOfferData = {
           ...flight,
           offerData: offerData,
-      
-          offer_id: offerData.id,  
-          offer_request_id: flight.offer_request_id || offerData.offer_request_id,  
+          offer_id: offerData.id,
+          offer_request_id: flight.offer_request_id || offerData.offer_request_id,
         };
-        
-        console.log('📦 DUFFEL: Passing offerData to review:', {
-          offer_id: flightWithOfferData.offer_id,
-          offer_request_id: flightWithOfferData.offer_request_id,
-          offerData_id: flightWithOfferData.offerData.id,
-          total_amount: flightWithOfferData.offerData.total_amount,
-          total_currency: flightWithOfferData.offerData.total_currency,
-          passengersCount: flightWithOfferData.offerData.passengers?.length || 0,
-        });
-        
         onSelect?.(flightWithOfferData);
       } else {
-       
         await handleBookFlight(flight);
       }
     };
@@ -1976,7 +1972,6 @@ const hotelAndCarResults = useMemo(() => {
         key={flight.id}
         className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden cursor-pointer"
         onClick={() => {
-    
           if (isDuffelFlight) {
             const offerData = buildDuffelOfferData(flight);
             const flightWithOfferData = {
@@ -1992,6 +1987,7 @@ const hotelAndCarResults = useMemo(() => {
         }}
       >
         <div className="p-6">
+          {/* Header */}
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
             <div className="flex items-center gap-4">
               {flight.airlineLogo ? (
@@ -2010,16 +2006,28 @@ const hotelAndCarResults = useMemo(() => {
               )}
               <div>
                 <h4 className="font-bold text-gray-900 text-lg">{flight.airlineName}</h4>
-                {isWakanowDomestic && (
-                  <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full mt-1 inline-block">
-                    Domestic Flight
-                  </span>
-                )}
-                {(isDuffelFlight || isWakanowInternational) && (
-                  <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mt-1 inline-block">
-                    International Flight
-                  </span>
-                )}
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  {isMultiCity && (
+                    <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
+                      Multi-City
+                    </span>
+                  )}
+                  {isRoundTrip && !isMultiCity && (
+                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                      Round Trip
+                    </span>
+                  )}
+                  {isWakanowDomestic && (
+                    <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                      Domestic
+                    </span>
+                  )}
+                  {(isDuffelFlight || isWakanowInternational) && !isMultiCity && (
+                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                      International
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <div className="text-right">
@@ -2044,83 +2052,285 @@ const hotelAndCarResults = useMemo(() => {
             </div>
           </div>
   
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-gray-50 rounded-xl p-5 transition hover:bg-gray-100">
-              <p className="text-sm text-gray-500 mb-4">
-                Depart {formatTime(flight.departureTime)} · {flight.airlineName}
-              </p>
-              <div className="flex items-center justify-between">
-                <div className="text-left">
-                  <p className="text-2xl font-bold text-gray-900">{formatTime(flight.departureTime)}</p>
-                  <p className="text-sm font-medium text-gray-700 mt-2">{flight.departureAirport}</p>
-                  <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.departureTime)}</p>
-                </div>
-  
-                <div className="flex-1 mx-6">
-                  <div className="relative">
-                    <div className="w-full h-[1px] bg-gray-300"></div>
-                    <div className="absolute left-1/2 -translate-x-1/2 -top-3 bg-gray-50 px-2">
-                      <svg className="w-5 h-5 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+          
+          {isMultiCity && slices.length > 0 && (
+            <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-100">
+              <div className="flex items-center gap-2 flex-wrap">
+                {slices.map((slice: any, idx: number) => {
+                  const origin = slice.origin?.iata_code || slice.departureCode || '--';
+                  const destination = slice.destination?.iata_code || slice.arrivalCode || '--';
+                  return (
+                    <React.Fragment key={`route-${idx}`}>
+                      <span className="text-sm font-bold text-gray-900">{origin}</span>
+                      <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path d="M14 5l7 7m0 0l-7 7m7-7H3" />
                       </svg>
-                    </div>
-                  </div>
-                  <div className="text-center mt-3">
-                    <p className="text-sm font-medium text-gray-600">{flight.duration}</p>
-                    <p className="text-xs text-gray-400 mt-1">{flight.stopText}</p>
-                  </div>
-                </div>
-  
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-gray-900">{formatTime(flight.arrivalTime)}</p>
-                  <p className="text-sm font-medium text-gray-700 mt-2">{flight.arrivalAirport}</p>
-                  <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.arrivalTime)}</p>
-                </div>
+                      <span className="text-sm font-bold text-gray-900">{destination}</span>
+                      {idx < slices.length - 1 && (
+                        <span className="text-xs text-gray-400 mx-1">|</span>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </div>
+              <p className="text-xs text-blue-600 mt-1">
+                {slices.length} legs • {slices.reduce((total: number, s: any) => total + (s.segments?.length || 0), 0)} segments
+              </p>
             </div>
+          )}
   
-            {hasReturn && flight.returnFlight && (
-              <div className="bg-gray-50 rounded-xl p-5 transition hover:bg-gray-100">
-                <p className="text-sm text-gray-500 mb-4">
-                  Return {formatTime(flight.returnFlight.departureTime)} · {flight.airlineName}
-                </p>
-                <div className="flex items-center justify-between">
-                  <div className="text-left">
-                    <p className="text-2xl font-bold text-gray-900">{formatTime(flight.returnFlight.departureTime)}</p>
-                    <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.departureAirport}</p>
-                    <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.returnFlight.departureTime)}</p>
-                  </div>
+       
+          <div className="space-y-4">
+            {isMultiCity ? (
+             
+              slices.map((slice: any, sliceIdx: number) => {
+                const segments = slice?.segments || [];
+                if (segments.length === 0) return null;
   
-                  <div className="flex-1 mx-6">
-                    <div className="relative">
-                      <div className="w-full h-[1px] bg-gray-300"></div>
-                      <div className="absolute left-1/2 -translate-x-1/2 -top-3 bg-gray-50 px-2">
-                        <svg className="w-5 h-5 text-[#33a8da] rotate-180" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
-                        </svg>
+                const firstSeg = segments[0];
+                const lastSeg = segments[segments.length - 1];
+                
+                
+                const origin = slice.origin?.iata_code || firstSeg?.origin?.iata_code || slice.departureCode || '--';
+                const destination = slice.destination?.iata_code || lastSeg?.destination?.iata_code || slice.arrivalCode || '--';
+                const originName = slice.origin?.name || firstSeg?.origin?.name || slice.departureName || '';
+                const destinationName = slice.destination?.name || lastSeg?.destination?.name || slice.arrivalName || '';
+                
+          
+                const depTime = firstSeg?.departing_at || firstSeg?.departure?.at || slice.departureTime || slice.departure_time || '';
+                const arrTime = lastSeg?.arriving_at || lastSeg?.arrival?.at || slice.arrivalTime || slice.arrival_time || '';
+                const depDate = depTime ? formatFullDate(depTime) : '';
+                const arrDate = arrTime ? formatFullDate(arrTime) : '';
+                
+                // ✅ Format times using formatTime
+                const depTimeFormatted = depTime ? formatTime(depTime) : '--:--';
+                const arrTimeFormatted = arrTime ? formatTime(arrTime) : '--:--';
+                
+                const sliceDuration = formatDuration(slice.duration || slice.tripDuration || '');
+                const stopCount = segments.length - 1;
+                const stopText = stopCount === 0 ? 'Non stop' : stopCount === 1 ? '1 Stop' : `${stopCount} Stops`;
+  
+                return (
+                  <div key={`slice-${sliceIdx}`} className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold text-gray-400 uppercase">
+                        Leg {sliceIdx + 1}: {origin} → {destination}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {sliceDuration} • {stopText}
+                      </span>
+                    </div>
+  
+                    <div className="flex items-center justify-between">
+                      <div className="text-left">
+                        <p className="text-xl font-bold text-gray-900">{depTimeFormatted}</p>
+                        <p className="text-xs font-bold text-gray-500 uppercase">{origin}</p>
+                        <p className="text-[10px] text-gray-400">{originName}</p>
+                        {depDate && <p className="text-[9px] text-gray-400 mt-0.5">{depDate}</p>}
+                      </div>
+  
+                      <div className="flex-1 mx-4">
+                        <div className="relative">
+                          <div className="w-full h-[1px] bg-gray-300"></div>
+                          <div className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-gray-50 px-2">
+                            <svg className="w-4 h-4 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+                            </svg>
+                          </div>
+                        </div>
+                        <div className="text-center mt-2">
+                          <p className="text-xs font-medium text-gray-600">{sliceDuration || '--'}</p>
+                          <p className="text-[10px] text-gray-400">{stopText}</p>
+                        </div>
+                      </div>
+  
+                      <div className="text-right">
+                        <p className="text-xl font-bold text-gray-900">{arrTimeFormatted}</p>
+                        <p className="text-xs font-bold text-gray-500 uppercase">{destination}</p>
+                        <p className="text-[10px] text-gray-400">{destinationName}</p>
+                        {arrDate && <p className="text-[9px] text-gray-400 mt-0.5">{arrDate}</p>}
                       </div>
                     </div>
-                    <div className="text-center mt-3">
-                      <p className="text-sm font-medium text-gray-600">{flight.returnFlight.duration}</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {flight.returnFlight.stopCount === 0 ? 'Non stop' :
-                          flight.returnFlight.stopCount === 1 ? '1 Stop' : `${flight.returnFlight.stopCount} Stops`}
-                      </p>
-                    </div>
+
+                    {stopCount > 0 && (
+  <div className="mt-3 pt-3 border-t border-gray-200">
+    <div className="flex items-center gap-2 text-xs text-amber-600">
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <span className="font-medium">
+        {stopCount} stop{stopCount > 1 ? 's' : ''}:
+      </span>
+      {segments.slice(0, -1).map((seg: any, idx: number) => {
+     
+        const stopLocation = seg.layover || 
+                            seg.destination?.name || 
+                            seg.destination?.city_name || 
+                            seg.destination?.iata_code || 
+                            seg.destinationCode || 
+                            seg.arrival_city ||
+                            seg.arrival_name ||
+                            'Unknown';
+        
+        const nextSeg = segments[idx + 1];
+        let layoverDuration = '';
+        
+      
+        if (seg.layoverDuration) {
+          layoverDuration = seg.layoverDuration;
+        } else if (seg.arriving_at && nextSeg?.departing_at) {
+          try {
+            const arrival = new Date(seg.arriving_at);
+            const departure = new Date(nextSeg.departing_at);
+            const diffMinutes = (departure.getTime() - arrival.getTime()) / (1000 * 60);
+            const hours = Math.floor(diffMinutes / 60);
+            const minutes = Math.round(diffMinutes % 60);
+            if (hours > 0 && minutes > 0) layoverDuration = `${hours}h ${minutes}m`;
+            else if (hours > 0) layoverDuration = `${hours}h`;
+            else if (minutes > 0) layoverDuration = `${minutes}m`;
+          } catch (e) {}
+        }
+        
+        const stopDetails = slice.stopDetails;
+        let stopName = stopLocation;
+        if (stopDetails && stopDetails.stopLocations && stopDetails.stopLocations[idx]) {
+          const stopInfo = stopDetails.stopLocations[idx];
+          stopName = stopInfo.location || stopInfo.arrivalName || stopInfo.arrivalCode || stopLocation;
+        }
+        
+        return (
+          <span key={`stop-${idx}`} className="text-gray-500">
+            {stopName}
+            {layoverDuration && <span className="text-gray-400"> ({layoverDuration})</span>}
+            {idx < stopCount - 1 && <span className="mx-1">→</span>}
+          </span>
+        );
+      })}
+    </div>
+  </div>
+)}
+  
+                  
+
+  
+                    {/* ✅ Baggage info per segment */}
+                    {segments.some((seg: any) => seg.freeBaggage) && (
+                      <div className="mt-2 flex items-center gap-3 text-[10px] text-gray-500">
+                        <span className="font-medium">Baggage:</span>
+                        {segments.map((seg: any, idx: number) => {
+                          const baggage = seg.freeBaggage;
+                          if (!baggage || baggage.BagCount === 0) return null;
+                          return (
+                            <span key={`bag-${idx}`} className="bg-white px-2 py-0.5 rounded border border-gray-200">
+                              {baggage.BagCount} × {baggage.Weight || 23}kg
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              // ✅ Round Trip or One-way: Show outbound and return
+              <>
+                {/* Outbound */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold text-gray-400 uppercase">
+                      {isRoundTrip ? 'Depart' : 'Depart'}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {flight.duration} • {flight.stopText}
+                    </span>
                   </div>
   
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-gray-900">{formatTime(flight.returnFlight.arrivalTime)}</p>
-                    <p className="text-sm font-medium text-gray-700 mt-2">{flight.returnFlight.arrivalAirport}</p>
-                    <p className="text-xs text-gray-400 mt-1">{formatFullDate(flight.returnFlight.arrivalTime)}</p>
+                  <div className="flex items-center justify-between">
+                    <div className="text-left">
+                      <p className="text-xl font-bold text-gray-900">{formatTime(flight.departureTime)}</p>
+                      <p className="text-xs font-bold text-gray-500 uppercase">{flight.departureAirport}</p>
+                      <p className="text-[10px] text-gray-400">{flight.departureCity || ''}</p>
+                      <p className="text-[9px] text-gray-400 mt-0.5">{formatFullDate(flight.departureTime)}</p>
+                    </div>
+  
+                    <div className="flex-1 mx-4">
+                      <div className="relative">
+                        <div className="w-full h-[1px] bg-gray-300"></div>
+                        <div className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-gray-50 px-2">
+                          <svg className="w-4 h-4 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="text-center mt-2">
+                        <p className="text-xs font-medium text-gray-600">{flight.duration}</p>
+                        <p className="text-[10px] text-gray-400">{flight.stopText}</p>
+                      </div>
+                    </div>
+  
+                    <div className="text-right">
+                      <p className="text-xl font-bold text-gray-900">{formatTime(flight.arrivalTime)}</p>
+                      <p className="text-xs font-bold text-gray-500 uppercase">{flight.arrivalAirport}</p>
+                      <p className="text-[10px] text-gray-400">{flight.arrivalCity || ''}</p>
+                      <p className="text-[9px] text-gray-400 mt-0.5">{formatFullDate(flight.arrivalTime)}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
+  
+                {/* Return */}
+                {flight.returnFlight && flight.returnFlight.departureTime && (
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold text-gray-400 uppercase">Return</span>
+                      <span className="text-xs text-gray-400">
+                        {flight.returnFlight.duration} • 
+                        {flight.returnFlight.stopCount === 0 ? 'Non stop' :
+                         flight.returnFlight.stopCount === 1 ? '1 Stop' : `${flight.returnFlight.stopCount} Stops`}
+                      </span>
+                    </div>
+  
+                    <div className="flex items-center justify-between">
+                      <div className="text-left">
+                        <p className="text-xl font-bold text-gray-900">{formatTime(flight.returnFlight.departureTime)}</p>
+                        <p className="text-xs font-bold text-gray-500 uppercase">{flight.returnFlight.departureAirport}</p>
+                        <p className="text-[10px] text-gray-400">{flight.returnFlight.departureCity || ''}</p>
+                        <p className="text-[9px] text-gray-400 mt-0.5">{formatFullDate(flight.returnFlight.departureTime)}</p>
+                      </div>
+  
+                      <div className="flex-1 mx-4">
+                        <div className="relative">
+                          <div className="w-full h-[1px] bg-gray-300"></div>
+                          <div className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-gray-50 px-2">
+                            <svg className="w-4 h-4 text-[#33a8da] rotate-180" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+                            </svg>
+                          </div>
+                        </div>
+                        <div className="text-center mt-2">
+                          <p className="text-xs font-medium text-gray-600">{flight.returnFlight.duration}</p>
+                          <p className="text-[10px] text-gray-400">
+                            {flight.returnFlight.stopCount === 0 ? 'Non stop' :
+                             flight.returnFlight.stopCount === 1 ? '1 Stop' : `${flight.returnFlight.stopCount} Stops`}
+                          </p>
+                        </div>
+                      </div>
+  
+                      <div className="text-right">
+                        <p className="text-xl font-bold text-gray-900">{formatTime(flight.returnFlight.arrivalTime)}</p>
+                        <p className="text-xs font-bold text-gray-500 uppercase">{flight.returnFlight.arrivalAirport}</p>
+                        <p className="text-[10px] text-gray-400">{flight.returnFlight.arrivalCity || ''}</p>
+                        <p className="text-[9px] text-gray-400 mt-0.5">{formatFullDate(flight.returnFlight.arrivalTime)}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
   
+          {/* Footer */}
           <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               {baggageText && (
                 <div className="flex items-center gap-1">
                   <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2137,30 +2347,30 @@ const hotelAndCarResults = useMemo(() => {
                   <span className="text-sm text-gray-500">{flight.cabin}</span>
                 </div>
               )}
-              
- {/* ✅ TECHNICAL STOPS INDICATOR - ALWAYS SHOWS */}
-{flight.hasTechnicalStops !== undefined && (
-  <div className="flex items-center gap-1">
-    {flight.hasTechnicalStops ? (
-      <>
-        <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span className="text-sm text-amber-600 font-medium">
-          {flight.totalTechnicalStops || flight.technicalStops?.length || 0} technical stop{(flight.totalTechnicalStops || flight.technicalStops?.length || 0) > 1 ? 's' : ''}
-        </span>
-      </>
-    ) : (
-      <>
-        <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
-        <span className="text-sm text-green-600 font-medium">No technical stops</span>
-      </>
-    )}
-  </div>
-)}
-
+  
+              {/* ✅ Technical Stops Indicator */}
+              {flight.hasTechnicalStops !== undefined && (
+                <div className="flex items-center gap-1">
+                  {flight.hasTechnicalStops ? (
+                    <>
+                      <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-sm text-amber-600 font-medium">
+                        {flight.totalTechnicalStops || flight.technicalStops?.length || 0} technical stop{(flight.totalTechnicalStops || flight.technicalStops?.length || 0) > 1 ? 's' : ''}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="text-sm text-green-600 font-medium">No technical stops</span>
+                    </>
+                  )}
+                </div>
+              )}
+  
               {isRefundable ? (
                 <div className="flex items-center gap-1">
                   <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2177,7 +2387,7 @@ const hotelAndCarResults = useMemo(() => {
                 </div>
               )}
             </div>
-          
+  
             <button
               onClick={(e) => handleViewDetails(flight, e)}
               className="text-[#33a8da] text-sm font-medium hover:underline"
@@ -2189,7 +2399,6 @@ const hotelAndCarResults = useMemo(() => {
       </div>
     );
   };
-
   const renderHotelCard = (item: ExtendedSearchResult) => {
     const starRating = Math.floor(item.rating || 4);
     const displayPrice = hotelCarPrices[item.id] || 'Price on request';
