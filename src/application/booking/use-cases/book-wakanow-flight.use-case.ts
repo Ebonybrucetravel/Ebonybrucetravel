@@ -98,28 +98,45 @@ const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.
     const price = combo.Price;
     const firstDep = combo.FlightModels[0]?.DepartureCode || '';
     const firstArr = combo.FlightModels[0]?.ArrivalCode || '';
-  
-    const isNorthAmerica = this.isNorthAmericaDestination(firstDep, firstArr, dto);
-    this.logger.log(`📍 Destination: ${firstArr}, isNorthAmerica: ${isNorthAmerica}`);
-  
-
-    if (isNorthAmerica) {
-      for (let i = 0; i < passengers.length; i++) {
-        const p = passengers[i];
-        // ✅ Use PascalCase - matches what frontend sends
-        if (!p.PassportNumber) {
-          throw new BadRequestException(`Passenger ${i + 1}: Passport number is required for North American flights`);
-        }
-        if (!p.ExpiryDate) {
-          throw new BadRequestException(`Passenger ${i + 1}: Passport expiry date is required for North American flights`);
-        }
-        if (!p.PassportIssuingAuthority) {
-          throw new BadRequestException(`Passenger ${i + 1}: Passport issuing authority is required for North American flights`);
-        }
-      }
-      this.logger.log('✅ Passport validation passed for North America');
-    }
     const isDomestic = this.isNigerianRoute(firstDep, firstArr);
+    const isInternational = !isDomestic;
+  
+if (isInternational) {
+  this.logger.log(`🌍 International flight detected (${firstDep} → ${firstArr}). Validating passport for all passengers...`);
+  
+  for (let i = 0; i < passengers.length; i++) {
+    const p = passengers[i];
+    const passengerLabel = `${p.passengerType || 'Passenger'} ${i + 1}`;
+    
+    // Check Passport Number
+    if (!p.PassportNumber || p.PassportNumber.trim().length === 0) {
+      throw new BadRequestException(
+        `Passport number is required for ${passengerLabel} on this international flight. ` +
+        `Please go back and complete your passport details.`
+      );
+    }
+    
+    // Check Passport Expiry Date
+    if (!p.ExpiryDate || p.ExpiryDate.trim().length === 0) {
+      throw new BadRequestException(
+        `Passport expiry date is required for ${passengerLabel} on this international flight. ` +
+        `Please go back and complete your passport details.`
+      );
+    }
+    
+    // Check Passport Issuing Authority
+    if (!p.PassportIssuingAuthority || p.PassportIssuingAuthority.trim().length === 0) {
+      throw new BadRequestException(
+        `Passport issuing authority is required for ${passengerLabel} on this international flight. ` +
+        `Please go back and complete your passport details.`
+      );
+    }
+  }
+  
+  this.logger.log(`✅ Passport validation passed for all ${passengers.length} passengers on international flight`);
+} else {
+  this.logger.log(`🏠 Domestic flight (${firstDep} → ${firstArr}) - passport not required`);
+}
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
   
     const priceCalculation = await this.calculatePrices(
