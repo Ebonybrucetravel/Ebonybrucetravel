@@ -98,45 +98,50 @@ const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.
     const price = combo.Price;
     const firstDep = combo.FlightModels[0]?.DepartureCode || '';
     const firstArr = combo.FlightModels[0]?.ArrivalCode || '';
+    
     const isDomestic = this.isNigerianRoute(firstDep, firstArr);
     const isInternational = !isDomestic;
-  
-if (isInternational) {
-  this.logger.log(`🌍 International flight detected (${firstDep} → ${firstArr}). Validating passport for all passengers...`);
-  
-  for (let i = 0; i < passengers.length; i++) {
-    const p = passengers[i];
-    const passengerLabel = `${p.passengerType || 'Passenger'} ${i + 1}`;
     
-    // Check Passport Number
-    if (!p.PassportNumber || p.PassportNumber.trim().length === 0) {
-      throw new BadRequestException(
-        `Passport number is required for ${passengerLabel} on this international flight. ` +
-        `Please go back and complete your passport details.`
-      );
+    // ✅ All international flights require passport (not just North America)
+    if (isInternational) {
+      this.logger.log(`🌍 International flight detected (${firstDep} → ${firstArr}). Validating passport for all passengers...`);
+      
+      for (let i = 0; i < passengers.length; i++) {
+        const p = passengers[i];
+        const passengerLabel = `${p.passengerType || 'Passenger'} ${i + 1}`;
+        const passengerName = `${p.firstName || ''} ${p.lastName || ''}`.trim() || passengerLabel;
+        
+        const missingFields: string[] = [];
+        
+        // Check Passport Number
+        if (!p.PassportNumber || p.PassportNumber.trim().length === 0) {
+          missingFields.push('Passport Number');
+        }
+        
+        // Check Passport Expiry Date
+        if (!p.ExpiryDate || p.ExpiryDate.trim().length === 0) {
+          missingFields.push('Passport Expiry Date');
+        }
+        
+        // Check Passport Issuing Authority
+        if (!p.PassportIssuingAuthority || p.PassportIssuingAuthority.trim().length === 0) {
+          missingFields.push('Passport Issuing Authority');
+        }
+        
+        if (missingFields.length > 0) {
+          const destination = dto.destinationCode || firstArr || 'international';
+          throw new BadRequestException(
+            `${passengerLabel} (${passengerName}): Missing required passport fields: ${missingFields.join(', ')}. ` +
+            `Passport is required for all international flights (${destination}). ` +
+            `Please go back and complete your passport details.`
+          );
+        }
+      }
+      
+      this.logger.log(`✅ Passport validation passed for all ${passengers.length} passengers on international flight`);
+    } else {
+      this.logger.log(`🏠 Domestic flight (${firstDep} → ${firstArr}) - passport not required`);
     }
-    
-    // Check Passport Expiry Date
-    if (!p.ExpiryDate || p.ExpiryDate.trim().length === 0) {
-      throw new BadRequestException(
-        `Passport expiry date is required for ${passengerLabel} on this international flight. ` +
-        `Please go back and complete your passport details.`
-      );
-    }
-    
-    // Check Passport Issuing Authority
-    if (!p.PassportIssuingAuthority || p.PassportIssuingAuthority.trim().length === 0) {
-      throw new BadRequestException(
-        `Passport issuing authority is required for ${passengerLabel} on this international flight. ` +
-        `Please go back and complete your passport details.`
-      );
-    }
-  }
-  
-  this.logger.log(`✅ Passport validation passed for all ${passengers.length} passengers on international flight`);
-} else {
-  this.logger.log(`🏠 Domestic flight (${firstDep} → ${firstArr}) - passport not required`);
-}
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
   
     const priceCalculation = await this.calculatePrices(
