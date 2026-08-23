@@ -280,10 +280,10 @@ const segments = (slice.segments || []).map((segment: any) => {
     },
     marketing_carrier_flight_number: segment.marketing_carrier_flight_number || segment.flightNumber || slice.flightNumber || '',
     freeBaggage: segment.freeBaggage || slice.freeBaggage || null,
-    // ✅ Add technical stops to the segment
+  
     technicalStops: technicalStops,
     hasTechnicalStops: hasTechnicalStops,
-    // ✅ CRITICAL: Preserve the original fields for stopover detection
+ 
     destinationCode: segment.destinationCode || slice.arrivalCode || '',
     destinationName: segment.destinationName || slice.arrivalName || '',
     startTime: segment.startTime || segment.departing_at || slice.departureTime || '',
