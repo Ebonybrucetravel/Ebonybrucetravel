@@ -12,7 +12,6 @@ interface FlightDetailsProps {
   onBook: () => void;
 }
 
-// ✅ Helper to format duration display
 const formatDurationDisplay = (duration?: string): string => {
   if (!duration) return '';
   
@@ -107,7 +106,6 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     return duration;
   };
 
-  // Convert price when component loads or currency changes
   useEffect(() => {
     const convertFlightPrice = async () => {
       if (!currentItem) return;
@@ -157,7 +155,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     convertFlightPrice();
   }, [currentItem, currency.code, formatPrice]);
 
-  // ✅ stopInformation useMemo
+
   const stopInformation = useMemo(() => {
     if (!currentItem) return null;
     
@@ -193,54 +191,60 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     return null;
   }, [currentItem]);
 
-  // Helper function to extract stopover airports from segments
-  const getStopoverAirports = (segments: any[]) => {
-    if (!segments || segments.length <= 1) return [];
+const getStopoverAirports = (segments: any[]) => {
+  if (!segments || segments.length <= 1) return [];
+  
+  const stopovers = [];
+  
+  for (let i = 0; i < segments.length - 1; i++) {
+    const segment = segments[i];
+    const nextSegment = segments[i + 1];
     
-    return segments.slice(0, -1).map((segment, idx) => {
-      const nextSegment = segments[idx + 1];
-      let layoverDuration = '';
-      
-      const destination = segment.destination || segment.to || {};
-      const destinationCode = destination.iata_code || segment.to || segment.destination_code || '';
-      const destinationName = destination.name || segment.toName || segment.arrival_city || '';
-      const destinationCity = destination.city_name || segment.arrival_city || destinationName;
-      
-      const arrivalTime = segment.arriving_at || segment.arrivalTime || segment.end_time || '';
-      const departureTime = nextSegment?.departing_at || nextSegment?.departureTime || nextSegment?.start_time || '';
-      
-      if (arrivalTime && departureTime) {
-        try {
-          const arrival = new Date(arrivalTime);
-          const departure = new Date(departureTime);
-          const diffMinutes = (departure.getTime() - arrival.getTime()) / (1000 * 60);
-          const hours = Math.floor(diffMinutes / 60);
-          const minutes = Math.round(diffMinutes % 60);
-          if (hours > 0 && minutes > 0) layoverDuration = `${hours}h ${minutes}m`;
-          else if (hours > 0) layoverDuration = `${hours}h`;
-          else if (minutes > 0) layoverDuration = `${minutes}m`;
-        } catch (e) {
-          console.error('Error calculating layover:', e);
-        }
+    const destination = segment.destination || {};
+    const destinationCode = destination.iata_code || destination.code || segment.destinationCode || '';
+    const destinationName = destination.name || destination.city_name || segment.destinationName || '';
+    const destinationCity = destination.city_name || destination.name || segment.destinationName || '';
+    
+  
+    const arrivalTime = segment.arriving_at || segment.endTime || segment.arrivalTime || segment.end_time || '';
+    
+   
+    const departureTime = nextSegment?.departing_at || nextSegment?.startTime || nextSegment?.departureTime || nextSegment?.start_time || '';
+    
+  
+    let layoverDuration = '';
+    if (arrivalTime && departureTime) {
+      try {
+        const arrival = new Date(arrivalTime);
+        const departure = new Date(departureTime);
+        const diffMinutes = (departure.getTime() - arrival.getTime()) / (1000 * 60);
+        const hours = Math.floor(diffMinutes / 60);
+        const minutes = Math.round(diffMinutes % 60);
+        if (hours > 0 && minutes > 0) layoverDuration = `${hours}h ${minutes}m`;
+        else if (hours > 0) layoverDuration = `${hours}h`;
+        else if (minutes > 0) layoverDuration = `${minutes}m`;
+      } catch (e) {
+        console.error('Error calculating layover:', e);
       }
-      
-      const outgoingFlightNum = nextSegment?.marketing_carrier_flight_number || nextSegment?.flightNumber || nextSegment?.flight_number || '';
-      const outgoingAirline = nextSegment?.operating_carrier?.name || nextSegment?.airline || nextSegment?.airlineName || '';
-      
-      return {
-        code: destinationCode,
-        name: destinationName,
-        city: destinationCity,
-        arrivalTime: arrivalTime,
-        departureTime: departureTime,
-        layoverDuration: layoverDuration,
-        flightNumber: outgoingFlightNum,
-        airline: outgoingAirline,
-      };
+    }
+    
+    const outgoingFlightNum = nextSegment?.flightNumber || nextSegment?.marketing_carrier_flight_number || '';
+    const outgoingAirline = nextSegment?.operatingCarrier || nextSegment?.operating_carrier?.name || '';
+    
+    stopovers.push({
+      code: destinationCode,
+      name: destinationName || destinationCode,
+      city: destinationCity || destinationName || destinationCode,
+      arrivalTime: arrivalTime,
+      departureTime: departureTime,
+      layoverDuration: layoverDuration,
+      flightNumber: outgoingFlightNum,
+      airline: outgoingAirline,
     });
-  };
-
-  // Transform the item to ensure correct structure for display
+  }
+  
+  return stopovers;
+};
   const transformedItem = useMemo(() => {
     if (!currentItem) return null;
     
@@ -250,29 +254,44 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
       
       if (flightSummary?.slices && flightSummary.slices.length > 0) {
         const processedSlices = flightSummary.slices.map((slice: any) => {
-          const segments = (slice.segments || []).map((segment: any) => {
-            return {
-              departing_at: segment.departing_at || segment.startTime || segment.departureTime || segment.start_time || '',
-              arriving_at: segment.arriving_at || segment.endTime || segment.arrivalTime || segment.end_time || '',
-              duration: segment.duration || slice.tripDuration || '',
-              origin: {
-                iata_code: segment.origin?.iata_code || segment.departureCode || slice.departureCode || '',
-                name: segment.origin?.name || segment.departureName || slice.departureName || '',
-                city_name: segment.origin?.city_name || segment.departureName || slice.departureName || '',
-              },
-              destination: {
-                iata_code: segment.destination?.iata_code || segment.destinationCode || slice.arrivalCode || '',
-                name: segment.destination?.name || segment.destinationName || slice.arrivalName || '',
-                city_name: segment.destination?.city_name || segment.destinationName || slice.arrivalName || '',
-              },
-              operating_carrier: {
-                name: segment.operating_carrier?.name || segment.operatingCarrier || slice.airline || '',
-                iata_code: segment.operating_carrier?.iata_code || segment.airlineCode || slice.airlineCode || '',
-              },
-              marketing_carrier_flight_number: segment.marketing_carrier_flight_number || segment.flightNumber || slice.flightNumber || '',
-              freeBaggage: segment.freeBaggage || slice.freeBaggage || null,
-            };
-          });
+          
+const segments = (slice.segments || []).map((segment: any) => {
+  
+  const technicalStops = segment.technicalStops || segment.TechnicalStops || [];
+  const hasTechnicalStops = segment.hasTechnicalStops || technicalStops.length > 0;
+  
+  return {
+    departing_at: segment.departing_at || segment.startTime || segment.departureTime || segment.start_time || '',
+    arriving_at: segment.arriving_at || segment.endTime || segment.arrivalTime || segment.end_time || '',
+    duration: segment.duration || slice.tripDuration || '',
+    origin: {
+      iata_code: segment.origin?.iata_code || segment.departureCode || slice.departureCode || '',
+      name: segment.origin?.name || segment.departureName || slice.departureName || '',
+      city_name: segment.origin?.city_name || segment.departureName || slice.departureName || '',
+    },
+    destination: {
+      iata_code: segment.destination?.iata_code || segment.destinationCode || slice.arrivalCode || '',
+      name: segment.destination?.name || segment.destinationName || slice.arrivalName || '',
+      city_name: segment.destination?.city_name || segment.destinationName || slice.arrivalName || '',
+    },
+    operating_carrier: {
+      name: segment.operating_carrier?.name || segment.operatingCarrier || slice.airline || '',
+      iata_code: segment.operating_carrier?.iata_code || segment.airlineCode || slice.airlineCode || '',
+    },
+    marketing_carrier_flight_number: segment.marketing_carrier_flight_number || segment.flightNumber || slice.flightNumber || '',
+    freeBaggage: segment.freeBaggage || slice.freeBaggage || null,
+    // ✅ Add technical stops to the segment
+    technicalStops: technicalStops,
+    hasTechnicalStops: hasTechnicalStops,
+    // ✅ CRITICAL: Preserve the original fields for stopover detection
+    destinationCode: segment.destinationCode || slice.arrivalCode || '',
+    destinationName: segment.destinationName || slice.arrivalName || '',
+    startTime: segment.startTime || segment.departing_at || slice.departureTime || '',
+    endTime: segment.endTime || segment.arriving_at || slice.arrivalTime || '',
+    flightNumber: segment.flightNumber || slice.flightNumber || '',
+    operatingCarrier: segment.operatingCarrier || segment.operating_carrier?.name || slice.airline || '',
+  };
+});
           
           return {
             ...slice,
@@ -321,17 +340,33 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     if (currentItem.fare_rules?.length > 0 || currentItem.penalty_rules?.length > 0 || currentItem.isRefundable) {
       const slices = currentItem.slices || [];
       const processedSlices = slices.map((slice: any) => {
-        const segments = (slice.segments || []).map((segment: any) => ({
-          departing_at: segment.departing_at || segment.startTime || segment.departureTime || '',
-          arriving_at: segment.arriving_at || segment.endTime || segment.arrivalTime || '',
-          duration: segment.duration || slice.duration || '',
-          origin: segment.origin || { iata_code: '', name: '', city_name: '' },
-          destination: segment.destination || { iata_code: '', name: '', city_name: '' },
-          operating_carrier: segment.operating_carrier || { name: '', iata_code: '' },
-          marketing_carrier_flight_number: segment.marketing_carrier_flight_number || segment.flightNumber || '',
-          freeBaggage: segment.freeBaggage || currentItem.freeBaggage || null,
-        }));
+        const segments = (slice.segments || []).map((segment: any) => {
         
+          const technicalStops = segment.technicalStops || segment.TechnicalStops || [];
+          const hasTechnicalStops = segment.hasTechnicalStops || technicalStops.length > 0;
+          
+          return {
+            departing_at: segment.departing_at || segment.startTime || segment.departureTime || '',
+            arriving_at: segment.arriving_at || segment.endTime || segment.arrivalTime || '',
+            duration: segment.duration || slice.duration || '',
+            origin: segment.origin || { iata_code: '', name: '', city_name: '' },
+            destination: segment.destination || { iata_code: '', name: '', city_name: '' },
+            operating_carrier: segment.operating_carrier || { name: '', iata_code: '' },
+            marketing_carrier_flight_number: segment.marketing_carrier_flight_number || segment.flightNumber || '',
+            freeBaggage: segment.freeBaggage || currentItem.freeBaggage || null,
+            
+            technicalStops: technicalStops,
+            hasTechnicalStops: hasTechnicalStops,
+            // ✅ Preserve original fields
+            destinationCode: segment.destinationCode || segment.destination?.iata_code || '',
+            destinationName: segment.destinationName || segment.destination?.name || '',
+            startTime: segment.startTime || segment.departing_at || '',
+            endTime: segment.endTime || segment.arriving_at || '',
+            flightNumber: segment.flightNumber || '',
+            operatingCarrier: segment.operatingCarrier || segment.operating_carrier?.name || '',
+          };
+        });
+            
         return {
           ...slice,
           segments: segments,
@@ -358,8 +393,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({ item, searchParams, onBac
     return currentItem;
   }, [currentItem]);
 
-  
-// Replace the renderStopDetails function with this improved version:
+
 
 const renderStopDetails = () => {
   const stopInfo = stopInformation;
@@ -368,23 +402,23 @@ const renderStopDetails = () => {
   const technicalStops = stopInfo?.technicalStops || [];
   const totalTechnicalStops = stopInfo?.totalTechnicalStops || 0;
   
-  // Try to get technical stops from flight_summary slices if stopInfo doesn't have good data
+  
   const slices = transformedItem?.slices || [];
   let enrichedTechnicalStops = [...technicalStops];
   
-  // If we have slices, try to extract technical stop info from segments
+
   if (slices.length > 0 && (!hasTechnicalStops || technicalStops.length === 0 || technicalStops[0]?.stopLocation === 'Unknown')) {
     slices.forEach((slice: any) => {
       const segments = slice?.segments || [];
       segments.forEach((segment: any) => {
-        // Check for technical stops in the segment
+       
         if (segment.hasTechnicalStops && segment.technicalStops && segment.technicalStops.length > 0) {
           segment.technicalStops.forEach((ts: any) => {
             const airportCode = ts.AirportCode || ts.stopCode || '';
             const airportName = ts.AirportName || ts.stopLocation || '';
             const duration = ts.Duration || ts.stopDuration || '';
             
-            // Check if this technical stop already exists in our list
+          
             const exists = enrichedTechnicalStops.some(
               (existing: any) => existing.stopCode === airportCode || existing.stopLocation === airportName
             );
@@ -440,7 +474,7 @@ const renderStopDetails = () => {
     (stop: any) => stop.stopLocation && stop.stopLocation !== 'Unknown'
   );
   
-  // If we have valid technical stops, show them
+
   const showTechnicalStops = hasValidTechnicalStops || (hasTechnicalStops && finalTechnicalStops.length > 0);
   
   return (
@@ -461,10 +495,10 @@ const renderStopDetails = () => {
       {showTechnicalStops && finalTechnicalStops.length > 0 ? (
         <div className="space-y-3">
           {finalTechnicalStops.map((stop: any, idx: number) => {
-            // Determine the display name - prefer stopCode if stopLocation is "Unknown"
+        
             let displayName = stop.stopLocation || stop.location || 'Unknown';
             if (displayName === 'Unknown' && stop.stopCode) {
-              // Try to get airport name from the code
+           
               const airportNames: Record<string, string> = {
                 'FCO': 'Rome (FCO)',
                 'LHR': 'London (LHR)',
@@ -623,97 +657,153 @@ const renderStopDetails = () => {
     }
   };
 
-  // Render a single flight segment
-  const renderSegment = (segment: any, index: number, isLast: boolean) => {
-    if (!segment) return null;
-    
-    return (
-      <div key={index} className={`${!isLast ? 'mb-6' : ''}`}>
-        <div className="flex items-center justify-between">
-          <div className="text-left">
-            <p className="text-2xl font-black text-gray-900">{formatTime(segment.departing_at)}</p>
-            <p className="text-xs font-bold text-gray-400 mt-1 uppercase">{segment.origin?.iata_code || '--'}</p>
-            <p className="text-[10px] text-gray-400">{segment.origin?.city_name || ''}</p>
-          </div>
-          
-          <div className="flex-1 px-4">
-            <div className="w-full h-[2px] bg-gray-100 relative">
-              <div className="absolute left-1/2 -translate-x-1/2 -top-[11px] bg-white px-2">
-                <svg className="w-5 h-5 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-                </svg>
-              </div>
-            </div>
-            <p className="text-[9px] font-black text-gray-400 text-center mt-2 tracking-widest">
-              {calculateDuration(segment.duration)}
-            </p>
-          </div>
+const renderSegment = (segment: any, index: number, isLast: boolean, sliceIndex: number = 0) => {
+  if (!segment) return null;
+  
 
-          <div className="text-right">
-            <p className="text-2xl font-black text-gray-900">{formatTime(segment.arriving_at)}</p>
-            <p className="text-xs font-bold text-gray-400 mt-1 uppercase">{segment.destination?.iata_code || '--'}</p>
-            <p className="text-[10px] text-gray-400">{segment.destination?.city_name || ''}</p>
-          </div>
+  const segmentTechnicalStops = segment.technicalStops || [];
+  const hasSegmentTechnicalStops = segment.hasTechnicalStops || segmentTechnicalStops.length > 0;
+  
+  return (
+    <div key={index} className={`${!isLast ? 'mb-6' : ''}`}>
+      <div className="flex items-center justify-between">
+        <div className="text-left">
+          <p className="text-2xl font-black text-gray-900">{formatTime(segment.departing_at)}</p>
+          <p className="text-xs font-bold text-gray-400 mt-1 uppercase">{segment.origin?.iata_code || '--'}</p>
+          <p className="text-[10px] text-gray-400">{segment.origin?.city_name || ''}</p>
         </div>
-        <div className="mt-2 text-center">
-          <p className="text-[10px] text-gray-500">
-            Flight {segment.marketing_carrier_flight_number || '--'} • {segment.operating_carrier?.name || ''}
+        
+        <div className="flex-1 px-4">
+          <div className="w-full h-[2px] bg-gray-100 relative">
+            <div className="absolute left-1/2 -translate-x-1/2 -top-[11px] bg-white px-2">
+              <svg className="w-5 h-5 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+              </svg>
+            </div>
+          </div>
+          <p className="text-[9px] font-black text-gray-400 text-center mt-2 tracking-widest">
+            {calculateDuration(segment.duration)}
           </p>
         </div>
-        {segment.freeBaggage && segment.freeBaggage.BagCount > 0 && (
-          <div className="mt-1 text-center">
-            <span className="text-[9px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-              ✈️ {segment.freeBaggage.BagCount} bag{segment.freeBaggage.BagCount > 1 ? 's' : ''} included
-              {segment.freeBaggage.Weight > 0 && ` (${segment.freeBaggage.Weight} ${segment.freeBaggage.WeightUnit || 'kg'})`}
-            </span>
-          </div>
-        )}
-      </div>
-    );
-  };
 
-  // ✅ Updated: Render a journey with stopovers (supports multi-city)
-  const renderJourney = (slice: any, title: string, date: string, journeyNumber: number) => {
-    if (!slice) {
-      return (
-        <div>
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 flex items-center justify-center text-[#33a8da] font-black text-sm flex-shrink-0">
-                {journeyNumber}
-              </div>
-              <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{title}</h3>
-            </div>
-            <p className="text-xs font-bold text-gray-600">{date}</p>
-          </div>
-          <div className="text-center py-8 text-gray-400">No flight information available</div>
+        <div className="text-right">
+          <p className="text-2xl font-black text-gray-900">{formatTime(segment.arriving_at)}</p>
+          <p className="text-xs font-bold text-gray-400 mt-1 uppercase">{segment.destination?.iata_code || '--'}</p>
+          <p className="text-[10px] text-gray-400">{segment.destination?.city_name || ''}</p>
         </div>
-      );
-    }
-    
-    const segments = slice?.segments || [];
-    const stopovers = getStopoverAirports(segments);
-    const hasStopovers = stopovers.length > 0;
-    
-    const hasStopDetails = slice.stopDetails && slice.stopDetails.stopLocations?.length > 0;
-    
-    if (segments.length === 0) {
-      return (
-        <div>
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 flex items-center justify-center text-[#33a8da] font-black text-sm flex-shrink-0">
-                {journeyNumber}
-              </div>
-              <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{title}</h3>
-            </div>
-            <p className="text-xs font-bold text-gray-600">{date}</p>
-          </div>
-          <div className="text-center py-8 text-gray-400">No flight information available</div>
+      </div>
+      <div className="mt-2 text-center">
+        <p className="text-[10px] text-gray-500">
+          Flight {segment.marketing_carrier_flight_number || '--'} • {segment.operating_carrier?.name || ''}
+        </p>
+      </div>
+      {segment.freeBaggage && segment.freeBaggage.BagCount > 0 && (
+        <div className="mt-1 text-center">
+          <span className="text-[9px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+            ✈️ {segment.freeBaggage.BagCount} bag{segment.freeBaggage.BagCount > 1 ? 's' : ''} included
+            {segment.freeBaggage.Weight > 0 && ` (${segment.freeBaggage.Weight} ${segment.freeBaggage.WeightUnit || 'kg'})`}
+          </span>
         </div>
-      );
-    }
-    
+      )}
+
+  
+{hasSegmentTechnicalStops && (
+  <div className="mt-4 pl-4 border-l-2 border-amber-300">
+    <div className="flex items-center gap-2 mb-2">
+      <svg className="w-3.5 h-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">
+        Technical Stop{segmentTechnicalStops.length > 1 ? 's' : ''}
+      </span>
+    </div>
+    <div className="space-y-2">
+      {segmentTechnicalStops.map((stop: any, stopIdx: number) => {
+       
+        let displayName = stop.AirportName || stop.stopLocation || stop.location || stop.airport || 'Unknown';
+        let stopCode = stop.AirportCode || stop.stopCode || stop.code || '';
+        
+        
+        if ((displayName === 'Unknown' || displayName === '') && stopCode) {
+          const airportNames: Record<string, string> = {
+            'FCO': 'Rome (FCO)',
+            'LHR': 'London (LHR)',
+            'CDG': 'Paris (CDG)',
+            'AMS': 'Amsterdam (AMS)',
+            'DXB': 'Dubai (DXB)',
+            'DOH': 'Doha (DOH)',
+            'AUH': 'Abu Dhabi (AUH)',
+            'IST': 'Istanbul (IST)',
+            'JFK': 'New York (JFK)',
+            'EWR': 'Newark (EWR)',
+            'ORD': 'Chicago (ORD)',
+            'ATL': 'Atlanta (ATL)',
+            'LAX': 'Los Angeles (LAX)',
+            'SFO': 'San Francisco (SFO)',
+            'MIA': 'Miami (MIA)',
+            'YYZ': 'Toronto (YYZ)',
+            'YVR': 'Vancouver (YVR)',
+            'YUL': 'Montreal (YUL)',
+            'ADD': 'Addis Ababa (ADD)',
+            'LOS': 'Lagos (LOS)',
+            'NBO': 'Nairobi (NBO)',
+            'JNB': 'Johannesburg (JNB)',
+            'CPT': 'Cape Town (CPT)',
+            'DUR': 'Durban (DUR)',
+          };
+          displayName = airportNames[stopCode] || `${stopCode} (Technical Stop)`;
+        }
+        
+        
+        let durationDisplay = stop.Duration || stop.stopDuration || stop.duration || '';
+
+        const arrivalTime = stop.ArrivalDate || stop.arrivalTime || stop.arrival || null;
+        const departureTime = stop.DepartureDate || stop.departureTime || stop.departure || null;
+        
+        return (
+          <div key={`tech-stop-${sliceIndex}-${index}-${stopIdx}`} className="bg-amber-50/70 rounded-lg border border-amber-100 p-3">
+            <div className="flex items-start gap-3">
+              <div className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-3.5 h-3.5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <p className="text-sm font-bold text-gray-900">{displayName}</p>
+                  {durationDisplay && (
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                      ⏱ {formatStopTime(durationDisplay)}
+                    </span>
+                  )}
+                </div>
+                {stopCode && displayName !== `${stopCode} (Technical Stop)` && (
+                  <p className="text-[10px] text-gray-500 mt-0.5">Airport: {stopCode}</p>
+                )}
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
+                  {arrivalTime && (
+                    <span className="text-[10px] text-gray-500">Arrives: {formatTime(arrivalTime)}</span>
+                  )}
+                  {departureTime && (
+                    <span className="text-[10px] text-gray-500">Departs: {formatTime(departureTime)}</span>
+                  )}
+                </div>
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  Technical stop • Passengers remain on board
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+)}
+    </div>
+  );
+};
+const renderJourney = (slice: any, title: string, date: string, journeyNumber: number) => {
+  if (!slice) {
     return (
       <div>
         <div className="flex items-center justify-between mb-6">
@@ -725,77 +815,125 @@ const renderStopDetails = () => {
           </div>
           <p className="text-xs font-bold text-gray-600">{date}</p>
         </div>
-        
-        {segments.map((segment: any, idx: number) => renderSegment(segment, idx, idx === segments.length - 1))}
-        
-        {hasStopovers && !hasStopDetails && (
-          <div className="mt-6">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="h-px flex-1 bg-amber-200"></div>
-              <div className="flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">
-                  {stopovers.length} Stopover{stopovers.length > 1 ? 's' : ''}
-                </p>
-              </div>
-              <div className="h-px flex-1 bg-amber-200"></div>
-            </div>
-            
-            <div className="space-y-3">
-              {stopovers.map((stop, idx) => (
-                <div key={idx} className="bg-amber-50 rounded-xl border border-amber-100 p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                      <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div>
-                          <p className="text-base font-black text-gray-900">{stop.code}</p>
-                          <p className="text-xs text-gray-600">{stop.name || stop.city}</p>
-                        </div>
-                        {stop.layoverDuration && (
-                          <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-1 rounded-full">
-                            Layover: {stop.layoverDuration}
-                          </span>
-                        )}
-                      </div>
-                      
-                      <div className="mt-2 flex items-center gap-3 text-[10px] text-gray-500">
-                        <div className="flex items-center gap-1">
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span>Arrives: {formatTime(stop.arrivalTime)}</span>
-                        </div>
-                        <span>→</span>
-                        <div className="flex items-center gap-1">
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          <span>Departs: {formatTime(stop.departureTime)}</span>
-                        </div>
-                      </div>
-                      
-                      {stop.flightNumber && stop.airline && (
-                        <p className="mt-2 text-[9px] text-gray-400">
-                          Continue on {stop.airline} flight {stop.flightNumber}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <div className="text-center py-8 text-gray-400">No flight information available</div>
       </div>
     );
-  };
+  }
+  
+  const segments = slice?.segments || [];
+  const stopovers = getStopoverAirports(segments);
+  const hasStopovers = stopovers.length > 0;
+  
+
+  if (segments.length > 0) {
+    console.log(`🔍 Journey ${journeyNumber} - segments: ${segments.length}, stopovers: ${stopovers.length}`);
+    console.log('🔍 Stopovers:', stopovers);
+  }
+  
+  if (segments.length === 0) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 flex items-center justify-center text-[#33a8da] font-black text-sm flex-shrink-0">
+              {journeyNumber}
+            </div>
+            <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{title}</h3>
+          </div>
+          <p className="text-xs font-bold text-gray-600">{date}</p>
+        </div>
+        <div className="text-center py-8 text-gray-400">No flight information available</div>
+      </div>
+    );
+  }
+  
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-[#33a8da]/10 flex items-center justify-center text-[#33a8da] font-black text-sm flex-shrink-0">
+            {journeyNumber}
+          </div>
+          <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{title}</h3>
+        </div>
+        <p className="text-xs font-bold text-gray-600">{date}</p>
+      </div>
+      
+      {segments.map((segment: any, idx: number) => (
+        <div key={`segment-${journeyNumber}-${idx}`}>
+          {renderSegment(segment, idx, idx === segments.length - 1)}
+        </div>
+      ))}
+      
+      {/* ✅ Always show stopovers if they exist */}
+      {hasStopovers && (
+        <div className="mt-6">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="h-px flex-1 bg-amber-200"></div>
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">
+                {stopovers.length} Stopover{stopovers.length > 1 ? 's' : ''}
+              </p>
+            </div>
+            <div className="h-px flex-1 bg-amber-200"></div>
+          </div>
+          
+          <div className="space-y-3">
+            {stopovers.map((stop, idx) => (
+              <div key={`stopover-${journeyNumber}-${idx}`} className="bg-amber-50 rounded-xl border border-amber-100 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <p className="text-base font-black text-gray-900">{stop.code}</p>
+                        <p className="text-xs text-gray-600">{stop.name || stop.city}</p>
+                      </div>
+                      {stop.layoverDuration && (
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-1 rounded-full">
+                          Layover: {stop.layoverDuration}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="mt-2 flex items-center gap-3 text-[10px] text-gray-500">
+                      <div className="flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>Arrives: {formatTime(stop.arrivalTime)}</span>
+                      </div>
+                      <span>→</span>
+                      <div className="flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>Departs: {formatTime(stop.departureTime)}</span>
+                      </div>
+                    </div>
+                    
+                    {stop.flightNumber && stop.airline && (
+                      <p className="mt-2 text-[9px] text-gray-400">
+                        Continue on {stop.airline} flight {stop.flightNumber}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
   // Show loading state
   if (isConverting || isLoadingRates) {
@@ -983,27 +1121,30 @@ const renderStopDetails = () => {
           {/* Journey Details - Multi-City Support */}
           <div className="p-8 md:p-12 space-y-12">
             <div className="grid grid-cols-1 gap-8 md:gap-12">
-              {slices.map((slice: any, idx: number) => {
-                const journeyNumber = idx + 1;
-                let title = `Journey ${journeyNumber}`;
-                let date = formatDate(slice.segments?.[0]?.departing_at || slice.departure_time || slice.departureTime);
-                
-                // ✅ Customize title based on slice position
-                if (isRoundTrip) {
-                  if (idx === 0) title = 'Outbound Journey';
-                  else if (idx === 1) title = 'Return Journey';
-                } else if (isMultiCity) {
-                  const origin = slice.origin?.iata_code || slice.departureCode || '--';
-                  const destination = slice.destination?.iata_code || slice.arrivalCode || '--';
-                  title = `${origin} → ${destination}`;
-                }
-                
-                return renderJourney(slice, title, date, journeyNumber);
-              })}
+            
+{slices.map((slice: any, idx: number) => {
+  const journeyNumber = idx + 1;
+  let title = `Journey ${journeyNumber}`;
+  let date = formatDate(slice.segments?.[0]?.departing_at || slice.departure_time || slice.departureTime);
+  
+  if (isRoundTrip) {
+    if (idx === 0) title = 'Outbound Journey';
+    else if (idx === 1) title = 'Return Journey';
+  } else if (isMultiCity) {
+    const origin = slice.origin?.iata_code || slice.departureCode || '--';
+    const destination = slice.destination?.iata_code || slice.arrivalCode || '--';
+    title = `${origin} → ${destination}`;
+  }
+  
+  return (
+    <div key={`journey-${idx}`}>
+      {renderJourney(slice, title, date, journeyNumber)}
+    </div>
+  );
+})}
             </div>
 
-            {/* Render Technical Stop Details from API */}
-            {renderStopDetails()}
+         
 
             {/* Fare Rules Section */}
             {fareRules.length > 0 && (

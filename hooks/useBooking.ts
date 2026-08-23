@@ -760,6 +760,7 @@ const northAmericaCountries = ['US', 'USA', 'CAN', 'CA', 'MX', 'MEX'];
         currency: offerCurrency,
         basePrice: basePrice,
         bookingData: {},
+    
       };
 
 
@@ -1050,14 +1051,27 @@ if (leadResult.error) {
 } else if (leadResult.passenger) {
   passengersArray.push(leadResult.passenger);
 }
-
 // 2. Add additional passengers from travellers
 if (travellers && travellers.length > 1) {
   for (let i = 1; i < travellers.length; i++) {
     const t = travellers[i];
     if (t.firstName || t.FirstName) {
+      
+      const mappedTraveller = {
+        ...t,
+        ExpiryDate: t.ExpiryDate || t.passportExpiry || '',
+        PassportNumber: t.PassportNumber || t.passportNumber || '',
+        PassportIssuingAuthority: t.PassportIssuingAuthority || t.passportIssuingAuthority || '',
+        PassportIssueCountryCode: t.PassportIssueCountryCode || t.passportIssueCountry || 'NG',
+        DateOfBirth: t.DateOfBirth || t.dateOfBirth || '',
+        FirstName: t.FirstName || t.firstName || '',
+        LastName: t.LastName || t.lastName || '',
+        PhoneNumber: t.PhoneNumber || t.phone || '',
+        Email: t.Email || t.email || '',
+      };
+      
       const result = buildPassengerSafely(
-        t,
+        mappedTraveller,
         isDomestic,
         isNorthAmerica,
         defaultAddress,
@@ -1078,17 +1092,25 @@ if (Array.isArray(additionalPassengers) && additionalPassengers.length > 0) {
   for (let i = 0; i < additionalPassengers.length; i++) {
     const ap = additionalPassengers[i];
     
-    // ✅ Validate date of birth is provided
-    const typeLabel = ap.type || 'passenger';
-    if (!ap.dateOfBirth || ap.dateOfBirth === 'mm/dd/yyyy' || ap.dateOfBirth === 'MM/DD/YYYY') {
-      throw new Error(
-        `Date of birth is required for ${typeLabel} #${i + 1}. ` +
-        `Please go back and select a date of birth.`
-      );
-    }
+    // ✅ Map the fields to match what buildPassenger expects
+    const mappedPassenger = {
+      ...ap,
+      // Map passport fields to the correct case
+      ExpiryDate: ap.passportExpiry || ap.ExpiryDate || '',
+      PassportNumber: ap.passportNumber || ap.PassportNumber || '',
+      PassportIssuingAuthority: ap.passportIssuingAuthority || ap.PassportIssuingAuthority || '',
+      PassportIssueCountryCode: ap.passportIssueCountry || ap.PassportIssueCountryCode || 'NG',
+      // Ensure DateOfBirth is set
+      DateOfBirth: ap.dateOfBirth || ap.DateOfBirth || '',
+      // Ensure name fields are set
+      FirstName: ap.firstName || ap.FirstName || '',
+      LastName: ap.lastName || ap.LastName || '',
+      PhoneNumber: ap.phone || ap.PhoneNumber || '',
+      Email: ap.email || ap.Email || '',
+    };
     
     const result = buildPassengerSafely(
-      ap,
+      mappedPassenger,
       isDomestic,
       isNorthAmerica,
       defaultAddress,
