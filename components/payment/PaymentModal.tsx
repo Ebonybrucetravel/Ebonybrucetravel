@@ -28,6 +28,37 @@ function PaymentForm({ booking, isGuest, voucherCode, onSuccess, onCancel }: Pay
   const amount = booking.finalAmount ?? booking.totalAmount;
   const displayAmt = formatPrice(amount, booking.currency);
 
+  // ✅ Helper to get email from multiple sources
+  const getEmail = (): string => {
+    // Try booking.passengerInfo.email first
+    if (booking.passengerInfo?.email) {
+      return booking.passengerInfo.email;
+    }
+    
+    // Try booking.email (top level)
+    if ((booking as any).email) {
+      return (booking as any).email;
+    }
+    
+    // Try booking.bookingData.email
+    if ((booking as any).bookingData?.email) {
+      return (booking as any).bookingData.email;
+    }
+    
+    // Try sessionStorage (for guest bookings)
+    if (typeof window !== 'undefined') {
+      const storedEmail = sessionStorage.getItem('guest_booking_email');
+      if (storedEmail) {
+        return storedEmail;
+      }
+    }
+    
+    // Try guest email from props via booking reference
+    // Last resort - use empty string but log warning
+    console.warn('⚠️ No email found for booking:', booking.id);
+    return '';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!stripe || !elements) return;
@@ -38,7 +69,12 @@ function PaymentForm({ booking, isGuest, voucherCode, onSuccess, onCancel }: Pay
       try {
           setStatus('paying');
           const provider = booking.provider || undefined;
+          const email = getEmail();
           
+          // ✅ Check if we have an email
+          if (!email) {
+            throw new Error('Passenger email is required for payment. Please go back and enter your email address.');
+          }
         
           let clientSecret: string;
           
@@ -47,7 +83,7 @@ function PaymentForm({ booking, isGuest, voucherCode, onSuccess, onCancel }: Pay
               const result = await createPaymentIntent(
                   booking.id, 
                   true, 
-                  booking.passengerInfo.email, 
+                  email,  // ← Use the found email
                   booking.reference,
                   voucherCode,
                   provider,
@@ -58,7 +94,7 @@ function PaymentForm({ booking, isGuest, voucherCode, onSuccess, onCancel }: Pay
               const result = await createPaymentIntent(
                   booking.id, 
                   false, 
-                  booking.passengerInfo.email,
+                  email,  // ← Use the found email
                   booking.reference, 
                   voucherCode,
                   provider,
@@ -74,7 +110,7 @@ function PaymentForm({ booking, isGuest, voucherCode, onSuccess, onCancel }: Pay
                   card: cardEl,
                   billing_details: {
                       name: `${booking.passengerInfo.firstName} ${booking.passengerInfo.lastName}`,
-                      email: booking.passengerInfo.email,
+                      email: email,  // ← Use the found email
                       phone: booking.passengerInfo.phone,
                   },
               },
@@ -86,8 +122,8 @@ function PaymentForm({ booking, isGuest, voucherCode, onSuccess, onCancel }: Pay
               setStatus('confirming');
               
               try {
-                  const guestParams = isGuest && booking.reference && booking.passengerInfo?.email
-                      ? { reference: booking.reference, email: booking.passengerInfo.email }
+                  const guestParams = isGuest && booking.reference && email
+                      ? { reference: booking.reference, email: email }
                       : undefined;
                       
                   const confirmed = await pollBookingStatus(booking.id, 10, 3000, guestParams);
@@ -136,6 +172,12 @@ function PaymentForm({ booking, isGuest, voucherCode, onSuccess, onCancel }: Pay
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
                       </svg>
                   </button>
+              </div>
+
+              {/* ✅ Show email being used for payment */}
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg text-sm">
+                  <span className="text-gray-600">Contact email:</span>
+                  <span className="font-medium ml-2 text-gray-800">{getEmail() || 'Not provided'}</span>
               </div>
 
               <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-100 space-y-2">

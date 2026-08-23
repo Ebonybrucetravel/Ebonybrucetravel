@@ -1409,9 +1409,6 @@ console.log(`📅 Lead passenger DOB formatted: ${formattedDateOfBirth}`);
       isMerchantPaymentModel,
     });
   
-    // ============================================================
-    // ✅ HOTEL FLOW - AMADEUS (UNCHANGED)
-    // ============================================================
     if (isHotel && !isCar) {
       // ✅ Extract offer ID from the hotel item
       const hotelOfferId = extractOfferIdFromHotel(extendedItem);
@@ -1545,9 +1542,36 @@ console.log(`📅 Lead passenger DOB formatted: ${formattedDateOfBirth}`);
             isGuest,
             searchParams,
           );
-          setBooking(newBooking);
+          
+          // ✅ FIX: Store email after hotel booking creation
+          if (newBooking) {
+            // Store email in sessionStorage for guest bookings
+            if (isGuest && cleanedPassengerInfo.email) {
+              sessionStorage.setItem('guest_booking_email', cleanedPassengerInfo.email);
+              console.log('📧 Stored guest email in sessionStorage for hotel:', cleanedPassengerInfo.email);
+            }
+            
+            // Ensure email is in the booking object
+            const bookingAny = newBooking as any;
+            bookingAny.email = cleanedPassengerInfo.email;
+            if (!bookingAny.passengerInfo) {
+              bookingAny.passengerInfo = {};
+            }
+            bookingAny.passengerInfo.email = cleanedPassengerInfo.email;
+            // ✅ ADD THIS - for consistency with car and flight flows
+            if (!bookingAny.bookingData) {
+              bookingAny.bookingData = {};
+            }
+            bookingAny.bookingData.email = cleanedPassengerInfo.email;
+            
+            setBooking(bookingAny);
+          } else {
+            setBooking(newBooking);
+          }
+          
           setAppliedVoucherCode(voucherCode);
           setShowPayment(true);
+          
         } catch (err: any) {
           console.error("Amadeus hotel booking error:", err);
           toast.error(err?.message ?? "We couldn't create your booking. Please try again.");
@@ -1565,108 +1589,145 @@ console.log(`📅 Lead passenger DOB formatted: ${formattedDateOfBirth}`);
       setShowAmadeusPayment(true);
       return;
     }
-     // ============================================================
-    // ✅ CAR RENTAL FLOW
-    // ============================================================
-    if (isCar) {
-      try {
-        console.log("🚗 Creating car rental booking...");
-        
-        // ✅ Get the correct price from the item
-        let finalAmount = extendedItem.final_amount ? parseFloat(extendedItem.final_amount) : 0;
-        if (!finalAmount || finalAmount === 0) {
-          finalAmount = extendedItem.priceBreakdown?.totalAmount || 0;
-        }
-        if (!finalAmount || finalAmount === 0) {
-          finalAmount = extendedItem.calculatedTotal || 0;
-        }
-        if (!finalAmount || finalAmount === 0) {
-          finalAmount = extendedItem.totalAmount || 0;
-        }
-        if (!finalAmount || finalAmount === 0) {
-          if (extendedItem.price && typeof extendedItem.price === 'string') {
-            const parsed = parseFloat(extendedItem.price.replace(/[^0-9.]/g, ''));
-            if (parsed > 0) {
-              finalAmount = parsed;
-            }
-          }
-        }
-        
-        const basePrice = extendedItem.priceBreakdown?.basePrice ||
-                          extendedItem.calculatedBasePrice || 
-                          extendedItem.basePrice || 
-                          (finalAmount > 0 ? finalAmount / 1.15 : 0);
-        
-        const markupAmount = extendedItem.priceBreakdown?.markupAmount ||
-                             extendedItem.calculatedMarkup || 
-                             extendedItem.markupAmount || 
-                             (finalAmount > 0 ? finalAmount * 0.10 : 0);
-        
-        const serviceFee = extendedItem.priceBreakdown?.serviceFee ||
-                           extendedItem.calculatedServiceFee || 
-                           extendedItem.serviceFee || 
-                           (finalAmount > 0 ? finalAmount * 0.05 : 0);
-        
-        const correctedItem = {
-          ...extendedItem,
-          provider: 'AMADEUS',
-          productTypeOverride: 'CAR_RENTAL',
-          basePrice: basePrice,
-          markupAmount: markupAmount,
-          serviceFee: serviceFee,
-          totalAmount: finalAmount,
-          vehicle: extendedItem.vehicle,
-          serviceProvider: extendedItem.serviceProvider,
-          cancellationRules: extendedItem.cancellationRules,
-          distance: extendedItem.distance,
-          start: extendedItem.start,
-          end: extendedItem.end,
-        };
-        
-        console.log("🚗 Car rental booking prices:", {
-          basePrice,
-          markupAmount,
-          serviceFee,
-          finalAmount,
-        });
-
-        const newBooking = await createBooking(
-          correctedItem,
-          searchParams,
-          cleanedPassengerInfo,
-          isGuest,
-          {
-            taxes: serviceFee,
-            basePrice: basePrice,
-            finalAmount: finalAmount,
-          },
-        );
-
-        setBooking(newBooking);
-        setAppliedVoucherCode(voucherCode);
-        setShowPayment(true);
-        
-        if (newBooking) {
-          sessionStorage.setItem('booking_price_breakdown', JSON.stringify({
-            basePrice: newBooking.basePrice || basePrice,
-            markupAmount: newBooking.markupAmount || markupAmount,
-            serviceFee: newBooking.serviceFee || serviceFee,
-            totalAmount: newBooking.totalAmount || finalAmount,
-            currency: newBooking.currency || 'NGN',
-            markupPercentage: correctedItem.markup_percentage || 10,
-            serviceFeePercentage: correctedItem.service_fee_percentage || 5,
-          }));
-        }
-        
-      } catch (err: any) {
-        console.error('Car rental booking error:', err);
-        toast.error(err.message ?? "We couldn't create your car rental booking. Please try again.");
-      } finally {
-        setIsProcessingPayment(false);
-      }
-      return;
+    
+// ============================================================
+// ✅ CAR RENTAL FLOW - FIXED
+// ============================================================
+if (isCar) {
+  try {
+    console.log("🚗 Creating car rental booking...");
+    
+    // ✅ Get the correct price from the item
+    let finalAmount = extendedItem.final_amount ? parseFloat(extendedItem.final_amount) : 0;
+    if (!finalAmount || finalAmount === 0) {
+      finalAmount = extendedItem.priceBreakdown?.totalAmount || 0;
     }
+    if (!finalAmount || finalAmount === 0) {
+      finalAmount = extendedItem.calculatedTotal || 0;
+    }
+    if (!finalAmount || finalAmount === 0) {
+      finalAmount = extendedItem.totalAmount || 0;
+    }
+    if (!finalAmount || finalAmount === 0) {
+      if (extendedItem.price && typeof extendedItem.price === 'string') {
+        const parsed = parseFloat(extendedItem.price.replace(/[^0-9.]/g, ''));
+        if (parsed > 0) {
+          finalAmount = parsed;
+        }
+      }
+    }
+    
+    const basePrice = extendedItem.priceBreakdown?.basePrice ||
+                      extendedItem.calculatedBasePrice || 
+                      extendedItem.basePrice || 
+                      (finalAmount > 0 ? finalAmount / 1.15 : 0);
+    
+    const markupAmount = extendedItem.priceBreakdown?.markupAmount ||
+                         extendedItem.calculatedMarkup || 
+                         extendedItem.markupAmount || 
+                         (finalAmount > 0 ? finalAmount * 0.10 : 0);
+    
+    const serviceFee = extendedItem.priceBreakdown?.serviceFee ||
+                       extendedItem.calculatedServiceFee || 
+                       extendedItem.serviceFee || 
+                       (finalAmount > 0 ? finalAmount * 0.05 : 0);
+    
+    const correctedItem = {
+      ...extendedItem,
+      provider: 'AMADEUS',
+      productTypeOverride: 'CAR_RENTAL',
+      basePrice: basePrice,
+      markupAmount: markupAmount,
+      serviceFee: serviceFee,
+      totalAmount: finalAmount,
+      vehicle: extendedItem.vehicle,
+      serviceProvider: extendedItem.serviceProvider,
+      cancellationRules: extendedItem.cancellationRules,
+      distance: extendedItem.distance,
+      start: extendedItem.start,
+      end: extendedItem.end,
+    };
+    
+    console.log("🚗 Car rental booking prices:", {
+      basePrice,
+      markupAmount,
+      serviceFee,
+      finalAmount,
+    });
 
+    const newBooking = await createBooking(
+      correctedItem,
+      searchParams,
+      cleanedPassengerInfo,
+      isGuest,
+      {
+        taxes: serviceFee,
+        basePrice: basePrice,
+        finalAmount: finalAmount,
+      },
+    );
+    
+    // ✅ FIX: Store email after booking creation
+    if (newBooking) {
+      // Store email in sessionStorage for guest bookings
+      if (isGuest && cleanedPassengerInfo.email) {
+        sessionStorage.setItem('guest_booking_email', cleanedPassengerInfo.email);
+        console.log('📧 Stored guest email in sessionStorage:', cleanedPassengerInfo.email);
+      }
+      
+      // ✅ Ensure email is in the booking object at multiple locations
+      const bookingAny = newBooking as any;
+      
+      // Set at top level
+      bookingAny.email = cleanedPassengerInfo.email;
+      
+      // Set in passengerInfo
+      if (!bookingAny.passengerInfo) {
+        bookingAny.passengerInfo = {};
+      }
+      bookingAny.passengerInfo.email = cleanedPassengerInfo.email;
+      
+      // Set in bookingData
+      if (!bookingAny.bookingData) {
+        bookingAny.bookingData = {};
+      }
+      bookingAny.bookingData.email = cleanedPassengerInfo.email;
+      
+      console.log('📧 Email stored in booking object:', {
+        topLevel: bookingAny.email,
+        passengerInfo: bookingAny.passengerInfo?.email,
+        bookingData: bookingAny.bookingData?.email,
+      });
+      
+      // Update the booking state with the enhanced object
+      setBooking(bookingAny);
+    } else {
+      setBooking(newBooking);
+    }
+    
+    setAppliedVoucherCode(voucherCode);
+    setShowPayment(true);
+    
+    if (newBooking) {
+      sessionStorage.setItem('booking_price_breakdown', JSON.stringify({
+        basePrice: newBooking.basePrice || basePrice,
+        markupAmount: newBooking.markupAmount || markupAmount,
+        serviceFee: newBooking.serviceFee || serviceFee,
+        totalAmount: newBooking.totalAmount || finalAmount,
+        currency: newBooking.currency || 'NGN',
+        markupPercentage: correctedItem.markup_percentage || 10,
+        serviceFeePercentage: correctedItem.service_fee_percentage || 5,
+      }));
+    }
+    
+  } catch (err: any) {
+    console.error('Car rental booking error:', err);
+    toast.error(err.message ?? "We couldn't create your car rental booking. Please try again.");
+  } finally {
+    setIsProcessingPayment(false);
+  }
+  return;
+}
   
     // ============================================================
     // ✅ FLIGHT BOOKING - WAKANOW (UNCHANGED) + DUFFEL (FIXED)
@@ -1841,8 +1902,45 @@ console.log(`📅 Lead passenger DOB formatted: ${formattedDateOfBirth}`);
           finalAmount: finalAmount,
         },
       );
-  
-      setBooking(newBooking);
+      
+      // ✅ FIX: Store email after flight booking creation
+      if (newBooking) {
+        // Store email in sessionStorage for guest bookings
+        if (isGuest && cleanedPassengerInfo.email) {
+          sessionStorage.setItem('guest_booking_email', cleanedPassengerInfo.email);
+          console.log('📧 Stored guest email in sessionStorage for flight:', cleanedPassengerInfo.email);
+        }
+        
+        // ✅ Ensure email is in the booking object at multiple locations
+        const bookingAny = newBooking as any;
+        
+        // Set at top level
+        bookingAny.email = cleanedPassengerInfo.email;
+        
+        // Set in passengerInfo
+        if (!bookingAny.passengerInfo) {
+          bookingAny.passengerInfo = {};
+        }
+        bookingAny.passengerInfo.email = cleanedPassengerInfo.email;
+        
+        // Set in bookingData
+        if (!bookingAny.bookingData) {
+          bookingAny.bookingData = {};
+        }
+        bookingAny.bookingData.email = cleanedPassengerInfo.email;
+        
+        console.log('📧 Email stored in booking object for flight:', {
+          topLevel: bookingAny.email,
+          passengerInfo: bookingAny.passengerInfo?.email,
+          bookingData: bookingAny.bookingData?.email,
+        });
+        
+        // Update the booking state with the enhanced object
+        setBooking(bookingAny);
+      } else {
+        setBooking(newBooking);
+      }
+      
       setAppliedVoucherCode(voucherCode);
       setShowPayment(true);
       

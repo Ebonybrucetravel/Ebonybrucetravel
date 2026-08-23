@@ -1496,8 +1496,34 @@ console.log('🔍 PASSPORT CHECK BEFORE SEND:', {
         }
         const created: Booking = data.data ?? data;
 
-        // ✅ FIX: Extract PNR from response for BOTH guest and authenticated users
-        // Use 'any' type to access properties that might not be on Booking type
+// ✅ FIX: Store email in the booking object
+const bookingAny = created as any;
+
+// If the email is in the passenger object but not in the response, add it
+if (passenger.email && !bookingAny.passengerInfo?.email) {
+  if (!bookingAny.passengerInfo) {
+    bookingAny.passengerInfo = {};
+  }
+  bookingAny.passengerInfo.email = passenger.email;
+  bookingAny.email = passenger.email;
+  console.log('📧 Added email to booking object from passenger:', passenger.email);
+}
+
+// Also store in bookingData if it exists
+if (bookingAny.bookingData && passenger.email) {
+  bookingAny.bookingData.email = passenger.email;
+  if (!bookingAny.bookingData.passengerInfo) {
+    bookingAny.bookingData.passengerInfo = {};
+  }
+  bookingAny.bookingData.passengerInfo.email = passenger.email;
+}
+
+// Store in sessionStorage for guest bookings
+if (isGuest && passenger.email) {
+  sessionStorage.setItem('guest_booking_email', passenger.email);
+  console.log('📧 Stored guest email in sessionStorage:', passenger.email);
+}
+
         let pnrNumber = null;
         
         // 1. Check top-level fields (using type assertion)
@@ -1641,42 +1667,55 @@ console.log('🔍 PASSPORT CHECK BEFORE SEND:', {
               // ✅ FIX: Try multiple sources for email
               let email = guestEmail;
               
-              // Try to get email from booking object (with type assertion)
+              // Try to get email from booking object
               if (!email && booking) {
                 const bookingAny = booking as any;
-                // Try different possible locations for email
+                // Try all possible locations
                 email = bookingAny.passengerInfo?.email ||
                         bookingAny.email ||
+                        bookingAny.bookingData?.passengerInfo?.email ||
                         bookingAny.bookingData?.email ||
                         bookingAny.passengerInfo?.email ||
-                        (bookingAny.passengerInfo as any)?.email;
+                        (bookingAny.passengerInfo as any)?.email ||
+                        bookingAny.bookingData?.passengerInfo?.[0]?.email ||
+                        bookingAny.bookingData?.travellers?.[0]?.Email;
               }
               
-              // Try to get email from sessionStorage
+              // ✅ Try to get email from sessionStorage (for guest bookings)
               if (!email && typeof window !== 'undefined') {
+                // Check if we stored it during booking creation
                 email = sessionStorage.getItem('guest_booking_email') || '';
+                
+                // Also try to get from the selectedBooking
+                if (!email) {
+                  const storedBooking = sessionStorage.getItem('selectedBooking');
+                  if (storedBooking) {
+                    try {
+                      const parsed = JSON.parse(storedBooking);
+                      email = parsed.passengerInfo?.email || parsed.email || '';
+                    } catch (e) {}
+                  }
+                }
               }
               
-              // ✅ Log what we found
-              console.log('🔍 Email sources check:', {
-                guestEmailProvided: !!guestEmail,
-                bookingEmail: booking?.passengerInfo?.email || (booking as any)?.email,
-                bookingDataEmail: (booking as any)?.bookingData?.email,
-                sessionStorageEmail: sessionStorage.getItem('guest_booking_email'),
-                finalEmail: email,
-                bookingKeys: booking ? Object.keys(booking) : [],
-              });
+              // ✅ Try to get email from pendingPassengerInfo (if available in the hook)
+              // Note: pendingPassengerInfo is not in the current hook, but we can check booking.passengerInfo
+              if (!email && booking) {
+                email = (booking as any).passengerInfo?.email || '';
+              }
+              
+              // ✅ Final check - if no email, show a better error
+              if (!email) {
+                console.error('❌ No email found. Booking object:', booking);
+                console.error('❌ guestEmail:', guestEmail);
+                console.error('❌ booking.passengerInfo:', (booking as any)?.passengerInfo);
+                throw new Error(
+                  'Passenger email is required for payment. Please make sure you entered your email address when booking.'
+                );
+              }
           
               if (provider === 'WAKANOW') {
                 endpoint = "/api/v1/payments/stripe/create-intent/guest";
-                
-                // ✅ Final email check - if still no email, show a better error
-                if (!email) {
-                  console.error('❌ No email found. Booking object:', booking);
-                  throw new Error(
-                    'Passenger email is required for payment. Please make sure you entered your email address when booking.'
-                  );
-                }
                 
                 const ref = bookingReference || booking?.reference;
                 
@@ -1691,7 +1730,10 @@ console.log('🔍 PASSPORT CHECK BEFORE SEND:', {
               } 
               else if (isGuest) {
                 endpoint = "/api/v1/payments/stripe/create-intent/guest";
-                body = { bookingReference: bookingReference!, email: guestEmail! };
+                body = { 
+                  bookingReference: bookingReference!, 
+                  email: email,  // ✅ Use the email we found, not guestEmail
+                };
               } 
               else {
                 endpoint = "/api/v1/payments/stripe/create-intent";
