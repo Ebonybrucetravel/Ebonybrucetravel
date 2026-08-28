@@ -6,11 +6,14 @@ import { HandleStripeWebhookUseCase } from './use-cases/handle-stripe-webhook.us
 import { ChargeAmadeusHotelMarginUseCase } from './use-cases/charge-amadeus-hotel-margin.use-case';
 import { ChargeAmadeusCarRentalMarginUseCase } from './use-cases/charge-amadeus-car-rental-margin.use-case';
 import { PaymentModule } from '@domains/payment/payment.module';
+import { BookingService } from '@domains/booking/services/booking.service';
 import { DatabaseModule } from '@infrastructure/database/database.module';
 import { BookingApplicationModule } from '@application/booking/booking-application.module';
 import { EmailModule } from '@infrastructure/email/email.module';
 import { LoyaltyModule } from '@domains/loyalty/loyalty.module';
 import { SecurityModule } from '@infrastructure/security/security.module';
+import { BookingRepositoryImpl } from '@infrastructure/database/repositories/booking.repository.impl';
+import { BOOKING_REPOSITORY } from '@domains/booking/repositories/booking.repository.token';
 
 @Module({
   imports: [
@@ -28,9 +31,16 @@ import { SecurityModule } from '@infrastructure/security/security.module';
     HandleStripeWebhookUseCase,
     ChargeAmadeusHotelMarginUseCase,
     ChargeAmadeusCarRentalMarginUseCase,
+    {
+      provide: BOOKING_REPOSITORY,
+      useClass: BookingRepositoryImpl,
+    },
+    
+    BookingService,
   ],
   exports: [
     ProcessPaymentUseCase,
+    BookingService,
     CreatePaymentIntentUseCase,
     CreateGuestPaymentIntentUseCase,
     HandleStripeWebhookUseCase,

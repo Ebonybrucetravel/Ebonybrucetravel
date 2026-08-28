@@ -303,6 +303,122 @@ export class BookingController {
     };
   }
 
+
+    /**
+   * ✅ NEW: Initiate booking and create payment intent
+   */
+     @UseGuards(JwtAuthGuard)
+     @Post('initiate')
+     @ApiBearerAuth()
+     @ApiOperation({
+       summary: 'Initiate a booking and create payment intent',
+       description: 'Creates a booking in PENDING state and returns payment intent. No email sent until payment confirmed.'
+     })
+     async initiateBooking(@Body() createBookingDto: CreateBookingDto, @Request() req) {
+       try {
+         // Validate offer ID for Duffel
+         if (createBookingDto.provider === 'DUFFEL') {
+           const fixedOfferId = this.validateAndFixDuffelOfferId(
+             createBookingDto.offerId,
+             createBookingDto.offerData,
+           );
+           createBookingDto.offerId = fixedOfferId;
+         }
+   
+         // Step 1: Create booking (NO EMAIL sent - already disabled)
+         const booking = await this.createBookingUseCase.execute(createBookingDto, req.user.id);
+   
+         // Step 2: Create payment intent (you need to add your payment service)
+         // TODO: Replace with your actual payment service (Stripe, Paystack, etc.)
+         const paymentIntent = {
+           id: `pay_${Date.now()}`,
+           clientSecret: `secret_${Date.now()}`,
+           amount: booking.totalAmount,
+           currency: booking.currency,
+           metadata: {
+             bookingId: booking.id,
+             bookingReference: booking.reference,
+           }
+         };
+   
+         return {
+           success: true,
+           data: {
+             booking: {
+               id: booking.id,
+               reference: booking.reference,
+               totalAmount: booking.totalAmount,
+               currency: booking.currency,
+             },
+             payment: paymentIntent,
+           },
+           message: 'Booking initiated. Please complete payment.'
+         };
+       } catch (error: any) {
+         throw new HttpException(
+           error?.message || 'Failed to initiate booking',
+           HttpStatus.INTERNAL_SERVER_ERROR
+         );
+       }
+     }
+   
+     /**
+      * ✅ NEW: Initiate guest booking and create payment intent
+      */
+     @Public()
+     @Post('initiate-guest')
+     @ApiOperation({
+       summary: 'Initiate a guest booking and create payment intent',
+       description: 'Creates a guest booking in PENDING state and returns payment intent. No email sent until payment confirmed.'
+     })
+     async initiateGuestBooking(@Body() createGuestBookingDto: CreateGuestBookingDto) {
+       try {
+         // Validate offer ID for Duffel
+         if (createGuestBookingDto.provider === 'DUFFEL') {
+           const fixedOfferId = this.validateAndFixDuffelOfferId(
+             createGuestBookingDto.offerId,
+             createGuestBookingDto.offerData,
+           );
+           createGuestBookingDto.offerId = fixedOfferId;
+         }
+   
+         // Step 1: Create guest booking (NO EMAIL sent)
+         const booking = await this.createGuestBookingUseCase.execute(createGuestBookingDto);
+   
+         // Step 2: Create payment intent
+         const paymentIntent = {
+           id: `pay_${Date.now()}`,
+           clientSecret: `secret_${Date.now()}`,
+           amount: booking.totalAmount,
+           currency: booking.currency,
+           metadata: {
+             bookingId: booking.id,
+             bookingReference: booking.reference,
+             isGuest: true,
+           }
+         };
+   
+         return {
+           success: true,
+           data: {
+             booking: {
+               id: booking.id,
+               reference: booking.reference,
+               totalAmount: booking.totalAmount,
+               currency: booking.currency,
+             },
+             payment: paymentIntent,
+           },
+           message: 'Guest booking initiated. Please complete payment.'
+         };
+       } catch (error: any) {
+         throw new HttpException(
+           error?.message || 'Failed to initiate guest booking',
+           HttpStatus.INTERNAL_SERVER_ERROR
+         );
+       }
+     }
+
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth()

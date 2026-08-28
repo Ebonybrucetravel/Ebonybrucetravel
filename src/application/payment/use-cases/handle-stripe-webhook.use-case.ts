@@ -2,6 +2,7 @@ import { Injectable, Logger, HttpException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/database/prisma.service';
 import { StripeService } from '@domains/payment/services/stripe.service';
 import { LoyaltyService } from '@domains/loyalty/loyalty.service';
+import { BookingService } from '@domains/booking/services/booking.service';
 import { VoucherService } from '@domains/loyalty/voucher.service';
 import { CreateDuffelOrderUseCase } from '@application/booking/use-cases/create-duffel-order.use-case';
 import { CreateAmadeusHotelBookingUseCase } from '@application/booking/use-cases/create-amadeus-hotel-booking.use-case';
@@ -27,35 +28,35 @@ export class HandleStripeWebhookUseCase {
     private readonly createHotelbedsBookingUseCase: CreateHotelbedsBookingUseCase,
     private readonly ticketWakanowFlightUseCase: TicketWakanowFlightUseCase,
     private readonly resendService: ResendService,
-  ) { }
+    private readonly bookingService: BookingService,
+  ) {}
 
   async execute(event: Stripe.Event): Promise<void> {
-    this.logger.log(`Processing Stripe webhook: ${event.type} `);
-  
+    this.logger.log(`Processing Stripe webhook: ${event.type}`);
+
     switch (event.type) {
-     
       case 'payment_intent.created':
         await this.handlePaymentIntentCreated(event.data.object as Stripe.PaymentIntent);
         break;
-  
+
       case 'payment_intent.succeeded':
         await this.handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
         break;
-  
+
       case 'payment_intent.payment_failed':
         await this.handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
         break;
-  
+
       case 'payment_intent.canceled':
         await this.handlePaymentIntentCanceled(event.data.object as Stripe.PaymentIntent);
         break;
-  
+
       case 'charge.refunded':
         await this.handleChargeRefunded(event.data.object as Stripe.Charge);
         break;
-  
+
       default:
-        this.logger.warn(`Unhandled webhook event type: ${event.type} `);
+        this.logger.warn(`Unhandled webhook event type: ${event.type}`);
     }
   }
 
@@ -105,7 +106,7 @@ export class HandleStripeWebhookUseCase {
 
       if (existingBooking?.paymentStatus === 'COMPLETED') {
         this.logger.log(
-          `Booking ${bookingId} is already marked as COMPLETED.Ignoring duplicate webhook event.`,
+          `Booking ${bookingId} is already marked as COMPLETED. Ignoring duplicate webhook event.`,
         );
         return;
       }
@@ -139,6 +140,7 @@ export class HandleStripeWebhookUseCase {
 
       this.logger.log(`Booking ${bookingId} payment confirmed`);
 
+      // Voucher handling
       if (booking.voucherId) {
         this.voucherService
           .markVoucherAsUsed(booking.voucherId, bookingId)
@@ -150,6 +152,7 @@ export class HandleStripeWebhookUseCase {
           });
       }
 
+      // Loyalty points
       this.loyaltyService
         .earnPointsFromBooking(
           booking.userId,
@@ -161,7 +164,7 @@ export class HandleStripeWebhookUseCase {
         .then(({ pointsEarned, newBalance }) => {
           if (pointsEarned > 0) {
             this.logger.log(
-              `Awarded ${pointsEarned} loyalty points to user ${booking.userId} for booking ${bookingId}.Balance: ${newBalance} `,
+              `Awarded ${pointsEarned} loyalty points to user ${booking.userId} for booking ${bookingId}. Balance: ${newBalance}`,
             );
           }
         })
@@ -177,21 +180,26 @@ export class HandleStripeWebhookUseCase {
         booking.provider === Provider.WAKANOW &&
         (booking.productType === 'FLIGHT_INTERNATIONAL' || booking.productType === 'FLIGHT_DOMESTIC');
 
+      // ============================================================
+      // ✅ SEND EMAILS FOR NON-FLIGHT BOOKINGS IMMEDIATELY
+      // ============================================================
       if (!isDuffelFlight && !isWakanowFlight) {
+        this.logger.log(`📧 Sending confirmation emails for ${booking.productType} booking ${bookingId}...`);
         this.sendBookingEmails(booking, paymentIntent)
-          .then(() =>
-            this.prisma.booking.update({
+          .then(() => {
+            this.logger.log(`✅ Confirmation emails sent for booking ${bookingId}`);
+            return this.prisma.booking.update({
               where: { id: bookingId },
               data: { confirmationEmailSentAt: new Date() },
-            }),
-          )
+            });
+          })
           .catch((error) => {
-            this.logger.error(`Failed to send booking emails for ${bookingId}: `, error);
+            this.logger.error(`❌ Failed to send booking emails for ${bookingId}: `, error);
           });
       }
 
       // ============================================================
-      // ✅ DUFFEL FLIGHT - UPDATED: No auto-refund on expiry, uses stored data
+      // ✅ DUFFEL FLIGHT
       // ============================================================
       if (isDuffelFlight) {
         try {
@@ -199,29 +207,30 @@ export class HandleStripeWebhookUseCase {
           const { orderId } = await this.createDuffelOrderUseCase.execute(bookingId);
           this.logger.log(`✅ Successfully created Duffel order ${orderId} for booking ${bookingId}`);
 
+          // ✅ Send email after successful order creation
           const updatedBooking = await this.prisma.booking.findUnique({
             where: { id: bookingId },
             include: { user: { select: { id: true, email: true, name: true } } },
           });
           if (updatedBooking) {
+            this.logger.log(`📧 Sending Duffel flight confirmation email...`);
             await this.sendBookingEmails(updatedBooking, paymentIntent);
             await this.prisma.booking.update({
               where: { id: bookingId },
               data: { confirmationEmailSentAt: new Date() },
             });
+            this.logger.log(`✅ Duffel flight confirmation email sent`);
           }
         } catch (error: any) {
           this.logger.error(`Failed to create Duffel order for booking ${bookingId}:`, error);
 
-          // ✅ Check if it's an expired offer error
-          const isExpiredError = error.status === 410 || 
-                                 error.message?.includes('expired') ||
-                                 error.message?.includes('GONE');
+          const isExpiredError = error.status === 410 ||
+            error.message?.includes('expired') ||
+            error.message?.includes('GONE');
 
           if (isExpiredError) {
             this.logger.warn(`⚠️ Offer expired for booking ${bookingId}. Checking for stored data...`);
 
-            // ✅ Check if booking has stored offer data
             const bookingData = booking.bookingData as any;
             const hasStoredOfferData = !!(bookingData?.offerData || bookingData?.offerPassengers);
 
@@ -231,16 +240,19 @@ export class HandleStripeWebhookUseCase {
                 const { orderId } = await this.createDuffelOrderUseCase.execute(bookingId);
                 this.logger.log(`✅ Duffel order created with stored data: ${orderId}`);
 
+                // ✅ Send email after successful retry
                 const updatedBooking = await this.prisma.booking.findUnique({
                   where: { id: bookingId },
                   include: { user: { select: { id: true, email: true, name: true } } },
                 });
                 if (updatedBooking) {
+                  this.logger.log(`📧 Sending Duffel flight confirmation email (retry)...`);
                   await this.sendBookingEmails(updatedBooking, paymentIntent);
                   await this.prisma.booking.update({
                     where: { id: bookingId },
                     data: { confirmationEmailSentAt: new Date() },
                   });
+                  this.logger.log(`✅ Duffel flight confirmation email sent (retry)`);
                 }
                 return;
               } catch (retryError) {
@@ -248,7 +260,7 @@ export class HandleStripeWebhookUseCase {
               }
             }
 
-            // ✅ Mark as FAILED but DO NOT auto-refund
+            // Mark as FAILED but DO NOT auto-refund
             await this.prisma.booking.update({
               where: { id: bookingId },
               data: {
@@ -263,7 +275,7 @@ export class HandleStripeWebhookUseCase {
               },
             });
 
-            // ✅ Send failure email (NOT refund)
+            // ✅ Send failure email
             if (booking.user?.email) {
               this.resendService.sendBookingFailureEmail({
                 to: booking.user.email,
@@ -280,7 +292,7 @@ export class HandleStripeWebhookUseCase {
             return;
           }
 
-          // ✅ For other errors: Mark as FAILED, DO NOT auto-refund
+          // Other errors: Mark as FAILED
           await this.prisma.booking.update({
             where: { id: bookingId },
             data: {
@@ -294,7 +306,7 @@ export class HandleStripeWebhookUseCase {
             },
           });
 
-          // Send failure email
+          // ✅ Send failure email
           if (booking.user?.email) {
             this.resendService.sendBookingFailureEmail({
               to: booking.user.email,
@@ -311,15 +323,17 @@ export class HandleStripeWebhookUseCase {
         }
       }
 
-
+      // ============================================================
+      // ✅ WAKANOW FLIGHT
+      // ============================================================
       if (isWakanowFlight) {
         try {
           this.logger.log(`Automatically ticketing Wakanow flight for booking ${bookingId}...`);
-          
+
           const bookingData = booking.bookingData as any;
           const providerData = booking.providerData as any;
-          
-          // ✅ Helper function to extract PNR properly
+
+          // Helper function to extract PNR properly
           const extractPnr = (data: any, provider: any): string | null => {
             const candidates = [
               data?.wakanowPnr,
@@ -332,10 +346,9 @@ export class HandleStripeWebhookUseCase {
               data?.FlightBookingResult?.FlightBookingSummaryModel?.PnReferenceNumber,
               data?.PnReferenceNumber,
             ];
-            
+
             for (const candidate of candidates) {
               if (candidate && typeof candidate === 'string') {
-                // Skip numeric strings that look like Booking IDs (10+ digits)
                 if (!/^\d{10,}$/.test(candidate)) {
                   return candidate;
                 }
@@ -343,25 +356,24 @@ export class HandleStripeWebhookUseCase {
             }
             return null;
           };
-          
-          // ✅ Extract PNR
+
+          // Extract PNR
           let pnrNumber = extractPnr(bookingData, providerData);
-          
-          // ✅ Extract Wakanow Booking ID
-          const wakanowBookingId = 
-            bookingData?.wakanowBookingId || 
+
+          // Extract Wakanow Booking ID
+          const wakanowBookingId =
+            bookingData?.wakanowBookingId ||
             bookingData?.bookingId ||
             providerData?.BookingId ||
             providerData?.booking_id ||
             null;
-          
+
           this.logger.log(`🔍 Found PNR: ${pnrNumber}, WakanowId: ${wakanowBookingId}`);
-          
-          // ✅ Validate
+
+          // Validate
           if (!pnrNumber) {
             this.logger.error(`❌ No valid PNR found for booking ${bookingId}`);
-            
-            // Store the error for debugging
+
             await this.prisma.booking.update({
               where: { id: bookingId },
               data: {
@@ -372,39 +384,37 @@ export class HandleStripeWebhookUseCase {
                 } as any,
               },
             });
-            
+
             throw new Error(`Cannot issue ticket: PNR not found. Booking ID: ${wakanowBookingId || bookingId}`);
           }
-          
+
           if (!wakanowBookingId) {
             this.logger.error(`❌ No Wakanow Booking ID found for booking ${bookingId}`);
             throw new Error(`Cannot issue ticket: Wakanow Booking ID not found.`);
           }
-          
-          // ✅ Prevent using Booking ID as PNR
+
+          // Prevent using Booking ID as PNR
           if (pnrNumber === wakanowBookingId) {
             this.logger.warn(`⚠️ PNR equals Booking ID (${pnrNumber}). This is a bug - PNR should be the airline PNR.`);
-            
-            // Try one more time to recover from providerData
+
             const recoveredPnr = providerData?.FlightBookingResult
               ?.FlightBookingSummaryModel
               ?.PnReferenceNumber;
-            
+
             if (recoveredPnr && recoveredPnr !== wakanowBookingId && !/^\d{10,}$/.test(recoveredPnr)) {
               pnrNumber = recoveredPnr;
               this.logger.log(`✅ Recovered PNR from providerData: ${pnrNumber}`);
             } else {
-              // We need to abort - this would fail anyway
               throw new Error(`Cannot issue ticket: PNR appears to be a Booking ID (${pnrNumber}). Please check the booking creation logic.`);
             }
           }
-          
+
           this.logger.log(`✅ Valid data - PNR: ${pnrNumber}, BookingId: ${wakanowBookingId}`);
-          
-          // ✅ Retry logic with delays
+
+          // Retry logic with delays
           let lastError: any;
           let ticketSuccess = false;
-          
+
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
               if (attempt > 1) {
@@ -412,113 +422,136 @@ export class HandleStripeWebhookUseCase {
                 this.logger.log(`⏳ Waiting ${delayMs}ms before attempt ${attempt}/3...`);
                 await new Promise(resolve => setTimeout(resolve, delayMs));
               }
-              
+
               this.logger.log(`🔄 Ticket attempt ${attempt}/3 for booking ${bookingId}...`);
-              
+
               await this.ticketWakanowFlightUseCase.execute(
-                { 
-                  bookingId: wakanowBookingId,  // Wakanow's Booking ID
-                  pnrNumber: pnrNumber          // The actual airline PNR
-                }, 
+                {
+                  bookingId: wakanowBookingId,
+                  pnrNumber: pnrNumber
+                },
                 bookingId
               );
-              
+
               ticketSuccess = true;
               this.logger.log(`✅ Successfully ticketed Wakanow flight for booking ${bookingId} on attempt ${attempt}`);
               break;
             } catch (error) {
               lastError = error;
               this.logger.warn(`⚠️ Ticket attempt ${attempt}/3 failed for booking ${bookingId}: ${error.message}`);
-              
-              // If it's a pending status, don't retry immediately
+
               if (error.message?.includes('pending') || error.message?.includes('processing')) {
                 this.logger.log(`⏳ Ticket is pending, will retry later.`);
                 break;
               }
-              
-              // If it's a PNR issue, don't retry
+
               if (error.message?.includes('PNR') || error.message?.includes('not found')) {
                 this.logger.error(`❌ PNR issue detected, aborting retries.`);
                 break;
               }
             }
           }
-      
-          // If all retries failed
+
           if (!ticketSuccess) {
             throw lastError || new Error('All ticket attempts failed');
           }
 
-    const updatedBooking = await this.prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: { user: { select: { id: true, email: true, name: true } } },
-    });
-    if (updatedBooking) {
-      await this.sendBookingEmails(updatedBooking, paymentIntent);
-      await this.prisma.booking.update({
-        where: { id: bookingId },
-        data: { confirmationEmailSentAt: new Date() },
-      });
-    }
-  } catch (error) {
-    this.logger.error(
-      `Failed to ticket Wakanow flight for booking ${bookingId}. Payment confirmed but ticketing failed. Initiating automatic refund.`,
-      error,
-    );
+          // ✅ Send email after successful ticketing
+          const updatedBooking = await this.prisma.booking.findUnique({
+            where: { id: bookingId },
+            include: { user: { select: { id: true, email: true, name: true } } },
+          });
+          if (updatedBooking) {
+            this.logger.log(`📧 Sending Wakanow flight confirmation email...`);
+            await this.sendBookingEmails(updatedBooking, paymentIntent);
+            await this.prisma.booking.update({
+              where: { id: bookingId },
+              data: { confirmationEmailSentAt: new Date() },
+            });
+            this.logger.log(`✅ Wakanow flight confirmation email sent`);
+          }
+        } catch (error) {
+          this.logger.error(
+            `Failed to ticket Wakanow flight for booking ${bookingId}. Payment confirmed but ticketing failed. Initiating automatic refund.`,
+            error,
+          );
 
-    if (booking.stripeChargeId || chargeId) {
-      try {
-        this.logger.log(`Initiating automatic Stripe refund for failed Wakanow booking ${bookingId}...`);
-        await this.stripeService.createRefund({ paymentIntentId: paymentIntent.id });
+          if (booking.stripeChargeId || chargeId) {
+            try {
+              this.logger.log(`Initiating automatic Stripe refund for failed Wakanow booking ${bookingId}...`);
+              await this.stripeService.createRefund({ paymentIntentId: paymentIntent.id });
 
-        await this.prisma.booking.update({
-          where: { id: bookingId },
-          data: { refundStatus: 'PROCESSING', paymentStatus: 'REFUNDED' }
-        });
-        this.logger.log(`Automatic refund initiated for Wakanow booking ${bookingId}`);
-      } catch (refundError) {
-        this.logger.error(`Failed to initiate automatic refund for Wakanow booking ${bookingId}: `, refundError);
+              await this.prisma.booking.update({
+                where: { id: bookingId },
+                data: { refundStatus: 'PROCESSING', paymentStatus: 'REFUNDED' }
+              });
+              this.logger.log(`Automatic refund initiated for Wakanow booking ${bookingId}`);
+            } catch (refundError) {
+              this.logger.error(`Failed to initiate automatic refund for Wakanow booking ${bookingId}: `, refundError);
+            }
+          }
+
+          // ✅ Send failure email
+          if (booking.user?.email) {
+            this.resendService.sendBookingFailureEmail({
+              to: booking.user.email,
+              customerName: booking.user.name || 'Valued Customer',
+              bookingReference: booking.reference || booking.id,
+              productType: booking.productType,
+              amount: Number(booking.totalAmount),
+              currency: booking.currency,
+              failureReason: `Flight ticketing failed with provider: ${error instanceof Error ? error.message : 'Unknown provider error'}. We have automatically initiated a full refund back to your payment method.`,
+            }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
+          }
+        }
       }
-    }
 
-    if (booking.user?.email) {
-      this.resendService.sendBookingFailureEmail({
-        to: booking.user.email,
-        customerName: booking.user.name || 'Valued Customer',
-        bookingReference: booking.reference || booking.id,
-        productType: booking.productType,
-        amount: Number(booking.totalAmount),
-        currency: booking.currency,
-        failureReason: `Flight ticketing failed with provider: ${error instanceof Error ? error.message : 'Unknown provider error'}. We have automatically initiated a full refund back to your payment method.`,
-      }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
-    }
-  }
-}
-
-     
+      // ============================================================
+      // ✅ AMADEUS HOTEL (Asynchronous)
+      // ============================================================
       if (booking.provider === Provider.AMADEUS && booking.productType === 'HOTEL') {
         this.logger.log(`Processing Amadeus hotel order creation for booking ${bookingId} asynchronously...`);
+
+        // ✅ Store booking with user for later use
+        const bookingWithUser = booking;
+
         this.createAmadeusHotelBookingUseCase
           .createAmadeusBookingAfterPayment(bookingId)
-          .then(({ orderId }) => {
+          .then(async ({ orderId }) => {
             this.logger.log(`Successfully created Amadeus hotel order ${orderId} for booking ${bookingId}`);
+
+            // ✅ Send email after successful order creation
+            const updatedBooking = await this.prisma.booking.findUnique({
+              where: { id: bookingId },
+              include: { user: { select: { id: true, email: true, name: true } } },
+            });
+            if (updatedBooking) {
+              this.logger.log(`📧 Sending Amadeus hotel confirmation email...`);
+              await this.sendBookingEmails(updatedBooking, paymentIntent);
+              await this.prisma.booking.update({
+                where: { id: bookingId },
+                data: { confirmationEmailSentAt: new Date() },
+              });
+              this.logger.log(`✅ Amadeus hotel confirmation email sent`);
+            }
           })
-          .catch((error) => {
+          .catch(async (error) => {
             this.logger.error(
-              `Failed to create Amadeus hotel order for booking ${bookingId}.Payment confirmed but order creation failed: `,
+              `Failed to create Amadeus hotel order for booking ${bookingId}. Payment confirmed but order creation failed: `,
               error,
             );
 
-            if (booking.user?.email) {
+            // ✅ Send failure email
+            if (bookingWithUser.user?.email) {
               this.resendService.sendBookingFailureEmail({
-                to: booking.user.email,
-                customerName: booking.user.name || 'Valued Customer',
-                bookingReference: booking.reference || booking.id,
-                productType: booking.productType,
-                amount: Number(booking.totalAmount),
-                currency: booking.currency,
+                to: bookingWithUser.user.email,
+                customerName: bookingWithUser.user.name || 'Valued Customer',
+                bookingReference: bookingWithUser.reference || bookingId,
+                productType: bookingWithUser.productType,
+                amount: Number(bookingWithUser.totalAmount),
+                currency: bookingWithUser.currency,
                 failureReason: error instanceof Error ? error.message : 'Unknown provider error',
-              }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
+              }).catch((err) => this.logger.error(`Failed to send failure email: `, err));
             }
 
             let amadeusError: any = {
@@ -547,6 +580,7 @@ export class HandleStripeWebhookUseCase {
                   }
                 }
               } catch {
+                // Ignore parsing errors
               }
             }
 
@@ -555,7 +589,7 @@ export class HandleStripeWebhookUseCase {
                 where: { id: bookingId },
                 data: {
                   providerData: {
-                    ...(booking.providerData as any),
+                    ...(bookingWithUser.providerData as any),
                     orderCreationError: amadeusError.message,
                     amadeusError,
                     orderCreationFailedAt: new Date().toISOString(),
@@ -569,22 +603,41 @@ export class HandleStripeWebhookUseCase {
       }
 
       // ============================================================
-      // ✅ HOTELBEDS HOTEL (UNCHANGED)
+      // ✅ HOTELBEDS HOTEL (Asynchronous)
       // ============================================================
       if (booking.provider === Provider.HOTELBEDS && booking.productType === 'HOTEL') {
         this.logger.log(`Processing Hotelbeds hotel order creation for booking ${bookingId} asynchronously...`);
+
+        // ✅ Store booking with user for later use
+        const bookingWithUser = booking;
+
         this.createHotelbedsBookingUseCase
           .createHotelbedsBookingAfterPayment(bookingId)
-          .then(({ orderId }) => {
+          .then(async ({ orderId }) => {
             this.logger.log(`Successfully created Hotelbeds hotel order ${orderId} for booking ${bookingId}`);
+
+            // ✅ Send email after successful order creation
+            const updatedBooking = await this.prisma.booking.findUnique({
+              where: { id: bookingId },
+              include: { user: { select: { id: true, email: true, name: true } } },
+            });
+            if (updatedBooking) {
+              this.logger.log(`📧 Sending Hotelbeds hotel confirmation email...`);
+              await this.sendBookingEmails(updatedBooking, paymentIntent);
+              await this.prisma.booking.update({
+                where: { id: bookingId },
+                data: { confirmationEmailSentAt: new Date() },
+              });
+              this.logger.log(`✅ Hotelbeds hotel confirmation email sent`);
+            }
           })
-          .catch((error) => {
+          .catch(async (error) => {
             this.logger.error(
-              `Failed to create Hotelbeds hotel order for booking ${bookingId}.Initiating automatic refund.`,
+              `Failed to create Hotelbeds hotel order for booking ${bookingId}. Initiating automatic refund.`,
               error,
             );
 
-            if (booking.stripeChargeId || chargeId) {
+            if (bookingWithUser.stripeChargeId || chargeId) {
               this.stripeService.createRefund({ paymentIntentId: paymentIntent.id })
                 .then(() => {
                   return this.prisma.booking.update({
@@ -595,48 +648,69 @@ export class HandleStripeWebhookUseCase {
                 .catch(err => this.logger.error(`Failed automatic refund for Hotelbeds booking ${bookingId}: `, err));
             }
 
-            if (booking.user?.email) {
+            // ✅ Send failure email
+            if (bookingWithUser.user?.email) {
               this.resendService.sendBookingFailureEmail({
-                to: booking.user.email,
-                customerName: booking.user.name || 'Valued Customer',
-                bookingReference: booking.reference || booking.id,
-                productType: booking.productType,
-                amount: Number(booking.totalAmount),
-                currency: booking.currency,
+                to: bookingWithUser.user.email,
+                customerName: bookingWithUser.user.name || 'Valued Customer',
+                bookingReference: bookingWithUser.reference || bookingId,
+                productType: bookingWithUser.productType,
+                amount: Number(bookingWithUser.totalAmount),
+                currency: bookingWithUser.currency,
                 failureReason: `Hotel booking failed with provider: ${error instanceof Error ? error.message : 'Unknown provider error'}. We have automatically initiated a full refund back to your payment method.`,
-              }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
+              }).catch((err) => this.logger.error(`Failed to send failure email: `, err));
             }
           });
       }
 
       // ============================================================
-      // ✅ CAR RENTAL (UNCHANGED)
+      // ✅ CAR RENTAL (Asynchronous)
       // ============================================================
       if (booking.provider === Provider.AMADEUS && booking.productType === 'CAR_RENTAL') {
         this.logger.log(`Processing Amadeus transfer order creation for car rental booking ${bookingId} asynchronously...`);
+
+        // ✅ Store booking with user for later use
+        const bookingWithUser = booking;
+
         this.createCarRentalBookingUseCase
           .createAmadeusOrderAfterPayment(bookingId)
-          .then(({ orderId }) => {
+          .then(async ({ orderId }) => {
             this.logger.log(
-              `Successfully created Amadeus transfer order ${orderId} for car rental booking ${bookingId} `,
+              `Successfully created Amadeus transfer order ${orderId} for car rental booking ${bookingId}`,
             );
+
+            // ✅ Send email after successful order creation
+            const updatedBooking = await this.prisma.booking.findUnique({
+              where: { id: bookingId },
+              include: { user: { select: { id: true, email: true, name: true } } },
+            });
+            if (updatedBooking) {
+              this.logger.log(`📧 Sending car rental confirmation email...`);
+              await this.sendBookingEmails(updatedBooking, paymentIntent);
+              await this.prisma.booking.update({
+                where: { id: bookingId },
+                data: { confirmationEmailSentAt: new Date() },
+              });
+              this.logger.log(`✅ Car rental confirmation email sent`);
+            }
           })
-          .catch((error) => {
+          .catch(async (error) => {
             this.logger.error(
               `Failed to create Amadeus transfer order for car rental booking ${bookingId}. Payment confirmed but order creation failed: `,
               error,
             );
 
-            if (booking.user?.email) {
+            // ✅ Send failure email
+            if (bookingWithUser.user?.email) {
               this.resendService.sendBookingFailureEmail({
-                to: booking.user.email,
-                customerName: booking.user.name || 'Valued Customer',
-                bookingReference: booking.reference || booking.id,
-                productType: booking.productType,
-                amount: Number(booking.totalAmount),
-                currency: booking.currency,
+                to: bookingWithUser.user.email,
+                customerName: bookingWithUser.user.name || 'Valued Customer',
+                bookingReference: bookingWithUser.reference || bookingId,
+                productType: bookingWithUser.productType,
+                amount: Number(bookingWithUser.totalAmount),
+                currency: bookingWithUser.currency,
                 failureReason: error instanceof Error ? error.message : 'Unknown provider error',
-              }).catch((err) => this.logger.error(`Failed to send failure email to ${booking.user?.email}: `, err));
+              }).catch((err) => this.logger.error(`Failed to send failure email: `, err));
             }
 
             this.prisma.booking
@@ -644,7 +718,7 @@ export class HandleStripeWebhookUseCase {
                 where: { id: bookingId },
                 data: {
                   providerData: {
-                    ...(booking.providerData as any),
+                    ...(bookingWithUser.providerData as any),
                     orderCreationError: error instanceof Error ? error.message : 'Unknown error',
                     orderCreationFailedAt: new Date().toISOString(),
                   },
@@ -730,7 +804,7 @@ export class HandleStripeWebhookUseCase {
       });
 
       if (!booking) {
-        this.logger.warn(`Booking not found for payment intent ${paymentIntentId} `);
+        this.logger.warn(`Booking not found for payment intent ${paymentIntentId}`);
         return;
       }
 
@@ -765,6 +839,7 @@ export class HandleStripeWebhookUseCase {
             refundCurrency: booking.currency,
             refundDate: new Date(),
           });
+          this.logger.log(`✅ Refund email sent to ${user.email}`);
         }
       } catch (emailError) {
         this.logger.error(`Failed to send refund email: `, emailError);
@@ -782,72 +857,340 @@ export class HandleStripeWebhookUseCase {
         return;
       }
 
-      const bookingData = booking.bookingData as any;
-      const passengerInfo = booking.passengerInfo as any;
+      const bookingData = booking.bookingData as any || {};
+      const passengerInfo = booking.passengerInfo as any || {};
+
+      // Get hotel details from nested object if it exists
+      const hotelDetails = bookingData.hotelDetails || {};
 
       const bookingDetails: any = {};
+
+      // ============================================================
+      // HOTEL
+      // ============================================================
       if (booking.productType === 'HOTEL') {
-        bookingDetails.hotelName = bookingData.hotelName || bookingData.hotel?.name || 'Hotel';
-        bookingDetails.roomType = bookingData.roomType || bookingData.room?.type;
-        bookingDetails.checkInDate = bookingData.checkInDate || bookingData.check_in_date;
-        bookingDetails.checkOutDate = bookingData.checkOutDate || bookingData.check_out_date;
-        bookingDetails.guests = bookingData.guests?.length || passengerInfo?.guests?.length || 1;
-        bookingDetails.adults = bookingData.adults || passengerInfo?.adults || bookingDetails.guests;
-        bookingDetails.children = bookingData.children || passengerInfo?.children || 0;
-      } else if (booking.productType === 'FLIGHT_INTERNATIONAL' || booking.productType === 'FLIGHT_DOMESTIC') {
-        bookingDetails.origin = bookingData.origin || bookingData.slices?.[0]?.origin?.iata_code;
-        bookingDetails.destination = bookingData.destination || bookingData.slices?.[0]?.destination?.iata_code;
-        bookingDetails.departureDate = bookingData.departureDate || bookingData.slices?.[0]?.segments?.[0]?.departing_at;
-        bookingDetails.arrivalDate = bookingData.arrivalDate || bookingData.slices?.[0]?.segments?.[bookingData.slices?.[0]?.segments?.length - 1]?.arriving_at;
-      } else if (booking.productType === 'CAR_RENTAL') {
-        bookingDetails.pickupLocation = bookingData.pickupLocation || bookingData.pickup_location;
-        bookingDetails.dropoffLocation = bookingData.dropoffLocation || bookingData.dropoff_location;
-        bookingDetails.pickupDateTime = bookingData.pickupDateTime || bookingData.pickup_date_time;
-        bookingDetails.dropoffDateTime = bookingData.dropoffDateTime || bookingData.dropoff_date_time;
+        bookingDetails.hotelName = hotelDetails.hotelName ||
+          bookingData.hotelName ||
+          bookingData.name ||
+          'Hotel';
+
+        bookingDetails.hotelAddress = hotelDetails.hotelAddress ||
+          bookingData.hotelAddress ||
+          bookingData.address ||
+          '';
+
+        bookingDetails.hotelCity = hotelDetails.hotelCity ||
+          bookingData.hotelCity ||
+          bookingData.city ||
+          '';
+
+        bookingDetails.hotelCountry = hotelDetails.hotelCountry ||
+          bookingData.hotelCountry ||
+          bookingData.country ||
+          '';
+
+        bookingDetails.checkInDate = bookingData.checkInDate ||
+          bookingData.check_in_date ||
+          'N/A';
+
+        bookingDetails.checkOutDate = bookingData.checkOutDate ||
+          bookingData.check_out_date ||
+          'N/A';
+
+        bookingDetails.roomType = hotelDetails.roomType ||
+          bookingData.roomType ||
+          'Standard Room';
+
+        bookingDetails.guests = bookingData.guests?.length ||
+          passengerInfo?.guests?.length ||
+          1;
+
+        bookingDetails.adults = hotelDetails.adults ||
+          bookingData.adults ||
+          passengerInfo?.adults ||
+          bookingDetails.guests;
+
+        bookingDetails.children = hotelDetails.children ||
+          bookingData.children ||
+          passengerInfo?.children ||
+          0;
+
+        bookingDetails.numberOfRooms = hotelDetails.numberOfRooms ||
+          bookingData.numberOfRooms ||
+          1;
+
+        bookingDetails.boardType = hotelDetails.boardType ||
+          bookingData.boardType ||
+          'Room Only';
+
+        bookingDetails.hotelPhone = hotelDetails.hotelPhone ||
+          bookingData.hotelPhone ||
+          '';
+
+        bookingDetails.hotelRating = hotelDetails.hotelRating ||
+          bookingData.hotelRating ||
+          null;
+
+        bookingDetails.hotelDescription = hotelDetails.hotelDescription ||
+          bookingData.hotelDescription ||
+          '';
+
+        bookingDetails.hotelCheckInTime = hotelDetails.hotelCheckInTime ||
+          bookingData.hotelCheckInTime ||
+          '15:00';
+
+        bookingDetails.hotelCheckOutTime = hotelDetails.hotelCheckOutTime ||
+          bookingData.hotelCheckOutTime ||
+          '12:00';
+
+        bookingDetails.hotelAmenities = hotelDetails.hotelAmenities ||
+          bookingData.hotelAmenities ||
+          [];
+
+        bookingDetails.hotelImages = hotelDetails.hotelImages ||
+          bookingData.hotelImages ||
+          [];
+
+        this.logger.log(`🏨 Hotel email details:`, {
+          hotelName: bookingDetails.hotelName,
+          hotelAddress: bookingDetails.hotelAddress,
+          hotelCity: bookingDetails.hotelCity,
+          checkInDate: bookingDetails.checkInDate,
+          checkOutDate: bookingDetails.checkOutDate,
+        });
       }
 
-      await this.resendService.sendBookingConfirmationEmail({
-        to: user.email,
-        customerName: user.name || passengerInfo?.firstName || 'Valued Customer',
-        bookingReference: booking.reference,
-        productType: booking.productType,
-        provider: booking.provider,
-        bookingDetails,
-        pricing: {
-          basePrice: Number(booking.basePrice),
-          markupAmount: Number(booking.markupAmount),
-          serviceFee: Number(booking.serviceFee),
-          totalAmount: Number(booking.totalAmount),
-          currency: booking.currency,
-        },
-        confirmationDate: new Date(),
-        bookingId: booking.id,
-        cancellationDeadline: (booking as any).cancellationDeadline ?? undefined,
-        cancellationPolicySummary: (booking as any).cancellationPolicySnapshot ?? undefined,
-        noShowWording:
-          (booking as any).productType === 'HOTEL'
-            ? 'In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.'
-            : undefined,
-      });
+      // ============================================================
+      // CAR RENTAL
+      // ============================================================
+      else if (booking.productType === 'CAR_RENTAL') {
+        bookingDetails.pickupLocation = bookingData.pickupLocation ||
+          bookingData.pickup_location ||
+          bookingData.startLocationCode ||
+          bookingData.startAddressLine ||
+          'N/A';
 
-      await this.resendService.sendPaymentReceiptEmail({
-        to: user.email,
-        customerName: user.name || passengerInfo?.firstName || 'Valued Customer',
-        bookingReference: booking.reference,
-        paymentIntentId: paymentIntent.id,
-        amount: paymentIntent.amount,
-        currency: paymentIntent.currency,
-        paymentDate: new Date(),
-        paymentMethod: paymentIntent.payment_method_types?.[0] || 'card',
-        productType: booking.productType,
-        bookingDetails,
-      });
+        bookingDetails.dropoffLocation = bookingData.dropoffLocation ||
+          bookingData.dropoff_location ||
+          bookingData.endLocationCode ||
+          bookingData.endAddressLine ||
+          'N/A';
 
-      this.logger.log(`Booking confirmation and receipt emails sent for booking ${booking.id}`);
+        bookingDetails.pickupDateTime = bookingData.pickupDateTime ||
+          bookingData.pickup_date_time ||
+          bookingData.startDateTime ||
+          'N/A';
+
+        bookingDetails.dropoffDateTime = bookingData.dropoffDateTime ||
+          bookingData.dropoff_date_time ||
+          bookingData.endDateTime ||
+          'N/A';
+
+        bookingDetails.vehicleType = bookingData.vehicleType ||
+          bookingData.vehicleCategory ||
+          bookingData.vehicleCode ||
+          'Standard';
+
+        bookingDetails.vehicleCategory = bookingData.vehicleCategory ||
+          bookingData.vehicle_type ||
+          'Standard';
+
+        bookingDetails.vehicleCode = bookingData.vehicleCode ||
+          bookingData.vehicle_code ||
+          '';
+
+        bookingDetails.vehicleName = bookingData.vehicleName ||
+          bookingData.vehicle_name ||
+          bookingData.vehicle ||
+          '';
+
+        bookingDetails.seats = bookingData.seats ||
+          bookingData.passengers ||
+          1;
+
+        bookingDetails.baggage = bookingData.baggage ||
+          bookingData.baggageCapacity ||
+          0;
+
+        bookingDetails.transferType = bookingData.transferType ||
+          bookingData.transfer_type ||
+          'Private';
+
+        bookingDetails.duration = bookingData.duration ||
+          bookingData.tripDuration ||
+          'N/A';
+
+        bookingDetails.serviceProvider = bookingData.serviceProvider ||
+          bookingData.providerName ||
+          bookingData.company ||
+          'N/A';
+
+        // Driver info
+        const driver = bookingData.driver || {};
+        bookingDetails.driverName = driver.firstName && driver.lastName
+          ? `${driver.firstName} ${driver.lastName}`
+          : passengerInfo?.firstName && passengerInfo?.lastName
+            ? `${passengerInfo.firstName} ${passengerInfo.lastName}`
+            : 'N/A';
+
+        bookingDetails.driverPhone = driver.phone ||
+          passengerInfo?.phone ||
+          'N/A';
+
+        bookingDetails.driverEmail = driver.email ||
+          passengerInfo?.email ||
+          booking.user?.email ||
+          'N/A';
+
+        this.logger.log(`🚗 Car rental email details:`, {
+          pickupLocation: bookingDetails.pickupLocation,
+          dropoffLocation: bookingDetails.dropoffLocation,
+          pickupDateTime: bookingDetails.pickupDateTime,
+          vehicleType: bookingDetails.vehicleType,
+          driverName: bookingDetails.driverName,
+        });
+      }
+
+      // ============================================================
+      // FLIGHT
+      // ============================================================
+      else if (booking.productType === 'FLIGHT_INTERNATIONAL' || booking.productType === 'FLIGHT_DOMESTIC') {
+        // Get slices data
+        const slices = bookingData.slices || [];
+        const firstSlice = slices[0] || {};
+        const lastSlice = slices[slices.length - 1] || {};
+
+        // Get first segment from first slice
+        const firstSegment = firstSlice.segments?.[0] || {};
+        const lastSegment = lastSlice.segments?.[lastSlice.segments?.length - 1] || {};
+
+        bookingDetails.origin = bookingData.origin ||
+          firstSlice.origin?.iata_code ||
+          firstSlice.origin?.city_code ||
+          'N/A';
+
+        bookingDetails.destination = bookingData.destination ||
+          lastSlice.destination?.iata_code ||
+          lastSlice.destination?.city_code ||
+          'N/A';
+
+        bookingDetails.departureDate = bookingData.departureDate ||
+          firstSegment.departing_at ||
+          firstSlice.departure_date ||
+          'N/A';
+
+        bookingDetails.arrivalDate = bookingData.arrivalDate ||
+          lastSegment.arriving_at ||
+          lastSlice.arrival_date ||
+          'N/A';
+
+        bookingDetails.airlineName = bookingData.airlineName ||
+          firstSegment.airline?.name ||
+          firstSlice.airline?.name ||
+          'N/A';
+
+        bookingDetails.airlineCode = bookingData.airlineCode ||
+          firstSegment.airline?.iata_code ||
+          firstSlice.airline?.iata_code ||
+          'N/A';
+
+        bookingDetails.flightNumber = bookingData.flightNumber ||
+          firstSegment.flight_number ||
+          'N/A';
+
+        bookingDetails.cabinClass = bookingData.cabinClass ||
+          firstSegment.cabin_class ||
+          firstSlice.cabin_class ||
+          'Economy';
+
+        bookingDetails.bookingClass = bookingData.bookingClass ||
+          firstSegment.booking_class ||
+          'Economy';
+
+        bookingDetails.stops = bookingData.stops !== undefined ? bookingData.stops :
+          (slices.length > 0 ? slices.length - 1 : 0);
+
+        // Passenger count
+        const passengers = bookingData.passengers || passengerInfo?.passengers || [];
+        bookingDetails.passengers = passengers.length || 1;
+
+        // Flight duration
+        if (firstSegment.duration) {
+          bookingDetails.duration = firstSegment.duration;
+        }
+
+        this.logger.log(`✈️ Flight email details:`, {
+          origin: bookingDetails.origin,
+          destination: bookingDetails.destination,
+          departureDate: bookingDetails.departureDate,
+          airlineName: bookingDetails.airlineName,
+          flightNumber: bookingDetails.flightNumber,
+          passengers: bookingDetails.passengers,
+        });
+      }
+
+      this.logger.log(`📧 Sending booking confirmation email to ${user.email}`);
+      this.logger.log(`📧 Product type: ${booking.productType}`);
+
+      // Send booking confirmation email
+      try {
+        await this.resendService.sendBookingConfirmationEmail({
+          to: user.email,
+          customerName: user.name || passengerInfo?.firstName || passengerInfo?.name || 'Valued Customer',
+          bookingReference: booking.reference,
+          productType: booking.productType,
+          provider: booking.provider,
+          bookingDetails,
+          pricing: {
+            basePrice: Number(booking.basePrice) || 0,
+            markupAmount: Number(booking.markupAmount) || 0,
+            serviceFee: Number(booking.serviceFee) || 0,
+            totalAmount: Number(booking.totalAmount) || 0,
+            currency: booking.currency || 'NGN',
+          },
+          confirmationDate: new Date(),
+          bookingId: booking.id,
+          cancellationDeadline: (booking as any).cancellationDeadline ?? undefined,
+          cancellationPolicySummary: (booking as any).cancellationPolicySnapshot ?? undefined,
+          noShowWording:
+            (booking as any).productType === 'HOTEL'
+              ? 'In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.'
+              : undefined,
+        });
+        this.logger.log(`✅ Booking confirmation email sent successfully`);
+      } catch (bookingEmailError) {
+        this.logger.error(`❌ Failed to send booking confirmation email:`, bookingEmailError);
+      }
+
+      // Send payment receipt email
+      this.logger.log(`📧 Sending payment receipt email to ${user.email}`);
+
+      try {
+        await this.resendService.sendPaymentReceiptEmail({
+          to: user.email,
+          customerName: user.name || passengerInfo?.firstName || passengerInfo?.name || 'Valued Customer',
+          bookingReference: booking.reference,
+          paymentIntentId: paymentIntent.id,
+          amount: paymentIntent.amount,
+          currency: paymentIntent.currency,
+          paymentDate: new Date(),
+          paymentMethod: paymentIntent.payment_method_types?.[0] || 'card',
+          productType: booking.productType,
+          bookingDetails,
+        });
+        this.logger.log(`✅ Payment receipt email sent successfully`);
+      } catch (receiptEmailError) {
+        this.logger.error(`❌ Failed to send payment receipt email:`, receiptEmailError);
+      }
+
+      this.logger.log(`📧 All emails processed for booking ${booking.id}`);
+
     } catch (error) {
-      this.logger.error(`Failed to send booking emails: `, error);
+      this.logger.error(`❌ sendBookingEmails failed:`, error);
+      throw error;
     }
   }
+
   private async handlePaymentIntentCreated(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     const bookingId = paymentIntent.metadata?.bookingId;
 
@@ -858,10 +1201,8 @@ export class HandleStripeWebhookUseCase {
 
     try {
       this.logger.log(`PaymentIntent ${paymentIntent.id} created for booking ${bookingId}`);
-    
     } catch (error) {
       this.logger.error(`Failed to handle payment_intent.created for booking ${bookingId}: `, error);
     }
   }
-
 }

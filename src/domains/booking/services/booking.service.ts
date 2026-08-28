@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger } from '@nestjs/common'; 
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { Booking } from '../entities/booking.entity';
 import { BookingRepository } from '../repositories/booking.repository';
 import { BOOKING_REPOSITORY } from '../repositories/booking.repository.token';
@@ -68,7 +68,7 @@ export class BookingService {
   constructor(
     @Inject(BOOKING_REPOSITORY)
     private readonly bookingRepository: BookingRepository,
-    private readonly resendService: ResendService, 
+    private readonly resendService: ResendService,
   ) {}
 
   // ✅ Helper to extract passenger details
@@ -80,15 +80,10 @@ export class BookingService {
     city: string;
     country: string;
   } {
-    // Handle passengerInfo that might be an array or object
     let passenger = passengerInfo;
-    
-    // If it's an array, get the first element
     if (Array.isArray(passenger) && passenger.length > 0) {
       passenger = passenger[0];
     }
-    
-    // If passenger is still undefined or null, return defaults
     if (!passenger || typeof passenger !== 'object') {
       return {
         name: 'Valued Customer',
@@ -99,31 +94,20 @@ export class BookingService {
         country: '',
       };
     }
-    
-    // Extract name
     const firstName = passenger.firstName || passenger.FirstName || '';
     const lastName = passenger.lastName || passenger.LastName || '';
     const name = firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || 'Valued Customer';
-    
-    // Extract email
     const email = passenger.email || passenger.Email || 'no-email@provided.com';
-    
-    // Extract phone
     const phone = passenger.phone || passenger.Phone || passenger.phoneNumber || passenger.PhoneNumber || 'N/A';
-    
-    // Extract address
     const address = passenger.address || passenger.Address || passenger.AddressLine1 || '';
     const city = passenger.city || passenger.City || '';
     const country = passenger.country || passenger.Country || '';
-    
     return { name, email, phone, address, city, country };
   }
 
   // ✅ Helper to extract booking details for email
   private extractBookingDetails(bookingData: any, productType: any): any {
     const details: any = {};
-    
-    // Flight details
     if (productType === 'FLIGHT_INTERNATIONAL' || productType === 'FLIGHT_DOMESTIC') {
       details.origin = bookingData?.origin || bookingData?.departureAirport || 'N/A';
       details.destination = bookingData?.destination || bookingData?.arrivalAirport || 'N/A';
@@ -135,8 +119,6 @@ export class BookingService {
       details.bookingClass = bookingData?.bookingClass || bookingData?.class || 'Economy';
       details.stops = bookingData?.stops || 0;
     }
-    
-    // Hotel details
     if (productType === 'HOTEL') {
       details.hotelName = bookingData?.hotelName || bookingData?.name || 'Hotel';
       details.hotelAddress = bookingData?.hotelAddress || bookingData?.address || '';
@@ -151,20 +133,14 @@ export class BookingService {
       details.hotelPhone = bookingData?.hotelPhone || '';
       details.hotelRating = bookingData?.hotelRating || null;
     }
-    
     return details;
   }
 
   // ✅ Helper to send confirmation email
   private async sendConfirmationEmail(booking: Booking): Promise<void> {
     try {
-      // Extract passenger info
       const passengerInfo = this.extractPassengerInfo(booking.passengerInfo);
-      
-      // Extract booking details
       const bookingDetails = this.extractBookingDetails(booking.bookingData, booking.productType);
-      
-      // ✅ Send email with all details
       await this.resendService.sendBookingConfirmationEmail({
         to: passengerInfo.email,
         customerName: passengerInfo.name,
@@ -180,7 +156,6 @@ export class BookingService {
           country: passengerInfo.country,
         },
         bookingDetails: {
-          // Flight details
           origin: bookingDetails.origin,
           destination: bookingDetails.destination,
           departureDate: bookingDetails.departureDate,
@@ -190,7 +165,6 @@ export class BookingService {
           cabinClass: bookingDetails.cabinClass,
           bookingClass: bookingDetails.bookingClass,
           stops: bookingDetails.stops,
-          // Hotel details
           checkInDate: bookingDetails.checkInDate,
           checkOutDate: bookingDetails.checkOutDate,
           hotelName: bookingDetails.hotelName,
@@ -216,21 +190,15 @@ export class BookingService {
         cancellationDeadline: booking.cancellationDeadline,
         cancellationPolicySummary: booking.cancellationPolicySnapshot,
       });
-      
       this.logger.log(`✅ Confirmation email sent for booking ${booking.reference} to ${passengerInfo.email}`);
     } catch (error) {
-      // Don't fail the booking if email fails
       this.logger.error(`❌ Failed to send confirmation email for booking ${booking.reference}:`, error);
     }
   }
 
   async createBooking(bookingData: CreateBookingParams): Promise<Booking> {
     this.logger.log(`Creating booking for user ${bookingData.userId}`);
-
-    // Generate unique booking reference
     let reference = generateBookingReference();
-
-    // Ensure reference is unique (retry if exists)
     let exists = await this.bookingRepository.findByReference(reference);
     let attempts = 0;
     while (exists && attempts < 10) {
@@ -238,8 +206,6 @@ export class BookingService {
       exists = await this.bookingRepository.findByReference(reference);
       attempts++;
     }
-
-    // ✅ Build the booking data with all price fields
     const bookingPayload: Partial<Booking> = {
       userId: bookingData.userId,
       reference,
@@ -268,7 +234,6 @@ export class BookingService {
       userAgent: bookingData.userAgent,
       policyAcceptedAt: bookingData.policyAcceptedAt,
     };
-
     this.logger.log(`💰 Booking price breakdown:`, {
       basePrice: bookingPayload.basePrice,
       markupAmount: bookingPayload.markupAmount,
@@ -280,25 +245,14 @@ export class BookingService {
       totalAmount: bookingPayload.totalAmount,
       currency: bookingPayload.currency,
     });
-
-    // ✅ Create the booking
     const booking = await this.bookingRepository.create(bookingPayload);
-    
-    // ✅ Send confirmation email (don't await - fire and forget)
-    this.sendConfirmationEmail(booking).catch((error) => {
-      this.logger.error(`Failed to send confirmation email for booking ${booking.reference}:`, error);
-    });
-    
+    // ❌ Email sending removed - will be sent after payment confirmation
     return booking;
   }
 
   async createGuestBooking(bookingData: CreateGuestBookingParams): Promise<Booking> {
     this.logger.log('Creating guest booking');
-
-    // Generate unique booking reference
     let reference = generateBookingReference();
-
-    // Ensure reference is unique (retry if exists)
     let exists = await this.bookingRepository.findByReference(reference);
     let attempts = 0;
     while (exists && attempts < 10) {
@@ -306,8 +260,6 @@ export class BookingService {
       exists = await this.bookingRepository.findByReference(reference);
       attempts++;
     }
-
-    // ✅ Build the booking data with all price fields
     const bookingPayload: Partial<Booking> = {
       reference,
       productType: bookingData.productType,
@@ -335,7 +287,6 @@ export class BookingService {
       userAgent: bookingData.userAgent,
       policyAcceptedAt: bookingData.policyAcceptedAt,
     };
-
     this.logger.log(`💰 Guest booking price breakdown:`, {
       basePrice: bookingPayload.basePrice,
       markupAmount: bookingPayload.markupAmount,
@@ -347,16 +298,69 @@ export class BookingService {
       totalAmount: bookingPayload.totalAmount,
       currency: bookingPayload.currency,
     });
-
-    // ✅ Create the booking
     const booking = await this.bookingRepository.create(bookingPayload);
-    
-    // ✅ Send confirmation email (don't await - fire and forget)
-    this.sendConfirmationEmail(booking).catch((error) => {
-      this.logger.error(`Failed to send confirmation email for guest booking ${booking.reference}:`, error);
-    });
-    
+    // ❌ Email sending removed - will be sent after payment confirmation
     return booking;
+  }
+
+  /**
+   * ✅ Confirm booking after successful payment and send email
+   */
+  async confirmBookingAfterPayment(bookingId: string, paymentData: any): Promise<Booking> {
+    this.logger.log(`✅ Confirming booking ${bookingId} after successful payment`);
+    const booking = await this.bookingRepository.findById(bookingId);
+    if (!booking) {
+      throw new Error(`Booking ${bookingId} not found`);
+    }
+    const updateData: Partial<Booking> = {
+      paymentStatus: PaymentStatus.COMPLETED,
+    };
+    if (paymentData) {
+      const updatedBookingData = {
+        ...booking.bookingData,
+        paymentReference: paymentData.reference || paymentData.id,
+        paymentConfirmedAt: new Date().toISOString(),
+        paymentData: paymentData,
+      };
+      updateData.bookingData = updatedBookingData;
+    }
+    const updatedBooking = await this.bookingRepository.update(bookingId, updateData);
+    // ✅ NOW send the confirmation email (ONLY after payment success)
+    await this.sendConfirmationEmail(updatedBooking).catch((error) => {
+      this.logger.error(`Failed to send confirmation email for booking ${updatedBooking.reference}:`, error);
+    });
+    this.logger.log(`✅ Booking ${booking.reference} confirmed and email sent`);
+    return updatedBooking;
+  }
+
+  /**
+   * ✅ Confirm guest booking after successful payment and send email
+   */
+  async confirmGuestBookingAfterPayment(bookingId: string, paymentData: any): Promise<Booking> {
+    this.logger.log(`✅ Confirming guest booking ${bookingId} after successful payment`);
+    const booking = await this.bookingRepository.findById(bookingId);
+    if (!booking) {
+      throw new Error(`Booking ${bookingId} not found`);
+    }
+    const updateData: Partial<Booking> = {
+      paymentStatus: PaymentStatus.COMPLETED,
+    };
+    if (paymentData) {
+      const updatedBookingData = {
+        ...booking.bookingData,
+        paymentReference: paymentData.reference || paymentData.id,
+        paymentConfirmedAt: new Date().toISOString(),
+        paymentData: paymentData,
+      };
+      updateData.bookingData = updatedBookingData;
+    }
+    const updatedBooking = await this.bookingRepository.update(bookingId, updateData);
+    // ✅ NOW send the confirmation email (ONLY after payment success)
+    await this.sendConfirmationEmail(updatedBooking).catch((error) => {
+      this.logger.error(`Failed to send confirmation email for guest booking ${updatedBooking.reference}:`, error);
+    });
+    this.logger.log(`✅ Guest booking ${booking.reference} confirmed and email sent`);
+    return updatedBooking;
   }
 
   async getBookingById(id: string): Promise<Booking | null> {
@@ -376,11 +380,11 @@ export class BookingService {
   }
 
   async getBookingsByCustomerId(customerId: string): Promise<Booking[]> {
-  this.logger.log(`📡 Finding bookings for customer: ${customerId}`);
-  const bookings = await this.bookingRepository.findByCustomerId(customerId);
-  this.logger.log(`✅ Found ${bookings.length} bookings for customer ${customerId}`);
-  return bookings;
-}
+    this.logger.log(`📡 Finding bookings for customer: ${customerId}`);
+    const bookings = await this.bookingRepository.findByCustomerId(customerId);
+    this.logger.log(`✅ Found ${bookings.length} bookings for customer ${customerId}`);
+    return bookings;
+  }
 
   async updateBookingStatus(
     id: string,
