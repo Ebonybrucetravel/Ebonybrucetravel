@@ -1221,8 +1221,10 @@ const renderCarRentalDetails = () => {
                 <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Pickup</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
                   <div>
-                    <p className="font-bold text-lg">{pickupLocation}</p>
-                    <p className="text-sm text-gray-600">{pickupName || pickupCity || pickupAddress || 'N/A'}</p>
+                  <p className="font-bold text-lg">{pickupLocation}</p>
+  <p className="text-sm text-gray-600">
+    {pickupName || pickupCity || (typeof pickupAddress === 'string' ? pickupAddress : '') || 'N/A'}
+  </p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Date & Time</p>
@@ -1243,8 +1245,10 @@ const renderCarRentalDetails = () => {
                 <p className="text-xs font-bold text-green-700 uppercase tracking-wider">Dropoff</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
                   <div>
-                    <p className="font-bold text-lg">{dropoffLocation}</p>
-                    <p className="text-sm text-gray-600">{dropoffName || dropoffCity || dropoffAddress || 'N/A'}</p>
+                  <p className="font-bold text-lg">{dropoffLocation}</p>
+  <p className="text-sm text-gray-600">
+    {dropoffName || dropoffCity || (typeof dropoffAddress === 'string' ? dropoffAddress : '') || 'N/A'}
+  </p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Date & Time</p>

@@ -142,6 +142,7 @@ interface ReviewTripProps {
   onBack: () => void;
   isLoggedIn: boolean;
   user?: User | null;
+  isGuest?: boolean;
   isCreating?: boolean;
   onProceedToPayment: (passengerInfo: PassengerInfo, voucherCode?: string, hbxMetadata?: any) => Promise<void>;
   onSignInRequired?: () => void;
@@ -480,7 +481,7 @@ console.log('🔍 ReviewTrip - Product type detection:', {
   actualItem?.realData?.currency ||
   extendedItem?.currency ||
   currency.code ||
-  'GBP';
+  'NGN';
 
   const splitName = (user?.name || extBooking?.passengerInfo?.firstName || '').trim().split(/\s+/);
   const defaultFirstName = extBooking?.passengerInfo?.firstName || splitName[0] || '';
@@ -493,6 +494,7 @@ console.log('🔍 ReviewTrip - Product type detection:', {
   const [lastName, setLastName] = useState(defaultLastName);
   const [email, setEmail] = useState(user?.email || extBooking?.passengerInfo?.email || '');
   const [phone, setPhone] = useState(user?.phone || extBooking?.passengerInfo?.phone || '');
+  const [showPayment, setShowPayment] = useState(false);
   
   const [title, setTitle] = useState<'mr' | 'ms' | 'mrs' | 'miss' | 'dr' | ''>('');
   const [gender, setGender] = useState<'m' | 'f' | ''>('');
@@ -1067,6 +1069,26 @@ else if (isHotel || isCar) {
     combinedTaxPercentage = extBooking.taxPercentage || markupPercentage + serviceFeePercentage;
     breakdownDescription = extBooking.breakdown || '';
     console.log('💰 ReviewTrip - Using booking data:', { totalDue, basePrice });
+
+    if (isCar && !carPriceBreakdown) {
+      setCarPriceBreakdown({
+        basePrice: basePrice,
+        markupAmount: markupAmount,
+        serviceFee: serviceFee,
+        totalDue: totalDue,
+        markupPercentage: markupPercentage,
+        serviceFeePercentage: serviceFeePercentage,
+        combinedTaxes: combinedTaxes,
+        combinedTaxPercentage: combinedTaxPercentage,
+      });
+      console.log('💰 Stored car breakdown from extBooking:', {
+        basePrice,
+        markupAmount,
+        serviceFee,
+        totalDue,
+        combinedTaxes,
+      });
+    }
   } else {
     let priceValue = 0;
     
@@ -1128,21 +1150,7 @@ else if (isHotel || isCar) {
     } else if (effectiveItem?.selectedCurrency) {
       offerCurrency = effectiveItem.selectedCurrency;
     }
-    
-    // ❌ REMOVE THIS BLOCK - It's overriding your calculation with incorrect values!
-    // if (effectiveItem?.priceBreakdown) {
-    //   const pb = effectiveItem.priceBreakdown;
-    //   basePrice = pb.basePrice || basePrice;
-    //   markupAmount = pb.markupAmount || markupAmount;
-    //   markupPercentage = pb.markupPercentage || markupPercentage;
-    //   serviceFee = pb.serviceFee || serviceFee;
-    //   serviceFeePercentage = pb.serviceFeePercentage || serviceFeePercentage;
-    //   combinedTaxes = pb.taxes || combinedTaxes;
-    //   combinedTaxPercentage = pb.taxPercentage || combinedTaxPercentage;
-    //   totalDue = pb.totalAmount || totalDue;  // ❌ This is setting totalDue to 175682!
-    //   offerCurrency = pb.currency || offerCurrency;
-    //   breakdownDescription = pb.breakdown || breakdownDescription;
-    // }
+  
     
     console.log('💰 ReviewTrip - Final car/hotel price (WITHOUT priceBreakdown override):', { 
       basePrice, 
@@ -1172,6 +1180,66 @@ else if (isHotel || isCar) {
     }
   }
 }
+
+useEffect(() => {
+  if (isCar && extBooking && extBooking.totalAmount > 0 && !carPriceBreakdown) {
+    console.log('💰 Setting carPriceBreakdown from extBooking in useEffect:', {
+      basePrice: extBooking.basePrice,
+      markupAmount: extBooking.markupAmount,
+      serviceFee: extBooking.serviceFee,
+      totalAmount: extBooking.totalAmount,
+      taxes: extBooking.taxes,
+    });
+    
+    setCarPriceBreakdown({
+      basePrice: extBooking.basePrice || 0,
+      markupAmount: extBooking.markupAmount || 0,
+      serviceFee: extBooking.serviceFee || 0,
+      totalDue: extBooking.totalAmount || 0,
+      markupPercentage: extBooking.markupPercentage || 10,
+      serviceFeePercentage: extBooking.serviceFeePercentage || 5,
+      combinedTaxes: extBooking.taxes || (extBooking.markupAmount || 0) + (extBooking.serviceFee || 0) || 0,
+      combinedTaxPercentage: extBooking.taxPercentage || 15,
+    });
+  }
+}, [isCar, extBooking, carPriceBreakdown]);
+
+useEffect(() => {
+  if (isCar && extBooking && extBooking.totalAmount > 0) {
+    const correctTotal = extBooking.totalAmount;
+    const correctBase = extBooking.basePrice || 0;
+    const correctMarkup = extBooking.markupAmount || 0;
+    const correctService = extBooking.serviceFee || 0;
+    const correctTaxes = extBooking.taxes || 0;
+    
+    console.log('🔄 FORCE SYNC - Setting carPriceBreakdown from extBooking:', {
+      totalAmount: correctTotal,
+      basePrice: correctBase,
+      markupAmount: correctMarkup,
+      serviceFee: correctService,
+      taxes: correctTaxes,
+    });
+
+ 
+    
+    setCarPriceBreakdown({
+      basePrice: correctBase,
+      markupAmount: correctMarkup,
+      serviceFee: correctService,
+      totalDue: correctTotal,
+      markupPercentage: extBooking.markupPercentage || 10,
+      serviceFeePercentage: extBooking.serviceFeePercentage || 5,
+      combinedTaxes: correctTaxes,
+      combinedTaxPercentage: extBooking.taxPercentage || 15,
+    });
+  }
+}, [isCar, extBooking]);
+
+useEffect(() => {
+  if (isCar && extBooking && extBooking.totalAmount > 0) {
+    console.log('🔄 Force refreshing car prices from extBooking');
+  }
+}, [isCar, extBooking]);
 
 
 // ✅ Price conversion effect - FIXED FOR CARS
@@ -1213,7 +1281,7 @@ useEffect(() => {
         setConvertedPrices({
           basePrice: bp,
           totalDue: td,
-          combinedTaxes: ct,  // ✅ This should be set
+          combinedTaxes: ct,
           serviceFee: sf,
           currency: userCurrency,
         });
@@ -1227,14 +1295,14 @@ useEffect(() => {
         const [convertedBase, convertedService, convertedTaxes, convertedTotal] = await Promise.all([
           convertPrice(bp, originalCurrency),
           convertPrice(sf, originalCurrency),
-          convertPrice(ct, originalCurrency),  // ✅ Convert combinedTaxes
+          convertPrice(ct, originalCurrency),
           convertPrice(td, originalCurrency),
         ]);
         
         setConvertedPrices({
           basePrice: convertedBase || bp,
           totalDue: convertedTotal || td,
-          combinedTaxes: convertedTaxes || ct,  // ✅ Set combinedTaxes
+          combinedTaxes: convertedTaxes || ct,
           serviceFee: convertedService || sf,
           currency: userCurrency,
         });
@@ -1245,7 +1313,7 @@ useEffect(() => {
         setConvertedPrices({
           basePrice: bp,
           totalDue: td,
-          combinedTaxes: ct,  // ✅ Set combinedTaxes
+          combinedTaxes: ct,
           serviceFee: sf,
           currency: originalCurrency,
         });
@@ -1304,9 +1372,8 @@ useEffect(() => {
   };
   
   convertPrices();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [basePrice, totalDue, combinedTaxes, serviceFee, offerCurrency, currency.code, isCar, carPriceBreakdown]);
-
+  // ✅ Add extBooking to dependencies to re-run when booking changes
+}, [basePrice, totalDue, combinedTaxes, serviceFee, offerCurrency, currency.code, isCar, carPriceBreakdown, extBooking]);
 
 useEffect(() => {
   console.log('🔍 ADDITIONAL PASSENGERS STATE:', additionalPassengers.map((p, i) => ({
@@ -1810,7 +1877,83 @@ if (!shouldSkipPassport && isFlight && isInternational) {
         email,
         phone,
       };
-    } else {
+    } 
+// ============================================================
+// ✅ CAR RENTAL FLOW - FIXED
+// ============================================================
+if (isCar) {
+  try {
+    console.log("🚗 Creating car rental booking...");
+    
+    // ✅ Use the validated passenger info directly - no need for spread
+    const passengerInfoForCar = {
+      firstName: firstName || '',
+      lastName: lastName || '',
+      email: email || '',
+      phone: phone || '',
+    };
+    
+    // ✅ Get the correct total amount
+    let totalAmount = 0;
+    
+    // Priority 1: Use extBooking.totalAmount if available
+    if (extBooking && extBooking.totalAmount > 0) {
+      totalAmount = extBooking.totalAmount;
+      console.log("💰 Using extBooking.totalAmount:", totalAmount);
+    } 
+    // Priority 2: Use carPriceBreakdown.totalDue
+    else if (carPriceBreakdown && carPriceBreakdown.totalDue > 0) {
+      totalAmount = carPriceBreakdown.totalDue;
+      console.log("💰 Using carPriceBreakdown.totalDue:", totalAmount);
+    }
+    // Priority 3: Use extendedItem.totalAmount
+    else if (extendedItem.totalAmount && extendedItem.totalAmount > 0) {
+      totalAmount = extendedItem.totalAmount;
+      console.log("💰 Using extendedItem.totalAmount:", totalAmount);
+    }
+    
+    // ✅ Ensure we have a valid total
+    if (totalAmount <= 0) {
+      console.warn("⚠️ No valid total amount found, using fallback");
+      totalAmount = convertedPrices.totalDue || 0;
+    }
+    
+    console.log("💰 FINAL totalAmount for payment:", totalAmount);
+    
+    // ✅ Create payment data with the total amount
+    const paymentData = {
+      ...passengerInfoForCar,
+      totalAmount: totalAmount,
+      amount: totalAmount,
+      currency: offerCurrency || 'NGN',
+      productType: 'CAR_RENTAL',
+      // Pass the price breakdown
+      priceBreakdown: {
+        basePrice: carPriceBreakdown?.basePrice || extBooking?.basePrice || 0,
+        markupAmount: carPriceBreakdown?.markupAmount || extBooking?.markupAmount || 0,
+        serviceFee: carPriceBreakdown?.serviceFee || extBooking?.serviceFee || 0,
+        taxes: carPriceBreakdown?.combinedTaxes || extBooking?.taxes || 0,
+        totalAmount: totalAmount,
+      }
+    };
+    
+    // ✅ Pass the complete payment data to onProceedToPayment
+    await onProceedToPayment(
+      paymentData as any,
+      voucherCode || undefined,
+      undefined
+    );
+    
+    setShowPayment(true);
+    return;
+  } catch (error: any) {
+    console.error('Car rental booking error:', error);
+    alert('Failed to create car rental booking. Please try again.');
+    setIsBooking(false);
+    return;
+  }
+} 
+    else {
 // ✅ FIX: Format date as YYYY-MM-DD for Wakanow API
 const formatDateForWakanow = (dateStr: string): string => {
   if (!dateStr) return '';
@@ -3013,26 +3156,50 @@ if (!dateRegex.test(formattedDateOfBirth)) {
       </div>
       
       {/* Pickup & Dropoff - Compact */}
-      <div className="grid grid-cols-2 gap-3 mb-3">
-        <div className="bg-gray-50 rounded-lg p-2">
-          <p className="text-[10px] text-gray-500">Pickup</p>
-          <p className="text-sm font-medium text-gray-900">
-            {extendedItem.start?.locationCode || 'N/A'}
-          </p>
-          <p className="text-[10px] text-gray-400">
-            {extendedItem.start?.dateTime ? new Date(extendedItem.start.dateTime).toLocaleString() : ''}
-          </p>
-        </div>
-        <div className="bg-gray-50 rounded-lg p-2">
-          <p className="text-[10px] text-gray-500">Dropoff</p>
-          <p className="text-sm font-medium text-gray-900">
-            {extendedItem.end?.locationCode || 'N/A'}
-          </p>
-          <p className="text-[10px] text-gray-400">
-            {extendedItem.end?.dateTime ? new Date(extendedItem.end.dateTime).toLocaleString() : ''}
-          </p>
-        </div>
-      </div>
+<div className="grid grid-cols-2 gap-3 mb-3">
+  <div className="bg-gray-50 rounded-lg p-2">
+    <p className="text-[10px] text-gray-500">Pickup</p>
+    <p className="text-sm font-medium text-gray-900">
+      {extendedItem.start?.locationCode || 'N/A'}
+    </p>
+    <p className="text-[10px] text-gray-400">
+      {extendedItem.start?.dateTime ? new Date(extendedItem.start.dateTime).toLocaleString() : ''}
+    </p>
+    {/* ✅ Only render address if it's a string, not an object */}
+    {extendedItem.start?.address && typeof extendedItem.start.address === 'string' && (
+      <p className="text-[10px] text-gray-400">
+        {extendedItem.start.address}
+      </p>
+    )}
+    {/* ✅ If address is an object with countryCode, render it properly */}
+    {extendedItem.start?.address && typeof extendedItem.start.address === 'object' && (
+      <p className="text-[10px] text-gray-400">
+        {extendedItem.start.address.countryCode || ''}
+      </p>
+    )}
+  </div>
+  <div className="bg-gray-50 rounded-lg p-2">
+    <p className="text-[10px] text-gray-500">Dropoff</p>
+    <p className="text-sm font-medium text-gray-900">
+      {extendedItem.end?.locationCode || 'N/A'}
+    </p>
+    <p className="text-[10px] text-gray-400">
+      {extendedItem.end?.dateTime ? new Date(extendedItem.end.dateTime).toLocaleString() : ''}
+    </p>
+    {/* ✅ Only render address if it's a string, not an object */}
+    {extendedItem.end?.address && typeof extendedItem.end.address === 'string' && (
+      <p className="text-[10px] text-gray-400">
+        {extendedItem.end.address}
+      </p>
+    )}
+    {/* ✅ If address is an object with countryCode, render it properly */}
+    {extendedItem.end?.address && typeof extendedItem.end.address === 'object' && (
+      <p className="text-[10px] text-gray-400">
+        {extendedItem.end.address.countryCode || ''}
+      </p>
+    )}
+  </div>
+</div>
       
       {/* ✅ CANCELLATION POLICY - FULL DETAILS */}
       {extendedItem.cancellationRules && extendedItem.cancellationRules.length > 0 && (
@@ -3170,22 +3337,26 @@ if (!dateRegex.test(formattedDateOfBirth)) {
         <span className="text-sm font-semibold text-gray-900">{displayBasePrice}</span>
       </div>
 
-      {/* ✅ CAR RENTAL: Combined Service Fee (Markup + Service Fee) */}
+{/* ✅ CAR RENTAL: Combined Service Fee + Taxes as ONE LINE */}
 {isCar && carPriceBreakdown && (
   <>
-    {carPriceBreakdown.markupAmount > 0 || carPriceBreakdown.serviceFee > 0 ? (
+    {(carPriceBreakdown.markupAmount > 0 || 
+      carPriceBreakdown.serviceFee > 0 || 
+      carPriceBreakdown.combinedTaxes > 0) && (
       <div className="flex justify-between items-center pt-1 border-t border-gray-100">
         <span className="text-xs font-medium text-gray-500">
-          Service Fee 
+          Service Fee
         </span>
         <span className="text-sm font-semibold text-gray-900">
           {formatPrice(
-            carPriceBreakdown.markupAmount + carPriceBreakdown.serviceFee,
+            (carPriceBreakdown.markupAmount || 0) + 
+            (carPriceBreakdown.serviceFee || 0) + 
+            (carPriceBreakdown.combinedTaxes || 0),
             displayCurrency
           )}
         </span>
       </div>
-    ) : null}
+    )}
   </>
 )}
 

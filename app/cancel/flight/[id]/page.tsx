@@ -5,6 +5,33 @@ import { getStoredAuthToken } from '@/lib/api';
 import { config } from '@/lib/config';
 import toast from 'react-hot-toast';
 
+// ✅ Define the FlightModel type
+interface FlightModel {
+  AirlineName?: string;
+  Airline?: string;
+  FlightNumber?: string;
+  Name?: string;
+  DepartureCode?: string;
+  ArrivalCode?: string;
+  DepartureTime?: string;
+  ArrivalTime?: string;
+  DepartureDateTime?: string;
+  ArrivalDateTime?: string;
+  Stops?: number;
+  CabinClass?: string;
+  FlightLegs?: Array<{
+    CabinClassName?: string;
+    AirlineName?: string;
+    Airline?: string;
+    FlightNumber?: string;
+    DepartureCode?: string;
+    DestinationCode?: string;
+    StartTime?: string;
+    EndTime?: string;
+  }>;
+}
+
+// ✅ Define the BookingData interface
 interface BookingData {
   id: string;
   reference?: string;
@@ -28,7 +55,7 @@ interface BookingData {
   departureDate?: string;
   arrivalDate?: string;
   stops?: number;
-  passengers?: number;
+  passengers?: number | { adults?: number };
   bookingData?: {
     origin?: string;
     destination?: string;
@@ -60,6 +87,8 @@ interface BookingData {
     leadPassenger?: {
       email?: string;
     };
+    PnrReferenceNumber?: string;
+    PNR?: string;
   };
   providerData?: {
     itineraries?: any[];
@@ -67,6 +96,35 @@ interface BookingData {
       email?: string;
     };
     passengers?: Array<{ email?: string }>;
+    FlightBookingSummary?: {
+      PnrReferenceNumber?: string;
+      TicketStatus?: string;
+      FlightSummaryModel?: {
+        FlightModels?: FlightModel[];
+        FlightCombination?: {
+          Adults?: number;
+          Price?: {
+            Amount?: number;
+            CurrencyCode?: string;
+          };
+          FlightModels?: FlightModel[];
+        };
+      };
+    };
+    FlightBookingResult?: {
+      FlightBookingSummaryModel?: {
+        FlightCombination?: {
+          Adults?: number;
+          IsMultiCity?: boolean;
+          FlightModels?: FlightModel[];
+        };
+      };
+    };
+    PnrReferenceNumber?: string;
+    PNR?: string;
+    stops?: number;
+    WakanowBookingId?: string;
+    BookingId?: string;
   };
   passengerInfo?: string | {
     firstName?: string;
@@ -147,97 +205,360 @@ export default function CancelFlightPage({ params }: { params: Promise<{ id: str
     }
   };
 
-  // Helper functions with proper null checks
-  const getAirportCode = (bookingData: BookingData | null, field: string): string => {
-    if (!bookingData) return field === 'origin' ? 'LOS' : 'ABV';
-    if (bookingData[field]) return bookingData[field];
-    const bData = bookingData.bookingData as Record<string, any>;
-    if (bData && bData[field]) return bData[field];
-    return field === 'origin' ? 'LOS' : 'ABV';
+  // ✅ Helper to safely get flight models with proper typing
+  const getFlightModels = (bookingData: BookingData | null): FlightModel[] => {
+    if (!bookingData) return [];
+    
+    // Try to get from providerData.FlightBookingSummary
+    const pData = bookingData.providerData as Record<string, any>;
+    if (pData?.FlightBookingSummary?.FlightSummaryModel?.FlightModels) {
+      const models = pData.FlightBookingSummary.FlightSummaryModel.FlightModels;
+      if (Array.isArray(models) && models.length > 0) {
+        return models as FlightModel[];
+      }
+    }
+    
+    // Try to get from providerData.FlightBookingSummary.FlightCombination
+    if (pData?.FlightBookingSummary?.FlightSummaryModel?.FlightCombination?.FlightModels) {
+      const models = pData.FlightBookingSummary.FlightSummaryModel.FlightCombination.FlightModels;
+      if (Array.isArray(models) && models.length > 0) {
+        return models as FlightModel[];
+      }
+    }
+    
+    // Try to get from providerData.FlightBookingResult
+    if (pData?.FlightBookingResult?.FlightBookingSummaryModel?.FlightCombination?.FlightModels) {
+      const models = pData.FlightBookingResult.FlightBookingSummaryModel.FlightCombination.FlightModels;
+      if (Array.isArray(models) && models.length > 0) {
+        return models as FlightModel[];
+      }
+    }
+    
+    return [];
   };
 
-  const getDateTime = (bookingData: BookingData | null, field: string): string | undefined => {
-    if (!bookingData) return undefined;
+  // Helper functions with proper null checks - using REAL data from booking
+  const getRealAirportCode = (bookingData: BookingData | null, field: 'origin' | 'destination'): string => {
+    if (!bookingData) return 'N/A';
+    
+    // Check bookingData directly
     if (bookingData[field]) return bookingData[field];
+    
+    // Check bookingData.bookingData
     const bData = bookingData.bookingData as Record<string, any>;
     if (bData && bData[field]) return bData[field];
+    
+    // Check bookingData.providerData
+    const pData = bookingData.providerData as Record<string, any>;
+    if (pData && pData[field]) return pData[field];
+    
+    // Check FlightModels
+    const flightModels = getFlightModels(bookingData);
+    if (flightModels.length > 0) {
+      const firstFlight = flightModels[0];
+      if (field === 'origin' && firstFlight.DepartureCode) return firstFlight.DepartureCode;
+      if (field === 'destination' && firstFlight.ArrivalCode) return firstFlight.ArrivalCode;
+    }
+    
+    return 'N/A';
+  };
+
+  const getRealDateTime = (bookingData: BookingData | null, field: 'departureTime' | 'arrivalTime' | 'departureDate' | 'arrivalDate'): string | undefined => {
+    if (!bookingData) return undefined;
+    
+    // Check bookingData directly
+    if (bookingData[field]) return bookingData[field];
+    
+    // Check bookingData.bookingData
+    const bData = bookingData.bookingData as Record<string, any>;
+    if (bData && bData[field]) return bData[field];
+    
+    // Check providerData
+    const pData = bookingData.providerData as Record<string, any>;
+    if (pData && pData[field]) return pData[field];
+    
+    // Check FlightModels
+    const flightModels = getFlightModels(bookingData);
+    if (flightModels.length > 0) {
+      const firstFlight = flightModels[0];
+      if (field === 'departureTime' && firstFlight.DepartureTime) return firstFlight.DepartureTime;
+      if (field === 'arrivalTime' && firstFlight.ArrivalTime) return firstFlight.ArrivalTime;
+      if (field === 'departureDate' && firstFlight.DepartureDateTime) return firstFlight.DepartureDateTime;
+      if (field === 'arrivalDate' && firstFlight.ArrivalDateTime) return firstFlight.ArrivalDateTime;
+    }
+    
     return undefined;
   };
 
-  const getStopsCount = (bookingData: BookingData | null): number => {
+  const getRealStopsCount = (bookingData: BookingData | null): number => {
     if (!bookingData) return 0;
+    
+    // Check bookingData directly
     if (bookingData.stops !== undefined) return bookingData.stops;
+    
+    // Check bookingData.bookingData
     if (bookingData.bookingData?.stops !== undefined) return bookingData.bookingData.stops;
+    
+    // Check providerData
+    const pData = bookingData.providerData as Record<string, any>;
+    if (pData?.stops !== undefined) return pData.stops;
+    
+    // Check FlightModels
+    const flightModels = getFlightModels(bookingData);
+    if (flightModels.length > 0) {
+      const firstFlight = flightModels[0];
+      if (firstFlight.Stops !== undefined) return firstFlight.Stops;
+    }
+    
+    // Check segments
     const segments = bookingData.bookingData?.segments || 
                      bookingData.bookingData?.itineraries?.[0]?.segments ||
-                     bookingData.providerData?.itineraries?.[0]?.segments;
+                     (pData?.itineraries?.[0]?.segments);
     if (segments && segments.length > 0) {
       return segments.length - 1;
     }
+    
     return 0;
   };
 
-  const getPassengerCount = (bookingData: BookingData | null): number => {
+  const getRealPassengerCount = (bookingData: BookingData | null): number => {
     if (!bookingData) return 1;
-    const passengers = bookingData.bookingData?.passengers;
-    if (typeof passengers === 'number') return passengers;
-    if (passengers && typeof passengers === 'object' && 'adults' in passengers) {
-      return passengers.adults || 1;
+    
+    // Check bookingData directly
+    if (bookingData.passengers) {
+      if (typeof bookingData.passengers === 'number') return bookingData.passengers;
+      if (typeof bookingData.passengers === 'object' && 'adults' in bookingData.passengers) {
+        return (bookingData.passengers as { adults?: number }).adults || 1;
+      }
     }
-    return bookingData.passengers || 1;
+    
+    // Check bookingData.bookingData
+    const bData = bookingData.bookingData as Record<string, any>;
+    if (bData?.passengers) {
+      if (typeof bData.passengers === 'number') return bData.passengers;
+      if (typeof bData.passengers === 'object' && 'adults' in bData.passengers) {
+        return bData.passengers.adults || 1;
+      }
+    }
+    
+    // Check FlightCombination Adults
+    const pData = bookingData.providerData as Record<string, any>;
+    if (pData?.FlightBookingSummary?.FlightSummaryModel?.FlightCombination?.Adults) {
+      return pData.FlightBookingSummary.FlightSummaryModel.FlightCombination.Adults;
+    }
+    
+    return 1;
   };
 
-  const getCityFromCode = (code: string): string => {
+  const getRealAirlineName = (bookingData: BookingData | null): string => {
+    if (!bookingData) return 'Airline';
+    
+    // Check bookingData directly
+    if (bookingData.airlineName) return bookingData.airlineName;
+    if (bookingData.airline) return bookingData.airline;
+    
+    // Check bookingData.bookingData
+    const bData = bookingData.bookingData as Record<string, any>;
+    if (bData?.airlineName) return bData.airlineName;
+    if (bData?.airline) return bData.airline;
+    
+    // Check FlightModels
+    const flightModels = getFlightModels(bookingData);
+    if (flightModels.length > 0) {
+      const firstFlight = flightModels[0];
+      if (firstFlight.AirlineName) return firstFlight.AirlineName;
+      if (firstFlight.Airline) return firstFlight.Airline;
+    }
+    
+    return bookingData.provider || 'Airline';
+  };
+
+  const getRealFlightNumber = (bookingData: BookingData | null): string => {
+    if (!bookingData) return 'N/A';
+    
+    // Check bookingData directly
+    if (bookingData.flightNumber) return bookingData.flightNumber;
+    
+    // Check bookingData.bookingData
+    const bData = bookingData.bookingData as Record<string, any>;
+    if (bData?.flightNumber) return bData.flightNumber;
+    
+    // Check FlightModels
+    const flightModels = getFlightModels(bookingData);
+    if (flightModels.length > 0) {
+      const firstFlight = flightModels[0];
+      if (firstFlight.Name) return firstFlight.Name;
+      if (firstFlight.FlightNumber) return firstFlight.FlightNumber;
+    }
+    
+    return 'N/A';
+  };
+
+  const getRealCabinClass = (bookingData: BookingData | null): string => {
+    if (!bookingData) return 'Economy';
+    
+    // Check bookingData directly
+    if (bookingData.cabin) return bookingData.cabin;
+    
+    // Check bookingData.bookingData
+    const bData = bookingData.bookingData as Record<string, any>;
+    if (bData?.cabinClass) return bData.cabinClass;
+    
+    // Check FlightLegs
+    const flightModels = getFlightModels(bookingData);
+    if (flightModels.length > 0) {
+      const firstFlight = flightModels[0];
+      if (firstFlight.FlightLegs && Array.isArray(firstFlight.FlightLegs) && firstFlight.FlightLegs.length > 0) {
+        if (firstFlight.FlightLegs[0].CabinClassName) {
+          return firstFlight.FlightLegs[0].CabinClassName;
+        }
+      }
+      if (firstFlight.CabinClass) return firstFlight.CabinClass;
+    }
+    
+    return 'Economy';
+  };
+
+  const getRealPNR = (bookingData: BookingData | null): string | null => {
+    if (!bookingData) return null;
+    
+    // Check bookingData.bookingData
+    const bData = bookingData.bookingData as Record<string, any>;
+    if (bData?.pnrReferenceNumber) return bData.pnrReferenceNumber;
+    if (bData?.pnrNumber) return bData.pnrNumber;
+    if (bData?.PNR) return bData.PNR;
+    if (bData?.PnrReferenceNumber) return bData.PnrReferenceNumber;
+    
+    // Check providerData
+    const pData = bookingData.providerData as Record<string, any>;
+    if (pData?.PnrReferenceNumber) return pData.PnrReferenceNumber;
+    if (pData?.PNR) return pData.PNR;
+    
+    // Check FlightBookingSummary
+    if (pData?.FlightBookingSummary?.PnrReferenceNumber) {
+      return pData.FlightBookingSummary.PnrReferenceNumber;
+    }
+    
+    return null;
+  };
+
+  const getRealTicketStatus = (bookingData: BookingData | null): string | null => {
+    if (!bookingData) return null;
+    
+    const bData = bookingData.bookingData as Record<string, any>;
+    if (bData?.ticketStatus) return bData.ticketStatus;
+    
+    const pData = bookingData.providerData as Record<string, any>;
+    if (pData?.FlightBookingSummary?.TicketStatus) {
+      return pData.FlightBookingSummary.TicketStatus;
+    }
+    
+    return null;
+  };
+
+  const getRealCancellationFee = (bookingData: BookingData | null): number => {
+    if (!bookingData) return 0;
+    
+    const bData = bookingData.bookingData as Record<string, any>;
+    if (bData?.cancellationFee) return bData.cancellationFee;
+    
+    return 0;
+  };
+
+  const getRealCancellationFeeCurrency = (bookingData: BookingData | null): string => {
+    if (!bookingData) return 'NGN';
+    
+    const bData = bookingData.bookingData as Record<string, any>;
+    if (bData?.cancellationFeeCurrency) return bData.cancellationFeeCurrency;
+    
+    return bookingData.currency || 'NGN';
+  };
+
+  const getRealRefundAmount = (bookingData: BookingData | null): number => {
+    if (!bookingData) return 0;
+    
+    const bData = bookingData.bookingData as Record<string, any>;
+    if (bData?.refundAmount) return bData.refundAmount;
+    
+    return 0;
+  };
+
+  const getRealCityName = (airportCode: string): string => {
+    if (!airportCode || airportCode === 'N/A') return '';
     const cityMap: Record<string, string> = {
-      'LOS': 'Lagos', 'ABV': 'Abuja', 'LHR': 'London', 'CDG': 'Paris',
-      'DXB': 'Dubai', 'JFK': 'New York', 'LAX': 'Los Angeles',
-      'SYD': 'Sydney', 'HND': 'Tokyo', 'SIN': 'Singapore',
+      'LOS': 'Lagos', 'ABV': 'Abuja', 'PHC': 'Port Harcourt',
+      'KAN': 'Kano', 'ENU': 'Enugu', 'QOW': 'Owerri',
+      'LHR': 'London', 'CDG': 'Paris', 'DXB': 'Dubai',
+      'JFK': 'New York', 'LAX': 'Los Angeles', 'SYD': 'Sydney',
+      'HND': 'Tokyo', 'SIN': 'Singapore', 'IST': 'Istanbul',
+      'FRA': 'Frankfurt', 'AMS': 'Amsterdam'
     };
-    return cityMap[code] || code;
+    return cityMap[airportCode] || airportCode;
   };
 
-  // ✅ Helper to extract email from passengerInfo (handles both object and JSON string)
-  const extractEmailFromPassengerInfo = (passengerInfo: any): string | null => {
-    if (!passengerInfo) return null;
+  const getRealCustomerEmail = (bookingData: BookingData | null): string | null => {
+    if (!bookingData) return null;
     
-    // If it's a string, try to parse it as JSON
-    if (typeof passengerInfo === 'string') {
-      try {
-        const parsed = JSON.parse(passengerInfo);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed[0]?.email || null;
+    // Check passengerInfo (handles JSON string or object)
+    const passengerInfo = bookingData.passengerInfo;
+    if (passengerInfo) {
+      if (typeof passengerInfo === 'string') {
+        try {
+          const parsed = JSON.parse(passengerInfo);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed[0]?.email || null;
+          }
+          return parsed?.email || null;
+        } catch (e) {
+          return null;
         }
-        return parsed?.email || null;
-      } catch (e) {
-        return null;
+      }
+      if (typeof passengerInfo === 'object' && passengerInfo !== null) {
+        const info = passengerInfo as any;
+        return info.email || null;
       }
     }
     
-    // If it's an object, get the email
-    return passengerInfo?.email || null;
+    // Check bookingData
+    const bData = bookingData.bookingData as Record<string, any>;
+    if (bData?.email) return bData.email;
+    if (bData?.contact?.email) return bData.contact.email;
+    if (bData?.leadPassenger?.email) return bData.leadPassenger.email;
+    
+    // Check providerData
+    const pData = bookingData.providerData as Record<string, any>;
+    if (pData?.contact?.email) return pData.contact.email;
+    
+    return null;
   };
 
-  // ✅ Helper to extract name from passengerInfo
-  const extractNameFromPassengerInfo = (passengerInfo: any): string | null => {
-    if (!passengerInfo) return null;
+  const getRealCustomerName = (bookingData: BookingData | null): string => {
+    if (!bookingData) return 'Valued Customer';
     
-    if (typeof passengerInfo === 'string') {
-      try {
-        const parsed = JSON.parse(passengerInfo);
-        const passenger = Array.isArray(parsed) ? parsed[0] : parsed;
-        if (passenger?.firstName && passenger?.lastName) {
-          return `${passenger.firstName} ${passenger.lastName}`;
+    const passengerInfo = bookingData.passengerInfo;
+    if (passengerInfo) {
+      if (typeof passengerInfo === 'string') {
+        try {
+          const parsed = JSON.parse(passengerInfo);
+          const passenger = Array.isArray(parsed) ? parsed[0] : parsed;
+          if (passenger?.firstName && passenger?.lastName) {
+            return `${passenger.firstName} ${passenger.lastName}`;
+          }
+          return passenger?.firstName || passenger?.name || passenger?.fullName || 'Valued Customer';
+        } catch (e) {
+          return 'Valued Customer';
         }
-        return passenger?.firstName || passenger?.name || passenger?.fullName || null;
-      } catch (e) {
-        return null;
+      }
+      if (typeof passengerInfo === 'object' && passengerInfo !== null) {
+        const info = passengerInfo as any;
+        if (info.firstName && info.lastName) {
+          return `${info.firstName} ${info.lastName}`;
+        }
+        return info.firstName || info.name || info.fullName || info.full_name || info.fullname || info.lastName || 'Valued Customer';
       }
     }
     
-    if (passengerInfo?.firstName && passengerInfo?.lastName) {
-      return `${passengerInfo.firstName} ${passengerInfo.lastName}`;
-    }
-    return passengerInfo?.name || passengerInfo?.fullName || passengerInfo?.firstName || null;
+    return 'Valued Customer';
   };
 
   // Unwrap params
@@ -274,6 +595,8 @@ export default function CancelFlightPage({ params }: { params: Promise<{ id: str
 
         const data = await response.json();
         const bookingData = data.data || data;
+        
+        console.log('📦 REAL BOOKING DATA:', bookingData);
         setBooking(bookingData);
       } catch (error) {
         console.error('Error loading booking:', error);
@@ -323,10 +646,6 @@ export default function CancelFlightPage({ params }: { params: Promise<{ id: str
       setCancelResult(result);
       setIsCancelled(true);
       toast.success('Booking cancelled successfully');
-      
-      // Update local storage
-      const updatedBooking = { ...booking, status: 'CANCELLED' };
-      localStorage.setItem(`booking_${bookingId}`, JSON.stringify(updatedBooking));
 
     } catch (error: any) {
       console.error('Error cancelling booking:', error);
@@ -337,115 +656,38 @@ export default function CancelFlightPage({ params }: { params: Promise<{ id: str
     }
   };
 
-// Extract flight data with proper null checks
-const flightData = {
-  id: booking?.id || '',
-  bookingReference: booking?.reference || booking?.id?.slice(-8) || 'FLT-8824',
-  isWakanow: booking?.provider === 'WAKANOW',
-  pnrNumber: booking?.bookingData?.pnrReferenceNumber || 
-             booking?.bookingData?.pnrNumber || 
-             null,
-  airlineName: booking?.airlineName || 
-               booking?.provider || 
-               booking?.bookingData?.airline || 
-               booking?.bookingData?.airlineName || 
-               'Airline',
-  flightNumber: booking?.flightNumber || 
-                booking?.bookingData?.flightNumber || 
-                'N/A',
-  departureAirport: getAirportCode(booking, 'origin') || 
-                    getAirportCode(booking, 'departureAirport') || 
-                    'LOS',
-  arrivalAirport: getAirportCode(booking, 'destination') || 
-                  getAirportCode(booking, 'arrivalAirport') || 
-                  'ABV',
-  departureCity: booking?.departureCity || 
-                 booking?.bookingData?.departureCity || 
-                 getCityFromCode(getAirportCode(booking, 'origin')),
-  arrivalCity: booking?.arrivalCity || 
-               booking?.bookingData?.arrivalCity || 
-               getCityFromCode(getAirportCode(booking, 'destination')),
-  departureTime: getDateTime(booking, 'departureTime') || 
-                 getDateTime(booking, 'departureDate') || 
-                 booking?.bookingData?.departureDate,
-  arrivalTime: getDateTime(booking, 'arrivalTime') || 
-               getDateTime(booking, 'arrivalDate') || 
-               booking?.bookingData?.arrivalDate,
-  price: booking?.displayPrice || 
-         booking?.price || 
-         formatPrice(booking?.totalAmount || 0, booking?.currency || 'NGN'),
-  cabin: booking?.cabin || 
-         booking?.bookingData?.cabinClass || 
-         'Economy',
-  stops: getStopsCount(booking),
-  status: booking?.status || 'PENDING',
-  paymentStatus: booking?.paymentStatus || 'PENDING',
-  totalAmount: booking?.totalAmount || 0,
-  currency: booking?.currency || 'NGN',
-  // ✅ Cancellation fee from backend (real conversion)
-  cancellationFee: booking?.bookingData?.cancellationFee || 0,
-  cancellationFeeCurrency: booking?.bookingData?.cancellationFeeCurrency || booking?.currency || 'NGN',
-  cancellationFeeUSD: booking?.bookingData?.cancellationFeeUSD || 50,
-  refundAmount: booking?.bookingData?.refundAmount || 0,
-  // ✅ FIXED: Customer email with JSON parsing (type-safe)
-  customerEmail: (() => {
-    // Try to get email from passengerInfo (handles JSON string)
-    const passengerInfo = booking?.passengerInfo;
-    
-    if (passengerInfo) {
-      if (typeof passengerInfo === 'string') {
-        try {
-          const parsed = JSON.parse(passengerInfo);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed[0]?.email || null;
-          }
-          return parsed?.email || null;
-        } catch (e) {
-          return null;
-        }
-      }
-      if (typeof passengerInfo === 'object' && passengerInfo !== null) {
-        const info = passengerInfo as any;
-        return info.email || null;
-      }
-    }
-    
-    // Try other locations
-    return booking?.bookingData?.email || 
-           booking?.bookingData?.contact?.email ||
-           booking?.bookingData?.leadPassenger?.email ||
-           booking?.providerData?.contact?.email ||
-           null;
-  })(),
-  // ✅ FIXED: Customer name with JSON parsing (type-safe)
-  customerName: (() => {
-    const passengerInfo = booking?.passengerInfo;
-    
-    if (passengerInfo) {
-      if (typeof passengerInfo === 'string') {
-        try {
-          const parsed = JSON.parse(passengerInfo);
-          const passenger = Array.isArray(parsed) ? parsed[0] : parsed;
-          if (passenger?.firstName && passenger?.lastName) {
-            return `${passenger.firstName} ${passenger.lastName}`;
-          }
-          return passenger?.firstName || passenger?.name || passenger?.fullName || 'Valued Customer';
-        } catch (e) {
-          return 'Valued Customer';
-        }
-      }
-      if (typeof passengerInfo === 'object' && passengerInfo !== null) {
-        const info = passengerInfo as any;
-        if (info.firstName && info.lastName) {
-          return `${info.firstName} ${info.lastName}`;
-        }
-        return info.firstName || info.name || info.fullName || info.full_name || info.fullname || info.lastName || 'Valued Customer';
-      }
-    }
-    
-    return 'Valued Customer';
-  })(),
-};
+  // Extract REAL flight data from the booking
+  const flightData = {
+    id: booking?.id || '',
+    bookingReference: booking?.reference || booking?.id?.slice(-8) || 'N/A',
+    isWakanow: booking?.provider === 'WAKANOW',
+    isDuffel: booking?.provider === 'DUFFEL',
+    pnrNumber: getRealPNR(booking),
+    airlineName: getRealAirlineName(booking),
+    flightNumber: getRealFlightNumber(booking),
+    departureAirport: getRealAirportCode(booking, 'origin'),
+    arrivalAirport: getRealAirportCode(booking, 'destination'),
+    departureCity: getRealCityName(getRealAirportCode(booking, 'origin')),
+    arrivalCity: getRealCityName(getRealAirportCode(booking, 'destination')),
+    departureTime: getRealDateTime(booking, 'departureTime') || getRealDateTime(booking, 'departureDate'),
+    arrivalTime: getRealDateTime(booking, 'arrivalTime') || getRealDateTime(booking, 'arrivalDate'),
+    price: booking?.displayPrice || 
+           booking?.price || 
+           formatPrice(booking?.totalAmount || 0, booking?.currency || 'NGN'),
+    cabin: getRealCabinClass(booking),
+    stops: getRealStopsCount(booking),
+    status: booking?.status || 'PENDING',
+    paymentStatus: booking?.paymentStatus || 'PENDING',
+    totalAmount: booking?.totalAmount || 0,
+    currency: booking?.currency || 'NGN',
+    cancellationFee: getRealCancellationFee(booking),
+    cancellationFeeCurrency: getRealCancellationFeeCurrency(booking),
+    cancellationFeeUSD: booking?.bookingData?.cancellationFeeUSD || 50,
+    refundAmount: getRealRefundAmount(booking),
+    ticketStatus: getRealTicketStatus(booking),
+    customerEmail: getRealCustomerEmail(booking),
+    customerName: getRealCustomerName(booking),
+  };
 
   const flightDataWithStopText = {
     ...flightData,
@@ -453,22 +695,10 @@ const flightData = {
   };
 
   const originalPrice = parsePrice(flightData.price);
-
-  // ✅ FIXED: Use backend cancellation fee (real conversion from CurrencyService)
-  // The backend calculates this using the real exchange rate
-  const cancellationFee = flightData.cancellationFee > 0 
-    ? flightData.cancellationFee  // ✅ Real converted amount from backend
-    : 0; // ⚠️ Don't use hardcoded fallback - show 0 if backend doesn't provide it
-
+  const cancellationFee = flightData.cancellationFee || 0;
   const cancellationFeeCurrency = flightData.cancellationFeeCurrency || 'NGN';
   const cancellationFeeUSD = flightData.cancellationFeeUSD || 50;
-
-  // ✅ FIXED: Use backend refund amount
-  const totalRefund = flightData.refundAmount > 0 
-    ? flightData.refundAmount  // ✅ Real refund amount from backend
-    : 0; // ⚠️ Don't calculate on frontend - use backend value
-
-  const currencySymbol = flightData.price.match(/[£$€₦]/)?.[0] || '£';
+  const totalRefund = flightData.refundAmount || 0;
 
   // Check if booking is cancellable
   const isCancellable = () => {
@@ -479,14 +709,14 @@ const flightData = {
     if (cancellableStatuses.includes(booking.status || '')) return true;
     
     if (booking.status === 'CONFIRMED' && booking.provider === 'WAKANOW') {
-      const ticketStatus = (booking.bookingData as any)?.ticketStatus;
-      return ticketStatus !== 'Success' && ticketStatus !== 'Issued';
+      const ticketStatus = getRealTicketStatus(booking);
+      return ticketStatus !== 'Success' && ticketStatus !== 'Issued' && ticketStatus !== 'TICKETED';
     }
     
     return false;
   };
 
-  // If no fee from backend, show a message
+  // Show if fee needs to be calculated
   const showFeeNote = flightData.cancellationFee === 0 && flightData.paymentStatus === 'COMPLETED';
 
   if (isLoading) {
@@ -631,7 +861,7 @@ const flightData = {
                     A cancellation fee of <span className="font-bold">${cancellationFeeUSD.toFixed(2)} USD</span> will apply at the current exchange rate.
                   </span>
                 )}
-                {flightData.status === 'CONFIRMED' && booking?.bookingData?.ticketStatus === 'Success' && (
+                {flightData.ticketStatus === 'Success' && (
                   <span className="block mt-1">Ticket is already issued.</span>
                 )}
               </p>
@@ -654,7 +884,7 @@ const flightData = {
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-4">
                 <span className="bg-[#f0f9ff] text-[#33a8da] text-[11px] font-black uppercase tracking-widest px-4 py-1 rounded-full border border-blue-50">
-                  {flightData.isWakanow ? 'Wakanow Flight' : 'Flight'}
+                  {flightData.isWakanow ? 'Wakanow Flight' : flightData.isDuffel ? 'Duffel Flight' : 'Flight'}
                 </span>
                 <span className="text-gray-300 font-bold text-xs uppercase">
                   {flightData.airlineName} • {flightData.flightNumber}
@@ -714,7 +944,7 @@ const flightData = {
             <div className="grid grid-cols-2 gap-6">
               <div>
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Passengers</p>
-                <p className="text-sm font-black text-gray-900">{getPassengerCount(booking)} Traveler(s)</p>
+                <p className="text-sm font-black text-gray-900">{getRealPassengerCount(booking)} Traveler(s)</p>
               </div>
               <div>
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Booking Reference</p>

@@ -145,6 +145,111 @@ const AIRPORT_COUNTRY_MAP: Record<string, string> = {
   'KBP': 'UA', 'LWO': 'UA', 'SVO': 'RU', 'DME': 'RU', 'LED': 'RU',
 };
 
+// ==================== EXCHANGE RATE HELPER ====================
+const getExchangeRate = async (from: string, to: string): Promise<number> => {
+  // ✅ Normalize currency codes
+  const fromCurrency = from.toUpperCase();
+  const toCurrency = to.toUpperCase();
+  
+  // ✅ If same currency, return 1
+  if (fromCurrency === toCurrency) {
+    return 1;
+  }
+  
+  try {
+    // ✅ Try multiple sources for reliability
+    
+    // Source 1: Your own API endpoint
+    const response = await fetch(`${config.apiBaseUrl}/api/v1/exchange-rate?from=${fromCurrency}&to=${toCurrency}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.rate && data.rate > 0) {
+        console.log(`💰 Exchange rate from API: 1 ${fromCurrency} = ${data.rate} ${toCurrency}`);
+        return data.rate;
+      }
+      if (data.data?.rate && data.data.rate > 0) {
+        console.log(`💰 Exchange rate from API: 1 ${fromCurrency} = ${data.data.rate} ${toCurrency}`);
+        return data.data.rate;
+      }
+    }
+    
+    // Source 2: Free public API (fixer.io - free tier)
+    try {
+      const fixerResponse = await fetch(
+        `https://api.fixer.io/latest?base=${fromCurrency}&symbols=${toCurrency}`
+      );
+      
+      if (fixerResponse.ok) {
+        const fixerData = await fixerResponse.json();
+        if (fixerData.rates && fixerData.rates[toCurrency]) {
+          const rate = fixerData.rates[toCurrency];
+          console.log(`💰 Exchange rate from Fixer.io: 1 ${fromCurrency} = ${rate} ${toCurrency}`);
+          return rate;
+        }
+      }
+    } catch (fixerError) {
+      console.warn('Fixer.io API failed:', fixerError);
+    }
+    
+    // Source 3: Another free API (exchangerate-api.com)
+    try {
+      const exRateResponse = await fetch(
+        `https://api.exchangerate-api.com/v4/latest/${fromCurrency}`
+      );
+      
+      if (exRateResponse.ok) {
+        const exRateData = await exRateResponse.json();
+        if (exRateData.rates && exRateData.rates[toCurrency]) {
+          const rate = exRateData.rates[toCurrency];
+          console.log(`💰 Exchange rate from ExchangeRate-API: 1 ${fromCurrency} = ${rate} ${toCurrency}`);
+          return rate;
+        }
+      }
+    } catch (exRateError) {
+      console.warn('ExchangeRate-API failed:', exRateError);
+    }
+    
+
+    try {
+      const currencyApiResponse = await fetch(
+        `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/${fromCurrency.toLowerCase()}.json`
+      );
+      
+      if (currencyApiResponse.ok) {
+        const currencyData = await currencyApiResponse.json();
+        if (currencyData[fromCurrency.toLowerCase()] && 
+            currencyData[fromCurrency.toLowerCase()][toCurrency.toLowerCase()]) {
+          const rate = currencyData[fromCurrency.toLowerCase()][toCurrency.toLowerCase()];
+          console.log(`💰 Exchange rate from Currency-API: 1 ${fromCurrency} = ${rate} ${toCurrency}`);
+          return rate;
+        }
+      }
+    } catch (currencyError) {
+      console.warn('Currency-API failed:', currencyError);
+    }
+    
+    
+    throw new Error(
+      `Unable to fetch exchange rate from ${fromCurrency} to ${toCurrency}. ` +
+      `Please check your internet connection and try again.`
+    );
+    
+  } catch (error) {
+    console.error('❌ Exchange rate fetch failed:', error);
+    throw new Error(
+      `Exchange rate service unavailable. Please try again later. ` +
+      `(From: ${fromCurrency}, To: ${toCurrency})`
+    );
+  }
+};
+
 const extractAirportCode = (str: string | undefined): string => {
   if (!str) return "";
   const match = str.match(/([A-Z]{3})/);
@@ -1247,9 +1352,7 @@ console.log("💰 Wakanow total amount (with positive check):", {
   passengersCount: passengersArray.length,
 });
           }
-          // ============================================================
-          // ✅ DUFFEL FLOW (FIXED)
-          // ============================================================
+         
           else {
             offerId = item.offer_request_id || item.offer_id || item.selectData || item.id;
             offerRequestId = item.offer_request_id || item.offer_id || offerId;
@@ -1259,7 +1362,6 @@ console.log("💰 Wakanow total amount (with positive check):", {
               throw new Error("Missing offer ID for Duffel flight. Please go back and select the flight again.");
             }
 
-            // ✅ Calculate total amount for Duffel from multiple sources
             let totalAmount = 0;
             if (item.totalAmount) {
               totalAmount = item.totalAmount;
@@ -1273,7 +1375,7 @@ console.log("💰 Wakanow total amount (with positive check):", {
             
             let currency = item.currency || offerCurrency;
 
-            // ✅ Build the full offer data
+          
             const offerData = {
               id: offerId,
               total_amount: totalAmount || finalAmount,
@@ -1332,16 +1434,16 @@ console.log("💰 Wakanow total amount (with positive check):", {
           const selectedOffer = item.realData || item;
           
           // Get the offer price from the search result
-          const offerPrice = selectedOffer.quotation?.monetaryAmount || 
-                             selectedOffer.converted?.monetaryAmount ||
-                             selectedOffer.price ||
-                             selectedOffer.original_price ||
-                             0;
+          const originalPrice = selectedOffer.quotation?.monetaryAmount || 
+                                selectedOffer.converted?.monetaryAmount ||
+                                selectedOffer.price ||
+                                selectedOffer.original_price ||
+                                0;
           
-          const currency = selectedOffer.quotation?.currencyCode || 
-                           selectedOffer.converted?.currencyCode ||
-                           selectedOffer.currency ||
-                           'NGN';
+          const originalCurrency = selectedOffer.quotation?.currencyCode || 
+                                   selectedOffer.converted?.currencyCode ||
+                                   selectedOffer.currency ||
+                                   'EUR'; // Default to EUR since that's what your logs show
           
           const offerId = item.offerId || item.id || selectedOffer.id;
           
@@ -1349,9 +1451,22 @@ console.log("💰 Wakanow total amount (with positive check):", {
             throw new Error('Missing offer ID for car rental booking');
           }
           
-          if (offerPrice <= 0) {
+          if (originalPrice <= 0) {
             throw new Error('Invalid offer price for car rental booking');
           }
+          
+          // ✅ CRITICAL: Convert EUR to NGN
+          // Get exchange rate - you should fetch this from your API
+          const exchangeRate = await getExchangeRate(originalCurrency, 'NGN');
+          const priceInNgn = originalPrice * exchangeRate;
+          
+          // ✅ Log the conversion
+          console.log('💰 Car rental currency conversion:', {
+            originalPrice,
+            originalCurrency,
+            exchangeRate,
+            priceInNgn,
+          });
           
           // ✅ CRITICAL: Set offerId at TOP LEVEL
           body.offerId = offerId;
@@ -1359,8 +1474,11 @@ console.log("💰 Wakanow total amount (with positive check):", {
           // ✅ Set car rental specific fields in bookingData
           body.bookingData = {
             offerId: offerId,
-            offerPrice: Number(offerPrice),
-            currency: currency,
+            offerPrice: priceInNgn, // ✅ Now in NGN
+            currency: 'NGN', // ✅ Set to NGN
+            originalPrice: originalPrice,
+            originalCurrency: originalCurrency,
+            exchangeRate: exchangeRate,
             driver: {
               firstName: passenger.firstName,
               lastName: passenger.lastName,
@@ -1375,21 +1493,36 @@ console.log("💰 Wakanow total amount (with positive check):", {
             dropoffDateTime: item.dropoffDateTime || selectedOffer.end?.dateTime || selectedOffer.dropoffDateTime,
             vehicleType: item.vehicleType || selectedOffer.vehicle?.description,
             serviceProvider: selectedOffer.serviceProvider?.name,
+            // Also include these for reference
+            originalPriceSent: originalPrice,
+            originalCurrencySent: originalCurrency,
+            convertedPrice: priceInNgn,
+            targetCurrency: 'NGN',
           };
           
-          // ✅ Calculate total with markup
+          // ✅ Calculate markup in NGN
           const carMarkupPercentage = 10;
           const carServiceFeePercentage = 5;
-          const carMarkupAmount = Number(offerPrice) * (carMarkupPercentage / 100);
-          const carServiceFee = Number(offerPrice) * (carServiceFeePercentage / 100);
-          const carTotalAmount = Number(offerPrice) + carMarkupAmount + carServiceFee;
+          const carMarkupAmount = priceInNgn * (carMarkupPercentage / 100);
+          const carServiceFee = priceInNgn * (carServiceFeePercentage / 100);
+          const carTotalAmount = priceInNgn + carMarkupAmount + carServiceFee;
+          
+          // ✅ Log the pricing
+          console.log('🚗 Car rental pricing in NGN:', {
+            priceInNgn,
+            carMarkupAmount,
+            carServiceFee,
+            carTotalAmount,
+            currency: 'NGN',
+          });
           
           // ✅ Set totalAmount for validation
           body.totalAmount = carTotalAmount;
+          body.currency = 'NGN';
           
           // ✅ Store price breakdown
           body.priceBreakdown = {
-            basePrice: Number(offerPrice),
+            basePrice: priceInNgn,
             markupAmount: carMarkupAmount,
             markupPercentage: carMarkupPercentage,
             serviceFee: carServiceFee,
@@ -1397,17 +1530,18 @@ console.log("💰 Wakanow total amount (with positive check):", {
             taxes: carMarkupAmount + carServiceFee,
             taxPercentage: carMarkupPercentage + carServiceFeePercentage,
             totalAmount: carTotalAmount,
-            currency: currency,
+            currency: 'NGN',
           };
           
           console.log("🚗 Car rental booking payload:", {
-            offerId: body.offerId, // ✅ This should now be at top level
+            offerId: body.offerId,
             offerPrice: body.bookingData.offerPrice,
+            currency: body.bookingData.currency,
             totalAmount: body.totalAmount,
-            currency: body.currency,
             driver: body.bookingData.driver,
           });
         }
+
         const token = getStoredAuthToken();
   
         // ============================================================

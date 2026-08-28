@@ -1591,7 +1591,7 @@ console.log(`📅 Lead passenger DOB formatted: ${formattedDateOfBirth}`);
     }
     
 // ============================================================
-// ✅ CAR RENTAL FLOW - FIXED
+// ✅ CAR RENTAL FLOW - FIXED WITH FORCE PRICE BREAKDOWN
 // ============================================================
 if (isCar) {
   try {
@@ -1617,21 +1617,36 @@ if (isCar) {
       }
     }
     
-    const basePrice = extendedItem.priceBreakdown?.basePrice ||
+    // ✅ Ensure finalAmount is a number
+    finalAmount = Number(finalAmount);
+    
+    const basePrice = Number(extendedItem.priceBreakdown?.basePrice ||
                       extendedItem.calculatedBasePrice || 
                       extendedItem.basePrice || 
-                      (finalAmount > 0 ? finalAmount / 1.15 : 0);
+                      (finalAmount > 0 ? finalAmount / 1.15 : 0));
     
-    const markupAmount = extendedItem.priceBreakdown?.markupAmount ||
+    const markupAmount = Number(extendedItem.priceBreakdown?.markupAmount ||
                          extendedItem.calculatedMarkup || 
                          extendedItem.markupAmount || 
-                         (finalAmount > 0 ? finalAmount * 0.10 : 0);
+                         (finalAmount > 0 ? finalAmount * 0.10 : 0));
     
-    const serviceFee = extendedItem.priceBreakdown?.serviceFee ||
+    const serviceFee = Number(extendedItem.priceBreakdown?.serviceFee ||
                        extendedItem.calculatedServiceFee || 
                        extendedItem.serviceFee || 
-                       (finalAmount > 0 ? finalAmount * 0.05 : 0);
+                       (finalAmount > 0 ? finalAmount * 0.05 : 0));
     
+    const taxes = Number(extendedItem.priceBreakdown?.taxes ||
+                  extendedItem.taxes ||
+                  (finalAmount > 0 ? finalAmount * 0.15 : 0));
+    
+    console.log("🚗 Car rental booking prices:", {
+      basePrice,
+      markupAmount,
+      serviceFee,
+      taxes,
+      finalAmount,
+    });
+
     const correctedItem = {
       ...extendedItem,
       provider: 'AMADEUS',
@@ -1639,6 +1654,7 @@ if (isCar) {
       basePrice: basePrice,
       markupAmount: markupAmount,
       serviceFee: serviceFee,
+      taxes: taxes,
       totalAmount: finalAmount,
       vehicle: extendedItem.vehicle,
       serviceProvider: extendedItem.serviceProvider,
@@ -1647,59 +1663,77 @@ if (isCar) {
       start: extendedItem.start,
       end: extendedItem.end,
     };
-    
-    console.log("🚗 Car rental booking prices:", {
-      basePrice,
-      markupAmount,
-      serviceFee,
-      finalAmount,
-    });
 
+    // ✅ Create the booking with all number values
     const newBooking = await createBooking(
       correctedItem,
       searchParams,
       cleanedPassengerInfo,
       isGuest,
       {
-        taxes: serviceFee,
-        basePrice: basePrice,
-        finalAmount: finalAmount,
+        taxes: taxes,  // ✅ Now a number
+        basePrice: basePrice,  // ✅ Now a number
+        finalAmount: finalAmount,  // ✅ Now a number
       },
     );
     
-    // ✅ FIX: Store email after booking creation
+    // ✅ FIX: Store email and FORCE correct price breakdown after booking creation
     if (newBooking) {
-      // Store email in sessionStorage for guest bookings
       if (isGuest && cleanedPassengerInfo.email) {
         sessionStorage.setItem('guest_booking_email', cleanedPassengerInfo.email);
         console.log('📧 Stored guest email in sessionStorage:', cleanedPassengerInfo.email);
       }
       
-      // ✅ Ensure email is in the booking object at multiple locations
       const bookingAny = newBooking as any;
       
-      // Set at top level
+      // ✅ Set email at all levels
       bookingAny.email = cleanedPassengerInfo.email;
-      
-      // Set in passengerInfo
       if (!bookingAny.passengerInfo) {
         bookingAny.passengerInfo = {};
       }
       bookingAny.passengerInfo.email = cleanedPassengerInfo.email;
-      
-      // Set in bookingData
       if (!bookingAny.bookingData) {
         bookingAny.bookingData = {};
       }
       bookingAny.bookingData.email = cleanedPassengerInfo.email;
       
-      console.log('📧 Email stored in booking object:', {
-        topLevel: bookingAny.email,
-        passengerInfo: bookingAny.passengerInfo?.email,
-        bookingData: bookingAny.bookingData?.email,
+      // ✅ ✅ ✅ CRITICAL: FORCE CORRECT PRICES ON THE BOOKING OBJECT
+      bookingAny.totalAmount = finalAmount;
+      bookingAny.amount = finalAmount;
+      bookingAny.finalAmount = finalAmount;
+      bookingAny.basePrice = basePrice;
+      bookingAny.markupAmount = markupAmount;
+      bookingAny.serviceFee = serviceFee;
+      bookingAny.taxes = taxes;
+      bookingAny.currency = 'NGN';
+      
+      // ✅ ✅ ✅ CRITICAL: FORCE THE PRICE BREAKDOWN
+      bookingAny.priceBreakdown = {
+        basePrice: basePrice,
+        markupAmount: markupAmount,
+        markupPercentage: 10,
+        serviceFee: serviceFee,
+        serviceFeePercentage: 5,
+        taxes: taxes,
+        taxPercentage: 15,
+        totalAmount: finalAmount,
+        currency: 'NGN',
+        breakdown: `Base: ${basePrice.toFixed(2)} + Markup: ${markupAmount.toFixed(2)} + Service: ${serviceFee.toFixed(2)} + Taxes: ${taxes.toFixed(2)} = ${finalAmount.toFixed(2)}`,
+      };
+      
+      // ✅ Also store in bookingData for safety
+      if (!bookingAny.bookingData) {
+        bookingAny.bookingData = {};
+      }
+      bookingAny.bookingData.priceBreakdown = bookingAny.priceBreakdown;
+      
+      console.log('🚗 FORCED booking with correct prices:', {
+        totalAmount: bookingAny.totalAmount,
+        finalAmount: bookingAny.finalAmount,
+        basePrice: bookingAny.basePrice,
+        priceBreakdown: bookingAny.priceBreakdown,
       });
       
-      // Update the booking state with the enhanced object
       setBooking(bookingAny);
     } else {
       setBooking(newBooking);
@@ -1710,13 +1744,15 @@ if (isCar) {
     
     if (newBooking) {
       sessionStorage.setItem('booking_price_breakdown', JSON.stringify({
-        basePrice: newBooking.basePrice || basePrice,
-        markupAmount: newBooking.markupAmount || markupAmount,
-        serviceFee: newBooking.serviceFee || serviceFee,
-        totalAmount: newBooking.totalAmount || finalAmount,
-        currency: newBooking.currency || 'NGN',
-        markupPercentage: correctedItem.markup_percentage || 10,
-        serviceFeePercentage: correctedItem.service_fee_percentage || 5,
+        basePrice: basePrice,
+        markupAmount: markupAmount,
+        serviceFee: serviceFee,
+        taxes: taxes,
+        totalAmount: finalAmount,
+        currency: 'NGN',
+        markupPercentage: 10,
+        serviceFeePercentage: 5,
+        taxPercentage: 15,
       }));
     }
     

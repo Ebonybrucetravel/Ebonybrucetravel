@@ -1623,9 +1623,8 @@ const Profile: React.FC<ProfileProps> = ({
   return true;
 });
 
-  // ✅ UPDATED: Render booking card with safe string conversion
 const renderBookingCard = (booking: Booking) => {
-  // ✅ Helper to safely get string value
+
   const safeStr = (value: any): string => {
     if (!value) return '';
     if (typeof value === 'string') return value;
@@ -1678,64 +1677,64 @@ const renderBookingCard = (booking: Booking) => {
   // Extract details using the helper function
   const details = extractFlightDetails(booking);
   
-  // ✅ HOTEL BOOKING CARD
+  // ✅ HOTEL BOOKING CARD - FIXED LAYOUT
   if (bookingType === 'hotel') {
     const guestsCount = safeNum(details.guests) || 1;
     const roomsCount = safeNum(details.rooms) || 1;
     
     return (
-      <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow">
+      <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow overflow-hidden">
         <div className="w-16 h-16 rounded-full bg-yellow-50 flex items-center justify-center shrink-0">
           <svg className="w-8 h-8 text-orange-500" fill="currentColor" viewBox="0 0 24 24">
             <path d="M19 9H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V11a2 2 0 00-2-2zm-6 4h-2v-2h2v2zm6 0h-4v-2h4v2zM5 13h4v2H5v-2z"/>
           </svg>
         </div>
-        <div className="flex-1 text-center md:text-left min-w-0">
+        <div className="flex-1 text-center md:text-left min-w-0 max-w-full">
           <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
-            <h4 className="text-lg font-black text-gray-900 truncate tracking-tight">
+            <h4 className="text-lg font-black text-gray-900 truncate tracking-tight max-w-[200px] md:max-w-[300px]">
               {safeStr(details.hotelName || 'Hotel')}
             </h4>
-            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${statusColor}`}>
+            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full whitespace-nowrap ${statusColor}`}>
               {displayStatus}
             </span>
           </div>
-          <p className="text-[11px] font-bold text-gray-400 mb-3">
+          <p className="text-[11px] font-bold text-gray-400 mb-3 truncate">
             Booking Reference: {safeStr(booking.reference)}
           </p>
           <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] font-black text-gray-400 uppercase tracking-tight">
             {details.checkInDate && (
-              <div className="flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 In: {new Date(safeStr(details.checkInDate)).toLocaleDateString()}
               </div>
             )}
             {details.checkOutDate && (
-              <div className="flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 Out: {new Date(safeStr(details.checkOutDate)).toLocaleDateString()}
               </div>
             )}
             {details.duration && (
-              <div className="flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 {safeStr(details.duration)}
               </div>
             )}
-            <div className="flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
               {guestsCount} Guest{guestsCount > 1 ? 's' : ''}
             </div>
             {roomsCount > 1 && (
-              <div className="flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" />
                 </svg>
                 {roomsCount} Room{roomsCount > 1 ? 's' : ''}
@@ -1744,19 +1743,19 @@ const renderBookingCard = (booking: Booking) => {
           </div>
         </div>
         <div className="text-center md:text-right shrink-0">
-          <p className="text-xs font-black text-[#33a8da] mb-4">
+          <p className="text-xs font-black text-[#33a8da] mb-4 whitespace-nowrap">
             {safeStr(booking.currency)} <span className="text-lg">{formattedPrice}</span>
           </p>
           <div className="flex items-center justify-center md:justify-end gap-5">
-           <button 
-  onClick={() => router.push(`/booking/success?id=${booking.id}&ref=${booking.reference}&provider=${booking.provider}`)} 
-  className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition"
->
-  Full Details
-</button>
+            <button 
+              onClick={() => router.push(`/booking/success?id=${booking.id}&ref=${booking.reference}&provider=${booking.provider}`)} 
+              className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition whitespace-nowrap"
+            >
+              Full Details
+            </button>
             <button 
               onClick={() => handleManageBooking(booking)} 
-              className="px-8 py-3 bg-[#33a8da] text-white rounded-xl text-[11px] font-black uppercase hover:bg-[#2c98c7] transition shadow-lg active:scale-95"
+              className="px-8 py-3 bg-[#33a8da] text-white rounded-xl text-[11px] font-black uppercase hover:bg-[#2c98c7] transition shadow-lg active:scale-95 whitespace-nowrap"
             >
               Manage
             </button>
@@ -1766,7 +1765,7 @@ const renderBookingCard = (booking: Booking) => {
     );
   }
   
-  // ✅ FLIGHT BOOKING CARD
+  // ✅ FLIGHT BOOKING CARD - FIXED LAYOUT
   if (bookingType === 'flight') {
     const originStr = safeStr(details.origin);
     const destStr = safeStr(details.destination);
@@ -1781,38 +1780,42 @@ const renderBookingCard = (booking: Booking) => {
     const departureDateStr = safeStr(details.departureDate || booking.createdAt);
     
     return (
-      <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow">
+      <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow overflow-hidden">
         <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
           <svg className="w-8 h-8 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
             <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
           </svg>
         </div>
-        <div className="flex-1 text-center md:text-left min-w-0">
+        <div className="flex-1 text-center md:text-left min-w-0 max-w-full">
           <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
-            <h4 className="text-lg font-black text-gray-900 truncate tracking-tight">{routeText}</h4>
-            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${statusColor}`}>{displayStatus}</span>
+            <h4 className="text-lg font-black text-gray-900 truncate tracking-tight max-w-[200px] md:max-w-[300px]">
+              {routeText}
+            </h4>
+            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full whitespace-nowrap ${statusColor}`}>
+              {displayStatus}
+            </span>
           </div>
-          <p className="text-[11px] font-bold text-gray-400 mb-3">
+          <p className="text-[11px] font-bold text-gray-400 mb-3 truncate">
             {airlineStr} {flightNumStr !== 'N/A' && flightNumStr !== '' && `• Flight ${flightNumStr}`}
           </p>
           <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] font-black text-gray-400 uppercase tracking-tight">
-            <div className="flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               {departureDateStr ? new Date(departureDateStr).toLocaleDateString() : ''}
             </div>
             {cabinStr && (
-              <div className="flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
                 {cabinStr}
               </div>
             )}
             {details.stops !== undefined && details.stops === 0 && (
-              <div className="flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Direct
@@ -1821,19 +1824,19 @@ const renderBookingCard = (booking: Booking) => {
           </div>
         </div>
         <div className="text-center md:text-right shrink-0">
-          <p className="text-xs font-black text-[#33a8da] mb-4">
+          <p className="text-xs font-black text-[#33a8da] mb-4 whitespace-nowrap">
             {safeStr(booking.currency)} <span className="text-lg">{formattedPrice}</span>
           </p>
           <div className="flex items-center justify-center md:justify-end gap-5">
-           <button 
-  onClick={() => router.push(`/booking/success?id=${booking.id}&ref=${booking.reference}&provider=${booking.provider}`)} 
-  className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition"
->
-  Full Details
-</button>
+            <button 
+              onClick={() => router.push(`/booking/success?id=${booking.id}&ref=${booking.reference}&provider=${booking.provider}`)} 
+              className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition whitespace-nowrap"
+            >
+              Full Details
+            </button>
             <button 
               onClick={() => handleManageBooking(booking)} 
-              className="px-8 py-3 bg-[#33a8da] text-white rounded-xl text-[11px] font-black uppercase hover:bg-[#2c98c7] transition shadow-lg active:scale-95"
+              className="px-8 py-3 bg-[#33a8da] text-white rounded-xl text-[11px] font-black uppercase hover:bg-[#2c98c7] transition shadow-lg active:scale-95 whitespace-nowrap"
             >
               Manage
             </button>
@@ -1843,35 +1846,41 @@ const renderBookingCard = (booking: Booking) => {
     );
   }
   
-  // ✅ CAR RENTAL BOOKING CARD
+  // ✅ CAR RENTAL BOOKING CARD - FIXED LAYOUT
   const bookingData = booking.bookingData as any;
   const vehicleType = safeStr(bookingData?.vehicleType || bookingData?.vehicle?.description || 'Car Rental');
   const pickupLocation = safeStr(bookingData?.pickupLocationCode || bookingData?.pickupLocation || 'N/A');
   const dropoffLocation = safeStr(bookingData?.dropoffLocationCode || bookingData?.dropoffLocation || 'N/A');
   
   return (
-    <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow">
+    <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow overflow-hidden">
       <div className="w-16 h-16 rounded-full bg-purple-50 flex items-center justify-center shrink-0">
         <svg className="w-8 h-8 text-purple-600" fill="currentColor" viewBox="0 0 24 24">
           <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42.99L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z"/>
         </svg>
       </div>
-      <div className="flex-1 text-center md:text-left min-w-0">
+      <div className="flex-1 text-center md:text-left min-w-0 max-w-full">
         <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
-          <h4 className="text-lg font-black text-gray-900 truncate tracking-tight">{vehicleType}</h4>
-          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${statusColor}`}>{displayStatus}</span>
+          <h4 className="text-lg font-black text-gray-900 truncate tracking-tight max-w-[200px] md:max-w-[300px]">
+            {vehicleType}
+          </h4>
+          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full whitespace-nowrap ${statusColor}`}>
+            {displayStatus}
+          </span>
         </div>
-        <p className="text-[11px] font-bold text-gray-400 mb-3">Booking Reference: {safeStr(booking.reference)}</p>
+        <p className="text-[11px] font-bold text-gray-400 mb-3 truncate">
+          Booking Reference: {safeStr(booking.reference)}
+        </p>
         <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] font-black text-gray-400 uppercase tracking-tight">
-          <div className="flex items-center gap-1.5">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
+            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
             Pickup: {pickupLocation}
           </div>
-          <div className="flex items-center gap-1.5">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
+            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
@@ -1880,19 +1889,19 @@ const renderBookingCard = (booking: Booking) => {
         </div>
       </div>
       <div className="text-center md:text-right shrink-0">
-        <p className="text-xs font-black text-[#33a8da] mb-4">
+        <p className="text-xs font-black text-[#33a8da] mb-4 whitespace-nowrap">
           {safeStr(booking.currency)} <span className="text-lg">{formattedPrice}</span>
         </p>
         <div className="flex items-center justify-center md:justify-end gap-5">
           <button 
-  onClick={() => router.push(`/booking/success?id=${booking.id}&ref=${booking.reference}&provider=${booking.provider}`)} 
-  className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition"
->
-  Full Details
-</button>
+            onClick={() => router.push(`/booking/success?id=${booking.id}&ref=${booking.reference}&provider=${booking.provider}`)} 
+            className="text-[11px] font-black uppercase text-gray-600 hover:text-[#33a8da] transition whitespace-nowrap"
+          >
+            Full Details
+          </button>
           <button 
             onClick={() => handleManageBooking(booking)} 
-            className="px-8 py-3 bg-[#33a8da] text-white rounded-xl text-[11px] font-black uppercase hover:bg-[#2c98c7] transition shadow-lg active:scale-95"
+            className="px-8 py-3 bg-[#33a8da] text-white rounded-xl text-[11px] font-black uppercase hover:bg-[#2c98c7] transition shadow-lg active:scale-95 whitespace-nowrap"
           >
             Manage
           </button>
