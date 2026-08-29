@@ -1752,6 +1752,8 @@ async createTransferBooking(params: {
       cvv?: string;
     };
     paymentReference?: string;
+    threeDomainSecure?: any;  
+    paymentBusinessChannel?: string;  
   };
   billingAddress?: {
     line: string;
@@ -1808,8 +1810,82 @@ async createTransferBooking(params: {
     },
   };
 
-  // ... (payment, billingAddress, note, agencyEmail, extraServices, equipment, corporation code remains the same)
+  requestBody.data.paymentBusinessChannel = 'MOTO';
 
+  if (params.payment.methodOfPayment === 'CREDIT_CARD' && params.payment.creditCard) {
+    requestBody.data.payment.creditCard = {
+      number: params.payment.creditCard.number,
+      holderName: params.payment.creditCard.holderName,
+      vendorCode: params.payment.creditCard.vendorCode,
+      expiryDate: params.payment.creditCard.expiryDate,
+      cvv: params.payment.creditCard.cvv,
+    };
+
+    // ✅ ✅ ✅ CRITICAL: Add 3D Secure
+    if (params.payment.threeDomainSecure) {
+      requestBody.data.payment.threeDomainSecure = params.payment.threeDomainSecure;
+    } else {
+      // Default 3D Secure for test card
+      requestBody.data.payment.threeDomainSecure = {
+        version: '2.0.2',
+        dsTransactionId: `test-${Date.now()}`,
+        transStatus: 'A',
+        cryptogramValue: 'AEVV',
+        eci: 'ECI05',
+      };
+    }
+  }
+
+  
+  if (params.payment.methodOfPayment === 'INVOICE' && params.payment.paymentReference) {
+    requestBody.data.payment.paymentReference = params.payment.paymentReference;
+  }
+  if (params.billingAddress) {
+    if (!requestBody.data.passengers[0]) {
+      requestBody.data.passengers[0] = {};
+    }
+    requestBody.data.passengers[0].billingAddress = {
+      line: params.billingAddress.line,
+      zip: params.billingAddress.zip,
+      cityName: params.billingAddress.cityName,
+      countryCode: params.billingAddress.countryCode,
+    };
+  }
+
+
+  if (params.note) {
+    requestBody.data.note = params.note;
+  }
+
+  if (params.agencyEmail) {
+    requestBody.data.agency = {
+      contacts: [{ email: { address: params.agencyEmail } }],
+    };
+  }
+
+  
+  if (params.extraServices && params.extraServices.length > 0) {
+    requestBody.data.extraServices = params.extraServices;
+  }
+
+
+  if (params.equipment && params.equipment.length > 0) {
+    requestBody.data.equipment = params.equipment;
+  }
+
+
+  if (params.corporation) {
+    requestBody.data.corporation = {};
+    if (params.corporation.address) {
+      requestBody.data.corporation.address = params.corporation.address;
+    }
+    if (params.corporation.info) {
+      requestBody.data.corporation.info = params.corporation.info;
+    }
+  }
+
+
+ 
   // ✅ ✅ ✅ FIX: Add flight details in the CORRECT Amadeus format
   if (params.flightNumber && params.flightDate) {
     const pickupLocation = params.pickupLocation || 'CDG';
@@ -1928,6 +2004,8 @@ async createTransferBooking(params: {
           cvv?: string;
         };
         paymentReference?: string;
+        threeDomainSecure?: any;  
+        paymentBusinessChannel?: string;
       };
       billingAddress?: {
         line: string;
@@ -1971,7 +2049,23 @@ async createTransferBooking(params: {
       if (params.payment.creditCard.cvv) {
         requestBody.data.payment.creditCard.cvv = params.payment.creditCard.cvv;
       }
+
+      if (params.payment.threeDomainSecure) {
+        requestBody.data.payment.threeDomainSecure = params.payment.threeDomainSecure;
+      } else {
+        
+        requestBody.data.payment.threeDomainSecure = {
+          version: '2.0.2',
+          dsTransactionId: `test-${Date.now()}`,
+          transStatus: 'A',
+          cryptogramValue: 'AEVV',
+          eci: 'ECI05',
+        };
+      }
+    
     }
+
+    
 
     if (params.payment.methodOfPayment === 'INVOICE' && params.payment.paymentReference) {
       requestBody.data.payment.paymentReference = params.payment.paymentReference;
