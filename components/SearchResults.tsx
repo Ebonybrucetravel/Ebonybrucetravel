@@ -429,7 +429,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 }) => {
   const router = useRouter();
   const { currency, formatPrice: formatPriceWithCurrency, isLoadingRates } = useLanguage();
-  const searchType = (searchParams?.type || "flights").toLowerCase() as "flights" | "hotels" | "car-rentals";
+  const rawSearchType = (searchParams?.type || "flights").toLowerCase();
+  const searchType = rawSearchType === 'cars' ? 'car-rentals' : rawSearchType as "flights" | "hotels" | "car-rentals";
 
   const compactTab = searchType === 'car-rentals' ? 'cars' : searchType;
   const [isSearchBoxLoading, setIsSearchBoxLoading] = useState(false);
@@ -1464,117 +1465,131 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     return searchParams?.destination || (processedFlights[0]?.arrivalCity) || 'London';
   }, [searchParams, processedFlights]);
 
-const hotelAndCarResults = useMemo(() => {
-  if (searchType === 'flights') return [];
-
-  let items: ExtendedSearchResult[] = [];
+  const hotelAndCarResults = useMemo(() => {
+    if (searchType === 'flights') return [];
   
-  if (Array.isArray(results)) {
-    items = results.map((r: ExtendedSearchResult) => ({
-      ...r,
-      type: (r.type || searchType) as "flights" | "hotels" | "car-rentals"
-    }));
-  } else if (results && typeof results === 'object' && 'results' in results && Array.isArray((results as any).results)) {
-    items = (results as any).results.map((r: ExtendedSearchResult) => ({
-      ...r,
-      type: (r.type || searchType) as "flights" | "hotels" | "car-rentals"
-    }));
-  } else if (results && typeof results === 'object' && 'data' in results && Array.isArray((results as any).data)) {
-    items = (results as any).data.map((r: ExtendedSearchResult) => ({
-      ...r,
-      type: (r.type || searchType) as "flights" | "hotels" | "car-rentals"
-    }));
-  } else if (results && typeof results === 'object') {
-    const possibleArray = Object.values(results);
-    if (possibleArray.length > 0 && possibleArray[0] && typeof possibleArray[0] === 'object') {
-      items = possibleArray as ExtendedSearchResult[];
-    }
-  }
-
-  return items.map((item: ExtendedSearchResult) => {
-    let originalPrice = 0;
-    let originalCurrency = 'GBP';
-
-    if (item.final_amount) {
-      originalPrice = parseFloat(item.final_amount);
-      originalCurrency = item.currency || 'GBP';
-    } else if (item.original_amount) {
-      originalPrice = parseFloat(item.original_amount);
-      originalCurrency = item.original_currency || 'GBP';
-    } else if (item.final_price) {
-      originalPrice = parseFloat(item.final_price);
-      originalCurrency = item.currency || 'GBP';
-    } else if (item.price) {
-      if (typeof item.price === 'string') {
-        originalPrice = parseFloat(item.price.replace(/[^\d.]/g, '')) || 0;
-      } else if (typeof item.price === 'number') {
-        originalPrice = item.price;
-      } else if (typeof item.price === 'object' && item.price.total) {
-        originalPrice = parseFloat(item.price.total);
-        originalCurrency = item.price.currency || 'GBP';
-      }
-    } else if (item.totalPrice) {
-      const priceMatch = item.totalPrice.match(/[\d,]+\.?\d*/);
-      if (priceMatch) {
-        originalPrice = parseFloat(priceMatch[0].replace(/,/g, ''));
+    let items: ExtendedSearchResult[] = [];
+    
+    if (Array.isArray(results)) {
+      items = results.map((r: ExtendedSearchResult) => ({
+        ...r,
+        type: (r.type || searchType) as "flights" | "hotels" | "car-rentals"
+      }));
+    } else if (results && typeof results === 'object' && 'results' in results && Array.isArray((results as any).results)) {
+      items = (results as any).results.map((r: ExtendedSearchResult) => ({
+        ...r,
+        type: (r.type || searchType) as "flights" | "hotels" | "car-rentals"
+      }));
+    } else if (results && typeof results === 'object' && 'data' in results && Array.isArray((results as any).data)) {
+      items = (results as any).data.map((r: ExtendedSearchResult) => ({
+        ...r,
+        type: (r.type || searchType) as "flights" | "hotels" | "car-rentals"
+      }));
+    } else if (results && typeof results === 'object') {
+      const possibleArray = Object.values(results);
+      if (possibleArray.length > 0 && possibleArray[0] && typeof possibleArray[0] === 'object') {
+        items = possibleArray as ExtendedSearchResult[];
       }
     }
-
-    if (searchType === 'car-rentals' || item.type === 'car-rentals') {
+  
+    return items.map((item: ExtendedSearchResult) => {
+      let originalPrice = 0;
+      let originalCurrency = 'GBP';
+  
+      // Price extraction logic
+      if (item.final_amount) {
+        originalPrice = parseFloat(item.final_amount);
+        originalCurrency = item.currency || 'GBP';
+      } else if (item.original_amount) {
+        originalPrice = parseFloat(item.original_amount);
+        originalCurrency = item.original_currency || 'GBP';
+      } else if (item.final_price) {
+        originalPrice = parseFloat(item.final_price);
+        originalCurrency = item.currency || 'GBP';
+      } else if (item.price) {
+        if (typeof item.price === 'string') {
+          originalPrice = parseFloat(item.price.replace(/[^\d.]/g, '')) || 0;
+        } else if (typeof item.price === 'number') {
+          originalPrice = item.price;
+        } else if (typeof item.price === 'object' && item.price.total) {
+          originalPrice = parseFloat(item.price.total);
+          originalCurrency = item.price.currency || 'GBP';
+        }
+      } else if (item.totalPrice) {
+        const priceMatch = item.totalPrice.match(/[\d,]+\.?\d*/);
+        if (priceMatch) {
+          originalPrice = parseFloat(priceMatch[0].replace(/,/g, ''));
+        }
+      }
+  
+      // ✅ ✅ ✅ FIX: Check for vehicle data to force car-rentals type
+      // This catches items with type "transfer-offer" from the API
+      const hasVehicleData = !!(item.vehicle || 
+                               item.partnerInfo?.serviceProvider || 
+                               item.start?.locationCode ||
+                               item.serviceProvider ||
+                               item.vehicleCode ||
+                               item.vehicleCategory);
+  
+      // ✅ If it has vehicle data OR searchType is car-rentals, treat as car rental
+      if (searchType === 'car-rentals' || hasVehicleData) {
+        console.log('🚗 Forcing car-rentals type for item:', item.id, 'hasVehicle:', hasVehicleData);
+        return {
+          ...item,
+          type: 'car-rentals' as const,
+          originalPriceAmount: originalPrice,
+          originalPriceCurrency: originalCurrency,
+          vehicle: item.vehicle,
+          serviceProvider: item.serviceProvider || item.partnerInfo?.serviceProvider,
+          cancellationRules: item.cancellationRules || [],
+          distance: item.distance,
+          start: item.start,
+          end: item.end,
+          methodsOfPaymentAccepted: item.methodsOfPaymentAccepted || [],
+          supportedPaymentInstruments: item.supportedPaymentInstruments || [],
+          extraServices: item.extraServices || [],
+          duration: item.duration,
+          offerId: item.offerId || item.id,
+          offer_id: item.offerId || item.id,
+          realData: {
+            ...item.realData,
+            offerId: item.offerId || item.id,
+            pickupLocation: item.start?.locationCode,
+            dropoffLocation: item.end?.locationCode,
+            pickupDateTime: item.start?.dateTime,
+            dropoffDateTime: item.end?.dateTime,
+            vehicleType: item.vehicle?.description,
+            vehicleCategory: item.vehicle?.category,
+            seats: item.vehicle?.seats?.[0]?.count,
+            baggage: item.vehicle?.baggages?.reduce((total: number, bag: any) => total + (bag.count || 0), 0),
+          }
+        };
+      }
+  
+      // ✅ If it's a hotel
       return {
         ...item,
-        type: 'car-rentals' as const,
+        type: searchType as "flights" | "hotels" | "car-rentals",
         originalPriceAmount: originalPrice,
         originalPriceCurrency: originalCurrency,
-        vehicle: item.vehicle,
-        serviceProvider: item.serviceProvider || item.partnerInfo?.serviceProvider,
-        cancellationRules: item.cancellationRules || [],
-        distance: item.distance,
-        start: item.start,
-        end: item.end,
-        methodsOfPaymentAccepted: item.methodsOfPaymentAccepted || [],
-        supportedPaymentInstruments: item.supportedPaymentInstruments || [],
-        extraServices: item.extraServices || [],
-        duration: item.duration,
-        offerId: item.offerId || item.id,
-        offer_id: item.offerId || item.id,
         realData: {
-          ...item.realData,
           offerId: item.offerId || item.id,
-          pickupLocation: item.start?.locationCode,
-          dropoffLocation: item.end?.locationCode,
-          pickupDateTime: item.start?.dateTime,
-          dropoffDateTime: item.end?.dateTime,
+          pickupLocation: item.start?.locationCode || item.pickupLocation,
+          dropoffLocation: item.end?.locationCode || item.dropoffLocation,
+          pickupDateTime: item.start?.dateTime || item.pickupDateTime,
+          dropoffDateTime: item.end?.dateTime || item.dropoffDateTime,
+          price: originalPrice,
+          currency: originalCurrency,
           vehicleType: item.vehicle?.description,
           vehicleCategory: item.vehicle?.category,
           seats: item.vehicle?.seats?.[0]?.count,
           baggage: item.vehicle?.baggages?.reduce((total: number, bag: any) => total + (bag.count || 0), 0),
+          finalPrice: originalPrice,
         }
       };
-    }
-
-    return {
-      ...item,
-      type: searchType as "flights" | "hotels" | "car-rentals",
-      originalPriceAmount: originalPrice,
-      originalPriceCurrency: originalCurrency,
-      realData: {
-        offerId: item.offerId || item.id,
-        pickupLocation: item.start?.locationCode || item.pickupLocation,
-        dropoffLocation: item.end?.locationCode || item.dropoffLocation,
-        pickupDateTime: item.start?.dateTime || item.pickupDateTime,
-        dropoffDateTime: item.end?.dateTime || item.dropoffDateTime,
-        price: originalPrice,
-        currency: originalCurrency,
-        vehicleType: item.vehicle?.description,
-        vehicleCategory: item.vehicle?.category,
-        seats: item.vehicle?.seats?.[0]?.count,
-        baggage: item.vehicle?.baggages?.reduce((total: number, bag: any) => total + (bag.count || 0), 0),
-        finalPrice: originalPrice,
-      }
-    };
-  });
-}, [results, searchType]);
+    });
+  }, [results, searchType]);
+  
 
   useEffect(() => {
     const convertHotelCarPrices = async () => {

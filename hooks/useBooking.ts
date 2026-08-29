@@ -650,7 +650,7 @@ export function useBooking() {
     async (
       item: ExtendedSearchResult,
       searchParams: SearchParams | null,
-      passenger: PassengerInfo,
+      passenger: ExtendedPassengerInfo, 
       isGuest: boolean,
       options?: { 
         taxes?: number; 
@@ -1461,7 +1461,6 @@ console.log("💰 Wakanow total amount (with positive check):", {
             throw new Error('Invalid offer price for car rental booking');
           }
           
-          // ✅ Get exchange rate
           const exchangeRate = await getExchangeRate(originalCurrency, 'NGN');
           const priceInNgn = originalPrice * exchangeRate;
           
@@ -1472,7 +1471,6 @@ console.log("💰 Wakanow total amount (with positive check):", {
             priceInNgn,
           });
           
-          // ✅ ✅ ✅ GET FLIGHT DETAILS FROM PASSENGER
           const flightNumber = (passenger as any).flightNumber || 
                                item.flightNumber || 
                                searchParams?.flightNumber || 
@@ -1496,10 +1494,46 @@ console.log("💰 Wakanow total amount (with positive check):", {
             throw new Error('Flight date is required for car rental transfers. Please enter your flight date.');
           }
           
-          // ✅ Set offerId at TOP LEVEL
+          // ✅ Get pickup/dropoff locations
+          const pickupLocation = item.pickupLocation || selectedOffer.start?.locationCode || 'CDG';
+          const dropoffLocation = item.dropoffLocation || selectedOffer.end?.locationCode || 'CDG';
+          
+          const passengersArray = [{
+            name: {
+              title: passenger.title?.toUpperCase() || 'MR',
+              firstName: passenger.firstName || '',
+              lastName: passenger.lastName || '',
+            },
+            contact: {
+              phone: passenger.phone || '',
+              email: passenger.email || '',
+            },
+          }];
+          
+         
+          if (travellers && travellers.length > 0) {
+            for (const t of travellers) {
+            
+              if (t.firstName === passenger.firstName && t.lastName === passenger.lastName) {
+                continue;
+              }
+              passengersArray.push({
+                name: {
+                  title: t.title?.toUpperCase() || 'MR',
+                  firstName: t.firstName || '',
+                  lastName: t.lastName || '',
+                },
+                contact: {
+                  phone: t.phone || t.phoneNumber || '',
+                  email: t.email || '',
+                },
+              });
+            }
+          }
+          
           body.offerId = offerId;
           
-          // ✅ Set car rental specific fields in bookingData
+        
           body.bookingData = {
             offerId: offerId,
             offerPrice: priceInNgn,
@@ -1507,11 +1541,13 @@ console.log("💰 Wakanow total amount (with positive check):", {
             originalPrice: originalPrice,
             originalCurrency: originalCurrency,
             exchangeRate: exchangeRate,
-            // ✅ ADD FLIGHT DETAILS - REQUIRED FOR AMADEUS
+            passengers: passengersArray,
             flight_number: flightNumber,
             flight_date: flightDate,
             airline_code: airlineCode || undefined,
             flight_time: flightTime || undefined,
+            pickup_location: pickupLocation,
+            dropoff_location: dropoffLocation,
             driver: {
               firstName: passenger.firstName,
               lastName: passenger.lastName,
@@ -1520,8 +1556,8 @@ console.log("💰 Wakanow total amount (with positive check):", {
               title: passenger.title || 'MR',
             },
             offerData: selectedOffer,
-            pickupLocation: item.pickupLocation || selectedOffer.start?.locationCode || selectedOffer.pickupLocation,
-            dropoffLocation: item.dropoffLocation || selectedOffer.end?.locationCode || selectedOffer.dropoffLocation,
+            pickupLocation: pickupLocation,
+            dropoffLocation: dropoffLocation,
             pickupDateTime: item.pickupDateTime || selectedOffer.start?.dateTime || selectedOffer.pickupDateTime,
             dropoffDateTime: item.dropoffDateTime || selectedOffer.end?.dateTime || selectedOffer.dropoffDateTime,
             vehicleType: item.vehicleType || selectedOffer.vehicle?.description,
@@ -1532,7 +1568,7 @@ console.log("💰 Wakanow total amount (with positive check):", {
             targetCurrency: 'NGN',
           };
           
-          // ✅ Calculate markup
+       
           const carMarkupPercentage = 10;
           const carServiceFeePercentage = 5;
           const carMarkupAmount = priceInNgn * (carMarkupPercentage / 100);
@@ -1547,11 +1583,11 @@ console.log("💰 Wakanow total amount (with positive check):", {
             currency: 'NGN',
           });
           
-          // ✅ Set totalAmount for validation
+          
           body.totalAmount = carTotalAmount;
           body.currency = 'NGN';
           
-          // ✅ Store price breakdown
+         
           body.priceBreakdown = {
             basePrice: priceInNgn,
             markupAmount: carMarkupAmount,
@@ -1564,13 +1600,16 @@ console.log("💰 Wakanow total amount (with positive check):", {
             currency: 'NGN',
           };
           
+          
           console.log("🚗 Car rental booking payload:", {
             offerId: body.offerId,
-            offerPrice: body.bookingData.offerPrice,
-            currency: body.bookingData.currency,
+            bookingData: {
+              flight_number: body.bookingData.flight_number,
+              flight_date: body.bookingData.flight_date,
+              pickup_location: body.bookingData.pickup_location,
+              dropoff_location: body.bookingData.dropoff_location,
+            },
             totalAmount: body.totalAmount,
-            flightNumber: body.bookingData.flight_number,
-            flightDate: body.bookingData.flight_date,
             driver: body.bookingData.driver,
           });
         }

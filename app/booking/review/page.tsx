@@ -1393,6 +1393,23 @@ console.log(`📅 Lead passenger DOB formatted: ${formattedDateOfBirth}`);
         });
       }
     }
+
+    const flightNumberFromPassenger = (passengerInfo as any).flightNumber || '';
+const flightDateFromPassenger = (passengerInfo as any).flightDate || '';
+const airlineCodeFromPassenger = (passengerInfo as any).airlineCode || '';
+const flightTimeFromPassenger = (passengerInfo as any).flightTime || '';
+
+(cleanedPassengerInfo as any).flightNumber = flightNumberFromPassenger;
+(cleanedPassengerInfo as any).flightDate = flightDateFromPassenger;
+(cleanedPassengerInfo as any).airlineCode = airlineCodeFromPassenger;
+(cleanedPassengerInfo as any).flightTime = flightTimeFromPassenger;
+
+console.log('✈️ Flight details preserved in cleanedPassengerInfo:', {
+  flightNumber: (cleanedPassengerInfo as any).flightNumber,
+  flightDate: (cleanedPassengerInfo as any).flightDate,
+  airlineCode: (cleanedPassengerInfo as any).airlineCode,
+  flightTime: (cleanedPassengerInfo as any).flightTime,
+})
   
     console.log("🔍 Booking flow detection:", {
       isHotel,
@@ -1403,7 +1420,7 @@ console.log(`📅 Lead passenger DOB formatted: ${formattedDateOfBirth}`);
     });
   
     if (isHotel && !isCar) {
-      // ✅ Extract offer ID from the hotel item
+      
       const hotelOfferId = extractOfferIdFromHotel(extendedItem);
       
       console.log('🏨 Hotel booking - Offer ID check:', {
@@ -1413,8 +1430,7 @@ console.log(`📅 Lead passenger DOB formatted: ${formattedDateOfBirth}`);
         hotelId: extendedItem.hotelId || extendedItem.id,
         hotelName: extendedItem.name || extendedItem.title,
       });
-      
-      // ✅ If no offer ID found, try to get it from sessionStorage
+
       let finalHotelItem = extendedItem;
       if (!hotelOfferId && typeof window !== 'undefined') {
         const stored = sessionStorage.getItem('selectedHotelForBooking');

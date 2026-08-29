@@ -188,7 +188,7 @@ function PaymentForm({ booking, isGuest, voucherCode, onSuccess, onCancel }: Pay
                   </div>
                   <div className="flex justify-between">
                       <span className="text-gray-600">Service</span>
-                      <span className="font-medium">{booking.productType.replace('_', ' ')}</span>
+                      <span className="font-medium">{booking.productType ? booking.productType.replace('_', ' ') : 'Service'}</span>
                   </div>
                   {voucherCode && (
                       <div className="flex justify-between text-green-600">
