@@ -9,26 +9,23 @@ import {
   IsEnum,
   Min,
   IsObject,
-  IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type, Transform, plainToInstance } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 function normalizePassenger(value: any): any {
   if (!value || typeof value !== 'object') return value;
-  
 
   if (value.name && value.contact) {
     return value;
   }
-  
 
   const firstName = value.firstName ?? value.name?.firstName;
   const lastName = value.lastName ?? value.name?.lastName;
   const email = value.email ?? value.contact?.email;
   const phone = value.phone ?? value.contact?.phone;
   const title = value.title && value.title !== '' ? value.title : 'MR';
-  
+
   return {
     name: {
       title,
@@ -44,21 +41,19 @@ function normalizePassenger(value: any): any {
 
 function normalizePayment(value: any): any {
   if (!value) return value;
-  
 
   if (value.methodOfPayment) {
     return value;
   }
-  
 
   const result: any = {
     methodOfPayment: value.method || 'CREDIT_CARD',
   };
-  
+
   if (value.paymentServiceProvider) {
     result.paymentServiceProvider = value.paymentServiceProvider;
   }
-  
+
   if (value.paymentCard || value.creditCard) {
     const card = value.paymentCard || value.creditCard;
     const info = card.paymentCardInfo || card;
@@ -70,11 +65,11 @@ function normalizePayment(value: any): any {
       cvv: info.securityCode || info.cvv,
     };
   }
-  
+
   if (value.paymentReference) {
     result.paymentReference = value.paymentReference;
   }
-  
+
   return result;
 }
 
@@ -336,6 +331,74 @@ export class PriceBreakdownDto {
   currency: string;
 }
 
+export class BookingDataDto {
+  @ApiPropertyOptional({
+    description: 'Flight number for transfer',
+    example: 'AF380',
+  })
+  @IsOptional()
+  @IsString()
+  flight_number?: string;
+
+  @ApiPropertyOptional({
+    description: 'Flight date for transfer (ISO 8601 format)',
+    example: '2026-08-29',
+  })
+  @IsOptional()
+  @IsString()
+  flight_date?: string;
+
+  @ApiPropertyOptional({
+    description: 'Airline code',
+    example: 'AF',
+  })
+  @IsOptional()
+  @IsString()
+  airline_code?: string;
+
+  @ApiPropertyOptional({
+    description: 'Flight time (HH:MM format)',
+    example: '14:30',
+  })
+  @IsOptional()
+  @IsString()
+  flight_time?: string;
+
+  @ApiPropertyOptional({
+    description: 'Pickup location (IATA code)',
+    example: 'CDG',
+  })
+  @IsOptional()
+  @IsString()
+  pickup_location?: string;
+
+  @ApiPropertyOptional({
+    description: 'Dropoff location (IATA code)',
+    example: 'ORY',
+  })
+  @IsOptional()
+  @IsString()
+  dropoff_location?: string;
+
+  @ApiPropertyOptional({
+    description: 'Driver information',
+    type: Object,
+  })
+  @IsOptional()
+  @IsObject()
+  driver?: any;
+
+  @ApiPropertyOptional({
+    description: 'Offer data from search',
+    type: Object,
+  })
+  @IsOptional()
+  @IsObject()
+  offerData?: any;
+
+  [key: string]: any;
+}
+
 export class CreateCarRentalBookingDto {
   @ApiProperty({
     description: 'Transfer offer ID from search results',
@@ -477,39 +540,7 @@ export class CreateCarRentalBookingDto {
   @IsString()
   specialRequests?: string;
 
-  @ApiProperty({
-    description: 'Flight number (required for car rental transfers)',
-    example: 'AF380',
-    required: true,
-  })
-  @IsString()
-  @IsNotEmpty({ message: 'Flight number is required for car rental transfers' })
-  flightNumber: string;
-
-  @ApiProperty({
-    description: 'Flight date (ISO 8601 format)',
-    example: '2026-08-29',
-    required: true,
-  })
-  @IsString()
-  @IsNotEmpty({ message: 'Flight date is required for car rental transfers' })
-  flightDate: string;
-
-  @ApiPropertyOptional({
-    description: 'Airline code (e.g., AF for Air France)',
-    example: 'AF',
-  })
-  @IsOptional()
-  @IsString()
-  airlineCode?: string;
-
-  @ApiPropertyOptional({
-    description: 'Flight time (HH:MM format)',
-    example: '14:30',
-  })
-  @IsOptional()
-  @IsString()
-  flightTime?: string;
+  // ✅ ✅ ✅ REMOVED top-level flight fields - they belong in bookingData
 
   @ApiPropertyOptional({
     description: 'Agency email for booking',
@@ -537,6 +568,16 @@ export class CreateCarRentalBookingDto {
   @ValidateNested()
   @Type(() => PaymentDto)
   payment?: PaymentDto;
+
+  // ✅ ✅ ✅ ADD bookingData field with flight details
+  @ApiPropertyOptional({
+    description: 'Additional booking data including flight details',
+    type: BookingDataDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BookingDataDto)
+  bookingData?: BookingDataDto;
 
   @ApiPropertyOptional({
     description: '[DEPRECATED] Driver information - use passengers array instead',

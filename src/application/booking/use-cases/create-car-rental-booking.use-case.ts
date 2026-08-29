@@ -24,15 +24,14 @@ export class CreateCarRentalBookingUseCase {
   ) {}
 
   async execute(dto: CreateCarRentalBookingDto, userId: string) {
-
     if (!dto.offerId) {
       throw new BadRequestException('Offer ID is required');
     }
-
+  
     if (!dto.passengers || dto.passengers.length === 0) {
       throw new BadRequestException('At least one passenger is required');
     }
-
+  
     const firstPassenger = dto.passengers[0];
     if (!firstPassenger.name?.firstName || !firstPassenger.name?.lastName) {
       throw new BadRequestException('Passenger first name and last name are required');
@@ -40,68 +39,92 @@ export class CreateCarRentalBookingUseCase {
     if (!firstPassenger.contact?.email || !firstPassenger.contact?.phone) {
       throw new BadRequestException('Passenger email and phone are required');
     }
-
-    if (!dto.flightNumber) {
+  
+    // ✅ ✅ ✅ GET FLIGHT DETAILS FROM bookingData (frontend sends them here)
+    const bookingDataFromDto = dto.bookingData as any || {};
+    
+    const flightNumber = bookingDataFromDto.flight_number || 
+                         bookingDataFromDto.flightNumber || 
+                         '';
+    const flightDate = bookingDataFromDto.flight_date || 
+                       bookingDataFromDto.flightDate || 
+                       '';
+    const airlineCode = bookingDataFromDto.airline_code || 
+                        bookingDataFromDto.airlineCode || 
+                        '';
+    const flightTime = bookingDataFromDto.flight_time || 
+                       bookingDataFromDto.flightTime || 
+                       '';
+    const pickupLocation = bookingDataFromDto.pickup_location || 
+                           bookingDataFromDto.pickupLocation || 
+                           'CDG';
+    const dropoffLocation = bookingDataFromDto.dropoff_location || 
+                            bookingDataFromDto.dropoffLocation || 
+                            'CDG';
+  
+    // ✅ Validate flight details (now from bookingData)
+    if (!flightNumber || !flightNumber.trim()) {
       throw new BadRequestException('Flight number is required for car rental transfers');
     }
-    if (!dto.flightDate) {
+    if (!flightDate || !flightDate.trim()) {
       throw new BadRequestException('Flight date is required for car rental transfers');
     }
-
+  
     let offerPrice = dto.offerPrice;
     let currency = dto.currency;
-
+  
     if (dto.priceBreakdown) {
       offerPrice = dto.priceBreakdown.basePrice || dto.priceBreakdown.totalAmount;
       currency = dto.priceBreakdown.currency || dto.currency;
     }
-
+  
     if (!offerPrice || offerPrice <= 0) {
       this.logger.error(`Invalid offerPrice: ${offerPrice}`);
       throw new BadRequestException('Offer price is required and must be greater than 0');
     }
-
+  
     if (!currency) {
       throw new BadRequestException('Currency is required');
     }
-
+  
     try {
       const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
         'CAR_RENTAL',
         currency,
       );
-
+  
       if (!markupConfig) {
         throw new NotFoundException(
           `No active markup configuration found for CAR_RENTAL in ${currency}`,
         );
       }
-
+  
       const pricing = this.markupCalculationService.calculateTotal(
         offerPrice,
         'CAR_RENTAL',
         currency,
         markupConfig,
       );
-
-
+  
+      // ✅ Store flight details in bookingData (using the extracted values)
       const bookingData = {
         amadeus_offer_id: dto.offerId,
         offer_price: offerPrice,
         passengers: dto.passengers,
         special_requests: dto.specialRequests,
-          flight_number: dto.flightNumber,
-  flight_date: dto.flightDate,
-  airline_code: dto.airlineCode,
-  flight_time: dto.flightTime,
-  pickup_location: dto.pickupLocation,
-dropoff_location: dto.dropoffLocation,
-  billing_address: dto.billingAddress,
-  payment_method: dto.payment?.methodOfPayment || 'CREDIT_CARD',
-  transfer_type: dto.transferType || 'PRIVATE',
-};
+        flight_number: flightNumber,
+        flight_date: flightDate,
+        airline_code: airlineCode,
+        flight_time: flightTime,
+        pickup_location: pickupLocation,
+        dropoff_location: dropoffLocation,
+        billing_address: dto.billingAddress,
+        payment_method: dto.payment?.methodOfPayment || 'CREDIT_CARD',
+        transfer_type: dto.transferType || 'PRIVATE',
+      };
+  
       const primaryPassenger = dto.passengers[0];
-
+  
       const booking = await this.bookingService.createBooking({
         userId,
         productType: 'CAR_RENTAL',
@@ -123,9 +146,9 @@ dropoff_location: dto.dropoffLocation,
         status: BookingStatus.PENDING,
         paymentStatus: 'PENDING',
       });
-
+  
       this.logger.log(`✅ Car rental booking created: ${booking.id} (${booking.reference})`);
-
+  
       if (dto.payment && dto.payment.methodOfPayment === 'CREDIT_CARD' && dto.payment.creditCard) {
         try {
           this.logger.log('Payment details provided, creating Amadeus order immediately...');
@@ -142,23 +165,22 @@ dropoff_location: dto.dropoffLocation,
               status: BookingStatus.CONFIRMED,
             },
           });
-
-
+  
           const updatedBooking = await this.bookingService.getBookingById(booking.id);
           if (!updatedBooking) {
             throw new NotFoundException(`Booking ${booking.id} not found after update`);
           }
-
+  
           return {
             booking: updatedBooking,
             message: 'Booking confirmed. Order created successfully.',
           };
         } catch (error) {
           this.logger.error('Failed to create Amadeus order immediately:', error);
-         
+          // Continue - booking is created but order creation failed
         }
       }
-
+  
       return {
         booking,
         message: 'Booking created. Please proceed to payment.',
@@ -173,6 +195,7 @@ dropoff_location: dto.dropoffLocation,
       );
     }
   }
+  
 
  
   async createAmadeusOrderAfterPayment(
