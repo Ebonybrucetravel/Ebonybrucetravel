@@ -1,4 +1,3 @@
-// src/presentation/booking/dto/create-guest-booking.dto.ts
 import {
   IsEnum,
   IsNotEmpty,

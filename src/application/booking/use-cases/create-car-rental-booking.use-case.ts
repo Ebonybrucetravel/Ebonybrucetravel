@@ -94,6 +94,8 @@ export class CreateCarRentalBookingUseCase {
   flight_date: dto.flightDate,
   airline_code: dto.airlineCode,
   flight_time: dto.flightTime,
+  pickup_location: dto.pickupLocation,
+dropoff_location: dto.dropoffLocation,
   billing_address: dto.billingAddress,
   payment_method: dto.payment?.methodOfPayment || 'CREDIT_CARD',
   transfer_type: dto.transferType || 'PRIVATE',
@@ -328,6 +330,16 @@ export class CreateCarRentalBookingUseCase {
     if (bookingData.flight_time) {
       requestParams.flightTime = bookingData.flight_time;
     }
+
+    requestParams.pickupLocation = bookingData.pickup_location || 
+                               bookingData.pickupLocation || 
+                               'CDG';  // Default fallback
+
+requestParams.dropoffLocation = bookingData.dropoff_location || 
+                                bookingData.dropoffLocation || 
+                                bookingData.pickup_location || 
+                                'CDG';  // Default fallback
+
   
     if (bookingData.billing_address) {
       requestParams.billingAddress = {
