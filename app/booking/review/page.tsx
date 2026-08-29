@@ -1249,10 +1249,10 @@ useEffect(() => {
   
 
 
-// In page.tsx - handleProceedToPayment function
+
 
 if (isFlight) {
-  // ✅ NO FALLBACKS - strict validation
+
   if (!passengerInfo.dateOfBirth) {
     toast.error("Date of birth is required for flight bookings");
     return;
@@ -1266,12 +1266,6 @@ if (isFlight) {
     return;
   }
 
-  //const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-  //if (!dateRegex.test(passengerInfo.dateOfBirth)) {
-    //toast.error("Date of birth must be in YYYY-MM-DD format");
-    //return;
-  //}
-
   const dob = new Date(passengerInfo.dateOfBirth);
   const today = new Date();
   const age = today.getFullYear() - dob.getFullYear();
@@ -1280,7 +1274,6 @@ if (isFlight) {
     return;
   }
 }
-// // ✅ ADD THIS FUNCTION RIGHT HERE - after the validation block
 const formatDateToYYYYMMDD = (dateStr: string | undefined): string => {
   if (!dateStr) return '';
   // If already in YYYY-MM-DD format, return as is
@@ -1590,12 +1583,46 @@ console.log(`📅 Lead passenger DOB formatted: ${formattedDateOfBirth}`);
       return;
     }
     
+
 // ============================================================
 // ✅ CAR RENTAL FLOW - FIXED WITH FORCE PRICE BREAKDOWN
 // ============================================================
 if (isCar) {
   try {
     console.log("🚗 Creating car rental booking...");
+    
+    // ✅ ✅ ✅ EXTRACT FLIGHT DETAILS FROM PASSENGER INFO
+    const flightNumber = (cleanedPassengerInfo as any).flightNumber || 
+                         (passengerInfo as any).flightNumber || 
+                         '';
+    const flightDate = (cleanedPassengerInfo as any).flightDate || 
+                       (passengerInfo as any).flightDate || 
+                       '';
+    const airlineCode = (cleanedPassengerInfo as any).airlineCode || 
+                        (passengerInfo as any).airlineCode || 
+                        '';
+    const flightTime = (cleanedPassengerInfo as any).flightTime || 
+                       (passengerInfo as any).flightTime || 
+                       '';
+    
+    // ✅ ✅ ✅ VALIDATE FLIGHT DETAILS
+    if (!flightNumber || !flightNumber.trim()) {
+      toast.error('Flight number is required for car rental transfers. Please enter your flight number.');
+      setIsProcessingPayment(false);
+      return;
+    }
+    if (!flightDate || !flightDate.trim()) {
+      toast.error('Flight date is required for car rental transfers. Please enter your flight date.');
+      setIsProcessingPayment(false);
+      return;
+    }
+    
+    console.log("✈️ Car rental flight details:", {
+      flightNumber,
+      flightDate,
+      airlineCode,
+      flightTime,
+    });
     
     // ✅ Get the correct price from the item
     let finalAmount = extendedItem.final_amount ? parseFloat(extendedItem.final_amount) : 0;
@@ -1645,6 +1672,8 @@ if (isCar) {
       serviceFee,
       taxes,
       finalAmount,
+      flightNumber,
+      flightDate,
     });
 
     const correctedItem = {
@@ -1664,16 +1693,25 @@ if (isCar) {
       end: extendedItem.end,
     };
 
-    // ✅ Create the booking with all number values
+    // ✅ ✅ ✅ ADD FLIGHT DETAILS TO PASSENGER INFO BEFORE CREATING BOOKING
+    const passengerWithFlightDetails = {
+      ...cleanedPassengerInfo,
+      flightNumber: flightNumber,
+      flightDate: flightDate,
+      airlineCode: airlineCode || undefined,
+      flightTime: flightTime || undefined,
+    };
+
+    // ✅ Create the booking with flight details
     const newBooking = await createBooking(
       correctedItem,
       searchParams,
-      cleanedPassengerInfo,
+      passengerWithFlightDetails,
       isGuest,
       {
-        taxes: taxes,  // ✅ Now a number
-        basePrice: basePrice,  // ✅ Now a number
-        finalAmount: finalAmount,  // ✅ Now a number
+        taxes: taxes,
+        basePrice: basePrice,
+        finalAmount: finalAmount,
       },
     );
     
@@ -1697,7 +1735,16 @@ if (isCar) {
       }
       bookingAny.bookingData.email = cleanedPassengerInfo.email;
       
-      // ✅ ✅ ✅ CRITICAL: FORCE CORRECT PRICES ON THE BOOKING OBJECT
+      // ✅ ✅ ✅ STORE FLIGHT DETAILS IN BOOKING DATA
+      if (!bookingAny.bookingData) {
+        bookingAny.bookingData = {};
+      }
+      bookingAny.bookingData.flight_number = flightNumber;
+      bookingAny.bookingData.flight_date = flightDate;
+      bookingAny.bookingData.airline_code = airlineCode || undefined;
+      bookingAny.bookingData.flight_time = flightTime || undefined;
+      
+      // ✅ Force correct prices on the booking object
       bookingAny.totalAmount = finalAmount;
       bookingAny.amount = finalAmount;
       bookingAny.finalAmount = finalAmount;
@@ -1707,7 +1754,7 @@ if (isCar) {
       bookingAny.taxes = taxes;
       bookingAny.currency = 'NGN';
       
-      // ✅ ✅ ✅ CRITICAL: FORCE THE PRICE BREAKDOWN
+      // ✅ Force the price breakdown
       bookingAny.priceBreakdown = {
         basePrice: basePrice,
         markupAmount: markupAmount,
@@ -1727,10 +1774,12 @@ if (isCar) {
       }
       bookingAny.bookingData.priceBreakdown = bookingAny.priceBreakdown;
       
-      console.log('🚗 FORCED booking with correct prices:', {
+      console.log('🚗 FORCED booking with correct prices and flight details:', {
         totalAmount: bookingAny.totalAmount,
         finalAmount: bookingAny.finalAmount,
         basePrice: bookingAny.basePrice,
+        flight_number: bookingAny.bookingData?.flight_number,
+        flight_date: bookingAny.bookingData?.flight_date,
         priceBreakdown: bookingAny.priceBreakdown,
       });
       
@@ -1753,6 +1802,8 @@ if (isCar) {
         markupPercentage: 10,
         serviceFeePercentage: 5,
         taxPercentage: 15,
+        flightNumber: flightNumber,
+        flightDate: flightDate,
       }));
     }
     
@@ -1765,9 +1816,7 @@ if (isCar) {
   return;
 }
   
-    // ============================================================
-    // ✅ FLIGHT BOOKING - WAKANOW (UNCHANGED) + DUFFEL (FIXED)
-    // ============================================================
+   
     try {
       let bookingItem = extendedItem;
       

@@ -18,7 +18,13 @@ import {
   formatWakanowDate
 } from "@/lib/wakanow-api";
 
-// Extend the SearchResult type locally to include pricing fields
+interface ExtendedPassengerInfo extends PassengerInfo {
+  flightNumber?: string;
+  flightDate?: string;
+  airlineCode?: string;
+  flightTime?: string;
+}
+
 interface ExtendedSearchResult {
   id: string;
   type?: string;
@@ -1443,7 +1449,7 @@ console.log("💰 Wakanow total amount (with positive check):", {
           const originalCurrency = selectedOffer.quotation?.currencyCode || 
                                    selectedOffer.converted?.currencyCode ||
                                    selectedOffer.currency ||
-                                   'EUR'; // Default to EUR since that's what your logs show
+                                   'EUR';
           
           const offerId = item.offerId || item.id || selectedOffer.id;
           
@@ -1455,12 +1461,10 @@ console.log("💰 Wakanow total amount (with positive check):", {
             throw new Error('Invalid offer price for car rental booking');
           }
           
-          // ✅ CRITICAL: Convert EUR to NGN
-          // Get exchange rate - you should fetch this from your API
+          // ✅ Get exchange rate
           const exchangeRate = await getExchangeRate(originalCurrency, 'NGN');
           const priceInNgn = originalPrice * exchangeRate;
           
-          // ✅ Log the conversion
           console.log('💰 Car rental currency conversion:', {
             originalPrice,
             originalCurrency,
@@ -1468,17 +1472,46 @@ console.log("💰 Wakanow total amount (with positive check):", {
             priceInNgn,
           });
           
-          // ✅ CRITICAL: Set offerId at TOP LEVEL
+          // ✅ ✅ ✅ GET FLIGHT DETAILS FROM PASSENGER
+          const flightNumber = (passenger as any).flightNumber || 
+                               item.flightNumber || 
+                               searchParams?.flightNumber || 
+                               '';
+          const flightDate = (passenger as any).flightDate || 
+                             item.flightDate || 
+                             searchParams?.flightDate || 
+                             '';
+          const airlineCode = (passenger as any).airlineCode || 
+                              item.airlineCode || 
+                              '';
+          const flightTime = (passenger as any).flightTime || 
+                             item.flightTime || 
+                             '';
+          
+          // ✅ Validate flight details
+          if (!flightNumber || !flightNumber.trim()) {
+            throw new Error('Flight number is required for car rental transfers. Please enter your flight number.');
+          }
+          if (!flightDate || !flightDate.trim()) {
+            throw new Error('Flight date is required for car rental transfers. Please enter your flight date.');
+          }
+          
+          // ✅ Set offerId at TOP LEVEL
           body.offerId = offerId;
           
           // ✅ Set car rental specific fields in bookingData
           body.bookingData = {
             offerId: offerId,
-            offerPrice: priceInNgn, // ✅ Now in NGN
-            currency: 'NGN', // ✅ Set to NGN
+            offerPrice: priceInNgn,
+            currency: 'NGN',
             originalPrice: originalPrice,
             originalCurrency: originalCurrency,
             exchangeRate: exchangeRate,
+            // ✅ ADD FLIGHT DETAILS - REQUIRED FOR AMADEUS
+            flight_number: flightNumber,
+            flight_date: flightDate,
+            airline_code: airlineCode || undefined,
+            flight_time: flightTime || undefined,
             driver: {
               firstName: passenger.firstName,
               lastName: passenger.lastName,
@@ -1493,21 +1526,19 @@ console.log("💰 Wakanow total amount (with positive check):", {
             dropoffDateTime: item.dropoffDateTime || selectedOffer.end?.dateTime || selectedOffer.dropoffDateTime,
             vehicleType: item.vehicleType || selectedOffer.vehicle?.description,
             serviceProvider: selectedOffer.serviceProvider?.name,
-            // Also include these for reference
             originalPriceSent: originalPrice,
             originalCurrencySent: originalCurrency,
             convertedPrice: priceInNgn,
             targetCurrency: 'NGN',
           };
           
-          // ✅ Calculate markup in NGN
+          // ✅ Calculate markup
           const carMarkupPercentage = 10;
           const carServiceFeePercentage = 5;
           const carMarkupAmount = priceInNgn * (carMarkupPercentage / 100);
           const carServiceFee = priceInNgn * (carServiceFeePercentage / 100);
           const carTotalAmount = priceInNgn + carMarkupAmount + carServiceFee;
           
-          // ✅ Log the pricing
           console.log('🚗 Car rental pricing in NGN:', {
             priceInNgn,
             carMarkupAmount,
@@ -1538,6 +1569,8 @@ console.log("💰 Wakanow total amount (with positive check):", {
             offerPrice: body.bookingData.offerPrice,
             currency: body.bookingData.currency,
             totalAmount: body.totalAmount,
+            flightNumber: body.bookingData.flight_number,
+            flightDate: body.bookingData.flight_date,
             driver: body.bookingData.driver,
           });
         }

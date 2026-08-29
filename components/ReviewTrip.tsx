@@ -499,7 +499,10 @@ console.log('🔍 ReviewTrip - Product type detection:', {
   const [title, setTitle] = useState<'mr' | 'ms' | 'mrs' | 'miss' | 'dr' | ''>('');
   const [gender, setGender] = useState<'m' | 'f' | ''>('');
   const [dateOfBirth, setDateOfBirth] = useState('');
-  
+  const [flightNumber, setFlightNumber] = useState('');
+const [flightDate, setFlightDate] = useState('');
+const [airlineCode, setAirlineCode] = useState('');
+const [flightTime, setFlightTime] = useState('');
   const [voucherCode, setVoucherCode] = useState('');
   const [voucherApplied, setVoucherApplied] = useState<any | null>(null);
   const [isValidatingVoucher, setIsValidatingVoucher] = useState(false);
@@ -1878,14 +1881,24 @@ if (!shouldSkipPassport && isFlight && isInternational) {
         phone,
       };
     } 
-// ============================================================
-// ✅ CAR RENTAL FLOW - FIXED
-// ============================================================
+
 if (isCar) {
   try {
     console.log("🚗 Creating car rental booking...");
     
-    // ✅ Use the validated passenger info directly - no need for spread
+
+    if (!flightNumber || !flightNumber.trim()) {
+      alert('Flight number is required for car rental transfers. Please enter your flight number.');
+      setIsBooking(false);
+      return;
+    }
+    if (!flightDate || !flightDate.trim()) {
+      alert('Flight date is required for car rental transfers. Please enter your flight date.');
+      setIsBooking(false);
+      return;
+    }
+    
+    // ✅ Use the validated passenger info directly
     const passengerInfoForCar = {
       firstName: firstName || '',
       lastName: lastName || '',
@@ -1893,41 +1906,40 @@ if (isCar) {
       phone: phone || '',
     };
     
-    // ✅ Get the correct total amount
     let totalAmount = 0;
-    
-    // Priority 1: Use extBooking.totalAmount if available
     if (extBooking && extBooking.totalAmount > 0) {
       totalAmount = extBooking.totalAmount;
       console.log("💰 Using extBooking.totalAmount:", totalAmount);
     } 
-    // Priority 2: Use carPriceBreakdown.totalDue
+
     else if (carPriceBreakdown && carPriceBreakdown.totalDue > 0) {
       totalAmount = carPriceBreakdown.totalDue;
       console.log("💰 Using carPriceBreakdown.totalDue:", totalAmount);
     }
-    // Priority 3: Use extendedItem.totalAmount
+  
     else if (extendedItem.totalAmount && extendedItem.totalAmount > 0) {
       totalAmount = extendedItem.totalAmount;
       console.log("💰 Using extendedItem.totalAmount:", totalAmount);
     }
     
-    // ✅ Ensure we have a valid total
     if (totalAmount <= 0) {
       console.warn("⚠️ No valid total amount found, using fallback");
       totalAmount = convertedPrices.totalDue || 0;
     }
     
     console.log("💰 FINAL totalAmount for payment:", totalAmount);
-    
-    // ✅ Create payment data with the total amount
+    console.log("✈️ Flight details:", { flightNumber, flightDate, airlineCode, flightTime });
+  
     const paymentData = {
       ...passengerInfoForCar,
       totalAmount: totalAmount,
       amount: totalAmount,
       currency: offerCurrency || 'NGN',
       productType: 'CAR_RENTAL',
-      // Pass the price breakdown
+      flightNumber: flightNumber,
+      flightDate: flightDate,
+      airlineCode: airlineCode || undefined,
+      flightTime: flightTime || undefined,
       priceBreakdown: {
         basePrice: carPriceBreakdown?.basePrice || extBooking?.basePrice || 0,
         markupAmount: carPriceBreakdown?.markupAmount || extBooking?.markupAmount || 0,
@@ -1937,7 +1949,6 @@ if (isCar) {
       }
     };
     
-    // ✅ Pass the complete payment data to onProceedToPayment
     await onProceedToPayment(
       paymentData as any,
       voucherCode || undefined,
@@ -1952,18 +1963,15 @@ if (isCar) {
     setIsBooking(false);
     return;
   }
-} 
+}
     else {
-// ✅ FIX: Format date as YYYY-MM-DD for Wakanow API
 const formatDateForWakanow = (dateStr: string): string => {
   if (!dateStr) return '';
   
-  // If already in YYYY-MM-DD format, return as is
   if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
     return dateStr;
   }
   
-  // If in MM/DD/YYYY format, convert to YYYY-MM-DD
   if (dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
     const parts = dateStr.split('/');
     const month = String(parseInt(parts[0])).padStart(2, '0');
@@ -3233,6 +3241,73 @@ if (!dateRegex.test(formattedDateOfBirth)) {
           </div>
         </div>
       )}
+
+      {/* ✅ CAR RENTAL FLIGHT DETAILS - REQUIRED FOR AMADEUS */}
+{isCar && !extBooking && (
+  <div className="mt-4 pt-4 border-t border-gray-100">
+    <h3 className="text-md font-semibold text-gray-900 mb-3">
+      Flight Details <span className="text-red-500">*</span>
+    </h3>
+    <p className="text-sm text-gray-500 mb-4">
+      Please provide your flight details for the transfer service.
+    </p>
+    
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Flight Number <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          value={flightNumber}
+          onChange={(e) => setFlightNumber(e.target.value.toUpperCase())}
+          className={inputCls}
+          placeholder="AF380"
+          required
+        />
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Flight Date <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="date"
+          value={flightDate}
+          onChange={(e) => setFlightDate(e.target.value)}
+          className={inputCls}
+          required
+          min={new Date().toISOString().split('T')[0]}
+        />
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Airline Code (Optional)
+        </label>
+        <input
+          type="text"
+          value={airlineCode}
+          onChange={(e) => setAirlineCode(e.target.value.toUpperCase())}
+          className={inputCls}
+          placeholder="AF"
+        />
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Flight Time (Optional)
+        </label>
+        <input
+          type="time"
+          value={flightTime}
+          onChange={(e) => setFlightTime(e.target.value)}
+          className={inputCls}
+        />
+      </div>
+    </div>
+  </div>
+)}
       
       
 {/* Car Rental Agreement Checkbox */}
