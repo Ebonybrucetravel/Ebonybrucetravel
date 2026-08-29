@@ -285,7 +285,6 @@ export class BookingController {
   @ApiOperation({ summary: 'Create a guest booking (no authentication required)' })
   @ApiResponse({ status: 201, description: 'Guest booking created successfully' })
   async createGuest(@Body() createGuestBookingDto: CreateGuestBookingDto) {
-    // ✅ DUFFEL ONLY: Validate and correct offer ID
     if (createGuestBookingDto.provider === 'DUFFEL') {
       const fixedOfferId = this.validateAndFixDuffelOfferId(
         createGuestBookingDto.offerId,
@@ -295,12 +294,108 @@ export class BookingController {
       this.logger.log(`📦 Final offerId for Duffel guest booking: ${createGuestBookingDto.offerId}`);
     }
     
-    const booking = await this.createGuestBookingUseCase.execute(createGuestBookingDto);
-    return {
-      success: true,
-      data: booking,
-      message: 'Guest booking created successfully',
-    };
+    this.logger.log(`📥 Guest booking request: productType=${createGuestBookingDto.productType}, provider=${createGuestBookingDto.provider}`);
+    
+    switch (createGuestBookingDto.productType) {
+      case 'CAR_RENTAL': {
+        this.logger.log('🚗 Routing to CAR_RENTAL use case');
+        
+        
+        let passengers = [];
+        if (createGuestBookingDto.passengerInfo) {
+          const info = createGuestBookingDto.passengerInfo;
+          passengers = [{
+            name: {
+              title: info.title?.toUpperCase() || 'MR',
+              firstName: info.firstName || '',
+              lastName: info.lastName || '',
+            },
+            contact: {
+              phone: info.phone || '',
+              email: info.email || '',
+            },
+          }];
+        }
+        
+       
+        if (passengers.length === 0 && createGuestBookingDto.bookingData?.passengers) {
+          passengers = createGuestBookingDto.bookingData.passengers;
+        }
+        
+    
+        if (passengers.length === 0) {
+          this.logger.error('❌ No passengers found in request');
+          throw new BadRequestException('At least one passenger is required');
+        }
+        
+
+        const bookingData = {
+          ...createGuestBookingDto.bookingData,
+          passengers: passengers,
+          driver: {
+            firstName: createGuestBookingDto.passengerInfo?.firstName || '',
+            lastName: createGuestBookingDto.passengerInfo?.lastName || '',
+            email: createGuestBookingDto.passengerInfo?.email || '',
+            phone: createGuestBookingDto.passengerInfo?.phone || '',
+            title: createGuestBookingDto.passengerInfo?.title?.toUpperCase() || 'MR',
+          },
+        };
+        
+      
+        const carRentalDto = {
+          offerId: createGuestBookingDto.offerId || createGuestBookingDto.bookingData?.offerId,
+          passengers: passengers,
+          offerPrice: createGuestBookingDto.basePrice || createGuestBookingDto.bookingData?.offerPrice || 0,
+          currency: createGuestBookingDto.currency || 'NGN',
+          totalAmount: createGuestBookingDto.totalAmount,
+          pickupLocation: createGuestBookingDto.bookingData?.pickupLocation,
+          dropoffLocation: createGuestBookingDto.bookingData?.dropoffLocation,
+          pickupDateTime: createGuestBookingDto.bookingData?.pickupDateTime,
+          dropoffDateTime: createGuestBookingDto.bookingData?.dropoffDateTime,
+          transferType: createGuestBookingDto.bookingData?.transferType || 'PRIVATE',
+          vehicleType: createGuestBookingDto.bookingData?.vehicleType,
+          serviceProvider: createGuestBookingDto.bookingData?.serviceProvider,
+          offerData: createGuestBookingDto.bookingData?.offerData,
+          specialRequests: createGuestBookingDto.bookingData?.specialRequests,
+          agencyEmail: createGuestBookingDto.bookingData?.agencyEmail,
+          billingAddress: createGuestBookingDto.bookingData?.billingAddress,
+          payment: createGuestBookingDto.bookingData?.payment,
+          bookingData: bookingData,
+        } as any as CreateCarRentalBookingDto;
+        
+        const carBooking = await this.createGuestCarRentalBookingUseCase.execute(carRentalDto);
+        return {
+          success: true,
+          data: carBooking,
+          message: 'Guest car rental booking created successfully',
+        };
+      }
+
+      case 'HOTEL': {
+        this.logger.log('🏨 Routing to HOTEL use case');
+        const hotelBooking = await this.createGuestAmadeusHotelBookingUseCase.execute(createGuestBookingDto as any);
+        return {
+          success: true,
+          data: hotelBooking,
+          message: 'Guest hotel booking created successfully',
+        };
+      }
+      
+      case 'FLIGHT_INTERNATIONAL':
+      case 'FLIGHT_DOMESTIC': {
+        this.logger.log('✈️ Routing to FLIGHT use case');
+        const flightBooking = await this.createGuestBookingUseCase.execute(createGuestBookingDto);
+        return {
+          success: true,
+          data: flightBooking,
+          message: 'Guest flight booking created successfully',
+        };
+      }
+      
+      default:
+        this.logger.warn(`⚠️ Unknown product type: ${createGuestBookingDto.productType}`);
+        throw new BadRequestException(`Unsupported product type: ${createGuestBookingDto.productType}`);
+    }
   }
 
 
