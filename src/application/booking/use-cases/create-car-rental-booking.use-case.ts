@@ -24,7 +24,7 @@ export class CreateCarRentalBookingUseCase {
   ) {}
 
   async execute(dto: CreateCarRentalBookingDto, userId: string) {
-    // ✅ Validate required fields
+
     if (!dto.offerId) {
       throw new BadRequestException('Offer ID is required');
     }
@@ -33,7 +33,6 @@ export class CreateCarRentalBookingUseCase {
       throw new BadRequestException('At least one passenger is required');
     }
 
-    // ✅ Validate passenger has required fields
     const firstPassenger = dto.passengers[0];
     if (!firstPassenger.name?.firstName || !firstPassenger.name?.lastName) {
       throw new BadRequestException('Passenger first name and last name are required');
@@ -42,7 +41,13 @@ export class CreateCarRentalBookingUseCase {
       throw new BadRequestException('Passenger email and phone are required');
     }
 
-    // ✅ Validate price - use priceBreakdown if available
+    if (!dto.flightNumber) {
+      throw new BadRequestException('Flight number is required for car rental transfers');
+    }
+    if (!dto.flightDate) {
+      throw new BadRequestException('Flight date is required for car rental transfers');
+    }
+
     let offerPrice = dto.offerPrice;
     let currency = dto.currency;
 
@@ -61,7 +66,6 @@ export class CreateCarRentalBookingUseCase {
     }
 
     try {
-      // Get active markup config
       const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
         'CAR_RENTAL',
         currency,
@@ -73,7 +77,6 @@ export class CreateCarRentalBookingUseCase {
         );
       }
 
-      // Calculate pricing
       const pricing = this.markupCalculationService.calculateTotal(
         offerPrice,
         'CAR_RENTAL',
@@ -81,19 +84,20 @@ export class CreateCarRentalBookingUseCase {
         markupConfig,
       );
 
-      // ✅ Prepare booking data
+
       const bookingData = {
         amadeus_offer_id: dto.offerId,
         offer_price: offerPrice,
         passengers: dto.passengers,
         special_requests: dto.specialRequests,
-        flight_number: dto.flightNumber,
-        billing_address: dto.billingAddress,
-        payment_method: dto.payment?.methodOfPayment || 'CREDIT_CARD',
-        transfer_type: dto.transferType || 'PRIVATE',
-      };
-
-      // ✅ Get first passenger for booking reference
+          flight_number: dto.flightNumber,
+  flight_date: dto.flightDate,
+  airline_code: dto.airlineCode,
+  flight_time: dto.flightTime,
+  billing_address: dto.billingAddress,
+  payment_method: dto.payment?.methodOfPayment || 'CREDIT_CARD',
+  transfer_type: dto.transferType || 'PRIVATE',
+};
       const primaryPassenger = dto.passengers[0];
 
       const booking = await this.bookingService.createBooking({
@@ -120,7 +124,6 @@ export class CreateCarRentalBookingUseCase {
 
       this.logger.log(`✅ Car rental booking created: ${booking.id} (${booking.reference})`);
 
-      // ✅ If payment is provided, create Amadeus order immediately
       if (dto.payment && dto.payment.methodOfPayment === 'CREDIT_CARD' && dto.payment.creditCard) {
         try {
           this.logger.log('Payment details provided, creating Amadeus order immediately...');
@@ -129,7 +132,6 @@ export class CreateCarRentalBookingUseCase {
             dto.payment,
           );
           
-          // ✅ Update booking with order details
           await this.prisma.booking.update({
             where: { id: booking.id },
             data: {
@@ -139,7 +141,7 @@ export class CreateCarRentalBookingUseCase {
             },
           });
 
-          // ✅ Fetch updated booking
+
           const updatedBooking = await this.bookingService.getBookingById(booking.id);
           if (!updatedBooking) {
             throw new NotFoundException(`Booking ${booking.id} not found after update`);
@@ -151,7 +153,7 @@ export class CreateCarRentalBookingUseCase {
           };
         } catch (error) {
           this.logger.error('Failed to create Amadeus order immediately:', error);
-          // Booking remains PENDING - will be processed by webhook
+         
         }
       }
 
@@ -197,19 +199,30 @@ export class CreateCarRentalBookingUseCase {
   
     const bookingData = booking.bookingData as any;
   
-    // ✅ Validate offer ID
     if (!bookingData.amadeus_offer_id) {
       throw new BadRequestException('Missing offer ID for car rental booking');
     }
   
-    // ✅ FIX: Check if passengers exist and is an array before mapping
+    if (!bookingData.flight_number) {
+      throw new BadRequestException(
+        'Flight number is required for car rental transfer booking. ' +
+        'Please provide your flight number.'
+      );
+    }
+  
+    if (!bookingData.flight_date) {
+      throw new BadRequestException(
+        'Flight date is required for car rental transfer booking. ' +
+        'Please provide your flight date.'
+      );
+    }
+  
     let passengers = [];
     
-    // Try to get passengers from bookingData.passengers
     if (bookingData.passengers && Array.isArray(bookingData.passengers) && bookingData.passengers.length > 0) {
       passengers = bookingData.passengers;
     } 
-    // Try to get from bookingData.driver (legacy)
+  
     else if (bookingData.driver) {
       const driver = bookingData.driver;
       passengers = [{
@@ -224,7 +237,6 @@ export class CreateCarRentalBookingUseCase {
         },
       }];
     }
-    // Try to get from booking.passengerInfo
     else if (booking.passengerInfo) {
       const info = booking.passengerInfo as any;
       passengers = [{
@@ -239,7 +251,6 @@ export class CreateCarRentalBookingUseCase {
         },
       }];
     }
-    // Fallback: create a default passenger
     else {
       this.logger.warn(`⚠️ No passenger data found for booking ${bookingId}, using default`);
       passengers = [{
@@ -255,7 +266,6 @@ export class CreateCarRentalBookingUseCase {
       }];
     }
   
-    // ✅ Safely map passengers with null checks
     const formattedPassengers = passengers.map((p: any) => {
       const name = p.name || {};
       const contact = p.contact || {};
@@ -271,7 +281,6 @@ export class CreateCarRentalBookingUseCase {
   
     this.logger.log(`✅ Found ${formattedPassengers.length} passenger(s) for booking ${bookingId}`);
   
-    // ✅ Build payment data
     let paymentData = null;
     if (payment) {
       paymentData = {
@@ -290,7 +299,6 @@ export class CreateCarRentalBookingUseCase {
         paymentData.paymentReference = payment.paymentReference;
       }
     } else {
-      // ✅ Fallback: Use test card if no payment provided
       this.logger.log('No payment provided, using test card');
       paymentData = {
         methodOfPayment: 'CREDIT_CARD',
@@ -303,15 +311,24 @@ export class CreateCarRentalBookingUseCase {
         },
       };
     }
-  
-    // ✅ Build request for Amadeus API
+
     const requestParams: any = {
       offerId: bookingData.amadeus_offer_id,
-      passengers: formattedPassengers,  // ✅ Use the formatted passengers
+      passengers: formattedPassengers,
       payment: paymentData,
     };
   
-    // ✅ Add billing address if provided
+    requestParams.flightNumber = bookingData.flight_number;
+    requestParams.flightDate = bookingData.flight_date;
+
+    if (bookingData.airline_code) {
+      requestParams.airlineCode = bookingData.airline_code;
+    }
+
+    if (bookingData.flight_time) {
+      requestParams.flightTime = bookingData.flight_time;
+    }
+  
     if (bookingData.billing_address) {
       requestParams.billingAddress = {
         line: bookingData.billing_address.line || '',
@@ -321,25 +338,18 @@ export class CreateCarRentalBookingUseCase {
       };
     }
   
-    // ✅ Add flight number if provided
-    if (bookingData.flight_number) {
-      requestParams.flightNumber = bookingData.flight_number;
-    }
-  
-    // ✅ Add special requests if provided
     if (bookingData.special_requests) {
       requestParams.note = bookingData.special_requests;
     }
   
-    // ✅ Get agencyEmail from bookingData
     if (bookingData?.agencyEmail) {
       requestParams.agencyEmail = bookingData.agencyEmail;
     }
   
     this.logger.log(`Creating Amadeus transfer order with ${formattedPassengers.length} passenger(s)`);
+    this.logger.log(`Flight: ${bookingData.flight_number} on ${bookingData.flight_date}`);
     this.logger.log(`Request params: ${JSON.stringify(requestParams, null, 2)}`);
   
-    // ✅ Create Amadeus transfer order
     const amadeusOrder = await this.amadeusService.createTransferBooking(requestParams);
   
     if (!amadeusOrder?.data?.id) {
@@ -349,11 +359,9 @@ export class CreateCarRentalBookingUseCase {
   
     this.logger.log(`✅ Amadeus transfer order created: ${amadeusOrder.data.id}`);
   
-    // ✅ Extract transfer information
     const transfer = amadeusOrder.data.transfers?.[0];
     const confirmNbr = transfer?.confirmNbr || null;
   
-    // ✅ Store confirmation number in bookingData
     const updatedBookingData = { 
       ...bookingData,
       confirmNbr: confirmNbr,
@@ -369,7 +377,7 @@ export class CreateCarRentalBookingUseCase {
       },
     });
   
-    this.logger.log(`✅ Successfully created Amadeus transfer order ${amadeusOrder.data.id} for booking ${bookingId}`);
+    this.logger.log(` Successfully created Amadeus transfer order ${amadeusOrder.data.id} for booking ${bookingId}`);
   
     return {
       orderId: amadeusOrder.data.id,

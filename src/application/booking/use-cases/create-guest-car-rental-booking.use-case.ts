@@ -14,17 +14,15 @@ export class CreateGuestCarRentalBookingUseCase {
 
   async execute(dto: CreateCarRentalBookingDto) {
     try {
-      // ✅ Get primary passenger
+
       const primaryPassenger = this.getPrimaryPassenger(dto);
-      
-      // ✅ Normalize email
       const email = primaryPassenger.contact.email.trim().toLowerCase();
 
       if (!email) {
         throw new BadRequestException('Passenger email is required');
       }
 
-      // ✅ Find existing user (excluding soft-deleted)
+  
       let guestUser = await this.prisma.user.findFirst({
         where: {
           email,
@@ -44,7 +42,6 @@ export class CreateGuestCarRentalBookingUseCase {
               name: fullName,
               phone: primaryPassenger.contact.phone,
               role: 'CUSTOMER',
-              // ✅ REMOVED: isGuest: true,
               password: null,
               provider: null,
               providerId: null,
@@ -53,7 +50,7 @@ export class CreateGuestCarRentalBookingUseCase {
           
           this.logger.log(`✅ Guest user created: ${guestUser.id} (${guestUser.email})`);
         } catch (createError: any) {
-          // ✅ Handle race condition - another request might have created the user
+    
           if (createError.code === 'P2002') {
             this.logger.warn(`⚠️ User ${email} was created by another request. Fetching...`);
             
@@ -76,7 +73,7 @@ export class CreateGuestCarRentalBookingUseCase {
       } else {
         this.logger.log(`✅ Existing user found: ${guestUser.id} (${guestUser.email})`);
         
-        // ✅ Update user info if needed
+    
         const fullName = this.getPassengerFullName(primaryPassenger);
         const needsUpdate = 
           guestUser.name !== fullName || 
@@ -90,7 +87,7 @@ export class CreateGuestCarRentalBookingUseCase {
             data: {
               name: fullName,
               phone: primaryPassenger.contact.phone,
-              // ✅ REMOVED: isGuest: true,
+           
             },
           });
           
@@ -98,14 +95,13 @@ export class CreateGuestCarRentalBookingUseCase {
         }
       }
 
-      // ✅ Delegate to the authenticated booking use case
       this.logger.log(`🚀 Creating car rental booking for user: ${guestUser.id}`);
       
       const result = await this.createCarRentalBookingUseCase.execute(dto, guestUser.id);
       
       this.logger.log(`✅ Car rental booking created successfully for guest: ${guestUser.id}`);
       
-      // ✅ Return with guest user info
+
       return {
         ...result,
         guestUser: {
@@ -127,18 +123,12 @@ export class CreateGuestCarRentalBookingUseCase {
     }
   }
 
-  /**
-   * Get the primary passenger (first passenger in the array)
-   * If dto.driver is provided (legacy), convert to passenger format
-   */
+  
   private getPrimaryPassenger(dto: CreateCarRentalBookingDto): PassengerDto {
-    // ✅ If passengers array exists and has at least one passenger
     if (dto.passengers && dto.passengers.length > 0) {
       return dto.passengers[0];
     }
 
-    // ✅ Legacy support: if driver is provided, convert to passenger
-    // Only if your DTO has the driver field
     if ((dto as any).driver) {
       this.logger.warn('⚠️ Using deprecated "driver" field. Please use "passengers" array instead.');
       
@@ -156,20 +146,15 @@ export class CreateGuestCarRentalBookingUseCase {
       };
     }
 
-    // ✅ No passenger found
+
     throw new BadRequestException('At least one passenger is required');
   }
 
-  /**
-   * Get passenger email
-   */
+  
   private getPassengerEmail(passenger: PassengerDto): string {
     return passenger.contact.email.trim().toLowerCase();
   }
 
-  /**
-   * Get passenger full name
-   */
   private getPassengerFullName(passenger: PassengerDto): string {
     return [
       passenger.name.title,

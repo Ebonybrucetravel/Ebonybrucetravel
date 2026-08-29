@@ -14,18 +14,15 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform, plainToInstance } from 'class-transformer';
 
-/**
- * Normalize passenger from driver shape to passenger shape
- */
 function normalizePassenger(value: any): any {
   if (!value || typeof value !== 'object') return value;
   
-  // If it's already a passenger with name and contact, return as is
+
   if (value.name && value.contact) {
     return value;
   }
   
-  // Convert from driver shape to passenger shape
+
   const firstName = value.firstName ?? value.name?.firstName;
   const lastName = value.lastName ?? value.name?.lastName;
   const email = value.email ?? value.contact?.email;
@@ -45,28 +42,23 @@ function normalizePassenger(value: any): any {
   };
 }
 
-/**
- * Normalize payment from frontend format to Amadeus format
- */
 function normalizePayment(value: any): any {
   if (!value) return value;
   
-  // ✅ If it's already in Amadeus format (methodOfPayment), return as is
+
   if (value.methodOfPayment) {
     return value;
   }
   
-  // Convert from frontend format (method) to Amadeus format (methodOfPayment)
+
   const result: any = {
     methodOfPayment: value.method || 'CREDIT_CARD',
   };
   
-  // Handle paymentServiceProvider
   if (value.paymentServiceProvider) {
     result.paymentServiceProvider = value.paymentServiceProvider;
   }
   
-  // Handle credit card
   if (value.paymentCard || value.creditCard) {
     const card = value.paymentCard || value.creditCard;
     const info = card.paymentCardInfo || card;
@@ -79,7 +71,6 @@ function normalizePayment(value: any): any {
     };
   }
   
-  // Handle invoice reference
   if (value.paymentReference) {
     result.paymentReference = value.paymentReference;
   }
@@ -346,8 +337,6 @@ export class PriceBreakdownDto {
 }
 
 export class CreateCarRentalBookingDto {
-  // ==================== REQUIRED FIELDS ====================
-
   @ApiProperty({
     description: 'Transfer offer ID from search results',
     example: '0cb11574-4a02-11e8-842f-0ed5f89f718b',
@@ -377,8 +366,6 @@ export class CreateCarRentalBookingDto {
   @ValidateNested({ each: true })
   @Type(() => PassengerDto)
   passengers: PassengerDto[];
-
-  // ==================== PRICING FIELDS ====================
 
   @ApiProperty({
     description: 'Offer price from search results (original price)',
@@ -416,8 +403,6 @@ export class CreateCarRentalBookingDto {
   @Type(() => PriceBreakdownDto)
   priceBreakdown?: PriceBreakdownDto;
 
-  // ==================== LOCATION & TIME ====================
-
   @ApiPropertyOptional({
     description: 'Pickup location code (IATA)',
     example: 'CDG',
@@ -449,8 +434,6 @@ export class CreateCarRentalBookingDto {
   @IsOptional()
   @IsString()
   dropoffDateTime?: string;
-
-  // ==================== VEHICLE & PROVIDER ====================
 
   @ApiPropertyOptional({
     description: 'Transfer type',
@@ -486,8 +469,6 @@ export class CreateCarRentalBookingDto {
   @IsObject()
   offerData?: any;
 
-  // ==================== PASSENGER DETAILS ====================
-
   @ApiPropertyOptional({
     description: 'Special requests or notes',
     example: 'Child seat required, extra waiting time',
@@ -496,15 +477,40 @@ export class CreateCarRentalBookingDto {
   @IsString()
   specialRequests?: string;
 
-  @ApiPropertyOptional({
-    description: 'Flight number (for connected flights)',
+  @ApiProperty({
+    description: 'Flight number (required for car rental transfers)',
     example: 'AF380',
+    required: true,
+  })
+  @IsString()
+  @IsNotEmpty({ message: 'Flight number is required for car rental transfers' })
+  flightNumber: string;
+
+  @ApiProperty({
+    description: 'Flight date (ISO 8601 format)',
+    example: '2026-08-29',
+    required: true,
+  })
+  @IsString()
+  @IsNotEmpty({ message: 'Flight date is required for car rental transfers' })
+  flightDate: string;
+
+  @ApiPropertyOptional({
+    description: 'Airline code (e.g., AF for Air France)',
+    example: 'AF',
   })
   @IsOptional()
   @IsString()
-  flightNumber?: string;
+  airlineCode?: string;
 
-  // ✅ NEW: Agency email for booking
+  @ApiPropertyOptional({
+    description: 'Flight time (HH:MM format)',
+    example: '14:30',
+  })
+  @IsOptional()
+  @IsString()
+  flightTime?: string;
+
   @ApiPropertyOptional({
     description: 'Agency email for booking',
     example: 'agency@example.com',
@@ -512,8 +518,6 @@ export class CreateCarRentalBookingDto {
   @IsOptional()
   @IsEmail()
   agencyEmail?: string;
-
-  // ==================== ADDRESS & BILLING ====================
 
   @ApiPropertyOptional({
     description: 'Billing address',
@@ -523,8 +527,6 @@ export class CreateCarRentalBookingDto {
   @ValidateNested()
   @Type(() => BillingAddressDto)
   billingAddress?: BillingAddressDto;
-
-  // ==================== PAYMENT ====================
 
   @ApiPropertyOptional({
     description: 'Payment details (optional - uses test card if not provided)',
@@ -536,8 +538,6 @@ export class CreateCarRentalBookingDto {
   @Type(() => PaymentDto)
   payment?: PaymentDto;
 
-  // ==================== LEGACY SUPPORT ====================
-
   @ApiPropertyOptional({
     description: '[DEPRECATED] Driver information - use passengers array instead',
     deprecated: true,
@@ -546,16 +546,10 @@ export class CreateCarRentalBookingDto {
   @IsOptional()
   @Transform(({ value }) => {
     if (!value) return value;
-    // Convert driver to passenger format
     return normalizePassenger(value);
   })
   driver?: any;
 
-  // ==================== HELPER METHODS ====================
-
-  /**
-   * Get the total amount (from priceBreakdown or totalAmount)
-   */
   getTotalAmount(): number {
     if (this.priceBreakdown) {
       return this.priceBreakdown.totalAmount;
@@ -563,9 +557,6 @@ export class CreateCarRentalBookingDto {
     return this.totalAmount || this.offerPrice;
   }
 
-  /**
-   * Get the currency (from priceBreakdown or currency)
-   */
   getCurrency(): string {
     if (this.priceBreakdown) {
       return this.priceBreakdown.currency;
@@ -573,14 +564,10 @@ export class CreateCarRentalBookingDto {
     return this.currency;
   }
 
-  /**
-   * Get the primary passenger
-   */
   getPrimaryPassenger(): PassengerDto {
     if (this.passengers && this.passengers.length > 0) {
       return this.passengers[0];
     }
-    // Legacy: convert driver to passenger
     if (this.driver) {
       return this.driver;
     }

@@ -16,7 +16,7 @@ export class GetUserBookingsUseCase {
     
     const bookings = await this.bookingRepository.findByUserId(userId);
     
-    // Sort by createdAt descending (newest first)
+   
     return bookings.sort((a, b) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
