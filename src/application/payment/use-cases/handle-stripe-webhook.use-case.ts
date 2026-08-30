@@ -845,347 +845,597 @@ if (booking.provider === Provider.AMADEUS && booking.productType === 'CAR_RENTAL
     }
   }
 
-  private async sendBookingEmails(booking: any, paymentIntent: Stripe.PaymentIntent): Promise<void> {
+ // ============================================================
+// REPLACE THE sendBookingEmails METHOD WITH THIS COMPLETE VERSION
+// ============================================================
+
+private async sendBookingEmails(booking: any, paymentIntent: Stripe.PaymentIntent): Promise<void> {
+  try {
+    const user = booking.user;
+    if (!user || !user.email) {
+      this.logger.warn(`Cannot send booking emails: user email not found for booking ${booking.id}`);
+      return;
+    }
+
+    const bookingData = booking.bookingData as any || {};
+    const passengerInfo = booking.passengerInfo as any || {};
+    const productType = booking.productType;
+
+    // ✅ Extract passenger details using the complete extraction logic
+    const passengers = this.extractPassengers(booking, productType);
+    const leadName = passengers.lead;
+    const otherPassengers = passengers.others;
+
+    // ✅ Get passenger contact details
+    const passengerEmail = passengerInfo.email || 
+                           bookingData.email || 
+                           bookingData.driver?.email ||
+                           user.email ||
+                           'no-email@provided.com';
+                           
+    const passengerPhone = passengerInfo.phone || 
+                           bookingData.phone || 
+                           bookingData.driver?.phone ||
+                           'N/A';
+
+    
+    const bookingDetails = this.extractBookingDetails(booking, productType, passengerInfo);
+
+
+    const productTypeLabel = this.getProductTypeLabel(productType);
+
+
+    this.logger.log(`📧 Sending confirmation email for ${productType} booking ${booking.reference}`);
+    this.logger.log(`📧 Product: ${productTypeLabel}`);
+    this.logger.log(`📧 Lead Passenger: ${leadName}`);
+    this.logger.log(`📧 Other Passengers: ${otherPassengers.length}`);
+    this.logger.log(`📧 Booking Details:`, bookingDetails);
+
+
     try {
-      const user = booking.user;
-      if (!user || !user.email) {
-        this.logger.warn(`Cannot send booking emails: user email not found for booking ${booking.id}`);
-        return;
+      await this.resendService.sendBookingConfirmationEmail({
+        to: user.email,
+        customerName: leadName,
+        bookingReference: booking.reference,
+        productType: productType,
+        provider: booking.provider,
+        passengerDetails: {
+          name: leadName,
+          email: passengerEmail,
+          phone: passengerPhone,
+          address: passengerInfo.address || bookingData.billingAddress?.line || '',
+          city: passengerInfo.city || bookingData.billingAddress?.cityName || '',
+          country: passengerInfo.country || bookingData.billingAddress?.countryCode || '',
+        },
+        otherPassengers: otherPassengers.length > 0 ? otherPassengers : undefined,
+        bookingDetails: bookingDetails,
+        pricing: {
+          basePrice: Number(booking.basePrice) || 0,
+          markupAmount: Number(booking.markupAmount) || 0,
+          serviceFee: Number(booking.serviceFee) || 0,
+          totalAmount: Number(booking.totalAmount) || 0,
+          currency: booking.currency || 'NGN',
+        },
+        confirmationDate: new Date(),
+        bookingId: booking.id,
+        cancellationDeadline: (booking as any).cancellationDeadline ?? undefined,
+        cancellationPolicySummary: (booking as any).cancellationPolicySnapshot ?? undefined,
+        noShowWording: productType === 'HOTEL' 
+          ? 'In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.'
+          : undefined,
+      });
+      this.logger.log(`✅ Booking confirmation email sent successfully`);
+    } catch (bookingEmailError) {
+      this.logger.error(`❌ Failed to send booking confirmation email:`, bookingEmailError);
+    }
+
+
+    this.logger.log(`📧 Sending payment receipt email to ${user.email}`);
+
+    try {
+      await this.resendService.sendPaymentReceiptEmail({
+        to: user.email,
+        customerName: leadName,
+        bookingReference: booking.reference,
+        paymentIntentId: paymentIntent.id,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency,
+        paymentDate: new Date(),
+        paymentMethod: paymentIntent.payment_method_types?.[0] || 'card',
+        productType: productType,
+        bookingDetails: bookingDetails,
+      });
+      this.logger.log(`✅ Payment receipt email sent successfully`);
+    } catch (receiptEmailError) {
+      this.logger.error(`❌ Failed to send payment receipt email:`, receiptEmailError);
+    }
+
+    this.logger.log(`📧 All emails processed for booking ${booking.id}`);
+
+  } catch (error) {
+    this.logger.error(`❌ sendBookingEmails failed:`, error);
+    throw error;
+  }
+}
+
+
+ private extractBookingDetails(booking: any, productType: string, passengerInfo?: any): any {
+  const bookingData = booking.bookingData || {};
+  const details: any = {};
+  
+
+  const pInfo = passengerInfo || booking.passengerInfo || {};
+
+
+  if (productType === 'FLIGHT_INTERNATIONAL' || productType === 'FLIGHT_DOMESTIC') {
+    if (booking.provider === 'WAKANOW') {
+ 
+      details.origin = bookingData.origin || 
+                       bookingData.departureAirport || 
+                       bookingData.departure || 
+                       bookingData.departure_code ||
+                       bookingData.From || 
+                       'N/A';
+                       
+      details.destination = bookingData.destination || 
+                            bookingData.arrivalAirport || 
+                            bookingData.arrival || 
+                            bookingData.arrival_code ||
+                            bookingData.To || 
+                            'N/A';
+                            
+      details.departureDate = bookingData.departureDate || 
+                              bookingData.departure_time || 
+                              bookingData.departureTime || 
+                              bookingData.DepartureDate ||
+                              bookingData.departure_date ||
+                              '';
+                              
+      details.arrivalDate = bookingData.arrivalDate || 
+                            bookingData.arrival_time || 
+                            bookingData.arrivalTime || 
+                            bookingData.ArrivalDate ||
+                            bookingData.arrival_date ||
+                            '';
+                            
+      details.airlineName = bookingData.airlineName || 
+                            bookingData.airline || 
+                            bookingData.carrierName || 
+                            bookingData.AirlineName ||
+                            bookingData.marketing_carrier_name ||
+                            '';
+                            
+      details.flightNumber = bookingData.flightNumber || 
+                             bookingData.flight_number || 
+                             bookingData.carrierFlightNumber || 
+                             bookingData.FlightNumber ||
+                             '';
+                             
+      details.cabinClass = bookingData.cabinClass || 
+                           bookingData.cabin_class || 
+                           bookingData.CabinClass ||
+                           'Economy';
+                           
+      details.stops = bookingData.stops || 
+                      bookingData.stopCount || 
+                      bookingData.stop_count ||
+                      0;
+                      
+      details.bookingClass = bookingData.bookingClass || 
+                             bookingData.class || 
+                             bookingData.booking_class ||
+                             'Economy';
+    }
+    
+ 
+    if (booking.provider === 'DUFFEL') {
+      const slices = bookingData.slices || [];
+      const outboundSlice = slices[0] || {};
+      const returnSlice = slices.length > 1 ? slices[1] : null;
+      const segments = outboundSlice.segments || [];
+      const firstSegment = segments[0] || {};
+      const lastSegment = segments[segments.length - 1] || firstSegment;
+      
+      details.origin = firstSegment.origin?.iata_code || 
+                       firstSegment.origin?.iataCode || 
+                       outboundSlice.origin?.iata_code ||
+                       'N/A';
+                       
+      details.destination = lastSegment.destination?.iata_code || 
+                            lastSegment.destination?.iataCode || 
+                            outboundSlice.destination?.iata_code ||
+                            'N/A';
+                            
+      details.departureDate = firstSegment.departing_at || 
+                              firstSegment.departure?.at || 
+                              outboundSlice.departure_time ||
+                              '';
+                              
+      details.arrivalDate = lastSegment.arriving_at || 
+                            lastSegment.arrival?.at || 
+                            outboundSlice.arrival_time ||
+                            '';
+                            
+      const owner = bookingData.owner || {};
+      const operatingCarrier = firstSegment.operating_carrier || {};
+      details.airlineName = owner.name || 
+                            operatingCarrier.name || 
+                            firstSegment.operating_carrier?.name ||
+                            '';
+                            
+      details.flightNumber = firstSegment.marketing_carrier_flight_number || 
+                             firstSegment.flight_number || 
+                             firstSegment.number ||
+                             '';
+                             
+      details.cabinClass = outboundSlice.cabin_class || 
+                           outboundSlice.cabinClass || 
+                           'Economy';
+                           
+      details.stops = Math.max(0, (segments.length || 1) - 1);
+      
+      details.bookingClass = details.cabinClass || 'Economy';
+      
+      // Duffel return flight
+      if (returnSlice) {
+        const returnSegments = returnSlice.segments || [];
+        const firstReturn = returnSegments[0] || {};
+        const lastReturn = returnSegments[returnSegments.length - 1] || firstReturn;
+        
+        details.returnOrigin = firstReturn.origin?.iata_code || 
+                               firstReturn.origin?.iataCode || 
+                               returnSlice.origin?.iata_code ||
+                               '';
+                               
+        details.returnDestination = lastReturn.destination?.iata_code || 
+                                    lastReturn.destination?.iataCode || 
+                                    returnSlice.destination?.iata_code ||
+                                    '';
+                                    
+        details.returnDepartureDate = firstReturn.departing_at || 
+                                      firstReturn.departure?.at || 
+                                      returnSlice.departure_time ||
+                                      '';
+                                      
+        details.returnArrivalDate = lastReturn.arriving_at || 
+                                    lastReturn.arrival?.at || 
+                                    returnSlice.arrival_time ||
+                                    '';
+                                    
+        const returnCarrier = firstReturn.operating_carrier || {};
+        details.returnAirlineName = returnCarrier.name || details.airlineName || '';
+        details.returnFlightNumber = firstReturn.marketing_carrier_flight_number || 
+                                     firstReturn.flight_number || 
+                                     '';
+        details.returnStops = Math.max(0, (returnSegments.length || 1) - 1);
       }
-
-      const bookingData = booking.bookingData as any || {};
-      const passengerInfo = booking.passengerInfo as any || {};
-
-      // Get hotel details from nested object if it exists
-      const hotelDetails = bookingData.hotelDetails || {};
-
-      const bookingDetails: any = {};
-
-      // ============================================================
-      // HOTEL
-      // ============================================================
-      if (booking.productType === 'HOTEL') {
-        bookingDetails.hotelName = hotelDetails.hotelName ||
-          bookingData.hotelName ||
-          bookingData.name ||
-          'Hotel';
-
-        bookingDetails.hotelAddress = hotelDetails.hotelAddress ||
-          bookingData.hotelAddress ||
-          bookingData.address ||
-          '';
-
-        bookingDetails.hotelCity = hotelDetails.hotelCity ||
-          bookingData.hotelCity ||
-          bookingData.city ||
-          '';
-
-        bookingDetails.hotelCountry = hotelDetails.hotelCountry ||
-          bookingData.hotelCountry ||
-          bookingData.country ||
-          '';
-
-        bookingDetails.checkInDate = bookingData.checkInDate ||
-          bookingData.check_in_date ||
-          'N/A';
-
-        bookingDetails.checkOutDate = bookingData.checkOutDate ||
-          bookingData.check_out_date ||
-          'N/A';
-
-        bookingDetails.roomType = hotelDetails.roomType ||
-          bookingData.roomType ||
-          'Standard Room';
-
-        bookingDetails.guests = bookingData.guests?.length ||
-          passengerInfo?.guests?.length ||
-          1;
-
-        bookingDetails.adults = hotelDetails.adults ||
-          bookingData.adults ||
-          passengerInfo?.adults ||
-          bookingDetails.guests;
-
-        bookingDetails.children = hotelDetails.children ||
-          bookingData.children ||
-          passengerInfo?.children ||
-          0;
-
-        bookingDetails.numberOfRooms = hotelDetails.numberOfRooms ||
-          bookingData.numberOfRooms ||
-          1;
-
-        bookingDetails.boardType = hotelDetails.boardType ||
-          bookingData.boardType ||
-          'Room Only';
-
-        bookingDetails.hotelPhone = hotelDetails.hotelPhone ||
-          bookingData.hotelPhone ||
-          '';
-
-        bookingDetails.hotelRating = hotelDetails.hotelRating ||
-          bookingData.hotelRating ||
-          null;
-
-        bookingDetails.hotelDescription = hotelDetails.hotelDescription ||
-          bookingData.hotelDescription ||
-          '';
-
-        bookingDetails.hotelCheckInTime = hotelDetails.hotelCheckInTime ||
-          bookingData.hotelCheckInTime ||
-          '15:00';
-
-        bookingDetails.hotelCheckOutTime = hotelDetails.hotelCheckOutTime ||
-          bookingData.hotelCheckOutTime ||
-          '12:00';
-
-        bookingDetails.hotelAmenities = hotelDetails.hotelAmenities ||
-          bookingData.hotelAmenities ||
-          [];
-
-        bookingDetails.hotelImages = hotelDetails.hotelImages ||
-          bookingData.hotelImages ||
-          [];
-
-        this.logger.log(`🏨 Hotel email details:`, {
-          hotelName: bookingDetails.hotelName,
-          hotelAddress: bookingDetails.hotelAddress,
-          hotelCity: bookingDetails.hotelCity,
-          checkInDate: bookingDetails.checkInDate,
-          checkOutDate: bookingDetails.checkOutDate,
-        });
-      }
-
-      // ============================================================
-      // CAR RENTAL
-      // ============================================================
-      else if (booking.productType === 'CAR_RENTAL') {
-        bookingDetails.pickupLocation = bookingData.pickupLocation ||
-          bookingData.pickup_location ||
-          bookingData.startLocationCode ||
-          bookingData.startAddressLine ||
-          'N/A';
-
-        bookingDetails.dropoffLocation = bookingData.dropoffLocation ||
-          bookingData.dropoff_location ||
-          bookingData.endLocationCode ||
-          bookingData.endAddressLine ||
-          'N/A';
-
-        bookingDetails.pickupDateTime = bookingData.pickupDateTime ||
-          bookingData.pickup_date_time ||
-          bookingData.startDateTime ||
-          'N/A';
-
-        bookingDetails.dropoffDateTime = bookingData.dropoffDateTime ||
-          bookingData.dropoff_date_time ||
-          bookingData.endDateTime ||
-          'N/A';
-
-        bookingDetails.vehicleType = bookingData.vehicleType ||
-          bookingData.vehicleCategory ||
-          bookingData.vehicleCode ||
-          'Standard';
-
-        bookingDetails.vehicleCategory = bookingData.vehicleCategory ||
-          bookingData.vehicle_type ||
-          'Standard';
-
-        bookingDetails.vehicleCode = bookingData.vehicleCode ||
-          bookingData.vehicle_code ||
-          '';
-
-        bookingDetails.vehicleName = bookingData.vehicleName ||
-          bookingData.vehicle_name ||
-          bookingData.vehicle ||
-          '';
-
-        bookingDetails.seats = bookingData.seats ||
-          bookingData.passengers ||
-          1;
-
-        bookingDetails.baggage = bookingData.baggage ||
-          bookingData.baggageCapacity ||
-          0;
-
-        bookingDetails.transferType = bookingData.transferType ||
-          bookingData.transfer_type ||
-          'Private';
-
-        bookingDetails.duration = bookingData.duration ||
-          bookingData.tripDuration ||
-          'N/A';
-
-        bookingDetails.serviceProvider = bookingData.serviceProvider ||
-          bookingData.providerName ||
-          bookingData.company ||
-          'N/A';
-
-        // Driver info
-        const driver = bookingData.driver || {};
-        bookingDetails.driverName = driver.firstName && driver.lastName
-          ? `${driver.firstName} ${driver.lastName}`
-          : passengerInfo?.firstName && passengerInfo?.lastName
-            ? `${passengerInfo.firstName} ${passengerInfo.lastName}`
-            : 'N/A';
-
-        bookingDetails.driverPhone = driver.phone ||
-          passengerInfo?.phone ||
-          'N/A';
-
-        bookingDetails.driverEmail = driver.email ||
-          passengerInfo?.email ||
-          booking.user?.email ||
-          'N/A';
-
-        this.logger.log(`🚗 Car rental email details:`, {
-          pickupLocation: bookingDetails.pickupLocation,
-          dropoffLocation: bookingDetails.dropoffLocation,
-          pickupDateTime: bookingDetails.pickupDateTime,
-          vehicleType: bookingDetails.vehicleType,
-          driverName: bookingDetails.driverName,
-        });
-      }
-
-      // ============================================================
-      // FLIGHT
-      // ============================================================
-      else if (booking.productType === 'FLIGHT_INTERNATIONAL' || booking.productType === 'FLIGHT_DOMESTIC') {
-        // Get slices data
-        const slices = bookingData.slices || [];
-        const firstSlice = slices[0] || {};
-        const lastSlice = slices[slices.length - 1] || {};
-
-        // Get first segment from first slice
-        const firstSegment = firstSlice.segments?.[0] || {};
-        const lastSegment = lastSlice.segments?.[lastSlice.segments?.length - 1] || {};
-
-        bookingDetails.origin = bookingData.origin ||
-          firstSlice.origin?.iata_code ||
-          firstSlice.origin?.city_code ||
-          'N/A';
-
-        bookingDetails.destination = bookingData.destination ||
-          lastSlice.destination?.iata_code ||
-          lastSlice.destination?.city_code ||
-          'N/A';
-
-        bookingDetails.departureDate = bookingData.departureDate ||
-          firstSegment.departing_at ||
-          firstSlice.departure_date ||
-          'N/A';
-
-        bookingDetails.arrivalDate = bookingData.arrivalDate ||
-          lastSegment.arriving_at ||
-          lastSlice.arrival_date ||
-          'N/A';
-
-        bookingDetails.airlineName = bookingData.airlineName ||
-          firstSegment.airline?.name ||
-          firstSlice.airline?.name ||
-          'N/A';
-
-        bookingDetails.airlineCode = bookingData.airlineCode ||
-          firstSegment.airline?.iata_code ||
-          firstSlice.airline?.iata_code ||
-          'N/A';
-
-        bookingDetails.flightNumber = bookingData.flightNumber ||
-          firstSegment.flight_number ||
-          'N/A';
-
-        bookingDetails.cabinClass = bookingData.cabinClass ||
-          firstSegment.cabin_class ||
-          firstSlice.cabin_class ||
-          'Economy';
-
-        bookingDetails.bookingClass = bookingData.bookingClass ||
-          firstSegment.booking_class ||
-          'Economy';
-
-        bookingDetails.stops = bookingData.stops !== undefined ? bookingData.stops :
-          (slices.length > 0 ? slices.length - 1 : 0);
-
-        // Passenger count
-        const passengers = bookingData.passengers || passengerInfo?.passengers || [];
-        bookingDetails.passengers = passengers.length || 1;
-
-        // Flight duration
-        if (firstSegment.duration) {
-          bookingDetails.duration = firstSegment.duration;
-        }
-
-        this.logger.log(`✈️ Flight email details:`, {
-          origin: bookingDetails.origin,
-          destination: bookingDetails.destination,
-          departureDate: bookingDetails.departureDate,
-          airlineName: bookingDetails.airlineName,
-          flightNumber: bookingDetails.flightNumber,
-          passengers: bookingDetails.passengers,
-        });
-      }
-
-      this.logger.log(`📧 Sending booking confirmation email to ${user.email}`);
-      this.logger.log(`📧 Product type: ${booking.productType}`);
-
-      // Send booking confirmation email
-      try {
-        await this.resendService.sendBookingConfirmationEmail({
-          to: user.email,
-          customerName: user.name || passengerInfo?.firstName || passengerInfo?.name || 'Valued Customer',
-          bookingReference: booking.reference,
-          productType: booking.productType,
-          provider: booking.provider,
-          bookingDetails,
-          pricing: {
-            basePrice: Number(booking.basePrice) || 0,
-            markupAmount: Number(booking.markupAmount) || 0,
-            serviceFee: Number(booking.serviceFee) || 0,
-            totalAmount: Number(booking.totalAmount) || 0,
-            currency: booking.currency || 'NGN',
-          },
-          confirmationDate: new Date(),
-          bookingId: booking.id,
-          cancellationDeadline: (booking as any).cancellationDeadline ?? undefined,
-          cancellationPolicySummary: (booking as any).cancellationPolicySnapshot ?? undefined,
-          noShowWording:
-            (booking as any).productType === 'HOTEL'
-              ? 'In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.'
-              : undefined,
-        });
-        this.logger.log(`✅ Booking confirmation email sent successfully`);
-      } catch (bookingEmailError) {
-        this.logger.error(`❌ Failed to send booking confirmation email:`, bookingEmailError);
-      }
-
-      // Send payment receipt email
-      this.logger.log(`📧 Sending payment receipt email to ${user.email}`);
-
-      try {
-        await this.resendService.sendPaymentReceiptEmail({
-          to: user.email,
-          customerName: user.name || passengerInfo?.firstName || passengerInfo?.name || 'Valued Customer',
-          bookingReference: booking.reference,
-          paymentIntentId: paymentIntent.id,
-          amount: paymentIntent.amount,
-          currency: paymentIntent.currency,
-          paymentDate: new Date(),
-          paymentMethod: paymentIntent.payment_method_types?.[0] || 'card',
-          productType: booking.productType,
-          bookingDetails,
-        });
-        this.logger.log(`✅ Payment receipt email sent successfully`);
-      } catch (receiptEmailError) {
-        this.logger.error(`❌ Failed to send payment receipt email:`, receiptEmailError);
-      }
-
-      this.logger.log(`📧 All emails processed for booking ${booking.id}`);
-
-    } catch (error) {
-      this.logger.error(`❌ sendBookingEmails failed:`, error);
-      throw error;
     }
   }
+
+  // ============================================================
+  // 🏨 HOTEL
+  // ============================================================
+  if (productType === 'HOTEL') {
+    const hotelDetails = bookingData.hotelDetails || {};
+    
+    details.hotelName = hotelDetails.hotelName || 
+                        bookingData.hotelName || 
+                        bookingData.name || 
+                        bookingData.hotel?.name ||
+                        bookingData.hotelData?.name ||
+                        '';
+                        
+    details.hotelAddress = hotelDetails.hotelAddress || 
+                           bookingData.hotelAddress || 
+                           bookingData.address || 
+                           bookingData.hotel?.address?.line ||
+                           bookingData.hotelData?.address ||
+                           '';
+                           
+    details.hotelCity = hotelDetails.hotelCity || 
+                        bookingData.hotelCity || 
+                        bookingData.city || 
+                        bookingData.hotel?.address?.cityName ||
+                        bookingData.hotelData?.city ||
+                        '';
+                        
+    details.hotelCountry = hotelDetails.hotelCountry || 
+                           bookingData.hotelCountry || 
+                           bookingData.country || 
+                           bookingData.hotel?.address?.countryCode ||
+                           bookingData.hotelData?.country ||
+                           '';
+                           
+    details.hotelRating = hotelDetails.hotelRating || 
+                          bookingData.hotelRating || 
+                          bookingData.rating || 
+                          bookingData.hotel?.rating ||
+                          bookingData.hotelData?.rating ||
+                          null;
+                          
+    details.hotelPhone = hotelDetails.hotelPhone || 
+                         bookingData.hotelPhone || 
+                         bookingData.phone || 
+                         bookingData.hotel?.contact?.phone ||
+                         bookingData.hotelData?.phone ||
+                         '';
+                         
+    details.checkInDate = hotelDetails.checkInDate || 
+                          bookingData.checkInDate || 
+                          bookingData.check_in_date || 
+                          bookingData.hotel?.checkInDate ||
+                          '';
+                          
+    details.checkOutDate = hotelDetails.checkOutDate || 
+                           bookingData.checkOutDate || 
+                           bookingData.check_out_date || 
+                           bookingData.hotel?.checkOutDate ||
+                           '';
+                           
+    details.roomType = hotelDetails.roomType || 
+                       bookingData.roomType || 
+                       bookingData.room_type || 
+                       bookingData.selectedRoomType ||
+                       bookingData.selectedRoom?.type ||
+                       'Standard Room';
+                       
+    details.numberOfRooms = hotelDetails.numberOfRooms || 
+                            bookingData.numberOfRooms || 
+                            bookingData.rooms || 
+                            bookingData.roomQuantity ||
+                            1;
+                            
+    details.boardType = hotelDetails.boardType || 
+                        bookingData.boardType || 
+                        bookingData.board_type || 
+                        'Room Only';
+                        
+    details.guests = hotelDetails.guests || 
+                     bookingData.guests || 
+                     bookingData.adults || 
+                     bookingData.guestCount ||
+                     1;
+                     
+    details.adults = hotelDetails.adults || 
+                     bookingData.adults || 
+                     details.guests;
+                     
+    details.children = hotelDetails.children || 
+                       bookingData.children || 
+                       0;
+                       
+    details.hotelCheckInTime = hotelDetails.hotelCheckInTime || 
+                               bookingData.hotelCheckInTime || 
+                               bookingData.checkInTime || 
+                               '15:00';
+                               
+    details.hotelCheckOutTime = hotelDetails.hotelCheckOutTime || 
+                                bookingData.hotelCheckOutTime || 
+                                bookingData.checkOutTime || 
+                                '12:00';
+                                
+    details.hotelDescription = hotelDetails.hotelDescription || 
+                               bookingData.hotelDescription || 
+                               '';
+                               
+    details.hotelAmenities = hotelDetails.hotelAmenities || 
+                             bookingData.hotelAmenities || 
+                             [];
+                             
+    details.hotelImages = hotelDetails.hotelImages || 
+                          bookingData.hotelImages || 
+                          [];
+  }
+
+  // ============================================================
+  // 🚗 CAR RENTAL - FIXED (uses pInfo instead of passengerInfo)
+  // ============================================================
+  if (productType === 'CAR_RENTAL') {
+    details.pickupLocation = bookingData.pickup_location || 
+                             bookingData.pickupLocation || 
+                             bookingData.pickup?.locationCode ||
+                             bookingData.start?.locationCode ||
+                             bookingData.startAddressLine ||
+                             'N/A';
+                             
+    details.dropoffLocation = bookingData.dropoff_location || 
+                              bookingData.dropoffLocation || 
+                              bookingData.dropoff?.locationCode ||
+                              bookingData.end?.locationCode ||
+                              bookingData.endAddressLine ||
+                              'N/A';
+                              
+    details.pickupDateTime = bookingData.pickupDateTime || 
+                             bookingData.pickup_date_time || 
+                             bookingData.pickup?.dateTime ||
+                             bookingData.start?.dateTime ||
+                             bookingData.startDateTime ||
+                             '';
+                             
+    details.dropoffDateTime = bookingData.dropoffDateTime || 
+                              bookingData.dropoff_date_time || 
+                              bookingData.dropoff?.dateTime ||
+                              bookingData.end?.dateTime ||
+                              bookingData.endDateTime ||
+                              '';
+                              
+    details.vehicleType = bookingData.vehicleType || 
+                          bookingData.vehicle_type || 
+                          bookingData.vehicle?.description ||
+                          bookingData.realData?.vehicleType ||
+                          bookingData.vehicleCategory ||
+                          'Standard';
+                          
+    details.vehicleCategory = bookingData.vehicleCategory || 
+                              bookingData.vehicle_category || 
+                              'Standard';
+                              
+    details.vehicleCode = bookingData.vehicleCode || 
+                          bookingData.vehicle_code || 
+                          '';
+                          
+    details.vehicleName = bookingData.vehicleName || 
+                          bookingData.vehicle_name || 
+                          bookingData.vehicle || 
+                          '';
+                          
+    details.carProvider = bookingData.serviceProvider || 
+                          bookingData.carProvider || 
+                          bookingData.provider ||
+                          bookingData.serviceProvider?.name ||
+                          bookingData.providerName ||
+                          '';
+                          
+    details.seats = bookingData.vehicle?.seats?.[0]?.count || 
+                    bookingData.seats ||
+                    bookingData.realData?.seats ||
+                    bookingData.passengers ||
+                    4;
+                    
+    details.baggage = bookingData.vehicle?.baggages?.[0]?.count || 
+                      bookingData.baggage ||
+                      bookingData.realData?.baggage ||
+                      bookingData.baggageCapacity ||
+                      2;
+                      
+    details.transferType = bookingData.transferType || 
+                           bookingData.transfer_type || 
+                           'Private';
+                           
+    details.duration = bookingData.duration || 
+                       bookingData.tripDuration || 
+                       'N/A';
+                       
+    // Driver info - FIXED: use pInfo instead of passengerInfo
+    const driver = bookingData.driver || {};
+    details.driverName = driver.firstName && driver.lastName
+      ? `${driver.firstName} ${driver.lastName}`
+      : driver.name || 
+        pInfo.firstName && pInfo.lastName
+          ? `${pInfo.firstName} ${pInfo.lastName}`
+          : pInfo.name || 
+            'N/A';
+            
+    details.driverPhone = driver.phone || 
+                          pInfo.phone || 
+                          'N/A';
+                          
+    details.driverEmail = driver.email || 
+                          pInfo.email || 
+                          booking.user?.email || 
+                          'N/A';
+  }
+
+  return details;
+}
+
+/**
+ * Extract passengers for all product types
+ */
+private extractPassengers(booking: any, productType: string): { lead: string, others: string[], all: any[] } {
+  const bookingData = booking.bookingData || {};
+  const passengerInfo = booking.passengerInfo || {};
+  
+  // Lead passenger - try multiple sources
+  let leadName = 'Valued Customer';
+  
+  // Try from passengerInfo
+  if (passengerInfo.firstName && passengerInfo.lastName) {
+    leadName = `${passengerInfo.firstName} ${passengerInfo.lastName}`;
+  } else if (passengerInfo.name) {
+    leadName = passengerInfo.name;
+  } else if (passengerInfo.firstName) {
+    leadName = passengerInfo.firstName;
+  } else if (passengerInfo.lastName) {
+    leadName = passengerInfo.lastName;
+  }
+  
+  // Try from user
+  if (leadName === 'Valued Customer' && booking.user?.name) {
+    leadName = booking.user.name;
+  }
+  
+  const otherPassengers: string[] = [];
+  const allPassengers: any[] = [];
+  
+  // Try different sources for passengers
+  let passengers = [];
+  
+  // Source 1: bookingData.passengers
+  if (bookingData.passengers && Array.isArray(bookingData.passengers)) {
+    passengers = bookingData.passengers;
+  }
+  // Source 2: bookingData.travellers (Wakanow)
+  else if (bookingData.travellers && Array.isArray(bookingData.travellers)) {
+    passengers = bookingData.travellers;
+  }
+  // Source 3: bookingData.guests (Hotel)
+  else if (bookingData.guests && Array.isArray(bookingData.guests)) {
+    passengers = bookingData.guests;
+  }
+  // Source 4: bookingData.passengerInfo
+  else if (bookingData.passengerInfo) {
+    passengers = [bookingData.passengerInfo];
+  }
+  
+  // Source 5: Passenger info from Duffel slices
+  if (passengers.length === 0 && bookingData.slices) {
+    const slices = bookingData.slices || [];
+    const firstSlice = slices[0] || {};
+    const passengersFromSlice = firstSlice.passengers || [];
+    if (passengersFromSlice.length > 0) {
+      passengers = passengersFromSlice;
+    }
+  }
+  
+  for (const p of passengers) {
+    let pName = '';
+    
+    // Try different name field formats
+    if (p.name?.firstName && p.name?.lastName) {
+      pName = `${p.name.firstName} ${p.name.lastName}`;
+    } else if (p.name?.name) {
+      pName = p.name.name;
+    } else if (p.FirstName && p.LastName) {
+      pName = `${p.FirstName} ${p.LastName}`;
+    } else if (p.firstName && p.lastName) {
+      pName = `${p.firstName} ${p.lastName}`;
+    } else if (p.name) {
+      pName = p.name;
+    } else if (p.fullName) {
+      pName = p.fullName;
+    } else if (p.forename && p.surname) {
+      pName = `${p.forename} ${p.surname}`;
+    }
+    
+    if (pName && pName.trim()) {
+      allPassengers.push({ name: pName, ...p });
+      if (pName !== leadName && !otherPassengers.includes(pName)) {
+        otherPassengers.push(pName);
+      }
+    }
+  }
+  
+  // If no passengers found, use lead passenger
+  if (allPassengers.length === 0 && leadName) {
+    allPassengers.push({ name: leadName });
+  }
+  
+  return { lead: leadName, others: otherPassengers, all: allPassengers };
+}
+
+/**
+ * Get product type label
+ */
+private getProductTypeLabel(productType: string): string {
+  const labels: Record<string, string> = {
+    'FLIGHT_INTERNATIONAL': 'International Flight',
+    'FLIGHT_DOMESTIC': 'Domestic Flight',
+    'HOTEL': 'Hotel',
+    'CAR_RENTAL': 'Car Rental',
+  };
+  return labels[productType] || productType;
+}
 
   private async handlePaymentIntentCreated(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     const bookingId = paymentIntent.metadata?.bookingId;
