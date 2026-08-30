@@ -70,17 +70,39 @@ export interface BookingConfirmationEmailData {
   };
   otherPassengers?: string[];
   bookingDetails: {
-    // Flight fields
     origin?: string;
     destination?: string;
     departureDate?: string;
     arrivalDate?: string;
     airlineName?: string;
+    airlineCode?: string;
+    airlineLogo?: string;
     flightNumber?: string;
     cabinClass?: string;
     bookingClass?: string;
     stops?: number;
-    // Hotel fields
+    pnrNumber?: string;
+    ticketStatus?: string;
+    isMultiCity?: boolean;
+    allSegments?: any[];
+    stopsList?: any[];
+    wakanowBookingId?: string;
+    isRoundTrip?: boolean;
+    luggageInfo?: string;
+    passengerCount?: number;
+    returnDeparture?: string;
+    returnArrival?: string;
+    returnDepartureTime?: string;
+    returnArrivalTime?: string;
+    returnFlightNumber?: string;
+    returnStops?: number;
+    outboundDuration?: string;
+    returnDuration?: string;
+    offerId?: string;
+    totalAmount?: number;
+    currency?: string;
+    isRefundable?: boolean;
+
     checkInDate?: string;
     checkOutDate?: string;
     hotelName?: string;
@@ -100,13 +122,23 @@ export interface BookingConfirmationEmailData {
     boardType?: string;
     hotelAmenities?: string[];
     hotelImages?: string[];
-    // Car rental fields
+    hotelOfferId?: string;
+
     pickupLocation?: string;
     dropoffLocation?: string;
     pickupDateTime?: string;
     dropoffDateTime?: string;
     vehicleType?: string;
     carProvider?: string;
+    vehicleImage?: string;
+    seats?: number | string;
+    baggage?: number | string;
+    transferType?: string;
+    duration?: string;
+    cancellationRules?: any[];
+    basePriceEUR?: string;
+    originalCurrency?: string;
+    originalPrice?: string;
   };
   pricing: {
     basePrice: number;
@@ -120,8 +152,14 @@ export interface BookingConfirmationEmailData {
   cancellationDeadline?: Date | string | null;
   cancellationPolicySummary?: string | null;
   noShowWording?: string | null;
+  isMultiCity?: boolean;
+  allSegments?: any[];
+  technicalStops?: any[];
+  isRoundTrip?: boolean;
+  luggageInfo?: string;
+  bookingData?: any;
+  providerData?: any;
 }
-
 export interface PaymentReceiptEmailData {
   to: string;
   customerName: string;
@@ -299,26 +337,310 @@ export class ResendService {
 
   async sendBookingConfirmationEmail(data: BookingConfirmationEmailData): Promise<void> {
     try {
-      if (data.productType === 'HOTEL') {
-        this.logger.log(`📧 Sending hotel confirmation email for: ${data.bookingReference}`);
-        this.logger.log(`🏨 Hotel Name: ${data.bookingDetails?.hotelName || 'NOT PROVIDED'}`);
-        this.logger.log(`📍 Hotel Address: ${data.bookingDetails?.hotelAddress || 'NOT PROVIDED'}`);
-        this.logger.log(`🌆 Hotel City: ${data.bookingDetails?.hotelCity || 'NOT PROVIDED'}`);
-      }
+     
+      const bookingData = data.bookingData || {};
+      const providerData = data.providerData || {};
+      
+      
+      const offerData = bookingData?.offerData || {};
+      const isCarRental = data.productType === 'CAR_RENTAL';
+      const isHotel = data.productType === 'HOTEL';
+      const isFlight = data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC';
+      const isWakanow = data.provider === 'WAKANOW';
+      const isDuffel = data.provider === 'DUFFEL';
 
+      this.logger.log(`📧 Sending ${data.productType} confirmation email for: ${data.bookingReference}`);
+      this.logger.log(`📦 Provider: ${data.provider}, isWakanow: ${isWakanow}, isDuffel: ${isDuffel}`);
+      
+  
+      if (isCarRental && offerData) {
+        const start = offerData?.start || {};
+        const end = offerData?.end || {};
+        const vehicle = offerData?.vehicle || {};
+        const serviceProvider = offerData?.serviceProvider || {};
+        const cancellationRules = offerData?.cancellationRules || [];
+        
+        this.logger.log(`🚗 Car rental data:`, {
+          pickupLocation: start?.locationCode || bookingData?.pickupLocation,
+          dropoffLocation: end?.locationCode || bookingData?.dropoffLocation,
+          vehicleType: vehicle?.description || offerData?.vehicleType,
+          provider: serviceProvider?.name || bookingData?.serviceProvider,
+        });
+        
+       
+        data.bookingDetails = {
+          ...data.bookingDetails,
+          pickupLocation: start?.locationCode || bookingData?.pickupLocation || 'N/A',
+          dropoffLocation: end?.locationCode || bookingData?.dropoffLocation || 'N/A',
+          pickupDateTime: start?.dateTime || bookingData?.pickupDateTime || 'N/A',
+          dropoffDateTime: end?.dateTime || bookingData?.dropoffDateTime || 'N/A',
+          vehicleType: vehicle?.description || offerData?.vehicleType || 'N/A',
+          carProvider: serviceProvider?.name || bookingData?.serviceProvider || 'N/A',
+          vehicleImage: vehicle?.imageURL || '',
+          seats: vehicle?.seats?.[0]?.count || offerData?.seats || 'N/A',
+          baggage: vehicle?.baggages?.[0]?.count || offerData?.baggage || 'N/A',
+          transferType: offerData?.transferType || bookingData?.transferType || 'PRIVATE',
+          duration: offerData?.duration || '',
+          cancellationRules: cancellationRules,
+          offerId: offerData?.offerId || bookingData?.offerId || 'N/A',
+          basePriceEUR: offerData?.basePriceEUR || 'N/A',
+          originalCurrency: offerData?.originalCurrency || 'EUR',
+          originalPrice: offerData?.original_price || 'N/A',
+        };
+        
+        this.logger.log(`✅ Car rental data extracted:`, {
+          pickup: data.bookingDetails.pickupLocation,
+          dropoff: data.bookingDetails.dropoffLocation,
+          vehicle: data.bookingDetails.vehicleType,
+          provider: data.bookingDetails.carProvider,
+        });
+      }
+      
+      
+      if (isDuffel && bookingData?.offerData) {
+        const offerData = bookingData.offerData;
+        const slices = offerData?.slices || [];
+        const outboundSlice = slices[0] || {};
+        const returnSlice = slices[1] || null;
+        
+        const outboundSegments = outboundSlice.segments || [];
+        const firstOutboundSegment = outboundSegments[0] || {};
+        const lastOutboundSegment = outboundSegments[outboundSegments.length - 1] || firstOutboundSegment;
+        
+        const returnSegments = returnSlice?.segments || [];
+        const firstReturnSegment = returnSegments[0] || {};
+        const lastReturnSegment = returnSegments[returnSegments.length - 1] || firstReturnSegment;
+        
+        const isRoundTrip = slices.length > 1;
+        const operatingCarrier = firstOutboundSegment.operating_carrier || firstOutboundSegment.marketing_carrier || {};
+        const airlineName = operatingCarrier.name || 'Airline';
+        const airlineCode = operatingCarrier.iata_code || '';
+        const airlineLogo = operatingCarrier.logo_symbol_url || '';
+        const flightNumber = firstOutboundSegment.marketing_carrier_flight_number || 
+                            firstOutboundSegment.flight_number || 
+                            'N/A';
+        
+        const outboundDeparture = firstOutboundSegment.origin?.iata_code || firstOutboundSegment.origin?.iataCode || 'N/A';
+        const outboundArrival = lastOutboundSegment.destination?.iata_code || lastOutboundSegment.destination?.iataCode || 'N/A';
+        const outboundDepartureTime = firstOutboundSegment.departing_at || firstOutboundSegment.departure?.at || '';
+        const outboundArrivalTime = lastOutboundSegment.arriving_at || lastOutboundSegment.arrival?.at || '';
+        
+        const returnDeparture = firstReturnSegment.origin?.iata_code || firstReturnSegment.origin?.iataCode || 'N/A';
+        const returnArrival = lastReturnSegment.destination?.iata_code || lastReturnSegment.destination?.iataCode || 'N/A';
+        const returnDepartureTime = firstReturnSegment.departing_at || firstReturnSegment.departure?.at || '';
+        const returnArrivalTime = lastReturnSegment.arriving_at || lastReturnSegment.arrival?.at || '';
+        
+        const passengerCount = offerData?.passengers?.length || 1;
+        
+        let luggageInfo = '';
+        if (firstOutboundSegment.passengers?.length > 0) {
+          const baggages = firstOutboundSegment.passengers[0].baggages || [];
+          const checkedBags = baggages.filter((b: any) => b.type === 'checked');
+          if (checkedBags.length > 0) {
+            luggageInfo = `${checkedBags.reduce((sum: number, b: any) => sum + (b.quantity || 0), 0)} checked bag(s)`;
+          }
+        }
+        
+        let cabinClass = 'Economy';
+        if (firstOutboundSegment.passengers?.length > 0) {
+          cabinClass = firstOutboundSegment.passengers[0].cabin_class_marketing_name || 
+                       firstOutboundSegment.passengers[0].cabin_class || 
+                       'Economy';
+        }
+        
+        const outboundStops = Math.max(0, outboundSegments.length - 1);
+        const returnStops = returnSegments.length > 0 ? Math.max(0, returnSegments.length - 1) : 0;
+        
+        this.logger.log(`✈️ Duffel flight data:`, {
+          airline: airlineName,
+          flightNumber,
+          outbound: `${outboundDeparture} → ${outboundArrival}`,
+          isRoundTrip,
+          passengerCount,
+        });
+        
+        data.bookingDetails = {
+          ...data.bookingDetails,
+          origin: outboundDeparture,
+          destination: isRoundTrip ? `${outboundArrival} → ${returnArrival}` : outboundArrival,
+          departureDate: outboundDepartureTime,
+          arrivalDate: outboundArrivalTime,
+          airlineName: airlineName,
+          airlineCode: airlineCode,
+          airlineLogo: airlineLogo,
+          flightNumber: flightNumber,
+          cabinClass: cabinClass,
+          stops: outboundStops,
+          isRoundTrip: isRoundTrip,
+          luggageInfo: luggageInfo,
+          passengerCount: passengerCount,
+          returnDeparture: returnDeparture,
+          returnArrival: returnArrival,
+          returnDepartureTime: returnDepartureTime,
+          returnArrivalTime: returnArrivalTime,
+          returnFlightNumber: firstReturnSegment.marketing_carrier_flight_number || 'N/A',
+          returnStops: returnStops,
+          outboundDuration: outboundSlice.duration || '',
+          returnDuration: returnSlice?.duration || '',
+          offerId: offerData?.id || 'N/A',
+          totalAmount: offerData?.total_amount || data.pricing?.totalAmount || 0,
+          currency: offerData?.total_currency || data.pricing?.currency || 'GBP',
+          isRefundable: offerData?.conditions?.refund_before_departure?.allowed || false,
+        };
+        
+        this.logger.log(`✅ Duffel flight data extracted:`, {
+          airline: data.bookingDetails.airlineName,
+          flight: data.bookingDetails.flightNumber,
+          route: `${data.bookingDetails.origin} → ${data.bookingDetails.destination}`,
+          isRoundTrip: data.bookingDetails.isRoundTrip,
+        });
+      }
+      
+   
+      if (isWakanow && providerData) {
+        const flightSummary = providerData?.FlightBookingSummary || 
+                             providerData?.FlightBookingResult?.FlightBookingSummaryModel || 
+                             {};
+        const flightCombination = flightSummary?.FlightSummaryModel?.FlightCombination || 
+                                 flightSummary?.FlightCombination || 
+                                 {};
+        const flightModels = flightCombination?.FlightModels || [];
+        const outboundFlight = flightModels[0] || {};
+        const firstLeg = outboundFlight?.FlightLegs?.[0] || {};
+        const lastLeg = outboundFlight?.FlightLegs?.[outboundFlight?.FlightLegs?.length - 1] || firstLeg;
+        
+        const airlineName = outboundFlight.AirlineName || firstLeg.AirlineName || 'N/A';
+        const airlineCode = outboundFlight.Airline || firstLeg.AirlineCode || '';
+        const airlineLogo = airlineCode ? `https://images.wakanow.com/Images/flight-logos/${airlineCode}.gif` : '';
+        const flightNumber = outboundFlight.Name || outboundFlight.FlightNumber || firstLeg.FlightNumber || 'N/A';
+        const departureAirport = outboundFlight.DepartureCode || firstLeg.DepartureCode || 'N/A';
+        const arrivalAirport = outboundFlight.ArrivalCode || lastLeg.DestinationCode || 'N/A';
+        const departureTime = outboundFlight.DepartureTime || firstLeg.StartTime || '';
+        const arrivalTime = outboundFlight.ArrivalTime || lastLeg.EndTime || '';
+        const stops = outboundFlight.Stops || 0;
+        const cabinClass = firstLeg.CabinClassName || outboundFlight.CabinClass || 'Economy';
+        const bookingClass = firstLeg.BookingClass || outboundFlight.BookingClass || 'Economy';
+        const pnrNumber = flightSummary.PnrReferenceNumber || bookingData?.pnrReferenceNumber || 'N/A';
+        const ticketStatus = flightSummary.TicketStatus || 'Pending';
+        const isMultiCity = bookingData?.isMultiCity || false;
+        const allSegments = bookingData?.allSegments || [];
+        
+        
+        const price = flightCombination.Price || {};
+        const totalAmount = price.Amount || bookingData?.totalAmount || data.pricing?.totalAmount || 0;
+        const currency = price.CurrencyCode || bookingData?.currency || data.pricing?.currency || 'NGN';
+  
+        const stopInfo = bookingData?.stopInformation || null;
+        const stopsList = stopInfo?.stopsList || [];
+        
+        this.logger.log(`✈️ Wakanow flight data:`, {
+          airline: airlineName,
+          flightNumber,
+          route: `${departureAirport} → ${arrivalAirport}`,
+          pnr: pnrNumber,
+          isMultiCity,
+          segments: allSegments.length,
+        });
+        
+        data.bookingDetails = {
+          ...data.bookingDetails,
+          origin: departureAirport,
+          destination: arrivalAirport,
+          departureDate: departureTime,
+          arrivalDate: arrivalTime,
+          airlineName: airlineName,
+          airlineCode: airlineCode,
+          airlineLogo: airlineLogo,
+          flightNumber: flightNumber,
+          cabinClass: cabinClass,
+          bookingClass: bookingClass,
+          stops: stops,
+          pnrNumber: pnrNumber,
+          ticketStatus: ticketStatus,
+          isMultiCity: isMultiCity,
+          allSegments: allSegments,
+          stopsList: stopsList,
+          wakanowBookingId: bookingData?.wakanowBookingId || providerData?.BookingId || 'N/A',
+          totalAmount: totalAmount,
+          currency: currency,
+        };
+        
+        this.logger.log(`✅ Wakanow flight data extracted:`, {
+          airline: data.bookingDetails.airlineName,
+          flight: data.bookingDetails.flightNumber,
+          route: `${data.bookingDetails.origin} → ${data.bookingDetails.destination}`,
+          pnr: data.bookingDetails.pnrNumber,
+          isMultiCity: data.bookingDetails.isMultiCity,
+        });
+      }
+      
+
+      if (isHotel && bookingData) {
+        this.logger.log(`🏨 Hotel data:`, {
+          hotelName: data.bookingDetails?.hotelName || bookingData?.hotelName || 'NOT PROVIDED',
+          checkIn: data.bookingDetails?.checkInDate || bookingData?.checkInDate,
+          checkOut: data.bookingDetails?.checkOutDate || bookingData?.checkOutDate,
+        });
+        
+   
+        data.bookingDetails = {
+          ...data.bookingDetails,
+          hotelName: data.bookingDetails?.hotelName || bookingData?.hotelName || 'Hotel',
+          hotelAddress: data.bookingDetails?.hotelAddress || bookingData?.hotelAddress || '',
+          hotelCity: data.bookingDetails?.hotelCity || bookingData?.hotelCity || '',
+          hotelCountry: data.bookingDetails?.hotelCountry || bookingData?.hotelCountry || '',
+          checkInDate: data.bookingDetails?.checkInDate || bookingData?.checkInDate || '',
+          checkOutDate: data.bookingDetails?.checkOutDate || bookingData?.checkOutDate || '',
+          roomType: data.bookingDetails?.roomType || bookingData?.roomType || 'Standard Room',
+          hotelRating: data.bookingDetails?.hotelRating || bookingData?.hotelRating || null,
+          hotelPhone: data.bookingDetails?.hotelPhone || bookingData?.hotelPhone || '',
+          hotelOfferId: bookingData?.offerId || bookingData?.hotelOfferId || 'N/A',
+        };
+      }
+      
+ 
+      this.logger.log(`📧 Email data summary for ${data.bookingReference}:`, {
+        productType: data.productType,
+        provider: data.provider,
+        customerName: data.customerName,
+        passengerEmail: data.passengerDetails?.email || data.to,
+        totalAmount: data.pricing?.totalAmount,
+        currency: data.pricing?.currency,
+        bookingDetails: {
+          origin: data.bookingDetails?.origin,
+          destination: data.bookingDetails?.destination,
+          airline: data.bookingDetails?.airlineName,
+          hotel: data.bookingDetails?.hotelName,
+          carProvider: data.bookingDetails?.carProvider,
+          pickup: data.bookingDetails?.pickupLocation,
+          dropoff: data.bookingDetails?.dropoffLocation,
+        },
+      });
+      
+   
       const subject = `Booking Confirmed - ${data.bookingReference}`;
       const html = this.getBookingConfirmationEmailTemplate(data);
-
-      await this.resend.emails.send({
+      
+      const result = await this.resend.emails.send({
         from: this.fromEmail,
         to: data.to,
         subject,
         html,
       });
-
+      
       this.logger.log(`✅ Booking confirmation email sent to ${data.to} for booking ${data.bookingReference}`);
+      if (result?.error) {
+        this.logger.error(`❌ Resend API error: ${result.error.message}`);
+      } else if (result?.data) {
+    
+        this.logger.log(`📧 Email ID: ${result.data.id || 'N/A'}`);
+      } else {
+        this.logger.log('📧 Email sent successfully (no ID returned)');
+      }
+      
     } catch (error) {
       this.logger.error(`❌ Failed to send booking confirmation email to ${data.to}:`, error);
+     
     }
   }
 
@@ -1066,7 +1388,7 @@ export class ResendService {
       </div>
     ` : '';
   
-    // ✅ HOTEL DETAILS SECTION
+ 
     const isHotel = data.bookingDetails?.hotelName;
     const hotelDetailsSection = isHotel ? `
       <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #e67e22;">
