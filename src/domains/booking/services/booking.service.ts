@@ -71,6 +71,43 @@ export class BookingService {
     private readonly resendService: ResendService,
   ) {}
 
+  private calculateIsMultiCity(bookingData: Record<string, any>): boolean {
+    try {
+      
+      const flightModels = bookingData?.flightSummary?.FlightModels || [];
+      
+     
+      if (flightModels.length <= 1) {
+        return false;
+      }
+      
+   
+      const routes = flightModels.map(f => 
+        `${f.DepartureCode}->${f.ArrivalCode}`
+      );
+      const uniqueRoutes = new Set(routes);
+      
+     
+      if (uniqueRoutes.size > 1) {
+        return true;
+      }
+      
+     
+      if (flightModels.length === 2) {
+        const first = flightModels[0];
+        const last = flightModels[flightModels.length - 1];
+        if (first.DepartureCode === last.ArrivalCode) {
+          return false; 
+        }
+      }
+      
+           return uniqueRoutes.size > 1;
+    } catch (error) {
+      this.logger.warn('Failed to calculate isMultiCity, defaulting to false', error);
+      return false;
+    }
+  }
+
   // ✅ Helper to extract passenger details
   private extractPassengerInfo(passengerInfo: any): {
     name: string;
@@ -198,6 +235,16 @@ export class BookingService {
 
   async createBooking(bookingData: CreateBookingParams): Promise<Booking> {
     this.logger.log(`Creating booking for user ${bookingData.userId}`);
+
+    const bookingDataWithMultiCity = {
+      ...bookingData.bookingData,
+      isMultiCity: this.calculateIsMultiCity(bookingData.bookingData),
+      // Keep original for debugging
+      _originalIsMultiCity: bookingData.bookingData?.isMultiCity,
+      _calculatedIsMultiCity: true,
+    };
+  
+    
     let reference = generateBookingReference();
     let exists = await this.bookingRepository.findByReference(reference);
     let attempts = 0;
@@ -220,7 +267,7 @@ export class BookingService {
       taxPercentage: bookingData.taxPercentage || 15,
       totalAmount: bookingData.totalAmount,
       currency: bookingData.currency,
-      bookingData: bookingData.bookingData,
+      bookingData: bookingDataWithMultiCity,
       passengerInfo: bookingData.passengerInfo || {},
       bookingId: bookingData.bookingId,
       selectData: bookingData.selectData,
@@ -252,6 +299,14 @@ export class BookingService {
 
   async createGuestBooking(bookingData: CreateGuestBookingParams): Promise<Booking> {
     this.logger.log('Creating guest booking');
+
+    const bookingDataWithMultiCity = {
+      ...bookingData.bookingData,
+      isMultiCity: this.calculateIsMultiCity(bookingData.bookingData),
+      _originalIsMultiCity: bookingData.bookingData?.isMultiCity,
+      _calculatedIsMultiCity: true,
+    };
+
     let reference = generateBookingReference();
     let exists = await this.bookingRepository.findByReference(reference);
     let attempts = 0;
@@ -273,7 +328,7 @@ export class BookingService {
       taxPercentage: bookingData.taxPercentage || 15,
       totalAmount: bookingData.totalAmount,
       currency: bookingData.currency,
-      bookingData: bookingData.bookingData,
+      bookingData: bookingDataWithMultiCity,
       passengerInfo: bookingData.passengerInfo,
       bookingId: bookingData.bookingId,
       selectData: bookingData.selectData,

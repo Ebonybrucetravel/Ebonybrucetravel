@@ -616,8 +616,7 @@ async findAll(@Request() req, @Query('customerId') customerId?: string) {
     message: 'Your bookings retrieved successfully',
   };
 }
-
-  @Public()
+@Public()
 @Get('public/by-reference/:reference')
 @ApiOperation({
   summary: 'Get booking by reference (public)',
@@ -635,7 +634,6 @@ async getByReferencePublic(
     throw new BadRequestException('Query parameter email is required');
   }
   
-  // ✅ FETCH WITH FULL DATA INCLUDING BOOKINGDATA
   const bookingWithUser = await this.prisma.booking.findUnique({
     where: { reference, deletedAt: null },
     include: { user: { select: { email: true } } },
@@ -651,20 +649,75 @@ async getByReferencePublic(
     throw new NotFoundException('Booking not found');
   }
   
-  // ✅ Get the full booking
-  const booking = await this.bookingService.getBookingById(bookingWithUser.id);
+  let booking = await this.bookingService.getBookingById(bookingWithUser.id);
+ 
+  if (booking && typeof booking.bookingData === 'string') {
+    booking.bookingData = JSON.parse(booking.bookingData);
+  }
+  
+  if (booking && booking.providerData && typeof booking.providerData === 'string') {
+    booking.providerData = JSON.parse(booking.providerData);
+  }
+
+  // ✅ FIXED: Calculate isMultiCity correctly
+  let calculatedIsMultiCity = false;
+  if (booking?.bookingData) {
+    const bookingData = booking.bookingData;
+    const flightModels = bookingData?.flightSummary?.FlightModels || [];
+    
+    if (flightModels.length > 0) {
+      const routes = flightModels.map(f => `${f.DepartureCode}->${f.ArrivalCode}`);
+      const uniqueRoutes = new Set(routes);
+      
+      // ✅ CASE 1: Only 1 flight → One-way (false)
+      if (flightModels.length === 1) {
+        calculatedIsMultiCity = false;
+        this.logger.log(`📍 One-way flight: ${routes[0]}`);
+      }
+      // ✅ CASE 2: 2 flights → Check if round trip or multi-city
+      else if (flightModels.length === 2) {
+        const first = flightModels[0];
+        const last = flightModels[flightModels.length - 1];
+        const isRoundTrip = first.DepartureCode === last.ArrivalCode;
+        calculatedIsMultiCity = !isRoundTrip && uniqueRoutes.size > 1;
+        this.logger.log(`📍 2 flights: ${routes.join(', ')}, isRoundTrip=${isRoundTrip}, isMultiCity=${calculatedIsMultiCity}`);
+      }
+      // ✅ CASE 3: 3+ flights → Check if round trip with stopovers
+      else if (flightModels.length >= 3) {
+        const first = flightModels[0];
+        const last = flightModels[flightModels.length - 1];
+        const isRoundTrip = first.DepartureCode === last.ArrivalCode && uniqueRoutes.size === 2;
+        calculatedIsMultiCity = !isRoundTrip && uniqueRoutes.size > 1;
+        this.logger.log(`📍 ${flightModels.length} flights: ${routes.join(', ')}, isRoundTrip=${isRoundTrip}, isMultiCity=${calculatedIsMultiCity}`);
+      }
+    }
+
+    // ✅ Update the stored value if needed
+    if (!bookingData._calculatedIsMultiCity || bookingData.isMultiCity !== calculatedIsMultiCity) {
+      booking.bookingData = {
+        ...bookingData,
+        isMultiCity: calculatedIsMultiCity,
+        _originalIsMultiCity: bookingData?.isMultiCity ?? false,
+        _calculatedIsMultiCity: true,
+      };
+    }
+  }
+  
+  this.logger.log(`📤 Returning booking ${reference}: isMultiCity=${booking?.bookingData?.isMultiCity}, calculated=${calculatedIsMultiCity}`);
   
   return {
     success: true,
     data: {
       ...booking,
-      bookingData: bookingWithUser.bookingData,   // ✅ ADD THIS
-      providerData: bookingWithUser.providerData, // ✅ ADD THIS
+      isMultiCity: booking?.bookingData?.isMultiCity ?? false,
+      bookingData: booking?.bookingData,
+      providerData: booking?.providerData,
     },
     message: 'Booking retrieved successfully',
   };
 }
-  @Get(':id')
+
+@Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get booking by ID' })

@@ -119,6 +119,13 @@ export class CreateBookingUseCase {
         };
       
         const wakanowResult = await this.bookWakanowFlightUseCase.execute(wakanowDto, userId);
+
+        if (wakanowResult.bookingData) {
+          wakanowResult.bookingData.isMultiCity = dto.bookingData?.isMultiCity || false;
+          wakanowResult.bookingData.allSegments = dto.bookingData?.allSegments || [];
+          wakanowResult.bookingData.destination = dto.bookingData?.destination || 'Unknown City';
+        }
+        
         this.logger.log(`✅ Wakanow booking created. PNR: ${wakanowResult.bookingData?.pnrReferenceNumber}`);
         wakanowResult.bookingData.destination = dto.bookingData?.destination || 'Unknown City';
         return wakanowResult;

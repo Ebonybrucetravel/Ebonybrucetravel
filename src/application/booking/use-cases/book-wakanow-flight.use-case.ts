@@ -23,7 +23,11 @@ export class BookWakanowFlightUseCase {
   ) {}
 
   async execute(dto: BookWakanowFlightDto, userId: string) {
-    const { passengers, bookingId, selectData, targetCurrency = 'NGN', priceBreakdown } = dto;
+    const { passengers, bookingId, selectData, targetCurrency = 'NGN', priceBreakdown, isMultiCity = false,  allSegments = []   } = dto;
+    this.logger.log(`📍 DTO received: isMultiCity=${isMultiCity}, segments=${allSegments.length}`);
+if (allSegments.length > 0) {
+  this.logger.log(`📍 Segments: ${JSON.stringify(allSegments, null, 2)}`);
+}
   
     this.logger.log(`📝 Booking Wakanow flight. BookingId: ${bookingId}`);
     this.logger.log(`👤 UserId: ${userId}`);
@@ -160,7 +164,9 @@ const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.
       userId,
       selectData,
       targetCurrency,
-      productType
+      productType,
+      isMultiCity,
+      allSegments 
     );
   
     this.logger.log(`✅ Wakanow flight booked. Local booking: ${booking.id}, PNR: ${pnr}`);
@@ -534,7 +540,9 @@ const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.
     userId: string,
     selectData: string,
     targetCurrency: string,
-    productType: ProductType
+    productType: ProductType,
+    isMultiCity: boolean = false,
+    allSegments: any[] = []  
   ): Promise<any> {
     const date = new Date();
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
@@ -562,6 +570,8 @@ const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.
     if (hasTechnicalStops) {
       this.logger.log(`⚠️ Flight has ${totalTechnicalStops} technical stop(s)`);
     }
+
+    const calculatedIsMultiCity = this.calculateIsMultiCityFromCombo(combo, isMultiCity, allSegments);
   
     const bookingData = {
       wakanowBookingId: bookResponse.BookingId,
@@ -572,10 +582,11 @@ const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.
       ticketStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.TicketStatus || 'PENDING',
       pnrStatus: bookResponse.FlightBookingResult?.FlightBookingSummaryModel?.PnrStatus || 'PENDING',
       passengerEmail: firstPassengerEmail,
-      // ✅ ADD TECHNICAL STOPS
       technicalStops: technicalStops,
       hasTechnicalStops: hasTechnicalStops,
       totalTechnicalStops: totalTechnicalStops,
+      isMultiCity: calculatedIsMultiCity, 
+  allSegments: allSegments,
       priceBreakdown: {
         basePrice: prices.basePrice,
         markupAmount: prices.markupAmount,
@@ -589,7 +600,9 @@ const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.
         breakdown: prices.breakdown,
       },
     };
-  
+
+    this.logger.log(`📍 Stored in bookingData: isMultiCity=${calculatedIsMultiCity} (original from DTO: ${isMultiCity}), segments=${allSegments.length}`);
+
     return await this.bookingRepository.create({
       reference,
       userId,
@@ -740,6 +753,91 @@ private countTechnicalStops(combo: any): number {
     });
   });
   return count;
+}
+private calculateIsMultiCityFromCombo(combo: any, dtoIsMultiCity: boolean, dtoSegments: any[]): boolean {
+  try {
+    const flightModels = combo?.FlightModels || [];
+
+    if (flightModels.length > 0) {
+      const routes = flightModels.map(f => 
+        `${f.DepartureCode}->${f.ArrivalCode}`
+      );
+      const uniqueRoutes = new Set(routes);
+   
+      const first = flightModels[0];
+      const last = flightModels[flightModels.length - 1];
+      
+    
+      if (flightModels.length === 1) {
+        this.logger.log(`📍 Calculated isMultiCity=false: one-way flight (${routes[0]})`);
+        return false;
+      }
+      
+     
+      if (flightModels.length === 2) {
+        const isRoundTrip = first.DepartureCode === last.ArrivalCode;
+        if (isRoundTrip) {
+          this.logger.log(`📍 Calculated isMultiCity=false: round trip detected (${routes.join(', ')})`);
+          return false;
+        } else {
+        
+          this.logger.log(`📍 Calculated isMultiCity=true: 2 different routes (${routes.join(', ')})`);
+          return true;
+        }
+      }
+      
+    
+      if (flightModels.length >= 3) {
+        const isRoundTrip = first.DepartureCode === last.ArrivalCode && uniqueRoutes.size === 2;
+        if (isRoundTrip) {
+          this.logger.log(`📍 Calculated isMultiCity=false: round trip with stopovers (${routes.join(', ')})`);
+          return false;
+        }
+       
+        if (uniqueRoutes.size > 1) {
+          this.logger.log(`📍 Calculated isMultiCity=true: ${flightModels.length} flights with multiple routes (${routes.join(', ')})`);
+          return true;
+        }
+      }
+      
+      return false;
+    }
+    
+ 
+    if (dtoSegments && dtoSegments.length > 0) {
+      const routes = dtoSegments.map(s => 
+        `${s.DepartureCode || s.departureCode}->${s.ArrivalCode || s.arrivalCode}`
+      );
+      const uniqueRoutes = new Set(routes);
+      
+ 
+      if (routes.length === 1) {
+        this.logger.log(`📍 Calculated isMultiCity=false: one-way from dtoSegments`);
+        return false;
+      }
+  
+      const first = dtoSegments[0];
+      const last = dtoSegments[dtoSegments.length - 1];
+      const isRoundTrip = (first.DepartureCode || first.departureCode) === (last.ArrivalCode || last.arrivalCode);
+      
+      if (isRoundTrip && routes.length === 2) {
+        this.logger.log(`📍 Calculated isMultiCity=false: round trip from dtoSegments`);
+        return false;
+      }
+      
+      if (uniqueRoutes.size > 1 && !isRoundTrip) {
+        this.logger.log(`📍 Calculated isMultiCity=true: multiple routes from dtoSegments (${routes.join(', ')})`);
+        return true;
+      }
+    }
+    
+
+    this.logger.log(`📍 Using DTO isMultiCity value: ${dtoIsMultiCity}`);
+    return dtoIsMultiCity;
+  } catch (error) {
+    this.logger.warn('Failed to calculate isMultiCity, using DTO value', error);
+    return dtoIsMultiCity;
+  }
 }
 
 }

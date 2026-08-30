@@ -21,6 +21,8 @@ export class BookWakanowFlightGuestUseCase {
     const isNorthAmerica = dto.isNorthAmerica ?? dto.bookingData?.isNorthAmerica ?? false;
     const destinationCode = dto.destinationCode || dto.bookingData?.destinationCode;
     const priceBreakdown = dto.priceBreakdown || dto.bookingData?.priceBreakdown;
+    const isMultiCity = dto.isMultiCity || dto.bookingData?.isMultiCity || false;
+    const allSegments = dto.allSegments || dto.bookingData?.allSegments || [];
 
     this.logger.log('📝 Booking Wakanow flight as guest...');
     this.logger.log(`👤 Passengers: ${passengers?.length || 0}`);
@@ -178,6 +180,8 @@ export class BookWakanowFlightGuestUseCase {
       priceBreakdown: priceBreakdown,
       isNorthAmerica: isNorthAmerica,
       destinationCode: destinationCode,
+      isMultiCity: isMultiCity,     
+  allSegments: allSegments, 
     };
 
     this.logger.log('📤 Calling BookWakanowFlightUseCase with:');

@@ -328,6 +328,33 @@ export class BookWakanowFlightDto {
   @IsOptional()
   @IsBoolean()
   isNorthAmerica?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Whether this is a multi-city booking',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isMultiCity?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'All segments for multi-city booking',
+    type: 'array',
+    example: [
+      { from: 'LOS', to: 'LHR', date: '2026-08-31', airline: 'Royal Air Maroc', flightNumber: '554' },
+      { from: 'LHR', to: 'YYZ', date: '2026-09-17', airline: 'Air Canada', flightNumber: 'AC123' },
+      { from: 'YYZ', to: 'LOS', date: '2026-09-30', airline: 'Royal Air Maroc', flightNumber: 'AT555' },
+    ],
+  })
+  @IsOptional()
+  @IsArray()
+  allSegments?: Array<{
+    from: string;
+    to: string;
+    date: string;
+    airline?: string;
+    flightNumber?: string;
+  }>;
 }
 
 export class TicketWakanowFlightDto {
