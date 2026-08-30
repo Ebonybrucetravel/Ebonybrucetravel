@@ -925,68 +925,67 @@ const renderCarRentalDetails = () => {
   if (!isCarRental) return null;
   
   const bookingData = booking.bookingData as any;
+  const offerData = bookingData?.offerData || {};
   
-  // ✅ Check if this is a transfer booking
-  const isTransferBooking = bookingData?.type === 'transfer-offer' || 
-                            bookingData?.transferType !== undefined ||
-                            bookingData?.start?.locationCode !== undefined ||
-                            bookingData?.end?.locationCode !== undefined;
+  const isTransferBooking = 
+    offerData?.type === 'transfer-offer' || 
+    offerData?.start?.locationCode !== undefined ||
+    offerData?.end?.locationCode !== undefined;
   
-  // ✅ If it's a transfer, use the data from bookingData directly
+
   if (isTransferBooking) {
-    // Use bookingData directly since the data is stored there
-    const start = bookingData?.start || {};
-    const end = bookingData?.end || {};
-    const vehicle = bookingData?.vehicle || {};
-    const serviceProvider = bookingData?.serviceProvider || {};
-    const cancellationRules = bookingData?.cancellationRules || [];
+
+    const start = offerData?.start || {};
+    const end = offerData?.end || {};
+    const vehicle = offerData?.vehicle || {};
+    const serviceProvider = offerData?.serviceProvider || {};
+    const cancellationRules = offerData?.cancellationRules || [];
     
-    // ✅ Vehicle details
+   
     const vehicleDescription = vehicle?.description || vehicle?.name || vehicle?.type || 'Transfer Vehicle';
     const vehicleCategory = vehicle?.category || vehicle?.vehicleCategory || 'ST';
     const vehicleCode = vehicle?.code || vehicle?.vehicleCode || '';
-    const seats = vehicle?.seats?.[0]?.count || vehicle?.seats || 'N/A';
-    const baggage = vehicle?.baggages?.[0]?.count || vehicle?.baggage || 'N/A';
+    const seats = vehicle?.seats?.[0]?.count || offerData?.seats || 'N/A';
+    const baggage = vehicle?.baggages?.[0]?.count || offerData?.baggage || 'N/A';
     const vehicleImage = vehicle?.imageURL || vehicle?.image || '';
     
-    // ✅ Service provider
+
     const providerName = serviceProvider?.name || serviceProvider?.providerName || 'Transfer Provider';
     const providerCode = serviceProvider?.code || serviceProvider?.providerCode || '';
     const providerLogo = serviceProvider?.logoUrl || serviceProvider?.logo || '';
     const termsUrl = serviceProvider?.termsUrl || serviceProvider?.terms || '';
     
-    // ✅ Transfer type
-    const transferType = bookingData?.transferType || bookingData?.type || 'PRIVATE';
+   
+    const transferType = offerData?.transferType || offerData?.type || 'PRIVATE';
     
-    // ✅ Pickup location
-    const pickupLocation = start?.locationCode || start?.iata_code || start?.iataCode || start?.code || 'N/A';
+   
+    const pickupLocation = start?.locationCode || bookingData?.pickupLocation || 'N/A';
     const pickupName = start?.name || start?.locationName || start?.description || '';
     const pickupCity = start?.city || start?.cityName || '';
     const pickupAddress = typeof start?.address === 'string' ? start.address : start?.address?.line || '';
-    const pickupDateTime = start?.dateTime || start?.time || '';
+    const pickupDateTime = start?.dateTime || bookingData?.pickupDateTime || '';
     
-    // ✅ Dropoff location
-    const dropoffLocation = end?.locationCode || end?.iata_code || end?.iataCode || end?.code || 'N/A';
+
+    const dropoffLocation = end?.locationCode || bookingData?.dropoffLocation || 'N/A';
     const dropoffName = end?.name || end?.locationName || end?.description || '';
     const dropoffCity = end?.city || end?.cityName || '';
     const dropoffAddress = typeof end?.address === 'string' ? end.address : end?.address?.line || '';
-    const dropoffDateTime = end?.dateTime || end?.time || '';
+    const dropoffDateTime = end?.dateTime || bookingData?.dropoffDateTime || '';
     
-    // ✅ Duration
-    const duration = bookingData?.duration || '';
+
+    const duration = offerData?.duration || '';
     
-    // ✅ Distance
-    const distance = bookingData?.distance || {};
+
+    const distance = offerData?.distance || {};
     const distanceValue = distance?.value || '';
     const distanceUnit = distance?.unit || 'MI';
     
-    // ✅ Passengers
+
     const passengers = bookingData?.passengers || [];
     
-    // ✅ Offer ID
-    const offerId = bookingData?.offerId || bookingData?.amadeus_offer_id || 'N/A';
+
+    const offerId = offerData?.offerId || bookingData?.offerId || bookingData?.amadeus_offer_id || 'N/A';
     
-    // ✅ Helper functions
     const formatDateTime = (dateTime: string): string => {
       if (!dateTime) return 'N/A';
       try {
@@ -1046,6 +1045,7 @@ const renderCarRentalDetails = () => {
         'IST': 'Istanbul Airport',
         'FRA': 'Frankfurt Airport',
         'AMS': 'Amsterdam Schiphol Airport',
+        'NCE': 'Nice Côte d\'Azur Airport',
       };
       return airports[code] || code;
     };
@@ -1313,7 +1313,6 @@ const renderCarRentalDetails = () => {
     </div>
   );
 };
-
 const renderWakanowDetails = () => {
   if (!booking) return null;
   
