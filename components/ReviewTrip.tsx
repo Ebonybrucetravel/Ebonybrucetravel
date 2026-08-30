@@ -2517,6 +2517,72 @@ if (!dateRegex.test(formattedDateOfBirth)) {
                   />
                 </div>
               </div>
+                    {/* ✅ CAR RENTAL FLIGHT DETAILS - REQUIRED FOR AMADEUS */}
+{isCar && !extBooking && (
+  <div className="mt-4 pt-4 border-t border-gray-100">
+    <h3 className="text-md font-semibold text-gray-900 mb-3">
+      Flight Details <span className="text-red-500">*</span>
+    </h3>
+    <p className="text-sm text-gray-500 mb-4">
+      Please provide your flight details for the transfer service.
+    </p>
+    
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Flight Number <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          value={flightNumber}
+          onChange={(e) => setFlightNumber(e.target.value.toUpperCase())}
+          className={inputCls}
+          placeholder="AF380"
+          required
+        />
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Flight Date <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="date"
+          value={flightDate}
+          onChange={(e) => setFlightDate(e.target.value)}
+          className={inputCls}
+          required
+          min={new Date().toISOString().split('T')[0]}
+        />
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Airline Code (Optional)
+        </label>
+        <input
+          type="text"
+          value={airlineCode}
+          onChange={(e) => setAirlineCode(e.target.value.toUpperCase())}
+          className={inputCls}
+          placeholder="AF"
+        />
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Flight Time (Optional)
+        </label>
+        <input
+          type="time"
+          value={flightTime}
+          onChange={(e) => setFlightTime(e.target.value)}
+          className={inputCls}
+        />
+      </div>
+    </div>
+  </div>
+)}
             </div>
   
 {/* ========== PASSPORT FIELDS - WAKANOW INTERNATIONAL FLIGHTS ========== */}
@@ -3242,72 +3308,7 @@ if (!dateRegex.test(formattedDateOfBirth)) {
         </div>
       )}
 
-      {/* ✅ CAR RENTAL FLIGHT DETAILS - REQUIRED FOR AMADEUS */}
-{isCar && !extBooking && (
-  <div className="mt-4 pt-4 border-t border-gray-100">
-    <h3 className="text-md font-semibold text-gray-900 mb-3">
-      Flight Details <span className="text-red-500">*</span>
-    </h3>
-    <p className="text-sm text-gray-500 mb-4">
-      Please provide your flight details for the transfer service.
-    </p>
-    
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">
-          Flight Number <span className="text-red-500">*</span>
-        </label>
-        <input
-          type="text"
-          value={flightNumber}
-          onChange={(e) => setFlightNumber(e.target.value.toUpperCase())}
-          className={inputCls}
-          placeholder="AF380"
-          required
-        />
-      </div>
-      
-      <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">
-          Flight Date <span className="text-red-500">*</span>
-        </label>
-        <input
-          type="date"
-          value={flightDate}
-          onChange={(e) => setFlightDate(e.target.value)}
-          className={inputCls}
-          required
-          min={new Date().toISOString().split('T')[0]}
-        />
-      </div>
-      
-      <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">
-          Airline Code (Optional)
-        </label>
-        <input
-          type="text"
-          value={airlineCode}
-          onChange={(e) => setAirlineCode(e.target.value.toUpperCase())}
-          className={inputCls}
-          placeholder="AF"
-        />
-      </div>
-      
-      <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">
-          Flight Time (Optional)
-        </label>
-        <input
-          type="time"
-          value={flightTime}
-          onChange={(e) => setFlightTime(e.target.value)}
-          className={inputCls}
-        />
-      </div>
-    </div>
-  </div>
-)}
+
       
       
 {/* Car Rental Agreement Checkbox */}

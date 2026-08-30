@@ -926,114 +926,67 @@ const renderCarRentalDetails = () => {
   
   const bookingData = booking.bookingData as any;
   
-  // ✅ CHECK IF THIS IS A TRANSFER
+  // ✅ Check if this is a transfer booking
   const isTransferBooking = bookingData?.type === 'transfer-offer' || 
                             bookingData?.transferType !== undefined ||
                             bookingData?.start?.locationCode !== undefined ||
-                            bookingData?.end?.locationCode !== undefined ||
-                            (bookingData?.offerData && bookingData.offerData.type === 'transfer-offer');
+                            bookingData?.end?.locationCode !== undefined;
   
-  // ==================== HELPER: Normalize data ====================
-  const normalizeBookingData = (rawData: any) => {
-    if (rawData?.offerData) {
-      return rawData.offerData;
-    }
-    if (rawData?.type === 'transfer-offer' || rawData?.start?.locationCode) {
-      return rawData;
-    }
-    if (rawData?.carRentalDetails || rawData?.transferDetails) {
-      return rawData.carRentalDetails || rawData.transferDetails;
-    }
-    return rawData;
-  };
-  
-  const normalizedData = normalizeBookingData(bookingData);
-  const offerId = normalizedData?.offerId || bookingData?.offerId || bookingData?.amadeus_offer_id || 'N/A';
-  
-  // ==================== TRANSFER BOOKING ====================
+  // ✅ If it's a transfer, use the data from bookingData directly
   if (isTransferBooking) {
-    const start = normalizedData?.start || bookingData?.start || {};
-    const end = normalizedData?.end || bookingData?.end || {};
-    const vehicle = normalizedData?.vehicle || bookingData?.vehicle || {};
-    const serviceProvider = normalizedData?.serviceProvider || bookingData?.serviceProvider || {};
-    const cancellationRules = normalizedData?.cancellationRules || bookingData?.cancellationRules || [];
+    // Use bookingData directly since the data is stored there
+    const start = bookingData?.start || {};
+    const end = bookingData?.end || {};
+    const vehicle = bookingData?.vehicle || {};
+    const serviceProvider = bookingData?.serviceProvider || {};
+    const cancellationRules = bookingData?.cancellationRules || [];
     
-    // ✅ FIX: Extract duration from multiple locations
-    const duration = 
-      normalizedData?.duration ||
-      bookingData?.duration ||
-      normalizedData?.tripDuration ||
-      bookingData?.tripDuration ||
-      normalizedData?.travelTime ||
-      bookingData?.travelTime ||
-      normalizedData?.estimatedDuration ||
-      bookingData?.estimatedDuration ||
-      normalizedData?.offerData?.duration ||
-      '';
+    // ✅ Vehicle details
+    const vehicleDescription = vehicle?.description || vehicle?.name || vehicle?.type || 'Transfer Vehicle';
+    const vehicleCategory = vehicle?.category || vehicle?.vehicleCategory || 'ST';
+    const vehicleCode = vehicle?.code || vehicle?.vehicleCode || '';
+    const seats = vehicle?.seats?.[0]?.count || vehicle?.seats || 'N/A';
+    const baggage = vehicle?.baggages?.[0]?.count || vehicle?.baggage || 'N/A';
+    const vehicleImage = vehicle?.imageURL || vehicle?.image || '';
     
-    const distance = normalizedData?.distance || bookingData?.distance || {};
-    const passengers = bookingData?.passengers || normalizedData?.passengers || [];
+    // ✅ Service provider
+    const providerName = serviceProvider?.name || serviceProvider?.providerName || 'Transfer Provider';
+    const providerCode = serviceProvider?.code || serviceProvider?.providerCode || '';
+    const providerLogo = serviceProvider?.logoUrl || serviceProvider?.logo || '';
+    const termsUrl = serviceProvider?.termsUrl || serviceProvider?.terms || '';
     
-    // Vehicle details
-    const vehicleDescription = vehicle?.description || 'Transfer Vehicle';
-    const vehicleCategory = vehicle?.category || 'ST';
-    const vehicleCode = vehicle?.code || '';
-    const seats = vehicle?.seats?.[0]?.count || 'N/A';
-    const baggage = vehicle?.baggages?.[0]?.count || 'N/A';
-    const vehicleImage = vehicle?.imageURL || '';
+    // ✅ Transfer type
+    const transferType = bookingData?.transferType || bookingData?.type || 'PRIVATE';
     
-    // Service provider
-    const providerName = serviceProvider?.name || 'Transfer Provider';
-    const providerCode = serviceProvider?.code || '';
-    const providerLogo = serviceProvider?.logoUrl || '';
-    const termsUrl = serviceProvider?.termsUrl || '';
+    // ✅ Pickup location
+    const pickupLocation = start?.locationCode || start?.iata_code || start?.iataCode || start?.code || 'N/A';
+    const pickupName = start?.name || start?.locationName || start?.description || '';
+    const pickupCity = start?.city || start?.cityName || '';
+    const pickupAddress = typeof start?.address === 'string' ? start.address : start?.address?.line || '';
+    const pickupDateTime = start?.dateTime || start?.time || '';
     
-    // Transfer type
-    const transferType = normalizedData?.transferType || bookingData?.transferType || 'PRIVATE';
+    // ✅ Dropoff location
+    const dropoffLocation = end?.locationCode || end?.iata_code || end?.iataCode || end?.code || 'N/A';
+    const dropoffName = end?.name || end?.locationName || end?.description || '';
+    const dropoffCity = end?.city || end?.cityName || '';
+    const dropoffAddress = typeof end?.address === 'string' ? end.address : end?.address?.line || '';
+    const dropoffDateTime = end?.dateTime || end?.time || '';
     
-    // Pickup
-    const pickupLocation = start?.locationCode || 'N/A';
-    const pickupDateTime = start?.dateTime || '';
-    const pickupAddress = start?.address?.line || start?.address || '';
-    const pickupName = start?.name || '';
-    const pickupCity = start?.address?.cityName || '';
+    // ✅ Duration
+    const duration = bookingData?.duration || '';
     
-    // Dropoff
-    const dropoffLocation = end?.locationCode || 'N/A';
-    const dropoffDateTime = end?.dateTime || '';
-    const dropoffAddress = end?.address?.line || end?.address || '';
-    const dropoffName = end?.name || '';
-    const dropoffCity = end?.address?.cityName || '';
-    
-    // Distance
+    // ✅ Distance
+    const distance = bookingData?.distance || {};
     const distanceValue = distance?.value || '';
-    const distanceUnit = distance?.unit || 'KM';
+    const distanceUnit = distance?.unit || 'MI';
     
-    // ✅ Helper: Calculate duration from pickup/dropoff times
-    const calculateDurationFromTimes = (pickup: string, dropoff: string): string => {
-      if (!pickup || !dropoff) return '';
-      try {
-        const startTime = new Date(pickup);
-        const endTime = new Date(dropoff);
-        const diffMs = Math.abs(endTime.getTime() - startTime.getTime());
-        const hours = Math.floor(diffMs / (1000 * 60 * 60));
-        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-        if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
-        if (hours > 0) return `${hours}h`;
-        if (minutes > 0) return `${minutes}m`;
-        return '';
-      } catch {
-        return '';
-      }
-    };
+    // ✅ Passengers
+    const passengers = bookingData?.passengers || [];
     
-    // ✅ Use calculated duration if no duration was found
-    let finalDuration = duration;
-    if (!finalDuration) {
-      finalDuration = calculateDurationFromTimes(pickupDateTime, dropoffDateTime);
-    }
+    // ✅ Offer ID
+    const offerId = bookingData?.offerId || bookingData?.amadeus_offer_id || 'N/A';
     
-    // Format helpers
+    // ✅ Helper functions
     const formatDateTime = (dateTime: string): string => {
       if (!dateTime) return 'N/A';
       try {
@@ -1051,27 +1004,16 @@ const renderCarRentalDetails = () => {
       }
     };
     
-    const formatDuration = (durationStr: string): string => {
-      if (!durationStr) return 'N/A';
-      try {
-        // Handle PT format (e.g., PT1H24M)
-        const match = durationStr.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
-        if (match) {
-          const hours = match[1] ? parseInt(match[1]) : 0;
-          const minutes = match[2] ? parseInt(match[2]) : 0;
-          if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
-          if (hours > 0) return `${hours}h`;
-          if (minutes > 0) return `${minutes}m`;
-          return durationStr;
-        }
-        // If it's already formatted (e.g., "1h 24m"), return as is
-        if (durationStr.includes('h') || durationStr.includes('m')) {
-          return durationStr;
-        }
-        return durationStr;
-      } catch {
-        return durationStr;
-      }
+    const getTransferTypeDisplay = (type: string): string => {
+      const map: Record<string, string> = {
+        'PRIVATE': 'Private Transfer',
+        'SHARED': 'Shared Transfer',
+        'TAXI': 'Taxi',
+        'HOURLY': 'Hourly Rental',
+        'AIRPORT': 'Airport Transfer',
+        'LUXURY': 'Luxury Transfer'
+      };
+      return map[type] || type || 'Private Transfer';
     };
     
     const getCategoryDisplay = (category: string): string => {
@@ -1092,17 +1034,24 @@ const renderCarRentalDetails = () => {
       return map[category] || category || 'Standard';
     };
     
-    const getTransferTypeDisplay = (type: string): string => {
-      const map: Record<string, string> = {
-        'PRIVATE': 'Private Transfer',
-        'SHARED': 'Shared Transfer',
-        'TAXI': 'Taxi',
-        'HOURLY': 'Hourly Rental',
-        'AIRPORT': 'Airport Transfer',
-        'LUXURY': 'Luxury Transfer'
+    const getAirportName = (code: string): string => {
+      const airports: Record<string, string> = {
+        'CDG': 'Paris Charles de Gaulle Airport',
+        'ORY': 'Paris Orly Airport',
+        'LHR': 'London Heathrow Airport',
+        'JFK': 'John F. Kennedy International Airport',
+        'LOS': 'Murtala Muhammed International Airport',
+        'ABV': 'Nnamdi Azikiwe International Airport',
+        'DXB': 'Dubai International Airport',
+        'IST': 'Istanbul Airport',
+        'FRA': 'Frankfurt Airport',
+        'AMS': 'Amsterdam Schiphol Airport',
       };
-      return map[type] || type || 'Private Transfer';
+      return airports[code] || code;
     };
+    
+    const pickupDisplayName = pickupName || pickupCity || pickupAddress || getAirportName(pickupLocation);
+    const dropoffDisplayName = dropoffName || dropoffCity || dropoffAddress || getAirportName(dropoffLocation);
     
     return (
       <div className="space-y-6">
@@ -1117,7 +1066,7 @@ const renderCarRentalDetails = () => {
           </div>
         </div>
         
-        {/* Offer ID & Transfer Type & Duration */}
+        {/* Offer ID & Transfer Type */}
         <div className="bg-gray-50 p-4 rounded-lg">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -1130,7 +1079,7 @@ const renderCarRentalDetails = () => {
             </div>
             <div>
               <p className="text-sm text-gray-500">Duration</p>
-              <p className="font-medium">{formatDuration(finalDuration)}</p>
+              <p className="font-medium">{duration || 'N/A'}</p>
             </div>
           </div>
         </div>
@@ -1221,10 +1170,8 @@ const renderCarRentalDetails = () => {
                 <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Pickup</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
                   <div>
-                  <p className="font-bold text-lg">{pickupLocation}</p>
-  <p className="text-sm text-gray-600">
-    {pickupName || pickupCity || (typeof pickupAddress === 'string' ? pickupAddress : '') || 'N/A'}
-  </p>
+                    <p className="font-bold text-lg">{pickupLocation}</p>
+                    <p className="text-sm text-gray-600">{pickupDisplayName}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Date & Time</p>
@@ -1245,10 +1192,8 @@ const renderCarRentalDetails = () => {
                 <p className="text-xs font-bold text-green-700 uppercase tracking-wider">Dropoff</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
                   <div>
-                  <p className="font-bold text-lg">{dropoffLocation}</p>
-  <p className="text-sm text-gray-600">
-    {dropoffName || dropoffCity || (typeof dropoffAddress === 'string' ? dropoffAddress : '') || 'N/A'}
-  </p>
+                    <p className="font-bold text-lg">{dropoffLocation}</p>
+                    <p className="text-sm text-gray-600">{dropoffDisplayName}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Date & Time</p>
@@ -1326,7 +1271,9 @@ const renderCarRentalDetails = () => {
     );
   }
   
-  // Fallback for non-transfer car rentals
+  // ✅ Fallback for non-transfer car rentals
+  const offerId = bookingData?.offerId || bookingData?.amadeus_offer_id || 'N/A';
+  
   return (
     <div className="space-y-6">
       <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-4 rounded-lg">
@@ -1366,7 +1313,6 @@ const renderCarRentalDetails = () => {
     </div>
   );
 };
-
 
 const renderWakanowDetails = () => {
   if (!booking) return null;

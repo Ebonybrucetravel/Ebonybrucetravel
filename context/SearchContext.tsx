@@ -2010,6 +2010,28 @@ const _searchImpl = async (params: SearchParams) => {
         provider: item.provider,
       });
       
+      // ✅ Get segments from all possible sources
+      const segments = (item as any).allSegments || 
+                       (item as any).multiCitySegments || 
+                       (item as any).itineraries ||
+                       [];
+      
+      // ✅ ✅ ✅ CRITICAL FIX: Update searchParams with segments
+      if (segments.length > 1) {
+        // Update the context searchParams
+        setSearchParams((prev: any) => ({
+          ...prev,
+          segments: segments,
+          tripType: 'multi-city',
+          isMultiCity: true,
+          type: 'flights',
+          // Preserve other params
+          ...(prev || {}),
+        }));
+        console.log('✅ Updated searchParams with multi-city segments:', segments.length);
+        console.log('📋 Segments:', segments.map((s: any) => `${s.from} → ${s.to}`).join(' | '));
+      }
+      
       // ✅ Ensure all multi-city data is preserved
       const multiCityItem = {
         ...item,
@@ -2017,12 +2039,9 @@ const _searchImpl = async (params: SearchParams) => {
         isWakanow: true,
         tripType: 'multi-city',
         // Preserve all multi-city data
-        multiCitySegments: (item as any).multiCitySegments || (item as any).allSegments || (item as any).itineraries,
-        allSegments: (item as any).allSegments || (item as any).multiCitySegments || (item as any).itineraries,
-        segmentCount: (item as any).segmentCount || 
-                      ((item as any).multiCitySegments?.length || 
-                       (item as any).allSegments?.length || 
-                       (item as any).itineraries?.length || 1),
+        multiCitySegments: segments,
+        allSegments: segments,
+        segmentCount: segments.length || (item as any).segmentCount || 1,
         // Preserve search params for review
         _searchParams: (item as any)._searchParams,
         // Keep all existing data
@@ -2036,6 +2055,14 @@ const _searchImpl = async (params: SearchParams) => {
       if (typeof window !== 'undefined') {
         try {
           sessionStorage.setItem('selectedMultiCityItem', JSON.stringify(multiCityItem));
+          // ✅ Also store the segments separately for easy access
+          sessionStorage.setItem('multiCitySegments', JSON.stringify(segments));
+          sessionStorage.setItem('multiCitySearchParams', JSON.stringify({
+            segments: segments,
+            tripType: 'multi-city',
+            isMultiCity: true,
+          }));
+          console.log('✅ Stored multi-city data in sessionStorage');
         } catch (e) {
           console.warn('Could not store multi-city item:', e);
         }
@@ -2201,7 +2228,7 @@ const _searchImpl = async (params: SearchParams) => {
     
     setSelectedItem(itemWithMessages);
   }, []);
-
+  
 
   const clearSearch = useCallback(() => {
     setSearchResults([]);

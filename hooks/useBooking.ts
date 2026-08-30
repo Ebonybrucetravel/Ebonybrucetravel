@@ -688,35 +688,64 @@ export function useBooking() {
         const destinationCode = extractAirportCode(destinationRaw);
         const finalOrigin = originCode || "LOS";
         const finalDestination = destinationCode || "ABV";
-
-        // ==================== MULTI-CITY DETECTION ====================
-// Check if this is a multi-city booking
-const segments = searchParams?.segments || [];
-const isMultiCity = segments.length > 1 || 
-                    (item as any)?.isMultiCity === true ||
-                    (item as any)?.allSegments?.length > 1;
-
-// Build all segments for multi-city
+// ==================== MULTI-CITY DETECTION ====================
+// ✅ PRIORITIZE item.allSegments over searchParams
 let allSegments: Array<{from: string, to: string, date: string, airline?: string, flightNumber?: string}> = [];
+let isMultiCity = false;
 
-if (isMultiCity && segments.length > 0) {
-  // Build from searchParams segments
-  allSegments = segments.map((seg: any) => ({
-    from: seg.from || '',
-    to: seg.to || '',
-    date: seg.date || '',
-    airline: seg.airline || '',
-    flightNumber: seg.flightNumber || '',
-  }));
-} else if ((item as any)?.allSegments?.length > 0) {
-  // Use existing allSegments from item
+// 1. First check item.allSegments (most reliable)
+if ((item as any)?.allSegments && Array.isArray((item as any).allSegments) && (item as any).allSegments.length > 0) {
   allSegments = (item as any).allSegments;
-} else {
-  // Single segment - use origin/destination
+  isMultiCity = allSegments.length > 1;
+  console.log('✅ Using item.allSegments:', allSegments.length);
+}
+// 2. Then check item.isMultiCity
+else if ((item as any)?.isMultiCity === true) {
+  isMultiCity = true;
+  // Try to get segments from item
+  allSegments = (item as any).allSegments || [];
+  console.log('✅ Using item.isMultiCity');
+}
+// 3. Then check searchParams
+else {
+  const segments = searchParams?.segments || [];
+  if (segments.length > 1) {
+    isMultiCity = true;
+    allSegments = segments.map((seg: any) => ({
+      from: seg.from || '',
+      to: seg.to || '',
+      date: seg.date || '',
+      airline: seg.airline || '',
+      flightNumber: seg.flightNumber || '',
+    }));
+    console.log('✅ Using searchParams.segments:', segments.length);
+  }
+}
+
+// 4. Fallback to sessionStorage if still no segments
+if (!isMultiCity && allSegments.length === 0 && typeof window !== 'undefined') {
+  try {
+    const storedSegments = sessionStorage.getItem('multiCitySegments');
+    if (storedSegments) {
+      const parsed = JSON.parse(storedSegments);
+      if (Array.isArray(parsed) && parsed.length > 1) {
+        isMultiCity = true;
+        allSegments = parsed;
+        console.log('✅ Loaded multi-city segments from sessionStorage:', allSegments.length);
+      }
+    }
+  } catch (e) {
+    // Ignore
+  }
+}
+
+// 5. Final fallback - single segment
+if (allSegments.length === 0) {
+  const todayDate = new Date().toISOString().split('T')[0];
   allSegments = [{
     from: finalOrigin,
     to: finalDestination,
-    date: searchParams?.segments?.[0]?.date ?? today(),
+    date: searchParams?.segments?.[0]?.date ?? todayDate,
     airline: item.airlineName || '',
     flightNumber: item.flightNumber || '',
   }];
@@ -724,9 +753,12 @@ if (isMultiCity && segments.length > 0) {
 
 console.log('🔄 MULTI-CITY DETECTION:', {
   isMultiCity,
-  segmentsCount: segments.length,
   allSegmentsCount: allSegments.length,
   allSegments,
+  source: (item as any)?.allSegments ? 'item.allSegments' : 
+          (item as any)?.isMultiCity ? 'item.isMultiCity' :
+          (searchParams?.segments?.length ?? 0) > 1 ? 'searchParams' :
+          'sessionStorage/fallback',
 });
         
         const isFlight = 
@@ -1270,7 +1302,7 @@ console.log('🛑 Technical stops in booking:', {
               offerId: offerId,
               origin: finalOrigin,
               destination: finalDestination,
-              departureDate: searchParams?.segments?.[0]?.date ?? today(),
+              departureDate: searchParams?.segments?.[0]?.date ?? new Date().toISOString().split('T')[0],
               isMultiCity: isMultiCity,
               allSegments: allSegments,
               createWithoutPayment: options?.createWithoutPayment || false,
@@ -1400,7 +1432,7 @@ console.log("💰 Wakanow total amount (with positive check):", {
               storedOfferDataAt: new Date().toISOString(),
               origin: finalOrigin,
               destination: finalDestination,
-              departureDate: searchParams?.segments?.[0]?.date ?? today(),
+              departureDate: searchParams?.segments?.[0]?.date ?? new Date().toISOString().split('T')[0],
               isMultiCity: isMultiCity,
               allSegments: allSegments,
               ...(item.realData?.airline && { airline: item.realData.airline }),
@@ -1700,12 +1732,46 @@ console.log('🔍 PASSPORT CHECK BEFORE SEND:', {
           console.error("Booking creation failed:", data);
           throw new Error(msg);
         }
+  
         const created: Booking = data.data ?? data;
 
-// ✅ FIX: Store email in the booking object
-const bookingAny = created as any;
+ 
+        const bookingAny = created as any;
+        
 
-// If the email is in the passenger object but not in the response, add it
+        let isMultiCityFromResponse = 
+            data?.data?.isMultiCity || 
+            data?.isMultiCity || 
+            bookingAny.bookingData?.isMultiCity;
+        
+
+        if (isMultiCityFromResponse === undefined || isMultiCityFromResponse === null) {
+            isMultiCityFromResponse = allSegments.length > 1;
+            console.log('📍 Calculated isMultiCity from segments:', isMultiCityFromResponse);
+        }
+        
+
+        if (isMultiCityFromResponse === undefined || isMultiCityFromResponse === null) {
+            isMultiCityFromResponse = isMultiCity;
+        }
+        
+        console.log('✅ isMultiCity from API response:', isMultiCityFromResponse);
+        
+ 
+        bookingAny.isMultiCity = isMultiCityFromResponse;
+        if (!bookingAny.bookingData) {
+            bookingAny.bookingData = {};
+        }
+        bookingAny.bookingData.isMultiCity = isMultiCityFromResponse;
+        bookingAny.bookingData.allSegments = allSegments;
+        
+        console.log('📋 Final booking with isMultiCity:', {
+            isMultiCity: bookingAny.isMultiCity,
+            bookingDataIsMultiCity: bookingAny.bookingData?.isMultiCity,
+            segmentsCount: allSegments.length,
+        }); 
+
+
 if (passenger.email && !bookingAny.passengerInfo?.email) {
   if (!bookingAny.passengerInfo) {
     bookingAny.passengerInfo = {};
@@ -1715,7 +1781,7 @@ if (passenger.email && !bookingAny.passengerInfo?.email) {
   console.log('📧 Added email to booking object from passenger:', passenger.email);
 }
 
-// Also store in bookingData if it exists
+
 if (bookingAny.bookingData && passenger.email) {
   bookingAny.bookingData.email = passenger.email;
   if (!bookingAny.bookingData.passengerInfo) {
@@ -1724,7 +1790,7 @@ if (bookingAny.bookingData && passenger.email) {
   bookingAny.bookingData.passengerInfo.email = passenger.email;
 }
 
-// Store in sessionStorage for guest bookings
+
 if (isGuest && passenger.email) {
   sessionStorage.setItem('guest_booking_email', passenger.email);
   console.log('📧 Stored guest email in sessionStorage:', passenger.email);
@@ -1732,7 +1798,7 @@ if (isGuest && passenger.email) {
 
         let pnrNumber = null;
         
-        // 1. Check top-level fields (using type assertion)
+   
         const createdAny = created as any;
         
         if (createdAny.reference) {
