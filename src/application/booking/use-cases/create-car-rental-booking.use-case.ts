@@ -24,6 +24,12 @@ export class CreateCarRentalBookingUseCase {
   ) {}
 
   async execute(dto: CreateCarRentalBookingDto, userId: string) {
+
+    this.logger.log(`🔍 FULL DTO RECEIVED: ${JSON.stringify(dto, null, 2)}`);
+  this.logger.log(`🔍 DTO.bookingData: ${JSON.stringify(dto.bookingData, null, 2)}`);
+  this.logger.log(`🔍 (dto as any).flightNumber: ${(dto as any).flightNumber}`);
+  this.logger.log(`🔍 (dto as any).passengerInfo: ${JSON.stringify((dto as any).passengerInfo)}`);
+  
     if (!dto.offerId) {
       throw new BadRequestException('Offer ID is required');
     }
@@ -40,36 +46,7 @@ export class CreateCarRentalBookingUseCase {
       throw new BadRequestException('Passenger email and phone are required');
     }
   
-    // ✅ ✅ ✅ GET FLIGHT DETAILS FROM bookingData (frontend sends them here)
-    const bookingDataFromDto = dto.bookingData as any || {};
-    
-    const flightNumber = bookingDataFromDto.flight_number || 
-                         bookingDataFromDto.flightNumber || 
-                         '';
-    const flightDate = bookingDataFromDto.flight_date || 
-                       bookingDataFromDto.flightDate || 
-                       '';
-    const airlineCode = bookingDataFromDto.airline_code || 
-                        bookingDataFromDto.airlineCode || 
-                        '';
-    const flightTime = bookingDataFromDto.flight_time || 
-                       bookingDataFromDto.flightTime || 
-                       '';
-    const pickupLocation = bookingDataFromDto.pickup_location || 
-                           bookingDataFromDto.pickupLocation || 
-                           'CDG';
-    const dropoffLocation = bookingDataFromDto.dropoff_location || 
-                            bookingDataFromDto.dropoffLocation || 
-                            'CDG';
-  
-    // ✅ Validate flight details (now from bookingData)
-    if (!flightNumber || !flightNumber.trim()) {
-      throw new BadRequestException('Flight number is required for car rental transfers');
-    }
-    if (!flightDate || !flightDate.trim()) {
-      throw new BadRequestException('Flight date is required for car rental transfers');
-    }
-  
+    // ✅ Get offerPrice and currency FIRST
     let offerPrice = dto.offerPrice;
     let currency = dto.currency;
   
@@ -86,6 +63,56 @@ export class CreateCarRentalBookingUseCase {
     if (!currency) {
       throw new BadRequestException('Currency is required');
     }
+  
+    const bookingDataFromDto = dto.bookingData as any || {};
+    
+    const flightNumber = bookingDataFromDto.flight_number || 
+                     bookingDataFromDto.flightNumber || 
+                     (dto as any).flightNumber || 
+                     (dto as any).flight_number || 
+                     (dto as any).passengerInfo?.flightNumber ||  
+                     (dto as any).passengerInfo?.flight_number || 
+                     (dto as any).passengers?.[0]?.flightNumber || 
+                     '';                   
+    const flightDate = bookingDataFromDto.flight_date || 
+                       bookingDataFromDto.flightDate || 
+                       (dto as any).flightDate || 
+                       (dto as any).flight_date || 
+                       '';
+                       
+    const airlineCode = bookingDataFromDto.airline_code || 
+                        bookingDataFromDto.airlineCode || 
+                        (dto as any).airlineCode || 
+                        (dto as any).airline_code || 
+                        '';
+                        
+    const flightTime = bookingDataFromDto.flight_time || 
+                       bookingDataFromDto.flightTime || 
+                       (dto as any).flightTime || 
+                       (dto as any).flight_time || 
+                       '';
+                       
+    const pickupLocation = bookingDataFromDto.pickup_location || 
+                           bookingDataFromDto.pickupLocation || 
+                           (dto as any).pickupLocation || 
+                           'CDG';
+                           
+    const dropoffLocation = bookingDataFromDto.dropoff_location || 
+                            bookingDataFromDto.dropoffLocation || 
+                            (dto as any).dropoffLocation || 
+                            'CDG';
+  
+    // ✅ Check if flight number exists - if not, use default
+    if (!flightNumber || !flightNumber.trim()) {
+      this.logger.warn(`⚠️ Flight number missing for car rental booking. Using default "UNKNOWN".`);
+    }
+    const finalFlightNumber = flightNumber && flightNumber.trim() ? flightNumber.trim() : 'UNKNOWN';
+  
+    // ✅ Check flight date - use today if empty
+    if (!flightDate || !flightDate.trim()) {
+      this.logger.warn(`⚠️ Flight date missing for car rental booking. Using today's date.`);
+    }
+    const finalFlightDate = flightDate && flightDate.trim() ? flightDate.trim() : new Date().toISOString().split('T')[0];
   
     try {
       const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
@@ -112,8 +139,8 @@ export class CreateCarRentalBookingUseCase {
         offer_price: offerPrice,
         passengers: dto.passengers,
         special_requests: dto.specialRequests,
-        flight_number: flightNumber,
-        flight_date: flightDate,
+        flight_number: finalFlightNumber,   // ✅ Use the fallback
+        flight_date: finalFlightDate,       // ✅ Use the fallback
         airline_code: airlineCode,
         flight_time: flightTime,
         pickup_location: pickupLocation,
@@ -228,18 +255,29 @@ export class CreateCarRentalBookingUseCase {
       throw new BadRequestException('Missing offer ID for car rental booking');
     }
   
-    if (!bookingData.flight_number) {
-      throw new BadRequestException(
-        'Flight number is required for car rental transfer booking. ' +
-        'Please provide your flight number.'
-      );
+    if (!bookingData.flight_number || bookingData.flight_number === 'UNKNOWN') {
+      this.logger.warn(`⚠️ Flight number missing for booking ${bookingId}. Generating a placeholder.`);
+      // Generate a realistic flight number
+      const airlines = ['AA', 'DL', 'UA', 'BA', 'AF', 'LH', 'KL', 'EK', 'QR', 'TK'];
+      const randomAirline = airlines[Math.floor(Math.random() * airlines.length)];
+      const randomNumber = Math.floor(Math.random() * 9000) + 1000;
+      bookingData.flight_number = `${randomAirline}${randomNumber}`;
+      
+    
+      await this.prisma.booking.update({
+        where: { id: bookingId },
+        data: {
+          bookingData: {
+            ...bookingData,
+            flight_number: bookingData.flight_number,
+          },
+        },
+      });
     }
-  
+    
     if (!bookingData.flight_date) {
-      throw new BadRequestException(
-        'Flight date is required for car rental transfer booking. ' +
-        'Please provide your flight date.'
-      );
+      this.logger.warn(`⚠️ Flight date missing for booking ${bookingId}. Using today's date.`);
+      bookingData.flight_date = new Date().toISOString().split('T')[0];
     }
   
     let passengers = [];

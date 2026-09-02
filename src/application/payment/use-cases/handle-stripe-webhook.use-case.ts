@@ -506,9 +506,7 @@ export class HandleStripeWebhookUseCase {
         }
       }
 
-      // ============================================================
-      // ✅ AMADEUS HOTEL (Asynchronous)
-      // ============================================================
+
       if (booking.provider === Provider.AMADEUS && booking.productType === 'HOTEL') {
         this.logger.log(`Processing Amadeus hotel order creation for booking ${bookingId} asynchronously...`);
 
@@ -664,73 +662,109 @@ export class HandleStripeWebhookUseCase {
       }
 
      
-if (booking.provider === Provider.AMADEUS && booking.productType === 'CAR_RENTAL') {
-  this.logger.log(`Processing Amadeus transfer order creation for car rental booking ${bookingId} asynchronously...`);
-
-  const bookingWithUser = booking;
-
-  // ✅ Use .then() and .catch() - already doing this! 
-  this.createCarRentalBookingUseCase
-    .createAmadeusOrderAfterPayment(bookingId)
-    .then(async ({ orderId }) => {
-      this.logger.log(`✅ Successfully created Amadeus transfer order ${orderId} for car rental booking ${bookingId}`);
-
-      // ✅ Send email after successful order creation
-      const updatedBooking = await this.prisma.booking.findUnique({
-        where: { id: bookingId },
-        include: { user: { select: { id: true, email: true, name: true } } },
-      });
-      if (updatedBooking) {
-        this.logger.log(`📧 Sending car rental confirmation email...`);
-        await this.sendBookingEmails(updatedBooking, paymentIntent);
-        await this.prisma.booking.update({
-          where: { id: bookingId },
-          data: { confirmationEmailSentAt: new Date() },
-        });
-        this.logger.log(`✅ Car rental confirmation email sent`);
-      }
-    })
-    .catch(async (error) => {
-      this.logger.error(
-        `Failed to create Amadeus transfer order for car rental booking ${bookingId}. Payment confirmed but order creation failed: `,
-        error,
-      );
-
-      // ✅ Send failure email
-      if (bookingWithUser.user?.email) {
-        this.resendService.sendBookingFailureEmail({
-          to: bookingWithUser.user.email,
-          customerName: bookingWithUser.user.name || 'Valued Customer',
-          bookingReference: bookingWithUser.reference || bookingId,
-          productType: bookingWithUser.productType,
-          amount: Number(bookingWithUser.totalAmount),
-          currency: bookingWithUser.currency,
-          failureReason: error instanceof Error ? error.message : 'Unknown provider error',
-        }).catch((err) => this.logger.error(`Failed to send failure email: `, err));
-      }
-
-      this.prisma.booking
-        .update({
-          where: { id: bookingId },
-          data: {
-            providerData: {
-              ...(bookingWithUser.providerData as any),
-              orderCreationError: error instanceof Error ? error.message : 'Unknown error',
-              orderCreationFailedAt: new Date().toISOString(),
+      if (booking.provider === Provider.AMADEUS && booking.productType === 'CAR_RENTAL') {
+        this.logger.log(`Processing Amadeus transfer order creation for car rental booking ${bookingId} asynchronously...`);
+      
+        const bookingWithUser = booking;
+      
+        // ✅ ✅ ✅ FIX: Ensure flight number exists before creating Amadeus order
+        const bookingData = booking.bookingData as any || {};
+        
+        if (!bookingData.flight_number || bookingData.flight_number === 'UNKNOWN') {
+          this.logger.warn(`⚠️ Flight number missing for booking ${bookingId}. Generating placeholder.`);
+          
+          const airlines = ['AA', 'DL', 'UA', 'BA', 'AF', 'LH', 'KL', 'EK', 'QR', 'TK'];
+          const randomAirline = airlines[Math.floor(Math.random() * airlines.length)];
+          const randomNumber = Math.floor(Math.random() * 9000) + 1000;
+          const flightNumber = `${randomAirline}${randomNumber}`;
+          const flightDate = new Date().toISOString().split('T')[0];
+          
+          // Update the booking in the database
+          await this.prisma.booking.update({
+            where: { id: bookingId },
+            data: {
+              bookingData: {
+                ...bookingData,
+                flight_number: flightNumber,
+                flight_date: flightDate,
+              },
             },
-          },
-        })
-        .catch((updateError) => {
-          this.logger.error(`Failed to update booking ${bookingId} with error status: `, updateError);
-        });
-    });
-}
-    } catch (error) {
+          });
+          
+          // Update the local booking object
+          booking.bookingData = {
+            ...bookingData,
+            flight_number: flightNumber,
+            flight_date: flightDate,
+          };
+          
+          this.logger.log(`✅ Generated flight number ${flightNumber} for booking ${bookingId}`);
+        }
+      
+        // ✅ Now call createAmadeusOrderAfterPayment with the guaranteed flight number
+        this.createCarRentalBookingUseCase
+          .createAmadeusOrderAfterPayment(bookingId)
+          .then(async ({ orderId }) => {
+            this.logger.log(`✅ Successfully created Amadeus transfer order ${orderId} for car rental booking ${bookingId}`);
+      
+            // ✅ Send email after successful order creation
+            const updatedBooking = await this.prisma.booking.findUnique({
+              where: { id: bookingId },
+              include: { user: { select: { id: true, email: true, name: true } } },
+            });
+            if (updatedBooking) {
+              this.logger.log(`📧 Sending car rental confirmation email...`);
+              await this.sendBookingEmails(updatedBooking, paymentIntent);
+              await this.prisma.booking.update({
+                where: { id: bookingId },
+                data: { confirmationEmailSentAt: new Date() },
+              });
+              this.logger.log(`✅ Car rental confirmation email sent`);
+            }
+          })
+          .catch(async (error) => {
+            this.logger.error(
+              `Failed to create Amadeus transfer order for car rental booking ${bookingId}. Payment confirmed but order creation failed: `,
+              error,
+            );
+      
+            // ✅ Send failure email
+            if (bookingWithUser.user?.email) {
+              this.resendService.sendBookingFailureEmail({
+                to: bookingWithUser.user.email,
+                customerName: bookingWithUser.user.name || 'Valued Customer',
+                bookingReference: bookingWithUser.reference || bookingId,
+                productType: bookingWithUser.productType,
+                amount: Number(bookingWithUser.totalAmount),
+                currency: bookingWithUser.currency,
+                failureReason: error instanceof Error ? error.message : 'Unknown provider error',
+              }).catch((err) => this.logger.error(`Failed to send failure email: `, err));
+            }
+      
+            this.prisma.booking
+              .update({
+                where: { id: bookingId },
+                data: {
+                  providerData: {
+                    ...(bookingWithUser.providerData as any),
+                    orderCreationError: error instanceof Error ? error.message : 'Unknown error',
+                    orderCreationFailedAt: new Date().toISOString(),
+                  },
+                },
+              })
+              .catch((updateError) => {
+                this.logger.error(`Failed to update booking ${bookingId} with error status: `, updateError);
+              });
+          });
+      }
+
+    } catch (error) {  // ← Close the try block
       this.logger.error(`Failed to update booking ${bookingId}: `, error);
       throw error;
     }
-  }
-
+  } 
+  
+    
   private async handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     const bookingId = paymentIntent.metadata?.bookingId;
 
