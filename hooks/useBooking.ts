@@ -1607,7 +1607,7 @@ console.log("💰 Wakanow total amount (with positive check):", {
           const carServiceFee = priceInNgn * (carServiceFeePercentage / 100);
           const carTotalAmount = priceInNgn + carMarkupAmount + carServiceFee;
           
-          console.log('🚗 Car rental pricing in NGN:', {
+          console.log(' Car rental pricing in NGN:', {
             priceInNgn,
             carMarkupAmount,
             carServiceFee,
@@ -1633,7 +1633,7 @@ console.log("💰 Wakanow total amount (with positive check):", {
           };
           
           
-          console.log("🚗 Car rental booking payload:", {
+          console.log(" Car rental booking payload:", {
             offerId: body.offerId,
             bookingData: {
               flight_number: body.bookingData.flight_number,
@@ -1648,16 +1648,11 @@ console.log("💰 Wakanow total amount (with positive check):", {
 
         const token = getStoredAuthToken();
   
-        // ============================================================
-        // ✅ WAKANOW FLOW (UNCHANGED)
-        // ============================================================
+      
         if (provider === 'WAKANOW' && (productType === 'FLIGHT_DOMESTIC' || productType === 'FLIGHT_INTERNATIONAL')) {
-          // ... existing Wakanow code (unchanged)
+          
         }
         
-        // ============================================================
-        // ✅ DUFFEL: Clean passenger info
-        // ============================================================
         let cleanedPassengerInfo = body.passengerInfo;
         
         if (provider === 'DUFFEL') {
@@ -1684,7 +1679,7 @@ console.log("💰 Wakanow total amount (with positive check):", {
           headers["Authorization"] = `Bearer ${token}`;
         }
   
-        console.log("📤 Sending booking request:", {
+        console.log(" Sending booking request:", {
           endpoint,
           isGuest,
           hasToken: !!token,
@@ -1693,7 +1688,6 @@ console.log("💰 Wakanow total amount (with positive check):", {
           hasPriceBreakdown: !!body.priceBreakdown,
         });
 
-      // ✅ ADD THIS - Check passport fields before sending
 console.log('🔍 PASSPORT CHECK BEFORE SEND:', {
   PassportNumber: body.passengerInfo?.PassportNumber,
   bookingDataExpiry: body.bookingData?.expiryDate,
@@ -1701,8 +1695,7 @@ console.log('🔍 PASSPORT CHECK BEFORE SEND:', {
   bookingDataIssueCountryCode: body.bookingData?.passportIssueCountryCode,
 });
         
-        // ✅ ADD THIS - Log the full request body
-        console.log('🚀🚀🚀 FINAL REQUEST BODY:', JSON.stringify(body, null, 2));
+        console.log(' FINAL REQUEST BODY:', JSON.stringify(body, null, 2));
         
 
         
@@ -1715,8 +1708,7 @@ console.log('🔍 PASSPORT CHECK BEFORE SEND:', {
         let data: any;
         try {
           data = await res.json();
-          // ✅ ADD THIS
-          console.log('📥 API RESPONSE:', {
+          console.log(' API RESPONSE:', {
             status: res.status,
             ok: res.ok,
             data: data,
@@ -1803,13 +1795,13 @@ if (isGuest && passenger.email) {
         
         if (createdAny.reference) {
           pnrNumber = createdAny.reference;
-          console.log('✅ Found reference at top level:', pnrNumber);
+          console.log(' Found reference at top level:', pnrNumber);
         } else if (createdAny.bookingReference) {
           pnrNumber = createdAny.bookingReference;
-          console.log('✅ Found bookingReference at top level:', pnrNumber);
+          console.log(' Found bookingReference at top level:', pnrNumber);
         } else if (createdAny.pnr) {
           pnrNumber = createdAny.pnr;
-          console.log('✅ Found pnr at top level:', pnrNumber);
+          console.log(' Found pnr at top level:', pnrNumber);
         } else if (createdAny.Pnr) {
           pnrNumber = createdAny.Pnr;
           console.log('✅ Found Pnr at top level:', pnrNumber);
@@ -1872,14 +1864,12 @@ if (isGuest && passenger.email) {
             responseRootKeys: Object.keys(data),
           });
         }
-        
-        // ✅ If we have a booking ID but no reference, use booking ID as fallback
+      
         if (!(created as any).reference && created.id) {
           (created as any).reference = created.id;
           console.log('ℹ️ Using bookingId as reference:', created.id);
         }
         
-        // Store the PNR in a separate variable for later use
         const pnrValue = pnrNumber || (created as any).reference || created.id || null;
         
         console.log('📋 Final booking object:', {
@@ -1891,7 +1881,6 @@ if (isGuest && passenger.email) {
           pnrValue: pnrValue,
         });
         
-                // Add the PNR to the created object for use in the response
                 (created as any).pnrValue = pnrValue;
         
                 console.log('📋 Final booking object:', {
@@ -1903,7 +1892,6 @@ if (isGuest && passenger.email) {
                   pnrValue: pnrValue,
                 });
                 
-                // ✅ FIX: Set the booking state and return the created object
                 setBooking(created);
                 return created;
                 
@@ -1936,13 +1924,10 @@ if (isGuest && passenger.email) {
               let endpoint: string;
               let body: Record<string, any>;
           
-              // ✅ FIX: Try multiple sources for email
               let email = guestEmail;
               
-              // Try to get email from booking object
               if (!email && booking) {
                 const bookingAny = booking as any;
-                // Try all possible locations
                 email = bookingAny.passengerInfo?.email ||
                         bookingAny.email ||
                         bookingAny.bookingData?.passengerInfo?.email ||
@@ -1953,12 +1938,9 @@ if (isGuest && passenger.email) {
                         bookingAny.bookingData?.travellers?.[0]?.Email;
               }
               
-              // ✅ Try to get email from sessionStorage (for guest bookings)
               if (!email && typeof window !== 'undefined') {
-                // Check if we stored it during booking creation
                 email = sessionStorage.getItem('guest_booking_email') || '';
-                
-                // Also try to get from the selectedBooking
+
                 if (!email) {
                   const storedBooking = sessionStorage.getItem('selectedBooking');
                   if (storedBooking) {
@@ -1970,13 +1952,10 @@ if (isGuest && passenger.email) {
                 }
               }
               
-              // ✅ Try to get email from pendingPassengerInfo (if available in the hook)
-              // Note: pendingPassengerInfo is not in the current hook, but we can check booking.passengerInfo
               if (!email && booking) {
                 email = (booking as any).passengerInfo?.email || '';
               }
               
-              // ✅ Final check - if no email, show a better error
               if (!email) {
                 console.error('❌ No email found. Booking object:', booking);
                 console.error('❌ guestEmail:', guestEmail);
@@ -2004,7 +1983,7 @@ if (isGuest && passenger.email) {
                 endpoint = "/api/v1/payments/stripe/create-intent/guest";
                 body = { 
                   bookingReference: bookingReference!, 
-                  email: email,  // ✅ Use the email we found, not guestEmail
+                  email: email,  
                 };
               } 
               else {
@@ -2063,10 +2042,8 @@ if (isGuest && passenger.email) {
       setIsCreating(true);
       setError(null);
   
-      // ✅ Define realData FIRST
       const realData = item.realData || item;
       
-      // ✅ Extract dates using searchParams and realData
       const checkInDate = searchParams?.checkInDate || 
                         item.checkInDate || 
                         item.check_in_date || 
@@ -2079,13 +2056,11 @@ if (isGuest && passenger.email) {
                          realData.checkOutDate || 
                          '';
       
-      // ✅ Validate dates
       if (!checkInDate || !checkOutDate) {
         throw new Error('Missing check-in or check-out dates. Please go back and select dates.');
       }
   
       try {
-        // ✅ Extract the offer ID
         let offerId = '';
         
         console.log('🏨 createAmadeusHotelBooking - Input item:', {
@@ -2102,12 +2077,10 @@ if (isGuest && passenger.email) {
           checkOutDate,
         });
         
-        // Priority 1: Check for offer in selectedRoom
         if (item.selectedRoom?.offerId) {
           offerId = item.selectedRoom.offerId;
           console.log('🔑 Found offerId in selectedRoom:', offerId);
         }
-        // Priority 2: Check for offer in realData
         else if (item.realData?.offerId) {
           offerId = item.realData.offerId;
           console.log('🔑 Found offerId in realData:', offerId);

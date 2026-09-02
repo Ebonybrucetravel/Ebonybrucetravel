@@ -1949,8 +1949,19 @@ if (isCar) {
       }
     };
     
+    const passengerWithFlight = {
+      firstName: firstName || '',
+      lastName: lastName || '',
+      email: email || '',
+      phone: phone || '',
+      flightNumber: flightNumber,
+      flightDate: flightDate,
+      airlineCode: airlineCode || undefined,
+      flightTime: flightTime || undefined,
+    };
+    
     await onProceedToPayment(
-      paymentData as any,
+      passengerWithFlight,  
       voucherCode || undefined,
       undefined
     );
