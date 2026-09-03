@@ -6,6 +6,7 @@ import { useSearch } from '@/context/SearchContext';
 import FlightDetails from '@/components/FlightDetails';
 import { selectWakanowFlight } from '@/lib/wakanow-api';
 import toast from 'react-hot-toast';
+import { AlertCircle } from 'lucide-react';
 
 export default function FlightDetailPage() {
   const router = useRouter();
@@ -18,6 +19,15 @@ export default function FlightDetailPage() {
   
   const hasFetchedRef = useRef(false);
   const isMountedRef = useRef(true);
+
+  const brandColors = {
+    primary: '#33a8da',
+    primaryDark: '#2c98c7',
+    primaryLight: '#e8f4fa',
+    background: '#f8fafc',
+    text: '#1a1a2e',
+    textSecondary: '#6b7280',
+  };
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -35,16 +45,12 @@ export default function FlightDetailPage() {
       
       console.log('🔍 Looking for flight with ID:', flightId);
 
-      // ✅ FIRST: Check sessionStorage for pre-fetched data (from handleViewDetails)
       const savedFlightDetails = sessionStorage.getItem('selectedFlightDetails');
       if (savedFlightDetails) {
         try {
           const parsed = JSON.parse(savedFlightDetails);
           if (parsed.id === flightId) {
-            console.log('✅ Found pre-fetched flight data in sessionStorage - USING THIS!');
-            console.log('✅ Has slices:', !!parsed.slices, 'slices length:', parsed.slices?.length);
-            console.log('✅ Has baggage:', !!parsed.freeBaggage);
-            console.log('✅ Has fare_rules:', parsed.fare_rules?.length);
+            console.log('✅ Found pre-fetched flight data in sessionStorage');
             
             if (isMountedRef.current) {
               setFlight(parsed);
@@ -52,26 +58,21 @@ export default function FlightDetailPage() {
               setIsLoading(false);
             }
             hasFetchedRef.current = true;
-            // ✅ Don't clear here - keep for component
             return;
-          } else {
-            console.log('⚠️ Saved flight ID mismatch:', parsed.id, 'vs', flightId);
           }
         } catch (e) {
           console.error('Failed to parse saved flight details:', e);
         }
       }
 
-      // ✅ SECOND: If not in sessionStorage, try search results
       let foundFlight = null;
       if (flightId && searchResults.length > 0) {
         foundFlight = searchResults.find(f => f.id === flightId);
         if (foundFlight) {
-          console.log('✅ Found flight in search results (fallback)');
+          console.log('✅ Found flight in search results');
         }
       }
 
-      // ✅ THIRD: If not in search results, try sessionStorage (fallback)
       if (!foundFlight) {
         const savedFlight = sessionStorage.getItem('selectedFlight');
         if (savedFlight) {
@@ -79,7 +80,7 @@ export default function FlightDetailPage() {
             const parsed = JSON.parse(savedFlight);
             if (parsed.id === flightId) {
               foundFlight = parsed;
-              console.log('✅ Found flight in sessionStorage (fallback)');
+              console.log('✅ Found flight in sessionStorage');
             }
           } catch (e) {
             console.error('Failed to parse saved flight:', e);
@@ -87,7 +88,6 @@ export default function FlightDetailPage() {
         }
       }
 
-      // ✅ FOURTH: If we have a selected item from context, use it
       if (!foundFlight && selectedItem) {
         foundFlight = selectedItem;
         console.log('✅ Using selected item from context');
@@ -101,15 +101,10 @@ export default function FlightDetailPage() {
         }
         hasFetchedRef.current = true;
         
-        // ✅ ONLY fetch Wakanow data if it's a Wakanow flight AND we don't have it already
         if (foundFlight.isWakanow && foundFlight.selectData) {
-          if (foundFlight._wakanowData || foundFlight.fare_rules?.length > 0) {
-            console.log('✅ Already have Wakanow data, skipping fetch');
-          } else {
+          if (!foundFlight._wakanowData && !foundFlight.fare_rules?.length) {
             await fetchWakanowData(foundFlight);
           }
-        } else {
-          console.log('⏭️ Not a Wakanow flight (Duffel or other), skipping fetch');
         }
         return;
       }
@@ -122,13 +117,13 @@ export default function FlightDetailPage() {
     };
 
     findFlight();
-  }, [flightId]); // ✅ Only depend on flightId
+  }, [flightId]);
 
   const fetchWakanowData = async (flightData: any) => {
     if (isFetchingWakanowData) return;
     
     if (flightData._wakanowData || flightData.fare_rules?.length > 0) {
-      console.log('✅ Already have enriched Wakanow data, skipping fetch');
+      console.log('✅ Already have enriched Wakanow data');
       return;
     }
     
@@ -185,47 +180,100 @@ export default function FlightDetailPage() {
     }
   };
 
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      sessionStorage.removeItem('selectedFlight');
+      sessionStorage.removeItem('selectedFlightDetails');
+      router.back();
+    }
+  };
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        sessionStorage.removeItem('selectedFlight');
+        sessionStorage.removeItem('selectedFlightDetails');
+        router.back();
+      }
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [router]);
+
+
   if (isLoading || isFetchingWakanowData) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-50 border-t-[#33a8da] rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-500">
-            {isFetchingWakanowData ? 'Loading flight details...' : 'Searching for flight...'}
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
+        <div className="bg-white rounded-2xl p-12 shadow-2xl text-center max-w-md w-full backdrop-blur-sm">
+          <div className="w-16 h-16 border-4 border-blue-50 border-t-[#33a8da] rounded-full animate-spin mx-auto mb-6"></div>
+          <h3 className="text-xl font-black text-gray-900">
+            {isFetchingWakanowData ? 'Loading Flight Details' : 'Searching for Flight'}
+          </h3>
+          <p className="text-sm text-gray-500 font-medium mt-2">
+            {isFetchingWakanowData ? 'Please wait while we fetch the latest information...' : 'Looking for your flight...'}
           </p>
         </div>
       </div>
     );
   }
 
+
   if (!flight) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-20 text-center">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">Flight Not Found</h1>
-        <p className="text-gray-600 mb-8">The flight you're looking for doesn't exist or has expired.</p>
-        <button 
-          onClick={() => router.push('/search')} 
-          className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c8cb7] transition-colors"
-        >
-          Back to Search
-        </button>
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
+        <div className="bg-white rounded-2xl p-12 shadow-2xl text-center max-w-md w-full">
+          <div className="w-16 h-16 bg-yellow-50 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertCircle size={32} className="text-yellow-500" />
+          </div>
+          <h3 className="text-xl font-black text-gray-900">Flight Not Found</h3>
+          <p className="text-sm text-gray-500 font-medium mb-6">The flight you're looking for doesn't exist or has expired.</p>
+          <button 
+            onClick={() => router.push('/search')} 
+            className="px-6 py-3 text-white font-bold rounded-lg transition hover:shadow-lg active:scale-95 w-full"
+            style={{ backgroundColor: brandColors.primary }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = brandColors.primaryDark;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = brandColors.primary;
+            }}
+          >
+            Back to Search
+          </button>
+        </div>
       </div>
     );
   }
 
+ 
   return (
-    <FlightDetails
-      item={flight}
-      searchParams={searchParams}
-      onBack={() => {
-        sessionStorage.removeItem('selectedFlight');
-        sessionStorage.removeItem('selectedFlightDetails');
-        router.back();
-      }}
-      onBook={() => {
-        sessionStorage.setItem('selectedBooking', JSON.stringify(flight));
-        router.push('/booking/review');
-      }}
-    />
+    <div 
+      className="fixed inset-0 z-50 overflow-y-auto" 
+      style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+      onClick={handleOverlayClick}
+    >
+      
+      <div className="fixed inset-0 backdrop-blur-sm pointer-events-none"></div>
+    
+      <div className="relative z-10 min-h-screen flex items-start justify-center py-8 px-4">
+        <div className="w-full max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-300">
+         
+          <FlightDetails
+            item={flight}
+            searchParams={searchParams}
+            onBack={() => {
+              sessionStorage.removeItem('selectedFlight');
+              sessionStorage.removeItem('selectedFlightDetails');
+              router.back();
+            }}
+            onBook={() => {
+              sessionStorage.setItem('selectedBooking', JSON.stringify(flight));
+              router.push('/booking/review');
+            }}
+            isOverlay={true}
+          />
+        </div>
+      </div>
+    </div>
   );
 }
