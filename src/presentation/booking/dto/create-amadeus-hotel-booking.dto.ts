@@ -434,9 +434,25 @@ export class CreateAmadeusHotelBookingDto {
   @Type(() => AmadeusRoomAssociationDto)
   roomAssociations: AmadeusRoomAssociationDto[];
 
+  // ============================================================
+  // ✅ PAYMENT METHOD ID (PCI COMPLIANT - LIVE MODE)
+  // ============================================================
   @ApiPropertyOptional({
-    description:
-      'Payment card (guest card). Omit when using merchant payment model: customer pays via Stripe only, agency pays Amadeus.',
+    description: 'Stripe PaymentMethod ID for PCI compliant payments. ' +
+      'When provided, this is used instead of raw card details. ' +
+      'Required for live mode. Omit only when using raw card in test mode.',
+    example: 'pm_card_visa',
+  })
+  @IsOptional()
+  @IsString()
+  paymentMethodId?: string;
+
+  // ============================================================
+  // ✅ LEGACY RAW CARD (TEST MODE ONLY - NOT PCI COMPLIANT)
+  // ============================================================
+  @ApiPropertyOptional({
+    description: 'Payment card (guest card). Omit when using paymentMethodId. ' +
+      '⚠️ WARNING: Only for test mode. Use paymentMethodId for live mode.',
     type: AmadeusPaymentDto,
   })
   @IsOptional()
@@ -469,8 +485,7 @@ export class CreateAmadeusHotelBookingDto {
   cancellationDeadline: string;
 
   @ApiProperty({
-    description:
-      'Exact cancellation policy text shown at checkout (snapshot for dispute evidence). Must match what the guest saw.',
+    description: 'Exact cancellation policy text shown at checkout (snapshot for dispute evidence). Must match what the guest saw.',
     example: 'Free cancellation until 14 Feb 2026 23:59 UTC. Non-refundable after that.',
   })
   @IsString()

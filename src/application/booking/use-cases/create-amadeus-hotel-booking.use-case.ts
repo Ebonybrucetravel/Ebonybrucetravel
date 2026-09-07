@@ -63,6 +63,7 @@ export class CreateAmadeusHotelBookingUseCase {
         checkInInstructions,
         specialFeatures,
         languagesSpoken,
+        paymentMethodId, // ✅ NEW: Accept PaymentMethod ID
       } = dto;
 
       if (!policyAccepted) {
@@ -76,46 +77,39 @@ export class CreateAmadeusHotelBookingUseCase {
         throw new BadRequestException('Invalid cancellation deadline. Use ISO 8601 format (e.g. 2026-02-14T23:59:00.000Z).');
       }
 
-     // ==================== PRICING CALCULATION (FIXED) ====================
+      // ==================== PRICING CALCULATION ====================
+      const markupConfig = await this.markupRepository.findActiveMarkupByProductType('HOTEL', currency);
 
-const markupConfig = await this.markupRepository.findActiveMarkupByProductType('HOTEL', currency);
+      if (!markupConfig) {
+        throw new NotFoundException(`No active markup configuration found for HOTEL in ${currency}`);
+      }
 
-if (!markupConfig) {
-  throw new NotFoundException(`No active markup configuration found for HOTEL in ${currency}`);
-}
+      const frontendTotalAmount = typeof offerPrice === 'number' 
+        ? offerPrice 
+        : parseFloat(offerPrice as any || '0');
 
-const frontendTotalAmount = typeof offerPrice === 'number' 
-  ? offerPrice 
-  : parseFloat(offerPrice as any || '0');
+      const markupPercentage = markupConfig.markupPercentage || 0;
+      const serviceFeePercentage = markupConfig.serviceFeePercentage || 0;
 
-// ✅ Get percentages from markup config
-const markupPercentage = markupConfig.markupPercentage || 0;
-const serviceFeePercentage = markupConfig.serviceFeePercentage || 0;
+      const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100);
+      const calculatedBasePrice = frontendTotalAmount / totalFactor;
 
-// ✅ Calculate base price correctly
-// totalAmount = basePrice + (basePrice * markupPercentage / 100) + (basePrice * serviceFeePercentage / 100)
-// totalAmount = basePrice * (1 + markupPercentage/100 + serviceFeePercentage/100)
-const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100);
-const calculatedBasePrice = frontendTotalAmount / totalFactor;
+      if (calculatedBasePrice <= 0) {
+        throw new BadRequestException('Invalid offer price. Price must be greater than 0.');
+      }
 
-if (calculatedBasePrice <= 0) {
-  throw new BadRequestException('Invalid offer price. Price must be greater than 0.');
-}
+      const calculatedMarkupAmount = (calculatedBasePrice * markupPercentage) / 100;
+      const calculatedServiceFee = (calculatedBasePrice * serviceFeePercentage) / 100;
+      const calculatedTotal = calculatedBasePrice + calculatedMarkupAmount + calculatedServiceFee;
 
-// ✅ Calculate all components
-const calculatedMarkupAmount = (calculatedBasePrice * markupPercentage) / 100;
-const calculatedServiceFee = (calculatedBasePrice * serviceFeePercentage) / 100;
-const calculatedTotal = calculatedBasePrice + calculatedMarkupAmount + calculatedServiceFee;
+      const pricing = {
+        basePrice: calculatedBasePrice,
+        markupAmount: calculatedMarkupAmount,
+        serviceFee: calculatedServiceFee,
+        totalAmount: calculatedTotal,
+      };
 
-const pricing = {
-  basePrice: calculatedBasePrice,
-  markupAmount: calculatedMarkupAmount,
-  serviceFee: calculatedServiceFee,
-  totalAmount: calculatedTotal, // Should match frontendTotalAmount
-};
-
-this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pricing.markupAmount} (${markupPercentage}%), Service Fee: ${pricing.serviceFee} (${serviceFeePercentage}%), Total: ${pricing.totalAmount}`);
-
+      this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pricing.markupAmount} (${markupPercentage}%), Service Fee: ${pricing.serviceFee} (${serviceFeePercentage}%), Total: ${pricing.totalAmount}`);
 
       const leadGuest = dto.guests[0];
       const passengerInfo = {
@@ -134,8 +128,18 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
         })),
       };
 
+      // ✅ NEW: Handle paymentMethodId (PCI compliant) OR legacy raw card
       let paymentCardInfo: any = null;
-      if (dto.payment) {
+      let storedPaymentMethodId: string | null = null;
+
+      // Check if we have a PaymentMethod ID (PCI compliant - live mode)
+      if (paymentMethodId) {
+        this.logger.log(`💳 Using PaymentMethod ID for hotel booking: ${paymentMethodId.substring(0, 10)}...`);
+        storedPaymentMethodId = paymentMethodId;
+        // We store the PaymentMethod ID but NOT raw card details
+      } 
+      // Legacy: Check if we have raw card details (test mode only)
+      else if (dto.payment) {
         const cardDetails = {
           vendorCode: dto.payment.paymentCard.paymentCardInfo.vendorCode,
           cardNumber: dto.payment.paymentCard.paymentCardInfo.cardNumber,
@@ -151,9 +155,10 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
           expiryDate: dto.payment.paymentCard.paymentCardInfo.expiryDate,
           holderName: dto.payment.paymentCard.paymentCardInfo.holderName,
         };
+        this.logger.warn('⚠️ Using raw card details (test mode only - not PCI compliant for live)');
       } else if (!this.agencyCardService.isMerchantModel()) {
         throw new BadRequestException(
-          'Payment card is required. Omit only when PAYMENT_MODEL=merchant (customer pays via Stripe; agency pays Amadeus).',
+          'Payment card or PaymentMethod ID is required. Omit only when PAYMENT_MODEL=merchant.',
         );
       }
 
@@ -184,6 +189,8 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
         hotelAddress: hotelDetailsObj.hotelAddress,
         hotelCity: hotelDetailsObj.hotelCity,
         hotelCountry: hotelDetailsObj.hotelCountry,
+        hasPaymentMethodId: !!storedPaymentMethodId,
+        hasRawCard: !!paymentCardInfo,
       });
 
       const booking = await this.bookingService.createBooking({
@@ -201,6 +208,8 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
           guests: dto.guests,
           payment_method: dto.payment?.method ?? 'CREDIT_CARD',
           ...(paymentCardInfo && { payment_card_info: paymentCardInfo }),
+          // ✅ NEW: Store PaymentMethod ID for PCI compliance
+          ...(storedPaymentMethodId && { paymentMethodId: storedPaymentMethodId }),
           travel_agent_email: dto.travelAgentEmail,
           accommodation_special_requests: dto.accommodationSpecialRequests,
           offer_price: dto.offerPrice,
@@ -217,8 +226,9 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
           },
           checkInDate: checkInDate,
           checkOutDate: checkOutDate,
-          // ✅ STORE HOTEL DETAILS
           hotelDetails: hotelDetailsObj,
+          // ✅ Mark if using PaymentMethod (for logging/reference)
+          is_pci_compliant: !!storedPaymentMethodId,
         },
         passengerInfo,
         status: BookingStatus.PENDING,
@@ -233,6 +243,7 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
       this.logger.log(`✅ Booking created with hotel name: ${hotelDetailsObj.hotelName}`);
       this.logger.log(`📅 Saved dates - Check-in: ${checkInDate}, Check-out: ${checkOutDate}`);
       this.logger.log(`💰 Original price for Amadeus: ${dto.offerPrice} ${dto.currency}`);
+      this.logger.log(`💳 Payment method: ${storedPaymentMethodId ? 'PCI Compliant (PaymentMethod ID)' : 'Legacy Raw Card'}`);
 
       return {
         booking,
@@ -252,6 +263,8 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
   /**
    * Step 2: Create actual Amadeus booking (after payment succeeds)
    * This is called from the Stripe webhook handler after payment confirmation.
+   * 
+   * ✅ UPDATED: Now supports both PaymentMethod ID (PCI compliant) and raw card (legacy)
    */
   async createAmadeusBookingAfterPayment(bookingId: string): Promise<{ orderId: string; orderData: any }> {
     try {
@@ -308,6 +321,9 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
         ];
       }
 
+      // ✅ NEW: Try to get PaymentMethod ID first (PCI compliant)
+      const paymentMethodId = bookingData.paymentMethodId;
+      
       let cardDetails: {
         vendorCode: string;
         cardNumber: string;
@@ -316,8 +332,20 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
         securityCode?: string;
       } | null = null;
 
-      if (bookingData.payment_card_info?.encrypted) {
+      // ✅ If we have a PaymentMethod ID, use agency card for Amadeus
+      if (paymentMethodId) {
+        this.logger.log(`💳 Using PaymentMethod ID for booking ${bookingId}, using agency card for Amadeus`);
+        cardDetails = this.agencyCardService.getAmadeusAgencyCard();
+        if (!cardDetails) {
+          throw new BadRequestException(
+            'Agency card not configured. Set AMADEUS_AGENCY_CARD_ENCRYPTED to use PaymentMethod ID flow.'
+          );
+        }
+      } 
+      // ✅ Legacy: Try to decrypt raw card (test mode only)
+      else if (bookingData.payment_card_info?.encrypted) {
         try {
+          this.logger.warn(`⚠️ Using raw card decryption (legacy mode - not PCI compliant for live)`);
           cardDetails = this.encryptionService.decryptCardDetails(bookingData.payment_card_info.encrypted);
         } catch (error) {
           this.logger.error(`Failed to decrypt card details for booking ${bookingId}`);
@@ -346,6 +374,7 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
 
       this.logger.log(`💰 Sending ORIGINAL price to Amadeus: ${JSON.stringify(priceForAmadeus)}`);
       this.logger.log(`🏨 Hotel Offer ID: ${offerId}, Currency: ${originalCurrency}, Price: ${originalTotal}`);
+      this.logger.log(`💳 Payment method: ${paymentMethodId ? 'PCI Compliant (PaymentMethod ID + Agency Card)' : 'Legacy Raw Card'}`);
 
       try {
         this.logger.log(`🔄 Re-pricing offer ${offerId} before booking...`);
@@ -379,6 +408,7 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
         email: g.contact?.email || g.email,
       }));
 
+      // ✅ Build Amadeus request payload with card details
       const amadeusRequestPayload = {
         data: {
           type: "hotel-order",
@@ -411,7 +441,7 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
         }
       };
 
-      this.logger.log(`📤 Sending to Amadeus: ${JSON.stringify(amadeusRequestPayload, null, 2)}`);
+      this.logger.log(`📤 Sending to Amadeus with ${paymentMethodId ? 'PCI compliant' : 'legacy'} payment method`);
 
       const amadeusBooking = await this.amadeusService.createHotelBooking(amadeusRequestPayload);
 
@@ -421,7 +451,19 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
       this.logger.log(`✅ Amadeus response - Order ID: ${hotelOrderId}, Booking ID: ${hotelBookingId}`);
 
       const updatedBookingData = { ...bookingData };
-      if (bookingData.payment_card_info) {
+      
+      // ✅ Clear sensitive data after successful booking
+      if (paymentMethodId) {
+        // Keep PaymentMethod ID for reference but clear raw card if present
+        if (updatedBookingData.payment_card_info) {
+          updatedBookingData.payment_card_info = {
+            ...updatedBookingData.payment_card_info,
+            encrypted: null, // Clear encrypted raw card
+          };
+        }
+        this.logger.log(`✅ Kept PaymentMethod ID for reference, cleared raw card data`);
+      } else if (bookingData.payment_card_info) {
+        // Legacy: Clear encrypted card data after use
         updatedBookingData.payment_card_info = {
           ...bookingData.payment_card_info,
           encrypted: null,
@@ -437,6 +479,7 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
         hotel_booking_id: hotelBookingId,  
         created_at: new Date().toISOString(),
         request_payload: amadeusRequestPayload,
+        payment_method_type: paymentMethodId ? 'PCI_COMPLIANT_PAYMENT_METHOD_ID' : 'LEGACY_RAW_CARD',
       };
 
       await this.prisma.booking.update({
@@ -507,7 +550,6 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
       const bookingData = booking.bookingData as any;
       const passengerInfo = booking.passengerInfo as any;
       
-      // ✅ Extract hotel details from bookingData
       const hotelDetails = bookingData.hotelDetails || {};
       
       this.logger.log(`📤 Extracting hotel details from booking:`, {
@@ -516,7 +558,6 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
         hotelCity: hotelDetails.hotelCity,
       });
 
-      // Get customer email
       const customerEmail = passengerInfo?.email || 
                             bookingData?.guests?.[0]?.contact?.email ||
                             bookingData?.guests?.[0]?.email ||
@@ -527,14 +568,12 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
         return;
       }
 
-      // Get customer name
       const customerName = passengerInfo?.firstName && passengerInfo?.lastName
         ? `${passengerInfo.firstName} ${passengerInfo.lastName}`
         : bookingData?.guests?.[0]?.name?.firstName && bookingData?.guests?.[0]?.name?.lastName
           ? `${bookingData.guests[0].name.firstName} ${bookingData.guests[0].name.lastName}`
           : 'Valued Customer';
 
-      // ✅ Get the hotel name with proper fallback
       const hotelName = hotelDetails.hotelName || 
                         bookingData.hotelName || 
                         'Hotel';
@@ -555,7 +594,6 @@ this.logger.log(`💰 Price breakdown - Base: ${pricing.basePrice}, Markup: ${pr
       const adults = guests.filter((g: any) => g.type === 'ADULT' || g.name?.title).length || guests.length || 1;
       const children = guests.filter((g: any) => g.type === 'CHILD').length || 0;
 
-      // ✅ Send email with all hotel details
       await this.resendService.sendBookingConfirmationEmail({
         to: customerEmail,
         customerName: customerName,

@@ -251,6 +251,19 @@ export class CreateGuestBookingDto {
   totalAmount?: number;
 
   // ============================================================
+  // ✅ STRIPE PAYMENT METHOD ID (PCI COMPLIANT)
+  // ============================================================
+  @ApiPropertyOptional({
+    description: 'Stripe PaymentMethod ID for PCI compliant payments. ' +
+      'When provided, no raw card details are stored on the server. ' +
+      'Required for hotel and car rental bookings in live mode.',
+    example: 'pm_card_visa',
+  })
+  @IsString()
+  @IsOptional()
+  paymentMethodId?: string;
+
+  // ============================================================
   // ✅ WAKANOW FIELDS
   // ============================================================
   @ApiPropertyOptional({ description: 'Wakanow booking ID' })

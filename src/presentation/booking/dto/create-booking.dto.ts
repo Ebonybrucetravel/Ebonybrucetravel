@@ -204,90 +204,6 @@ export class PriceBreakdownDto {
 
 /**
  * Payload to create a booking.
- *
- * @example Domestic flight (Duffel)
- * {
- *   "productType": "FLIGHT_DOMESTIC",
- *   "provider": "DUFFEL",
- *   "basePrice": 185.50,
- *   "currency": "GBP",
- *   "offerId": "off_00009htYpSCXrwaB9DnUm0",
- *   "bookingData": { "offerId": "off_00009htYpSCXrwaB9DnUm0" },
- *   "passengerInfo": {
- *     "firstName": "Jane",
- *     "lastName": "Doe",
- *     "email": "jane@example.com",
- *     "title": "mrs",
- *     "gender": "f",
- *     "dateOfBirth": "1990-05-15",
- *     "phone": "+447123456789"
- *   }
- * }
- *
- * @example International flight with passport (Duffel)
- * {
- *   "productType": "FLIGHT_INTERNATIONAL",
- *   "provider": "DUFFEL",
- *   "basePrice": 450.00,
- *   "currency": "GBP",
- *   "offerId": "off_00009htYpSCXrwaB9DnUm0",
- *   "offerRequestId": "orq_00009htYpSCXrwaB9DnUm0",
- *   "offerData": {
- *     "id": "off_00009htYpSCXrwaB9DnUm0",
- *     "total_amount": "450.00",
- *     "total_currency": "GBP",
- *     "passengers": [...]
- *   },
- *   "bookingData": { "offerId": "off_00009htYpSCXrwaB9DnUm0" },
- *   "passengerInfo": {
- *     "firstName": "Jane",
- *     "lastName": "Doe",
- *     "email": "jane@example.com",
- *     "title": "mrs",
- *     "gender": "f",
- *     "dateOfBirth": "1990-05-15",
- *     "phone": "+447123456789",
- *     "identityDocuments": [{
- *       "type": "passport",
- *       "uniqueIdentifier": "AB1234567",
- *       "issuingCountryCode": "GB",
- *       "expiresOn": "2030-06-15"
- *     }],
- *     "loyaltyProgrammeAccounts": [{
- *       "airlineIataCode": "BA",
- *       "accountNumber": "12901014"
- *     }]
- *   }
- * }
- *
- * @example Wakanow flight with price breakdown
- * {
- *   "productType": "FLIGHT_DOMESTIC",
- *   "provider": "WAKANOW",
- *   "bookingData": { "flightSummary": {...} },
- *   "passengerInfo": {
- *     "firstName": "John",
- *     "lastName": "Doe",
- *     "email": "john@example.com",
- *     "phone": "+2348000000000",
- *     "address": "No 1, Guest Street",
- *     "city": "Lagos",
- *     "country": "Nigeria",
- *     "countryCode": "NG",
- *     "postalCode": "100001"
- *   },
- *   "priceBreakdown": {
- *     "basePrice": 204028.73,
- *     "markupAmount": 20402.87,
- *     "markupPercentage": 10,
- *     "serviceFee": 10201.44,
- *     "serviceFeePercentage": 5,
- *     "taxes": 30604.31,
- *     "taxPercentage": 15,
- *     "totalAmount": 244833.04,
- *     "currency": "NGN"
- *   }
- * }
  */
 export class CreateBookingDto {
   @ApiProperty({ enum: ProductType })
@@ -371,7 +287,21 @@ export class CreateBookingDto {
   @IsOptional()
   pnrNumber?: string;
 
-  // ✅ New price breakdown field
+  // ============================================================
+  // ✅ STRIPE PAYMENT METHOD ID (PCI COMPLIANT)
+  // ============================================================
+  @ApiPropertyOptional({
+    description: 'Stripe PaymentMethod ID for PCI compliant payments. ' +
+      'When provided, no raw card details are stored on the server.',
+    example: 'pm_card_visa',
+  })
+  @IsString()
+  @IsOptional()
+  paymentMethodId?: string;
+
+  // ============================================================
+  // ✅ PRICE BREAKDOWN
+  // ============================================================
   @ApiPropertyOptional({
     description: 'Complete price breakdown including base price, markup, service fee, and taxes',
     type: PriceBreakdownDto,
@@ -461,7 +391,7 @@ export class CreateBookingDto {
     return this.taxPercentage || this.priceBreakdown?.taxPercentage || 15;
   }
 
-  // ✅ Type guard helpers
+ 
   isDuffel(): boolean {
     return this.provider === Provider.DUFFEL;
   }

@@ -758,7 +758,7 @@ export class HandleStripeWebhookUseCase {
           });
       }
 
-    } catch (error) {  // ← Close the try block
+    } catch (error) {  
       this.logger.error(`Failed to update booking ${bookingId}: `, error);
       throw error;
     }

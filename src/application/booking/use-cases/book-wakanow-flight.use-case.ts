@@ -22,12 +22,25 @@ export class BookWakanowFlightUseCase {
     private readonly markupCalculationService: MarkupCalculationService,
   ) {}
 
-  async execute(dto: BookWakanowFlightDto, userId: string) {
-    const { passengers, bookingId, selectData, targetCurrency = 'NGN', priceBreakdown, isMultiCity = false,  allSegments = []   } = dto;
+ 
+    async execute(dto: BookWakanowFlightDto, userId: string) {
+   
+      this.logger.log('🔍 DEBUG - Full DTO contents:', {
+        bookingId: dto.bookingId,
+        selectDataLength: dto.selectData?.length,
+        hasBookingData: !!dto.bookingData,
+        bookingDataKeys: dto.bookingData ? Object.keys(dto.bookingData) : [],
+        originalShortTokenFromBookingData: dto.bookingData?.originalShortToken,
+        originalShortTokenFromTopLevel: dto.originalShortToken,
+        fullBookingData: dto.bookingData ? JSON.stringify(dto.bookingData) : 'null',
+      });
+    
+      const { passengers, bookingId, selectData, targetCurrency = 'NGN', priceBreakdown, isMultiCity = false, allSegments = [] } = dto;
+    
     this.logger.log(`📍 DTO received: isMultiCity=${isMultiCity}, segments=${allSegments.length}`);
-if (allSegments.length > 0) {
-  this.logger.log(`📍 Segments: ${JSON.stringify(allSegments, null, 2)}`);
-}
+    if (allSegments.length > 0) {
+      this.logger.log(`📍 Segments: ${JSON.stringify(allSegments, null, 2)}`);
+    }
   
     this.logger.log(`📝 Booking Wakanow flight. BookingId: ${bookingId}`);
     this.logger.log(`👤 UserId: ${userId}`);
@@ -39,55 +52,59 @@ if (allSegments.length > 0) {
     this.validatePriceBreakdown(priceBreakdown);
   
     const existingBooking = await this.bookingRepository.findByProviderBookingId(bookingId);
-    
+  
     if (existingBooking) {
       this.logger.log(`Booking ${bookingId} already exists, returning existing`);
       return this.buildExistingBookingResponse(existingBooking);
     }
   
-
     this.validatePassengers(passengers);
   
-    
-   // ✅ Normalize all passenger dates before sending to Wakanow
-const normalizedPassengers = passengers.map((p) => ({
-  ...p,
-  dateOfBirth: this.normalizeDate(p.dateOfBirth),
-}));
-
-// ✅ Log the normalized dates for debugging
-normalizedPassengers.forEach((p, idx) => {
-  this.logger.log(`🔍 Passenger ${idx + 1} normalized DOB: "${p.dateOfBirth}"`);
-});
-
-const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.map((p) => ({
-  PassengerType: p.passengerType || 'Adult',
-  FirstName: p.firstName,
-  MiddleName: p.middleName || '',
-  LastName: p.lastName,
-  DateOfBirth: p.dateOfBirth,  // ✅ Now normalized to YYYY-MM-DD
-  PhoneNumber: p.phoneNumber,
-  Email: p.email,
-  Gender: p.gender,
-  Title: p.title,
-  PassportNumber: p.PassportNumber || '',
-  ExpiryDate: p.ExpiryDate || '',
-  PassportIssuingAuthority: p.PassportIssuingAuthority || '',
-  PassportIssueCountryCode: p.PassportIssueCountryCode || '',
-  Address: p.address || '123 Fake Street',
-  Country: p.country || 'Nigeria',
-  CountryCode: p.countryCode || 'NG',
-  City: p.city || 'Lagos',
-  PostalCode: p.postalCode || '100001',
-  IsWakapointRegister: false,
-}));
+    // ✅ Normalize all passenger dates before sending to Wakanow
+    const normalizedPassengers = passengers.map((p) => ({
+      ...p,
+      dateOfBirth: this.normalizeDate(p.dateOfBirth),
+    }));
   
+    normalizedPassengers.forEach((p, idx) => {
+      this.logger.log(`🔍 Passenger ${idx + 1} normalized DOB: "${p.dateOfBirth}"`);
+    });
+  
+    // ✅ Use the SelectData from the DTO directly (frontend already called /select)
+    // The frontend has already called selectFlight() and got valid SelectData
+    this.logger.log('✅ Using SelectData from DTO (frontend already called selectFlight)');
+    const heldSelectData = selectData; // Use the DTO's selectData directly
+  
+    // ✅ Build passenger details
+    const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.map((p) => ({
+      PassengerType: p.passengerType || 'Adult',
+      FirstName: p.firstName,
+      MiddleName: p.middleName || '',
+      LastName: p.lastName,
+      DateOfBirth: p.dateOfBirth,
+      PhoneNumber: p.phoneNumber,
+      Email: p.email,
+      Gender: p.gender,
+      Title: p.title,
+      PassportNumber: p.PassportNumber || '',
+      ExpiryDate: p.ExpiryDate || '',
+      PassportIssuingAuthority: p.PassportIssuingAuthority || '',
+      PassportIssueCountryCode: p.PassportIssueCountryCode || '',
+      Address: p.address || '123 Fake Street',
+      Country: p.country || 'Nigeria',
+      CountryCode: p.countryCode || 'NG',
+      City: p.city || 'Lagos',
+      PostalCode: p.postalCode || '100001',
+      IsWakapointRegister: false,
+    }));
+  
+    // ✅ Use the SelectData from the DTO directly for booking
     const initialRequest: WakanowBookRequest = {
       PassengerDetails: initialWakanowPassengers,
       BookingItemModels: [
         {
           ProductType: 'Flight',
-          BookingData: selectData,
+          BookingData: heldSelectData, // ← Use the DTO's selectData
           BookingId: bookingId,
           TargetCurrency: targetCurrency,
         },
@@ -95,43 +112,39 @@ const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.
       BookingId: bookingId,
     };
   
-    const bookResponse = await this.executeWithRetry(initialRequest, bookingId);
+
+    const bookResponse = await this.executeWithRetry(initialRequest, bookingId, dto);
   
     const pnr = this.extractPnr(bookResponse);
     const combo = this.extractFlightCombination(bookResponse);
     const price = combo.Price;
     const firstDep = combo.FlightModels[0]?.DepartureCode || '';
     const firstArr = combo.FlightModels[0]?.ArrivalCode || '';
-    
+  
     const isDomestic = this.isNigerianRoute(firstDep, firstArr);
     const isInternational = !isDomestic;
-    
-    // ✅ All international flights require passport (not just North America)
+  
+    // ✅ All international flights require passport
     if (isInternational) {
       this.logger.log(`🌍 International flight detected (${firstDep} → ${firstArr}). Validating passport for all passengers...`);
-      
+  
       for (let i = 0; i < passengers.length; i++) {
         const p = passengers[i];
         const passengerLabel = `${p.passengerType || 'Passenger'} ${i + 1}`;
         const passengerName = `${p.firstName || ''} ${p.lastName || ''}`.trim() || passengerLabel;
-        
+  
         const missingFields: string[] = [];
-        
-        // Check Passport Number
+  
         if (!p.PassportNumber || p.PassportNumber.trim().length === 0) {
           missingFields.push('Passport Number');
         }
-        
-        // Check Passport Expiry Date
         if (!p.ExpiryDate || p.ExpiryDate.trim().length === 0) {
           missingFields.push('Passport Expiry Date');
         }
-        
-        // Check Passport Issuing Authority
         if (!p.PassportIssuingAuthority || p.PassportIssuingAuthority.trim().length === 0) {
           missingFields.push('Passport Issuing Authority');
         }
-        
+  
         if (missingFields.length > 0) {
           const destination = dto.destinationCode || firstArr || 'international';
           throw new BadRequestException(
@@ -141,11 +154,12 @@ const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.
           );
         }
       }
-      
+  
       this.logger.log(`✅ Passport validation passed for all ${passengers.length} passengers on international flight`);
     } else {
       this.logger.log(`🏠 Domestic flight (${firstDep} → ${firstArr}) - passport not required`);
     }
+  
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
   
     const priceCalculation = await this.calculatePrices(
@@ -162,11 +176,11 @@ const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.
       priceCalculation,
       passengers,
       userId,
-      selectData,
+      heldSelectData,
       targetCurrency,
       productType,
       isMultiCity,
-      allSegments 
+      allSegments
     );
   
     this.logger.log(`✅ Wakanow flight booked. Local booking: ${booking.id}, PNR: ${pnr}`);
@@ -369,53 +383,136 @@ const initialWakanowPassengers: WakanowPassengerDetail[] = normalizedPassengers.
       localBookingId: existingBooking.id,
     };
   }
+  private async updateBookingBookingId(oldBookingId: string, newBookingId: string): Promise<void> {
+    try {
+      // Find the booking by the old providerBookingId
+      const booking = await this.bookingRepository.findByProviderBookingId(oldBookingId);
+      if (booking) {
+        // Update with the new BookingId
+        await this.bookingRepository.update(booking.id, {
+          providerBookingId: newBookingId,
+          bookingData: {
+            ...booking.bookingData,
+            wakanowBookingId: newBookingId,
+          },
+        });
+        this.logger.log(`✅ Updated booking ${booking.id} from ${oldBookingId} to ${newBookingId}`);
+      }
+    } catch (error) {
+      this.logger.warn(`⚠️ Could not update booking: ${error.message}`);
+   
+    }
+  }
 
-  private async executeWithRetry(wakanowRequest: WakanowBookRequest, bookingId: string): Promise<any> {
+  private async executeWithRetry(
+    wakanowRequest: WakanowBookRequest, 
+    bookingId: string,
+    dto: BookWakanowFlightDto
+  ): Promise<any> {
     let attempt = 0;
-
+    let currentRequest = wakanowRequest;
+    let currentBookingId = bookingId;
+  
     while (attempt < this.MAX_RETRIES) {
       try {
         attempt++;
         this.logger.log(`📖 Booking attempt ${attempt}/${this.MAX_RETRIES}...`);
-        return await this.wakanowService.bookFlight(wakanowRequest);
+        this.logger.log(`📖 Using BookingId: ${currentBookingId}`);
+        this.logger.log(`📖 Using SelectData length: ${currentRequest.BookingItemModels[0].BookingData?.length || 0}`);
+        
+        return await this.wakanowService.bookFlight(currentRequest);
       } catch (error: any) {
         const errorMsg = error?.message?.toLowerCase() || '';
         const errorString = JSON.stringify(error)?.toLowerCase() || '';
         const errorStatus = error?.status || error?.response?.status || 0;
-
-
+  
+        // ✅ Check if selection expired - try to refresh
         if (errorMsg.includes('not selected by you') || 
             errorMsg.includes('session expired') ||
             errorMsg.includes('session has expired') ||
             errorMsg.includes('expired') ||
             errorMsg.includes('no longer available') ||
-            errorMsg.includes('bad request') ||
-            errorString.includes('expired') ||
-            errorString.includes('bad request')) {
-          this.logger.error(`❌ Booking failed because flight wasn't selected by this user. BookingId: ${bookingId}`);
-          throw new BadRequestException(
-            'Your flight selection has expired. Please search for flights again and complete the booking promptly.'
-          );
-        }
+            errorString.includes('expired')) {
+          
+          this.logger.warn(`⚠️ Selection expired for BookingId: ${currentBookingId}, attempting to refresh...`);
+  
+        
+          try {
 
-   
+            const originalShortToken = dto.bookingData?.originalShortToken || dto.originalShortToken || dto.selectData;
+            
+
+            const isShort = originalShortToken?.length < 200;
+            this.logger.log(`🔄 Refreshing selection with ${isShort ? 'SHORT' : 'LONG'} token (length: ${originalShortToken?.length || 0})...`);
+            
+            if (!isShort) {
+              this.logger.warn('⚠️ Using LONG token for refresh - this will fail. Ensure frontend passes originalShortToken in bookingData');
+            }
+            
+       
+            const freshSelectResponse = await this.wakanowService.selectFlight({
+              SelectData: originalShortToken,
+              TargetCurrency: dto.targetCurrency || 'NGN',
+            });
+  
+            this.logger.log(`✅ Refreshed selection. New BookingId: ${freshSelectResponse.BookingId}`);
+            this.logger.log(`✅ New SelectData length: ${freshSelectResponse.SelectData?.length || 0}`);
+  
+          
+            currentRequest = {
+              ...currentRequest,
+              BookingId: freshSelectResponse.BookingId,
+              BookingItemModels: [{
+                ...currentRequest.BookingItemModels[0],
+                BookingData: freshSelectResponse.SelectData,
+                BookingId: freshSelectResponse.BookingId,
+              }],
+            };
+            
+            currentBookingId = freshSelectResponse.BookingId;
+  
+            // ✅ Update the booking reference in the database if it exists
+            try {
+              await this.updateBookingBookingId(bookingId, freshSelectResponse.BookingId);
+              this.logger.log(`✅ Updated booking record with new BookingId: ${freshSelectResponse.BookingId}`);
+            } catch (updateError) {
+              this.logger.warn(`⚠️ Could not update booking record: ${updateError.message}`);
+            }
+  
+            // ✅ Retry the booking with fresh data
+            this.logger.log(`🔄 Retrying booking with fresh session...`);
+            
+            // Don't increment attempt - we want to retry with the fresh session
+            continue;
+  
+          } catch (refreshError) {
+            this.logger.error('❌ Failed to refresh selection:', refreshError);
+            
+            // If refresh fails, throw the original error
+            throw new BadRequestException(
+              'Your flight selection has expired. Please search for flights again and complete the booking promptly.'
+            );
+          }
+        }
+  
+        // ✅ Handle server errors with retry
         if ((errorStatus === 500 || errorStatus === 0 || errorStatus === 502 || errorStatus === 503) && attempt < this.MAX_RETRIES) {
           this.logger.warn(`⚠️ Booking attempt ${attempt} failed with ${errorStatus}, retrying in ${1000 * attempt}ms...`);
           await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
           continue;
         }
-
   
-        if (errorStatus === 400 && attempt < 2) {
+        // ✅ Handle 400 errors with retry (but not for expired sessions - already handled above)
+        if (errorStatus === 400 && attempt < 2 && !errorMsg.includes('expired') && !errorMsg.includes('not selected')) {
           this.logger.warn(`⚠️ Booking attempt ${attempt} failed with 400, retrying once...`);
           await new Promise(resolve => setTimeout(resolve, 1000));
           continue;
         }
-
+  
         throw error;
       }
     }
-
+  
     this.logger.error('❌ All booking retry attempts failed');
     throw new HttpException(
       'Failed to book flight after multiple attempts. Please try again.',

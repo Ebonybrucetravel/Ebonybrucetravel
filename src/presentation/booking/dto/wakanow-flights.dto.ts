@@ -355,6 +355,30 @@ export class BookWakanowFlightDto {
     airline?: string;
     flightNumber?: string;
   }>;
+
+  // ✅ ADD THIS - bookingData for additional booking data from frontend
+  @ApiPropertyOptional({
+    description: 'Additional booking data from frontend (includes originalShortToken for auto-refresh)',
+    type: 'object',
+    example: { 
+      originalShortToken: 'WAAAAB+LCAAAAAAABACrVgpOTSxKzvBOrVSyUopyLzA0sYj3jQ...' 
+    }
+  })
+  @IsOptional()
+  @IsObject()
+  bookingData?: {
+    originalShortToken?: string;
+    [key: string]: any;
+  };
+
+  // Keep this for backward compatibility (if frontend sends at top level)
+  @ApiPropertyOptional({
+    description: 'Original short SelectData from search (for auto-refresh if the booking session expires)',
+    example: 'WAAAAB+LCAAAAAAABACrVgpOTSxKzvBOrVSyUopyLzA0sYj3jQ...',
+  })
+  @IsOptional()
+  @IsString()
+  originalShortToken?: string;
 }
 
 export class TicketWakanowFlightDto {

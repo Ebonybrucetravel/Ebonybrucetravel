@@ -22,182 +22,153 @@ export class CreateBookingUseCase {
 
     const totalAmountFromDto = dto.getTotalAmount ? dto.getTotalAmount() : (dto.totalAmount || 0);
     
-
     const isDuffelFlight =
       dto.provider === Provider.DUFFEL &&
       (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
 
-      const isWakanowFlight =  
+    const isWakanowFlight =  
       dto.provider === Provider.WAKANOW &&
       (dto.productType === 'FLIGHT_INTERNATIONAL' || dto.productType === 'FLIGHT_DOMESTIC');
     
-      if (isWakanowFlight) {
-        this.logger.log(`🛫 Creating Wakanow booking for authenticated user. BookingId: ${dto.providerBookingId || dto.bookingId}`);
-        
-        // ✅ FIX: Extract passengers from bookingData.passengers first
-        let normalizedPassengers = [];
-        
-        if (dto.bookingData?.passengers && Array.isArray(dto.bookingData.passengers)) {
-          normalizedPassengers = dto.bookingData.passengers;
-          this.logger.log(`📋 Extracted ${normalizedPassengers.length} passengers from bookingData.passengers`);
-        } else {
-          normalizedPassengers = this.normalizePassengers(dto.passengerInfo);
-          this.logger.log(`📋 Extracted ${normalizedPassengers.length} passengers from passengerInfo`);
-        }
+    // ✅ HANDLE WAKANOW FLIGHTS
+    if (isWakanowFlight) {
+      this.logger.log(`🛫 Creating Wakanow booking for authenticated user. BookingId: ${dto.providerBookingId || dto.bookingId}`);
       
-        // ✅ Log raw passenger data
-        if (normalizedPassengers.length > 0) {
-          this.logger.log(`🔍 Raw passenger data:`, {
-            firstName: normalizedPassengers[0]?.firstName,
-            lastName: normalizedPassengers[0]?.lastName,
-            PassportNumber: normalizedPassengers[0]?.PassportNumber,
-            ExpiryDate: normalizedPassengers[0]?.ExpiryDate,
-            PassportIssuingAuthority: normalizedPassengers[0]?.PassportIssuingAuthority,
-            PassportIssueCountryCode: normalizedPassengers[0]?.PassportIssueCountryCode,
-          });
-        }
+      let normalizedPassengers = [];
       
-        // ✅ Map passengers with PascalCase passport fields
-        const passengers = normalizedPassengers.map((p: any) => ({
-          firstName: p.firstName || p.given_name || 'Guest',
-          lastName: p.lastName || p.family_name || 'User',
-          middleName: p.middleName || p.middle_name || '',
-          email: p.email || 'guest@example.com',
-          phoneNumber: p.phoneNumber || p.phone || p.phone_number || '+2340000000000',
-          dateOfBirth: p.dateOfBirth || p.born_on || '1990-01-01',
-          gender: p.gender || 'Male',
-          title: p.title || 'Mr',
-          passengerType: p.passengerType || 'Adult',
-          // ✅ PascalCase - matches frontend
-          PassportNumber: p.PassportNumber || p.passportNumber || p.passport_number || '',
-          ExpiryDate: p.ExpiryDate || p.expiryDate || p.expiry_date || '',
-          PassportIssuingAuthority: p.PassportIssuingAuthority || p.passportIssuingAuthority || p.passport_issuing_authority || '',
-          PassportIssueCountryCode: p.PassportIssueCountryCode || p.passportIssueCountryCode || p.passport_issue_country_code || '',
-          address: p.address || '123 Fake Street',
-          country: p.country || 'Nigeria',
-          countryCode: p.countryCode || p.country_code || 'NG',
-          city: p.city || 'Lagos',
-          postalCode: p.postalCode || p.postal_code || '100001',
-          IsWakapointRegister: false,
-        }));
-      
-        this.logger.log(`🔍 First passenger passport data after mapping:`, {
-          firstName: passengers[0]?.firstName,
-          lastName: passengers[0]?.lastName,
-          PassportNumber: passengers[0]?.PassportNumber,
-          ExpiryDate: passengers[0]?.ExpiryDate,
-          PassportIssuingAuthority: passengers[0]?.PassportIssuingAuthority,
-          PassportIssueCountryCode: passengers[0]?.PassportIssueCountryCode,
-        });
-      
-        // Get price breakdown safely
-        const getBasePrice = dto.getBasePrice ? dto.getBasePrice() : (dto.basePrice || 0);
-        const getMarkupAmount = dto.getMarkupAmount ? dto.getMarkupAmount() : (dto.markupAmount || 0);
-        const getMarkupPercentage = dto.getMarkupPercentage ? dto.getMarkupPercentage() : (dto.markupPercentage || 10);
-        const getServiceFee = dto.getServiceFee ? dto.getServiceFee() : (dto.serviceFee || 0);
-        const getServiceFeePercentage = dto.getServiceFeePercentage ? dto.getServiceFeePercentage() : (dto.serviceFeePercentage || 5);
-        const getTaxes = dto.getTaxes ? dto.getTaxes() : (dto.taxes || 0);
-        const getTaxPercentage = dto.getTaxPercentage ? dto.getTaxPercentage() : (dto.taxPercentage || 15);
-        const getTotalAmount = dto.getTotalAmount ? dto.getTotalAmount() : (dto.totalAmount || 0);
-        
-        const wakanowDto = {
-          bookingId: dto.providerBookingId || dto.bookingId,
-          selectData: dto.selectData || dto.bookingData?.selectData,
-          passengers: passengers,
-          targetCurrency: dto.currency || 'NGN',
-          priceBreakdown: {
-            basePrice: getBasePrice,
-            markupAmount: getMarkupAmount,
-            markupPercentage: getMarkupPercentage,
-            serviceFee: getServiceFee,
-            serviceFeePercentage: getServiceFeePercentage,
-            taxes: getTaxes,
-            taxPercentage: getTaxPercentage,
-            totalAmount: getTotalAmount,
-            currency: dto.currency || 'NGN',
-          },
-        };
-      
-        const wakanowResult = await this.bookWakanowFlightUseCase.execute(wakanowDto, userId);
-
-        if (wakanowResult.bookingData) {
-          wakanowResult.bookingData.isMultiCity = dto.bookingData?.isMultiCity || false;
-          wakanowResult.bookingData.allSegments = dto.bookingData?.allSegments || [];
-          wakanowResult.bookingData.destination = dto.bookingData?.destination || 'Unknown City';
-        }
-        
-        this.logger.log(`✅ Wakanow booking created. PNR: ${wakanowResult.bookingData?.pnrReferenceNumber}`);
-        wakanowResult.bookingData.destination = dto.bookingData?.destination || 'Unknown City';
-        return wakanowResult;
+      if (dto.bookingData?.passengers && Array.isArray(dto.bookingData.passengers)) {
+        normalizedPassengers = dto.bookingData.passengers;
+        this.logger.log(`📋 Extracted ${normalizedPassengers.length} passengers from bookingData.passengers`);
+      } else {
+        normalizedPassengers = this.normalizePassengers(dto.passengerInfo);
+        this.logger.log(`📋 Extracted ${normalizedPassengers.length} passengers from passengerInfo`);
       }
-      // ✅ HANDLE CAR RENTAL FOR AUTHENTICATED USERS
-if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
-  this.logger.log(`🚗 Creating car rental booking for authenticated user.`);
-  
-  // ✅ Extract car rental data from DTO
-  const bookingData = dto.bookingData || {};
-  const offerId = bookingData.offerId || dto.providerBookingId;
-  const offerPrice = bookingData.offerPrice || dto.basePrice || 0;
-  const driver = bookingData.driver || {};
-  const currency = dto.currency || 'NGN';
+      
+      if (normalizedPassengers.length > 0) {
+        this.logger.log(`🔍 Raw passenger data:`, {
+          firstName: normalizedPassengers[0]?.firstName,
+          lastName: normalizedPassengers[0]?.lastName,
+          PassportNumber: normalizedPassengers[0]?.PassportNumber,
+          ExpiryDate: normalizedPassengers[0]?.ExpiryDate,
+          PassportIssuingAuthority: normalizedPassengers[0]?.PassportIssuingAuthority,
+          PassportIssueCountryCode: normalizedPassengers[0]?.PassportIssueCountryCode,
+        });
+      }
+      
+      const passengers = normalizedPassengers.map((p: any) => ({
+        firstName: p.firstName || p.given_name || 'Guest',
+        lastName: p.lastName || p.family_name || 'User',
+        middleName: p.middleName || p.middle_name || '',
+        email: p.email || 'guest@example.com',
+        phoneNumber: p.phoneNumber || p.phone || p.phone_number || '+2340000000000',
+        dateOfBirth: p.dateOfBirth || p.born_on || '1990-01-01',
+        gender: p.gender || 'Male',
+        title: p.title || 'Mr',
+        passengerType: p.passengerType || 'Adult',
+        PassportNumber: p.PassportNumber || p.passportNumber || p.passport_number || '',
+        ExpiryDate: p.ExpiryDate || p.expiryDate || p.expiry_date || '',
+        PassportIssuingAuthority: p.PassportIssuingAuthority || p.passportIssuingAuthority || p.passport_issuing_authority || '',
+        PassportIssueCountryCode: p.PassportIssueCountryCode || p.passportIssueCountryCode || p.passport_issue_country_code || '',
+        address: p.address || '123 Fake Street',
+        country: p.country || 'Nigeria',
+        countryCode: p.countryCode || p.country_code || 'NG',
+        city: p.city || 'Lagos',
+        postalCode: p.postalCode || p.postal_code || '100001',
+        IsWakapointRegister: false,
+      }));
+      
+      this.logger.log(`🔍 First passenger passport data after mapping:`, {
+        firstName: passengers[0]?.firstName,
+        lastName: passengers[0]?.lastName,
+        PassportNumber: passengers[0]?.PassportNumber,
+        ExpiryDate: passengers[0]?.ExpiryDate,
+        PassportIssuingAuthority: passengers[0]?.PassportIssuingAuthority,
+        PassportIssueCountryCode: passengers[0]?.PassportIssueCountryCode,
+      });
+      
+      const getBasePrice = dto.getBasePrice ? dto.getBasePrice() : (dto.basePrice || 0);
+      const getMarkupAmount = dto.getMarkupAmount ? dto.getMarkupAmount() : (dto.markupAmount || 0);
+      const getMarkupPercentage = dto.getMarkupPercentage ? dto.getMarkupPercentage() : (dto.markupPercentage || 10);
+      const getServiceFee = dto.getServiceFee ? dto.getServiceFee() : (dto.serviceFee || 0);
+      const getServiceFeePercentage = dto.getServiceFeePercentage ? dto.getServiceFeePercentage() : (dto.serviceFeePercentage || 5);
+      const getTaxes = dto.getTaxes ? dto.getTaxes() : (dto.taxes || 0);
+      const getTaxPercentage = dto.getTaxPercentage ? dto.getTaxPercentage() : (dto.taxPercentage || 15);
+      const getTotalAmount = dto.getTotalAmount ? dto.getTotalAmount() : (dto.totalAmount || 0);
+      
+      const wakanowDto = {
+        bookingId: dto.providerBookingId || dto.bookingId,
+        selectData: dto.selectData || dto.bookingData?.selectData,
+        passengers: passengers,
+        targetCurrency: dto.currency || 'NGN',
+        priceBreakdown: {
+          basePrice: getBasePrice,
+          markupAmount: getMarkupAmount,
+          markupPercentage: getMarkupPercentage,
+          serviceFee: getServiceFee,
+          serviceFeePercentage: getServiceFeePercentage,
+          taxes: getTaxes,
+          taxPercentage: getTaxPercentage,
+          totalAmount: getTotalAmount,
+          currency: dto.currency || 'NGN',
+        },
+      };
+      
+      const wakanowResult = await this.bookWakanowFlightUseCase.execute(wakanowDto, userId);
 
-  if (!offerId) {
-    this.logger.error('Missing offerId for car rental booking');
-    throw new BadRequestException('Offer ID is required for car rental booking');
-  }
+      if (wakanowResult.bookingData) {
+        wakanowResult.bookingData.isMultiCity = dto.bookingData?.isMultiCity || false;
+        wakanowResult.bookingData.allSegments = dto.bookingData?.allSegments || [];
+        wakanowResult.bookingData.destination = dto.bookingData?.destination || 'Unknown City';
+      }
+      
+      this.logger.log(`✅ Wakanow booking created. PNR: ${wakanowResult.bookingData?.pnrReferenceNumber}`);
+      wakanowResult.bookingData.destination = dto.bookingData?.destination || 'Unknown City';
+      return wakanowResult;
+    }
 
-  // Get markup config
-  const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
-    'CAR_RENTAL',
-    currency,
-  );
+    // ✅ HANDLE CAR RENTAL FOR AUTHENTICATED USERS
+    if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
+      this.logger.log(`🚗 Creating car rental booking for authenticated user.`);
+      
+      const bookingData = dto.bookingData || {};
+      const offerId = bookingData.offerId || dto.providerBookingId;
+      const offerPrice = bookingData.offerPrice || dto.basePrice || 0;
+      const driver = bookingData.driver || {};
+      const currency = dto.currency || 'NGN';
 
-  if (!markupConfig) {
-    throw new NotFoundException(
-      `No active markup configuration found for CAR_RENTAL in ${currency}`,
-    );
-  }
+      if (!offerId) {
+        this.logger.error('Missing offerId for car rental booking');
+        throw new BadRequestException('Offer ID is required for car rental booking');
+      }
 
-  // Calculate pricing
-  const pricing = this.markupCalculationService.calculateTotal(
-    offerPrice,
-    'CAR_RENTAL',
-    currency,
-    markupConfig,
-  );
+      const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
+        'CAR_RENTAL',
+        currency,
+      );
 
-  // ✅ Use fixed percentages (serviceFeePercentage doesn't exist on MarkupConfig)
-  const serviceFeePercentage = 5;  // Fixed default
-  const markupPercentage = markupConfig.markupPercentage || 10;
+      if (!markupConfig) {
+        throw new NotFoundException(
+          `No active markup configuration found for CAR_RENTAL in ${currency}`,
+        );
+      }
 
-  // ✅ Create booking with car rental data
-  const booking = await this.bookingService.createBooking({
-    userId,
-    productType: 'CAR_RENTAL',
-    provider: Provider.AMADEUS,
-    basePrice: offerPrice,
-    markupAmount: pricing.markupAmount,
-    markupPercentage: markupPercentage,
-    serviceFee: pricing.serviceFee,
-    serviceFeePercentage: serviceFeePercentage,
-    taxes: pricing.markupAmount + pricing.serviceFee,
-    taxPercentage: markupPercentage + serviceFeePercentage,
-    totalAmount: dto.getTotalAmount ? dto.getTotalAmount() : (dto.totalAmount || pricing.totalAmount),
-    currency: currency,
-    bookingData: {
-      amadeus_offer_id: offerId,
-      offerId: offerId,
-      offer_price: offerPrice,
-      driver: driver,
-      special_requests: bookingData.specialRequests || '',
-      offerData: bookingData.offerData || {},
-      pickupLocation: bookingData.pickupLocation || '',
-      dropoffLocation: bookingData.dropoffLocation || '',
-      pickupDateTime: bookingData.pickupDateTime || '',
-      dropoffDateTime: bookingData.dropoffDateTime || '',
-      vehicleType: bookingData.vehicleType || '',
-      serviceProvider: bookingData.serviceProvider || '',
-      priceBreakdown: {
+      const pricing = this.markupCalculationService.calculateTotal(
+        offerPrice,
+        'CAR_RENTAL',
+        currency,
+        markupConfig,
+      );
+
+      const serviceFeePercentage = 5;
+      const markupPercentage = markupConfig.markupPercentage || 10;
+
+      // ✅ Store paymentMethodId if provided (for PCI compliance)
+      const paymentMethodId = bookingData.paymentMethodId || dto.paymentMethodId;
+
+      const booking = await this.bookingService.createBooking({
+        userId,
+        productType: 'CAR_RENTAL',
+        provider: Provider.AMADEUS,
         basePrice: offerPrice,
         markupAmount: pricing.markupAmount,
         markupPercentage: markupPercentage,
@@ -207,30 +178,55 @@ if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
         taxPercentage: markupPercentage + serviceFeePercentage,
         totalAmount: dto.getTotalAmount ? dto.getTotalAmount() : (dto.totalAmount || pricing.totalAmount),
         currency: currency,
-      },
-       destination: bookingData.pickupLocation || bookingData.dropoffLocation || 'Unknown City',
-    },
-    passengerInfo: {
-      firstName: driver?.firstName || dto.passengerInfo?.firstName || 'Guest',
-      lastName: driver?.lastName || dto.passengerInfo?.lastName || 'User',
-      email: dto.passengerInfo?.email || '',
-      phone: driver?.phone || dto.passengerInfo?.phone || '',
-      title: driver?.title || 'MR',
-    },
-    status: BookingStatus.PENDING,
-    paymentStatus: 'PENDING',
-  });
+        bookingData: {
+          amadeus_offer_id: offerId,
+          offerId: offerId,
+          offer_price: offerPrice,
+          driver: driver,
+          special_requests: bookingData.specialRequests || '',
+          offerData: bookingData.offerData || {},
+          pickupLocation: bookingData.pickupLocation || '',
+          dropoffLocation: bookingData.dropoffLocation || '',
+          pickupDateTime: bookingData.pickupDateTime || '',
+          dropoffDateTime: bookingData.dropoffDateTime || '',
+          vehicleType: bookingData.vehicleType || '',
+          serviceProvider: bookingData.serviceProvider || '',
+          // ✅ Store paymentMethodId for later use (PCI compliant)
+          ...(paymentMethodId && { paymentMethodId: paymentMethodId }),
+          priceBreakdown: {
+            basePrice: offerPrice,
+            markupAmount: pricing.markupAmount,
+            markupPercentage: markupPercentage,
+            serviceFee: pricing.serviceFee,
+            serviceFeePercentage: serviceFeePercentage,
+            taxes: pricing.markupAmount + pricing.serviceFee,
+            taxPercentage: markupPercentage + serviceFeePercentage,
+            totalAmount: dto.getTotalAmount ? dto.getTotalAmount() : (dto.totalAmount || pricing.totalAmount),
+            currency: currency,
+          },
+          destination: bookingData.pickupLocation || bookingData.dropoffLocation || 'Unknown City',
+        },
+        passengerInfo: {
+          firstName: driver?.firstName || dto.passengerInfo?.firstName || 'Guest',
+          lastName: driver?.lastName || dto.passengerInfo?.lastName || 'User',
+          email: dto.passengerInfo?.email || '',
+          phone: driver?.phone || dto.passengerInfo?.phone || '',
+          title: driver?.title || 'MR',
+        },
+        status: BookingStatus.PENDING,
+        paymentStatus: 'PENDING',
+      });
 
-  this.logger.log(`✅ Car rental booking created: ${booking.id} (${booking.reference}) with offerId: ${offerId}`);
-  return booking;
-}
+      this.logger.log(`✅ Car rental booking created: ${booking.id} (${booking.reference}) with offerId: ${offerId}`);
+      return booking;
+    }
 
+    // ✅ HANDLE DUFFEL FLIGHTS
     if (isDuffelFlight) {
       this.logger.log(`💰 Duffel total amount from DTO: ${totalAmountFromDto}`);
       
       let finalTotalAmount = totalAmountFromDto;
       
-    
       if (!finalTotalAmount || finalTotalAmount <= 0) {
         if (dto.offerData?.total_amount) {
           finalTotalAmount = parseFloat(dto.offerData.total_amount);
@@ -241,17 +237,14 @@ if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
         }
       }
 
-
       if (!finalTotalAmount || finalTotalAmount <= 0) {
         throw new BadRequestException(
           'Total amount is required and must be greater than 0. Please provide price breakdown or total amount.',
         );
       }
       
-
       (dto as any)._validatedTotalAmount = finalTotalAmount;
     }
-
 
     const normalizedPassengers = this.normalizePassengers(dto.passengerInfo);
 
@@ -266,7 +259,6 @@ if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
         }
       }
     }
-
 
     const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
       dto.productType,
@@ -287,9 +279,7 @@ if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
     };
     let bookingData = { ...dto.bookingData };
 
-
     if (isDuffelFlight && dto.offerId) {
-   
       const passengersToStore = normalizedPassengers.map((p: any) => ({
         id: p.id || `pas_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
         given_name: p.given_name || p.firstName || 'Guest',
@@ -301,7 +291,6 @@ if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
         title: p.title || 'mr',
       }));
 
-     
       const offerTotalAmount = dto.offerData?.total_amount || 
                               dto.offerData?.totalAmount || 
                               (dto as any)._validatedTotalAmount || 
@@ -313,7 +302,6 @@ if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
         offerId: dto.offerId,
         offerRequestId: dto.offerRequestId || bookingData.offer_request_id,
         offerData: dto.offerData || null,
-        // CRITICAL FIX: Store passengers as an array
         passengers: passengersToStore,
         offerPassengers: dto.offerData?.passengers || [],
         offerTotalAmount: offerTotalAmount,
@@ -324,44 +312,47 @@ if (dto.provider === Provider.AMADEUS && dto.productType === 'CAR_RENTAL') {
       this.logger.log(`📦 Stored Duffel offer data for authenticated booking: ${dto.offerId} with ${passengersToStore.length} passengers`);
     }
 
+    // ✅ HANDLE HOTEL PROVIDERS (AMADEUS or HOTELBEDS)
+    const isHotelProvider =
+      dto.productType === ProductType.HOTEL &&
+      (dto.provider === Provider.AMADEUS || dto.provider === Provider.HOTELBEDS);
 
-   const isHotelProvider =
-  dto.productType === ProductType.HOTEL &&
-  (dto.provider === Provider.AMADEUS || dto.provider === Provider.HOTELBEDS);
-
-if (isHotelProvider) {
-  // ✅ Get percentages from markup config
-  const markupPercentage = markupConfig.markupPercentage || 0;
-  const serviceFeePercentage = markupConfig.serviceFeePercentage || 0;
-  
-  // ✅ Calculate base price from the total
-  // totalAmount = basePrice + (basePrice * markupPercentage / 100) + (basePrice * serviceFeePercentage / 100)
-  // totalAmount = basePrice * (1 + markupPercentage/100 + serviceFeePercentage/100)
-  const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100);
-  const calculatedBasePrice = dto.basePrice / totalFactor;
-  
-  if (calculatedBasePrice > 0) {
-    pricing = this.markupCalculationService.calculateTotal(
-      calculatedBasePrice,
-      dto.productType,
-      dto.currency,
-      markupConfig,
-    );
- 
-    if (bookingData.offerId && !bookingData.amadeus_offer_id) {
-      bookingData = { ...bookingData, amadeus_offer_id: bookingData.offerId };
-    }
-  } else {
-    pricing = this.markupCalculationService.calculateTotal(
-      dto.basePrice,
-      dto.productType,
-      dto.currency,
-      markupConfig,
-    );
-  } 
-bookingData.destination = bookingData.hotelCity || bookingData.city || 'Unknown City';
-} else {
- 
+    if (isHotelProvider) {
+      const markupPercentage = markupConfig.markupPercentage || 0;
+      const serviceFeePercentage = markupConfig.serviceFeePercentage || 0;
+      
+      const totalFactor = 1 + (markupPercentage / 100) + (serviceFeePercentage / 100);
+      const calculatedBasePrice = dto.basePrice / totalFactor;
+      
+      if (calculatedBasePrice > 0) {
+        pricing = this.markupCalculationService.calculateTotal(
+          calculatedBasePrice,
+          dto.productType,
+          dto.currency,
+          markupConfig,
+        );
+      
+        if (bookingData.offerId && !bookingData.amadeus_offer_id) {
+          bookingData = { ...bookingData, amadeus_offer_id: bookingData.offerId };
+        }
+      } else {
+        pricing = this.markupCalculationService.calculateTotal(
+          dto.basePrice,
+          dto.productType,
+          dto.currency,
+          markupConfig,
+        );
+      }
+      
+      // ✅ Store paymentMethodId if provided (PCI compliant)
+      const paymentMethodId = dto.paymentMethodId || bookingData.paymentMethodId;
+      if (paymentMethodId) {
+        bookingData.paymentMethodId = paymentMethodId;
+        this.logger.log(`💳 Stored paymentMethodId for hotel booking: ${paymentMethodId.substring(0, 10)}...`);
+      }
+      
+      bookingData.destination = bookingData.hotelCity || bookingData.city || 'Unknown City';
+    } else {
       pricing = this.markupCalculationService.calculateTotal(
         dto.basePrice,
         dto.productType,
@@ -369,14 +360,12 @@ bookingData.destination = bookingData.hotelCity || bookingData.city || 'Unknown 
         markupConfig,
       );
       
-    
       if (isDuffelFlight && (dto as any)._validatedTotalAmount) {
         pricing.totalAmount = (dto as any)._validatedTotalAmount;
         this.logger.log(`💰 Duffel: Using DTO total amount: ${pricing.totalAmount}`);
       }
     }
 
-  
     const booking = await this.bookingService.createBooking({
       userId,
       productType: dto.productType,
@@ -396,16 +385,13 @@ bookingData.destination = bookingData.hotelCity || bookingData.city || 'Unknown 
     return booking;
   }
 
-  
   private normalizePassengers(passengerInfo: any): any[] {
     if (!passengerInfo) return [];
-    
     
     if (Array.isArray(passengerInfo)) {
       return passengerInfo;
     }
     
-   
     if (typeof passengerInfo === 'object' && passengerInfo !== null) {
       if (passengerInfo.passengers && Array.isArray(passengerInfo.passengers)) {
         this.logger.log(`📋 Extracted ${passengerInfo.passengers.length} passengers from passengerInfo.passengers`);
@@ -414,7 +400,6 @@ bookingData.destination = bookingData.hotelCity || bookingData.city || 'Unknown 
       return [passengerInfo];
     }
     
-   
     if (typeof passengerInfo === 'string') {
       try {
         const parsed = JSON.parse(passengerInfo);

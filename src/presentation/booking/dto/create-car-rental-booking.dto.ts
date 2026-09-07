@@ -540,8 +540,6 @@ export class CreateCarRentalBookingDto {
   @IsString()
   specialRequests?: string;
 
-  // ✅ ✅ ✅ REMOVED top-level flight fields - they belong in bookingData
-
   @ApiPropertyOptional({
     description: 'Agency email for booking',
     example: 'agency@example.com',
@@ -559,8 +557,25 @@ export class CreateCarRentalBookingDto {
   @Type(() => BillingAddressDto)
   billingAddress?: BillingAddressDto;
 
+  // ============================================================
+  // ✅ STRIPE PAYMENT METHOD ID (PCI COMPLIANT - LIVE MODE)
+  // ============================================================
   @ApiPropertyOptional({
-    description: 'Payment details (optional - uses test card if not provided)',
+    description: 'Stripe PaymentMethod ID for PCI compliant payments. ' +
+      'When provided, this is used instead of raw card details. ' +
+      'Required for live mode. Omit only when using raw card in test mode.',
+    example: 'pm_card_visa',
+  })
+  @IsOptional()
+  @IsString()
+  paymentMethodId?: string;
+
+  // ============================================================
+  // ✅ LEGACY RAW CARD (TEST MODE ONLY - NOT PCI COMPLIANT)
+  // ============================================================
+  @ApiPropertyOptional({
+    description: 'Payment details (optional - uses test card if not provided). ' +
+      '⚠️ WARNING: Only for test mode. Use paymentMethodId for live mode.',
     type: PaymentDto,
   })
   @IsOptional()
@@ -569,7 +584,6 @@ export class CreateCarRentalBookingDto {
   @Type(() => PaymentDto)
   payment?: PaymentDto;
 
-  // ✅ ✅ ✅ ADD bookingData field with flight details
   @ApiPropertyOptional({
     description: 'Additional booking data including flight details',
     type: BookingDataDto,

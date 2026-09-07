@@ -24,12 +24,11 @@ export class CreateCarRentalBookingUseCase {
   ) {}
 
   async execute(dto: CreateCarRentalBookingDto, userId: string) {
-
     this.logger.log(`🔍 FULL DTO RECEIVED: ${JSON.stringify(dto, null, 2)}`);
-  this.logger.log(`🔍 DTO.bookingData: ${JSON.stringify(dto.bookingData, null, 2)}`);
-  this.logger.log(`🔍 (dto as any).flightNumber: ${(dto as any).flightNumber}`);
-  this.logger.log(`🔍 (dto as any).passengerInfo: ${JSON.stringify((dto as any).passengerInfo)}`);
-  
+    this.logger.log(`🔍 DTO.bookingData: ${JSON.stringify(dto.bookingData, null, 2)}`);
+    this.logger.log(`🔍 (dto as any).flightNumber: ${(dto as any).flightNumber}`);
+    this.logger.log(`🔍 (dto as any).passengerInfo: ${JSON.stringify((dto as any).passengerInfo)}`);
+    
     if (!dto.offerId) {
       throw new BadRequestException('Offer ID is required');
     }
@@ -133,14 +132,17 @@ export class CreateCarRentalBookingUseCase {
         markupConfig,
       );
   
-      // ✅ Store flight details in bookingData (using the extracted values)
+      // ✅ Get paymentMethodId from DTO or bookingData
+      const paymentMethodId = dto.paymentMethodId || bookingDataFromDto.paymentMethodId;
+  
+      // ✅ Store flight details in bookingData
       const bookingData = {
         amadeus_offer_id: dto.offerId,
         offer_price: offerPrice,
         passengers: dto.passengers,
         special_requests: dto.specialRequests,
-        flight_number: finalFlightNumber,   // ✅ Use the fallback
-        flight_date: finalFlightDate,       // ✅ Use the fallback
+        flight_number: finalFlightNumber,
+        flight_date: finalFlightDate,
         airline_code: airlineCode,
         flight_time: flightTime,
         pickup_location: pickupLocation,
@@ -148,6 +150,9 @@ export class CreateCarRentalBookingUseCase {
         billing_address: dto.billingAddress,
         payment_method: dto.payment?.methodOfPayment || 'CREDIT_CARD',
         transfer_type: dto.transferType || 'PRIVATE',
+        // ✅ Store PaymentMethod ID for PCI compliance
+        ...(paymentMethodId && { paymentMethodId: paymentMethodId }),
+        is_pci_compliant: !!paymentMethodId,
       };
   
       const primaryPassenger = dto.passengers[0];
@@ -175,8 +180,13 @@ export class CreateCarRentalBookingUseCase {
       });
   
       this.logger.log(`✅ Car rental booking created: ${booking.id} (${booking.reference})`);
-  
-      if (dto.payment && dto.payment.methodOfPayment === 'CREDIT_CARD' && dto.payment.creditCard) {
+      this.logger.log(`💳 Payment method: ${paymentMethodId ? 'PCI Compliant (PaymentMethod ID)' : 'Legacy Raw Card'}`);
+
+      // ✅ Check if we have paymentMethodId or raw card payment
+      if (paymentMethodId) {
+        this.logger.log(`💳 Using PaymentMethod ID for car rental, will create Amadeus order after payment confirmation`);
+        // Booking created, Amadeus order will be created after payment confirmation via webhook
+      } else if (dto.payment && dto.payment.methodOfPayment === 'CREDIT_CARD' && dto.payment.creditCard) {
         try {
           this.logger.log('Payment details provided, creating Amadeus order immediately...');
           const { orderId, orderData } = await this.createAmadeusOrderAfterPayment(
@@ -210,7 +220,9 @@ export class CreateCarRentalBookingUseCase {
   
       return {
         booking,
-        message: 'Booking created. Please proceed to payment.',
+        message: bookingDataFromDto.paymentMethodId || booking.bookingData?.paymentMethodId
+          ? 'Booking created. Payment will be processed via Stripe.' 
+          : 'Booking created. Please proceed to payment.',
       };
     } catch (error) {
       this.logger.error('Error creating car rental booking:', error);
@@ -223,8 +235,10 @@ export class CreateCarRentalBookingUseCase {
     }
   }
   
-
- 
+  /**
+   * Create Amadeus order after payment succeeds
+   * ✅ UPDATED: Now supports both PaymentMethod ID and raw card
+   */
   async createAmadeusOrderAfterPayment(
     bookingId: string,
     payment?: CreateCarRentalBookingDto['payment'],
@@ -257,13 +271,11 @@ export class CreateCarRentalBookingUseCase {
   
     if (!bookingData.flight_number || bookingData.flight_number === 'UNKNOWN') {
       this.logger.warn(`⚠️ Flight number missing for booking ${bookingId}. Generating a placeholder.`);
-      // Generate a realistic flight number
       const airlines = ['AA', 'DL', 'UA', 'BA', 'AF', 'LH', 'KL', 'EK', 'QR', 'TK'];
       const randomAirline = airlines[Math.floor(Math.random() * airlines.length)];
       const randomNumber = Math.floor(Math.random() * 9000) + 1000;
       bookingData.flight_number = `${randomAirline}${randomNumber}`;
       
-    
       await this.prisma.booking.update({
         where: { id: bookingId },
         data: {
@@ -285,7 +297,6 @@ export class CreateCarRentalBookingUseCase {
     if (bookingData.passengers && Array.isArray(bookingData.passengers) && bookingData.passengers.length > 0) {
       passengers = bookingData.passengers;
     } 
-  
     else if (bookingData.driver) {
       const driver = bookingData.driver;
       passengers = [{
@@ -344,8 +355,46 @@ export class CreateCarRentalBookingUseCase {
   
     this.logger.log(`✅ Found ${formattedPassengers.length} passenger(s) for booking ${bookingId}`);
   
+    // ✅ Check if we have a PaymentMethod ID (PCI compliant)
+    const paymentMethodId = bookingData.paymentMethodId;
+    
     let paymentData = null;
-    if (payment) {
+    
+    // ✅ If we have a PaymentMethod ID, use agency card for Amadeus
+    if (paymentMethodId) {
+      this.logger.log(`💳 Using PaymentMethod ID for car rental ${bookingId}, using agency card for Amadeus`);
+      
+      // Use agency card to pay Amadeus
+      const agencyCard = this.agencyCardService.getAmadeusAgencyCard();
+      
+      if (agencyCard) {
+        paymentData = {
+          methodOfPayment: 'CREDIT_CARD',
+          creditCard: {
+            vendorCode: agencyCard.vendorCode || 'VI',
+            number: agencyCard.cardNumber,
+            holderName: agencyCard.holderName || 'Agency Card',
+            expiryDate: agencyCard.expiryDate,
+            cvv: agencyCard.securityCode || '123',
+          },
+        };
+        this.logger.log(`✅ Using agency card for Amadeus payment (PCI compliant flow)`);
+      } else {
+        this.logger.warn(`⚠️ No agency card configured, using test card`);
+        paymentData = {
+          methodOfPayment: 'CREDIT_CARD',
+          creditCard: {
+            vendorCode: 'VI',
+            number: '4111111111111111',
+            holderName: 'Test Card',
+            expiryDate: '1226',
+            cvv: '123',
+          },
+        };
+      }
+    } 
+    // ✅ Legacy: Use provided payment or test card
+    else if (payment) {
       paymentData = {
         methodOfPayment: payment.methodOfPayment,
       };
@@ -358,6 +407,7 @@ export class CreateCarRentalBookingUseCase {
           expiryDate: payment.creditCard.expiryDate,
           cvv: payment.creditCard.cvv,
         };
+        this.logger.warn(`⚠️ Using raw card details (legacy mode - not PCI compliant for live)`);
       } else if (payment.methodOfPayment === 'INVOICE') {
         paymentData.paymentReference = payment.paymentReference;
       }
@@ -394,13 +444,12 @@ export class CreateCarRentalBookingUseCase {
 
     requestParams.pickupLocation = bookingData.pickup_location || 
                                bookingData.pickupLocation || 
-                               'CDG';  // Default fallback
+                               'CDG';
 
-requestParams.dropoffLocation = bookingData.dropoff_location || 
-                                bookingData.dropoffLocation || 
-                                bookingData.pickup_location || 
-                                'CDG';  // Default fallback
-
+    requestParams.dropoffLocation = bookingData.dropoff_location || 
+                                    bookingData.dropoffLocation || 
+                                    bookingData.pickup_location || 
+                                    'CDG';
   
     if (bookingData.billing_address) {
       requestParams.billingAddress = {
@@ -421,7 +470,7 @@ requestParams.dropoffLocation = bookingData.dropoff_location ||
   
     this.logger.log(`Creating Amadeus transfer order with ${formattedPassengers.length} passenger(s)`);
     this.logger.log(`Flight: ${bookingData.flight_number} on ${bookingData.flight_date}`);
-    this.logger.log(`Request params: ${JSON.stringify(requestParams, null, 2)}`);
+    this.logger.log(`Payment method: ${paymentMethodId ? 'PCI Compliant (PaymentMethod ID + Agency Card)' : 'Legacy Raw Card'}`);
   
     const amadeusOrder = await this.amadeusService.createTransferBooking(requestParams);
   
@@ -438,6 +487,12 @@ requestParams.dropoffLocation = bookingData.dropoff_location ||
     const updatedBookingData = { 
       ...bookingData,
       confirmNbr: confirmNbr,
+      // ✅ Clear sensitive data after successful booking
+      ...(paymentMethodId && {
+        // Keep PaymentMethod ID, clear any raw card data if present
+        payment_card_info: null,
+      }),
+      payment_method_type: paymentMethodId ? 'PCI_COMPLIANT_PAYMENT_METHOD_ID' : 'LEGACY_RAW_CARD',
     };
   
     await this.prisma.booking.update({
@@ -450,7 +505,7 @@ requestParams.dropoffLocation = bookingData.dropoff_location ||
       },
     });
   
-    this.logger.log(` Successfully created Amadeus transfer order ${amadeusOrder.data.id} for booking ${bookingId}`);
+    this.logger.log(`✅ Successfully created Amadeus transfer order ${amadeusOrder.data.id} for booking ${bookingId}`);
   
     return {
       orderId: amadeusOrder.data.id,
@@ -471,7 +526,6 @@ requestParams.dropoffLocation = bookingData.dropoff_location ||
       throw new BadRequestException('No Amadeus order found for this booking');
     }
 
-    // ✅ Get confirmation number from bookingData
     const bookingData = booking.bookingData as any;
     const confirmNbr = bookingData?.confirmNbr;
 
@@ -482,14 +536,12 @@ requestParams.dropoffLocation = bookingData.dropoff_location ||
       );
     }
 
-    // ✅ Cancel in Amadeus - pass both orderId and confirmNbr
     try {
       const result = await this.amadeusService.cancelTransfer({
         orderId: booking.providerBookingId,
         confirmNbr: confirmNbr,
       });
 
-      // ✅ Update booking status
       await this.prisma.booking.update({
         where: { id: bookingId },
         data: {
@@ -503,8 +555,6 @@ requestParams.dropoffLocation = bookingData.dropoff_location ||
     } catch (error: any) {
       this.logger.error(`❌ Failed to cancel Amadeus order: ${error.message}`);
       
-      // ✅ Even if Amadeus cancellation fails, we can still mark as cancelled locally
-      // if the error indicates the order doesn't exist anymore
       if (error.message?.includes('not found') || error.message?.includes('already cancelled')) {
         await this.prisma.booking.update({
           where: { id: bookingId },
@@ -523,9 +573,6 @@ requestParams.dropoffLocation = bookingData.dropoff_location ||
     }
   }
 
-  /**
-   * ✅ NEW: Get booking by reference with confirmNbr
-   */
   async getBookingWithConfirmNbr(bookingId: string): Promise<{ booking: any; confirmNbr: string | null }> {
     const booking = await this.bookingService.getBookingById(bookingId);
     
@@ -542,9 +589,6 @@ requestParams.dropoffLocation = bookingData.dropoff_location ||
     };
   }
 
-  /**
-   * ✅ NEW: Retry Amadeus order creation for a booking
-   */
   async retryAmadeusOrder(bookingId: string, payment?: CreateCarRentalBookingDto['payment']): Promise<any> {
     this.logger.log(`Retrying Amadeus order creation for booking ${bookingId}`);
 
@@ -566,7 +610,6 @@ requestParams.dropoffLocation = bookingData.dropoff_location ||
       throw new BadRequestException('Cannot create order for cancelled booking');
     }
 
-    // ✅ Try to create order
     return this.createAmadeusOrderAfterPayment(bookingId, payment);
   }
 }

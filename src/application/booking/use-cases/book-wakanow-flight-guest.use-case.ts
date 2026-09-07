@@ -251,16 +251,30 @@ export class BookWakanowFlightGuestUseCase {
 
   private validateSelectData(selectData: string): void {
     if (!selectData || selectData.trim().length === 0) {
-      throw new BadRequestException('SelectData is required for booking');
+        throw new BadRequestException('SelectData is required for booking');
     }
     
-    if (selectData.trim().length < 10) {
-      this.logger.warn(`SelectData too short: ${selectData.length} chars`);
-      throw new BadRequestException(
-        'Invalid booking data. Please search for flights again and complete the booking promptly.'
-      );
+    const trimmed = selectData.trim();
+    const length = trimmed.length;
+    
+    if (length < 10) {
+        this.logger.warn(`❌ SelectData too short: ${length} chars`);
+        throw new BadRequestException(
+            'Invalid booking data. Please search for flights again and complete the booking promptly.'
+        );
+    }
+    if (length > 500) {
+        this.logger.error(`❌ SelectData is TOO LONG: ${length} chars (expected < 500)`);
+        this.logger.error(`❌ This is the LONG token, not the SHORT token needed for booking.`);
+        this.logger.error(`❌ First 100 chars: ${trimmed.substring(0, 100)}...`);
+        
+
+        throw new BadRequestException(
+            'Your flight selection has expired. Please search for flights again and complete the booking promptly.'
+        );
     }
     
-    this.logger.log(`✅ SelectData validated: ${selectData.length} chars`);
-  }
+    this.logger.log(`✅ SelectData validated: ${length} chars (short token ✅)`);
+    this.logger.log(`✅ SelectData preview: ${trimmed.substring(0, 50)}...`);
+}
 }

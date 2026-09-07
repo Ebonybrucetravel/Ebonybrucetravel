@@ -212,12 +212,16 @@ this.logger.log('=== END DEBUG ===');
     };
 
     const bookingId = selectResponse.BookingId || null;
-    const selectDataResponse = selectResponse.SelectData || selectData;
+const shortToken = selectData;  
+const longToken = selectResponse.SelectData;
 
-    // ✅ Get terms from Wakanow
+    this.logger.log(`Short token length: ${shortToken?.length || 0}`);
+this.logger.log(`Long token length: ${longToken?.length || 0}`);
+
+
+  
     const wakanowTerms = selectResponse.ProductTermsAndConditions?.TermsAndConditions || [];
     
-    // ✅ Fallback terms from Wakanow API Documentation (Page 19-20)
     const documentedTerms = [
       "Cancellation and Date Change penalty applicable. Penalty amount will depend on the Date and Time of Cancellation or Date Change.",
       "WAKANOW BLACK FRIDAY AND CYBER MONDAY TERMS AND CONDITIONS.",
@@ -262,7 +266,9 @@ this.logger.log('=== END DEBUG ===');
       bookingId: bookingId,
       pnrNumber: bookingId,
       wakanowBookingId: bookingId,
-      selectData: selectDataResponse,
+      selectData: shortToken,      
+      bookingData: longToken,      
+      wakanowSelectData: longToken, 
       isPriceMatched: selectResponse.IsPriceMatched || false,
       isPassportRequired: selectResponse.IsPassportRequired || false,
       

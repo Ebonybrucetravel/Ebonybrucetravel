@@ -226,7 +226,11 @@ export class BookingWakanowController {
   @UseGuards(JwtAuthGuard)
   @Post('book')
   @ApiBearerAuth()
-  @UsePipes(new ValidationPipe({ transform: true }))
+  @UsePipes(new ValidationPipe({ 
+    transform: true,
+    whitelist: true,
+    forbidNonWhitelisted: false,  
+  }))
   @ApiOperation({
     summary: 'Book a Wakanow flight (authenticated user)',
     description:
@@ -307,7 +311,11 @@ export class BookingWakanowController {
 
   @Public()
   @Post('book/guest')
-  @UsePipes(new ValidationPipe({ transform: true }))
+  @UsePipes(new ValidationPipe({ 
+    transform: true,
+    whitelist: true,
+    forbidNonWhitelisted: false, 
+  }))
   @ApiOperation({
     summary: 'Book a Wakanow flight (guest, no authentication)',
     description:

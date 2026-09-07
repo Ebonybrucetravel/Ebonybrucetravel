@@ -1885,8 +1885,6 @@ async createTransferBooking(params: {
   }
 
 
- 
-  // ✅ ✅ ✅ FIX: Add flight details in the CORRECT Amadeus format
   if (params.flightNumber && params.flightDate) {
     const pickupLocation = params.pickupLocation || 'CDG';
     const dropoffLocation = params.dropoffLocation || pickupLocation;
@@ -1905,14 +1903,13 @@ async createTransferBooking(params: {
       },
     };
 
-    // ✅ Log the flight segment for debugging
+   
     this.logger.log(`✈️ Adding flight segment: ${params.flightNumber} on ${params.flightDate} from ${pickupLocation} to ${dropoffLocation}`);
   } else {
     this.logger.warn('⚠️ Flight number or date missing, not adding connected segment');
   }
 
-  // ❌ REMOVE this line - it's the wrong format!
-  // if (params.flightNumber) requestBody.data.flightNumber = params.flightNumber;
+
 
   const queryParams: Record<string, string> = {
     offerId: params.offerId,
