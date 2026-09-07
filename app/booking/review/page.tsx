@@ -702,29 +702,99 @@ const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSea
   // ✅ Only Wakanow
   if (item.isWakanow && item.selectData) {
     try {
+      // ✅ 1. SAVE THE ORIGINAL SHORT TOKEN BEFORE THE API CALL
+      const originalShortToken = item.selectData; // ← This is 148 chars!
+      
+      console.log('🔑 ORIGINAL SHORT TOKEN (before API call):', {
+        length: originalShortToken?.length,
+        preview: originalShortToken?.substring(0, 30),
+        isShort: originalShortToken?.length < 200,
+      });
+      
       const { selectWakanowFlight } = await import('@/lib/wakanow-api');
       const selectResult = await selectWakanowFlight(item.selectData, 'NGN');
       
       console.log('🔍 ensureTermsExist - Backend selectResult:', selectResult);
       
       const responseData = selectResult?.data;
-      
-      // ✅ Get custom_messages from response
-      let customMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
-      const rawMessages = responseData?.custom_messages || [];
-      
-      if (Array.isArray(rawMessages) && rawMessages.length > 0) {
-        if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
-          customMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
-        } else if (typeof rawMessages[0] === 'string') {
-          customMessages = rawMessages.map((msg: string) => ({
-            Title: 'Message',
-            Message: msg,
-            SeverityLevel: 'Medium' as const,
-          }));
+
+      if (responseData) {
+        // ✅ 2. GET THE LONG TOKEN FROM THE RESPONSE
+        const longToken = responseData.select_data || item.selectData; // ← This is 3252 chars!
+        
+        // ✅ 3. GET booking_id
+        const bookingId = responseData.booking_id || undefined;
+        
+        console.log('🔑 TOKEN COMPARISON:', {
+          shortTokenLength: originalShortToken?.length,
+          longTokenLength: longToken?.length,
+          isShortToken: originalShortToken?.length < 200,
+          isLongToken: longToken?.length > 500,
+        });
+        
+        // ✅ 4. STORE BOTH TOKENS IN _wakanowData
+        item._wakanowData = {
+          booking_id: bookingId || undefined,
+          bookingId: bookingId || undefined,
+          select_data: originalShortToken,  // ← SHORT TOKEN (148 chars) ✅
+          selectData: originalShortToken,   // ← SHORT TOKEN (148 chars) ✅
+          longToken: longToken,             // ← LONG TOKEN (3252 chars)
+          wakanowSelectData: originalShortToken,
+        };
+        
+        // ✅ 5. ALSO STORE THE SHORT TOKEN IN THE ITEM
+        item.selectData = originalShortToken;
+        item.wakanowSelectData = originalShortToken;
+        item.wakanowLongToken = longToken;
+        item.bookingId = bookingId;
+        item.booking_id = bookingId;
+        item.wakanowBookingId = bookingId;
+        
+        // ✅ 6. Store in sessionStorage as backup
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('wakanow_original_select_data', originalShortToken);
+          sessionStorage.setItem('wakanow_short_token', originalShortToken);
+          sessionStorage.setItem('wakanow_long_token', longToken);
+          if (bookingId) {
+            sessionStorage.setItem('wakanow_held_booking_id', bookingId);
+          }
         }
+        
+        console.log('✅ Stored SHORT token (from original) and LONG token (from response):', {
+          shortLength: originalShortToken.length,
+          longLength: longToken.length,
+          bookingId: bookingId,
+          inSelectData: item.selectData?.length,
+          inWakanowSelectData: item.wakanowSelectData?.length,
+          in_wakanowData_select_data: item._wakanowData?.select_data?.length,
+          in_wakanowData_longToken: item._wakanowData?.longToken?.length,
+        });
+        
+        // ✅ 7. Store the price breakdown
+        if (responseData.priceBreakdown) {
+          item.priceBreakdown = responseData.priceBreakdown;
+        }
+        
+        // ✅ 8. Store custom messages
+        let customMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
+        const rawMessages = responseData?.custom_messages || [];
+
+        if (Array.isArray(rawMessages) && rawMessages.length > 0) {
+          if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
+            customMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
+          } else if (typeof rawMessages[0] === 'string') {
+            customMessages = rawMessages.map((msg: string) => ({
+              Title: 'Message',
+              Message: msg,
+              SeverityLevel: 'Medium' as const,
+            }));
+          }
+        }
+        
+        item.custom_messages = customMessages;
       }
-      
+
+      // ✅ Build price breakdown
       const priceBreakdown = responseData?.priceBreakdown || {
         basePrice: responseData?.basePrice || 0,
         markupAmount: responseData?.markupAmount || 0,
@@ -742,14 +812,15 @@ const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSea
       const termsAndConditions = responseData?.terms_and_conditions?.TermsAndConditions || [];
       const hasFetchedTerms = termsAndConditions.length > 0;
       
+      // ✅ 9. Return the complete item with ALL data preserved
       return {
-        // ✅ REMOVE the duplicate custom_messages from here
         ...item,
         terms_and_conditions: hasFetchedTerms ? {
           TermsAndConditions: termsAndConditions,
           TermsAndConditionImportantNotice: responseData?.terms_and_conditions?.TermsAndConditionImportantNotice || ''
         } : null,
         bookingId: responseData?.booking_id || item.bookingId,
+        booking_id: responseData?.booking_id || item.booking_id,
         priceBreakdown: priceBreakdown,
         basePrice: priceBreakdown.basePrice,
         markupAmount: priceBreakdown.markupAmount,
@@ -768,9 +839,9 @@ const ensureTermsExist = async (item: ExtendedSearchResult): Promise<ExtendedSea
         calculatedTotal: priceBreakdown.totalAmount,
         final_amount: priceBreakdown.totalAmount.toString(),
         final_price: priceBreakdown.totalAmount.toString(),
-        selectData: responseData?.select_data || item.selectData,
-        // ✅ Keep ONLY this one
-        custom_messages: customMessages,
+        selectData: originalShortToken,  // ← KEEP THE SHORT TOKEN!
+        custom_messages: item.custom_messages || [],
+        _wakanowData: item._wakanowData,  // ← PRESERVE THE TOKENS!
       };
     } catch (error: any) {
       console.error('Failed to fetch terms:', error);
@@ -1893,22 +1964,66 @@ if (isCar) {
         finalProvider = 'DUFFEL';
       }
       
-      // ✅ Wakanow specific (UNCHANGED)
-      if (finalProvider === 'WAKANOW') {
-        const selectDataValue = bookingItem.selectData || 
-                               bookingItem.token || 
-                               bookingItem.session_id || 
-                               bookingItem.booking_token ||
-                               bookingItem.connection_code;
-        
-        if (!selectDataValue) {
-          throw new Error('Missing booking token for this flight. Please go back and select the flight again.');
-        }
-        
-        if (!bookingItem.selectData) {
-          bookingItem = { ...bookingItem, selectData: selectDataValue };
-        }
-      }
+     // ✅ Wakanow specific
+if (finalProvider === 'WAKANOW') {
+  const wakanowData = bookingItem._wakanowData || (bookingItem as any)._wakanowData;
+  
+  // ✅ Get SHORT token from _wakanowData (148 chars)
+  const shortToken = wakanowData?.select_data || 
+                     wakanowData?.selectData || 
+                     bookingItem.wakanowSelectData ||
+                     bookingItem.selectData;
+  
+  // ✅ Get LONG token from _wakanowData (3252 chars)
+  const longToken = wakanowData?.longToken || 
+                    bookingItem.wakanowLongToken;
+  
+  // ✅ Get booking ID
+  const bookingId = wakanowData?.booking_id || 
+                    wakanowData?.bookingId || 
+                    bookingItem.bookingId || 
+                    bookingItem.booking_id;
+  
+  console.log('🔑 Wakanow token debug:', {
+    shortTokenLength: shortToken?.length || 0,
+    longTokenLength: longToken?.length || 0,
+    isShort: shortToken?.length < 200,
+    bookingId: bookingId,
+  });
+  
+  if (!shortToken) {
+    throw new Error('Missing booking token for this flight. Please go back and select the flight again.');
+  }
+  
+
+  bookingItem.selectData = shortToken;
+  
+
+  bookingItem.wakanowSelectData = shortToken;
+  bookingItem.wakanowLongToken = longToken;
+  
+  if (bookingId) {
+    bookingItem.bookingId = bookingId;
+    bookingItem.booking_id = bookingId;
+    bookingItem.wakanowBookingId = bookingId;
+  }
+  
+
+  bookingItem.bookingData = {
+    ...(bookingItem.bookingData || {}),
+    originalShortToken: shortToken,  
+    longToken: longToken || shortToken,
+    bookingId: bookingId,
+    selectData: shortToken,
+  };
+  
+  console.log('✅ Wakanow booking data set:', {
+    selectDataLength: bookingItem.selectData?.length,
+    originalShortTokenLength: bookingItem.bookingData?.originalShortToken?.length,
+    longTokenLength: bookingItem.bookingData?.longToken?.length,
+    bookingId: bookingId,
+  });
+}
       
       // ✅ Duffel specific (NEW - ONLY DUFFEL CHANGE)
       if (finalProvider === 'DUFFEL' && !bookingItem.offer_request_id) {

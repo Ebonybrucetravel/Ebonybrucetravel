@@ -228,15 +228,7 @@ function PaymentForm({ booking, isGuest, voucherCode, onSuccess, onCancel }: Pay
                               hidePostalCode: true 
                           }}/>
                       </div>
-                      {process.env.NODE_ENV === 'development' && (
-                          <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                              <p className="text-xs text-gray-600 font-medium">Test card (dev only)</p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                  Card: <code className="bg-gray-100 px-2 py-1 rounded">4242 4242 4242 4242</code> · 
-                                  Expiry: any future · CVC: any 3 digits
-                              </p>
-                          </div>
-                      )}
+                      {/* ✅ REMOVED: Test card display - no longer shown in production */}
                   </div>
 
                   {error && (

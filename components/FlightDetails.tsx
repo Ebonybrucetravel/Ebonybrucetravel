@@ -51,7 +51,7 @@ const formatDurationDisplay = (duration?: string): string => {
   return duration;
 };
 
-// Helper function to get airport display name with code
+
 const getAirportDisplayName = (airportCode?: string, airportName?: string): string => {
   if (airportName && airportName !== 'Unknown' && airportName !== '') {
     return `${airportCode || 'FCO'} · ${airportName}`;
@@ -106,7 +106,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({
   const [currentItem, setCurrentItem] = useState(item);
   const [activeTab, setActiveTab] = useState<'fare' | 'penalty'>('fare');
 
-  // Brand colors
+
   const brandColors = {
     primary: '#33a8da',
     primaryDark: '#2c98c7',
@@ -445,7 +445,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({
     }
   };
 
-  // Show loading state
+
   if (isConverting || isLoadingRates) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: brandColors.background }}>
@@ -490,20 +490,19 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({
   const totalDuration = slices[0]?.duration || slices[0]?.tripDuration || '';
   const formattedDuration = calculateDuration(totalDuration);
 
-  // Get route info
+
   const destCity = slices[0]?.destination?.city_name || slices[0]?.destination?.name || 'Destination';
 
-  // Check if we have any rules to show
+
   const hasFareRules = fareRules.length > 0;
   const hasPenaltyRules = penaltyRules.length > 0;
   const hasAnyRules = hasFareRules || hasPenaltyRules;
 
-  // Get baggage info from API
   const baggageInfo = transformedItem.freeBaggage || slices[0]?.freeBaggage || slices[0]?.segments?.[0]?.freeBaggage || null;
   const baggageCount = baggageInfo?.BagCount || 0;
   const baggageWeight = baggageInfo?.Weight || 0;
 
-  // Main render - conditionally remove outer background for overlay
+
   return (
     <div 
       className={isOverlay ? '' : 'min-h-screen'} 
@@ -534,7 +533,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({
             </button>
           </div>
 
-          {/* Flight Sections */}
+
           <div className="px-6 py-5 border-b border-gray-100">
             {slices.map((slice: any, sliceIdx: number) => {
               const segments = slice?.segments || [];
@@ -545,7 +544,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({
               const stops = segments.length > 1 ? `${segments.length - 1} stop` : 'Direct';
               const duration = calculateDuration(slice.duration || slice.tripDuration);
               
-              // Get airline logo for this slice
+
               const sliceAirlineLogo = slice.airlineLogo || airlineLogo;
               
               return (
@@ -561,12 +560,12 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({
                       const depDate = formatDate(segment.departing_at);
                       const layoverDuration = !isLast ? calculateDuration(segment.duration) : null;
                       
-                      // ONLY check technical stops from the segment data
+
                       const hasTechStop = segment.hasTechnicalStops && segment.technicalStops?.length > 0;
                       const techStop = hasTechStop ? segment.technicalStops[0] : null;
                       const hasFinalTechStop = !!(techStop);
                       
-                      // Get airline logo for this segment
+
                       const segmentAirlineLogo = segment.operating_carrier?.logo || sliceAirlineLogo;
                       
                       return (
@@ -626,7 +625,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({
                                     <p className="font-bold text-gray-900 text-base mt-0.5">
                                       {segment.destination?.iata_code || '--'} · {segment.destination?.name || segment.destination?.city_name || ''}
                                     </p>
-                                    {/* Technical Stop - Show ONLY if exists on THIS segment */}
+                     
                                     {hasFinalTechStop && techStop && (
                                       <div className="mt-1.5 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
                                         <Plane size={14} className="text-amber-600" />
@@ -645,7 +644,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({
                             </div>
                           </div>
 
-                          {/* Layover - Brand Blue Color */}
+            
                           {!isLast && layoverDuration && (
                             <div className="flex items-center gap-2.5 py-2.5 rounded-lg px-4 ml-11 border" 
                               style={{ 
@@ -669,7 +668,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({
             })}
           </div>
 
-          {/* Baggage - Only from API */}
+
           <div className="px-6 py-5 border-b border-gray-100">
             <div className="flex items-center gap-2 mb-4">
               <Briefcase size={18} style={{ color: brandColors.primary }} />
@@ -692,10 +691,10 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({
             </div>
           </div>
 
-          {/* Fare Rules & Penalty Rules - Tabs */}
+
           {hasAnyRules && (
             <div className="px-6 py-5 border-b border-gray-100">
-              {/* Tab Headers */}
+     
               <div className="flex border-b border-gray-200 mb-4">
                 {hasFareRules && (
                   <button
@@ -723,9 +722,9 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({
                 )}
               </div>
 
-              {/* Tab Content */}
+  
               <div className="mt-4">
-                {/* Fare Rules Tab */}
+              
                 {activeTab === 'fare' && hasFareRules && (
                   <div>
                     <p className="text-sm text-gray-500 mb-3">Helpful policy information</p>
@@ -740,7 +739,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({
                   </div>
                 )}
 
-                {/* Penalty Rules Tab */}
+              
                 {activeTab === 'penalty' && hasPenaltyRules && (
                   <div>
                     <div className="space-y-2.5">
@@ -757,7 +756,7 @@ const FlightDetails: React.FC<FlightDetailsProps> = ({
             </div>
           )}
 
-          {/* Footer - Price and Continue Button */}
+
           <div className="px-6 py-6 bg-gray-50 border-t border-gray-100">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div>

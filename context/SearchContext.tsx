@@ -414,17 +414,23 @@ const [stopInformation, setStopInformation] = useState<StopInformation | null>(n
 
   useEffect(() => {
     try {
-      const raw = typeof window !== 'undefined' ? sessionStorage.getItem(BOOKING_REVIEW_SELECTION_KEY) : null;
-      if (!raw) return;
-      const data = JSON.parse(raw) as { selectedItem: SearchResult | null; searchParams: SearchParams | null };
-      sessionStorage.removeItem(BOOKING_REVIEW_SELECTION_KEY);
-      if (data.selectedItem) setSelectedItem(data.selectedItem);
-      if (data.searchParams) setSearchParams(data.searchParams);
+        const raw = typeof window !== 'undefined' ? sessionStorage.getItem(BOOKING_REVIEW_SELECTION_KEY) : null;
+        if (!raw) return;
+        const data = JSON.parse(raw) as { selectedItem: SearchResult | null; searchParams: SearchParams | null };
+        sessionStorage.removeItem(BOOKING_REVIEW_SELECTION_KEY);
+        
+        if (data.selectedItem) {
+          
+            if ((data.selectedItem as any).bookingId) {
+                console.log('✅ Restored bookingId from sessionStorage:', (data.selectedItem as any).bookingId);
+            }
+            setSelectedItem(data.selectedItem);
+        }
+        if (data.searchParams) setSearchParams(data.searchParams);
     } catch {
-      sessionStorage.removeItem(BOOKING_REVIEW_SELECTION_KEY);
+        sessionStorage.removeItem(BOOKING_REVIEW_SELECTION_KEY);
     }
-  }, []);
-
+}, [clearSelectedSeats]);
   const fetchAirlines = useCallback(async () => {
     console.log('⚠️ Airlines endpoint not available - skipping');
     return;
@@ -1177,9 +1183,9 @@ const searchHotels = async (params: SearchParams) => {
 
       let selectDataValue = shortSelectData;
 
-      if (!selectDataValue || selectDataValue.length > 500) {
-        selectDataValue = compressedSelectData;
-      }
+      //if (!selectDataValue || selectDataValue.length > 500) {
+       // selectDataValue = compressedSelectData;
+      //}
 
       if (shortSelectData && shortSelectData.length < 200 && shortSelectData.length > 0) {
         selectDataValue = shortSelectData;
@@ -1615,10 +1621,9 @@ const searchMultiCityFlights = async (params: SearchParams) => {
     setSearchError('Failed to search multi-city flights. Please try again.');
     setSearchResults([]);
   }
-};
-// ✅ The existing search logic (renamed for single segment)
+}
 const searchSingleSegmentFlights = async (params: SearchParams) => {
-  // ✅ FIX: Check if segments exists and has first item
+
   if (!params.segments || !params.segments[0]?.from || !params.segments[0]?.to) {
     setSearchResults([]);
     return;
@@ -2090,144 +2095,172 @@ const _searchImpl = async (params: SearchParams) => {
       return;
     }
     
-    // ✅ For Wakanow items (single segment flights)
-    if (isWakanowItem) {
-      try {
-        const selectDataValue = (item as any).selectData;
-        
-        // ✅ Skip API call if we already have the data cached
-        if ((item as any)._wakanowData || (item as any).priceBreakdown) {
-          console.log('✅ Already have Wakanow data, skipping API call');
-          setSelectedItem(item);
-          return;
-        }
-        
-        // ✅ Skip if we have fare_rules (means data was already fetched)
-        if ((item as any).fare_rules?.length > 0) {
-          console.log('✅ Already have fare_rules, skipping API call');
-          setSelectedItem(item);
-          return;
-        }
-        
-        // ✅ Skip if we have slices (means data is already populated)
-        if ((item as any).slices?.length > 0) {
-          console.log('✅ Already have slices, skipping API call');
-          setSelectedItem(item);
-          return;
-        }
-        
-        // ✅ Check if we have valid selectData (short version, not compressed)
-        const isValidSelectData = selectDataValue && 
-                                 typeof selectDataValue === 'string' && 
-                                 selectDataValue.length > 10 && 
-                                 selectDataValue.length < 500;
-        
-        if (isValidSelectData) {
-          console.log('📝 Fetching custom_messages from SELECT endpoint (length: ' + selectDataValue.length + ')');
-          
-          try {
-            const { selectWakanowFlight } = await import('@/lib/wakanow-api');
-            const result = await selectWakanowFlight(selectDataValue, 'NGN');
-            
-            if (result?.data) {
-            
-              const newSelectData = result.data.select_data || result.data.select_data || '';
-              if (newSelectData && newSelectData.length < 500) {
-                (itemWithMessages as any).selectData = newSelectData;
-                console.log('✅ Got new short selectData (length: ' + newSelectData.length + ')');
-                const stopInfo = result.data.stop_information || result.data.stopInformation || null;
-                if (stopInfo) {
-                  setStopInformation(stopInfo);
-                  setTechnicalStops(stopInfo.technicalStops || []);
-                  setHasTechnicalStops(stopInfo.summary?.hasTechnicalStops || false);
-                  setTotalTechnicalStops(stopInfo.summary?.totalTechnicalStops || 0);
-                  
-                  console.log('✅ Technical Stops extracted:', {
-                    count: stopInfo.technicalStops?.length || 0,
-                    hasTechnicalStops: stopInfo.summary?.hasTechnicalStops,
-                    total: stopInfo.summary?.totalTechnicalStops,
-                  });
-                }
-                
-                // ✅ Also store technical stops on the item itself
-                (itemWithMessages as any).technicalStops = stopInfo?.technicalStops || [];
-                (itemWithMessages as any).hasTechnicalStops = stopInfo?.summary?.hasTechnicalStops || false;
-                (itemWithMessages as any).totalTechnicalStops = stopInfo?.summary?.totalTechnicalStops || 0;
-                (itemWithMessages as any).stopInformation = stopInfo;
-              }
 
-              
-              
-              // ✅ Get custom_messages
-              if (result.data.custom_messages) {
-                const rawMessages = result.data.custom_messages;
-                let formattedMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
-                
-                if (Array.isArray(rawMessages) && rawMessages.length > 0) {
-                  if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
-                    formattedMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
-                  } else if (typeof rawMessages[0] === 'string') {
-                    formattedMessages = rawMessages.map((msg: string) => ({
-                      Title: 'Message',
-                      Message: msg,
-                      SeverityLevel: 'Medium' as const,
-                    }));
-                  }
-                }
-                
-                (itemWithMessages as any).custom_messages = formattedMessages;
-                console.log('✅ Got custom messages:', (itemWithMessages as any).custom_messages);
-              }
-              
-              // ✅ Store price breakdown if available
-              if (result.data.priceBreakdown) {
-                (itemWithMessages as any).priceBreakdown = result.data.priceBreakdown;
-                (itemWithMessages as any)._wakanowData = result.data;
-                
-                // ✅ Store flight summary and slices
-                if (result.data.flight_summary) {
-                  (itemWithMessages as any).flight_summary = result.data.flight_summary;
-                  if (result.data.flight_summary.slices) {
-                    (itemWithMessages as any).slices = result.data.flight_summary.slices;
-                    console.log('✅ Stored slices from flight_summary');
-                  }
-                  if (result.data.flight_summary.isRefundable !== undefined) {
-                    (itemWithMessages as any).isRefundable = result.data.flight_summary.isRefundable;
-                    console.log('✅ Stored isRefundable:', result.data.flight_summary.isRefundable);
-                  }
-                }
-                
-                // ✅ Store fare rules and penalty rules
-                if (result.data.fare_rules) {
-                  (itemWithMessages as any).fare_rules = result.data.fare_rules;
-                }
-                if (result.data.penalty_rules) {
-                  (itemWithMessages as any).penalty_rules = result.data.penalty_rules;
-                }
-                
-                console.log('✅ Stored all Wakanow data from select endpoint');
-              }
-            }
-          } catch (error: any) {
-            // ✅ If error is SELECTION_EXPIRED, just use the data we have
-            if (error.message === 'SELECTION_EXPIRED' || error.message?.includes('expired')) {
-              console.log('⚠️ Selection expired, using existing data');
-              // ✅ Make sure we preserve all existing data
-              setSelectedItem(item);
-              return;
-            }
-            console.warn('Could not fetch custom messages:', error);
-          }
-        } else {
-          console.log('⏭️ Skipping API call - invalid selectData length: ' + (selectDataValue?.length || 0));
-        }
-      } catch (error) {
-        console.warn('Could not fetch custom messages:', error);
-      }
+if (isWakanowItem) {
+  try {
+    const selectDataValue = (item as any).selectData;
+    
+  
+    const existingWakanowData = (item as any)._wakanowData;
+    const existingSelectData = existingWakanowData?.select_data || existingWakanowData?.selectData || '';
+    
+    if (existingSelectData && existingSelectData.length > 10 && existingSelectData.length < 500) {
+      console.log('✅ Already have held selectData, skipping API call');
+      (itemWithMessages as any)._wakanowData = existingWakanowData;
+      (itemWithMessages as any).heldSelectData = existingSelectData;
+      setSelectedItem(itemWithMessages);
+      return;
     }
     
-    setSelectedItem(itemWithMessages);
-  }, []);
+
+    if ((item as any).priceBreakdown && !existingSelectData) {
+      console.log('⚠️ Have priceBreakdown but no select_data, calling select...');
+    }
+    
+    if ((item as any).fare_rules?.length > 0 && existingSelectData) {
+      console.log('✅ Already have fare_rules, skipping API call');
+      setSelectedItem(item);
+      return;
+    }
+    
+
+    if ((item as any).slices?.length > 0 && existingSelectData) {
+      console.log('✅ Already have slices, skipping API call');
+      setSelectedItem(item);
+      return;
+    }
+    
+    const isValidSelectData = selectDataValue && 
+                             typeof selectDataValue === 'string' && 
+                             selectDataValue.length > 10 && 
+                             selectDataValue.length < 500;
+
+    if (isValidSelectData) {
+      console.log('📝 Fetching custom_messages from SELECT endpoint (length: ' + selectDataValue.length + ')');
+      
+      try {
+        const { selectWakanowFlight } = await import('@/lib/wakanow-api');
+        const result = await selectWakanowFlight(selectDataValue, 'NGN');
+        
+        if (result?.data) {
+          
+          const shortSelectData = result.data.select_data || '';
+          const bookingId = result.data.booking_id || '';
+          
+          (itemWithMessages as any)._wakanowData = {
+              ...result.data,
+             
+              select_data: shortSelectData,
+              selectData: shortSelectData,  
+              booking_id: bookingId,
+              bookingId: bookingId,
+          };
+          
+          const newSelectData = result.data.select_data || '';
+    if (newSelectData && newSelectData.length < 500) {
+        (itemWithMessages as any).selectData = newSelectData;
+        (itemWithMessages as any).heldSelectData = newSelectData;
+
+              const bookingId = result.data.booking_id || newSelectData || selectDataValue || '';
+
+if (bookingId) {
+    (itemWithMessages as any).bookingId = bookingId;
+    console.log('✅ Stored bookingId on item:', bookingId);
+} else {
+    console.warn('⚠️ No bookingId found. result.data keys:', Object.keys(result.data));
+}
+              
+
+
+if (typeof window !== 'undefined') {
+sessionStorage.setItem('wakanow_held_select_data', newSelectData);
+sessionStorage.setItem('wakanow_held_booking_id', bookingId || '');
+console.log('📦 Stored in sessionStorage - bookingId:', bookingId || '(empty)');
+}
+
+            const stopInfo = result.data.stop_information || result.data.stopInformation || null;
+            if (stopInfo) {
+              setStopInformation(stopInfo);
+              setTechnicalStops(stopInfo.technicalStops || []);
+              setHasTechnicalStops(stopInfo.summary?.hasTechnicalStops || false);
+              setTotalTechnicalStops(stopInfo.summary?.totalTechnicalStops || 0);
+              
+              console.log('✅ Technical Stops extracted:', {
+                count: stopInfo.technicalStops?.length || 0,
+                hasTechnicalStops: stopInfo.summary?.hasTechnicalStops,
+                total: stopInfo.summary?.totalTechnicalStops,
+              });
+            }
+            
+            (itemWithMessages as any).technicalStops = stopInfo?.technicalStops || [];
+            (itemWithMessages as any).hasTechnicalStops = stopInfo?.summary?.hasTechnicalStops || false;
+            (itemWithMessages as any).totalTechnicalStops = stopInfo?.summary?.totalTechnicalStops || 0;
+            (itemWithMessages as any).stopInformation = stopInfo;
+          }
+          
+          if (result.data.custom_messages) {
+            const rawMessages = result.data.custom_messages;
+            let formattedMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
+            
+            if (Array.isArray(rawMessages) && rawMessages.length > 0) {
+              if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
+                formattedMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
+              } else if (typeof rawMessages[0] === 'string') {
+                formattedMessages = rawMessages.map((msg: string) => ({
+                  Title: 'Message',
+                  Message: msg,
+                  SeverityLevel: 'Medium' as const,
+                }));
+              }
+            }
+            
+            (itemWithMessages as any).custom_messages = formattedMessages;
+            console.log('✅ Got custom messages:', (itemWithMessages as any).custom_messages);
+          }
+          
+          if (result.data.priceBreakdown) {
+            (itemWithMessages as any).priceBreakdown = result.data.priceBreakdown;
+            
+            if (result.data.flight_summary) {
+              (itemWithMessages as any).flight_summary = result.data.flight_summary;
+              if (result.data.flight_summary.slices) {
+                (itemWithMessages as any).slices = result.data.flight_summary.slices;
+                console.log('✅ Stored slices from flight_summary');
+              }
+              if (result.data.flight_summary.isRefundable !== undefined) {
+                (itemWithMessages as any).isRefundable = result.data.flight_summary.isRefundable;
+                console.log('✅ Stored isRefundable:', result.data.flight_summary.isRefundable);
+              }
+            }
+            
+            if (result.data.fare_rules) {
+              (itemWithMessages as any).fare_rules = result.data.fare_rules;
+            }
+            if (result.data.penalty_rules) {
+              (itemWithMessages as any).penalty_rules = result.data.penalty_rules;
+            }
+            
+            console.log('✅ Stored Wakanow data from select endpoint');
+          }
+        }
+      } catch (error: any) {
+        if (error.message === 'SELECTION_EXPIRED' || error.message?.includes('expired')) {
+          console.log('⚠️ Selection expired, using existing data');
+          setSelectedItem(itemWithMessages);
+          return;
+        }
+        console.warn('Could not fetch custom messages:', error);
+      }
+    } else {
+      console.log('⏭️ Skipping API call - invalid selectData length: ' + (selectDataValue?.length || 0));
+    }
+  } catch (error) {
+    console.warn('Could not fetch custom messages:', error);
+  }
+}
+
+setSelectedItem(itemWithMessages);
+                          }, []);
   
 
   const clearSearch = useCallback(() => {
@@ -2244,12 +2277,17 @@ const _searchImpl = async (params: SearchParams) => {
   const persistSelectionForReturn = useCallback(() => {
     if (typeof window === 'undefined') return;
     try {
-      const payload = { selectedItem, searchParams };
-      sessionStorage.setItem(BOOKING_REVIEW_SELECTION_KEY, JSON.stringify(payload));
+       
+        const itemToStore = { ...selectedItem };
+        if (selectedItem && (selectedItem as any).bookingId) {
+            (itemToStore as any).bookingId = (selectedItem as any).bookingId;
+        }
+        const payload = { selectedItem: itemToStore, searchParams };
+        sessionStorage.setItem(BOOKING_REVIEW_SELECTION_KEY, JSON.stringify(payload));
     } catch {
-      sessionStorage.removeItem(BOOKING_REVIEW_SELECTION_KEY);
+        sessionStorage.removeItem(BOOKING_REVIEW_SELECTION_KEY);
     }
-  }, [selectedItem, searchParams]);
+}, [selectedItem, searchParams]);
 
   return (
     <SearchContext.Provider

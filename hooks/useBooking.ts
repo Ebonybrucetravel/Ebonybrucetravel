@@ -283,6 +283,25 @@ const isDomesticFlight = (origin: string, destination: string): boolean => {
 };
 
 const getSelectData = (item: ExtendedSearchResult): string => {
+  const bookingData = (item as any).bookingData;
+  if (bookingData && typeof bookingData === 'object' && bookingData.originalShortToken) {
+    return bookingData.originalShortToken;
+  }
+  
+
+  if ((item as any)._wakanowData?.select_data) {
+    return (item as any)._wakanowData.select_data;
+  }
+  if ((item as any)._wakanowData?.selectData) {
+    return (item as any)._wakanowData.selectData;
+  }
+  
+  
+  if ((item as any).wakanowSelectData) {
+    return (item as any).wakanowSelectData;
+  }
+  
+ 
   return item.selectData || 
          item.token || 
          item.session_id || 
@@ -1115,57 +1134,56 @@ console.log('📄 passengerInfo built (NO passport fields):', {
 if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC") {
        
           
-          let offerId = "";
-          let offerRequestId = "";
+  let offerId = "";
+  let offerRequestId = "";
                     
-
-          if (provider === 'WAKANOW') {
-            offerId = getSelectData(item);
-            console.log("🔑 Wakanow selectData:", { offerId: offerId?.substring(0, 30) });
-            if (!offerId) {
-              throw new Error("Missing selectData for Wakanow flight. Please go back and select the flight again.");
-            }
-            
-            const wakanowTotalAmount = finalAmount;
-            const wakanowCurrency = offerCurrency;
-            const wakanowBookingId = item.bookingId || null;
-            
-            console.log("🔑 Wakanow Booking ID (PNR):", wakanowBookingId);
-            if (options?.createWithoutPayment) {
-              console.log("📝 Creating Wakanow booking WITHOUT payment (for seat selection)");
-            }
-            
+  if (provider === 'WAKANOW') {
+    offerId = getSelectData(item);
+    console.log("🔑 Wakanow selectData:", { offerId: offerId?.substring(0, 30) });
+    if (!offerId) {
+      throw new Error("Missing selectData for Wakanow flight. Please go back and select the flight again.");
+    }
+    
+    const wakanowTotalAmount = finalAmount;
+    const wakanowCurrency = offerCurrency;
+    const wakanowBookingId = item.bookingId || null;
+    
+    console.log("🔑 Wakanow Booking ID (PNR):", wakanowBookingId);
+    if (options?.createWithoutPayment) {
+      console.log("📝 Creating Wakanow booking WITHOUT payment (for seat selection)");
+    }
+    
 
 const passengersArray = [];
 
 // Default address for passengers
 const defaultAddress = {
-  address: passenger.address || '123 Fake Street',
-  country: passenger.country || 'Nigeria',
-  countryCode: passenger.countryCode || 'NG',
-  city: passenger.city || 'Lagos',
-  postalCode: passenger.postalCode || '100001',
+address: passenger.address || '123 Fake Street',
+country: passenger.country || 'Nigeria',
+countryCode: passenger.countryCode || 'NG',
+city: passenger.city || 'Lagos',
+postalCode: passenger.postalCode || '100001',
 };
 
 // ✅ DEBUG: Log passenger object before building
 console.log('🔍🔍🔍 CRITICAL - passenger object BEFORE buildPassenger:', {
-  firstName: passenger.firstName,
-  lastName: passenger.lastName,
-  // Check all passport field variations
-  PassportNumber: (passenger as any).PassportNumber,
-  passportNumber: (passenger as any).passportNumber,
-  ExpiryDate: (passenger as any).ExpiryDate,
-  passportExpiry: (passenger as any).passportExpiry,
-  PassportIssuingAuthority: (passenger as any).PassportIssuingAuthority,
-  passportIssuingAuthority: (passenger as any).passportIssuingAuthority,
-  PassportIssueCountryCode: (passenger as any).PassportIssueCountryCode,
-  passportIssueCountry: (passenger as any).passportIssueCountry,
-  // Check if any passport field exists
-  hasPassport: !!(passenger as any).PassportNumber || !!(passenger as any).passportNumber,
-  // Check travellers
-  travellers: (passenger as any).travellers,
-  // All keys in passenger object
-  allKeys: Object.keys(passenger),
+firstName: passenger.firstName,
+lastName: passenger.lastName,
+// Check all passport field variations
+PassportNumber: (passenger as any).PassportNumber,
+passportNumber: (passenger as any).passportNumber,
+ExpiryDate: (passenger as any).ExpiryDate,
+passportExpiry: (passenger as any).passportExpiry,
+PassportIssuingAuthority: (passenger as any).PassportIssuingAuthority,
+passportIssuingAuthority: (passenger as any).passportIssuingAuthority,
+PassportIssueCountryCode: (passenger as any).PassportIssueCountryCode,
+passportIssueCountry: (passenger as any).passportIssueCountry,
+// Check if any passport field exists
+hasPassport: !!(passenger as any).PassportNumber || !!(passenger as any).passportNumber,
+// Check travellers
+travellers: (passenger as any).travellers,
+// All keys in passenger object
+allKeys: Object.keys(passenger),
 });
 
 // ✅ Build passengers with error collection using buildPassengerSafely
@@ -1175,187 +1193,187 @@ const passengerErrors: string[] = [];
 
 // ✅ Build lead passenger with DateOfBirth
 const leadResult = buildPassengerSafely(
-  {
-    ...passenger,
-    FirstName: passenger.firstName,
-    LastName: passenger.lastName,
-    DateOfBirth: passenger.dateOfBirth || '',  
-    PhoneNumber: passenger.phone,
-    Email: passenger.email,
-  },
-  isDomestic,
-  isNorthAmerica,
-  defaultAddress,
-  'Lead passenger'
+{
+...passenger,
+FirstName: passenger.firstName,
+LastName: passenger.lastName,
+DateOfBirth: passenger.dateOfBirth || '',  
+PhoneNumber: passenger.phone,
+Email: passenger.email,
+},
+isDomestic,
+isNorthAmerica,
+defaultAddress,
+'Lead passenger'
 );
 
 if (leadResult.error) {
-  passengerErrors.push(leadResult.error);
+passengerErrors.push(leadResult.error);
 } else if (leadResult.passenger) {
-  passengersArray.push(leadResult.passenger);
+passengersArray.push(leadResult.passenger);
 }
 // 2. Add additional passengers from travellers
 if (travellers && travellers.length > 1) {
-  for (let i = 1; i < travellers.length; i++) {
-    const t = travellers[i];
-    if (t.firstName || t.FirstName) {
-      
-      const mappedTraveller = {
-        ...t,
-        ExpiryDate: t.ExpiryDate || t.passportExpiry || '',
-        PassportNumber: t.PassportNumber || t.passportNumber || '',
-        PassportIssuingAuthority: t.PassportIssuingAuthority || t.passportIssuingAuthority || '',
-        PassportIssueCountryCode: t.PassportIssueCountryCode || t.passportIssueCountry || 'NG',
-        DateOfBirth: t.DateOfBirth || t.dateOfBirth || '',
-        FirstName: t.FirstName || t.firstName || '',
-        LastName: t.LastName || t.lastName || '',
-        PhoneNumber: t.PhoneNumber || t.phone || '',
-        Email: t.Email || t.email || '',
-      };
-      
-      const result = buildPassengerSafely(
-        mappedTraveller,
-        isDomestic,
-        isNorthAmerica,
-        defaultAddress,
-        `Traveller ${i + 1}`
-      );
-      if (result.error) {
-        passengerErrors.push(result.error);
-      } else if (result.passenger) {
-        passengersArray.push(result.passenger);
-      }
-    }
-  }
+for (let i = 1; i < travellers.length; i++) {
+const t = travellers[i];
+if (t.firstName || t.FirstName) {
+
+const mappedTraveller = {
+...t,
+ExpiryDate: t.ExpiryDate || t.passportExpiry || '',
+PassportNumber: t.PassportNumber || t.passportNumber || '',
+PassportIssuingAuthority: t.PassportIssuingAuthority || t.passportIssuingAuthority || '',
+PassportIssueCountryCode: t.PassportIssueCountryCode || t.passportIssueCountry || 'NG',
+DateOfBirth: t.DateOfBirth || t.dateOfBirth || '',
+FirstName: t.FirstName || t.firstName || '',
+LastName: t.LastName || t.lastName || '',
+PhoneNumber: t.PhoneNumber || t.phone || '',
+Email: t.Email || t.email || '',
+};
+
+const result = buildPassengerSafely(
+mappedTraveller,
+isDomestic,
+isNorthAmerica,
+defaultAddress,
+`Traveller ${i + 1}`
+);
+if (result.error) {
+passengerErrors.push(result.error);
+} else if (result.passenger) {
+passengersArray.push(result.passenger);
+}
+}
+}
 }
 
 // 3. Add additional passengers from page.tsx
 const additionalPassengers = (passenger as any).additionalPassengers || [];
 if (Array.isArray(additionalPassengers) && additionalPassengers.length > 0) {
-  for (let i = 0; i < additionalPassengers.length; i++) {
-    const ap = additionalPassengers[i];
-    
-    // ✅ Map the fields to match what buildPassenger expects
-    const mappedPassenger = {
-      ...ap,
-      // Map passport fields to the correct case
-      ExpiryDate: ap.passportExpiry || ap.ExpiryDate || '',
-      PassportNumber: ap.passportNumber || ap.PassportNumber || '',
-      PassportIssuingAuthority: ap.passportIssuingAuthority || ap.PassportIssuingAuthority || '',
-      PassportIssueCountryCode: ap.passportIssueCountry || ap.PassportIssueCountryCode || 'NG',
-      // Ensure DateOfBirth is set
-      DateOfBirth: ap.dateOfBirth || ap.DateOfBirth || '',
-      // Ensure name fields are set
-      FirstName: ap.firstName || ap.FirstName || '',
-      LastName: ap.lastName || ap.LastName || '',
-      PhoneNumber: ap.phone || ap.PhoneNumber || '',
-      Email: ap.email || ap.Email || '',
-    };
-    
-    const result = buildPassengerSafely(
-      mappedPassenger,
-      isDomestic,
-      isNorthAmerica,
-      defaultAddress,
-      `Additional passenger ${i + 1}`
-    );
-    if (result.error) {
-      passengerErrors.push(result.error);
-    } else if (result.passenger) {
-      passengersArray.push(result.passenger);
-    }
-  }
+for (let i = 0; i < additionalPassengers.length; i++) {
+const ap = additionalPassengers[i];
+
+// ✅ Map the fields to match what buildPassenger expects
+const mappedPassenger = {
+...ap,
+// Map passport fields to the correct case
+ExpiryDate: ap.passportExpiry || ap.ExpiryDate || '',
+PassportNumber: ap.passportNumber || ap.PassportNumber || '',
+PassportIssuingAuthority: ap.passportIssuingAuthority || ap.PassportIssuingAuthority || '',
+PassportIssueCountryCode: ap.passportIssueCountry || ap.PassportIssueCountryCode || 'NG',
+// Ensure DateOfBirth is set
+DateOfBirth: ap.dateOfBirth || ap.DateOfBirth || '',
+// Ensure name fields are set
+FirstName: ap.firstName || ap.FirstName || '',
+LastName: ap.lastName || ap.LastName || '',
+PhoneNumber: ap.phone || ap.PhoneNumber || '',
+Email: ap.email || ap.Email || '',
+};
+
+const result = buildPassengerSafely(
+mappedPassenger,
+isDomestic,
+isNorthAmerica,
+defaultAddress,
+`Additional passenger ${i + 1}`
+);
+if (result.error) {
+passengerErrors.push(result.error);
+} else if (result.passenger) {
+passengersArray.push(result.passenger);
+}
+}
 }
 
 // ✅ If any passenger validation failed, throw combined error
 if (passengerErrors.length > 0) {
-  const errorMessage = passengerErrors.join('\n');
-  console.error('❌ Passenger validation errors:', errorMessage);
-  throw new Error(
-    `Cannot complete booking. Please fix the following issues:\n${errorMessage}`
-  );
+const errorMessage = passengerErrors.join('\n');
+console.error('❌ Passenger validation errors:', errorMessage);
+throw new Error(
+`Cannot complete booking. Please fix the following issues:\n${errorMessage}`
+);
 }
 
 console.log("👤 Passengers built successfully:", passengersArray.length);
-            
-            // ✅ STORE bookingId at TOP LEVEL
-            body.bookingId = wakanowBookingId;
-            
-            // ✅ STORE selectData at TOP LEVEL
-            body.selectData = offerId;
+    
+    // ✅ STORE bookingId at TOP LEVEL
+    body.bookingId = wakanowBookingId;
+    
+    // ✅ STORE selectData at TOP LEVEL
+    body.selectData = offerId;
 
-            const technicalStops = item.technicalStops || [];
+    const technicalStops = item.technicalStops || [];
 const hasTechnicalStops = item.hasTechnicalStops || false;
 const totalTechnicalStops = item.totalTechnicalStops || 0;
 const stopInformation = item.stopInformation || null;
 
 console.log('🛑 Technical stops in booking:', {
-  hasTechnicalStops,
-  totalTechnicalStops,
-  technicalStopsCount: technicalStops.length,
-  hasStopInformation: !!stopInformation,
+hasTechnicalStops,
+totalTechnicalStops,
+technicalStopsCount: technicalStops.length,
+hasStopInformation: !!stopInformation,
 });
 
-            
-            // ✅ ALL Wakanow-specific fields go INSIDE bookingData
-            body.bookingData = {
-              offerId: offerId,
-              origin: finalOrigin,
-              destination: finalDestination,
-              departureDate: searchParams?.segments?.[0]?.date ?? new Date().toISOString().split('T')[0],
-              isMultiCity: isMultiCity,
-              allSegments: allSegments,
-              createWithoutPayment: options?.createWithoutPayment || false,
-              passengers: passengersArray,
-              bookingId: wakanowBookingId,
-              selectData: offerId,
-              targetCurrency: wakanowCurrency,
-              isDomestic: isDomestic,
-  isNorthAmerica: isNorthAmerica,
-  passportRequirement: isDomestic ? 'EMPTY' : (isNorthAmerica ? 'MANDATORY' : 'OPTIONAL'),
-              destinationCode: destinationCode,
-              technicalStops: technicalStops,
-              hasTechnicalStops: hasTechnicalStops,
-              totalTechnicalStops: totalTechnicalStops,
-              stopInformation: stopInformation,
-              priceBreakdown: {
-                basePrice: basePrice,
-                markupAmount: markupAmount,
-                markupPercentage: markupPercentage,
-                serviceFee: serviceFee,
-                serviceFeePercentage: serviceFeePercentage,
-                taxes: taxes,
-                taxPercentage: markupPercentage + serviceFeePercentage,
-                totalAmount: wakanowTotalAmount,
-                currency: wakanowCurrency,
-              },
-              ...(item.realData?.airline && { airline: item.realData.airline }),
-              ...(item.realData?.flightNumber && {
-                flightNumber: item.realData.flightNumber,
-                phoneNumber: passenger.phone, 
-              }),
-              
-              cabinClass: searchParams?.cabinClass ?? "economy",
-              passengersCount: searchParams?.passengers ?? 1,
-              basePrice: basePrice,
-              markup_amount: markupAmount,
-              service_fee: serviceFee,
-              taxes: taxes,
-              totalAmount: wakanowTotalAmount,
-              original_amount: item.original_amount,
-              final_amount: item.final_amount,
-              markup_percentage: markupPercentage,
-              is_domestic: productType === "FLIGHT_DOMESTIC",
-              is_wakanow: provider === 'WAKANOW',
-              select_data: offerId,
-              pnrNumber: wakanowBookingId,
-              wakanowBookingId: wakanowBookingId,
-            };
-            
-            // ✅ Also keep top-level pnrNumber for webhook
-            body.pnrNumber = wakanowBookingId;
-            
-            // ✅ Ensure totalAmount is positive (backend requires > 0)
+    
+    // ✅ ALL Wakanow-specific fields go INSIDE bookingData
+    body.bookingData = {
+      offerId: offerId,
+      origin: finalOrigin,
+      destination: finalDestination,
+      departureDate: searchParams?.segments?.[0]?.date ?? new Date().toISOString().split('T')[0],
+      isMultiCity: isMultiCity,
+      allSegments: allSegments,
+      createWithoutPayment: options?.createWithoutPayment || false,
+      passengers: passengersArray,
+      bookingId: wakanowBookingId,
+      selectData: offerId,
+      targetCurrency: wakanowCurrency,
+      isDomestic: isDomestic,
+isNorthAmerica: isNorthAmerica,
+passportRequirement: isDomestic ? 'EMPTY' : (isNorthAmerica ? 'MANDATORY' : 'OPTIONAL'),
+      destinationCode: destinationCode,
+      technicalStops: technicalStops,
+      hasTechnicalStops: hasTechnicalStops,
+      totalTechnicalStops: totalTechnicalStops,
+      stopInformation: stopInformation,
+      priceBreakdown: {
+        basePrice: basePrice,
+        markupAmount: markupAmount,
+        markupPercentage: markupPercentage,
+        serviceFee: serviceFee,
+        serviceFeePercentage: serviceFeePercentage,
+        taxes: taxes,
+        taxPercentage: markupPercentage + serviceFeePercentage,
+        totalAmount: wakanowTotalAmount,
+        currency: wakanowCurrency,
+      },
+      ...(item.realData?.airline && { airline: item.realData.airline }),
+      ...(item.realData?.flightNumber && {
+        flightNumber: item.realData.flightNumber,
+        phoneNumber: passenger.phone, 
+      }),
+      
+      cabinClass: searchParams?.cabinClass ?? "economy",
+      passengersCount: searchParams?.passengers ?? 1,
+      basePrice: basePrice,
+      markup_amount: markupAmount,
+      service_fee: serviceFee,
+      taxes: taxes,
+      totalAmount: wakanowTotalAmount,
+      original_amount: item.original_amount,
+      final_amount: item.final_amount,
+      markup_percentage: markupPercentage,
+      is_domestic: productType === "FLIGHT_DOMESTIC",
+      is_wakanow: provider === 'WAKANOW',
+      select_data: offerId,
+      pnrNumber: wakanowBookingId,
+      wakanowBookingId: wakanowBookingId,
+    };
+    
+    // ✅ Also keep top-level pnrNumber for webhook
+    body.pnrNumber = wakanowBookingId;
+    
+    // ✅ Ensure totalAmount is positive (backend requires > 0)
 const actualTotalAmount = wakanowTotalAmount > 0 ? wakanowTotalAmount : 100;
 const actualBasePrice = basePrice > 0 ? basePrice : 100 / 1.15;
 
@@ -1365,31 +1383,32 @@ body.currency = wakanowCurrency;
 
 // ✅ Also set top-level priceBreakdown with calculated values
 body.priceBreakdown = {
-  basePrice: actualBasePrice,
-  markupAmount: markupAmount > 0 ? markupAmount : 10,
-  markupPercentage: markupPercentage || 10,
-  serviceFee: serviceFee > 0 ? serviceFee : 5,
-  serviceFeePercentage: serviceFeePercentage || 5,
-  taxes: taxes > 0 ? taxes : 15,
-  taxPercentage: (markupPercentage || 10) + (serviceFeePercentage || 5),
-  totalAmount: actualTotalAmount,
-  currency: wakanowCurrency,
+basePrice: actualBasePrice,
+markupAmount: markupAmount > 0 ? markupAmount : 10,
+markupPercentage: markupPercentage || 10,
+serviceFee: serviceFee > 0 ? serviceFee : 5,
+serviceFeePercentage: serviceFeePercentage || 5,
+taxes: taxes > 0 ? taxes : 15,
+taxPercentage: (markupPercentage || 10) + (serviceFeePercentage || 5),
+totalAmount: actualTotalAmount,
+currency: wakanowCurrency,
 };
 
 console.log("💰 Wakanow total amount (with positive check):", {
-  totalAmount: body.totalAmount,
-  currency: body.currency,
-  markupAmount: body.priceBreakdown.markupAmount,
-  serviceFee: body.priceBreakdown.serviceFee,
-  taxes: body.priceBreakdown.taxes,
-  markupPercentage: body.priceBreakdown.markupPercentage,
-  serviceFeePercentage: body.priceBreakdown.serviceFeePercentage,
-  pnrNumber: wakanowBookingId,
-  bookingId: body.bookingId,
-  hasSelectData: !!body.selectData,
-  passengersCount: passengersArray.length,
+totalAmount: body.totalAmount,
+currency: body.currency,
+markupAmount: body.priceBreakdown.markupAmount,
+serviceFee: body.priceBreakdown.serviceFee,
+taxes: body.priceBreakdown.taxes,
+markupPercentage: body.priceBreakdown.markupPercentage,
+serviceFeePercentage: body.priceBreakdown.serviceFeePercentage,
+pnrNumber: wakanowBookingId,
+bookingId: body.bookingId,
+hasSelectData: !!body.selectData,
+passengersCount: passengersArray.length,
 });
-          }
+  }
+ 
          
           else {
             offerId = item.offer_request_id || item.offer_id || item.selectData || item.id;
@@ -1698,6 +1717,14 @@ console.log('🔍 PASSPORT CHECK BEFORE SEND:', {
         console.log(' FINAL REQUEST BODY:', JSON.stringify(body, null, 2));
         
 
+        console.log('🔴🔴🔴 FINAL BODY BEFORE SEND:', {
+          bookingData: body.bookingData,
+          originalShortToken: body.bookingData?.originalShortToken,
+          originalShortTokenLength: body.bookingData?.originalShortToken?.length,
+          selectData: body.selectData,
+          selectDataLength: body.selectData?.length,
+          hasBookingData: !!body.bookingData,
+        });
         
         const res = await fetch(`${BASE}${endpoint}`, {
           method: "POST",
@@ -2023,403 +2050,421 @@ if (isGuest && passenger.email) {
             [BASE, booking],
           );
 
-  const createAmadeusHotelBooking = useCallback(
-    async (
-      item: ExtendedSearchResult,
-      passenger: PassengerInfo,
-      card:
-        | {
-            cardNumber: string;
-            expiryMonth: string;
-            expiryYear: string;
-            cvc: string;
-            holderName?: string;
-          }
-        | undefined,
-      isGuest: boolean,
-      searchParams?: SearchParams | null,
-    ): Promise<Booking> => {
-      setIsCreating(true);
-      setError(null);
-  
-      const realData = item.realData || item;
-      
-      const checkInDate = searchParams?.checkInDate || 
-                        item.checkInDate || 
-                        item.check_in_date || 
-                        realData.checkInDate || 
-                        '';
-                        
-      const checkOutDate = searchParams?.checkOutDate || 
-                         item.checkOutDate || 
-                         item.check_out_date || 
-                         realData.checkOutDate || 
-                         '';
-      
-      if (!checkInDate || !checkOutDate) {
-        throw new Error('Missing check-in or check-out dates. Please go back and select dates.');
-      }
-  
-      try {
-        let offerId = '';
-        
-        console.log('🏨 createAmadeusHotelBooking - Input item:', {
-          hasOfferId: !!item.offerId,
-          hasOffer_id: !!item.offer_id,
-          hasRealData: !!item.realData,
-          hasHotelData: !!item.hotelData,
-          hasOffers: !!(item.offers?.length),
-          hasSelectedRoom: !!item.selectedRoom,
-          hasPriceBreakdown: !!item.priceBreakdown,
-          hotelId: item.hotelId || item.id,
-          itemKeys: Object.keys(item),
-          checkInDate,
-          checkOutDate,
-        });
-        
-        if (item.selectedRoom?.offerId) {
-          offerId = item.selectedRoom.offerId;
-          console.log('🔑 Found offerId in selectedRoom:', offerId);
-        }
-        else if (item.realData?.offerId) {
-          offerId = item.realData.offerId;
-          console.log('🔑 Found offerId in realData:', offerId);
-        }
-        // Priority 3: Check for offer in offers array (first offer)
-        else if (item.offers && item.offers.length > 0 && item.offers[0]?.id) {
-          offerId = item.offers[0].id;
-          console.log('🔑 Found offerId in offers array:', offerId);
-        }
-        // Priority 4: Check for offer in hotelData
-        else if (item.hotelData?.offers && item.hotelData.offers.length > 0) {
-          offerId = item.hotelData.offers[0]?.id || '';
-          console.log('🔑 Found offerId in hotelData.offers:', offerId);
-        }
-        // Priority 5: Check if the item itself is an offer ID
-        else if (item.offerId && item.offerId !== item.hotelId && item.offerId !== item.id) {
-          offerId = item.offerId;
-          console.log('🔑 Using item.offerId:', offerId);
-        }
-        // Priority 6: Check for offer in priceBreakdown
-        else if (item.priceBreakdown?.offerId) {
-          offerId = item.priceBreakdown.offerId;
-          console.log('🔑 Found offerId in priceBreakdown:', offerId);
-        }
-        // Priority 7: Check sessionStorage
-        else if (typeof window !== 'undefined') {
-          const storedOfferId = sessionStorage.getItem('hotelOfferId');
-          if (storedOfferId) {
-            offerId = storedOfferId;
-            console.log('🔑 Found offerId in sessionStorage:', offerId);
-          }
-        }
-        
-        // ✅ If still no offerId, try to find it in the item
-        if (!offerId) {
-          if (item.id && item.id.length >= 10 && /^[A-Z0-9]{10,}$/i.test(item.id)) {
-            offerId = item.id;
-            console.log('🔑 Using item.id as offerId:', offerId);
-          } else if (item.hotelId && item.hotelId.length >= 10 && /^[A-Z0-9]{10,}$/i.test(item.hotelId)) {
-            offerId = item.hotelId;
-            console.log('🔑 Using item.hotelId as offerId:', offerId);
-          }
-        }
-        
-        console.log("🔍 Extracted offerId:", {
-          offerId,
-          hotelId: item.hotelId || item.id,
-          hasSelectedRoom: !!item.selectedRoom,
-          hasRealData: !!item.realData,
-          hasOffers: item.offers?.length,
-        });
-        
-        // ✅ Validate the offer ID
-        if (!offerId) {
-          console.error("❌ No offer ID found!");
-          console.error("📦 Full item data:", JSON.stringify(item, null, 2));
-          throw new Error(
-            "Invalid hotel offer. Please go back and search for hotels again. " +
-            "Hotel offers expire quickly and cannot be reused from previous searches."
-          );
-        }
-        
-        // ✅ Check if it's a hotel ID pattern (3 letters + 5 alphanumeric)
-        const isHotelIdPattern = /^[A-Z]{3}[A-Z0-9]{5}$/i.test(offerId);
-        if (isHotelIdPattern) {
-          console.warn('⚠️ Offer ID looks like a hotel ID:', offerId);
-          const betterOfferId = item.offers?.[0]?.id || 
-                               item.hotelData?.offers?.[0]?.id ||
-                               item.realData?.offerId;
-          if (betterOfferId && betterOfferId !== offerId) {
-            offerId = betterOfferId;
-            console.log('✅ Found better offer ID:', offerId);
-          } else {
-            throw new Error(
-              "Invalid hotel offer. Please go back and search for hotels again. " +
-              "Hotel offers expire quickly and cannot be reused from previous searches."
-            );
-          }
-        }
-        
-        // ✅ Extract prices
-        const originalCurrency = item.original_currency || item.originalPriceCurrency || realData.original_currency || 'GBP';
-        let originalPrice: number = 0;
-        
-        if (item.original_price && typeof item.original_price === 'string') {
-          originalPrice = parseFloat(item.original_price);
-        } else if (item.original_price && typeof item.original_price === 'number') {
-          originalPrice = item.original_price;
-        } else if (item.originalPriceAmount && typeof item.originalPriceAmount === 'number') {
-          originalPrice = item.originalPriceAmount;
-        } else if (realData.original_price) {
-          originalPrice = typeof realData.original_price === 'number' ? realData.original_price : parseFloat(realData.original_price);
-        }
-        
-        let customerPrice: number = 0;
-        if (item.final_amount && typeof item.final_amount === 'string') {
-          customerPrice = parseFloat(item.final_amount);
-        } else if (item.final_amount && typeof item.final_amount === 'number') {
-          customerPrice = item.final_amount;
-        } else if (item.final_price && typeof item.final_price === 'string') {
-          customerPrice = parseFloat(item.final_price);
-        } else if (item.final_price && typeof item.final_price === 'number') {
-          customerPrice = item.final_price;
-        }
-        
-        // ✅ Hotel details
-        const hotelName = item.title || realData.title || item.name || realData.name || 'Hotel';
-        const hotelAddress = item.address || realData.address || item.subtitle || '';
-        const hotelCity = item.city || realData.city || item.location || '';
-        const hotelCountry = item.country || realData.country || item.countryCode || '';
-        const hotelRating = item.rating || realData.rating || item.starRating || null;
-        const hotelDescription = item.description || realData.description || '';
-        const hotelCheckInTime = item.checkInTime || realData.checkInTime || '15:00';
-        const hotelCheckOutTime = item.checkOutTime || realData.checkOutTime || '12:00';
-        const hotelPhone = item.phone || realData.phone || '';
-        const hotelAmenities = item.amenities || realData.amenities || [];
-        
-        // ✅ Hotel images
-        let hotelImages: string[] = [];
-        if (item.images) {
-          if (Array.isArray(item.images)) {
-            hotelImages = item.images
-              .filter((img: any) => img && typeof img === 'string')
-              .map((img: any) => img);
-          }
-        }
-        if (hotelImages.length === 0 && realData.images) {
-          if (Array.isArray(realData.images)) {
-            hotelImages = realData.images
-              .filter((img: any) => img && typeof img === 'string')
-              .map((img: any) => img);
-          }
-        }
-        if (hotelImages.length === 0 && item.hotelData?.images) {
-          if (Array.isArray(item.hotelData.images)) {
-            hotelImages = item.hotelData.images
-              .filter((img: any) => img && typeof img === 'string')
-              .map((img: any) => img);
-          }
-        }
-        
-        const roomType = item.roomType || realData.roomType || 'Standard Room';
-        const numberOfRooms = item.rooms || realData.rooms || 1;
-        const boardType = item.boardType || realData.boardType || 'Room Only';
-        
-        console.log("🏨 Hotel details being sent:", {
-          hotelName,
-          hotelAddress,
-          hotelCity,
-          hotelCountry,
-          hotelRating,
-          roomType,
-          checkInDate,
-          checkOutDate,
-          offerId,
-          originalPrice,
-          customerPrice,
-          hotelImagesCount: hotelImages.length,
-        });
-        
-        if (originalPrice <= 0) {
-          console.error("❌ Missing original price! This offer may be expired.");
-          throw new Error(
-            "Hotel offer has expired or is missing pricing information. " +
-            "Please search for hotels again to get current offers."
-          );
-        }
-  
-        const token = getStoredAuthToken();
-  
-        // ✅ Build booking payload
-        const bookingPayload: any = {
-          hotelOfferId: offerId.toString(),
-          offerPrice: originalPrice,
-          currency: originalCurrency,
-          checkInDate: checkInDate,
-          checkOutDate: checkOutDate,
-          guests: [
-            {
-              name: {
-                title: passenger.title?.toUpperCase() || "MR",
-                firstName: passenger.firstName,
-                lastName: passenger.lastName,
-              },
-              contact: {
-                phone: passenger.phone,
-                email: passenger.email,
-              },
-            },
-          ],
-          roomAssociations: [
-            {
-              hotelOfferId: offerId.toString(),
-              guestReferences: [{ guestReference: "1" }],
-            },
-          ],
-          cancellationDeadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          cancellationPolicySnapshot: "Free cancellation until 24 hours before check-in.",
-          policyAccepted: true,
+          const createAmadeusHotelBooking = useCallback(
+            async (
+              item: ExtendedSearchResult,
+              passenger: PassengerInfo,
+              card:
+                | {
+                    cardNumber: string;
+                    expiryMonth: string;
+                    expiryYear: string;
+                    cvc: string;
+                    holderName?: string;
+                  }
+                | {
+                    paymentMethodId: string;  
+                    holderName?: string;
+                  }
+                | undefined,
+              isGuest: boolean,
+              searchParams?: SearchParams | null,
+            ): Promise<Booking> => {
+              setIsCreating(true);
+              setError(null);
           
-          hotelId: item.id || realData.id || '',
-          hotelName: hotelName,
-          hotelAddress: hotelAddress,
-          hotelCity: hotelCity,
-          hotelCountry: hotelCountry,
-          hotelRating: hotelRating,
-          hotelDescription: hotelDescription,
-          hotelCheckInTime: hotelCheckInTime,
-          hotelCheckOutTime: hotelCheckOutTime,
-          hotelPhone: hotelPhone,
-          hotelAmenities: hotelAmenities,
-          hotelImages: hotelImages,
-          roomType: roomType,
-          numberOfRooms: numberOfRooms,
-          boardType: boardType,
-        };
-  
-        if (card) {
-          bookingPayload.payment = {
-            method: "CREDIT_CARD",
-            paymentCard: {
-              paymentCardInfo: {
-                vendorCode: getVendorCodeFromCardNumber(card.cardNumber) || "VI",
-                cardNumber: card.cardNumber.replace(/\s+/g, ""),
-                expiryDate: `${card.expiryYear}-${card.expiryMonth.padStart(2, "0")}`,
-                holderName: card.holderName || `${passenger.firstName} ${passenger.lastName}`,
-                securityCode: card.cvc,
-              },
-            },
-          };
-        }
-  
-        const endpoint = isGuest 
-          ? "/api/v1/bookings/hotels/bookings/amadeus/guest"
-          : "/api/v1/bookings/hotels/bookings/amadeus";
-  
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        };
-  
-        if (!isGuest && token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
-  
-        console.log("📤 Sending Amadeus hotel booking request:", {
-          endpoint,
-          hotelOfferId: bookingPayload.hotelOfferId,
-          offerPrice: bookingPayload.offerPrice,
-          currency: bookingPayload.currency,
-          hotelName: bookingPayload.hotelName,
-          checkInDate: bookingPayload.checkInDate,
-          checkOutDate: bookingPayload.checkOutDate,
-          hotelImagesCount: bookingPayload.hotelImages?.length || 0,
-        });
-  
-        const response = await fetch(`${BASE}${endpoint}`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(bookingPayload),
-        });
-  
-        let data: any;
-        try {
-          data = await response.json();
-        } catch (e) {
-          const text = await response.text();
-          console.error("Non-JSON response:", text);
-          throw new Error(`Server returned ${response.status}: ${text.substring(0, 100)}`);
-        }
-  
-        if (!response.ok) {
-          const msg = data.message || data.error || "Booking creation failed";
-          console.error("Booking creation failed:", data);
+              const realData = item.realData || item;
+              
+              const checkInDate = searchParams?.checkInDate || 
+                                item.checkInDate || 
+                                item.check_in_date || 
+                                realData.checkInDate || 
+                                '';
+                                
+              const checkOutDate = searchParams?.checkOutDate || 
+                                 item.checkOutDate || 
+                                 item.check_out_date || 
+                                 realData.checkOutDate || 
+                                 '';
+              
+              if (!checkInDate || !checkOutDate) {
+                throw new Error('Missing check-in or check-out dates. Please go back and select dates.');
+              }
           
-          if (msg.includes("INVALID OFFER ID") || msg.includes("offer id") || msg.includes("expired")) {
-            throw new Error(
-              "Hotel offer has expired. Please go back and search for hotels again to get current offers."
-            );
-          }
-          throw new Error(msg);
-        }
-  
-        const raw = data.data?.booking ?? data.booking ?? data.data ?? data;
-  
-        if (!raw?.id) {
-          throw new Error("Invalid response from server - missing booking ID");
-        }
-  
-        const booking: Booking = {
-          id: raw.id,
-          reference: raw.reference,
-          status: raw.status || "PENDING",
-          paymentStatus: raw.paymentStatus || "PENDING",
-          productType: "HOTEL",
-          provider: "AMADEUS",
-          basePrice: customerPrice,
-          totalAmount: customerPrice,
-          currency: item.currency || "NGN",
-          bookingData: {
-            ...raw,
-            hotelId: item.id,
-            hotelName: hotelName,
-            hotelAddress: hotelAddress,
-            hotelCity: hotelCity,
-            hotelCountry: hotelCountry,
-            checkInDate: checkInDate,
-            checkOutDate: checkOutDate,
-            guests: realData.guests || 1,
-            rooms: realData.rooms || 1,
-            original_price_sent: originalPrice,
-            original_currency_sent: originalCurrency,
-            customer_price: customerPrice,
-            customer_currency: item.currency,
-            offerId: offerId,
-          },
-          passengerInfo: {
-            firstName: passenger.firstName,
-            lastName: passenger.lastName,
-            email: passenger.email,
-            phone: passenger.phone,
-          },
-          createdAt: raw.createdAt || new Date().toISOString(),
-        };
-  
-        console.log("✅ Amadeus hotel booking created successfully with hotel name:", hotelName);
-        setBooking(booking);
-        return booking;
-      } catch (err: any) {
-        console.error("❌ Amadeus hotel booking creation failed:", err);
-        setError(err.message);
-        throw err;
-      } finally {
-        setIsCreating(false);
-      }
-    },
-    [BASE],
-  );
-
+              try {
+                let offerId = '';
+                
+                console.log('🏨 createAmadeusHotelBooking - Input item:', {
+                  hasOfferId: !!item.offerId,
+                  hasOffer_id: !!item.offer_id,
+                  hasRealData: !!item.realData,
+                  hasHotelData: !!item.hotelData,
+                  hasOffers: !!(item.offers?.length),
+                  hasSelectedRoom: !!item.selectedRoom,
+                  hasPriceBreakdown: !!item.priceBreakdown,
+                  hotelId: item.hotelId || item.id,
+                  itemKeys: Object.keys(item),
+                  checkInDate,
+                  checkOutDate,
+                });
+                
+                // ... (keep all the existing offerId extraction code) ...
+                
+                if (item.selectedRoom?.offerId) {
+                  offerId = item.selectedRoom.offerId;
+                  console.log('🔑 Found offerId in selectedRoom:', offerId);
+                }
+                else if (item.realData?.offerId) {
+                  offerId = item.realData.offerId;
+                  console.log('🔑 Found offerId in realData:', offerId);
+                }
+                else if (item.offers && item.offers.length > 0 && item.offers[0]?.id) {
+                  offerId = item.offers[0].id;
+                  console.log('🔑 Found offerId in offers array:', offerId);
+                }
+                else if (item.hotelData?.offers && item.hotelData.offers.length > 0) {
+                  offerId = item.hotelData.offers[0]?.id || '';
+                  console.log('🔑 Found offerId in hotelData.offers:', offerId);
+                }
+                else if (item.offerId && item.offerId !== item.hotelId && item.offerId !== item.id) {
+                  offerId = item.offerId;
+                  console.log('🔑 Using item.offerId:', offerId);
+                }
+                else if (item.priceBreakdown?.offerId) {
+                  offerId = item.priceBreakdown.offerId;
+                  console.log('🔑 Found offerId in priceBreakdown:', offerId);
+                }
+                else if (typeof window !== 'undefined') {
+                  const storedOfferId = sessionStorage.getItem('hotelOfferId');
+                  if (storedOfferId) {
+                    offerId = storedOfferId;
+                    console.log('🔑 Found offerId in sessionStorage:', offerId);
+                  }
+                }
+                
+                if (!offerId) {
+                  if (item.id && item.id.length >= 10 && /^[A-Z0-9]{10,}$/i.test(item.id)) {
+                    offerId = item.id;
+                    console.log('🔑 Using item.id as offerId:', offerId);
+                  } else if (item.hotelId && item.hotelId.length >= 10 && /^[A-Z0-9]{10,}$/i.test(item.hotelId)) {
+                    offerId = item.hotelId;
+                    console.log('🔑 Using item.hotelId as offerId:', offerId);
+                  }
+                }
+                
+                console.log("🔍 Extracted offerId:", {
+                  offerId,
+                  hotelId: item.hotelId || item.id,
+                  hasSelectedRoom: !!item.selectedRoom,
+                  hasRealData: !!item.realData,
+                  hasOffers: item.offers?.length,
+                });
+                
+                if (!offerId) {
+                  console.error("❌ No offer ID found!");
+                  console.error("📦 Full item data:", JSON.stringify(item, null, 2));
+                  throw new Error(
+                    "Invalid hotel offer. Please go back and search for hotels again. " +
+                    "Hotel offers expire quickly and cannot be reused from previous searches."
+                  );
+                }
+                
+                const isHotelIdPattern = /^[A-Z]{3}[A-Z0-9]{5}$/i.test(offerId);
+                if (isHotelIdPattern) {
+                  console.warn('⚠️ Offer ID looks like a hotel ID:', offerId);
+                  const betterOfferId = item.offers?.[0]?.id || 
+                                       item.hotelData?.offers?.[0]?.id ||
+                                       item.realData?.offerId;
+                  if (betterOfferId && betterOfferId !== offerId) {
+                    offerId = betterOfferId;
+                    console.log('✅ Found better offer ID:', offerId);
+                  } else {
+                    throw new Error(
+                      "Invalid hotel offer. Please go back and search for hotels again. " +
+                      "Hotel offers expire quickly and cannot be reused from previous searches."
+                    );
+                  }
+                }
+                
+                // ✅ Extract prices
+                const originalCurrency = item.original_currency || item.originalPriceCurrency || realData.original_currency || 'GBP';
+                let originalPrice: number = 0;
+                
+                if (item.original_price && typeof item.original_price === 'string') {
+                  originalPrice = parseFloat(item.original_price);
+                } else if (item.original_price && typeof item.original_price === 'number') {
+                  originalPrice = item.original_price;
+                } else if (item.originalPriceAmount && typeof item.originalPriceAmount === 'number') {
+                  originalPrice = item.originalPriceAmount;
+                } else if (realData.original_price) {
+                  originalPrice = typeof realData.original_price === 'number' ? realData.original_price : parseFloat(realData.original_price);
+                }
+                
+                let customerPrice: number = 0;
+                if (item.final_amount && typeof item.final_amount === 'string') {
+                  customerPrice = parseFloat(item.final_amount);
+                } else if (item.final_amount && typeof item.final_amount === 'number') {
+                  customerPrice = item.final_amount;
+                } else if (item.final_price && typeof item.final_price === 'string') {
+                  customerPrice = parseFloat(item.final_price);
+                } else if (item.final_price && typeof item.final_price === 'number') {
+                  customerPrice = item.final_price;
+                }
+                
+                // ✅ Hotel details
+                const hotelName = item.title || realData.title || item.name || realData.name || 'Hotel';
+                const hotelAddress = item.address || realData.address || item.subtitle || '';
+                const hotelCity = item.city || realData.city || item.location || '';
+                const hotelCountry = item.country || realData.country || item.countryCode || '';
+                const hotelRating = item.rating || realData.rating || item.starRating || null;
+                const hotelDescription = item.description || realData.description || '';
+                const hotelCheckInTime = item.checkInTime || realData.checkInTime || '15:00';
+                const hotelCheckOutTime = item.checkOutTime || realData.checkOutTime || '12:00';
+                const hotelPhone = item.phone || realData.phone || '';
+                const hotelAmenities = item.amenities || realData.amenities || [];
+                
+                // ✅ Hotel images
+                let hotelImages: string[] = [];
+                if (item.images) {
+                  if (Array.isArray(item.images)) {
+                    hotelImages = item.images
+                      .filter((img: any) => img && typeof img === 'string')
+                      .map((img: any) => img);
+                  }
+                }
+                if (hotelImages.length === 0 && realData.images) {
+                  if (Array.isArray(realData.images)) {
+                    hotelImages = realData.images
+                      .filter((img: any) => img && typeof img === 'string')
+                      .map((img: any) => img);
+                  }
+                }
+                if (hotelImages.length === 0 && item.hotelData?.images) {
+                  if (Array.isArray(item.hotelData.images)) {
+                    hotelImages = item.hotelData.images
+                      .filter((img: any) => img && typeof img === 'string')
+                      .map((img: any) => img);
+                  }
+                }
+                
+                const roomType = item.roomType || realData.roomType || 'Standard Room';
+                const numberOfRooms = item.rooms || realData.rooms || 1;
+                const boardType = item.boardType || realData.boardType || 'Room Only';
+                
+                console.log("🏨 Hotel details being sent:", {
+                  hotelName,
+                  hotelAddress,
+                  hotelCity,
+                  hotelCountry,
+                  hotelRating,
+                  roomType,
+                  checkInDate,
+                  checkOutDate,
+                  offerId,
+                  originalPrice,
+                  customerPrice,
+                  hotelImagesCount: hotelImages.length,
+                });
+                
+                if (originalPrice <= 0) {
+                  console.error("❌ Missing original price! This offer may be expired.");
+                  throw new Error(
+                    "Hotel offer has expired or is missing pricing information. " +
+                    "Please search for hotels again to get current offers."
+                  );
+                }
+          
+                const token = getStoredAuthToken();
+          
+                // ✅ Build booking payload
+                const bookingPayload: any = {
+                  hotelOfferId: offerId.toString(),
+                  offerPrice: originalPrice,
+                  currency: originalCurrency,
+                  checkInDate: checkInDate,
+                  checkOutDate: checkOutDate,
+                  guests: [
+                    {
+                      name: {
+                        title: passenger.title?.toUpperCase() || "MR",
+                        firstName: passenger.firstName,
+                        lastName: passenger.lastName,
+                      },
+                      contact: {
+                        phone: passenger.phone,
+                        email: passenger.email,
+                      },
+                    },
+                  ],
+                  roomAssociations: [
+                    {
+                      hotelOfferId: offerId.toString(),
+                      guestReferences: [{ guestReference: "1" }],
+                    },
+                  ],
+                  cancellationDeadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                  cancellationPolicySnapshot: "Free cancellation until 24 hours before check-in.",
+                  policyAccepted: true,
+                  
+                  hotelId: item.id || realData.id || '',
+                  hotelName: hotelName,
+                  hotelAddress: hotelAddress,
+                  hotelCity: hotelCity,
+                  hotelCountry: hotelCountry,
+                  hotelRating: hotelRating,
+                  hotelDescription: hotelDescription,
+                  hotelCheckInTime: hotelCheckInTime,
+                  hotelCheckOutTime: hotelCheckOutTime,
+                  hotelPhone: hotelPhone,
+                  hotelAmenities: hotelAmenities,
+                  hotelImages: hotelImages,
+                  roomType: roomType,
+                  numberOfRooms: numberOfRooms,
+                  boardType: boardType,
+                };
+          
+                // ✅ ✅ ✅ FIX: Handle both payment methods
+                if (card) {
+                  // Check if this is a Stripe PaymentMethod (PCI compliant)
+                  const isStripePaymentMethod = 'paymentMethodId' in card;
+                  const isRawCard = 'cardNumber' in card;
+          
+                  if (isStripePaymentMethod) {
+                    // ✅ NEW: Stripe PaymentMethod (live mode)
+                    bookingPayload.paymentMethodId = card.paymentMethodId;
+                    bookingPayload.holderName = card.holderName || `${passenger.firstName} ${passenger.lastName}`;
+                    console.log('💳 Using Stripe PaymentMethod:', {
+                      paymentMethodId: card.paymentMethodId.substring(0, 10) + '...',
+                      holderName: bookingPayload.holderName,
+                    });
+                  } else if (isRawCard) {
+                    // ✅ Legacy: Raw card (test mode only)
+                    bookingPayload.payment = {
+                      method: "CREDIT_CARD",
+                      paymentCard: {
+                        paymentCardInfo: {
+                          vendorCode: getVendorCodeFromCardNumber(card.cardNumber) || "VI",
+                          cardNumber: card.cardNumber.replace(/\s+/g, ""),
+                          expiryDate: `${card.expiryYear}-${card.expiryMonth.padStart(2, "0")}`,
+                          holderName: card.holderName || `${passenger.firstName} ${passenger.lastName}`,
+                          securityCode: card.cvc,
+                        },
+                      },
+                    };
+                    console.log('💳 Using raw card (test mode only)');
+                  }
+                }
+          
+                const endpoint = isGuest 
+                  ? "/api/v1/bookings/hotels/bookings/amadeus/guest"
+                  : "/api/v1/bookings/hotels/bookings/amadeus";
+          
+                const headers: Record<string, string> = {
+                  "Content-Type": "application/json",
+                  Accept: "application/json",
+                };
+          
+                if (!isGuest && token) {
+                  headers["Authorization"] = `Bearer ${token}`;
+                }
+          
+                console.log("📤 Sending Amadeus hotel booking request:", {
+                  endpoint,
+                  hotelOfferId: bookingPayload.hotelOfferId,
+                  offerPrice: bookingPayload.offerPrice,
+                  currency: bookingPayload.currency,
+                  hotelName: bookingPayload.hotelName,
+                  checkInDate: bookingPayload.checkInDate,
+                  checkOutDate: bookingPayload.checkOutDate,
+                  hotelImagesCount: bookingPayload.hotelImages?.length || 0,
+                  hasPaymentMethodId: !!bookingPayload.paymentMethodId,
+                  hasPayment: !!bookingPayload.payment,
+                });
+          
+                const response = await fetch(`${BASE}${endpoint}`, {
+                  method: "POST",
+                  headers,
+                  body: JSON.stringify(bookingPayload),
+                });
+          
+                let data: any;
+                try {
+                  data = await response.json();
+                } catch (e) {
+                  const text = await response.text();
+                  console.error("Non-JSON response:", text);
+                  throw new Error(`Server returned ${response.status}: ${text.substring(0, 100)}`);
+                }
+          
+                if (!response.ok) {
+                  const msg = data.message || data.error || "Booking creation failed";
+                  console.error("Booking creation failed:", data);
+                  
+                  if (msg.includes("INVALID OFFER ID") || msg.includes("offer id") || msg.includes("expired")) {
+                    throw new Error(
+                      "Hotel offer has expired. Please go back and search for hotels again to get current offers."
+                    );
+                  }
+                  throw new Error(msg);
+                }
+          
+                const raw = data.data?.booking ?? data.booking ?? data.data ?? data;
+          
+                if (!raw?.id) {
+                  throw new Error("Invalid response from server - missing booking ID");
+                }
+          
+                const booking: Booking = {
+                  id: raw.id,
+                  reference: raw.reference,
+                  status: raw.status || "PENDING",
+                  paymentStatus: raw.paymentStatus || "PENDING",
+                  productType: "HOTEL",
+                  provider: "AMADEUS",
+                  basePrice: customerPrice,
+                  totalAmount: customerPrice,
+                  currency: item.currency || "NGN",
+                  bookingData: {
+                    ...raw,
+                    hotelId: item.id,
+                    hotelName: hotelName,
+                    hotelAddress: hotelAddress,
+                    hotelCity: hotelCity,
+                    hotelCountry: hotelCountry,
+                    checkInDate: checkInDate,
+                    checkOutDate: checkOutDate,
+                    guests: realData.guests || 1,
+                    rooms: realData.rooms || 1,
+                    original_price_sent: originalPrice,
+                    original_currency_sent: originalCurrency,
+                    customer_price: customerPrice,
+                    customer_currency: item.currency,
+                    offerId: offerId,
+                    // ✅ Store paymentMethodId if using Stripe
+                    ...(card && 'paymentMethodId' in card && { paymentMethodId: card.paymentMethodId }),
+                  },
+                  passengerInfo: {
+                    firstName: passenger.firstName,
+                    lastName: passenger.lastName,
+                    email: passenger.email,
+                    phone: passenger.phone,
+                  },
+                  createdAt: raw.createdAt || new Date().toISOString(),
+                };
+          
+                console.log("✅ Amadeus hotel booking created successfully with hotel name:", hotelName);
+                setBooking(booking);
+                return booking;
+              } catch (err: any) {
+                console.error("❌ Amadeus hotel booking creation failed:", err);
+                setError(err.message);
+                throw err;
+              } finally {
+                setIsCreating(false);
+              }
+            },
+            [BASE],
+          );
 
   const chargeMarginAmadeusHotel = useCallback(
     async (booking: Booking, isGuest: boolean): Promise<Booking> => {

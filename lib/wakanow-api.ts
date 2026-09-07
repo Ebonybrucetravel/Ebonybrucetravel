@@ -802,11 +802,6 @@ export async function selectWakanowFlight(selectData: string, targetCurrency: st
       throw new Error('SELECTION_EXPIRED');
     }
     
-    if (!response.data.booking_id) {
-      console.error('❌ Backend returned no booking_id:', response.data);
-      throw new Error('SELECTION_EXPIRED');
-    }
-    
     return response;
     
   } catch (error: any) {

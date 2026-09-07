@@ -718,15 +718,14 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           const isValidSelectData = 
           selectData && 
           typeof selectData === 'string' && 
-          selectData.length > 10 &&
-          selectData.startsWith('WAAAAB');
-        
-        if (!isValidSelectData) {
+          selectData.length > 10;
+      
+      if (!isValidSelectData) {
           console.log(`⏭️ Skipping flight - invalid SelectData format`);
           continue;
-        }
-
-          console.log(`✅ Processing flight with valid SelectData: ${selectData.length} chars`);
+      }
+      
+      console.log(`✅ Processing flight with valid SelectData: ${selectData.length} chars`);
           console.log(`✅ SelectData preview: ${selectData.substring(0, 50)}...`);
 
           const outboundFlight = flightModels[0];
