@@ -1109,6 +1109,38 @@ useEffect(() => {
 
   const getItemForReview = (): SearchResult => {
     const baseItem = (enhancedItem || effectiveSelectedItem) as ExtendedSearchResult;
+
+    const isWakanowFlightItem =
+    ((baseItem as any)?.isWakanow === true ||
+     ((baseItem as any)?.provider || '').toLowerCase() === 'wakanow') &&
+    // ✅ Safety: never apply to something that has a real hotel ID
+    !(baseItem as any)?.hotelId &&
+    !(baseItem as any)?.hotelData?.hotelId;
+
+  if (isWakanowFlightItem) {
+    console.log('🛫 getItemForReview - Wakanow flight. Bypassing hotel branch.', {
+      id: baseItem.id,
+      provider: (baseItem as any).provider,
+      originalType: (baseItem as any).type,
+    });
+
+    return {
+      ...baseItem,
+      type: 'flights',                                     // ← force correct type
+      isWakanow: true,
+      provider: 'wakanow',
+      custom_messages: (baseItem as any).custom_messages || [],
+      priceBreakdown: (baseItem as any).priceBreakdown,
+      _wakanowData: (baseItem as any)._wakanowData,
+      selectData: (baseItem as any).selectData,
+      wakanowSelectData: (baseItem as any).wakanowSelectData,
+      wakanowLongToken: (baseItem as any).wakanowLongToken,
+      bookingId: (baseItem as any).bookingId,
+      slices: (baseItem as any).slices,
+      allSegments: (baseItem as any).allSegments,
+      isMultiCity: (baseItem as any).isMultiCity,
+    } as SearchResult;
+  }
     
     // ✅ FIRST: Check if it's a multi-city flight
     const isMultiCity = (baseItem as any).isMultiCity === true || 

@@ -797,12 +797,29 @@ export async function selectWakanowFlight(selectData: string, targetCurrency: st
       throw new Error(response.message || 'SELECTION_EXPIRED');
     }
     
-    if (!response.data) {
-      console.error('❌ Backend returned no data:', response);
-      throw new Error('SELECTION_EXPIRED');
-    }
+        // ✅ Enrich response so the long blob is always accessible
+        const rawData: any = response.data;
+        const longBlob =
+          rawData?.wakanowSelectData ||
+          rawData?.bookingData ||
+          rawData?.longToken;
     
-    return response;
+        console.log('🔑 selectWakanowFlight - enriched response:', {
+          hasWakanowSelectData: !!rawData?.wakanowSelectData,
+          hasBookingData: !!rawData?.bookingData,
+          hasLongToken: !!longBlob,
+          longBlobLength: longBlob?.length || 0,
+          select_data_Length: rawData?.select_data?.length || 0,
+          allKeys: Object.keys(rawData || {}),
+        });
+    
+        return {
+          ...response,
+          data: {
+            ...rawData,
+            longToken: longBlob,               // ✅ stable alias for the long blob
+          },
+        } as WakanowSelectResponse;
     
   } catch (error: any) {
     console.error('❌ Wakanow select failed:', error.message);

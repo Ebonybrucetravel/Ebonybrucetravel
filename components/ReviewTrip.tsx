@@ -405,10 +405,20 @@ const ReviewTrip: React.FC<ReviewTripProps> = ({
   const extendedItem = actualItem as ExtendedSearchResult;
 const rawType = (actualItem.type || searchParams?.type || 'flights').toLowerCase();
 
-const isAmadeusHotel = (actualItem as any)?.provider?.toLowerCase() === 'amadeus' ||
-                       !!(actualItem as any)?.realData?.offerId ||
-                       !!(actualItem as any)?.offers?.length ||
-                       !!(actualItem as any)?.hotelData?.offerId;
+const itemProvider = ((actualItem as any)?.provider || '').toLowerCase();
+const isActualHotelProvider =
+  itemProvider === 'amadeus' ||
+  itemProvider === 'hotelbeds' ||
+  itemProvider === 'booking_com' ||
+  itemProvider === 'booking.com';
+
+const isAmadeusHotel =
+  isActualHotelProvider &&
+  (
+    !!(actualItem as any)?.realData?.offerId ||
+    !!(actualItem as any)?.hotelData?.offerId ||
+    !!(actualItem as any)?.hotelId
+  );
 
 const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
                         (actualItem as any)?.isWakanow === true ||

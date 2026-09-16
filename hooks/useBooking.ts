@@ -284,31 +284,68 @@ const isDomesticFlight = (origin: string, destination: string): boolean => {
 
 const getSelectData = (item: ExtendedSearchResult): string => {
   const bookingData = (item as any).bookingData;
-  if (bookingData && typeof bookingData === 'object' && bookingData.originalShortToken) {
-    return bookingData.originalShortToken;
-  }
-  
 
-  if ((item as any)._wakanowData?.select_data) {
+  // ✅ 1. Prefer the FULL BookingData (long blob) — this is what bookFlight needs.
+  //    Anything under ~500 chars is a short token and will cause Wakanow 503.
+  if (bookingData?.selectData && bookingData.selectData.length > 500) {
+    console.log('✅ getSelectData: using bookingData.selectData (long)', {
+      length: bookingData.selectData.length,
+    });
+    return bookingData.selectData;
+  }
+  if (bookingData?.bookingData && bookingData.bookingData.length > 500) {
+    console.log('✅ getSelectData: using bookingData.bookingData (long)', {
+      length: bookingData.bookingData.length,
+    });
+    return bookingData.bookingData;
+  }
+  if ((item as any)._wakanowData?.select_data?.length > 500) {
+    console.log('✅ getSelectData: using _wakanowData.select_data (long)');
     return (item as any)._wakanowData.select_data;
   }
-  if ((item as any)._wakanowData?.selectData) {
+  if ((item as any)._wakanowData?.selectData?.length > 500) {
+    console.log('✅ getSelectData: using _wakanowData.selectData (long)');
     return (item as any)._wakanowData.selectData;
   }
-  
-  
-  if ((item as any).wakanowSelectData) {
+  if ((item as any).wakanowSelectData?.length > 500) {
+    console.log('✅ getSelectData: using wakanowSelectData (long)');
     return (item as any).wakanowSelectData;
   }
-  
- 
-  return item.selectData || 
-         item.token || 
-         item.session_id || 
-         item.booking_token || 
-         item.connection_code || 
-         item.id || 
-         "";
+  if (item.selectData && item.selectData.length > 500) {
+    console.log('✅ getSelectData: using item.selectData (long)');
+    return item.selectData;
+  }
+
+  // ❌ 2. Last-resort fallback — these are SHORT tokens.
+  //    If we hit this path, bookFlight will almost certainly 503.
+  const short =
+    bookingData?.originalShortToken ||
+    item.selectData ||
+    item.token ||
+    item.session_id ||
+    item.booking_token ||
+    item.connection_code ||
+    item.id ||
+    '';
+
+  if (short) {
+    console.warn(
+      '⚠️ getSelectData returning SHORT token — Wakanow bookFlight will likely 503:',
+      {
+        length: short.length,
+        preview: short.substring(0, 40),
+        itemId: item.id,
+        hasBookingData: !!bookingData,
+        bookingDataKeys: bookingData ? Object.keys(bookingData) : [],
+      }
+    );
+  } else {
+    console.error('❌ getSelectData: no SelectData found at all on item', {
+      itemId: item.id,
+      itemKeys: Object.keys(item),
+    });
+  }
+  return short;
 };
 
 const getActualProvider = (item: ExtendedSearchResult): string => {
@@ -1138,184 +1175,179 @@ if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC")
   let offerRequestId = "";
                     
   if (provider === 'WAKANOW') {
+    // ✅ CRITICAL RECOVERY:
+    // If item.selectData is short but sessionStorage has the long blob saved by
+    // SearchContext.selectItem under 'wakanow_held_booking_data', use the long blob.
+    // This handles the case where the review page received a fresh copy of the item
+    // that doesn't carry the fields SearchContext attached.
+    if (typeof window !== 'undefined') {
+      const storedLong = sessionStorage.getItem('wakanow_held_booking_data');
+      const currentSelect = (item as any).selectData;
+
+      console.log('🔎 useBooking recovery check:', {
+        storedLongLen: storedLong?.length,
+        currentSelectLen: currentSelect?.length,
+        itemWakanowSelectDataLen: (item as any).wakanowSelectData?.length,
+        itemBookingDataLen:
+          typeof (item as any).bookingData === 'string'
+            ? (item as any).bookingData.length
+            : null,
+        itemBookingDataKeys:
+          typeof (item as any).bookingData === 'object' && (item as any).bookingData !== null
+            ? Object.keys((item as any).bookingData)
+            : null,
+      });
+
+      if (
+        storedLong &&
+        storedLong.length > 500 &&
+        (!currentSelect || currentSelect.length < 500)
+      ) {
+        console.log('✅ useBooking: recovering LONG selectData from sessionStorage', {
+          from: currentSelect?.length,
+          to: storedLong.length,
+        });
+        (item as any).selectData = storedLong;
+        (item as any).wakanowSelectData = storedLong;
+        (item as any).heldSelectData = storedLong;
+      }
+    }
+
     offerId = getSelectData(item);
-    console.log("🔑 Wakanow selectData:", { offerId: offerId?.substring(0, 30) });
+    console.log("🔑 Wakanow selectData:", {
+      offerId: offerId?.substring(0, 30),
+      length: offerId?.length,
+    });
+
     if (!offerId) {
       throw new Error("Missing selectData for Wakanow flight. Please go back and select the flight again.");
     }
-    
+
     const wakanowTotalAmount = finalAmount;
     const wakanowCurrency = offerCurrency;
     const wakanowBookingId = item.bookingId || null;
-    
+
     console.log("🔑 Wakanow Booking ID (PNR):", wakanowBookingId);
     if (options?.createWithoutPayment) {
       console.log("📝 Creating Wakanow booking WITHOUT payment (for seat selection)");
     }
-    
 
-const passengersArray = [];
+    const passengersArray = [];
 
-// Default address for passengers
-const defaultAddress = {
-address: passenger.address || '123 Fake Street',
-country: passenger.country || 'Nigeria',
-countryCode: passenger.countryCode || 'NG',
-city: passenger.city || 'Lagos',
-postalCode: passenger.postalCode || '100001',
-};
+    const defaultAddress = {
+      address: passenger.address || '123 Fake Street',
+      country: passenger.country || 'Nigeria',
+      countryCode: passenger.countryCode || 'NG',
+      city: passenger.city || 'Lagos',
+      postalCode: passenger.postalCode || '100001',
+    };
 
-// ✅ DEBUG: Log passenger object before building
-console.log('🔍🔍🔍 CRITICAL - passenger object BEFORE buildPassenger:', {
-firstName: passenger.firstName,
-lastName: passenger.lastName,
-// Check all passport field variations
-PassportNumber: (passenger as any).PassportNumber,
-passportNumber: (passenger as any).passportNumber,
-ExpiryDate: (passenger as any).ExpiryDate,
-passportExpiry: (passenger as any).passportExpiry,
-PassportIssuingAuthority: (passenger as any).PassportIssuingAuthority,
-passportIssuingAuthority: (passenger as any).passportIssuingAuthority,
-PassportIssueCountryCode: (passenger as any).PassportIssueCountryCode,
-passportIssueCountry: (passenger as any).passportIssueCountry,
-// Check if any passport field exists
-hasPassport: !!(passenger as any).PassportNumber || !!(passenger as any).passportNumber,
-// Check travellers
-travellers: (passenger as any).travellers,
-// All keys in passenger object
-allKeys: Object.keys(passenger),
-});
+    const passengerErrors: string[] = [];
 
-// ✅ Build passengers with error collection using buildPassengerSafely
-const passengerErrors: string[] = [];
+    const leadResult = buildPassengerSafely(
+      {
+        ...passenger,
+        FirstName: passenger.firstName,
+        LastName: passenger.lastName,
+        DateOfBirth: passenger.dateOfBirth || '',
+        PhoneNumber: passenger.phone,
+        Email: passenger.email,
+      },
+      isDomestic,
+      isNorthAmerica,
+      defaultAddress,
+      'Lead passenger'
+    );
 
-// In useBooking.ts - createBooking function, around the Wakanow section
+    if (leadResult.error) {
+      passengerErrors.push(leadResult.error);
+    } else if (leadResult.passenger) {
+      passengersArray.push(leadResult.passenger);
+    }
 
-// ✅ Build lead passenger with DateOfBirth
-const leadResult = buildPassengerSafely(
-{
-...passenger,
-FirstName: passenger.firstName,
-LastName: passenger.lastName,
-DateOfBirth: passenger.dateOfBirth || '',  
-PhoneNumber: passenger.phone,
-Email: passenger.email,
-},
-isDomestic,
-isNorthAmerica,
-defaultAddress,
-'Lead passenger'
-);
+    if (travellers && travellers.length > 1) {
+      for (let i = 1; i < travellers.length; i++) {
+        const t = travellers[i];
+        if (t.firstName || t.FirstName) {
+          const mappedTraveller = {
+            ...t,
+            ExpiryDate: t.ExpiryDate || t.passportExpiry || '',
+            PassportNumber: t.PassportNumber || t.passportNumber || '',
+            PassportIssuingAuthority: t.PassportIssuingAuthority || t.passportIssuingAuthority || '',
+            PassportIssueCountryCode: t.PassportIssueCountryCode || t.passportIssueCountry || 'NG',
+            DateOfBirth: t.DateOfBirth || t.dateOfBirth || '',
+            FirstName: t.FirstName || t.firstName || '',
+            LastName: t.LastName || t.lastName || '',
+            PhoneNumber: t.PhoneNumber || t.phone || '',
+            Email: t.Email || t.email || '',
+          };
 
-if (leadResult.error) {
-passengerErrors.push(leadResult.error);
-} else if (leadResult.passenger) {
-passengersArray.push(leadResult.passenger);
-}
-// 2. Add additional passengers from travellers
-if (travellers && travellers.length > 1) {
-for (let i = 1; i < travellers.length; i++) {
-const t = travellers[i];
-if (t.firstName || t.FirstName) {
+          const result = buildPassengerSafely(
+            mappedTraveller,
+            isDomestic,
+            isNorthAmerica,
+            defaultAddress,
+            `Traveller ${i + 1}`
+          );
+          if (result.error) {
+            passengerErrors.push(result.error);
+          } else if (result.passenger) {
+            passengersArray.push(result.passenger);
+          }
+        }
+      }
+    }
 
-const mappedTraveller = {
-...t,
-ExpiryDate: t.ExpiryDate || t.passportExpiry || '',
-PassportNumber: t.PassportNumber || t.passportNumber || '',
-PassportIssuingAuthority: t.PassportIssuingAuthority || t.passportIssuingAuthority || '',
-PassportIssueCountryCode: t.PassportIssueCountryCode || t.passportIssueCountry || 'NG',
-DateOfBirth: t.DateOfBirth || t.dateOfBirth || '',
-FirstName: t.FirstName || t.firstName || '',
-LastName: t.LastName || t.lastName || '',
-PhoneNumber: t.PhoneNumber || t.phone || '',
-Email: t.Email || t.email || '',
-};
+    const additionalPassengers = (passenger as any).additionalPassengers || [];
+    if (Array.isArray(additionalPassengers) && additionalPassengers.length > 0) {
+      for (let i = 0; i < additionalPassengers.length; i++) {
+        const ap = additionalPassengers[i];
+        const mappedPassenger = {
+          ...ap,
+          ExpiryDate: ap.passportExpiry || ap.ExpiryDate || '',
+          PassportNumber: ap.passportNumber || ap.PassportNumber || '',
+          PassportIssuingAuthority: ap.passportIssuingAuthority || ap.PassportIssuingAuthority || '',
+          PassportIssueCountryCode: ap.passportIssueCountry || ap.PassportIssueCountryCode || 'NG',
+          DateOfBirth: ap.dateOfBirth || ap.DateOfBirth || '',
+          FirstName: ap.firstName || ap.FirstName || '',
+          LastName: ap.lastName || ap.LastName || '',
+          PhoneNumber: ap.phone || ap.PhoneNumber || '',
+          Email: ap.email || ap.Email || '',
+        };
 
-const result = buildPassengerSafely(
-mappedTraveller,
-isDomestic,
-isNorthAmerica,
-defaultAddress,
-`Traveller ${i + 1}`
-);
-if (result.error) {
-passengerErrors.push(result.error);
-} else if (result.passenger) {
-passengersArray.push(result.passenger);
-}
-}
-}
-}
+        const result = buildPassengerSafely(
+          mappedPassenger,
+          isDomestic,
+          isNorthAmerica,
+          defaultAddress,
+          `Additional passenger ${i + 1}`
+        );
+        if (result.error) {
+          passengerErrors.push(result.error);
+        } else if (result.passenger) {
+          passengersArray.push(result.passenger);
+        }
+      }
+    }
 
-// 3. Add additional passengers from page.tsx
-const additionalPassengers = (passenger as any).additionalPassengers || [];
-if (Array.isArray(additionalPassengers) && additionalPassengers.length > 0) {
-for (let i = 0; i < additionalPassengers.length; i++) {
-const ap = additionalPassengers[i];
+    if (passengerErrors.length > 0) {
+      const errorMessage = passengerErrors.join('\n');
+      console.error('❌ Passenger validation errors:', errorMessage);
+      throw new Error(
+        `Cannot complete booking. Please fix the following issues:\n${errorMessage}`
+      );
+    }
 
-// ✅ Map the fields to match what buildPassenger expects
-const mappedPassenger = {
-...ap,
-// Map passport fields to the correct case
-ExpiryDate: ap.passportExpiry || ap.ExpiryDate || '',
-PassportNumber: ap.passportNumber || ap.PassportNumber || '',
-PassportIssuingAuthority: ap.passportIssuingAuthority || ap.PassportIssuingAuthority || '',
-PassportIssueCountryCode: ap.passportIssueCountry || ap.PassportIssueCountryCode || 'NG',
-// Ensure DateOfBirth is set
-DateOfBirth: ap.dateOfBirth || ap.DateOfBirth || '',
-// Ensure name fields are set
-FirstName: ap.firstName || ap.FirstName || '',
-LastName: ap.lastName || ap.LastName || '',
-PhoneNumber: ap.phone || ap.PhoneNumber || '',
-Email: ap.email || ap.Email || '',
-};
+    console.log("👤 Passengers built successfully:", passengersArray.length);
 
-const result = buildPassengerSafely(
-mappedPassenger,
-isDomestic,
-isNorthAmerica,
-defaultAddress,
-`Additional passenger ${i + 1}`
-);
-if (result.error) {
-passengerErrors.push(result.error);
-} else if (result.passenger) {
-passengersArray.push(result.passenger);
-}
-}
-}
-
-// ✅ If any passenger validation failed, throw combined error
-if (passengerErrors.length > 0) {
-const errorMessage = passengerErrors.join('\n');
-console.error('❌ Passenger validation errors:', errorMessage);
-throw new Error(
-`Cannot complete booking. Please fix the following issues:\n${errorMessage}`
-);
-}
-
-console.log("👤 Passengers built successfully:", passengersArray.length);
-    
-    // ✅ STORE bookingId at TOP LEVEL
     body.bookingId = wakanowBookingId;
-    
-    // ✅ STORE selectData at TOP LEVEL
     body.selectData = offerId;
 
     const technicalStops = item.technicalStops || [];
-const hasTechnicalStops = item.hasTechnicalStops || false;
-const totalTechnicalStops = item.totalTechnicalStops || 0;
-const stopInformation = item.stopInformation || null;
+    const hasTechnicalStops = item.hasTechnicalStops || false;
+    const totalTechnicalStops = item.totalTechnicalStops || 0;
+    const stopInformation = item.stopInformation || null;
 
-console.log('🛑 Technical stops in booking:', {
-hasTechnicalStops,
-totalTechnicalStops,
-technicalStopsCount: technicalStops.length,
-hasStopInformation: !!stopInformation,
-});
-
-    
-    // ✅ ALL Wakanow-specific fields go INSIDE bookingData
     body.bookingData = {
       offerId: offerId,
       origin: finalOrigin,
@@ -1329,8 +1361,8 @@ hasStopInformation: !!stopInformation,
       selectData: offerId,
       targetCurrency: wakanowCurrency,
       isDomestic: isDomestic,
-isNorthAmerica: isNorthAmerica,
-passportRequirement: isDomestic ? 'EMPTY' : (isNorthAmerica ? 'MANDATORY' : 'OPTIONAL'),
+      isNorthAmerica: isNorthAmerica,
+      passportRequirement: isDomestic ? 'EMPTY' : (isNorthAmerica ? 'MANDATORY' : 'OPTIONAL'),
       destinationCode: destinationCode,
       technicalStops: technicalStops,
       hasTechnicalStops: hasTechnicalStops,
@@ -1350,9 +1382,8 @@ passportRequirement: isDomestic ? 'EMPTY' : (isNorthAmerica ? 'MANDATORY' : 'OPT
       ...(item.realData?.airline && { airline: item.realData.airline }),
       ...(item.realData?.flightNumber && {
         flightNumber: item.realData.flightNumber,
-        phoneNumber: passenger.phone, 
+        phoneNumber: passenger.phone,
       }),
-      
       cabinClass: searchParams?.cabinClass ?? "economy",
       passengersCount: searchParams?.passengers ?? 1,
       basePrice: basePrice,
@@ -1369,51 +1400,75 @@ passportRequirement: isDomestic ? 'EMPTY' : (isNorthAmerica ? 'MANDATORY' : 'OPT
       pnrNumber: wakanowBookingId,
       wakanowBookingId: wakanowBookingId,
     };
-    
-    // ✅ Also keep top-level pnrNumber for webhook
+
     body.pnrNumber = wakanowBookingId;
-    
-    // ✅ Ensure totalAmount is positive (backend requires > 0)
-const actualTotalAmount = wakanowTotalAmount > 0 ? wakanowTotalAmount : 100;
-const actualBasePrice = basePrice > 0 ? basePrice : 100 / 1.15;
 
-// ✅ WAKANOW: Add totalAmount and priceBreakdown at top level for validation
-body.totalAmount = actualTotalAmount;
-body.currency = wakanowCurrency;
+    const actualTotalAmount = wakanowTotalAmount > 0 ? wakanowTotalAmount : 100;
+    const actualBasePrice = basePrice > 0 ? basePrice : 100 / 1.15;
 
-// ✅ Also set top-level priceBreakdown with calculated values
-body.priceBreakdown = {
-basePrice: actualBasePrice,
-markupAmount: markupAmount > 0 ? markupAmount : 10,
-markupPercentage: markupPercentage || 10,
-serviceFee: serviceFee > 0 ? serviceFee : 5,
-serviceFeePercentage: serviceFeePercentage || 5,
-taxes: taxes > 0 ? taxes : 15,
-taxPercentage: (markupPercentage || 10) + (serviceFeePercentage || 5),
-totalAmount: actualTotalAmount,
-currency: wakanowCurrency,
-};
+    body.totalAmount = actualTotalAmount;
+    body.currency = wakanowCurrency;
 
-console.log("💰 Wakanow total amount (with positive check):", {
-totalAmount: body.totalAmount,
-currency: body.currency,
-markupAmount: body.priceBreakdown.markupAmount,
-serviceFee: body.priceBreakdown.serviceFee,
-taxes: body.priceBreakdown.taxes,
-markupPercentage: body.priceBreakdown.markupPercentage,
-serviceFeePercentage: body.priceBreakdown.serviceFeePercentage,
-pnrNumber: wakanowBookingId,
-bookingId: body.bookingId,
-hasSelectData: !!body.selectData,
-passengersCount: passengersArray.length,
-});
-  }
- 
-         
-          else {
-            offerId = item.offer_request_id || item.offer_id || item.selectData || item.id;
-            offerRequestId = item.offer_request_id || item.offer_id || offerId;
-            
+    body.priceBreakdown = {
+      basePrice: actualBasePrice,
+      markupAmount: markupAmount > 0 ? markupAmount : 10,
+      markupPercentage: markupPercentage || 10,
+      serviceFee: serviceFee > 0 ? serviceFee : 5,
+      serviceFeePercentage: serviceFeePercentage || 5,
+      taxes: taxes > 0 ? taxes : 15,
+      taxPercentage: (markupPercentage || 10) + (serviceFeePercentage || 5),
+      totalAmount: actualTotalAmount,
+      currency: wakanowCurrency,
+    };
+
+    console.log("💰 Wakanow total amount (with positive check):", {
+      totalAmount: body.totalAmount,
+      currency: body.currency,
+      markupAmount: body.priceBreakdown.markupAmount,
+      serviceFee: body.priceBreakdown.serviceFee,
+      taxes: body.priceBreakdown.taxes,
+      markupPercentage: body.priceBreakdown.markupPercentage,
+      serviceFeePercentage: body.priceBreakdown.serviceFeePercentage,
+      pnrNumber: wakanowBookingId,
+      bookingId: body.bookingId,
+      hasSelectData: !!body.selectData,
+      passengersCount: passengersArray.length,
+    });
+  
+    if (body.selectData && body.selectData.length < 500) {
+      console.warn('⚠️ useBooking: SelectData is short before sending. Fetching long blob...');
+      try {
+        const { selectWakanowFlight } = await import('@/lib/wakanow-api');
+        const refreshResult = await selectWakanowFlight(body.selectData, 'NGN');
+
+        const longBlob =
+          (refreshResult?.data as any)?.longToken ||           
+          (refreshResult?.data as any)?.wakanowSelectData ||
+          (refreshResult?.data as any)?.bookingData ||
+          (refreshResult?.data as any)?.selectData;
+
+        if (longBlob && longBlob.length > 500) {
+          console.log('✅ useBooking: recovered LONG SelectData just in time', {
+            from: body.selectData.length,
+            to: longBlob.length,
+          });
+          body.selectData = longBlob;
+          body.bookingData.selectData = longBlob;
+          (item as any).selectData = longBlob;
+          (item as any).wakanowSelectData = longBlob;
+        } else {
+          console.error('❌ Still no long blob in select response:', {
+            keys: refreshResult?.data ? Object.keys(refreshResult.data) : null,
+          });
+        }
+      } catch (e) {
+        console.error('❌ Failed to recover long SelectData:', e);
+      }
+    }}
+  else {
+    offerId = item.offer_request_id || item.offer_id || item.selectData || item.id;
+    offerRequestId = item.offer_request_id || item.offer_id || offerId;
+
             console.log("🔑 Duffel offer ID:", { offerId, offerRequestId });
             if (!offerId) {
               throw new Error("Missing offer ID for Duffel flight. Please go back and select the flight again.");

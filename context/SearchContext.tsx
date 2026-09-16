@@ -2143,65 +2143,103 @@ if (isWakanowItem) {
         const result = await selectWakanowFlight(selectDataValue, 'NGN');
         
         if (result?.data) {
-          
+          // ✅ 1. Get the SHORT token (refresh-only)
           const shortSelectData = result.data.select_data || '';
           const bookingId = result.data.booking_id || '';
-          
+        
+          // ✅ 2. Get the LONG blob — backend returns it under wakanowSelectData or bookingData
+          const longSelectData =
+            (result.data as any).wakanowSelectData ||
+            (result.data as any).bookingData ||
+            (result.data as any).selectData ||
+            '';
+        
+          console.log('🔑 Select response tokens:', {
+            shortLen: shortSelectData?.length,
+            longLen: longSelectData?.length,
+            bookingId,
+            longKeysPresent: {
+              wakanowSelectData: !!(result.data as any).wakanowSelectData,
+              bookingData: !!(result.data as any).bookingData,
+            },
+          });
+        
+          // ✅ 3. Store BOTH tokens on _wakanowData
           (itemWithMessages as any)._wakanowData = {
-              ...result.data,
-             
-              select_data: shortSelectData,
-              selectData: shortSelectData,  
-              booking_id: bookingId,
-              bookingId: bookingId,
+            ...result.data,
+            select_data: shortSelectData,       // short — for refresh
+            selectData: longSelectData,         // LONG — for bookFlight
+            bookingData: longSelectData,
+            wakanowSelectData: longSelectData,
+            booking_id: bookingId,
+            bookingId: bookingId,
           };
-          
-          const newSelectData = result.data.select_data || '';
-    if (newSelectData && newSelectData.length < 500) {
-        (itemWithMessages as any).selectData = newSelectData;
-        (itemWithMessages as any).heldSelectData = newSelectData;
-
-              const bookingId = result.data.booking_id || newSelectData || selectDataValue || '';
-
-if (bookingId) {
-    (itemWithMessages as any).bookingId = bookingId;
-    console.log('✅ Stored bookingId on item:', bookingId);
-} else {
-    console.warn('⚠️ No bookingId found. result.data keys:', Object.keys(result.data));
-}
-              
-
-
-if (typeof window !== 'undefined') {
-sessionStorage.setItem('wakanow_held_select_data', newSelectData);
-sessionStorage.setItem('wakanow_held_booking_id', bookingId || '');
-console.log('📦 Stored in sessionStorage - bookingId:', bookingId || '(empty)');
-}
-
-            const stopInfo = result.data.stop_information || result.data.stopInformation || null;
-            if (stopInfo) {
-              setStopInformation(stopInfo);
-              setTechnicalStops(stopInfo.technicalStops || []);
-              setHasTechnicalStops(stopInfo.summary?.hasTechnicalStops || false);
-              setTotalTechnicalStops(stopInfo.summary?.totalTechnicalStops || 0);
-              
-              console.log('✅ Technical Stops extracted:', {
-                count: stopInfo.technicalStops?.length || 0,
-                hasTechnicalStops: stopInfo.summary?.hasTechnicalStops,
-                total: stopInfo.summary?.totalTechnicalStops,
-              });
+        
+          // ✅ 4. CRITICAL: put the LONG value on item.selectData
+          if (longSelectData && longSelectData.length > 500) {
+            (itemWithMessages as any).selectData = longSelectData;
+            (itemWithMessages as any).heldSelectData = longSelectData;
+            (itemWithMessages as any).wakanowSelectData = longSelectData;
+            (itemWithMessages as any).bookingData = longSelectData;
+            console.log('✅ Stored LONG selectData on item:', { length: longSelectData.length });
+          } else {
+            console.warn('⚠️ longSelectData missing or too short — bookFlight will 503', {
+              longLen: longSelectData?.length,
+              shortLen: shortSelectData?.length,
+              resultKeys: Object.keys(result.data),
+            });
+            // Fall back to short so refresh flow still works
+            if (shortSelectData) {
+              (itemWithMessages as any).selectData = shortSelectData;
+              (itemWithMessages as any).heldSelectData = shortSelectData;
             }
-            
-            (itemWithMessages as any).technicalStops = stopInfo?.technicalStops || [];
-            (itemWithMessages as any).hasTechnicalStops = stopInfo?.summary?.hasTechnicalStops || false;
-            (itemWithMessages as any).totalTechnicalStops = stopInfo?.summary?.totalTechnicalStops || 0;
-            (itemWithMessages as any).stopInformation = stopInfo;
           }
-          
+        
+          // ✅ 5. Store in sessionStorage — short & long kept separate
+          if (typeof window !== 'undefined') {
+            if (shortSelectData && shortSelectData.length > 0) {
+              sessionStorage.setItem('wakanow_held_select_data', shortSelectData);
+            }
+            if (longSelectData && longSelectData.length > 500) {
+              sessionStorage.setItem('wakanow_held_booking_data', longSelectData);
+            }
+            sessionStorage.setItem('wakanow_held_booking_id', bookingId || '');
+            console.log('📦 Stored in sessionStorage - bookingId:', bookingId || '(empty)');
+          }
+        
+          // ✅ 6. bookingId onto item
+          if (bookingId) {
+            (itemWithMessages as any).bookingId = bookingId;
+            console.log('✅ Stored bookingId on item:', bookingId);
+          } else {
+            console.warn('⚠️ No bookingId found. result.data keys:', Object.keys(result.data));
+          }
+        
+          // ✅ 7. Technical stops (unchanged)
+          const stopInfo = result.data.stop_information || result.data.stopInformation || null;
+          if (stopInfo) {
+            setStopInformation(stopInfo);
+            setTechnicalStops(stopInfo.technicalStops || []);
+            setHasTechnicalStops(stopInfo.summary?.hasTechnicalStops || false);
+            setTotalTechnicalStops(stopInfo.summary?.totalTechnicalStops || 0);
+        
+            console.log('✅ Technical Stops extracted:', {
+              count: stopInfo.technicalStops?.length || 0,
+              hasTechnicalStops: stopInfo.summary?.hasTechnicalStops,
+              total: stopInfo.summary?.totalTechnicalStops,
+            });
+          }
+        
+          (itemWithMessages as any).technicalStops = stopInfo?.technicalStops || [];
+          (itemWithMessages as any).hasTechnicalStops = stopInfo?.summary?.hasTechnicalStops || false;
+          (itemWithMessages as any).totalTechnicalStops = stopInfo?.summary?.totalTechnicalStops || 0;
+          (itemWithMessages as any).stopInformation = stopInfo;
+        
+          // ✅ 8. Custom messages (unchanged)
           if (result.data.custom_messages) {
             const rawMessages = result.data.custom_messages;
             let formattedMessages: Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }> = [];
-            
+        
             if (Array.isArray(rawMessages) && rawMessages.length > 0) {
               if (typeof rawMessages[0] === 'object' && rawMessages[0] !== null && 'Title' in rawMessages[0]) {
                 formattedMessages = rawMessages as unknown as Array<{ Title: string; Message: string; SeverityLevel: 'High' | 'Medium' | 'Low' }>;
@@ -2213,14 +2251,15 @@ console.log('📦 Stored in sessionStorage - bookingId:', bookingId || '(empty)'
                 }));
               }
             }
-            
+        
             (itemWithMessages as any).custom_messages = formattedMessages;
             console.log('✅ Got custom messages:', (itemWithMessages as any).custom_messages);
           }
-          
+        
+          // ✅ 9. priceBreakdown, flight_summary, slices, fare_rules, penalty_rules (unchanged)
           if (result.data.priceBreakdown) {
             (itemWithMessages as any).priceBreakdown = result.data.priceBreakdown;
-            
+        
             if (result.data.flight_summary) {
               (itemWithMessages as any).flight_summary = result.data.flight_summary;
               if (result.data.flight_summary.slices) {
@@ -2232,17 +2271,18 @@ console.log('📦 Stored in sessionStorage - bookingId:', bookingId || '(empty)'
                 console.log('✅ Stored isRefundable:', result.data.flight_summary.isRefundable);
               }
             }
-            
+        
             if (result.data.fare_rules) {
               (itemWithMessages as any).fare_rules = result.data.fare_rules;
             }
             if (result.data.penalty_rules) {
               (itemWithMessages as any).penalty_rules = result.data.penalty_rules;
             }
-            
+        
             console.log('✅ Stored Wakanow data from select endpoint');
           }
         }
+        
       } catch (error: any) {
         if (error.message === 'SELECTION_EXPIRED' || error.message?.includes('expired')) {
           console.log('⚠️ Selection expired, using existing data');

@@ -2123,7 +2123,7 @@ export async function searchFlightsWithPagination(
         console.log(`📄 Fetching flight offers page ${page}...`);
 
         try {
-          const offersResult = await bookingApi.getOffers(
+          const offersResult: any = await bookingApi.getOffers(
             offerRequestId,
             nextCursor || undefined,
             20,
