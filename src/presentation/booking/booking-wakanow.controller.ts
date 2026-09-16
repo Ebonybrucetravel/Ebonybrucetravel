@@ -160,6 +160,13 @@ export class BookingWakanowController {
           provider: 'WAKANOW',
           booking_id: result.bookingId || null,
           select_data: result.selectData,
+          wakanowSelectData: (result as any).wakanowSelectData || null,
+          bookingData: (result as any).bookingData || null,
+          longToken:
+            (result as any).wakanowSelectData ||
+            (result as any).bookingData ||
+            (result as any).selectData ||
+            null,
           is_price_matched: result.isPriceMatched || false,
           is_passport_required: result.isPassportRequired || false,
 
