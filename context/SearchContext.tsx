@@ -416,21 +416,29 @@ const [stopInformation, setStopInformation] = useState<StopInformation | null>(n
     try {
         const raw = typeof window !== 'undefined' ? sessionStorage.getItem(BOOKING_REVIEW_SELECTION_KEY) : null;
         if (!raw) return;
-        const data = JSON.parse(raw) as { selectedItem: SearchResult | null; searchParams: SearchParams | null };
+        const data = JSON.parse(raw) as {
+          selectedItem: SearchResult | null;
+          searchParams: SearchParams | null;
+          searchResults?: SearchResult[];        
+        };
         sessionStorage.removeItem(BOOKING_REVIEW_SELECTION_KEY);
         
         if (data.selectedItem) {
-          
             if ((data.selectedItem as any).bookingId) {
                 console.log('✅ Restored bookingId from sessionStorage:', (data.selectedItem as any).bookingId);
             }
             setSelectedItem(data.selectedItem);
         }
         if (data.searchParams) setSearchParams(data.searchParams);
+        if (data.searchResults) {                
+          setSearchResults(data.searchResults);
+          console.log('✅ Restored searchResults from sessionStorage:', data.searchResults.length);
+        }
     } catch {
         sessionStorage.removeItem(BOOKING_REVIEW_SELECTION_KEY);
     }
-}, [clearSelectedSeats]);
+  }, [clearSelectedSeats]);
+
   const fetchAirlines = useCallback(async () => {
     console.log('⚠️ Airlines endpoint not available - skipping');
     return;
@@ -2174,27 +2182,41 @@ if (isWakanowItem) {
             booking_id: bookingId,
             bookingId: bookingId,
           };
-        
-          // ✅ 4. CRITICAL: put the LONG value on item.selectData
-          if (longSelectData && longSelectData.length > 500) {
-            (itemWithMessages as any).selectData = longSelectData;
-            (itemWithMessages as any).heldSelectData = longSelectData;
-            (itemWithMessages as any).wakanowSelectData = longSelectData;
-            (itemWithMessages as any).bookingData = longSelectData;
-            console.log('✅ Stored LONG selectData on item:', { length: longSelectData.length });
-          } else {
-            console.warn('⚠️ longSelectData missing or too short — bookFlight will 503', {
-              longLen: longSelectData?.length,
-              shortLen: shortSelectData?.length,
-              resultKeys: Object.keys(result.data),
-            });
-            // Fall back to short so refresh flow still works
-            if (shortSelectData) {
-              (itemWithMessages as any).selectData = shortSelectData;
-              (itemWithMessages as any).heldSelectData = shortSelectData;
-            }
-          }
-        
+       // ✅ 4. CRITICAL: put the LONG value on item.selectData AND build bookingData as an OBJECT
+if (longSelectData && longSelectData.length > 500) {
+  (itemWithMessages as any).selectData = longSelectData;
+  (itemWithMessages as any).heldSelectData = longSelectData;
+  (itemWithMessages as any).wakanowSelectData = longSelectData;
+  (itemWithMessages as any).bookingData = {
+    // ✅ OBJECT — matches what useBooking expects
+    selectData: longSelectData,
+    bookingData: longSelectData,
+    wakanowSelectData: longSelectData,
+    bookingId: bookingId,
+    // Keep the short token accessible too
+    originalShortToken: shortSelectData,
+  };
+  console.log('✅ Stored LONG selectData on item + bookingData object:', {
+    length: longSelectData.length,
+    bookingDataKeys: Object.keys((itemWithMessages as any).bookingData),
+  });
+} else {
+  console.warn('⚠️ longSelectData missing or too short — bookFlight will 503', {
+    longLen: longSelectData?.length,
+    shortLen: shortSelectData?.length,
+    resultKeys: Object.keys(result.data),
+  });
+  // Fall back to short so refresh flow still works
+  if (shortSelectData) {
+    (itemWithMessages as any).selectData = shortSelectData;
+    (itemWithMessages as any).heldSelectData = shortSelectData;
+    (itemWithMessages as any).bookingData = {
+      selectData: shortSelectData,
+      originalShortToken: shortSelectData,
+      bookingId: bookingId,
+    };
+  }
+}
           // ✅ 5. Store in sessionStorage — short & long kept separate
           if (typeof window !== 'undefined') {
             if (shortSelectData && shortSelectData.length > 0) {
@@ -2327,7 +2349,7 @@ setSelectedItem(itemWithMessages);
     } catch {
         sessionStorage.removeItem(BOOKING_REVIEW_SELECTION_KEY);
     }
-}, [selectedItem, searchParams]);
+},  [selectedItem, searchParams, searchResults]); 
 
   return (
     <SearchContext.Provider

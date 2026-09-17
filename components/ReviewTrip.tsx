@@ -1592,13 +1592,37 @@ if (isNaN(dob.getTime())) {
           }
         }
         
-        // ✅ INFANT: Must be less than 2 on booking date
-        if (passengerType === 'infant') {
-          if (ageOnBooking >= 2) {
-            alert(`${label}: Infant passenger must be less than 2 years old on the booking date. Current age: ${ageOnBooking} years.`);
-            return false;
-          }
-        }
+      // ✅ INFANT: Must be less than 2 on booking date AND on return travel date
+if (passengerType === 'infant') {
+  // ✅ Check age on booking date
+  if (ageOnBooking >= 2) {
+    alert(`${label}: Infant passenger must be less than 2 years old on the booking date. Current age: ${ageOnBooking} years.`);
+    return false;
+  }
+  
+  // ✅ Check age on return travel date (for return/multi-city flights)
+  const isReturnOrMultiCity = 
+    (searchParams?.segments && searchParams.segments.length > 1) || 
+    !!searchParams?.returnDate;
+  
+  if (isReturnOrMultiCity && ageOnTravel >= 2) {
+    const returnDateDisplay = returnDateStr 
+      ? new Date(returnDateStr).toLocaleDateString('en-US', { 
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        })
+      : 'the return travel date';
+    
+    alert(
+      `${label}: Infant passenger will be ${ageOnTravel} years old on ${returnDateDisplay}. ` +
+      `Infants must be less than 2 years old for the entire duration of travel, including the return flight. ` +
+      `Please book this passenger as a CHILD instead, or adjust the travel dates.`
+    );
+    return false;
+  }
+}
         
        // ✅ PASSPORT VALIDATION - FOR ALL PASSENGERS ON INTERNATIONAL FLIGHTS
 const isAdult = passengerType === 'adult';
@@ -2223,7 +2247,105 @@ if (!dateRegex.test(formattedDateOfBirth)) {
     );
   } catch (error: any) {
     console.error('Booking preparation error:', error);
-    alert('Failed to prepare booking. Please try again.');
+  
+    // 🔍 DIAGNOSTIC: Dump every possible error shape so we can see what's coming back
+    console.log('🔍 ERROR DIAGNOSTIC:', {
+      name: error?.name,
+      message: error?.message,
+      status: error?.status,
+      statusCode: error?.statusCode,
+      response: error?.response,
+      responseData: error?.response?.data,
+      responseDataMessage: error?.response?.data?.message,
+      responseDataError: error?.response?.data?.error,
+      data: error?.data,
+      dataMessage: error?.data?.message,
+      body: error?.body,
+      bodyMessage: error?.body?.message,
+      errorProp: error?.error,
+      isApiError: error instanceof ApiError,
+      apiErrorKeys: error instanceof ApiError ? Object.keys(error) : undefined,
+      constructorName: error?.constructor?.name,
+      stringified: (() => {
+        try { return JSON.stringify(error); } catch { return '[unserializable]'; }
+      })(),
+    });
+  
+    // ✅ Extract the real backend error message from any shape
+    const extractMessage = (err: any): string => {
+      if (!err) return '';
+      const candidates = [
+        err?.response?.data?.message,
+        err?.response?.data?.error,
+        err?.response?.data?.detail,
+        err?.response?.data,
+        err?.response?.message,
+        err?.data?.message,
+        err?.data?.error,
+        err?.data,
+        err?.body?.message,
+        err?.body?.error,
+        err?.body,
+        err?.message,
+        err?.error,
+      ];
+      for (const c of candidates) {
+        if (typeof c === 'string' && c.trim()) return c.trim();
+        if (Array.isArray(c) && c.length > 0) {
+          const joined = c.filter(Boolean).join('\n');
+          if (joined.trim()) return joined.trim();
+        }
+        if (c && typeof c === 'object' && typeof c.message === 'string' && c.message.trim()) {
+          return c.message.trim();
+        }
+      }
+      // Fallback: stringify (helps when error is a plain object like { message: '...' } but nested oddly)
+      try {
+        const str = JSON.stringify(err);
+        if (str && str !== '{}' && str !== 'null') return str;
+      } catch { /* ignore */ }
+      return '';
+    };
+  
+    const msgStr = extractMessage(error);
+    console.log('🔍 Extracted backend message:', msgStr);
+  
+    let errorMessage = 'Failed to prepare booking. Please try again.';
+  
+    if (msgStr) {
+      // ✅ CHILD validation
+      if (/Date of birth is not valid for Child/i.test(msgStr)) {
+        errorMessage =
+          '⚠️ Invalid Child Date of Birth\n\n' +
+          'One of the passengers is being booked as a CHILD, but their date of birth makes them either:\n\n' +
+          '• Under 2 years old, OR\n' +
+          '• Over 12 years old\n\n' +
+          'on the return travel date.\n\n' +
+          'Children must be between 2 and 12 years old for the ENTIRE duration of travel (including the return flight).\n\n' +
+          'Please check the date of birth, or change the passenger type (Adult / Child / Infant) and try again.';
+      }
+      // ✅ INFANT validation
+      else if (/Date of birth is not valid for Infant/i.test(msgStr)) {
+        errorMessage =
+          '⚠️ Invalid Infant Date of Birth\n\n' +
+          'One of the passengers is being booked as an INFANT, but their date of birth makes them 2 years or older on the return travel date.\n\n' +
+          'Infants must be under 2 years old for the ENTIRE duration of travel (including the return flight).\n\n' +
+          'Please book this passenger as a CHILD instead, or adjust the travel dates.';
+      }
+      // ✅ ADULT validation
+      else if (/Date of birth is not valid for Adult/i.test(msgStr)) {
+        errorMessage =
+          '⚠️ Invalid Adult Date of Birth\n\n' +
+          'One of the passengers is being booked as an ADULT, but their date of birth makes them under 12 years old on the travel date.\n\n' +
+          'Adults must be 12 years or older for the ENTIRE duration of travel.\n\n' +
+          'Please check the date of birth, or change the passenger type.';
+      }
+      else {
+        errorMessage = msgStr;
+      }
+    }
+  
+    alert(errorMessage);
   } finally {
     setIsBooking(false);
   }

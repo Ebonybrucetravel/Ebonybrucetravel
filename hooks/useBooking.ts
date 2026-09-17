@@ -1399,9 +1399,17 @@ if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC")
       select_data: offerId,
       pnrNumber: wakanowBookingId,
       wakanowBookingId: wakanowBookingId,
+      originalShortToken:
+      (item as any).bookingData?.originalShortToken
+      || (item as any)._wakanowData?.select_data
+      || (item as any).heldSelectData,
     };
 
     body.pnrNumber = wakanowBookingId;
+    body.originalShortToken =
+  (item as any).bookingData?.originalShortToken
+  || (item as any)._wakanowData?.select_data
+  || (item as any).heldSelectData;
 
     const actualTotalAmount = wakanowTotalAmount > 0 ? wakanowTotalAmount : 100;
     const actualBasePrice = basePrice > 0 ? basePrice : 100 / 1.15;
