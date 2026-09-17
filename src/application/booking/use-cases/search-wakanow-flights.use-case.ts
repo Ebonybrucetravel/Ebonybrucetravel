@@ -13,8 +13,7 @@ export class SearchWakanowFlightsUseCase {
   private readonly logger = new Logger(SearchWakanowFlightsUseCase.name);
   
   private markupConfigCache: Map<string, { markupPercentage: number; serviceFeePercentage: number }> = new Map();
-  private readonly VALID_SELECT_DATA_MAX_LENGTH = 500;
-  private readonly INVALID_SELECT_DATA_PREFIXES = ['7h4AAB+LCAAAAAAABAD', 'H4sI'];
+ 
 
   constructor(
     private readonly wakanowService: WakanowService,
@@ -93,43 +92,22 @@ export class SearchWakanowFlightsUseCase {
       };
     }
 
-    // ✅ Filter out invalid SelectData (FAST - O(n))
-    const validResults: WakanowSearchResult[] = [];
-    const shortResults: WakanowSearchResult[] = [];
-    
-    for (const result of results) {
-      const selectData = result.SelectData || '';
-      const isValid = selectData.length > 0 && 
-                      selectData.length < this.VALID_SELECT_DATA_MAX_LENGTH &&
-                      !this.INVALID_SELECT_DATA_PREFIXES.some(prefix => selectData.startsWith(prefix));
-      
-      if (isValid) {
-        validResults.push(result);
-      } else if (selectData.length > 0 && selectData.length < 200) {
-        shortResults.push(result);
-      }
-    }
+   // ✅ Trust Wakanow — every offer has its own SelectData
+const validResults = results.filter(r => !!r.SelectData);
 
-    this.logger.log(`✅ ${validResults.length} results with valid SelectData (out of ${results.length})`);
+this.logger.log(`✅ ${validResults.length} results with SelectData (out of ${results.length})`);
 
-    // ✅ Use short results if no valid results
-    let finalResults = validResults;
-    if (finalResults.length === 0 && shortResults.length > 0) {
-      this.logger.log(`✅ Using ${shortResults.length} results with short SelectData format`);
-      finalResults = shortResults;
-    }
+if (validResults.length === 0) {
+  this.logger.warn('⚠️ No SelectData found in any result');
+  return {
+    offers: [],
+    total_offers: 0,
+    selectData: null,
+    message: 'No valid flight selections available. Please try again.',
+  };
+}
 
-    if (finalResults.length === 0) {
-      this.logger.warn('⚠️ No valid SelectData found');
-      return {
-        offers: [],
-        total_offers: 0,
-        selectData: null,
-        message: 'No valid flight selections available. Please try again.',
-      };
-    }
-
-    this.logger.log(`✅ Using ${finalResults.length} results with valid SelectData`);
+const finalResults = validResults;
 
     // ✅ Get markup config ONCE
     const productType = isDomestic ? ProductType.FLIGHT_DOMESTIC : ProductType.FLIGHT_INTERNATIONAL;
@@ -181,25 +159,24 @@ export class SearchWakanowFlightsUseCase {
       markupMultiplier,
     );
 
-    // ✅ Get selectData from the first offer
-    const firstSelectData = normalizedOffers.length > 0 ? normalizedOffers[0].selectData : null;
-
     const totalTime = Date.now() - startTime;
-    this.logger.log(`📊 Normalized ${normalizedOffers.length} offers in ${totalTime}ms`);
-    
-    if (firstSelectData) {
-      this.logger.log(`🔑 First SelectData length: ${firstSelectData.length}`);
-      this.logger.log(`🔑 First SelectData preview: ${firstSelectData.substring(0, 50)}...`);
-    }
+this.logger.log(`📊 Normalized ${normalizedOffers.length} offers in ${totalTime}ms`);
 
-    return {
-      offers: normalizedOffers,
-      total_offers: normalizedOffers.length,
-      selectData: firstSelectData,
-      message: normalizedOffers.length > 0 
-        ? `Found ${normalizedOffers.length} flight offers` 
-        : 'No flights found for the selected route and dates',
-    };
+// ✅ Log per-offer selectData lengths (sanity check)
+if (normalizedOffers.length > 0) {
+  this.logger.log(`🔑 Offer 0 selectData length: ${normalizedOffers[0].selectData?.length ?? 0}`);
+}
+
+return {
+  offers: normalizedOffers,                    // 👈 each offer carries its own selectData
+  total_offers: normalizedOffers.length,
+  // ⚠️ DEPRECATED — kept for backwards compat only.
+  //    Frontend MUST use each offer's own .selectData, NOT this.
+  selectData: normalizedOffers[0]?.selectData ?? null,
+  message: normalizedOffers.length > 0 
+    ? `Found ${normalizedOffers.length} flight offers` 
+    : 'No flights found for the selected route and dates',
+};
   }
 
 private async getMarkupConfig(productType: ProductType, currency: string) {
@@ -370,14 +347,16 @@ const finalPrice = convertedTotalWithFee + markupAmount + serviceFeeAmount;
     const roundedTaxes = Math.round((roundedMarkup + roundedServiceFee) * 100) / 100;
     const combinedTaxPercentage = markupPercentage + serviceFeePercentage;
 
-    const selectData = result.SelectData || '';
+    const searchSelectData = result.SelectData || '';
 
-    return {
-      provider: 'WAKANOW' as const,
-      id: `wakanow-${index}`,
-      select_data: selectData,
-      selectData: selectData,
-      slices,
+return {
+  provider: 'WAKANOW' as const,
+  id: `wakanow-${index}`,
+  select_data: searchSelectData,  
+  selectData: searchSelectData,    
+  bookingData: null,              
+  wakanowSelectData: null,         
+  slices,
       marketing_carrier: combo.MarketingCarrier,
       adults: combo.Adults,
       children: combo.Children,

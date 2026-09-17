@@ -10,6 +10,7 @@ import {
   ValidateNested,
   Min,
   IsPositive,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -286,6 +287,44 @@ export class CreateBookingDto {
   @IsString()
   @IsOptional()
   pnrNumber?: string;
+
+  // ✅ NEW: Original short SelectData from search (for auto-refresh on expiry)
+@ApiPropertyOptional({
+  description: 'Original short SelectData from search (for auto-refresh if the booking session expires)',
+})
+@IsString()
+@IsOptional()
+originalShortToken?: string;
+
+// ✅ NEW: Multi-city segments
+@ApiPropertyOptional({ type: 'array' })
+@IsOptional()
+@IsArray()
+allSegments?: Array<{
+  from: string;
+  to: string;
+  date: string;
+  airline?: string;
+  flightNumber?: string;
+}>;
+
+// ✅ NEW: Multi-city flag
+@ApiPropertyOptional({ description: 'Whether this is a multi-city booking' })
+@IsOptional()
+@IsBoolean()
+isMultiCity?: boolean;
+
+// ✅ NEW: Destination airport code
+@ApiPropertyOptional({ description: 'Destination airport code (IATA)' })
+@IsString()
+@IsOptional()
+destinationCode?: string;
+
+// ✅ NEW: North America flag
+@ApiPropertyOptional({ description: 'Whether destination is North America' })
+@IsOptional()
+@IsBoolean()
+isNorthAmerica?: boolean;
 
   // ============================================================
   // ✅ STRIPE PAYMENT METHOD ID (PCI COMPLIANT)

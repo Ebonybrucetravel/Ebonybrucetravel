@@ -10,12 +10,14 @@ import {
   Min,
   IsPositive,
   ValidateIf,
+  
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProductType, Provider } from '@prisma/client';
 
 import { PriceBreakdownDto } from './create-booking.dto';
+import { IsArray, IsBoolean } from 'class-validator';
 
 // ✅ Base passenger info - shared by all providers
 class GuestPassengerInfoDto {
@@ -284,6 +286,48 @@ export class CreateGuestBookingDto {
   @IsString()
   @IsOptional()
   pnrNumber?: string;
+
+  // ✅ NEW: Original short SelectData from search (for auto-refresh on expiry)
+@ApiPropertyOptional({
+  description: 'Original short SelectData from search (for auto-refresh if the booking session expires)',
+  example: 'WAAAAB+LCAAAAAAABACrVgpOTSxKzvBOrVSyUopyLzA0sYj3jQ...',
+})
+@IsString()
+@IsOptional()
+originalShortToken?: string;
+
+// ✅ NEW: Multi-city segments (for multi-city bookings)
+@ApiPropertyOptional({
+  description: 'All segments for multi-city booking',
+  type: 'array',
+})
+@IsOptional()
+@IsArray()
+allSegments?: Array<{
+  from: string;
+  to: string;
+  date: string;
+  airline?: string;
+  flightNumber?: string;
+}>;
+
+// ✅ NEW: Multi-city flag
+@ApiPropertyOptional({ description: 'Whether this is a multi-city booking' })
+@IsOptional()
+@IsBoolean()
+isMultiCity?: boolean;
+
+// ✅ NEW: Destination airport code
+@ApiPropertyOptional({ description: 'Destination airport code (IATA)' })
+@IsString()
+@IsOptional()
+destinationCode?: string;
+
+// ✅ NEW: North America flag
+@ApiPropertyOptional({ description: 'Whether destination is North America' })
+@IsOptional()
+@IsBoolean()
+isNorthAmerica?: boolean;
 
   // ============================================================
   // ✅ DUFFEL FIELDS (NEW - ONLY FOR DUFFEL)
