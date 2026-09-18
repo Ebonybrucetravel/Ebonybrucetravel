@@ -1728,36 +1728,30 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   );
   const handleBookFlight = useCallback(async (flight: ExtendedSearchResult) => {
     if (flight._isBooking) return;
-    
- 
+  
     if (!flight.selectData) {
       toast.error('Missing flight selection data. Please search again.', { id: 'flight-select' });
       return;
     }
-    
+  
     console.log('📦 Book Now - Flight data:', {
       id: flight.id,
       hasWakanowData: !!flight._wakanowData,
       hasPriceBreakdown: !!flight.priceBreakdown,
       hasFareRules: flight.fare_rules?.length > 0,
     });
-    
+  
     flight._isBooking = true;
     setBookingFlightId(flight.id);
-    
+  
     try {
-     
-      
       const bookingData: ExtendedSearchResult = {
         ...flight,
         _isBooking: false,
       };
-      
+  
       toast.success('Proceeding to booking!', { id: 'flight-select' });
-      
- 
       onSelect?.(bookingData);
-      
     } catch (error: any) {
       console.error('Failed to book flight:', error);
       toast.error('Please try again.', { id: 'flight-select' });
@@ -1765,6 +1759,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       setBookingFlightId(null);
     }
   }, [onSelect]);
+  
 
   const handleViewDetails = useCallback(async (flight: ExtendedSearchResult, e: React.MouseEvent) => {
     e.stopPropagation();
