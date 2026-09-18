@@ -326,6 +326,16 @@ interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
   isWakanow?: boolean;
   isWakanowDomestic?: boolean;
   selectData?: string;
+  originalSelectData?: string;
+  originalShortToken?: string;
+  bookingData?: {
+    selectData?: string;
+    bookingData?: string;
+    wakanowSelectData?: string;
+    bookingId?: string;
+    originalShortToken?: string;
+    [key: string]: any;
+  };
   legs?: Array<{
     number: string;
     from: string;
@@ -711,6 +721,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           const flightCombination = combination.FlightCombination;
           const selectData = combination.SelectData;
            const bookingId = combination.BookingId;
+           console.log('🔑 combination keys:', Object.keys(combination));
           const flightModels = flightCombination?.FlightModels || [];
 
           if (flightModels.length === 0) continue;
@@ -853,7 +864,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             isWakanow: true,
             isWakanowDomestic: true,
             selectData: selectData,
+            originalSelectData: selectData,        
+            originalShortToken: selectData,     
             bookingId: bookingId || selectData,
+            BookingId: bookingId,  
             provider: 'wakanow',
             technicalStops: allTechnicalStops,     
   hasTechnicalStops: hasTechnicalStops,  
@@ -1736,6 +1750,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   
     console.log('📦 Book Now - Flight data:', {
       id: flight.id,
+      selectDataLength: flight.selectData?.length,
+      originalSelectDataLength: (flight as any).originalSelectData?.length,
       hasWakanowData: !!flight._wakanowData,
       hasPriceBreakdown: !!flight.priceBreakdown,
       hasFareRules: flight.fare_rules?.length > 0,
@@ -1747,8 +1763,24 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     try {
       const bookingData: ExtendedSearchResult = {
         ...flight,
+        BookingId: (flight as any).BookingId || flight.bookingId,
+        originalSelectData:
+          (flight as any).originalSelectData ||
+          (flight as any).originalShortToken,
+        originalShortToken:
+          (flight as any).originalShortToken ||
+          (flight as any).originalSelectData,
+        bookingData: (flight as any).bookingData,
         _isBooking: false,
       };
+  
+      console.log('🚀 onSelect payload:', {
+        bookingId: bookingData.bookingId,
+        BookingId: (bookingData as any).BookingId,
+        selectDataLength: bookingData.selectData?.length,
+        originalSelectDataLength: (bookingData as any).originalSelectData?.length,
+        hasBookingDataObject: !!(bookingData as any).bookingData,
+      });
   
       toast.success('Proceeding to booking!', { id: 'flight-select' });
       onSelect?.(bookingData);
@@ -1759,7 +1791,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       setBookingFlightId(null);
     }
   }, [onSelect]);
-  
+
 
   const handleViewDetails = useCallback(async (flight: ExtendedSearchResult, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1845,8 +1877,53 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           const enrichedFlight: ExtendedSearchResult = {
             ...flight,
             bookingId: responseData.booking_id || flight.id,
-            selectData: responseData.select_data || flight.selectData,
+            BookingId: responseData.booking_id || flight.id,
+            
+            // ✅ CRITICAL: selectData = LONG (3824) token from response
+            selectData:
+              (responseData as any).wakanowSelectData ||
+              (responseData as any).bookingData ||
+              (responseData as any).selectData ||
+              flight.selectData,
+            
+            // ✅ originalSelectData = SHORT (148) token
+            originalSelectData:
+              (flight as any).originalSelectData ||
+              (flight as any).originalShortToken ||
+              responseData.select_data,
+            
+
+            originalShortToken:
+              (flight as any).originalShortToken ||
+              (flight as any).originalSelectData ||
+              responseData.select_data,
+            
+          
+            bookingData: {
+              selectData:
+                (responseData as any).wakanowSelectData ||
+                (responseData as any).bookingData ||
+                (responseData as any).selectData ||
+                flight.selectData,
+              bookingData:
+                (responseData as any).wakanowSelectData ||
+                (responseData as any).bookingData ||
+                (responseData as any).selectData ||
+                flight.selectData,
+              wakanowSelectData:
+                (responseData as any).wakanowSelectData ||
+                (responseData as any).bookingData ||
+                (responseData as any).selectData ||
+                flight.selectData,
+              bookingId: responseData.booking_id || flight.id,
+              originalShortToken:
+                (flight as any).originalShortToken ||
+                (flight as any).originalSelectData ||
+                responseData.select_data,
+            },
+            
             slices: slices,
+
             flight_summary: flightSummary,
             freeBaggage: freeBaggage,
             isRefundable: isRefundable,
@@ -1865,7 +1942,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             currency: priceBreakdown?.currency || 'NGN',
             custom_messages: customMessages,
             _wakanowData: responseData,
-            // ✅ Now defined!
             technicalStops: finalTechnicalStops,
             hasTechnicalStops: finalHasTechnicalStops,
             totalTechnicalStops: finalTotalTechnicalStops,
