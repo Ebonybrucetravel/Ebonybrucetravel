@@ -102,18 +102,31 @@ export class SearchWakanowFlightsDto {
   currency?: string = 'GBP';
 }
 
-
 export class SelectWakanowFlightDto {
-  @ApiProperty({ description: 'SelectData string from the search results' })
-  @IsString()
-  @IsNotEmpty()
-  selectData: string;
-
-  @ApiPropertyOptional({ description: 'Target currency', default: 'NGN' })
+  // ✅ Accept UPPERCASE from frontend (what wakanow-api.ts sends)
+  @ApiPropertyOptional({ description: 'SelectData string from search results (uppercase)' })
   @IsOptional()
   @IsString()
-  targetCurrency?: string = 'NGN';
-  
+  SelectData?: string;
+
+  // ✅ Also accept lowercase (legacy compatibility)
+  @ApiPropertyOptional({ description: 'SelectData string from search results (lowercase)' })
+  @IsOptional()
+  @IsString()
+  selectData?: string;
+
+  // ✅ Accept UPPERCASE TargetCurrency
+  @ApiPropertyOptional({ description: 'Target currency (uppercase)', default: 'NGN' })
+  @IsOptional()
+  @IsString()
+  TargetCurrency?: string;
+
+  // ✅ Also accept lowercase
+  @ApiPropertyOptional({ description: 'Target currency (lowercase)', default: 'NGN' })
+  @IsOptional()
+  @IsString()
+  targetCurrency?: string;
+
   @ApiPropertyOptional({ 
     description: 'Original search parameters for auto-refresh when selectData expires',
     example: { origin: 'LOS', destination: 'ABV', departureDate: '07/28/2026' }
@@ -370,8 +383,30 @@ export class BookWakanowFlightDto {
     originalShortToken?: string;
     [key: string]: any;
   };
+  @ApiPropertyOptional({
+    description: 'Original 148-char SelectData from search (used to refresh expired selections)',
+    example: 'WAAAAB+LCAAAAAAABACrVgpOTSxKzvBOrVSyUopyLzA0sYj3jQ...',
+  })
+  @IsOptional()
+  @IsString()
+  originalSelectData?: string;
 
-  // Keep this for backward compatibility (if frontend sends at top level)
+  @ApiPropertyOptional({
+    description: 'Trip type: true for one-way, false for round-trip',
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isOneWay?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Wakanow fare source code (only if search provided it)',
+  })
+  @IsOptional()
+  @IsString()
+  fareSourceCode?: string;
+
+  
   @ApiPropertyOptional({
     description: 'Original short SelectData from search (for auto-refresh if the booking session expires)',
     example: 'WAAAAB+LCAAAAAAABACrVgpOTSxKzvBOrVSyUopyLzA0sYj3jQ...',

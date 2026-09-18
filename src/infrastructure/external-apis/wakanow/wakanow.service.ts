@@ -133,11 +133,18 @@ export interface WakanowFlightCombination {
 export interface WakanowSearchResult {
   FlightCombination: WakanowFlightCombination;
   SelectData: string;
+  BookingId?: string;
+  FareSourceCode?: string;
+  IsOneWay?: boolean;
 }
 
 export interface WakanowSelectRequest {
   SelectData: string;
   TargetCurrency: string;
+  BookingId?: string;       
+  FareSourceCode?: string;   
+  IsOneWay?: boolean;        
+  ProductType?: string; 
 }
 
 export interface WakanowCustomMessage {
@@ -655,20 +662,30 @@ export class WakanowService {
         this.logger.log(`Wakanow search: ${data}`);
         results = [];
       } else if (Array.isArray(data) && data.length > 0) {
+        this.logger.log(`🔎 Search item keys: ${Object.keys(data[0] || {}).join(', ')}`);
+        this.logger.log(`🔎 Sample item values: BookingId=${JSON.stringify(data[0]?.BookingId)}, FareSourceCode=${JSON.stringify(data[0]?.FareSourceCode)}, IsOneWay=${JSON.stringify(data[0]?.IsOneWay)}, SelectData length=${String(data[0]?.SelectData || '').length}`);
+        this.logger.log(`🔎 RAW item[0] (truncated to 3000 chars): ${JSON.stringify(data[0]).substring(0, 3000)}`);   
         results = data.map((item: any) => ({
           FlightCombination: item.FlightCombination || item,
           SelectData: item.SelectData || '',
+          BookingId: item.BookingId || item.BookingID || undefined,
+          FareSourceCode: item.FareSourceCode || undefined,
+          IsOneWay: typeof item.IsOneWay === 'boolean' ? item.IsOneWay : undefined,
         }));
         this.logger.log(`Wakanow search: ${results.length} results`);
       } else if (data.FlightCombination) {
+        this.logger.log(`🔎 Search item keys: ${Object.keys(data || {}).join(', ')}`);
+        this.logger.log(`🔎 Sample item values: BookingId=${JSON.stringify(data?.BookingId)}, FareSourceCode=${JSON.stringify(data?.FareSourceCode)}, IsOneWay=${JSON.stringify(data?.IsOneWay)}, SelectData length=${String(data?.SelectData || '').length}`);
         this.logger.log('Wakanow search: 1 result');
         results = [{
           FlightCombination: data.FlightCombination,
           SelectData: data.SelectData || '',
+          BookingId: data.BookingId || data.BookingID || undefined,
+          FareSourceCode: data.FareSourceCode || undefined,
+          IsOneWay: typeof data.IsOneWay === 'boolean' ? data.IsOneWay : undefined,
         }];
       }
 
-      // 👇 ADD CACHE STORAGE HERE
       if (results.length > 0) {
         this.searchCache.set(cacheKey, {
           results,
@@ -724,31 +741,85 @@ export class WakanowService {
       this.logger.log(`📤 Trying variant ${i + 1}/${variants.length}: ${variant.name} (${variant.data.length} chars)`);
 
       try {
-        const response = await this.fetchWithRetry(`${this.serviceUrl}/api/flight/select`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            SelectData: variant.data,
-            TargetCurrency: request.TargetCurrency || 'NGN',
-          }),
+        const selectPayload: Record<string, any> = {
+          SelectData: variant.data,
+          TargetCurrency: request.TargetCurrency || 'NGN',
+        };
+        
+        if (request.BookingId) selectPayload.BookingId = request.BookingId;
+        if (request.FareSourceCode) selectPayload.FareSourceCode = request.FareSourceCode;
+        if (typeof request.IsOneWay === 'boolean') selectPayload.IsOneWay = request.IsOneWay;
+        if (request.ProductType) selectPayload.ProductType = request.ProductType;
+        
+        this.logger.debug(
+          `[select] fields sent: ${Object.keys(selectPayload).join(', ')} | SelectData length: ${variant.data.length}`,
+        );
+
+        // ✅ ADD #1 — log what we're about to send
+        this.logger.log(`🚀 About to POST to Wakanow /select:`, {
+          url: `${this.serviceUrl}/api/flight/select`,
+          payloadKeys: Object.keys(selectPayload),
+          selectDataLength: selectPayload.SelectData?.length,
+          selectDataFirst50: selectPayload.SelectData?.substring(0, 50),
+          selectDataLast50: selectPayload.SelectData?.slice(-50),
+          targetCurrency: selectPayload.TargetCurrency,
         });
 
+        // ✅ ADD #2 — wrap the fetch so we can catch network-level failures too
+        let response: Response;
+        try {
+          response = await this.fetchWithRetry(`${this.serviceUrl}/api/flight/select`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(selectPayload),
+          });
+          // ✅ ADD #3 — log the HTTP status we got back
+          this.logger.log(`📥 Wakanow /select HTTP status: ${response.status}`);
+        } catch (fetchError: any) {
+          this.logger.error(`🚨 Wakanow /select FETCH threw an exception:`, {
+            message: fetchError?.message,
+            stack: fetchError?.stack?.substring(0, 500),
+          });
+          throw fetchError;
+        }
         if (!response.ok) {
           const errorText = await response.text();
+      
+          this.logger.error(`🚨 RAW Wakanow /select error:`);
+          this.logger.error(`   HTTP status: ${response.status}`);
+          this.logger.error(`   Raw body: ${errorText}`);
+          this.logger.error(`   Sent fields: ${Object.keys(selectPayload).join(', ')}`);
+          this.logger.error(`   SelectData length: ${variant.data.length}`);
         
+
           if (response.status === 400 || response.status === 404) {
-            this.logger.warn(`❌ SelectData expired/invalid: ${response.status} - ${errorText}`);
+            const lower = (errorText || '').toLowerCase();
+          
             
-            if (variant.name === 'Original') {
-              throw new BadRequestException(
-                'Your flight selection has expired. Please search for flights again.'
+            const isExpired =
+              lower.includes('expired') ||
+              lower.includes('no longer valid') ||
+              lower.includes('selection has expired') ||
+              lower.includes('session expired');
+          
+            if (isExpired) {
+              this.logger.warn(`SelectData expired: ${response.status} - ${errorText}`);
+              lastError = new BadRequestException(
+                'Your flight selection has expired. Please search for flights again.',
               );
+              continue; // try next variant
             }
-            
-            lastError = new BadRequestException(
-              'Your flight selection has expired. Please search for flights again.'
+          
+          
+            this.logger.error(`Wakanow select 400 (bad request shape): ${errorText}`);
+            lastError = new HttpException(
+              {
+                message: 'Unable to confirm flight pricing. Please try again.',
+                wakanowMessage: errorText,
+              },
+              HttpStatus.BAD_GATEWAY,
             );
-            continue;
+            continue; 
           }
 
        

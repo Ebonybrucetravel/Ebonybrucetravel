@@ -426,30 +426,46 @@ export class BookWakanowFlightUseCase {
         const errorString = JSON.stringify(error)?.toLowerCase() || '';
         const errorStatus = error?.status || error?.response?.status || 0;
   
-        // ✅ Check if selection expired - try to refresh
-        if (errorMsg.includes('not selected by you') || 
-            errorMsg.includes('session expired') ||
-            errorMsg.includes('session has expired') ||
-            errorMsg.includes('expired') ||
-            errorMsg.includes('no longer available') ||
-            errorString.includes('expired')) {
+        const wakanowMessage = (error?.response?.wakanowMessage || error?.wakanowMessage || '').toLowerCase();
+const isExplicitlyExpired =
+  errorMsg.includes('not selected by you') ||
+  errorMsg.includes('session expired') ||
+  errorMsg.includes('session has expired') ||
+  wakanowMessage.includes('expired') ||
+  wakanowMessage.includes('selection has expired');
+
+if (isExplicitlyExpired) {
           
           this.logger.warn(`⚠️ Selection expired for BookingId: ${currentBookingId}, attempting to refresh...`);
   
         
           try {
 
-            const originalShortToken = dto.bookingData?.originalShortToken || dto.originalShortToken || dto.selectData;
+            const candidateTokens: Array<string | undefined> = [
+              (dto as any).originalSelectData,
+              dto.bookingData?.originalSelectData,
+              dto.bookingData?.originalShortToken,
+              (dto as any).originalShortToken,
+            ];
             
-
-            const isShort = originalShortToken?.length < 200;
-            this.logger.log(`🔄 Refreshing selection with ${isShort ? 'SHORT' : 'LONG'} token (length: ${originalShortToken?.length || 0})...`);
+            const originalShortToken = candidateTokens.find(
+              (t): t is string => typeof t === 'string' && t.length > 0
+            );
+            
+            if (!originalShortToken) {
+              this.logger.error('❌ No original short token available for refresh. Cannot refresh selection.');
+              throw new BadRequestException(
+                'Your flight selection has expired. Please search for flights again and complete the booking promptly.'
+              );
+            }
+            
+            const isShort = originalShortToken.length < 500;
+            this.logger.log(`🔄 Refreshing selection with ${isShort ? 'SHORT' : 'LONG'} token (length: ${originalShortToken.length})...`);
             
             if (!isShort) {
               this.logger.warn('⚠️ Using LONG token for refresh - this will fail. Ensure frontend passes originalShortToken in bookingData');
             }
             
-       
             const freshSelectResponse = await this.wakanowService.selectFlight({
               SelectData: originalShortToken,
               TargetCurrency: dto.targetCurrency || 'NGN',
