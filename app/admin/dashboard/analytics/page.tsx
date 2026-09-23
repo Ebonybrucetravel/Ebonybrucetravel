@@ -8,15 +8,61 @@ import { LoadingSpinner } from '@/components/admin/LoadingSpinner';
 import { convertCurrencyLive, CURRENCY_SYMBOLS, preloadCommonCurrencies } from '@/lib/currency-service';
 
 
-const formatCompactCurrency = (amount: number, currency: string = 'NGN') => {
-  if (!amount) return `₦0`;
-  
+function getDisplayCurrency(): string {
+  if (typeof window === 'undefined') return 'NGN';
 
-  let symbol = currency;
-  if (currency === 'NGN') symbol = '₦';
-  else if (currency === 'GBP') symbol = '£';
-  else if (currency === 'USD') symbol = '$';
-  else if (currency === 'EUR') symbol = '€';
+  const candidates = [
+    'selectedCurrency',
+    'preferredCurrency',
+    'currency',
+    'currencyCode',
+    'app_currency',
+    'locale_currency',
+  ];
+
+  for (const key of candidates) {
+    const v = localStorage.getItem(key);
+    if (v) {
+      const upper = v.toUpperCase();
+      if (['NGN', 'GBP', 'USD', 'EUR', 'CAD', 'AUD', 'JPY', 'CNY', 'ZAR', 'KES'].includes(upper)) {
+        return upper;
+      }
+    }
+  }
+
+ 
+  const rawLocale = localStorage.getItem('locale');
+  if (rawLocale?.includes('/')) {
+    const code = rawLocale.split('/')[1]?.toUpperCase();
+    if (code && ['NGN', 'GBP', 'USD', 'EUR'].includes(code)) return code;
+  }
+
+ 
+  const geo = localStorage.getItem('geo_country') || localStorage.getItem('country');
+  if (geo === 'NG') return 'NGN';
+  if (geo === 'US') return 'USD';
+  if (geo === 'GB') return 'GBP';
+
+  return 'NGN';
+}
+
+const CURRENCY_SYMBOLS_MAP: Record<string, string> = {
+  NGN: '₦',
+  GBP: '£',
+  USD: '$',
+  EUR: '€',
+  CAD: 'C$',
+  AUD: 'A$',
+  JPY: '¥',
+  CNY: '¥',
+  ZAR: 'R',
+  KES: 'KSh',
+};
+
+const formatCompactCurrency = (amount: number, currency: string = 'NGN') => {
+  const symbol = CURRENCY_SYMBOLS_MAP[currency] || currency + ' ';
+
+  if (!amount) return `${symbol}0`;
 
   if (amount >= 1_000_000_000) return `${symbol}${(amount / 1_000_000_000).toFixed(1)}B`;
   if (amount >= 1_000_000) return `${symbol}${(amount / 1_000_000).toFixed(1)}M`;
@@ -75,7 +121,10 @@ export default function AnalyticsPage() {
 
     
         const dateParams = getDateRangeParams();
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://ebony-bruce-production.up.railway.app';
+        const baseUrl =
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  'https://ebony-bruce-production.up.railway.app';
         
         console.log(`📡 Fetching REAL Analytics from API for: ${dateParams.startDate} to ${dateParams.endDate}`);
         
@@ -114,11 +163,11 @@ export default function AnalyticsPage() {
 
   const transformApiData = async (apiData: any) => {
 
-    const targetCurrency = apiData.targetCurrency || 'NGN'; 
+    const targetCurrency = getDisplayCurrency() || apiData.targetCurrency || 'NGN';
 
-    const flightData = apiData.bookingsByProductType?.FLIGHT_INTERNATIONAL || { count: 0, revenue: 0, currency: 'GBP' };
-    const hotelData = apiData.bookingsByProductType?.HOTEL || { count: 0, revenue: 0, currency: 'GBP' };
-    const carData = apiData.bookingsByProductType?.CAR_RENTAL || { count: 0, revenue: 0, currency: 'GBP' };
+    const flightData = apiData.bookingsByProductType?.FLIGHT_INTERNATIONAL || { count: 0, revenue: 0, currency: targetCurrency };
+    const hotelData = apiData.bookingsByProductType?.HOTEL || { count: 0, revenue: 0, currency: targetCurrency };
+    const carData = apiData.bookingsByProductType?.CAR_RENTAL || { count: 0, revenue: 0, currency: targetCurrency };
     
     const totalBookings = apiData.totalBookings || 0;
     const totalRevenue = apiData.totalRevenue || 0;

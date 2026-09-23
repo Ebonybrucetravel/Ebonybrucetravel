@@ -5,6 +5,57 @@ import { useRouter } from 'next/navigation';
 import { AnalyticsView } from '@/components/admin/AnalyticsView';
 import { getDashboardStats } from '@/lib/adminApi';
 import { LoadingSpinner } from '@/components/admin/LoadingSpinner';
+import { convertCurrencyLive, preloadCommonCurrencies } from '@/lib/currency-service';
+
+function getDisplayCurrency(): string {
+  if (typeof window === 'undefined') return 'NGN';
+
+  const candidates = [
+    'selectedCurrency',
+    'preferredCurrency',
+    'currency',
+    'currencyCode',
+    'app_currency',
+    'locale_currency',
+  ];
+
+  for (const key of candidates) {
+    const v = localStorage.getItem(key);
+    if (v) {
+      const upper = v.toUpperCase();
+      if (['NGN', 'GBP', 'USD', 'EUR', 'CAD', 'AUD', 'JPY', 'CNY', 'ZAR', 'KES'].includes(upper)) {
+        return upper;
+      }
+    }
+  }
+
+  const rawLocale = localStorage.getItem('locale');
+  if (rawLocale?.includes('/')) {
+    const code = rawLocale.split('/')[1]?.toUpperCase();
+    if (code && ['NGN', 'GBP', 'USD', 'EUR'].includes(code)) return code;
+  }
+
+  const geo = localStorage.getItem('geo_country') || localStorage.getItem('country');
+  if (geo === 'NG') return 'NGN';
+  if (geo === 'US') return 'USD';
+  if (geo === 'GB') return 'GBP';
+
+  return 'NGN';
+}
+
+const CURRENCY_SYMBOLS_MAP: Record<string, string> = {
+  NGN: '₦', GBP: '£', USD: '$', EUR: '€',
+  CAD: 'C$', AUD: 'A$', JPY: '¥', CNY: '¥', ZAR: 'R', KES: 'KSh',
+};
+
+const formatCompactCurrency = (amount: number, currency: string = 'NGN') => {
+  const symbol = CURRENCY_SYMBOLS_MAP[currency] || currency + ' ';
+  if (!amount) return `${symbol}0`;
+  if (amount >= 1_000_000_000) return `${symbol}${(amount / 1_000_000_000).toFixed(1)}B`;
+  if (amount >= 1_000_000) return `${symbol}${(amount / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000) return `${symbol}${(amount / 1_000).toFixed(1)}K`;
+  return `${symbol}${amount.toLocaleString()}`;
+};
 
 export default function CarRentalsPage() {
   const router = useRouter();
@@ -17,46 +68,31 @@ export default function CarRentalsPage() {
     const now = new Date();
     const endDate = now.toISOString().split('T')[0];
     let startDate = new Date();
-
-    switch(dateRange) {
-      case 'week':
-        startDate.setDate(now.getDate() - 7);
-        break;
-      case 'month':
-        startDate.setMonth(now.getMonth() - 1);
-        break;
-      case 'quarter':
-        startDate.setMonth(now.getMonth() - 3);
-        break;
-      case 'year':
-        startDate.setFullYear(now.getFullYear() - 1);
-        break;
+    switch (dateRange) {
+      case 'week': startDate.setDate(now.getDate() - 7); break;
+      case 'month': startDate.setMonth(now.getMonth() - 1); break;
+      case 'quarter': startDate.setMonth(now.getMonth() - 3); break;
+      case 'year': startDate.setFullYear(now.getFullYear() - 1); break;
     }
-
-    return {
-      startDate: startDate.toISOString().split('T')[0],
-      endDate
-    };
+    return { startDate: startDate.toISOString().split('T')[0], endDate };
   };
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
-      
       try {
+        await preloadCommonCurrencies();
+
         const token = localStorage.getItem('adminToken');
-        if (!token) {
-          router.push('/admin');
-          return;
-        }
+        if (!token) { router.push('/admin'); return; }
 
         const dateParams = getDateRangeParams();
         const response = await getDashboardStats(dateParams);
-        
+
         if (response.success && response.data) {
-          const transformedData = transformCarData(response.data);
-          setData(transformedData);
+          const transformed = await transformCarData(response.data);
+          setData(transformed);
         } else {
           throw new Error(response.message || 'Failed to fetch car rentals data');
         }
@@ -67,106 +103,121 @@ export default function CarRentalsPage() {
         setIsLoading(false);
       }
     };
-
     fetchData();
   }, [dateRange, router]);
 
-  const transformCarData = (apiData: any) => {
-    // Extract car rental specific data from the API response
-    const carRentalData = apiData.bookingsByProductType?.CAR_RENTAL || { count: 0, revenue: 0 };
+  const transformCarData = async (apiData: any) => {
+    const targetCurrency = getDisplayCurrency() || apiData.targetCurrency || 'NGN';
+
+    const carData = apiData.bookingsByProductType?.CAR_RENTAL || { count: 0, revenue: 0, currency: targetCurrency };
     const totalBookings = apiData.totalBookings || 0;
-    const carBookings = carRentalData.count || 0;
+    const carBookings = carData.count || 0;
     const carPercentage = totalBookings > 0 ? Math.round((carBookings / totalBookings) * 100) : 0;
-  
-    // Calculate derived metrics
-    const avgRentalValue = carBookings > 0 ? carRentalData.revenue / carBookings : 0;
-    
+
+    const convertedRevenue = await convertCurrencyLive(
+      carData.revenue || 0,
+      carData.currency || targetCurrency,
+      targetCurrency,
+    );
+    const avgRentalValue = carBookings > 0 ? convertedRevenue.convertedAmount / carBookings : 0;
+
     return {
       stats: [
-        { 
-          label: 'Car Rental Revenue', 
-          value: `£${(carRentalData.revenue || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 
-          change: '+0%', // API doesn't provide this yet
-          color: 'text-emerald-600', 
+        {
+          label: 'Car Rental Revenue',
+          value: formatCompactCurrency(convertedRevenue.convertedAmount, targetCurrency),
+          change: '+0%',
+          color: 'text-emerald-600',
           bgColor: 'bg-emerald-50',
-          icon: '💰' 
+          icon: '💰',
         },
-        { 
-          label: 'Car Rentals', 
-          value: carBookings.toLocaleString(), 
-          change: '+0%', // API doesn't provide this yet
-          color: 'text-blue-600', 
+        {
+          label: 'Car Rentals',
+          value: carBookings.toLocaleString(),
+          change: '+0%',
+          color: 'text-blue-600',
           bgColor: 'bg-blue-50',
-          icon: <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" /></svg>
+          icon: (
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" />
+            </svg>
+          ),
         },
-        { 
-          label: 'Share of Bookings', 
-          value: `${carPercentage}%`, 
-          change: '+0%', 
-          color: 'text-purple-600', 
+        {
+          label: 'Share of Bookings',
+          value: `${carPercentage}%`,
+          change: '+0%',
+          color: 'text-purple-600',
           bgColor: 'bg-purple-50',
-          icon: '📊' 
+          icon: '📊',
         },
-        { 
-          label: 'Avg Booking Value', 
-          value: `£${avgRentalValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 
-          change: '+0%', 
-          color: 'text-amber-600', 
+        {
+          label: 'Avg Booking Value',
+          value: formatCompactCurrency(avgRentalValue, targetCurrency),
+          change: '+0%',
+          color: 'text-amber-600',
           bgColor: 'bg-amber-50',
-          icon: '💰' 
+          icon: '💰',
         },
       ],
       bookingCategories: [
-        { 
-          type: 'Car Rentals', 
-          percentage: carPercentage, 
-          color: '#10b981', 
-          value: carBookings, 
-          icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" /></svg>
+        {
+          type: 'Car Rentals',
+          percentage: carPercentage,
+          color: '#10b981',
+          value: carBookings,
+          icon: (
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" />
+            </svg>
+          ),
         },
       ],
-      // Pass carRentalData to the location extractor
-      topLocations: extractTopLocations(apiData.recentBookings || [], carRentalData),
-      revenueData: generateMonthlyData(), // Still using mock until API provides this
+      topLocations: await extractTopLocations(apiData.recentBookings || [], targetCurrency),
+      revenueData: apiData.monthlyRevenue || [],
     };
   };
-  
-  // Helper function to extract location data from recent bookings
-  const extractTopLocations = (recentBookings: any[], carRentalData: any) => {
-    // Filter for car rentals only
-    const carBookings = recentBookings.filter(b => b.productType === 'CAR_RENTAL');
-    
-    // In a real implementation, you'd extract locations from booking data
-    // For now, using enhanced mock data based on actual car rental count
-    const totalCarRevenue = carRentalData.revenue || 12219.4;
-    const totalCarBookings = carRentalData.count || 22;
-    
-    // Distribute bookings across locations (mock distribution)
-    const locationDistribution = [
-      { name: 'London, UK', share: 0.45, growth: '+12%' },
-      { name: 'Manchester, UK', share: 0.30, growth: '+8%' },
-      { name: 'Birmingham, UK', share: 0.25, growth: '+15%' },
-    ];
-  
-    return locationDistribution.map(loc => ({
-      name: loc.name,
-      bookings: Math.round(totalCarBookings * loc.share),
-      revenue: `£${(totalCarRevenue * loc.share).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
-      growth: loc.growth,
-      flag: loc.name.includes('London') ? '🇬🇧' : loc.name.includes('Manchester') ? '🇬🇧' : '🇬🇧',
-      color: loc.name.includes('London') ? 'from-blue-500 to-cyan-500' : 
-             loc.name.includes('Manchester') ? 'from-purple-500 to-pink-500' : 
-             'from-amber-500 to-orange-500'
-    }));
-  };
 
-  const generateMonthlyData = () => {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return months.map((month, i) => ({
-      month,
-      value: 15000 + (i * 1500) + Math.floor(Math.random() * 2000),
-      previousYear: 12000 + (i * 1200) + Math.floor(Math.random() * 1800),
-    }));
+  const extractTopLocations = async (recentBookings: any[], targetCurrency: string) => {
+    const filtered = recentBookings.filter((b) => b.productType === 'CAR_RENTAL');
+
+    const locationMap = new Map<string, { name: string; bookings: number; revenue: number; currency: string }>();
+
+    for (const b of filtered) {
+      const bd = b.bookingData || {};
+      const city = bd.pickupCity || bd.city || bd.location || bd.destinationCity || bd.destinationCode;
+      if (!city) continue;
+
+      const existing = locationMap.get(city) || {
+        name: city,
+        bookings: 0,
+        revenue: 0,
+        currency: b.currency || targetCurrency,
+      };
+      existing.bookings += 1;
+      existing.revenue += Number(b.totalAmount || 0);
+      locationMap.set(city, existing);
+    }
+
+    const locations = Array.from(locationMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 3);
+    if (locations.length === 0) return [];
+
+    return Promise.all(
+      locations.map(async (loc, i) => {
+        const converted = await convertCurrencyLive(loc.revenue, loc.currency, targetCurrency);
+        return {
+          name: loc.name,
+          bookings: loc.bookings,
+          revenue: formatCompactCurrency(converted.convertedAmount, targetCurrency),
+          growth: '+0%',
+          flag: '🌍',
+          color:
+            i === 0 ? 'from-blue-500 to-cyan-500' :
+            i === 1 ? 'from-purple-500 to-pink-500' :
+            'from-amber-500 to-orange-500',
+        };
+      }),
+    );
   };
 
   if (isLoading) return <LoadingSpinner />;
@@ -175,10 +226,7 @@ export default function CarRentalsPage() {
       <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-red-600">
         <p className="font-semibold">Error</p>
         <p className="text-sm mt-1">{error}</p>
-        <button 
-          onClick={() => window.location.reload()}
-          className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 transition"
-        >
+        <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 transition">
           Retry
         </button>
       </div>
@@ -186,7 +234,7 @@ export default function CarRentalsPage() {
   );
 
   return (
-    <AnalyticsView 
+    <AnalyticsView
       data={data}
       title="Car Rental Analytics"
       dateRange={dateRange}
