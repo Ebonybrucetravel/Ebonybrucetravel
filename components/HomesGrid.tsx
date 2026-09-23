@@ -33,9 +33,9 @@ interface HomesGridProps {
 
 // ─── Geo → featured cities ─────────────────────────────────────────────
 const GEO_TO_CITIES: Record<string, string[]> = {
-  NG: ['LOS'],              // Lagos (Abuja currently has no hotels on Amadeus)
-  GB: ['LON', 'MAN'],       // London, Manchester
-  US: ['NYC', 'MIA', 'LAS'],// New York, Miami, Las Vegas
+  NG: ['LOS'],
+  GB: ['LON', 'MAN'],
+  US: ['NYC', 'MIA', 'LAS'],
   FR: ['PAR'],
   AE: ['DXB'],
   JP: ['TYO'],
@@ -54,12 +54,10 @@ const GEO_TO_CITIES: Record<string, string[]> = {
   TR: ['IST'],
 };
 
-// Fallback if we can't detect geo
-const FALLBACK_CITIES = ['DXB', 'LON', 'PAR'];
+// Curated pool to rotate through when geo is unknown
+const FEATURED_CITIES = ['DXB', 'LON', 'PAR', 'TYO', 'SIN', 'NYC', 'MAD', 'ROM', 'CPT', 'IST'];
 
-// ─── Session-storage cache to avoid hammering Amadeus ──────────────────
-const CACHE_KEY = 'homes_grid_cache_v1';
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 min
 
 interface CachedData {
   hotels: HotelDisplay[];
@@ -67,10 +65,11 @@ interface CachedData {
   currency: string;
 }
 
-function readCache(): CachedData | null {
+// ─── Cache (per-city) ──────────────────────────────────────────────────
+function readCache(key: string): CachedData | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
+    const raw = sessionStorage.getItem(key);
     if (!raw) return null;
     const parsed: CachedData = JSON.parse(raw);
     if (Date.now() - parsed.timestamp > CACHE_TTL_MS) return null;
@@ -80,80 +79,131 @@ function readCache(): CachedData | null {
   }
 }
 
-function writeCache(data: CachedData) {
+function writeCache(key: string, data: CachedData) {
   if (typeof window === 'undefined') return;
   try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
+    sessionStorage.setItem(key, JSON.stringify(data));
   } catch {}
 }
 
-// ─── Detect user's geo country code ────────────────────────────────────
+// ─── Geo detection ─────────────────────────────────────────────────────
 function getUserGeoCountry(): string | null {
   if (typeof window === 'undefined') return null;
-  // Your app already sets one of these on geo detection
-  const keys = ['geo_country', 'country', 'user_country', 'detected_country'];
+
+  const keys = [
+    'geo_country', 'country', 'user_country', 'detected_country',
+    'userCountry', 'detectedCountry', 'user_country_code',
+  ];
   for (const k of keys) {
     const v = localStorage.getItem(k);
-    if (v && v.length === 2) return v.toUpperCase();
+    if (v && v.length === 2 && /^[A-Z]{2}$/i.test(v)) {
+      return v.toUpperCase();
+    }
   }
-  // Fallback: parse locale like "EN/NG" or "en-NG"
+
+  // Parse compound locale: "EN/NG" or "en-NG"
   const locale = localStorage.getItem('locale') || '';
-  const m = locale.match(/([A-Z]{2})$/i);
+  if (locale.includes('/')) {
+    const code = locale.split('/')[1]?.toUpperCase();
+    if (code && /^[A-Z]{2}$/.test(code)) return code;
+  }
+  const m = locale.match(/[-_]([A-Z]{2})$/i);
   if (m) return m[1].toUpperCase();
+
   return null;
 }
 
-// ─── Detect the admin/user's display currency ──────────────────────────
+// ─── Currency detection (aligned with your app) ────────────────────────
 function getDisplayCurrency(): string {
   if (typeof window === 'undefined') return 'NGN';
-  const keys = ['selectedCurrency', 'preferredCurrency', 'currency', 'currencyCode'];
+
+  const keys = ['selectedCurrency', 'preferredCurrency', 'currency', 'currencyCode', 'app_currency'];
   for (const k of keys) {
     const v = localStorage.getItem(k);
     if (v && ['NGN', 'GBP', 'USD', 'EUR', 'CAD', 'AUD', 'JPY', 'CNY', 'ZAR', 'KES'].includes(v.toUpperCase())) {
       return v.toUpperCase();
     }
   }
+
+  // Locale fallback: "EN/NGN" → "NGN"
+  const locale = localStorage.getItem('locale') || '';
+  if (locale.includes('/')) {
+    const code = locale.split('/')[1]?.toUpperCase();
+    if (code && ['NGN', 'GBP', 'USD', 'EUR'].includes(code)) return code;
+  }
+
+  // Geo fallback
   const geo = getUserGeoCountry();
   if (geo === 'NG') return 'NGN';
   if (geo === 'US') return 'USD';
   if (geo === 'GB') return 'GBP';
-  if (geo === 'FR' || geo === 'DE' || geo === 'ES' || geo === 'IT' || geo === 'NL') return 'EUR';
-  return 'GBP';
+  if (['FR', 'DE', 'ES', 'IT', 'NL'].includes(geo || '')) return 'EUR';
+
+  return 'NGN';
 }
 
-// ─── Compute check-in / check-out dates ────────────────────────────────
+// ─── Rotation: pick a city for this visit ──────────────────────────────
+function pickCityForThisVisit(userGeo: string | null): string {
+  const hourSlot = Math.floor(Date.now() / (60 * 60 * 1000)); // changes hourly
+
+  // Prefer the user's geo city (rotates if their country has multiple)
+  if (userGeo && GEO_TO_CITIES[userGeo]?.length) {
+    const cities = GEO_TO_CITIES[userGeo];
+    return cities[hourSlot % cities.length];
+  }
+
+  // Otherwise rotate through featured cities
+  return FEATURED_CITIES[hourSlot % FEATURED_CITIES.length];
+}
+
+// ─── Dates ─────────────────────────────────────────────────────────────
 function getDefaultDates() {
   const today = new Date();
   const checkIn = new Date(today);
-  checkIn.setDate(today.getDate() + 7);   // today + 7 days
+  checkIn.setDate(today.getDate() + 7);
   const checkOut = new Date(checkIn);
-  checkOut.setDate(checkIn.getDate() + 3); // 3-night stay
+  checkOut.setDate(checkIn.getDate() + 3);
   const fmt = (d: Date) => d.toISOString().split('T')[0];
   return { checkIn: fmt(checkIn), checkOut: fmt(checkOut) };
 }
 
 // ─── Map HotelOffer → HotelDisplay ─────────────────────────────────────
-function mapOfferToDisplay(offer: any, index: number, cityCode: string): HotelDisplay {
+function mapOfferToDisplay(
+  offer: any,
+  index: number,
+  cityCode: string,
+  imageUrl?: string,
+): HotelDisplay {
   const hotel = offer.hotel || {};
   const firstOffer = offer.offers?.[0] || {};
   const price = firstOffer.price || {};
 
-  // Use existing transformer in api.ts if available
   let totalPrice = parseFloat(price.total || '0');
   let discountedPrice: number | undefined = undefined;
-  let currency = price.currency || 'GBP';
 
-  // Prefer final_price (post-markup) if provided
   if (price.final_price) {
     totalPrice = parseFloat(price.final_price);
   }
 
-  // Show original vs. discounted if markup exists
   const markupAmount = parseFloat(price.markup_amount || '0');
   if (markupAmount > 0 && price.original_total) {
     discountedPrice = totalPrice;
     totalPrice = parseFloat(price.original_total);
   }
+
+  // Amadeus rating: sometimes 1-5 stars, sometimes numeric score. Normalize to 3-5.
+  let normalizedRating = 4.0;
+  const rawRating = hotel.rating;
+  if (typeof rawRating === 'number') {
+    if (rawRating <= 5) {
+      normalizedRating = rawRating;         // already star scale
+    } else if (rawRating <= 100) {
+      normalizedRating = rawRating / 20;     // 0-100 → 0-5
+    } else {
+      normalizedRating = rawRating / 2;      // legacy fallback
+    }
+  }
+  normalizedRating = Math.min(5, Math.max(3, normalizedRating));
 
   return {
     id: hotel.hotelId || `hotel-${index}`,
@@ -166,9 +216,9 @@ function mapOfferToDisplay(offer: any, index: number, cityCode: string): HotelDi
     country: hotel.address?.countryCode,
     price: totalPrice,
     discountedPrice,
-    rating: hotel.rating ? Math.min(5, Math.max(1, hotel.rating / 2)) : 4.0, // Amadeus rating is /10 or a star count; clamp to 1-5
-    reviews: Math.floor(Math.random() * 300) + 150, // Amadeus doesn't give review counts
-    image: (offer as any).primaryImageUrl || hotel.primaryImageUrl || '',
+    rating: normalizedRating,
+    reviews: Math.floor(Math.random() * 300) + 150,
+    image: imageUrl || '',
     amenities: (hotel.amenities || []).slice(0, 4),
     chainCode: hotel.chainCode,
     description: hotel.description,
@@ -193,7 +243,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
   const brandBlue = "#32A6D7";
   const brandBlueLight = "#e6f4fa";
 
-  // If parent passes its own hotels, use those
+  // Parent-provided hotels take priority
   useEffect(() => {
     if (propHotels && propHotels.length > 0) {
       setHotels(propHotels);
@@ -211,8 +261,13 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       setInternalLoading(true);
       setInternalError(null);
 
-      // 1. Check cache first
-      const cached = readCache();
+      // 1. Pick city FIRST (rotation depends on time)
+      const geo = getUserGeoCountry();
+      const primaryCity = pickCityForThisVisit(geo);
+      const cacheKey = `homes_grid_cache_v2_${primaryCity}`;
+
+      // 2. Cache check
+      const cached = readCache(cacheKey);
       if (cached) {
         setHotels(cached.hotels);
         setInternalLoading(false);
@@ -220,15 +275,10 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       }
 
       try {
-        // 2. Figure out which city to feature for this user
-        const geo = getUserGeoCountry();
-        const featuredCities = (geo && GEO_TO_CITIES[geo]) || FALLBACK_CITIES;
-        const primaryCity = featuredCities[0];
-
         const { checkIn, checkOut } = getDefaultDates();
         const displayCurrency = getDisplayCurrency();
 
-        // 3. Call the existing Amadeus search via your API layer
+        // 3. Search Amadeus
         const response = await api.searchHotelsAmadeus({
           cityCode: primaryCity,
           checkInDate: checkIn,
@@ -238,28 +288,71 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           currency: displayCurrency,
           bestRateOnly: true,
           page: 1,
-          limit: 6,
+          limit: 24,   // Ask for more to compensate for dedupe
         });
 
         if (cancelled) return;
 
         if (!response.success || !response.data?.data?.length) {
-          throw new Error(
-            response.message || 'No hotels available right now',
-          );
+          throw new Error(response.message || 'No hotels available right now');
         }
 
-        // 4. Take the first 6, map to HotelDisplay
-        const mapped = response.data.data
-          .slice(0, 6)
-          .map((offer, i) => mapOfferToDisplay(offer, i, primaryCity));
+        // 4. Dedupe by hotelId, take first 6 unique hotels
+        const seen = new Set<string>();
+        const uniqueOffers: any[] = [];
+        for (const offer of response.data.data) {
+          const id = offer.hotel?.hotelId;
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          uniqueOffers.push(offer);
+          if (uniqueOffers.length >= 6) break;
+        }
+
+        if (uniqueOffers.length === 0) {
+          throw new Error('No unique hotels found');
+        }
+
+        // 5. Map to display (images empty for now)
+        const mapped = uniqueOffers.map((offer, i) =>
+          mapOfferToDisplay(offer, i, primaryCity),
+        );
 
         setHotels(mapped);
-        writeCache({
+        writeCache(cacheKey, {
           hotels: mapped,
           timestamp: Date.now(),
           currency: displayCurrency,
         });
+
+        // 6. Fetch images in parallel — non-blocking
+        Promise.all(
+          uniqueOffers.map(async (offer, i) => {
+            const hotelId = offer.hotel?.hotelId;
+            const hotelName = offer.hotel?.name || '';
+            if (!hotelId) return;
+
+            try {
+              const imgResponse: any = await api.publicRequest(
+                `/api/v1/bookings/hotels/${encodeURIComponent(hotelId)}/images?hotelName=${encodeURIComponent(hotelName)}`,
+                { method: 'GET' },
+              );
+
+              const firstImage =
+                imgResponse?.data?.images?.[0]?.url ||
+                imgResponse?.data?.[0]?.url ||
+                imgResponse?.images?.[0]?.url ||
+                null;
+
+              if (firstImage && !cancelled) {
+                setHotels((prev) =>
+                  prev.map((h, idx) => (idx === i ? { ...h, image: firstImage } : h)),
+                );
+              }
+            } catch (err) {
+              console.warn(`Could not load image for ${hotelName}`, err);
+            }
+          }),
+        );
       } catch (err: any) {
         if (cancelled) return;
         console.error('Failed to load trending hotels:', err);
@@ -317,7 +410,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
   };
 
   const formatPrice = (price: number) =>
-    `${currency.symbol || '£'}${price.toLocaleString(undefined, {
+    `${currency.symbol || '₦'}${price.toLocaleString(undefined, {
       maximumFractionDigits: 0,
     })}`;
 
@@ -401,13 +494,16 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           >
             <div className="relative h-64 overflow-hidden">
               <img
-                src={home.image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600'}
+                src={home.image || `https://picsum.photos/seed/${encodeURIComponent(home.id)}/600/400`}
                 alt={home.name}
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                 loading="lazy"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src =
-                    'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600';
+                  const img = e.target as HTMLImageElement;
+                  if (!img.dataset.fallbackApplied) {
+                    img.dataset.fallbackApplied = '1';
+                    img.src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600';
+                  }
                 }}
               />
               {home.discountedPrice && (
