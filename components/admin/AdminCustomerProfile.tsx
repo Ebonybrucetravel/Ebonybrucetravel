@@ -9,6 +9,49 @@ import {
   sendCustomerPasswordReset,
   listBookings,
 } from '@/lib/adminApi';
+import { convertCurrencyLive, preloadCommonCurrencies } from '@/lib/currency-service';
+
+// ─── Currency helpers ──────────────────────────────────────────────────
+function getDisplayCurrency(): string {
+  if (typeof window === 'undefined') return 'NGN';
+
+  const candidates = [
+    'selectedCurrency', 'preferredCurrency', 'currency',
+    'currencyCode', 'app_currency', 'locale_currency',
+  ];
+  for (const key of candidates) {
+    const v = localStorage.getItem(key);
+    if (v && ['NGN', 'GBP', 'USD', 'EUR', 'CAD', 'AUD', 'JPY', 'CNY', 'ZAR', 'KES'].includes(v.toUpperCase())) {
+      return v.toUpperCase();
+    }
+  }
+
+  const rawLocale = localStorage.getItem('locale');
+  if (rawLocale?.includes('/')) {
+    const code = rawLocale.split('/')[1]?.toUpperCase();
+    if (code && ['NGN', 'GBP', 'USD', 'EUR'].includes(code)) return code;
+  }
+
+  const geo = localStorage.getItem('geo_country') || localStorage.getItem('country');
+  if (geo === 'NG') return 'NGN';
+  if (geo === 'US') return 'USD';
+  if (geo === 'GB') return 'GBP';
+
+  return 'NGN';
+}
+
+const CURRENCY_SYMBOLS_MAP: Record<string, string> = {
+  NGN: '₦', GBP: '£', USD: '$', EUR: '€',
+  CAD: 'C$', AUD: 'A$', JPY: '¥', CNY: '¥', ZAR: 'R', KES: 'KSh',
+};
+
+function formatInCurrency(amount: number, currency: string): string {
+  const sym = CURRENCY_SYMBOLS_MAP[currency] || currency + ' ';
+  return `${sym}${amount.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
 interface AdminCustomerProfileProps {
   customerId: string;
@@ -61,117 +104,115 @@ export default function AdminCustomerProfile({ customerId, onBack }: AdminCustom
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'bookings' | 'activity' | 'notes'>('bookings');
 
-const load = async () => {
-  setLoading(true);
-  setError(null);
-  setErrorDetails(null);
-  
-  try {
-    console.log('🔍 Fetching customer with ID:', customerId);
-    
-    const response = await getCustomer(customerId);
-    
-    console.log('📦 Full API Response:', response);
-    
-    if (!response) {
-      throw new Error('No response received from API');
-    }
-    
-    // Check if response has error
-    if (response.success === false) {
-      throw new Error(response.message || 'API returned error');
-    }
-    
-    let customerData: Customer | null = null;
-    
-    // ✅ The customer data is in response.data
-    if (response.data) {
-      // If data has an id, it's the customer
-      if (response.data.id) {
-        customerData = response.data;
+  // ─── Currency conversion state ───────────────────────────────────────
+  const [displayCurrency, setDisplayCurrency] = useState<string>('NGN');
+  const [convertedBookings, setConvertedBookings] = useState<Record<string, number>>({});
+  const [totalSpentConverted, setTotalSpentConverted] = useState<number>(0);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    setErrorDetails(null);
+
+    try {
+      const response = await getCustomer(customerId);
+      if (!response) throw new Error('No response received from API');
+      if (response.success === false) throw new Error(response.message || 'API returned error');
+
+      let customerData: Customer | null = null;
+      if (response.data) {
+        if (response.data.id) customerData = response.data;
+        else if (response.data.data && response.data.data.id) customerData = response.data.data;
       }
-      // If data is nested deeper (response.data.data)
-      else if (response.data.data && response.data.data.id) {
-        customerData = response.data.data;
+
+      if (!customerData) {
+        setErrorDetails(JSON.stringify(response, null, 2));
+        throw new Error('Could not find customer data in response');
       }
+
+      setCustomer(customerData);
+      setNotes(customerData.internalNotes || customerData.notes || '');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load customer');
+    } finally {
+      setLoading(false);
     }
-    
-    if (!customerData) {
-      console.error('❌ Could not extract customer data:', response);
-      setErrorDetails(JSON.stringify(response, null, 2));
-      throw new Error('Could not find customer data in response');
-    }
-    
-    console.log('✅ Customer data extracted:', customerData);
-    
-    setCustomer(customerData);
-    setNotes(customerData.internalNotes || customerData.notes || '');
-    
-  } catch (e) {
-    console.error('❌ Error loading customer:', e);
-    setError(e instanceof Error ? e.message : 'Failed to load customer');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const fetchCustomerBookings = async () => {
     if (!customerId) return;
-    
     setLoadingBookings(true);
     try {
-      console.log(`📡 Fetching bookings for customer: ${customerId}`);
-      
-      // ✅ ULTIMATE FIX: Loop through pages until we have everything
       let allBookings: Booking[] = [];
       let currentPage = 1;
-      const limit = 100; // Use a page size of 100 (max supported by your API)
+      const limit = 100;
       let hasMoreData = true;
 
       while (hasMoreData) {
-        console.log(`📡 Fetching page ${currentPage}...`);
-        
-        const response = await listBookings({ 
-          userId: customerId, 
-          limit: limit,
-          page: currentPage // Assuming your API supports a 'page' parameter
-        });
-
+        const response = await listBookings({ userId: customerId, limit, page: currentPage });
         let pageData: Booking[] = [];
         if (response?.data) {
-          if (Array.isArray(response.data)) {
-            pageData = response.data;
-          } else if (response.data.bookings) {
-            pageData = response.data.bookings;
-          } else if (response.data.items) {
-            pageData = response.data.items;
-          }
+          if (Array.isArray(response.data)) pageData = response.data;
+          else if (response.data.bookings) pageData = response.data.bookings;
+          else if (response.data.items) pageData = response.data.items;
         }
 
-        // If this page returned no data, we are done
-        if (pageData.length === 0) {
-          hasMoreData = false;
-        } else {
-          // Add this page's data to our master list
+        if (pageData.length === 0) hasMoreData = false;
+        else {
           allBookings = [...allBookings, ...pageData];
           currentPage++;
-          
-          // If the data length is less than the limit, we reached the last page
-          if (pageData.length < limit) {
-            hasMoreData = false;
-          }
+          if (pageData.length < limit) hasMoreData = false;
         }
       }
-      
-      console.log(`✅ Found ${allBookings.length} total bookings across all pages`);
+
       setBookings(allBookings);
-      
     } catch (error) {
       console.error('❌ Error fetching bookings:', error);
     } finally {
       setLoadingBookings(false);
     }
   };
+
+  // ─── Convert every booking + total to admin's currency ───────────────
+  useEffect(() => {
+    const convertAll = async () => {
+      if (bookings.length === 0) {
+        setTotalSpentConverted(0);
+        setConvertedBookings({});
+        return;
+      }
+
+      await preloadCommonCurrencies();
+      const target = getDisplayCurrency();
+      setDisplayCurrency(target);
+
+      const converted: Record<string, number> = {};
+      let total = 0;
+
+      await Promise.all(
+        bookings.map(async (b) => {
+          try {
+            const result = await convertCurrencyLive(
+              Number(b.totalAmount || 0),
+              b.currency || 'GBP',
+              target,
+            );
+            converted[b.id] = result.convertedAmount;
+            total += result.convertedAmount;
+          } catch (err) {
+            console.warn(`Could not convert booking ${b.id}`, err);
+            converted[b.id] = Number(b.totalAmount || 0);
+            total += Number(b.totalAmount || 0);
+          }
+        }),
+      );
+
+      setConvertedBookings(converted);
+      setTotalSpentConverted(total);
+    };
+
+    convertAll();
+  }, [bookings]);
 
   useEffect(() => {
     if (customerId) {
@@ -239,18 +280,6 @@ const load = async () => {
     }
   };
 
-  const formatCurrency = (amount: number, currency: string) => {
-    try {
-      return new Intl.NumberFormat('en-GB', {
-        style: 'currency',
-        currency: currency || 'NGN',
-        minimumFractionDigits: 2,
-      }).format(amount || 0);
-    } catch {
-      return `${currency || 'NGN'} ${(amount || 0).toFixed(2)}`;
-    }
-  };
-
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       CONFIRMED: 'bg-emerald-100 text-emerald-700 border-emerald-200',
@@ -303,21 +332,21 @@ const load = async () => {
           </svg>
           <span>Back to Customers</span>
         </button>
-        
+
         <div className="bg-red-50 rounded-2xl p-8 text-center border border-red-200 max-w-2xl mx-auto">
           <div className="text-4xl mb-4">⚠️</div>
           <p className="text-red-700 font-bold mb-2">{error || 'Customer not found'}</p>
           <p className="text-red-500 text-sm mb-4">Customer ID: {customerId}</p>
-          
+
           {errorDetails && (
             <div className="mb-4 p-4 bg-white rounded-xl text-left overflow-auto max-h-60">
               <p className="text-xs font-bold text-gray-600 mb-2">Response Details:</p>
               <pre className="text-xs text-gray-500 whitespace-pre-wrap">{errorDetails}</pre>
             </div>
           )}
-          
-          <button 
-            onClick={load} 
+
+          <button
+            onClick={load}
             className="px-6 py-2 bg-[#33a8da] text-white rounded-xl font-medium hover:bg-[#2c98c7] transition"
           >
             Retry
@@ -329,7 +358,6 @@ const load = async () => {
 
   const isSuspended = (customer.status || '').toUpperCase() === 'SUSPENDED';
   const history = customer.interactionHistory ?? [];
-  const totalSpent = bookings.reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
 
   return (
     <div className="p-4 md:p-8 bg-gray-50/80 min-h-screen">
@@ -355,8 +383,8 @@ const load = async () => {
               <p className="text-sm text-gray-500 mt-0.5">{customer.email}</p>
               <div className="flex items-center justify-center gap-2 mt-2">
                 <span className={`px-3 py-0.5 rounded-full text-xs font-medium border ${
-                  isSuspended 
-                    ? 'bg-red-50 text-red-600 border-red-200' 
+                  isSuspended
+                    ? 'bg-red-50 text-red-600 border-red-200'
                     : 'bg-emerald-50 text-emerald-600 border-emerald-200'
                 }`}>
                   {isSuspended ? 'SUSPENDED' : 'ACTIVE'}
@@ -367,7 +395,6 @@ const load = async () => {
               </div>
             </div>
 
-            {/* ✅ Count the actual downloaded bookings */}
             <div className="grid grid-cols-3 gap-1 mt-3 pt-3 border-t border-gray-100">
               <div className="flex flex-col items-center">
                 <p className="text-base font-bold text-gray-800">{bookings.length}</p>
@@ -379,12 +406,14 @@ const load = async () => {
               </div>
               <div className="flex flex-col items-center w-full">
                 <div className="inline-flex items-baseline gap-0.5 text-sm font-bold text-gray-800 whitespace-nowrap">
-                  <span className="text-[9px] text-gray-500 font-semibold">NGN</span>
+                  <span className="text-[9px] text-gray-500 font-semibold">
+                    {CURRENCY_SYMBOLS_MAP[displayCurrency] || displayCurrency}
+                  </span>
                   <span>
                     {new Intl.NumberFormat('en-GB', {
-                      minimumFractionDigits: 0, 
+                      minimumFractionDigits: 0,
                       maximumFractionDigits: 0,
-                    }).format(totalSpent)}
+                    }).format(totalSpentConverted)}
                   </span>
                 </div>
                 <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mt-0.5">Spent</p>
@@ -419,8 +448,8 @@ const load = async () => {
                 onClick={isSuspended ? handleActivate : handleSuspend}
                 disabled={!!actionLoading}
                 className={`w-full py-2.5 rounded-xl font-medium text-sm transition ${
-                  actionLoading 
-                    ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white' 
+                  actionLoading
+                    ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white'
                     : isSuspended
                       ? 'bg-emerald-500 text-white hover:bg-emerald-600'
                       : 'bg-red-500 text-white hover:bg-red-600'
@@ -443,7 +472,6 @@ const load = async () => {
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white rounded-2xl p-1 shadow-sm border border-gray-100 flex">
             {[
-              /* ✅ Use bookings.length for the tab label */
               { id: 'bookings', label: `Bookings (${bookings.length})`, icon: '📋' },
               { id: 'activity', label: 'Activity', icon: '📊' },
               { id: 'notes', label: 'Notes', icon: '📝' },
@@ -517,7 +545,10 @@ const load = async () => {
                             </span>
                           </td>
                           <td className="py-3 px-3 align-middle text-sm font-semibold text-gray-900 whitespace-nowrap">
-                            {formatCurrency(Number(booking.totalAmount || 0), booking.currency)}
+                            {formatInCurrency(
+                              convertedBookings[booking.id] ?? Number(booking.totalAmount || 0),
+                              displayCurrency,
+                            )}
                           </td>
                           <td className="py-3 px-3 align-middle text-sm text-gray-500 whitespace-nowrap">
                             {formatDate(booking.createdAt)}
@@ -563,15 +594,15 @@ const load = async () => {
           {activeTab === 'notes' && (
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Internal Notes</h3>
-              <textarea 
-                placeholder="Add a private note about this customer..." 
+              <textarea
+                placeholder="Add a private note about this customer..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="w-full h-32 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] resize-none transition" 
+                className="w-full h-32 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 focus:border-[#33a8da] resize-none transition"
                 disabled={saving}
               />
               <div className="flex gap-3 mt-4">
-                <button 
+                <button
                   onClick={handleSaveNotes}
                   disabled={saving || !notes.trim()}
                   className={`px-6 py-2.5 rounded-xl font-medium text-sm transition ${
