@@ -16,7 +16,6 @@ import {
 } from 'chart.js';
 import { Line, Doughnut } from 'react-chartjs-2';
 import { useRouter } from 'next/navigation';
-import { formatPrice } from '@/lib/utils';
 import { listBookings } from '@/lib/adminApi';
 
 ChartJS.register(
@@ -39,8 +38,14 @@ interface AnalyticsViewProps {
   onDateRangeChange: (range: any) => void;
   serviceIcon?: React.ReactNode;
   serviceColor?: string;
-  serviceType?: string; 
+  serviceType?: string;
+  currency?: string;
 }
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  NGN: '₦', GBP: '£', USD: '$', EUR: '€',
+  CAD: 'C$', AUD: 'A$', JPY: '¥', CNY: '¥', ZAR: 'R', KES: 'KSh',
+};
 
 export function AnalyticsView({ 
   data, 
@@ -49,8 +54,10 @@ export function AnalyticsView({
   onDateRangeChange, 
   serviceIcon, 
   serviceColor,
-  serviceType 
+  serviceType,
+  currency = 'NGN'
 }: AnalyticsViewProps) {
+
   const router = useRouter();
   const [recentBookings, setRecentBookings] = useState<any[]>([]);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
@@ -167,12 +174,13 @@ export function AnalyticsView({
         boxPadding: 6,
         callbacks: {
           label: (context: any) => {
+            const sym = CURRENCY_SYMBOLS[currency] || currency + ' ';
             let label = context.dataset.label || '';
             if (label) {
               label += ': ';
             }
             if (context.parsed.y !== null) {
-              label += formatPrice(context.parsed.y);
+              label += `${sym}${Number(context.parsed.y).toLocaleString()}`;
             }
             return label;
           }
@@ -187,16 +195,17 @@ export function AnalyticsView({
           drawBorder: false,
         },
         ticks: {
-          callback: (value: any) => {
-            if (value >= 1000000) {
-              return `£${(value / 1000000).toFixed(1)}M`;
-            }
-            if (value >= 1000) {
-              return `£${(value / 1000).toFixed(1)}k`;
-            }
-            return `£${value}`;
-          },
-        },
+  callback: (value: any) => {
+    const sym = CURRENCY_SYMBOLS[currency] || currency + ' ';
+    if (value >= 1000000) {
+      return `${sym}${(value / 1000000).toFixed(1)}M`;
+    }
+    if (value >= 1000) {
+      return `${sym}${(value / 1000).toFixed(1)}k`;
+    }
+    return `${sym}${value}`;
+  },
+},
       },
       x: {
         grid: {
@@ -460,10 +469,11 @@ export function AnalyticsView({
                 {!booking.productType && !booking.serviceType && 'New booking created'}
               </p>
               <div className="flex items-center justify-between mt-1.5">
-                <p className="text-xs font-medium text-[#33a8da]">
-                  {/* ✅ FIXED: Use ₦ instead of £ */}
-                  {booking.totalAmount ? `₦${Number(booking.totalAmount).toLocaleString()}` : ''}
-                </p>
+              <p className="text-xs font-medium text-[#33a8da]">
+  {booking.totalAmount
+    ? `${CURRENCY_SYMBOLS[currency] || currency + ' '}${Number(booking.totalAmount).toLocaleString()}`
+    : ''}
+</p>
                 <p className="text-xs text-gray-400">
                   {formatTimeAgo(booking.createdAt)}
                 </p>

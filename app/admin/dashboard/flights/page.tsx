@@ -246,12 +246,17 @@ export default function FlightsPage() {
 
   return (
     <AnalyticsView
-      data={data}
-      title="Flight Analytics"
-      dateRange={dateRange}
-      onDateRangeChange={setDateRange}
-      serviceIcon={<svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>}
-      serviceColor="from-blue-500 to-cyan-500"
-    />
+  data={data}
+  title="Flight Analytics"
+  dateRange={dateRange}
+  onDateRangeChange={setDateRange}
+  serviceIcon={
+    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+    </svg>
+  }
+  serviceColor="from-blue-500 to-cyan-500"
+  currency={getDisplayCurrency()}
+/>
   );
 }

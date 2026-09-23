@@ -281,7 +281,25 @@ export default function AnalyticsPage() {
         },
       ],
       topLocations: topLocationsData,
-      revenueData: apiData.monthlyRevenue || [],
+      revenueData: await Promise.all(
+        (apiData.monthlyRevenue || []).map(async (row: any) => {
+          const convertedCurrent = await convertCurrencyLive(
+            row.revenue ?? row.current ?? row.value ?? 0,
+            row.currency || globalCurrency,
+            targetCurrency,
+          );
+          const convertedPrevious = await convertCurrencyLive(
+            row.previousYear ?? row.previous ?? 0,
+            row.currency || globalCurrency,
+            targetCurrency,
+          );
+          return {
+            month: row.month,
+            value: convertedCurrent.convertedAmount,
+            previousYear: convertedPrevious.convertedAmount,
+          };
+        }),
+      ),
       recentBookings: recentBookingsData,
     };
   };
@@ -307,12 +325,13 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      <AnalyticsView 
-        data={data}
-        title="Global Analytics"
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
-      />
+<AnalyticsView 
+  data={data}
+  title="Global Analytics"
+  dateRange={dateRange}
+  onDateRangeChange={setDateRange}
+  currency={getDisplayCurrency()}
+/>
     </div>
   );
 }

@@ -235,12 +235,17 @@ export default function CarRentalsPage() {
 
   return (
     <AnalyticsView
-      data={data}
-      title="Car Rental Analytics"
-      dateRange={dateRange}
-      onDateRangeChange={setDateRange}
-      serviceIcon={<svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" /></svg>}
-      serviceColor="from-emerald-500 to-teal-500"
-    />
+  data={data}
+  title="Car Rental Analytics"
+  dateRange={dateRange}
+  onDateRangeChange={setDateRange}
+  serviceIcon={
+    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" />
+    </svg>
+  }
+  serviceColor="from-emerald-500 to-teal-500"
+  currency={getDisplayCurrency()}
+/>
   );
 }
