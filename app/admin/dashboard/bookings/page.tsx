@@ -4,6 +4,49 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { listBookings, exportBookingsCsv } from '@/lib/adminApi';
 import { LoadingSpinner } from '@/components/admin/LoadingSpinner';
+import { convertCurrencyLive, preloadCommonCurrencies } from '@/lib/currency-service';
+
+// ─── Currency helpers ──────────────────────────────────────────────────
+function getDisplayCurrency(): string {
+  if (typeof window === 'undefined') return 'NGN';
+
+  const candidates = [
+    'selectedCurrency', 'preferredCurrency', 'currency',
+    'currencyCode', 'app_currency', 'locale_currency',
+  ];
+  for (const key of candidates) {
+    const v = localStorage.getItem(key);
+    if (v && ['NGN', 'GBP', 'USD', 'EUR', 'CAD', 'AUD', 'JPY', 'CNY', 'ZAR', 'KES'].includes(v.toUpperCase())) {
+      return v.toUpperCase();
+    }
+  }
+
+  const rawLocale = localStorage.getItem('locale');
+  if (rawLocale?.includes('/')) {
+    const code = rawLocale.split('/')[1]?.toUpperCase();
+    if (code && ['NGN', 'GBP', 'USD', 'EUR'].includes(code)) return code;
+  }
+
+  const geo = localStorage.getItem('geo_country') || localStorage.getItem('country');
+  if (geo === 'NG') return 'NGN';
+  if (geo === 'US') return 'USD';
+  if (geo === 'GB') return 'GBP';
+
+  return 'NGN';
+}
+
+const CURRENCY_SYMBOLS_MAP: Record<string, string> = {
+  NGN: '₦', GBP: '£', USD: '$', EUR: '€',
+  CAD: 'C$', AUD: 'A$', JPY: '¥', CNY: '¥', ZAR: 'R', KES: 'KSh',
+};
+
+function formatInCurrency(amount: number, currency: string): string {
+  const sym = CURRENCY_SYMBOLS_MAP[currency] || currency + ' ';
+  return `${sym}${amount.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
 interface Booking {
   id: string;
@@ -15,6 +58,8 @@ interface Booking {
   date: string;
   rawPrice?: number;
   rawDate?: string;
+  rawCurrency?: string;
+  convertedPrice?: number;
 }
 
 export default function BookingsPage() {
@@ -29,12 +74,13 @@ export default function BookingsPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [limit] = useState(10);
+  const [displayCurrency, setDisplayCurrency] = useState<string>('NGN');
 
   useEffect(() => {
     const fetchBookings = async () => {
       setIsLoading(true);
       setError(null);
-      
+
       try {
         const token = localStorage.getItem('adminToken');
         if (!token) {
@@ -42,49 +88,67 @@ export default function BookingsPage() {
           return;
         }
 
-        const params: any = {
-          page,
-          limit,
-        };
+        // Resolve admin currency once
+        await preloadCommonCurrencies();
+        const target = getDisplayCurrency();
+        setDisplayCurrency(target);
 
-        if (statusFilter !== 'All') {
-          params.status = statusFilter.toUpperCase();
-        }
-
-        if (searchTerm) {
-          params.search = searchTerm;
-        }
+        const params: any = { page, limit };
+        if (statusFilter !== 'All') params.status = statusFilter.toUpperCase();
+        if (searchTerm) params.search = searchTerm;
 
         const response = await listBookings(params);
-        
+
         if (response.success && response.data) {
-          const transformedBookings = response.data.map((item: any) => ({
-            id: item.id || item.bookingId || `#BK-${Math.floor(1000 + Math.random() * 9000)}`,
-            type: item.productType || item.type || 'Flight',
-            source: item.provider || item.source || 'Unknown',
-            customer: item.user?.name || item.customerName || 'Guest',
-            price: item.totalAmount ? `${item.currency || 'USD'} ${item.totalAmount.toLocaleString()}` : '$0.00',
-            rawPrice: item.totalAmount,
-            status: item.status || 'Pending',
-            date: item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-US', { 
-              month: 'short', 
-              day: '2-digit', 
-              year: 'numeric' 
-            }) : new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
-            rawDate: item.createdAt,
-          }));
-          
+          // Convert every booking's amount to the admin's currency
+          const transformedBookings = await Promise.all(
+            response.data.map(async (item: any) => {
+              const rawAmount = Number(item.totalAmount || 0);
+              const rawCurrency = item.currency || 'GBP';
+
+              let convertedAmount = rawAmount;
+              try {
+                const result = await convertCurrencyLive(rawAmount, rawCurrency, target);
+                convertedAmount = result.convertedAmount;
+              } catch (err) {
+                console.warn(`Conversion failed for booking ${item.id}`, err);
+              }
+
+              return {
+                id: item.id || item.bookingId || `#BK-${Math.floor(1000 + Math.random() * 9000)}`,
+                type: item.productType || item.type || 'Flight',
+                source: item.provider || item.source || 'Unknown',
+                customer: item.user?.name || item.customerName || 'Guest',
+                price: formatInCurrency(convertedAmount, target),
+                rawPrice: rawAmount,
+                rawCurrency,
+                convertedPrice: convertedAmount,
+                status: item.status || 'Pending',
+                date: item.createdAt
+                  ? new Date(item.createdAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: '2-digit',
+                      year: 'numeric',
+                    })
+                  : new Date().toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: '2-digit',
+                      year: 'numeric',
+                    }),
+                rawDate: item.createdAt,
+              };
+            }),
+          );
+
           setBookings(transformedBookings);
           setTotalPages(response.meta?.totalPages || 1);
         } else {
-          // Fallback to mock data if API fails
-          setBookings(getMockBookings());
+          setBookings([]);
         }
       } catch (err) {
         console.error('Error fetching bookings:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch bookings');
-        // Fallback to mock data
-        setBookings(getMockBookings());
+        setBookings([]);
       } finally {
         setIsLoading(false);
       }
@@ -93,38 +157,28 @@ export default function BookingsPage() {
     fetchBookings();
   }, [page, statusFilter, searchTerm, router]);
 
-  const getMockBookings = (): Booking[] => {
-    return [
-      { id: '#LND-8824', type: 'Flight', source: 'Air Peace', customer: 'John Dane', price: '$450.00', status: 'Confirmed', date: 'Jan 15, 2026', rawPrice: 450 },
-      { id: '#LND-8830', type: 'Hotel', source: 'Marriott', customer: 'Michael Smith', price: '$550.00', status: 'Confirmed', date: 'Jan 10, 2026', rawPrice: 550 },
-      { id: '#LND-8844', type: 'Car Rental', source: 'Hertz', customer: 'Robert Brown', price: '$350.00', status: 'Cancelled', date: 'Jan 27, 2026', rawPrice: 350 },
-      { id: '#LND-9012', type: 'Flight', source: 'Qatar Airways', customer: 'Sarah Jenkins', price: '$1,200.00', status: 'Confirmed', date: 'Feb 02, 2026', rawPrice: 1200 },
-    ];
-  };
-
   const filteredBookings = useMemo(() => {
-    return bookings.filter(b => {
-      const matchesSearch = b.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            b.customer.toLowerCase().includes(searchTerm.toLowerCase());
+    return bookings.filter((b) => {
+      const matchesSearch =
+        b.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        b.customer.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = statusFilter === 'All' || b.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [bookings, searchTerm, statusFilter]);
 
-  // Client-side CSV export function
+  // Client-side CSV export
   const exportToCSV = (data: Booking[]) => {
     if (!data || data.length === 0) {
       setExportError('No data to export');
       return;
     }
 
-    // Define CSV headers
     const headers = ['Booking ID', 'Type', 'Provider', 'Customer', 'Price', 'Status', 'Date'];
-    
-    // Convert data to CSV rows
+
     const csvRows = [
       headers.join(','),
-      ...data.map(row => 
+      ...data.map((row) =>
         [
           row.id,
           row.type,
@@ -132,74 +186,57 @@ export default function BookingsPage() {
           row.customer,
           row.price,
           row.status,
-          row.date
-        ].map(value => {
-          // Escape quotes and wrap in quotes if contains comma
-          const escaped = String(value || '').replace(/"/g, '""');
-          return escaped.includes(',') ? `"${escaped}"` : escaped;
-        }).join(',')
-      )
+          row.date,
+        ]
+          .map((value) => {
+            const escaped = String(value || '').replace(/"/g, '""');
+            return escaped.includes(',') ? `"${escaped}"` : escaped;
+          })
+          .join(','),
+      ),
     ];
 
     const csvContent = csvRows.join('\n');
-    
-    // Create blob and download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = `bookings_export_${new Date().toISOString().split('T')[0]}.csv`;
     link.style.display = 'none';
-    
-    // Append to body, click, and remove
     document.body.appendChild(link);
     link.click();
-    
-    // Clean up
+
     setTimeout(() => {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     }, 100);
-    
-    console.log(`✅ Exported ${data.length} bookings to CSV`);
   };
 
   const handleExport = async () => {
     setIsExporting(true);
     setExportError(null);
-    
+
     try {
-      // First try API export
       try {
         await exportBookingsCsv({
           status: statusFilter !== 'All' ? statusFilter.toLowerCase() : undefined,
         });
-        console.log('✅ API export successful');
         setIsExporting(false);
         return;
       } catch (apiErr) {
-        console.log('⚠️ API export failed, using client-side export:', apiErr);
-        
-        // Use filtered bookings if available, otherwise use all bookings
         const dataToExport = filteredBookings.length > 0 ? filteredBookings : bookings;
-        
         if (dataToExport.length === 0) {
           setExportError('No bookings to export');
           setIsExporting(false);
           return;
         }
-        
-        // Trigger client-side export
         exportToCSV(dataToExport);
       }
     } catch (err) {
       console.error('❌ Export failed:', err);
       setExportError('Failed to export bookings. Please try again.');
     } finally {
-      // Small delay to ensure download starts before resetting state
-      setTimeout(() => {
-        setIsExporting(false);
-      }, 500);
+      setTimeout(() => setIsExporting(false), 500);
     }
   };
 
@@ -219,7 +256,7 @@ export default function BookingsPage() {
           <p className="text-gray-500 mt-2">Manage and track all platform bookings</p>
         </div>
         <div className="flex gap-3">
-          <button 
+          <button
             onClick={handleExport}
             disabled={isExporting}
             className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:border-[#33a8da] transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -241,8 +278,8 @@ export default function BookingsPage() {
               </>
             )}
           </button>
-          <button 
-            onClick={() => router.push('/admin/dashboard/bookings/create')} 
+          <button
+            onClick={() => router.push('/admin/dashboard/bookings/create')}
             className="px-6 py-2.5 bg-gradient-to-r from-[#33a8da] to-[#2c8fc0] text-white rounded-xl font-medium text-sm hover:shadow-lg hover:shadow-[#33a8da]/25 transition-all flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -281,13 +318,13 @@ export default function BookingsPage() {
               />
             </div>
             <div className="flex bg-gray-100 p-1 rounded-xl">
-              {['All', 'Confirmed', 'Cancelled', 'Pending'].map(status => (
-                <button 
-                  key={status} 
+              {['All', 'Confirmed', 'Cancelled', 'Pending'].map((status) => (
+                <button
+                  key={status}
                   onClick={() => setStatusFilter(status)}
                   className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-                    statusFilter === status 
-                      ? 'bg-white text-[#33a8da] shadow-sm' 
+                    statusFilter === status
+                      ? 'bg-white text-[#33a8da] shadow-sm'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
@@ -297,7 +334,7 @@ export default function BookingsPage() {
             </div>
           </div>
           <div className="mt-2 text-xs text-gray-400">
-            Showing {filteredBookings.length} bookings
+            Showing {filteredBookings.length} bookings · Display currency: {displayCurrency}
           </div>
         </div>
 
@@ -315,49 +352,51 @@ export default function BookingsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredBookings.length > 0 ? filteredBookings.map((booking, i) => (
-                <tr key={i} className="hover:bg-gray-50 transition">
-                  <td className="px-6 py-4">
-                    <span className="text-sm font-semibold text-[#33a8da]">{booking.id}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm text-gray-600">{booking.type}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#33a8da] to-[#2c8fc0] flex items-center justify-center text-white text-xs font-bold">
-                        {booking.customer.charAt(0)}
+              {filteredBookings.length > 0 ? (
+                filteredBookings.map((booking, i) => (
+                  <tr key={i} className="hover:bg-gray-50 transition">
+                    <td className="px-6 py-4">
+                      <span className="text-sm font-semibold text-[#33a8da]">{booking.id}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-sm text-gray-600">{booking.type}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#33a8da] to-[#2c8fc0] flex items-center justify-center text-white text-xs font-bold">
+                          {booking.customer.charAt(0)}
+                        </div>
+                        <span className="text-sm font-medium text-gray-900">{booking.customer}</span>
                       </div>
-                      <span className="text-sm font-medium text-gray-900">{booking.customer}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm font-semibold text-gray-900">{booking.price}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      booking.status === 'Confirmed' 
-                        ? 'bg-emerald-50 text-emerald-600' 
-                        : booking.status === 'Cancelled'
-                        ? 'bg-red-50 text-red-600'
-                        : 'bg-amber-50 text-amber-600'
-                    }`}>
-                      {booking.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm text-gray-500">{booking.date}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <button
-                      onClick={() => handleViewBooking(booking)}
-                      className="text-[#33a8da] hover:text-[#2c8fc0] text-sm font-medium"
-                    >
-                      View
-                    </button>
-                  </td>
-                </tr>
-              )) : (
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-sm font-semibold text-gray-900">{booking.price}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        booking.status === 'Confirmed'
+                          ? 'bg-emerald-50 text-emerald-600'
+                          : booking.status === 'Cancelled'
+                          ? 'bg-red-50 text-red-600'
+                          : 'bg-amber-50 text-amber-600'
+                      }`}>
+                        {booking.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-sm text-gray-500">{booking.date}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <button
+                        onClick={() => handleViewBooking(booking)}
+                        className="text-[#33a8da] hover:text-[#2c8fc0] text-sm font-medium"
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                     No bookings found
@@ -372,7 +411,7 @@ export default function BookingsPage() {
       {totalPages > 1 && (
         <div className="mt-6 flex justify-center gap-2">
           <button
-            onClick={() => setPage(p => Math.max(1, p - 1))}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
             className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium disabled:opacity-50 hover:border-[#33a8da] transition"
           >
@@ -382,7 +421,7 @@ export default function BookingsPage() {
             Page {page} of {totalPages}
           </span>
           <button
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
             className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium disabled:opacity-50 hover:border-[#33a8da] transition"
           >
