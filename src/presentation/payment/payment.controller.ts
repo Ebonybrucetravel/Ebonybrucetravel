@@ -255,18 +255,6 @@ export class PaymentController {
           ? req.body
           : Buffer.from(typeof req.body === 'string' ? req.body : '');
   
-      console.log('🔔 WEBHOOK DEBUG:', {
-        hasRawBody: !!req.rawBody,
-        rawBodyIsBuffer: Buffer.isBuffer(req.rawBody),
-        rawBodyLength: req.rawBody?.length ?? 0,
-        bodyIsBuffer: Buffer.isBuffer(req.body),
-        bodyType: typeof req.body,
-        payloadLength: rawPayload.length,
-        hasSignature: !!signature,
-        secretSet: !!process.env.STRIPE_WEBHOOK_SECRET,
-        secretPrefix: process.env.STRIPE_WEBHOOK_SECRET?.substring(0, 10),
-      });
-  
       if (rawPayload.length === 0) {
         throw new Error('No raw body available for Stripe signature verification.');
       }
