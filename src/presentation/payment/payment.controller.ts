@@ -196,8 +196,8 @@ export class PaymentController {
   async handleStripeWebhook(
     @Req() req: RawBodyRequest<Request>,
     @Headers('stripe-signature') signature: string,
-    @Body() body: any,
   ) {
+    const body: any = req.body; 
     const isDevelopment = process.env.NODE_ENV !== 'production';
     const isTestMode =
       body._testMode === true ||
@@ -242,15 +242,38 @@ export class PaymentController {
       };
     }
 
-    // Production mode: require proper signature verification
+
     if (!signature) {
       throw new Error('Missing stripe-signature header');
     }
 
-    // Verify webhook signature
-    const event = this.stripeService.verifyWebhookSignature(req.rawBody!, signature);
+   
+        // 👇 Safely resolve the raw payload to a Buffer
+        const rawPayload: Buffer = Buffer.isBuffer(req.rawBody)
+        ? req.rawBody
+        : Buffer.isBuffer(req.body)
+          ? req.body
+          : Buffer.from(typeof req.body === 'string' ? req.body : '');
+  
+      console.log('🔔 WEBHOOK DEBUG:', {
+        hasRawBody: !!req.rawBody,
+        rawBodyIsBuffer: Buffer.isBuffer(req.rawBody),
+        rawBodyLength: req.rawBody?.length ?? 0,
+        bodyIsBuffer: Buffer.isBuffer(req.body),
+        bodyType: typeof req.body,
+        payloadLength: rawPayload.length,
+        hasSignature: !!signature,
+        secretSet: !!process.env.STRIPE_WEBHOOK_SECRET,
+        secretPrefix: process.env.STRIPE_WEBHOOK_SECRET?.substring(0, 10),
+      });
+  
+      if (rawPayload.length === 0) {
+        throw new Error('No raw body available for Stripe signature verification.');
+      }
+  
+      const event = this.stripeService.verifyWebhookSignature(rawPayload, signature);
 
-    // Handle the webhook event
+   
     await this.handleStripeWebhookUseCase.execute(event);
 
     return { received: true };
