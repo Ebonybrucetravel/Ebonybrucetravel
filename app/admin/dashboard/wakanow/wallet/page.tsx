@@ -18,7 +18,7 @@ export default function WalletBalancePage() {
       
       const token = localStorage.getItem('adminToken');
       
-      const response = await fetch('http://localhost:3001/api/v1/bookings/wakanow/wallet-balance', {
+      const response = await fetch('https://ebony-bruce-production.up.railway.app/api/v1/bookings/wakanow/wallet-balance', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -32,10 +32,10 @@ export default function WalletBalancePage() {
       const data = await response.json();
       console.log('✅ FRONTEND RECEIVED DATA:', data);
 
-      // ✅ FIX: Extract the main object (it could be 'data' or root)
+
       const extractedData = data.data || data;
 
-      // ✅ FIX: Check for BOTH uppercase and lowercase keys
+     
       const balanceFound = extractedData.Balance ?? extractedData.balance ?? extractedData.availableBalance ?? null;
       const currencyFound = extractedData.Currency ?? extractedData.currency ?? 'NGN';
 

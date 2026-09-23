@@ -6,9 +6,9 @@ export const config = {
   
   // Wakanow configuration for domestic flights
   wakanow: {
-    baseUrl: process.env.NEXT_PUBLIC_WAKANOW_BASE_URL ?? 'https://wakanow-api-affiliate-b2b-devtest-test.azurewebsites.net',
-    username: process.env.NEXT_PUBLIC_WAKANOW_USERNAME ?? '15a9efddb90c4a678768b8bf78707afa',
-    password: process.env.NEXT_PUBLIC_WAKANOW_PASSWORD ?? '_0GZIjuqlC',
+    baseUrl: process.env.NEXT_PUBLIC_WAKANOW_BASE_URL ?? 'https://wakanow-api-affiliate-b2b-production-preprod.azurewebsites.net',
+    username: process.env.NEXT_PUBLIC_WAKANOW_USERNAME ?? '0129ef20f3b341b2b8a7b3274a3e2149',
+    password: process.env.NEXT_PUBLIC_WAKANOW_PASSWORD ?? 'I0W4JWDrn6',
   },
 } as const;
 

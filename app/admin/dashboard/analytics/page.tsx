@@ -75,7 +75,7 @@ export default function AnalyticsPage() {
 
     
         const dateParams = getDateRangeParams();
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://ebony-bruce-production.up.railway.app';
         
         console.log(`📡 Fetching REAL Analytics from API for: ${dateParams.startDate} to ${dateParams.endDate}`);
         

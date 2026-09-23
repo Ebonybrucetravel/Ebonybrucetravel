@@ -33,7 +33,7 @@ export default function WakanowBookingsPage() {
       const token = localStorage.getItem('adminToken');
       
       // ✅ PRODUCTION-READY: Uses Environment Variable
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://ebony-bruce-production.up.railway.app';
       const url = `${baseUrl}/api/v1/admin/bookings`;
 
       console.log(`📡 Fetching bookings from: ${url}`);
