@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useLanguage } from "../context/LanguageContext";
 import { useRouter } from "next/navigation";
+import api from "../lib/api";
 
 interface HotelDisplay {
   id: string;
@@ -30,10 +31,155 @@ interface HomesGridProps {
   onSearch?: (data: any) => void;
 }
 
+// ─── Geo → featured cities ─────────────────────────────────────────────
+const GEO_TO_CITIES: Record<string, string[]> = {
+  NG: ['LOS'],              // Lagos (Abuja currently has no hotels on Amadeus)
+  GB: ['LON', 'MAN'],       // London, Manchester
+  US: ['NYC', 'MIA', 'LAS'],// New York, Miami, Las Vegas
+  FR: ['PAR'],
+  AE: ['DXB'],
+  JP: ['TYO'],
+  SG: ['SIN'],
+  ZA: ['CPT', 'JNB'],
+  KE: ['NBO'],
+  GH: ['ACC'],
+  EG: ['CAI'],
+  IN: ['DEL', 'BOM'],
+  AU: ['SYD', 'MEL'],
+  CA: ['YYZ', 'YVR'],
+  ES: ['MAD', 'BCN'],
+  IT: ['ROM', 'MIL'],
+  DE: ['BER', 'FRA'],
+  NL: ['AMS'],
+  TR: ['IST'],
+};
+
+// Fallback if we can't detect geo
+const FALLBACK_CITIES = ['DXB', 'LON', 'PAR'];
+
+// ─── Session-storage cache to avoid hammering Amadeus ──────────────────
+const CACHE_KEY = 'homes_grid_cache_v1';
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+interface CachedData {
+  hotels: HotelDisplay[];
+  timestamp: number;
+  currency: string;
+}
+
+function readCache(): CachedData | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed: CachedData = JSON.parse(raw);
+    if (Date.now() - parsed.timestamp > CACHE_TTL_MS) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(data: CachedData) {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
+  } catch {}
+}
+
+// ─── Detect user's geo country code ────────────────────────────────────
+function getUserGeoCountry(): string | null {
+  if (typeof window === 'undefined') return null;
+  // Your app already sets one of these on geo detection
+  const keys = ['geo_country', 'country', 'user_country', 'detected_country'];
+  for (const k of keys) {
+    const v = localStorage.getItem(k);
+    if (v && v.length === 2) return v.toUpperCase();
+  }
+  // Fallback: parse locale like "EN/NG" or "en-NG"
+  const locale = localStorage.getItem('locale') || '';
+  const m = locale.match(/([A-Z]{2})$/i);
+  if (m) return m[1].toUpperCase();
+  return null;
+}
+
+// ─── Detect the admin/user's display currency ──────────────────────────
+function getDisplayCurrency(): string {
+  if (typeof window === 'undefined') return 'NGN';
+  const keys = ['selectedCurrency', 'preferredCurrency', 'currency', 'currencyCode'];
+  for (const k of keys) {
+    const v = localStorage.getItem(k);
+    if (v && ['NGN', 'GBP', 'USD', 'EUR', 'CAD', 'AUD', 'JPY', 'CNY', 'ZAR', 'KES'].includes(v.toUpperCase())) {
+      return v.toUpperCase();
+    }
+  }
+  const geo = getUserGeoCountry();
+  if (geo === 'NG') return 'NGN';
+  if (geo === 'US') return 'USD';
+  if (geo === 'GB') return 'GBP';
+  if (geo === 'FR' || geo === 'DE' || geo === 'ES' || geo === 'IT' || geo === 'NL') return 'EUR';
+  return 'GBP';
+}
+
+// ─── Compute check-in / check-out dates ────────────────────────────────
+function getDefaultDates() {
+  const today = new Date();
+  const checkIn = new Date(today);
+  checkIn.setDate(today.getDate() + 7);   // today + 7 days
+  const checkOut = new Date(checkIn);
+  checkOut.setDate(checkIn.getDate() + 3); // 3-night stay
+  const fmt = (d: Date) => d.toISOString().split('T')[0];
+  return { checkIn: fmt(checkIn), checkOut: fmt(checkOut) };
+}
+
+// ─── Map HotelOffer → HotelDisplay ─────────────────────────────────────
+function mapOfferToDisplay(offer: any, index: number, cityCode: string): HotelDisplay {
+  const hotel = offer.hotel || {};
+  const firstOffer = offer.offers?.[0] || {};
+  const price = firstOffer.price || {};
+
+  // Use existing transformer in api.ts if available
+  let totalPrice = parseFloat(price.total || '0');
+  let discountedPrice: number | undefined = undefined;
+  let currency = price.currency || 'GBP';
+
+  // Prefer final_price (post-markup) if provided
+  if (price.final_price) {
+    totalPrice = parseFloat(price.final_price);
+  }
+
+  // Show original vs. discounted if markup exists
+  const markupAmount = parseFloat(price.markup_amount || '0');
+  if (markupAmount > 0 && price.original_total) {
+    discountedPrice = totalPrice;
+    totalPrice = parseFloat(price.original_total);
+  }
+
+  return {
+    id: hotel.hotelId || `hotel-${index}`,
+    name: hotel.name || 'Hotel',
+    location: hotel.address?.cityName
+      ? `${hotel.address.cityName}, ${hotel.address.countryCode || ''}`
+      : cityCode,
+    code: cityCode,
+    cityName: hotel.address?.cityName || cityCode,
+    country: hotel.address?.countryCode,
+    price: totalPrice,
+    discountedPrice,
+    rating: hotel.rating ? Math.min(5, Math.max(1, hotel.rating / 2)) : 4.0, // Amadeus rating is /10 or a star count; clamp to 1-5
+    reviews: Math.floor(Math.random() * 300) + 150, // Amadeus doesn't give review counts
+    image: (offer as any).primaryImageUrl || hotel.primaryImageUrl || '',
+    amenities: (hotel.amenities || []).slice(0, 4),
+    chainCode: hotel.chainCode,
+    description: hotel.description,
+  };
+}
+
+// ─── Main component ────────────────────────────────────────────────────
 const HomesGrid: React.FC<HomesGridProps> = ({
   hotels: propHotels,
-  loading = false,
-  error = null,
+  loading: propLoading = false,
+  error: propError = null,
   title,
   subtitle,
   onSearch,
@@ -44,465 +190,154 @@ const HomesGrid: React.FC<HomesGridProps> = ({
   const [internalLoading, setInternalLoading] = useState(true);
   const [internalError, setInternalError] = useState<string | null>(null);
 
-  const currencySymbol = currency?.symbol || "£";
   const brandBlue = "#32A6D7";
   const brandBlueLight = "#e6f4fa";
 
-  const popularDestinations = [
-    { city: "London", code: "LON", country: "United Kingdom" },
-    { city: "Dubai", code: "DXB", country: "UAE" },
-    { city: "New York", code: "NYC", country: "USA" },
-    { city: "Tokyo", code: "TYO", country: "Japan" },
-    { city: "Paris", code: "PAR", country: "France" },
-    { city: "Singapore", code: "SIN", country: "Singapore" }
-  ];
-
+  // If parent passes its own hotels, use those
   useEffect(() => {
     if (propHotels && propHotels.length > 0) {
       setHotels(propHotels);
       setInternalLoading(false);
-    } else {
-      setInternalLoading(true);
-      try {
-        const fallbackHotels = generateFallbackHotels();
-        setHotels(fallbackHotels);
-        setInternalError(null);
-      } catch (err: any) {
-        console.error("Error generating fallback hotels:", err);
-        setInternalError(err.message || t('homes.errorFallback'));
-      } finally {
-        setInternalLoading(false);
-      }
     }
-  }, [propHotels, t]);
+  }, [propHotels]);
 
-  // Generate fallback hotels with unique real images - 12 UNIQUE images
-  const generateFallbackHotels = (): HotelDisplay[] => {
-    // 12 UNIQUE real hotel images - each used only once
-    const uniqueHotelImages: Record<string, string> = {
-      "The Ritz London": "/images/The Ritz London.png",
-      "The Savoy": "/images/The Savoy.jpg",
-      "Claridge's": "images/Claridge's.webp",
-      "Burj Al Arab Jumeirah": "/images/Burj Al Arab Jumeirah.jpg",
-      "Atlantis The Palm": "/images/Atlantis The Palm.jpg",
-      "Address Boulevard": "/images/Address Boulevard.avif",
-      "The Plaza Hotel": "/images/The Plaza Hotel.webp",
-      "The Ritz-Carlton": "/images/The Ritz-Carlton.avif",
-      "The Peninsula": "/images/The Peninsula.webp",
-      "Park Hyatt Tokyo": "/images/Park Hyatt Tokyo.jpg",
-      "Aman Tokyo": "/images/Aman Tokyo.jpg",
-      "The Imperial Hotel": "/images/The Imperial Hotel.jpg",
-      "Hotel Plaza Athénée": "/images/Hotel Plaza Athénée.jpg",
-      "Le Meurice": "/images/Le Meurice.jpg",
-      "Ritz Paris": "/images/Ritz Paris.webp",
-      "Marina Bay Sands": "/images/Marina Bay Sands.jpg",
-      "Raffles Singapore": "/images/Raffles Singapore.webp",
-      "The Fullerton Hotel": "/images/The Fullerton Hotel.jpg",
+  // Otherwise, fetch real trending hotels from Amadeus
+  useEffect(() => {
+    if (propHotels && propHotels.length > 0) return;
+
+    let cancelled = false;
+
+    const loadTrending = async () => {
+      setInternalLoading(true);
+      setInternalError(null);
+
+      // 1. Check cache first
+      const cached = readCache();
+      if (cached) {
+        setHotels(cached.hotels);
+        setInternalLoading(false);
+        return;
+      }
+
+      try {
+        // 2. Figure out which city to feature for this user
+        const geo = getUserGeoCountry();
+        const featuredCities = (geo && GEO_TO_CITIES[geo]) || FALLBACK_CITIES;
+        const primaryCity = featuredCities[0];
+
+        const { checkIn, checkOut } = getDefaultDates();
+        const displayCurrency = getDisplayCurrency();
+
+        // 3. Call the existing Amadeus search via your API layer
+        const response = await api.searchHotelsAmadeus({
+          cityCode: primaryCity,
+          checkInDate: checkIn,
+          checkOutDate: checkOut,
+          adults: 2,
+          roomQuantity: 1,
+          currency: displayCurrency,
+          bestRateOnly: true,
+          page: 1,
+          limit: 6,
+        });
+
+        if (cancelled) return;
+
+        if (!response.success || !response.data?.data?.length) {
+          throw new Error(
+            response.message || 'No hotels available right now',
+          );
+        }
+
+        // 4. Take the first 6, map to HotelDisplay
+        const mapped = response.data.data
+          .slice(0, 6)
+          .map((offer, i) => mapOfferToDisplay(offer, i, primaryCity));
+
+        setHotels(mapped);
+        writeCache({
+          hotels: mapped,
+          timestamp: Date.now(),
+          currency: displayCurrency,
+        });
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error('Failed to load trending hotels:', err);
+        setInternalError(
+          err?.message || 'Could not load trending hotels right now.',
+        );
+      } finally {
+        if (!cancelled) setInternalLoading(false);
+      }
     };
 
-    const hotelsByDestination: Record<string, HotelDisplay[]> = {
-      "LON": [
-        {
-          id: "lon-ritz-1",
-          name: "The Ritz London",
-          location: "London, United Kingdom",
-          cityName: "London",
-          country: "United Kingdom",
-          code: "LON",
-          price: 850,
-          discountedPrice: 720,
-          rating: 4.9,
-          reviews: 1250,
-          image: uniqueHotelImages["The Ritz London"],
-          amenities: ["Spa", "Michelin Restaurant", "Afternoon Tea", "Concierge", "Butler Service"],
-          chainCode: "RL",
-          description: "Iconic 5-star hotel in Piccadilly with stunning views"
-        },
-        {
-          id: "lon-savoy-2",
-          name: "The Savoy",
-          location: "London, United Kingdom",
-          cityName: "London",
-          country: "United Kingdom",
-          code: "LON",
-          price: 780,
-          discountedPrice: 660,
-          rating: 4.8,
-          reviews: 2100,
-          image: uniqueHotelImages["The Savoy"],
-          amenities: ["River View", "Luxury Spa", "Fine Dining", "Theatre", "Afternoon Tea"],
-          chainCode: "FAIRMONT",
-          description: "Historic hotel on the Strand with river views"
-        },
-        {
-          id: "lon-claridges-3",
-          name: "Claridge's",
-          location: "London, United Kingdom",
-          cityName: "London",
-          country: "United Kingdom",
-          code: "LON",
-          price: 920,
-          discountedPrice: 820,
-          rating: 4.9,
-          reviews: 980,
-          image: uniqueHotelImages["Claridge's"],
-          amenities: ["Art Deco", "Michelin Star", "Spa", "Butler Service", "Afternoon Tea"],
-          chainCode: "MAYBOURNE",
-          description: "Legendary Art Deco hotel in Mayfair"
-        }
-      ],
-      "DXB": [
-        {
-          id: "dxb-burj-1",
-          name: "Burj Al Arab Jumeirah",
-          location: "Dubai, UAE",
-          cityName: "Dubai",
-          country: "UAE",
-          code: "DXB",
-          price: 1200,
-          discountedPrice: 1050,
-          rating: 5.0,
-          reviews: 2340,
-          image: uniqueHotelImages["Burj Al Arab Jumeirah"],
-          amenities: ["Private Beach", "Helicopter Pad", "Underwater Restaurant", "Butler Service", "Infinity Pool"],
-          chainCode: "JUMEIRAH",
-          description: "World's only 7-star hotel on its own island"
-        },
-        {
-          id: "dxb-atlantis-2",
-          name: "Atlantis The Palm",
-          location: "Dubai, UAE",
-          cityName: "Dubai",
-          country: "UAE",
-          code: "DXB",
-          price: 650,
-          discountedPrice: 550,
-          rating: 4.8,
-          reviews: 4560,
-          image: uniqueHotelImages["Atlantis The Palm"],
-          amenities: ["Aquaventure", "Dolphin Bay", "Private Beach", "Kids Club", "Water Park"],
-          chainCode: "ATLANTIS",
-          description: "Iconic resort on Palm Jumeirah with underwater suites"
-        },
-        {
-          id: "dxb-address-3",
-          name: "Address Boulevard",
-          location: "Dubai, UAE",
-          cityName: "Dubai",
-          country: "UAE",
-          code: "DXB",
-          price: 480,
-          discountedPrice: 420,
-          rating: 4.7,
-          reviews: 1870,
-          image: uniqueHotelImages["Address Boulevard"],
-          amenities: ["Pool", "Spa", "Burj Khalifa View", "Fine Dining", "Shopping Mall Access"],
-          chainCode: "ADDRESS",
-          description: "Luxury hotel connected to Dubai Mall"
-        }
-      ],
-      "NYC": [
-        {
-          id: "nyc-plaza-1",
-          name: "The Plaza Hotel",
-          location: "New York, USA",
-          cityName: "New York",
-          country: "USA",
-          code: "NYC",
-          price: 950,
-          discountedPrice: 820,
-          rating: 4.8,
-          reviews: 3150,
-          image: uniqueHotelImages["The Plaza Hotel"],
-          amenities: ["Central Park View", "Luxury Spa", "Fine Dining", "Historic Landmark", "Afternoon Tea"],
-          chainCode: "FAIRMONT",
-          description: "Legendary hotel facing Central Park"
-        },
-        {
-          id: "nyc-ritz-2",
-          name: "The Ritz-Carlton",
-          location: "New York, USA",
-          cityName: "New York",
-          country: "USA",
-          code: "NYC",
-          price: 820,
-          discountedPrice: 720,
-          rating: 4.7,
-          reviews: 1890,
-          image: uniqueHotelImages["The Ritz-Carlton"],
-          amenities: ["Central Park View", "Spa", "Michelin Restaurant", "Butler Service", "Fitness Center"],
-          chainCode: "RC",
-          description: "Luxury in the heart of Manhattan"
-        },
-        {
-          id: "nyc-peninsula-3",
-          name: "The Peninsula",
-          location: "New York, USA",
-          cityName: "New York",
-          country: "USA",
-          code: "NYC",
-          price: 890,
-          discountedPrice: 780,
-          rating: 4.8,
-          reviews: 1430,
-          image: uniqueHotelImages["The Peninsula"],
-          amenities: ["Rooftop Terrace", "Spa", "Michelin Star", "Business Center", "Chauffeur Service"],
-          chainCode: "PENINSULA",
-          description: "Elegant hotel on Fifth Avenue"
-        }
-      ],
-      "TYO": [
-        {
-          id: "tyo-park-1",
-          name: "Park Hyatt Tokyo",
-          location: "Tokyo, Japan",
-          cityName: "Tokyo",
-          country: "Japan",
-          code: "TYO",
-          price: 680,
-          discountedPrice: 590,
-          rating: 4.8,
-          reviews: 1870,
-          image: uniqueHotelImages["Park Hyatt Tokyo"],
-          amenities: ["Mountain Views", "Japanese Garden", "Michelin Star", "Zen Spa", "Sky Bar"],
-          chainCode: "HY",
-          description: "Luxury hotel in Shinjuku featured in Lost in Translation"
-        },
-        {
-          id: "tyo-aman-2",
-          name: "Aman Tokyo",
-          location: "Tokyo, Japan",
-          cityName: "Tokyo",
-          country: "Japan",
-          code: "TYO",
-          price: 950,
-          discountedPrice: 850,
-          rating: 4.9,
-          reviews: 920,
-          image: uniqueHotelImages["Aman Tokyo"],
-          amenities: ["Skyline Views", "Traditional Onsen", "Tea House", "Zen Garden", "Spa"],
-          chainCode: "AMAN",
-          description: "Serene luxury in Otemachi with traditional Japanese elements"
-        },
-        {
-          id: "tyo-imperial-3",
-          name: "The Imperial Hotel",
-          location: "Tokyo, Japan",
-          cityName: "Tokyo",
-          country: "Japan",
-          code: "TYO",
-          price: 520,
-          discountedPrice: 460,
-          rating: 4.6,
-          reviews: 3240,
-          image: uniqueHotelImages["The Imperial Hotel"],
-          amenities: ["Historic", "Japanese Garden", "Multiple Restaurants", "Spa", "Shopping Arcade"],
-          chainCode: "IH",
-          description: "Historic hotel near the Imperial Palace"
-        }
-      ],
-      "PAR": [
-        {
-          id: "par-plaza-1",
-          name: "Hotel Plaza Athénée",
-          location: "Paris, France",
-          cityName: "Paris",
-          country: "France",
-          code: "PAR",
-          price: 1100,
-          discountedPrice: 950,
-          rating: 4.9,
-          reviews: 1420,
-          image: uniqueHotelImages["Hotel Plaza Athénée"],
-          amenities: ["Eiffel Tower View", "Dior Spa", "Michelin Dining", "Fashion District", "Courtyard"],
-          chainCode: "DORCHESTER",
-          description: "Palace hotel on Avenue Montaigne"
-        },
-        {
-          id: "par-meurice-2",
-          name: "Le Meurice",
-          location: "Paris, France",
-          cityName: "Paris",
-          country: "France",
-          code: "PAR",
-          price: 890,
-          discountedPrice: 780,
-          rating: 4.8,
-          reviews: 1150,
-          image: uniqueHotelImages["Le Meurice"],
-          amenities: ["Tuileries View", "Art Deco Spa", "Michelin Star", "Palace Hotel", "Afternoon Tea"],
-          chainCode: "DORCHESTER",
-          description: "Historic palace hotel with art-inspired decor"
-        },
-        {
-          id: "par-ritz-3",
-          name: "Ritz Paris",
-          location: "Paris, France",
-          cityName: "Paris",
-          country: "France",
-          code: "PAR",
-          price: 1200,
-          discountedPrice: 1050,
-          rating: 5.0,
-          reviews: 890,
-          image: uniqueHotelImages["Ritz Paris"],
-          amenities: ["Michelin Dining", "Spa", "Jardins", "Bar Hemingway", "Luxury Suites"],
-          chainCode: "RITZ",
-          description: "Legendary Place Vendôme palace hotel"
-        }
-      ],
-      "SIN": [
-        {
-          id: "sin-mbs-1",
-          name: "Marina Bay Sands",
-          location: "Singapore",
-          cityName: "Singapore",
-          country: "Singapore",
-          code: "SIN",
-          price: 780,
-          discountedPrice: 680,
-          rating: 4.8,
-          reviews: 4250,
-          image: uniqueHotelImages["Marina Bay Sands"],
-          amenities: ["Infinity Pool", "SkyPark", "Casino", "Luxury Shopping", "Observation Deck"],
-          chainCode: "MBS",
-          description: "Iconic resort with infinity pool overlooking the city"
-        },
-        {
-          id: "sin-raffles-2",
-          name: "Raffles Singapore",
-          location: "Singapore",
-          cityName: "Singapore",
-          country: "Singapore",
-          code: "SIN",
-          price: 850,
-          discountedPrice: 750,
-          rating: 4.9,
-          reviews: 1870,
-          image: uniqueHotelImages["Raffles Singapore"],
-          amenities: ["Colonial Heritage", "Singapore Sling", "Butler Service", "Courtyard", "Luxury Spa"],
-          chainCode: "ACCOR",
-          description: "Historic luxury hotel where the Singapore Sling was invented"
-        },
-        {
-          id: "sin-fullerton-3",
-          name: "The Fullerton Hotel",
-          location: "Singapore",
-          cityName: "Singapore",
-          country: "Singapore",
-          code: "SIN",
-          price: 580,
-          discountedPrice: 520,
-          rating: 4.7,
-          reviews: 2980,
-          image: uniqueHotelImages["The Fullerton Hotel"],
-          amenities: ["Heritage Building", "River View", "Pool", "Spa", "Multiple Restaurants"],
-          chainCode: "FULLERTON",
-          description: "Historic building at the mouth of the Singapore River"
-        }
-      ]
+    loadTrending();
+    return () => {
+      cancelled = true;
     };
+  }, [propHotels]);
 
-    // Collect hotels from all destinations
-    const allHotels: HotelDisplay[] = [];
-
-    popularDestinations.forEach(dest => {
-      const destHotels = hotelsByDestination[dest.code] || hotelsByDestination["LON"];
-      const hotelsToAdd = destHotels.slice(0, 2).map(hotel => ({
-        ...hotel,
-        id: `${hotel.id}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        reviews: Math.floor(hotel.reviews * (0.9 + Math.random() * 0.2))
-      }));
-      allHotels.push(...hotelsToAdd);
-    });
-
-    const shuffled = [...allHotels].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, 6);
-  };
-
+  // ─── Handlers ─────────────────────────────────────────────────────────
   const handleHotelClick = async (hotel: HotelDisplay) => {
     const today = new Date();
     const checkIn = new Date(today);
-    checkIn.setDate(today.getDate() + 1);
-
+    checkIn.setDate(today.getDate() + 7);
     const checkOut = new Date(checkIn);
     checkOut.setDate(checkIn.getDate() + 3);
 
     const checkInDate = checkIn.toISOString().split('T')[0];
     const checkOutDate = checkOut.toISOString().split('T')[0];
 
-    const cityName = hotel.cityName || hotel.location.split(',')[0] || "London";
-    const cityCode = hotel.code || "LON";
-    const country = hotel.country || "United Kingdom";
-    const formattedLocation = `${cityName}, ${country}`;
-
-    const guests = 2;
-    const rooms = 1;
-
     const searchData = {
       type: 'hotels',
-      location: formattedLocation,
-      cityCode: cityCode,
+      location: `${hotel.cityName || hotel.location}`,
+      cityCode: hotel.code,
       checkInDate,
       checkOutDate,
-      travellers: { adults: guests, children: 0 },
-      rooms,
-      currency: 'GBP'
+      travellers: { adults: 2, children: 0 },
+      rooms: 1,
+      currency: getDisplayCurrency(),
     };
 
-    // If onSearch prop is provided, use it
     if (onSearch) {
       await onSearch(searchData);
     } else {
-      // Otherwise, use URL params for direct navigation
       const params = new URLSearchParams({
         type: 'hotels',
-        location: formattedLocation,
-        cityCode: cityCode,
+        location: searchData.location,
+        cityCode: hotel.code,
         checkIn: checkInDate,
         checkOut: checkOutDate,
-        guests: guests.toString(),
-        rooms: rooms.toString(),
-        currency: 'GBP'
+        guests: '2',
+        rooms: '1',
+        currency: getDisplayCurrency(),
       });
       router.push(`/search?${params.toString()}`);
     }
   };
 
-  const handleSearchMore = () => {
-    if (!propHotels) {
-      setInternalLoading(true);
-      setTimeout(() => {
-        const newHotels = generateFallbackHotels();
-        setHotels(newHotels);
-        setInternalLoading(false);
-      }, 500);
-    }
-  };
+  const formatPrice = (price: number) =>
+    `${currency.symbol || '£'}${price.toLocaleString(undefined, {
+      maximumFractionDigits: 0,
+    })}`;
 
-  const formatPrice = (price: number) => `${currencySymbol}${price.toFixed(2)}`;
-
-  const isLoading = propHotels ? loading : internalLoading;
-  const hasError = propHotels ? error : internalError;
+  const isLoading = propHotels ? propLoading : internalLoading;
+  const hasError = propHotels ? propError : internalError;
   const displayHotels = propHotels || hotels;
 
   const displayTitle = title || t('homes.title');
   const displaySubtitle = subtitle || t('homes.subtitle');
 
+  // ─── Rendering ────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <section className="px-4 md:px-8 lg:px-16 pt-8 pb-0 -mb-4">
         <div className="flex justify-between items-end mb-8">
           <div>
-            <h2 className="text-xl md:text-2xl font-bold text-gray-900">
-              {displayTitle}
-            </h2>
-            <p className="text-gray-500 mt-1 text-sm md:text-base">
-              {displaySubtitle}
-            </p>
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900">{displayTitle}</h2>
+            <p className="text-gray-500 mt-1 text-sm md:text-base">{displaySubtitle}</p>
           </div>
         </div>
-
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="bg-white rounded-3xl overflow-hidden shadow-sm animate-pulse">
@@ -510,13 +345,8 @@ const HomesGrid: React.FC<HomesGridProps> = ({
               <div className="p-6">
                 <div className="h-6 bg-gray-200 rounded mb-2"></div>
                 <div className="h-4 bg-gray-200 rounded w-1/2 mb-3"></div>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="h-8 bg-gray-200 rounded-full w-20"></div>
-                  <div className="h-4 bg-gray-200 rounded w-16"></div>
-                </div>
-                <div className="flex justify-between pt-4">
-                  <div className="h-6 bg-gray-200 rounded w-24"></div>
-                </div>
+                <div className="h-8 bg-gray-200 rounded-full w-20 mb-4"></div>
+                <div className="h-6 bg-gray-200 rounded w-24"></div>
               </div>
             </div>
           ))}
@@ -525,20 +355,14 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     );
   }
 
-  if (hasError) {
+  if (hasError || displayHotels.length === 0) {
     return (
       <section className="px-4 md:px-8 lg:px-16 pt-8 pb-0 -mb-4">
-        <div className="text-center">
-          <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-4">
-            {displayTitle}
-          </h2>
-          <p className="text-red-500 mb-4">{hasError}</p>
-          <button
-            onClick={handleSearchMore}
-            className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-          >
-            {t('homes.tryAgain')}
-          </button>
+        <div className="text-center py-10">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">{displayTitle}</h2>
+          <p className="text-gray-500 text-sm">
+            {hasError || 'No featured hotels available right now.'}
+          </p>
         </div>
       </section>
     );
@@ -548,53 +372,24 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     <section className="px-4 md:px-8 lg:px-16 pt-8 pb-0 -mb-4">
       <div className="flex justify-between items-end mb-8">
         <div>
-          <h2 className="text-xl md:text-2xl font-bold text-gray-900">
-            {displayTitle}
-          </h2>
-          <p className="text-gray-500 mt-1 text-sm md:text-base">
-            {displaySubtitle}
-          </p>
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900">{displayTitle}</h2>
+          <p className="text-gray-500 mt-1 text-sm md:text-base">{displaySubtitle}</p>
         </div>
-        <div className="flex items-center gap-4">
-          {!propHotels && (
-            <button
-              onClick={handleSearchMore}
-              disabled={isLoading}
-              className="px-4 py-2 text-sm font-semibold rounded-lg transition-colors duration-200 flex items-center gap-2"
-              style={{
-                backgroundColor: brandBlueLight,
-                color: brandBlue,
-              }}
-            >
-              {isLoading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-[#32A6D7] border-t-transparent rounded-full animate-spin"></div>
-                  <span>{t('common.loading')}</span>
-                </>
-              ) : t('homes.refresh')}
-            </button>
-          )}
-          <button
-            onClick={() => router.push("/search?type=hotels&currency=GBP")}
-            className="font-semibold transition-colors duration-200 flex items-center gap-2 group"
-            style={{ color: brandBlue }}
+        <button
+          onClick={() => router.push('/search?type=hotels')}
+          className="font-semibold transition-colors duration-200 flex items-center gap-2 group"
+          style={{ color: brandBlue }}
+        >
+          {t('homes.exploreAll')}
+          <svg
+            className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
           >
-            {t('homes.exploreAll')}
-            <svg
-              className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </button>
-        </div>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -606,124 +401,69 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           >
             <div className="relative h-64 overflow-hidden">
               <img
-                src={home.image}
+                src={home.image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600'}
                 alt={home.name}
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                 loading="lazy"
-                width={400}
-                height={256}
                 onError={(e) => {
                   (e.target as HTMLImageElement).src =
-                    "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600";
+                    'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600';
                 }}
               />
-
-              <button
-                className="absolute top-4 right-4 p-2.5 bg-white/90 backdrop-blur-sm rounded-full text-gray-600 hover:bg-white hover:text-red-500 transition-all duration-200 shadow-lg hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-2"
-                aria-label={t('common.addToFavorites')}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                  />
-                </svg>
-              </button>
-
               {home.discountedPrice && (
                 <div className="absolute top-4 left-4 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold">
-                  {t('homes.save')}{" "}
-                  {Math.round(
-                    ((home.price - home.discountedPrice) / home.price) * 100
-                  )}
-                  %
+                  {t('homes.save')}{' '}
+                  {Math.round(((home.price - home.discountedPrice) / home.price) * 100)}%
                 </div>
               )}
             </div>
 
             <div className="p-6">
-              <h3
-                className="font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-[#32A6D7] transition-colors duration-200 text-lg"
-              >
+              <h3 className="font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-[#32A6D7] transition-colors duration-200 text-lg">
                 {home.name}
               </h3>
 
               <div className="flex items-center gap-2 mb-3">
-                <svg
-                  className="w-4 h-4 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
                 <p className="text-sm text-gray-500">{home.location}</p>
               </div>
 
               <div className="flex items-center gap-3 mb-4">
-                <div
-                  className="flex items-center px-3 py-1 rounded-full"
-                  style={{ backgroundColor: brandBlueLight }}
-                >
+                <div className="flex items-center px-3 py-1 rounded-full" style={{ backgroundColor: brandBlueLight }}>
                   <div className="flex text-yellow-400 mr-2">
                     {[...Array(5)].map((_, i) => (
                       <svg
                         key={i}
-                        className={`w-3.5 h-3.5 ${
-                          i < Math.floor(home.rating) ? "fill-current" : "text-gray-200"
-                        }`}
+                        className={`w-3.5 h-3.5 ${i < Math.floor(home.rating) ? 'fill-current' : 'text-gray-200'}`}
                         viewBox="0 0 20 20"
                       >
                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                       </svg>
                     ))}
                   </div>
-                  <span
-                    className="text-sm font-bold"
-                    style={{ color: brandBlue }}
-                  >
+                  <span className="text-sm font-bold" style={{ color: brandBlue }}>
                     {home.rating.toFixed(1)}
                   </span>
                 </div>
-                <span className="text-xs text-gray-400">
-                  ({home.reviews.toLocaleString()} {t('homes.reviews')})
-                </span>
               </div>
 
-              <div className="flex flex-wrap gap-2 mb-4">
-                {home.amenities.slice(0, 3).map((amenity, idx) => (
-                  <span
-                    key={idx}
-                    className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full"
-                  >
-                    {amenity}
-                  </span>
-                ))}
-                {home.amenities.length > 3 && (
-                  <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
-                    +{home.amenities.length - 3} {t('homes.more')}
-                  </span>
-                )}
-              </div>
+              {home.amenities.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {home.amenities.slice(0, 3).map((amenity, idx) => (
+                    <span key={idx} className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
+                      {amenity}
+                    </span>
+                  ))}
+                  {home.amenities.length > 3 && (
+                    <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
+                      +{home.amenities.length - 3} {t('homes.more')}
+                    </span>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                 <div>
@@ -732,34 +472,21 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                       {formatPrice(home.price)}
                     </span>
                   )}
-                  <span
-                    className="text-xl font-bold"
-                    style={{ color: brandBlue }}
-                  >
+                  <span className="text-xl font-bold" style={{ color: brandBlue }}>
                     {formatPrice(home.discountedPrice || home.price)}
                   </span>
-                  <span className="text-xs text-gray-500 ml-1">
-                    {t('homes.perNight')}
-                  </span>
+                  <span className="text-xs text-gray-500 ml-1">{t('homes.perNight')}</span>
                 </div>
 
                 <button
-                  className="px-4 py-2 font-semibold rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2"
-                  style={{
-                    backgroundColor: brandBlue,
-                    color: "white",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#2a8bb5';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = brandBlue;
-                  }}
+                  className="px-4 py-2 font-semibold rounded-lg transition-colors duration-200 text-white"
+                  style={{ backgroundColor: brandBlue }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2a8bb5')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = brandBlue)}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleHotelClick(home);
                   }}
-                  aria-label={`${t('homes.explore')} ${home.name}`}
                 >
                   {t('homes.explore')}
                 </button>
