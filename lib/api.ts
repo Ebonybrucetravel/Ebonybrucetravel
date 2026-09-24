@@ -48,8 +48,8 @@ export interface User {
 }
 
 export interface HotelSearchParams {
-  hotelIds?: string[];  
-  cityCode?: string;    
+  hotelIds?: string[];
+  cityCode?: string;
   checkInDate: string;
   checkOutDate: string;
   adults: number;
@@ -221,17 +221,17 @@ const processQueue = (error: any, token: string | null = null) => {
 
 export const refreshAuthToken = async (): Promise<string | null> => {
   try {
-    const refreshToken = typeof window !== "undefined" 
-      ? localStorage.getItem('refreshToken') 
+    const refreshToken = typeof window !== "undefined"
+      ? localStorage.getItem('refreshToken')
       : null;
-      
+
     if (!refreshToken) {
       console.log('No refresh token available');
       return null;
     }
-    
+
     console.log('🔄 Attempting to refresh token...');
-    
+
     const response = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
       method: 'POST',
       headers: {
@@ -240,7 +240,7 @@ export const refreshAuthToken = async (): Promise<string | null> => {
       },
       body: JSON.stringify({ refreshToken }),
     });
-    
+
     if (!response.ok) {
       console.error('Refresh token request failed:', response.status);
       if (typeof window !== "undefined") {
@@ -250,11 +250,11 @@ export const refreshAuthToken = async (): Promise<string | null> => {
       }
       return null;
     }
-    
+
     const data = await response.json();
     const newToken = data.token || data.accessToken || data.access_token;
     const newRefreshToken = data.refreshToken || data.refresh_token || data.refresh;
-    
+
     if (newToken && typeof window !== "undefined") {
       localStorage.setItem('authToken', newToken);
       localStorage.setItem('travelToken', newToken);
@@ -264,7 +264,7 @@ export const refreshAuthToken = async (): Promise<string | null> => {
       console.log('✅ Token refreshed successfully');
       return newToken;
     }
-    
+
     return null;
   } catch (error) {
     console.error('Failed to refresh token:', error);
@@ -314,7 +314,7 @@ export interface HotelBookingRequest {
   };
   travelAgentEmail?: string;
   accommodationSpecialRequests?: string;
-  // ✅ ADD THESE FIELDS
+
   cancellationDeadline?: string;
   cancellationPolicySnapshot?: string;
   policyAccepted?: boolean;
@@ -355,7 +355,7 @@ export interface HotelBookingResponse {
   [key: string]: any;
 }
 
-// Flight search interfaces
+
 export interface FlightSearchParams {
   origin: string;
   destination: string;
@@ -382,17 +382,17 @@ export interface FlightSearchResponse {
   [key: string]: any;
 }
 
-// Car Rental Interfaces
+
 export interface CarRentalSearchParams {
   pickupLocationCode: string;
-  pickupDateTime: string; // Format: "YYYY-MM-DDTHH:mm:ss"
+  pickupDateTime: string; 
   dropoffLocationCode: string;
-  dropoffDateTime: string; // Format: "YYYY-MM-DDTHH:mm:ss"
+  dropoffDateTime: string; 
   currency?: string;
   passengers?: number;
-  // ✅ ADD THESE NEW PARAMETERS
+ 
   transferType?: 'PRIVATE' | 'SHARED' | 'TAXI' | 'HOURLY';
-  duration?: string; // Format: "PT2H30M" - required for HOURLY
+  duration?: string; 
   vehicleCategory?: 'ST' | 'BU' | 'FC';
   vehicleCode?: 'CAR' | 'SED' | 'WGN' | 'ELC' | 'VAN' | 'SUV' | 'LMS' | 'MBR' | 'TRN' | 'BUS' | 'HLC' | 'JET';
   baggages?: number;
@@ -430,7 +430,7 @@ export interface CarRentalOffer {
     code: string;
     category: string;
     description: string;
-    imageURL: string; // ADD THIS LINE - the property exists in the API response
+    imageURL: string; 
     baggages?: Array<{
       count?: number;
       size?: string;
@@ -547,23 +547,23 @@ export interface CarRentalSearchResponse {
   [key: string]: any;
 }
 
-// Update the interface at the top of the file
+
 export interface CarRentalBookingRequest {
   offerId: string;
   pickupLocationCode: string;
-  pickupDateTime: string; // Format: "YYYY-MM-DDTHH:mm:ss"
+  pickupDateTime: string; 
   dropoffLocationCode: string;
-  dropoffDateTime: string; // Format: "YYYY-MM-DDTHH:mm:ss"
+  dropoffDateTime: string; 
   passengerInfo: {
     firstName: string;
     lastName: string;
     email: string;
     phone: string;
-    // Do NOT include a 'name' property here
+  
   };
   specialRequests?: string;
   flightNumber?: string;
-  // Remove provider and totalAmount from here
+ 
   [key: string]: any; // Keep this for flexibility
 }
 
@@ -677,112 +677,108 @@ async function request<T>(
       data = { message: text || response.statusText };
     }
 
-      // ✅ REPLACED 401 BLOCK WITH TOKEN REFRESH LOGIC
-      if (response.status === 401) {
-        const currentToken = getAuthToken();
-        
-        // If no token, it's invalid credentials
-        if (!currentToken || currentToken.trim() === "") {
-          if (data?.code === "INVALID_CREDENTIALS") {
-            clearAuthToken();
-            window.dispatchEvent(new CustomEvent("auth-expired"));
-            throw new ApiError(
-              "Invalid credentials. Please check your email and password.",
-              401,
-              "INVALID_CREDENTIALS",
-            );
+    
+    if (response.status === 401) {
+      const currentToken = getAuthToken();
+
+      
+if (!currentToken || currentToken.trim() === "") {
+  if (data?.code === "INVALID_CREDENTIALS") {
+    throw new ApiError(
+      "Invalid credentials. Please check your email and password.",
+      401,
+      "INVALID_CREDENTIALS",
+    );
+  }
+  throw new ApiError(
+    "Session expired. Please sign in again.",
+    401,
+    "UNAUTHORIZED",
+  );
+}
+
+ 
+      console.log('🔄 Token expired, attempting to refresh...');
+
+      if (!isRefreshing) {
+        isRefreshing = true;
+        try {
+          const newToken = await refreshAuthToken();
+          if (newToken) {
+            processQueue(null, newToken);
+            // Retry the original request with new token
+            const retryHeaders = { ...headers };
+            retryHeaders['Authorization'] = `Bearer ${newToken}`;
+            const retryConfig = { ...config, headers: retryHeaders };
+            response = await fetch(url, retryConfig);
+
+            // Parse the retry response
+            if (contentType && contentType.includes("application/json")) {
+              data = await response.json();
+            } else {
+              const text = await response.text();
+              data = { message: text || response.statusText };
+            }
+
+            if (response.ok) {
+              return data as T;
+            }
           }
+
+          // Refresh failed - clear tokens and throw
+          processQueue(new Error('Refresh failed'), null);
           clearAuthToken();
+          if (typeof window !== "undefined") {
+            localStorage.removeItem('refreshToken');
+          }
           window.dispatchEvent(new CustomEvent("auth-expired"));
           throw new ApiError(
             "Session expired. Please sign in again.",
             401,
-            "UNAUTHORIZED",
+            "UNAUTHORIZED"
           );
-        }
-        
-        // ✅ Try to refresh the token
-        console.log('🔄 Token expired, attempting to refresh...');
-        
-        if (!isRefreshing) {
-          isRefreshing = true;
-          try {
-            const newToken = await refreshAuthToken();
-            if (newToken) {
-              processQueue(null, newToken);
-              // Retry the original request with new token
-              const retryHeaders = { ...headers };
-              retryHeaders['Authorization'] = `Bearer ${newToken}`;
-              const retryConfig = { ...config, headers: retryHeaders };
-              response = await fetch(url, retryConfig);
-              
-              // Parse the retry response
-              if (contentType && contentType.includes("application/json")) {
-                data = await response.json();
-              } else {
-                const text = await response.text();
-                data = { message: text || response.statusText };
-              }
-              
-              if (response.ok) {
-                return data as T;
-              }
-            }
-            
-            // Refresh failed - clear tokens and throw
-            processQueue(new Error('Refresh failed'), null);
-            clearAuthToken();
-            if (typeof window !== "undefined") {
-              localStorage.removeItem('refreshToken');
-            }
-            window.dispatchEvent(new CustomEvent("auth-expired"));
-            throw new ApiError(
-              "Session expired. Please sign in again.",
-              401,
-              "UNAUTHORIZED"
-            );
-          } catch (refreshError) {
-            processQueue(refreshError, null);
-            clearAuthToken();
-            if (typeof window !== "undefined") {
-              localStorage.removeItem('refreshToken');
-            }
-            window.dispatchEvent(new CustomEvent("auth-expired"));
-            throw new ApiError(
-              "Session expired. Please sign in again.",
-              401,
-              "UNAUTHORIZED"
-            );
-          } finally {
-            isRefreshing = false;
+        } catch (refreshError) {
+          processQueue(refreshError, null);
+          clearAuthToken();
+          if (typeof window !== "undefined") {
+            localStorage.removeItem('refreshToken');
           }
-        } else {
-          // If already refreshing, wait for the new token
-          return new Promise((resolve, reject) => {
-            failedQueue.push({ resolve, reject });
-          }).then(async (newToken: any) => {
-            if (newToken) {
-              const retryHeaders = { ...headers };
-              retryHeaders['Authorization'] = `Bearer ${newToken}`;
-              const retryConfig = { ...config, headers: retryHeaders };
-              const retryResponse = await fetch(url, retryConfig);
-              if (contentType && contentType.includes("application/json")) {
-                const retryData = await retryResponse.json();
-                return retryData as T;
-              } else {
-                const text = await retryResponse.text();
-                return { message: text || retryResponse.statusText } as T;
-              }
-            } else {
-              throw new ApiError(
-                "Session expired. Please sign in again.",
-                401,
-                "UNAUTHORIZED"
-              );
-            }
-          });
+          window.dispatchEvent(new CustomEvent("auth-expired"));
+          throw new ApiError(
+            "Session expired. Please sign in again.",
+            401,
+            "UNAUTHORIZED"
+          );
+        } finally {
+          isRefreshing = false;
         }
+      } else {
+        // If already refreshing, wait for the new token
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then(async (newToken: any) => {
+          if (newToken) {
+            const retryHeaders = { ...headers };
+            retryHeaders['Authorization'] = `Bearer ${newToken}`;
+            const retryConfig = { ...config, headers: retryHeaders };
+            const retryResponse = await fetch(url, retryConfig);
+            if (contentType && contentType.includes("application/json")) {
+              const retryData = await retryResponse.json();
+              return retryData as T;
+            } else {
+              const text = await retryResponse.text();
+              return { message: text || retryResponse.statusText } as T;
+            }
+          } else {
+            throw new ApiError(
+              "Session expired. Please sign in again.",
+              401,
+              "UNAUTHORIZED"
+            );
+          }
+        });
       }
+    }
     if (response.status === 403) {
       throw new ApiError(
         "You do not have permission to perform this action.",
@@ -861,9 +857,9 @@ export function clearAuthToken() {
     localStorage.removeItem("travelToken");
     localStorage.removeItem("authToken");
     localStorage.removeItem("travelUser");
-    localStorage.removeItem("refreshToken"); 
+    localStorage.removeItem("refreshToken");
     sessionStorage.removeItem("authToken");
-    window.dispatchEvent(new CustomEvent("auth-token-cleared"));
+    //window.dispatchEvent(new CustomEvent("auth-token-cleared"));
   }
 }
 
@@ -890,13 +886,13 @@ export function getStoredUser(): User | null {
   }
 }
 
-// City code helper function
+
 export const getCityCode = (cityName: string): string => {
   const cityMap: Record<string, string> = {
-    // Nigeria - Only Lagos for now (Abuja has no hotels in API)
+    
     lagos: "LOS",
 
-    // International destinations with available hotels
+
     london: "LHR",
     "new york": "NYC",
     paris: "PAR",
@@ -923,40 +919,35 @@ export const getCityCode = (cityName: string): string => {
 
   const normalizedCity = cityName.toLowerCase().trim();
 
-  // Try exact match first
+
   if (cityMap[normalizedCity]) {
     return cityMap[normalizedCity];
   }
 
-  // Try partial match
+
   for (const [key, code] of Object.entries(cityMap)) {
     if (normalizedCity.includes(key) || key.includes(normalizedCity)) {
       return code;
     }
   }
 
-  // If no match, try to extract IATA code from parentheses (e.g., "Lagos (LOS)")
+
   const match = cityName.match(/\(([A-Z]{3})\)/);
   if (match) {
     return match[1];
   }
 
-  // Return first 3 uppercase letters as fallback
+
   return cityName.slice(0, 3).toUpperCase();
 };
 
-/**
- * Get the correct API prefix for hotel-related endpoints.
- * Numeric IDs (Hotelbeds) use singular /api/v1/booking/
- * Other IDs (Amadeus/Alpha) use plural /api/v1/bookings/
- */
+
 const getHotelEndpointPrefix = (hotelId?: string): string => {
-  // Consistently use plural /api/v1/bookings for all hotel content endpoints
-  // (details, photos, reviews, validate, book)
+  
   return "/api/v1/bookings";
 };
 
-// Hotel Search API - Amadeus Endpoint (v3.5.0 Enterprise)
+
 export const searchHotelsAmadeus = async (
   searchParams: HotelSearchParams,
 ): Promise<HotelSearchResponse> => {
@@ -974,7 +965,6 @@ export const searchHotelsAmadeus = async (
       limit: searchParams.limit || 20,
     };
 
-    // ✅ Support both hotelIds and cityCode
     if (searchParams.hotelIds && searchParams.hotelIds.length > 0) {
       requestBody.hotelIds = searchParams.hotelIds;
     } else if (searchParams.cityCode) {
@@ -1009,32 +999,25 @@ export const searchHotelsAmadeus = async (
   }
 };
 
-// --- Hotelbeds (HBX) API Functions ---
 
-/**
- * Get Hotelbeds high-resolution Giata image URL
- */
 export const getHBXImageUrl = (path: string | null | undefined): string | null => {
   if (!path) return null;
   if (path.startsWith("http")) return path;
   return `https://photos.hotelbeds.com/giata/${path}`;
 };
 
-/**
- * Hotel Search API - Hotelbeds Endpoint
- */
+
 export const searchHotelsHBX = async (
   params: import("./types").HBXSearchRequest,
 ): Promise<any> => {
   try {
-    // Optimization: Map common airport codes to city codes for Hotelbeds
-    // This helps avoid empty results when users search with airport codes like LHR
+
     const airportToCityMap: Record<string, string> = {
-      'LHR': 'LON', // London
+      'LHR': 'LON',
       'LGW': 'LON',
-      'JFK': 'NYC', // New York
+      'JFK': 'NYC', 
       'EWR': 'NYC',
-      'CDG': 'PAR', // Paris
+      'CDG': 'PAR', 
       'ORY': 'PAR',
       'DXB': 'DXB',
       'AUH': 'AUH',
@@ -1062,9 +1045,7 @@ export const searchHotelsHBX = async (
   }
 };
 
-/**
- * Hotel Quote API - Hotelbeds Endpoint (Rate Verification)
- */
+
 export const quoteHotelHBX = async (
   params: import("./types").HBXQuoteRequest,
 ): Promise<import("./types").HBXQuoteResponse> => {
@@ -1084,9 +1065,7 @@ export const quoteHotelHBX = async (
   }
 };
 
-/**
- * Hotel Book API - Hotelbeds Endpoint
- */
+
 export const bookHotelHBX = async (
   params: import("./types").HBXBookRequest,
 ): Promise<import("./types").HBXBookingResponse> => {
@@ -1106,8 +1085,7 @@ export const bookHotelHBX = async (
   }
 };
 
-// Hotel search with pagination and filtering
-// Hotel search with pagination and filtering
+
 export async function searchHotelsWithPagination(
   params: HotelSearchParams & {
     minPrice?: number;
@@ -1132,7 +1110,7 @@ export async function searchHotelsWithPagination(
   try {
     console.log("🔍 Starting hotel search with pagination:", params);
 
-    // ✅ FIXED: Use hotelIds instead of cityCode
+  
     const response = await searchHotelsAmadeus({
       hotelIds: params.hotelIds,
       checkInDate: params.checkInDate,
@@ -1157,9 +1135,9 @@ export async function searchHotelsWithPagination(
 
     console.log(`✅ Initial hotel results: ${allHotels.length} hotels`);
 
-    // Rest of the function remains the same...
+   
     if (allHotels.length > 0) {
-      // Filter by price range
+    
       if (params.minPrice !== undefined || params.maxPrice !== undefined) {
         allHotels = allHotels.filter((hotel) => {
           const offerPrice = parseFloat(hotel.offers?.[0]?.price?.total || "0");
@@ -1169,7 +1147,7 @@ export async function searchHotelsWithPagination(
         });
       }
 
-      // Filter by rating
+  
       if (
         params.ratings &&
         params.ratings.length > 0 &&
@@ -1181,7 +1159,7 @@ export async function searchHotelsWithPagination(
         });
       }
 
-      // Sort results
+  
       if (params.sortBy) {
         allHotels.sort((a, b) => {
           let aValue: any, bValue: any;
@@ -1211,7 +1189,7 @@ export async function searchHotelsWithPagination(
         });
       }
 
-      // Apply pagination
+
       const page = params.page || 1;
       const limit = params.limit || 10;
       const startIndex = (page - 1) * limit;
@@ -1253,7 +1231,7 @@ export async function searchHotelsWithPagination(
   }
 }
 
-// Transform hotel API data to SearchResult format for your frontend
+
 export function transformHotelToSearchResult(
   hotel: HotelOffer,
   location: string,
@@ -1279,9 +1257,9 @@ export function transformHotelToSearchResult(
       amenities: ["Free WiFi", "Air Conditioning", "TV", "Private Bathroom"],
       features: ["Standard Room", "2 guests", "1 night"],
       type: "hotels" as const,
-      // ✅ ADD THESE LINES
-      offers: [],  // ← ADD THIS
-      hotel: hotelInfo,  // ← ADD THIS
+   
+      offers: [],  
+      hotel: hotelInfo,  
       realData: {
         hotelId: hotelInfo.hotelId,
         hotelName: hotelInfo.name,
@@ -1338,7 +1316,7 @@ export function transformHotelToSearchResult(
   const starRating = determineStarRating(rating, hotelInfo.chainCode);
 
   const primaryImageUrl = (hotel as any).primaryImageUrl ?? null;
-  
+
   return {
     id: hotelInfo.hotelId || `hotel-${index}`,
     provider: getHotelProviderName(hotelInfo.chainCode),
@@ -1358,12 +1336,12 @@ export function transformHotelToSearchResult(
       offer.rateCode ? offer.rateCode.replace("_", " ") : (offer.boardName || "Best Rate"),
     ],
     type: "hotels" as const,
-    
+
     // ✅ ADD THESE 3 LINES - THIS IS THE FIX!
     offers: hotel.offers,  // ← Preserve all offers
     hotel: hotelInfo,      // ← Preserve hotel info
     originalOffer: offer,  // ← Preserve the selected offer
-    
+
     original_amount: (hotel as any).original_price,
     final_amount: (hotel as any).final_price,
     original_price: (hotel as any).original_price,
@@ -1405,7 +1383,7 @@ export function transformHotelToSearchResult(
   };
 }
 
-// Helper function to extract amenities from description
+
 function extractAmenitiesFromDescription(
   description: string,
   chainCode?: string,
@@ -1413,7 +1391,7 @@ function extractAmenitiesFromDescription(
   const amenities: string[] = [];
   const desc = description.toLowerCase();
 
-  // Check for common amenities in description
+
   if (desc.includes("wifi") || desc.includes("internet")) {
     amenities.push("Free WiFi");
   }
@@ -1445,22 +1423,22 @@ function extractAmenitiesFromDescription(
     amenities.push("Business Center");
   }
 
-  // Add chain-specific amenities
+
   if (chainCode) {
     switch (chainCode) {
-      case "HI": // Holiday Inn
+      case "HI": 
         amenities.push("Kids Stay Free", "Family Rooms");
         break;
-      case "MC": // Marriott
+      case "MC": 
         amenities.push("Luxury Bedding", "Premium Toiletries");
         break;
-      case "HS": // Hilton
+      case "HS": 
         amenities.push("Executive Lounge Access", "Digital Key");
         break;
     }
   }
 
-  // Add default amenities if not enough
+
   if (amenities.length < 4) {
     amenities.push(
       "Air Conditioning",
@@ -1473,7 +1451,7 @@ function extractAmenitiesFromDescription(
     );
   }
 
-  return Array.from(new Set(amenities)); // Remove duplicates
+  return Array.from(new Set(amenities)); 
 }
 
 export async function publicRequest<T = any>(
@@ -1519,23 +1497,23 @@ export async function publicRequest<T = any>(
   return data as T;
 }
 
-// Helper function to calculate hotel rating
+
 function calculateHotelRating(chainCode?: string, price?: number): number {
   let baseRating = 4.0;
 
-  // Adjust based on chain
+
   if (chainCode) {
     switch (chainCode) {
-      case "MC": // Marriott
+      case "MC":
         baseRating = 4.5;
         break;
-      case "HI": // Holiday Inn
+      case "HI": 
         baseRating = 4.2;
         break;
-      case "HS": // Hilton
+      case "HS": 
         baseRating = 4.4;
         break;
-      case "AC": // Accor
+      case "AC":
         baseRating = 4.3;
         break;
       default:
@@ -1543,35 +1521,35 @@ function calculateHotelRating(chainCode?: string, price?: number): number {
     }
   }
 
-  // Adjust based on price (higher price = higher expected rating)
+
   if (price) {
     if (price > 500) baseRating += 0.3;
     else if (price > 200) baseRating += 0.1;
     else if (price < 100) baseRating -= 0.2;
   }
 
-  // Add some random variation
+
   const variation = Math.random() * 0.4 - 0.2; // -0.2 to +0.2
   const finalRating = Math.min(5.0, Math.max(3.0, baseRating + variation));
 
   return parseFloat(finalRating.toFixed(1));
 }
 
-// Helper function to determine star rating
+
 function determineStarRating(rating: number, chainCode?: string): string {
   if (rating >= 4.5) return "5-star";
   if (rating >= 4.0) return "4-star";
   if (rating >= 3.5) return "3-star";
 
-  // Chain-specific adjustments
+
   if (chainCode === "MC" || chainCode === "HS") {
-    return "4-star"; // Marriott and Hilton are generally 4-star+
+    return "4-star"; 
   }
 
   return "Standard";
 }
 
-// Helper function to get hotel provider name
+
 function getHotelProviderName(chainCode?: string): string {
   const providers: Record<string, string> = {
     HI: "Holiday Inn",
@@ -1591,7 +1569,7 @@ function getHotelProviderName(chainCode?: string): string {
     : "Premium Hotels";
 }
 
-// Helper function to get hotel image
+
 function getHotelImage(chainCode?: string, index: number = 0): string {
   const hotelImages = [
     "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400",
@@ -1604,7 +1582,7 @@ function getHotelImage(chainCode?: string, index: number = 0): string {
     "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=400",
   ];
 
-  // Chain-specific images
+
   if (chainCode) {
     const chainImages: Record<string, string> = {
       MC: "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=400", // Marriott
@@ -1620,7 +1598,7 @@ function getHotelImage(chainCode?: string, index: number = 0): string {
   return hotelImages[index % hotelImages.length];
 }
 
-// Format hotel search parameters
+
 export async function formatHotelSearchParams(
   location: string,
   checkInDate?: string,
@@ -1628,7 +1606,7 @@ export async function formatHotelSearchParams(
   guests?: number,
   rooms?: number,
 ): Promise<HotelSearchParams> {
-  // Set default dates if not provided
+  
   const today = new Date();
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);
@@ -1644,7 +1622,7 @@ export async function formatHotelSearchParams(
     })();
 
   return {
-    hotelIds: [],  // Empty array - will use cityCode from location
+    hotelIds: [],  
     checkInDate: checkIn,
     checkOutDate: checkOut,
     adults: Math.max(1, guests || 2),
@@ -1654,7 +1632,7 @@ export async function formatHotelSearchParams(
   };
 }
 
-// Search hotels and transform results for frontend
+
 export async function searchAndTransformHotels(
   searchParams: any,
   location: string,
@@ -1716,7 +1694,7 @@ export async function searchAndTransformHotels(
         isRealData: true,
       };
     } else {
-      // Amadeus flow - Supports both cityCode and hotelIds
+
       const requestBody: any = {
         checkInDate: searchParams.checkInDate,
         checkOutDate: searchParams.checkOutDate,
@@ -1726,8 +1704,8 @@ export async function searchAndTransformHotels(
         page: searchParams.page || 1,
         limit: searchParams.limit || 20,
       };
-    
-      // ✅ Support both search methods
+
+
       if (searchParams.cityCode) {
         requestBody.cityCode = searchParams.cityCode;
       } else if (searchParams.hotelIds && searchParams.hotelIds.length > 0) {
@@ -1741,7 +1719,7 @@ export async function searchAndTransformHotels(
           isRealData: false,
         };
       }
-    
+
       const response = await publicRequest<HotelSearchResponse>(
         "/api/v1/bookings/search/hotels/amadeus",
         {
@@ -1749,7 +1727,7 @@ export async function searchAndTransformHotels(
           body: JSON.stringify(requestBody),
         },
       );
-    
+
       if (!response.data?.data || response.data.data.length === 0) {
         return {
           success: false,
@@ -1759,7 +1737,7 @@ export async function searchAndTransformHotels(
           isRealData: false,
         };
       }
-    
+
       const hotels = response.data.data;
       const transformedResults = hotels.map((hotel, index) =>
         transformHotelToSearchResult(
@@ -1770,7 +1748,7 @@ export async function searchAndTransformHotels(
           index,
         ),
       );
-    
+
       return {
         success: true,
         results: transformedResults,
@@ -1782,7 +1760,7 @@ export async function searchAndTransformHotels(
   } catch (error: any) {
     console.error("❌ Search and transform hotels failed:", error);
 
-    // Special handling for "no hotels found" error
+
     if (
       error.message?.includes("Nothing found") ||
       error.message?.includes("No hotels found") ||
@@ -1808,29 +1786,29 @@ export async function searchAndTransformHotels(
   }
 }
 
-// Validate hotel booking data
+
 export function validateHotelBookingData(bookingData: HotelBookingRequest): {
   isValid: boolean;
   errors: string[];
 } {
   const errors: string[] = [];
 
-  // Validate hotelOfferId
+
   if (!bookingData.hotelOfferId || bookingData.hotelOfferId.trim() === "") {
     errors.push("Hotel offer ID is required");
   }
 
-  // Validate price
+  
   if (bookingData.offerPrice <= 0) {
     errors.push("Offer price must be greater than 0");
   }
 
-  // Validate currency
+
   if (!bookingData.currency || bookingData.currency.trim() === "") {
     errors.push("Currency is required");
   }
 
-  // Validate guests
+
   if (!bookingData.guests || bookingData.guests.length === 0) {
     errors.push("At least one guest is required");
   } else {
@@ -2241,12 +2219,12 @@ export const searchCarRentals = async (
     // ✅ Calculate duration from pickup and dropoff times (if both provided)
     const pickupDateTime = searchParams.pickupDateTime || searchParams.startDateTime;
     const dropoffDateTime = searchParams.dropoffDateTime || searchParams.endDateTime;
-    
+
     if (pickupDateTime && dropoffDateTime) {
       const pickup = new Date(pickupDateTime);
       const dropoff = new Date(dropoffDateTime);
       const diffMs = dropoff.getTime() - pickup.getTime();
-      
+
       if (diffMs > 0) {
         const hours = Math.floor(diffMs / (1000 * 60 * 60));
         const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
@@ -2602,11 +2580,11 @@ export function transformCarRentalToSearchResult(
     price: `${priceSymbol}${Math.round(pricePerDay).toLocaleString()}/day`,
     totalPrice: `${priceSymbol}${Math.round(finalPrice).toLocaleString()} total`,
     rating: parseFloat(rating.toFixed(1)),
-    
+
     // ✅ Passes the real image URL to the UI (or uses fallback)
     image: imageUrl || getCarImage(carInfo.vehicle?.code, carInfo.vehicle?.category, index),
     providerLogo: carInfo.serviceProvider?.logoUrl || carInfo.partnerInfo?.serviceProvider?.logoUrl,
-    
+
     amenities: amenities.slice(0, 6),
     features: [
       `${seats} seats`,
@@ -3843,7 +3821,7 @@ export const authApi = {
       return response;
     });
   },
-  
+
   facebookLogin: (accessToken: string) => {
     return request<any>("/api/v1/auth/facebook", {
       method: "POST",
@@ -4227,12 +4205,12 @@ export const bookingApi = {
   getSeatMap: (bookingId: string, email?: string) => {
     const params = new URLSearchParams();
     if (email) params.set('email', email);
-    
+
     const queryString = params.toString();
-    const url = queryString 
+    const url = queryString
       ? `/api/v1/bookings/wakanow/seats/${bookingId}?${queryString}`
       : `/api/v1/bookings/wakanow/seats/${bookingId}`;
-    
+
     return request<any>(url, {
       method: "GET",
     });
@@ -4561,7 +4539,7 @@ export const hotelApi = {
   // ✅ NEW: Get hotel content only (description, amenities, policies)
   getHotelContent: async (hotelId: string, view?: 'LIGHT' | 'FULL'): Promise<any> => {
     try {
-      const url = view 
+      const url = view
         ? `/api/v1/bookings/hotels/${hotelId}/content?view=${view}`
         : `/api/v1/bookings/hotels/${hotelId}/content`;
       const response = await publicRequest<any>(url, { method: "GET" });
@@ -5328,7 +5306,7 @@ export async function createAmadeusHotelBooking(
     console.log("📦 Amadeus hotel booking payload:", JSON.stringify(bookingPayload, null, 2));
 
     // Use the correct endpoint based on authentication status
-    const endpoint = isGuest 
+    const endpoint = isGuest
       ? "/api/v1/bookings/hotels/amadeus/guest"
       : "/api/v1/bookings/hotels/amadeus";
 
@@ -5350,11 +5328,11 @@ export async function createAmadeusHotelBooking(
     return response;
   } catch (error: any) {
     console.error("❌ Amadeus hotel booking failed:", error);
-    
+
     if (error instanceof ApiError) {
       throw error;
     }
-    
+
     throw new ApiError(
       error.message || "Failed to create hotel booking",
       error.status || 500,
@@ -5588,10 +5566,25 @@ export class SessionManager {
   }
 }
 
-// Auth event listeners
 if (typeof window !== "undefined") {
+  let _authExpiredHandled = false;
+
   window.addEventListener("auth-expired", () => {
+    if (_authExpiredHandled) {
+      console.warn("[auth-expired] Already handled, ignoring duplicate");
+      return;
+    }
+    _authExpiredHandled = true;
+
     clearAuthToken();
+
+    if (!window.location.pathname.startsWith("/login")) {
+      window.location.href = "/login";
+    }
+  });
+
+  window.addEventListener("auth-token-set", () => {
+    _authExpiredHandled = false;
   });
 
   // Auto-refresh session every 5 minutes
@@ -5607,10 +5600,11 @@ if (typeof window !== "undefined") {
           }
         },
         5 * 60 * 1000,
-      ); // 5 minutes
+      );
     }
   });
 }
+
 
 // API Configuration
 export const apiConfig = {
