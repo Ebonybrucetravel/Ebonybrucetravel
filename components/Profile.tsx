@@ -64,9 +64,10 @@ interface SavedItem {
   image: string;
   type: string;
   notes?: string;
+  cityCode?: string;   
+  hotelId?: string;    
 }
 
-// Enhanced loyalty interfaces
 interface LoyaltyAccount {
   id: string;
   points: number;
@@ -1270,6 +1271,36 @@ const Profile: React.FC<ProfileProps> = ({
       }, 500);
     }
   };
+  const handleViewSavedItem = (item: SavedItem) => {
+    // If we have a city code, run a hotel search directly
+    if (item.cityCode || item.type === 'Hotels') {
+      const today = new Date();
+      const checkIn = new Date(today);
+      checkIn.setDate(today.getDate() + 7);
+      const checkOut = new Date(checkIn);
+      checkOut.setDate(checkIn.getDate() + 3);
+  
+      const checkInDate = checkIn.toISOString().split('T')[0];
+      const checkOutDate = checkOut.toISOString().split('T')[0];
+  
+      const params = new URLSearchParams({
+        type: 'hotels',
+        location: item.location || item.name,
+        cityCode: item.cityCode || '',
+        checkIn: checkInDate,
+        checkOut: checkOutDate,
+        guests: '2',
+        rooms: '1',
+        currency: currentCurr?.code || 'NGN',
+      });
+  
+      router.push(`/search?${params.toString()}`);
+      return;
+    }
+  
+  
+    router.push('/search');
+  };
 
   const handleRemoveSaved = async (id: string) => {
     const previous = savedItems;
@@ -1364,36 +1395,65 @@ const Profile: React.FC<ProfileProps> = ({
   
   const mapSavedItems = (data: any): SavedItem[] => {
     const items = Array.isArray(data) ? data : (data?.data || []);
+  
+    const CURRENCY_SYMBOLS: Record<string, string> = {
+      NGN: '₦', GBP: '£', USD: '$', EUR: '€',
+      CAD: 'C$', AUD: 'A$', JPY: '¥', CNY: '¥', ZAR: 'R', KES: 'KSh',
+    };
+  
     return items.map((s: any) => {
+      const rawTitle = typeof s.title === 'string' ? s.title : '';
+      const parts = rawTitle.split('|||');
+  
+      // Unpack: [name, image, code, location, hotelId]
+      const name = parts[0] || s.itemId || 'Saved item';
+      const packedImage = parts[1] || '';
+      const packedCode = parts[2] || '';
+      const packedLocation = parts[3] || '';
+      const packedHotelId = parts[4] || '';
+  
       const metadata = s.metadata || s.itemDetails || {};
-      const title = s.title || metadata.name || metadata.title || s.itemId || 'Saved item';
-      const location = metadata.location || 
-        [metadata.city, metadata.country].filter(Boolean).join(', ') || 
+  
+
+      const image =
+        metadata.image ||
+        s.image ||
+        metadata.imageUrl ||
+        packedImage ||    
+        '';                
+  
+      const location =
+        metadata.location ||
+        [metadata.city, metadata.country].filter(Boolean).join(', ') ||
+        packedLocation ||
+        packedCode ||
         'Saved for later';
-      
+  
       const priceValue = metadata.pricePerNight ?? metadata.price ?? s.price ?? 0;
-      const price = typeof priceValue === 'number' 
-        ? `$${priceValue.toFixed(2)}` 
-        : (priceValue || '');
-      
-      const image = metadata.image || s.image || metadata.imageUrl || 
-        'https://images.unsplash.com/photo-1526779259212-939e64788e3c?auto=format&fit=crop&q=80&w=800';
-      
+      const currencyCode = (s.currency || 'NGN').toUpperCase();
+      const symbol = CURRENCY_SYMBOLS[currencyCode] || currencyCode + ' ';
+      const price = priceValue
+        ? `${symbol}${Number(priceValue).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+        : '';
+  
       const type = s.productType?.includes('HOTEL') ? 'Hotels' : 
                    s.productType?.includes('CAR') ? 'Car Rentals' : 
                    'Flights';
   
-      return {
-        id: s.id,
-        name: title,
-        location,
-        price,
-        image,
-        type,
-        notes: s.notes,
-      };
+                   return {
+                    id: s.id,
+                    name,
+                    location,
+                    price,
+                    image,
+                    type,
+                    notes: s.notes,
+                    cityCode: packedCode || '',      
+                    hotelId: packedHotelId || '',    
+                  };
     });
   };
+  
 
   const handleUpdatePassword = async () => {
     if (!passwords.current) {
@@ -1528,21 +1588,21 @@ const Profile: React.FC<ProfileProps> = ({
       
       setIsManageModalOpen(false);
       
-      // ✅ Pass the booking directly to cancellation
+
       setCancellationData(selectedBooking);
       setShowCancelPage(true);
     }
   };
 
-  // ✅ UPDATED: Handle back from cancel page
+
   const handleBackFromCancel = () => {
     setShowCancelPage(false);
     setCancellationData(null);
   };
 
-  // ✅ UPDATED: Handle successful cancellation
+
   const handleCancelSuccess = () => {
-    // Refresh bookings list
+
     setHasLoadedBookings(false);
     setBookings([]);
     handleBackFromCancel();
@@ -1590,14 +1650,14 @@ const Profile: React.FC<ProfileProps> = ({
   };
 
   const filteredBookings = bookings.filter(b => {
-  // First filter by type
+ 
   if (bookingFilter !== 'All') {
     const type = b.productType?.includes('HOTEL') ? 'Hotel' : 
                  b.productType?.includes('CAR') ? 'Car' : 'Flight';
     if (type !== bookingFilter) return false;
   }
   
-  // Then filter by search query
+
   if (searchQuery.trim()) {
     const query = searchQuery.toLowerCase().trim();
     const searchableFields = [
@@ -1950,12 +2010,48 @@ const renderBookingCard = (booking: Booking) => {
 
     return (
       <div key={item.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow relative">
-        <div className="w-full md:w-32 h-32 rounded-2xl overflow-hidden shrink-0 relative">
-          <img src={item.image} className="w-full h-full object-cover transition duration-500 group-hover:scale-110" alt={item.name} />
-          <button onClick={() => handleRemoveSaved(item.id)} className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-red-500 shadow-md hover:bg-red-500 hover:text-white transition transform hover:scale-110 active:scale-95 z-10" title="Remove">
-            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-          </button>
-        </div>
+       <div className="w-full md:w-32 h-32 rounded-2xl overflow-hidden shrink-0 relative bg-gray-100">
+  {item.image ? (
+    <img
+      src={item.image}
+      className="w-full h-full object-cover transition duration-500 group-hover:scale-110"
+      alt={item.name}
+      onError={(e) => {
+        // Real URL failed — hide so the grey placeholder shows through
+        (e.target as HTMLImageElement).style.display = 'none';
+      }}
+    />
+  ) : null}
+
+  {/* Grey building placeholder — no fake stock photos */}
+  {!item.image && (
+    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+      <svg
+        className="w-10 h-10 text-gray-400"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.2}
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M9 11h.01M15 11h.01M9 15h.01M15 15h.01"
+        />
+      </svg>
+    </div>
+  )}
+
+  <button
+    onClick={() => handleRemoveSaved(item.id)}
+    className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-red-500 shadow-md hover:bg-red-500 hover:text-white transition transform hover:scale-110 active:scale-95 z-10"
+    title="Remove"
+  >
+    <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+    </svg>
+  </button>
+</div>
         <div className="flex-1 text-center md:text-left">
           <h4 className="text-lg font-black text-gray-900 tracking-tight">{item.name}</h4>
           <p className="text-[11px] font-bold text-gray-400">{item.location}</p>
@@ -2006,11 +2102,11 @@ const renderBookingCard = (booking: Booking) => {
               {item.notes ? 'Edit Notes' : 'Add Notes'}
             </button>
             <button 
-              onClick={() => onBookItem(formattedItem)} 
-              className="text-[10px] font-black text-[#33a8da] uppercase tracking-widest hover:underline"
-            >
-              View Details
-            </button>
+  onClick={() => handleViewSavedItem(item)} 
+  className="text-[10px] font-black text-[#33a8da] uppercase tracking-widest hover:underline"
+>
+  View Details
+</button>
           </div>
         </div>
       </div>

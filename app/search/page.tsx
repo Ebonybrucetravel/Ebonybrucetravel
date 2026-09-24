@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams  } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
 import SearchResults from '@/components/SearchResults';
+
 
 export default function SearchPage() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function SearchPage() {
     search,
   } = useSearch();
 
-  // Debug - log search results when they arrive
+ 
   useEffect(() => {
     console.log('🔍 Search page - search type:', searchParams?.type);
     console.log('🔍 Search page - results count:', searchResults?.length);
@@ -35,6 +36,56 @@ export default function SearchPage() {
       });
     }
   }, [searchResults, searchParams]);
+
+
+const searchParamsFromUrl = useSearchParams();
+
+useEffect(() => {
+
+  if (isSearching || (searchResults && searchResults.length > 0)) return;
+
+  const type = searchParamsFromUrl.get('type');
+  if (!type) return;
+
+  const runFromUrl = async () => {
+    try {
+      if (type === 'hotels') {
+        const cityCode = searchParamsFromUrl.get('cityCode') || '';
+        const location = searchParamsFromUrl.get('location') || '';
+        const checkInDate = searchParamsFromUrl.get('checkIn') || searchParamsFromUrl.get('checkInDate') || '';
+        const checkOutDate = searchParamsFromUrl.get('checkOut') || searchParamsFromUrl.get('checkOutDate') || '';
+        const guests = Number(searchParamsFromUrl.get('guests') || '2');
+        const rooms = Number(searchParamsFromUrl.get('rooms') || '1');
+        const currency = searchParamsFromUrl.get('currency') || 'NGN';
+
+        if (!cityCode && !location) return;
+
+        console.log('🌍 Auto-searching hotels from URL:', {
+          cityCode, location, checkInDate, checkOutDate, guests, rooms,
+        });
+
+        await search({
+          type: 'hotels',
+          location,
+          cityCode,
+          checkInDate,
+          checkOutDate,
+          travellers: { adults: guests, children: 0 },
+          rooms,
+          currency,
+        } as any);
+        return;
+      }
+
+    
+    } catch (err) {
+      console.error('Auto-search from URL failed:', err);
+    }
+  };
+
+  runFromUrl();
+
+}, [searchParamsFromUrl]);
 
   const handleSelect = (item: any) => {
     console.log('📦 ITEM SELECTED IN SEARCH PAGE:', {

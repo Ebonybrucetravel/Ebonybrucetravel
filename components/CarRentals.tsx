@@ -280,7 +280,7 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
   }
 
   return (
-    <section className="px-4 md:px-8 lg:px-16 py-12 -mb-4">
+    <section className="px-4 md:px-8 lg:px-16 pt-6 pb-12 -mb-4">
       <div className="flex justify-between items-end mb-6 md:mb-8">
         <div>
           <h2 className="text-xl md:text-2xl font-bold text-gray-900">

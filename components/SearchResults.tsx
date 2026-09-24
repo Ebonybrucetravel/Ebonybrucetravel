@@ -8,6 +8,7 @@ import CompactSearchBox from "./CompactSearchBox";
 import { useRouter } from "next/navigation";
 import { selectWakanowFlight } from "@/lib/wakanow-api";
 import toast from "react-hot-toast";
+import api from "@/lib/api";
 
 
 interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
@@ -441,7 +442,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const { currency, formatPrice: formatPriceWithCurrency, isLoadingRates } = useLanguage();
   const rawSearchType = (searchParams?.type || "flights").toLowerCase();
   const searchType = rawSearchType === 'cars' ? 'car-rentals' : rawSearchType as "flights" | "hotels" | "car-rentals";
-
+  const savedItemIdMapRef = React.useRef<Map<string, string>>(new Map());
   const compactTab = searchType === 'car-rentals' ? 'cars' : searchType;
   const [isSearchBoxLoading, setIsSearchBoxLoading] = useState(false);
   const [selectedStopFilter, setSelectedStopFilter] = useState<string>("all");
@@ -507,6 +508,50 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       compactTab,
     });
   }, [results, searchParams, searchType]);
+
+  useEffect(() => {
+    // Load any hotels the user has already saved
+    const loadSaved = async () => {
+      try {
+        const response = await api.userApi.getSavedItems('HOTEL');
+        const items: any[] =
+  Array.isArray(response) ? response
+  : Array.isArray((response as any)?.data) ? (response as any).data
+  : Array.isArray((response as any)?.data?.items) ? (response as any).data.items
+  : Array.isArray((response as any)?.items) ? (response as any).items
+  : Array.isArray((response as any)?.savedItems) ? (response as any).savedItems
+  : Array.isArray((response as any)?.results) ? (response as any).results
+  : [];
+  
+        const ids = new Set<string>();
+        const map = new Map<string, string>();
+  
+        for (const s of items) {
+          let rawTitle = typeof s.title === 'string' ? s.title : '';
+
+          try {
+            rawTitle = decodeURIComponent(rawTitle);
+          } catch {
+           
+          }
+          const parts = rawTitle.split('|||');
+         
+          const hotelId = parts[4] || s.metadata?.hotelId || s.hotelId || s.itemId;
+          const savedId = s.id;
+          if (hotelId && savedId) {
+            ids.add(hotelId);
+            map.set(hotelId, savedId);
+          }
+        }
+  
+        setSavedItems(ids);
+        savedItemIdMapRef.current = map;
+      } catch (err) {
+        console.warn('Could not load saved hotels:', err);
+      }
+    };
+    loadSaved();
+  }, []);
 
   const handleNewSearch = (searchData: any) => {
     console.log('🔄 New search from compact box:', searchData);
@@ -2485,6 +2530,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     
     // ✅ Get hotel ID from various possible locations
     const hotelId = item.hotelId || item.hotel?.hotelId || item.id;
+    const isSaved = savedItems.has(hotelId);
     const hotelName = item.hotel?.name || item.title || 'Hotel';
     const primaryImage = item.hotel?.primaryImage || item.image || null;
   
@@ -2642,20 +2688,81 @@ const SearchResults: React.FC<SearchResultsProps> = ({
               className="absolute inset-0 w-full h-full overflow-hidden"
             />
             <button
-              onClick={(e) => {
+              onClick={async (e) => {
                 e.stopPropagation();
-                setSavedItems(p => {
-                  const n = new Set(p);
-                  n.has(item.id) ? n.delete(item.id) : n.add(item.id);
-                  return n;
-                });
+              
+                const hotelId = item.hotelId || item.hotel?.hotelId || item.id;
+                const hotelName = item.hotel?.name || item.title || 'Hotel';
+                const primaryImage = item.hotel?.primaryImage || item.image || '';
+                const cityCode = item.hotel?.cityCode || item.cityCode || searchParams?.destination || '';
+                const location = item.subtitle || item.hotel?.address?.cityName || item.hotel?.address?.countryCode || cityCode;
+                const isCurrentlySaved = savedItems.has(hotelId);
+                const newSet = new Set(savedItems);
+              
+                if (isCurrentlySaved) {
+                  newSet.delete(hotelId);
+                } else {
+                  newSet.add(hotelId);
+                }
+                setSavedItems(newSet);
+              
+                try {
+                  if (isCurrentlySaved) {
+                    const savedId = savedItemIdMapRef.current.get(hotelId);
+                    if (savedId) {
+                      await api.userApi.removeSavedItem(savedId);
+                      savedItemIdMapRef.current.delete(hotelId);
+                    }
+                  } else {
+                    // ✅ Pack name + image + code + location + hotelId into title
+                    const packedTitle = [
+                      hotelName || 'Hotel',
+                      primaryImage || '',
+                      cityCode || '',
+                      location || '',
+                      hotelId || '',
+                    ].join('|||');
+              
+                    const response: any = await api.userApi.saveItem({
+                      productType: 'HOTEL',
+                      title: packedTitle,
+                      price: item.originalPriceAmount 
+  ?? (typeof item.price === 'number' ? item.price : 0),
+                      currency: item.originalPriceCurrency || item.currency || 'NGN',
+                    });
+              
+                    const newSavedId =
+                      response?.data?.id || response?.id || response?.data?.savedItemId;
+                    if (newSavedId) {
+                      savedItemIdMapRef.current.set(hotelId, newSavedId);
+                    }
+                  }
+                } catch (err) {
+                  console.warn('Could not sync wishlist with server:', err);
+                  setSavedItems(prev => {
+                    const rollback = new Set(prev);
+                    if (isCurrentlySaved) rollback.add(hotelId);
+                    else rollback.delete(hotelId);
+                    return rollback;
+                  });
+                }
               }}
-              className={`absolute top-4 right-4 w-10 h-10 rounded-full z-10 flex items-center justify-center transition backdrop-blur-md ${savedItems.has(item.id) ? "bg-red-500 text-white" : "bg-white/40 text-gray-400 hover:bg-white"}`}
-            >
-              <svg className="w-5 h-5" fill={savedItems.has(item.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" strokeWidth={2} />
-              </svg>
-            </button>
+              className={`absolute top-4 right-4 w-10 h-10 rounded-full z-10 flex items-center justify-center transition backdrop-blur-md ${isSaved ? "bg-red-500 text-white" : "bg-white/40 text-gray-400 hover:bg-white"}`}
+>
+  <svg
+    className="w-5 h-5"
+    fill={isSaved ? "currentColor" : "none"}
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+    strokeWidth={2}
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+    />
+  </svg>
+</button>
           </div>
           <div className="flex-1 p-8">
             <h3 className="text-xl font-black text-gray-900 group-hover:text-[#33a8da] transition">
