@@ -110,6 +110,13 @@ const extractTravelInfo = (message: string): {
   return { from, to, date, city, passengers, checkIn, checkOut };
 };
 
+const stripMarkdown = (text: string): string =>
+  text
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/_(.*?)_/g, '$1');
+
 const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant', content: string }[]>([
     {
@@ -451,7 +458,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] p-4 rounded-2xl text-sm ${m.role === 'user' ? 'text-white rounded-tr-none' : 'bg-white text-gray-700 shadow-sm rounded-tl-none'}`} style={m.role === 'user' ? { backgroundColor: brandBlue } : {}}>
-                <div className="whitespace-pre-wrap">{m.content}</div>
+              <div className="whitespace-pre-wrap">{stripMarkdown(m.content)}</div>
               </div>
             </div>
           ))}
