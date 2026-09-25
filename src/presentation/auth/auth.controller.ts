@@ -85,7 +85,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Facebook login successful' })
   @ApiResponse({ status: 401, description: 'Facebook authentication failed' })
   async facebookAuthCallback(@Req() req: any, @Res() res: Response) {
-    const frontendUrl = process.env.FRONTEND_URL || 'https://ebonybrucetravels.com';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://www.ebonybrucetravels.com';
     try {
       if (!req.user) {
         // Distinguish between "no email" and a general auth failure
@@ -125,7 +125,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Google login successful' })
   @ApiResponse({ status: 401, description: 'Google authentication failed' })
   async googleAuthCallback(@Req() req: any, @Res() res: Response) {
-    const frontendUrl = process.env.FRONTEND_URL || 'https://ebonybrucetravels.com';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://www.ebonybrucetravels.com';
     try {
       if (!req.user) {
         return res.redirect(`${frontendUrl}/auth/callback?error=authentication_failed`);
