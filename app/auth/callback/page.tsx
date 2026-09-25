@@ -10,14 +10,17 @@ export default function AuthCallbackPage() {
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(true);
 
-  // ✅ Guard against React 18 Strict Mode running the effect twice
   const hasRun = useRef(false);
 
   useEffect(() => {
+    // ✅ GUARD FIRST — never run twice, never re-set state on re-render
+    if (hasRun.current) return;
+    hasRun.current = true;
+
     const code = searchParams.get('code');
     const token = searchParams.get('token');
 
-    // ✅ If there's nothing to process, show error immediately (don't hang on spinner)
+    // If there's nothing to process on first mount, show error
     if (!code && !token) {
       console.error('❌ No code and no token in URL');
       setError('No authentication token received');
@@ -25,13 +28,8 @@ export default function AuthCallbackPage() {
       return;
     }
 
-    // ✅ Guard AFTER the "nothing to process" check
-    if (hasRun.current) return;
-    hasRun.current = true;
-
     const handleCallback = async () => {
       try {
-        // Check for error parameters
         const errorParam = searchParams.get('error');
         const errorMessage = searchParams.get('error_message');
 
@@ -116,7 +114,6 @@ export default function AuthCallbackPage() {
           }
         }
 
-        // ✅ Store token AND refresh token
         api.setAuthToken(token, userData ?? undefined, refreshTokenFromExchange);
 
         if (userData) {
@@ -175,7 +172,7 @@ export default function AuthCallbackPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Authentication Failed</h2>
             <p className="text-gray-600 mb-6">{error}</p>
             <button
-              onClick={() => router.push('/')}
+              onClick={() => (window.location.href = '/')}
               className="px-6 py-3 bg-[#33a8da] text-white font-bold rounded-lg hover:bg-[#2c98c7] transition"
             >
               Back to Home
