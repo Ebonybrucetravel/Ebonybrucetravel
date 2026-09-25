@@ -20,9 +20,18 @@ export default function AuthCallbackPage() {
     const code = searchParams.get('code');
     const token = searchParams.get('token');
 
-    // If there's nothing to process on first mount, show error
     if (!code && !token) {
-      console.error('❌ No code and no token in URL');
+    
+      const existingToken =
+        localStorage.getItem('travelToken') || localStorage.getItem('authToken');
+    
+      if (existingToken) {
+        console.log('🔵 No code in URL but user is logged in — redirecting home');
+        window.location.href = '/';
+        return;
+      }
+    
+      console.error('❌ No code in URL and user is not logged in');
       setError('No authentication token received');
       setIsProcessing(false);
       return;
