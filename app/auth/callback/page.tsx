@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 
@@ -10,36 +10,51 @@ export default function AuthCallbackPage() {
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(true);
 
+  // ✅ Guard against React 18 Strict Mode running the effect twice
+  const hasRun = useRef(false);
+
   useEffect(() => {
+    if (hasRun.current) return;
+    hasRun.current = true;
+
     const handleCallback = async () => {
       try {
         // Check for error parameters
         const errorParam = searchParams.get('error');
         const errorMessage = searchParams.get('error_message');
-        
+
         if (errorParam) {
           setError(errorMessage || 'Authentication failed');
           setIsProcessing(false);
           return;
         }
 
-        // Get token, code, and user data from URL params
+        
         const code = searchParams.get('code');
         let token = searchParams.get('token');
         const userDataParam = searchParams.get('user');
-        
-        console.log('Callback params:', { code, token, userDataParam });
-        
-        let userData = null;
 
-        // If we have an OTT code, exchange it for tokens
+        console.log('🔵 Callback params:', { code: code ? code.substring(0, 40) + '...' : null, token: !!token, userDataParam: !!userDataParam });
+
+        let userData: any = null;
+
+     
         if (code && !token) {
-          const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ebony-bruce-production.up.railway.app';
+          const API_BASE =
+            process.env.NEXT_PUBLIC_API_BASE_URL ||
+            process.env.NEXT_PUBLIC_API_URL ||
+            'https://ebony-bruce-production.up.railway.app';
+
+          console.log('🔵 Exchanging code...');
           const exchangeResponse = await fetch(`${API_BASE}/api/v1/auth/ott/exchange`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code })
+            body: JSON.stringify({ code }),
           });
+
+          const rawText = await exchangeResponse.text();
+          console.log('🟢 Exchange status:', exchangeResponse.status);
+          console.log('🟢 Exchange body:', rawText);
 
           if (!exchangeResponse.ok) {
             setError('Authentication token exchange failed. Please try again.');
@@ -47,38 +62,56 @@ export default function AuthCallbackPage() {
             return;
           }
 
-          const exchangeData = await exchangeResponse.json();
-          if (exchangeData.success && exchangeData.data) {
-            token = exchangeData.data.token;
-            userData = exchangeData.data.user;
+          let exchangeData: any;
+          try {
+            exchangeData = JSON.parse(rawText);
+          } catch (e) {
+            console.error('❌ Failed to parse exchange response:', e);
+            setError('Invalid response from server');
+            setIsProcessing(false);
+            return;
+          }
+
+         
+          const payload = exchangeData?.data ?? exchangeData;
+          token = payload?.token ?? payload?.accessToken;
+          userData = payload?.user ?? null;
+
+          console.log('🟢 Extracted token?', !!token, '| Extracted user?', !!userData);
+
+          if (!token) {
+            console.error('❌ Exchange succeeded but no token in payload:', exchangeData);
+            setError('No authentication token received');
+            setIsProcessing(false);
+            return;
           }
         }
-        
+
         if (!token) {
+          console.error('❌ No code and no token in URL');
           setError('No authentication token received');
           setIsProcessing(false);
           return;
         }
 
-        // Parse user data if exists from params
+      
         if (userDataParam && !userData) {
           try {
             userData = JSON.parse(decodeURIComponent(userDataParam));
-            console.log('Parsed user data:', userData);
           } catch (e) {
             console.error('Failed to parse user data:', e);
           }
         }
 
-        // Store the token
+       
         api.setAuthToken(token);
 
-        // If user data exists, store it
+        
         if (userData) {
           localStorage.setItem('travelUser', JSON.stringify(userData));
         }
 
-        // Fetch user profile if we don't have user data
+     
         if (!userData) {
           try {
             const profile = await api.userApi.getProfile();
@@ -89,15 +122,15 @@ export default function AuthCallbackPage() {
           }
         }
 
-        // Check if there's a pending booking to redirect to
+    
         const pendingBookingRef = localStorage.getItem('pendingBookingRef');
-        
-        // Dispatch event for AuthModal
-        window.dispatchEvent(new CustomEvent('auth-success', { 
-          detail: { token, user: userData } 
+
+
+        window.dispatchEvent(new CustomEvent('auth-success', {
+          detail: { token, user: userData },
         }));
 
-        // Redirect based on pending booking
+       
         if (pendingBookingRef) {
           localStorage.removeItem('pendingBookingRef');
           localStorage.removeItem('pendingBookingEmail');
@@ -107,16 +140,17 @@ export default function AuthCallbackPage() {
           sessionStorage.removeItem('authReturnTo');
           router.push(returnTo);
         }
-        
       } catch (err) {
-        console.error('Auth callback error:', err);
+        console.error('❌ Auth callback error:', err);
         setError('Authentication failed');
         setIsProcessing(false);
       }
     };
 
     handleCallback();
-  }, [router, searchParams]);
+
+  }, []);
+ 
 
   if (error) {
     return (

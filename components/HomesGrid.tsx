@@ -607,7 +607,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       } else {
         const packedTitle = [
           hotel.name || 'Hotel',
-          hotel.image || '',           // ← real Amadeus image URL
+          hotel.image || '',          
           hotel.code || '',
           hotel.location || '',
           hotel.id || '',
