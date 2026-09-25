@@ -59,49 +59,24 @@ const AuthModal: React.FC<AuthModalProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [resetPasswordToken, setResetPasswordToken] = useState(resetToken || '');
 
-  // ✅ Listen for auth success events from the callback page
+  
   useEffect(() => {
     const handleAuthSuccess = (event: CustomEvent) => {
-      const { token, user, refreshToken } = event.detail; 
-    
-      
-      console.log('Auth success event received:', { token, user });
-      
-      if (token) {
-        // Set auth token
-        api.setAuthToken(token);
+      const { token, user, refreshToken } = event.detail;
 
-        if (refreshToken) {
-          localStorage.setItem('refreshToken', refreshToken);
-          console.log('✅ Refresh token stored from auth event');
-        }
-        
-        // Store user data if available
-        if (user) {
-          localStorage.setItem('travelUser', JSON.stringify(user));
-        }
-        
-        // Check if there's a pending booking
-        const pendingBookingRef = localStorage.getItem('pendingBookingRef');
-        
-        // Call success callback
-        onLoginSuccess({
-          name: user?.name || user?.email?.split('@')[0] || 'User',
-          email: user?.email || '',
-          token
-        });
-        
-        // Clear pending booking data
-        localStorage.removeItem('pendingBookingRef');
-        localStorage.removeItem('pendingBookingEmail');
-        
-        onClose();
-        
-        // Redirect to booking if pending
-        if (pendingBookingRef) {
-          router.push(`/booking/success?ref=${pendingBookingRef}`);
-        }
-      }
+      console.log('AuthModal received auth-success:', { token: !!token, user: !!user });
+
+      if (!token) return;
+
+      // Notify parent only — do NOT store tokens, do NOT navigate
+      onLoginSuccess({
+        name: user?.name || user?.email?.split('@')[0] || 'User',
+        email: user?.email || '',
+        token,
+        refreshToken,
+      });
+
+      onClose();
     };
 
     window.addEventListener('auth-success', handleAuthSuccess as EventListener);
@@ -109,8 +84,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
     return () => {
       window.removeEventListener('auth-success', handleAuthSuccess as EventListener);
     };
-  }, [onLoginSuccess, onClose, router]); // Add router to dependencies
-
+  }, [onLoginSuccess, onClose]);
   // ✅ Check for pending booking when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -561,7 +535,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
       // Use Vercel domain for production, localhost for development
       const baseUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
         ? 'http://localhost:3000'
-        : 'https://ebonybrucetravel-a4uy.vercel.app';
+        : 'https://www.ebonybrucetravels.com';
       
       const redirectUri = encodeURIComponent(`${baseUrl}/auth/callback`);
       
