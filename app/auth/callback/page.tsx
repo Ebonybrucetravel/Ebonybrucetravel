@@ -144,11 +144,11 @@ export default function AuthCallbackPage() {
         if (pendingBookingRef) {
           localStorage.removeItem('pendingBookingRef');
           localStorage.removeItem('pendingBookingEmail');
-          router.push(`/booking/success?ref=${pendingBookingRef}`);
+          window.location.href = `/booking/success?ref=${pendingBookingRef}`;
         } else {
           const returnTo = sessionStorage.getItem('authReturnTo') || '/';
           sessionStorage.removeItem('authReturnTo');
-          router.push(returnTo);
+          window.location.href = returnTo;
         }
       } catch (err) {
         console.error('❌ Auth callback error:', err);
