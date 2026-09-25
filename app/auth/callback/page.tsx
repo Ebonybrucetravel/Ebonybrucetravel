@@ -14,6 +14,18 @@ export default function AuthCallbackPage() {
   const hasRun = useRef(false);
 
   useEffect(() => {
+    const code = searchParams.get('code');
+    const token = searchParams.get('token');
+
+    // ✅ If there's nothing to process, show error immediately (don't hang on spinner)
+    if (!code && !token) {
+      console.error('❌ No code and no token in URL');
+      setError('No authentication token received');
+      setIsProcessing(false);
+      return;
+    }
+
+    // ✅ Guard AFTER the "nothing to process" check
     if (hasRun.current) return;
     hasRun.current = true;
 
@@ -29,16 +41,18 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        
-        const code = searchParams.get('code');
         let token = searchParams.get('token');
         const userDataParam = searchParams.get('user');
 
-        console.log('🔵 Callback params:', { code: code ? code.substring(0, 40) + '...' : null, token: !!token, userDataParam: !!userDataParam });
+        console.log('🔵 Callback params:', {
+          code: code ? code.substring(0, 40) + '...' : null,
+          token: !!token,
+          userDataParam: !!userDataParam,
+        });
 
         let userData: any = null;
+        let refreshTokenFromExchange: string | undefined;
 
-     
         if (code && !token) {
           const API_BASE =
             process.env.NEXT_PUBLIC_API_BASE_URL ||
@@ -72,10 +86,10 @@ export default function AuthCallbackPage() {
             return;
           }
 
-         
           const payload = exchangeData?.data ?? exchangeData;
           token = payload?.token ?? payload?.accessToken;
           userData = payload?.user ?? null;
+          refreshTokenFromExchange = payload?.refreshToken;
 
           console.log('🟢 Extracted token?', !!token, '| Extracted user?', !!userData);
 
@@ -94,7 +108,6 @@ export default function AuthCallbackPage() {
           return;
         }
 
-      
         if (userDataParam && !userData) {
           try {
             userData = JSON.parse(decodeURIComponent(userDataParam));
@@ -103,15 +116,13 @@ export default function AuthCallbackPage() {
           }
         }
 
-       
-        api.setAuthToken(token);
+        // ✅ Store token AND refresh token
+        api.setAuthToken(token, userData ?? undefined, refreshTokenFromExchange);
 
-        
         if (userData) {
           localStorage.setItem('travelUser', JSON.stringify(userData));
         }
 
-     
         if (!userData) {
           try {
             const profile = await api.userApi.getProfile();
@@ -122,15 +133,14 @@ export default function AuthCallbackPage() {
           }
         }
 
-    
         const pendingBookingRef = localStorage.getItem('pendingBookingRef');
 
+        window.dispatchEvent(
+          new CustomEvent('auth-success', {
+            detail: { token, user: userData },
+          }),
+        );
 
-        window.dispatchEvent(new CustomEvent('auth-success', {
-          detail: { token, user: userData },
-        }));
-
-       
         if (pendingBookingRef) {
           localStorage.removeItem('pendingBookingRef');
           localStorage.removeItem('pendingBookingEmail');
@@ -149,8 +159,8 @@ export default function AuthCallbackPage() {
 
     handleCallback();
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
- 
 
   if (error) {
     return (
