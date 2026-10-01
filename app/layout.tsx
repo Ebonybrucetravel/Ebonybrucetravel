@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import Script from 'next/script';
 import './globals.css';
 import Providers from '@/components/Providers';
 import AppShell from '@/components/AppShell';
@@ -47,6 +48,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             }}
           />
         </Providers>
+
+        {/* HubSpot Embed Code */}
+        <Script
+          id="hs-script-loader"
+          src="//js-eu1.hs-scripts.com/149412794.js"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );

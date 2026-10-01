@@ -942,6 +942,67 @@ export const getCityCode = (cityName: string): string => {
 };
 
 
+ function cleanRoomName(
+  rawDescription: string | undefined,
+  roomCode: string | undefined,
+  estimatedCategory?: string,
+): string {
+
+  if (estimatedCategory && typeof estimatedCategory === 'string') {
+    const categoryMap: Record<string, string> = {
+      STANDARD_ROOM: 'Standard Room',
+      SUPERIOR_ROOM: 'Superior Room',
+      DELUXE_ROOM: 'Deluxe Room',
+      EXECUTIVE_ROOM: 'Executive Room',
+      JUNIOR_SUITE: 'Junior Suite',
+      SUITE: 'Suite',
+      STUDIO: 'Studio',
+      APARTMENT: 'Apartment',
+      FAMILY_ROOM: 'Family Room',
+      RUN_OF_HOUSE: 'Run of House',
+      ROH: 'Run of House',
+    };
+
+    const mapped = categoryMap[estimatedCategory.toUpperCase()];
+    if (mapped) return mapped;
+
+
+    const humanized = estimatedCategory
+      .toLowerCase()
+      .split('_')
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    if (humanized) return humanized;
+  }
+
+
+  if (rawDescription && typeof rawDescription === 'string') {
+    let cleaned = rawDescription;
+
+    cleaned = cleaned.replace(/Sudio/gi, 'Studio');
+    cleaned = cleaned.replace(/CORPORATE RATE.*?INCLUDED/gi, '');
+    cleaned = cleaned.replace(/BB INCLUDED/gi, '');
+    cleaned = cleaned.replace(/ROOM ONLY/gi, '');
+    cleaned = cleaned.replace(/ADVANCE SAVER/gi, '');
+
+    const parts = cleaned.split(/\s*-\s*/);
+    if (parts.length > 0 && parts[0].trim().length > 2) {
+      cleaned = parts[0];
+    }
+
+    cleaned = cleaned.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+    cleaned = cleaned.replace(/^[*\-:\s]+|[*\-:\s]+$/g, '').trim();
+
+    if (cleaned && cleaned.length >= 3) {
+      return cleaned.replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+  }
+
+  return roomCode || 'Standard Room';
+}
+
+
 const getHotelEndpointPrefix = (hotelId?: string): string => {
   
   return "/api/v1/bookings";
@@ -1301,8 +1362,11 @@ export function transformHotelToSearchResult(
 
   const rating = hotelInfo.rating || calculateHotelRating(hotelInfo.chainCode, totalPrice);
 
-  const roomType =
-    offer.room?.typeEstimated?.category || offer.room?.type || "Standard Hotel";
+  const roomType = cleanRoomName(
+    offer.room?.description?.text,
+    offer.room?.type,
+    offer.room?.typeEstimated?.category,
+  );
   const bedType = offer.room?.typeEstimated?.bedType || "King/Queen";
   const beds = offer.room?.typeEstimated?.beds || 1;
 

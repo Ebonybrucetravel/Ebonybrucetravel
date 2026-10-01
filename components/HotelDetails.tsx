@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { SearchResult, SearchParams } from '../lib/types';
 import api from '../lib/api';
+import CompactSearchBox from './CompactSearchBox';
 import { config } from '../lib/config';
 import dynamic from 'next/dynamic';
 import L from 'leaflet';
@@ -52,6 +53,7 @@ interface HotelDetailsProps {
   onBook: (bookingData?: any) => void;
   onFetchImages?: (hotelId: string, hotelName?: string) => Promise<any[]>;
   onFetchSuggestions?: (query: string) => Promise<any[]>;
+  onNewSearch?: (params: any) => void;
 }
 
 interface HotelImage {
@@ -122,18 +124,100 @@ const extractRoomImagesFromMedia = (media: any[]): string[] => {
   return roomImages;
 };
 
+
+const extractRoomAmenities = (description: string): string[] => {
+  if (!description) return [];
+  const desc = description.toUpperCase();
+  const found: string[] = [];
+
+  // Bed config
+  if (/\b1\s*KING\b|KING BED|\bKING\b/.test(desc)) found.push('King Bed');
+  if (/\b1\s*QUEEN\b|QUEEN BED|\bQUEEN\b/.test(desc)) found.push('Queen Bed');
+  if (/\b1\s*DOUBLE\b|DOUBLE BED|\bDOUBLE\b/.test(desc)) found.push('Double Bed');
+  if (/\b2\s*TWIN\b|TWIN BEDS?|\bTWIN\b/.test(desc)) found.push('Twin Beds');
+  if (/\b1\s*SINGLE\b|SINGLE BED|\bSINGLE\b/.test(desc)) found.push('Single Bed');
+
+  // Common Amadeus codes
+  if (/\bNSMK\b|NON[- ]?SMOKING/.test(desc)) found.push('Non-Smoking');
+  if (/\bSMK\b|\bSMOKING\b/.test(desc)) found.push('Smoking');
+
+  // Board / meal plans
+  if (/\bBED\s*&\s*BREAKFAST\b|\bBED AND BREAKFAST\b|\bBB\b/.test(desc)) found.push('Breakfast Included');
+  if (/\bHALF\s*BOARD\b|\bHB\b/.test(desc)) found.push('Half Board');
+  if (/\bFULL\s*BOARD\b|\bFB\b/.test(desc)) found.push('Full Board');
+  if (/\bROOM\s*ONLY\b|\bRO\b/.test(desc)) found.push('Room Only');
+
+  // Board types
+  if (/\bBEST\s*FLEXIBLE\s*RATE\b/.test(desc)) found.push('Flexible Rate');
+  if (/\bBEST\s*AVAILABLE\s*RATE\b|\bBAR\b/.test(desc)) found.push('Best Available Rate');
+  if (/\bSPECIAL\s*OFFER\b|\bPROMO/.test(desc)) found.push('Special Offer');
+  if (/\bADVANCE\s*SAVER\b/.test(desc)) found.push('Advance Saver');
+  if (/\bFREE\s*CANCELLATION\b/.test(desc)) found.push('Free Cancellation');
+
+  // Room features
+  if (/\bWIFI\b|WI-FI|INTERNET/.test(desc)) found.push('Wi-Fi');
+  if (/\bBALCONY\b/.test(desc)) found.push('Balcony');
+  if (/\bTERRACE\b/.test(desc)) found.push('Terrace');
+  if (/\bOCEAN\s*VIEW\b|SEA\s*VIEW/.test(desc)) found.push('Sea View');
+  if (/\bCITY\s*VIEW\b/.test(desc)) found.push('City View');
+  if (/\bGARDEN\s*VIEW\b/.test(desc)) found.push('Garden View');
+  if (/\bMOUNTAIN\s*VIEW\b/.test(desc)) found.push('Mountain View');
+  if (/\bPOOL\s*VIEW\b/.test(desc)) found.push('Pool View');
+
+  // Room categories
+  if (/\bSUITE\b/.test(desc)) found.push('Suite');
+  if (/\bAPARTMENT\b/.test(desc)) found.push('Apartment');
+  if (/\bSTUDIO\b/.test(desc)) found.push('Studio');
+  if (/\bEXECUTIVE\b/.test(desc)) found.push('Executive');
+  if (/\bDELUXE\b/.test(desc)) found.push('Deluxe');
+  if (/\bSUPERIOR\b/.test(desc)) found.push('Superior');
+  if (/\bPREMIUM\b/.test(desc)) found.push('Premium');
+  if (/\bSTANDARD\b/.test(desc)) found.push('Standard');
+
+  // Amenities
+  if (/\bNESPRESSO\b/.test(desc)) found.push('Nespresso Machine');
+  if (/\bCOFFEE\s*MAKER\b/.test(desc)) found.push('Coffee Maker');
+  if (/\bTEA\s*MAKER\b/.test(desc)) found.push('Tea Maker');
+  if (/\bMINI\s*BAR\b|MINIBAR/.test(desc)) found.push('Minibar');
+  if (/\bSAFE\b/.test(desc)) found.push('In-Room Safe');
+  if (/\bHAIR\s*DRYER\b/.test(desc)) found.push('Hair Dryer');
+  if (/\bTV\b|FLAT[- ]SCREEN|SMART\s*TV/.test(desc)) found.push('Flat-screen TV');
+  if (/\bAIR\s*CONDITIONING\b|\bAC\b|\bA\/C\b/.test(desc)) found.push('Air Conditioning');
+  if (/\bHEATING\b/.test(desc)) found.push('Heating');
+  if (/\bDESK\b|WORKSPACE|WORK\s*SPACE|WORKSTATION/.test(desc)) found.push('Work Desk');
+  if (/\bIRON\b/.test(desc)) found.push('Iron & Board');
+  if (/\bBATHTUB\b|BATH\s*TUB/.test(desc)) found.push('Bathtub');
+  if (/\bSHOWER\b/.test(desc)) found.push('Shower');
+  if (/\bJACUZZI\b/.test(desc)) found.push('Jacuzzi');
+  if (/\bBATHROOM\s*AMENITIES\b|TOILETRIES/.test(desc)) found.push('Toiletries');
+
+  // Accessibility & family
+  if (/\bACCESSIBLE\b|WHEELCHAIR/.test(desc)) found.push('Accessible');
+  if (/\bFAMILY\b/.test(desc)) found.push('Family Room');
+  if (/\bCONNECTING\b/.test(desc)) found.push('Connecting Rooms');
+  if (/\bSOFA\s*BED\b/.test(desc)) found.push('Sofa Bed');
+
+  // Views
+  if (/\bVIEW\b/.test(desc) && !found.some((a) => a.includes('View'))) {
+    found.push('Room with View');
+  }
+
+  return Array.from(new Set(found));
+};
+
 const HotelDetails: React.FC<HotelDetailsProps> = ({
   item,
   searchParams,
   onBack,
   onBook,
   onFetchImages,
-  onFetchSuggestions
+  onFetchSuggestions,
+  onNewSearch, 
 }) => {
   const { currency, convertPrice, formatPrice, isLoadingRates } = useLanguage();
   const { isLoggedIn, user } = useAuth();
   const router = useRouter();
-
+  const [searchBoxLoading, setSearchBoxLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
@@ -154,6 +238,8 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   const [saveNotes, setSaveNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [bookingCardPrice, setBookingCardPrice] = useState<string>('');
+  const [roomDetailModal, setRoomDetailModal] = useState<any>(null);
+  const [roomImageIndex, setRoomImageIndex] = useState(0);
 
   // Image category mapping
   const categoryMap: Record<string, string> = {
@@ -449,8 +535,17 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
             const price = room.price || {};
             const occupancy = room.occupancy || { maxAdults: 2 };
             
-            const roomName = room.name?.text?.text || room.name?.text || room.type || 'Standard Room';
-            const roomDescription = room.description?.text?.text || room.description?.text || '';
+            const roomName =
+            room.name?.name ||           // ✅ API returns { name: { name: "Premium Room" } }
+            room.name?.text?.text ||     // legacy fallback
+            room.name?.text ||           // legacy fallback
+            room.type ||                 // room code fallback
+            'Standard Room';
+            const roomDescription =
+  (typeof room.description?.text === 'string' ? room.description.text : null) ||
+  room.description?.text?.text ||
+  (typeof room.description === 'string' ? room.description : null) ||
+  '';
             
             // ✅ GET IMAGES FROM THE API - FIXED
 const roomImages = room.images || [];
@@ -1295,6 +1390,22 @@ if (uniqueImages.length > 0) {
                         {safeRender(roomName)}
                       </h4>
                       
+                    
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRoomDetailModal(room);
+                          setRoomImageIndex(0);
+                        }}
+                        className="text-[10px] text-[#33a8da] hover:underline mt-0.5 inline-flex items-center gap-1"
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                        View details
+                      </button>
+                      
                       <div className="flex flex-wrap items-center gap-1.5 mt-1">
                         {room.type && (
                           <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full font-medium">
@@ -1541,6 +1652,33 @@ if (uniqueImages.length > 0) {
           <span>/</span>
           <span className="text-[#33a8da] font-medium">Property Details</span>
         </nav>
+        {onNewSearch && (
+          <div className="mb-6">
+            <CompactSearchBox
+              activeTab="hotels"
+              loading={searchBoxLoading}
+              initialParams={{
+                type: 'hotels',
+                location: searchParams?.location || item?.subtitle || '',
+                cityCode: searchParams?.cityCode || (item as any)?.hotelId || '',
+                checkInDate: searchParams?.checkInDate,
+                checkOutDate: searchParams?.checkOutDate,
+                travellers: { adults: searchParams?.adults || 2, children: 0 },
+                rooms: searchParams?.rooms || 1,
+              }}
+              onSearch={async (data) => {
+                console.log('🔄 New hotel search from details header:', data);
+                setSearchBoxLoading(true);
+                try {
+                  // Hand control back to the parent — it should navigate/search
+                  onNewSearch(data);
+                } finally {
+                  setSearchBoxLoading(false);
+                }
+              }}
+            />
+          </div>
+        )}
 
         <div className="mb-6">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{safeRender(item.title)}</h1>
@@ -1876,8 +2014,8 @@ if (uniqueImages.length > 0) {
         </div>
       )}
 
-      {/* Save Modal */}
-      {showSaveModal && (
+            {/* Save Modal */}
+            {showSaveModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full animate-in zoom-in duration-300">
             <h3 className="text-lg font-bold text-gray-900 mb-4">Add to Wishlist</h3>
@@ -1900,6 +2038,321 @@ if (uniqueImages.length > 0) {
                 className="flex-1 py-3 bg-[#33a8da] text-white rounded-xl font-medium text-sm hover:shadow-lg transition disabled:bg-gray-200"
               >
                 {isSaving ? 'Saving...' : 'Save Item'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ NEW: Room Detail Modal */}
+      {roomDetailModal && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setRoomDetailModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg font-bold text-gray-900 truncate">
+                  {safeRender(roomDetailModal.name || roomDetailModal.type || 'Room Details')}
+                </h3>
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  {/* ✅ Room Type badge */}
+                  <span className="text-[10px] font-medium text-white bg-[#33a8da] px-2 py-0.5 rounded-full">
+                    {safeRender(roomDetailModal.name || 'Standard Room')}
+                  </span>
+                  {/* Room code */}
+                  {roomDetailModal.type && (
+                    <span className="text-[10px] font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                      {roomDetailModal.type}
+                    </span>
+                  )}
+                  {/* Rate family */}
+                  {roomDetailModal.rateFamily && (
+                    <span className="text-[10px] font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">
+                      Rate: {roomDetailModal.rateFamily}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setRoomDetailModal(null)}
+                className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition"
+              >
+                <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="overflow-y-auto flex-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+
+                                {/* Left: Image Slideshow */}
+                                <div className="md:sticky md:top-0 md:self-start p-4">
+                  {(() => {
+                    const imgs = roomDetailModal.images || [];
+                    const fallback = roomDetailModal.image || roomDetailModal.primaryImage;
+
+                    const gallery: string[] = imgs
+                      .map((img: any) => img?.uri)
+                      .filter((u: string | undefined): u is string => !!u);
+
+                    if (gallery.length === 0 && fallback) gallery.push(fallback);
+
+                    if (gallery.length === 0) {
+                      return (
+                        <div className="aspect-square bg-gray-100 rounded-xl flex items-center justify-center">
+                          <svg className="w-16 h-16 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                      );
+                    }
+
+                    const total = gallery.length;
+                    const idx = Math.min(roomImageIndex, total - 1);
+
+                    const goPrev = () =>
+                      setRoomImageIndex((prev) => (prev - 1 + total) % total);
+                    const goNext = () =>
+                      setRoomImageIndex((prev) => (prev + 1) % total);
+
+                    return (
+                      <>
+                        {/* Slideshow Stage */}
+                        <div
+                          className="relative aspect-square bg-gray-100 rounded-xl overflow-hidden mb-3 group"
+                          onMouseEnter={(e) => {
+                            const el = e.currentTarget.querySelector<HTMLElement>('.slideshow-autoplay');
+                            if (el) el.dataset.paused = 'true';
+                          }}
+                          onMouseLeave={(e) => {
+                            const el = e.currentTarget.querySelector<HTMLElement>('.slideshow-autoplay');
+                            if (el) el.dataset.paused = 'false';
+                          }}
+                        >
+                          {/* Slides — render all, only active is visible with fade */}
+                          {gallery.map((url, i) => (
+                            <img
+                              key={i}
+                              src={url}
+                              alt={`Room photo ${i + 1}`}
+                              className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ease-in-out ${
+                                i === idx ? 'opacity-100 z-10' : 'opacity-0 z-0'
+                              }`}
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.opacity = '0.3';
+                              }}
+                            />
+                          ))}
+
+                          {/* Prev arrow — always visible on desktop, larger tap area */}
+                          {total > 1 && (
+                            <button
+                              type="button"
+                              onClick={goPrev}
+                              aria-label="Previous slide"
+                              className="absolute left-2 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/40 hover:bg-black/70 backdrop-blur-sm text-white flex items-center justify-center transition opacity-90 group-hover:opacity-100"
+                            >
+                              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                              </svg>
+                            </button>
+                          )}
+
+                          {/* Next arrow */}
+                          {total > 1 && (
+                            <button
+                              type="button"
+                              onClick={goNext}
+                              aria-label="Next slide"
+                              className="absolute right-2 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/40 hover:bg-black/70 backdrop-blur-sm text-white flex items-center justify-center transition opacity-90 group-hover:opacity-100"
+                            >
+                              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          )}
+
+                          {/* Slide counter */}
+                          {total > 1 && (
+                            <div className="absolute bottom-2 right-2 z-20 bg-black/60 backdrop-blur-sm text-white text-[11px] font-medium px-2.5 py-1 rounded-full">
+                              {idx + 1} / {total}
+                            </div>
+                          )}
+
+                          {/* Progress bar (subtle autoplay indicator) */}
+                          {total > 1 && (
+                            <div className="absolute bottom-0 left-0 right-0 z-20 h-0.5 bg-white/20">
+                              <div
+                                className="h-full bg-[#33a8da] transition-all duration-500"
+                                style={{ width: `${((idx + 1) / total) * 100}%` }}
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Dot indicators */}
+                        {total > 1 && total <= 10 && (
+                          <div className="flex justify-center gap-1.5 mb-3">
+                            {gallery.map((_, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                aria-label={`Go to slide ${i + 1}`}
+                                onClick={() => setRoomImageIndex(i)}
+                                className={`h-1.5 rounded-full transition-all ${
+                                  i === idx ? 'w-6 bg-[#33a8da]' : 'w-1.5 bg-gray-300 hover:bg-gray-400'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Thumbnails */}
+                        {total > 1 && (
+                          <div className="grid grid-cols-4 gap-2">
+                            {gallery.map((url, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={() => setRoomImageIndex(i)}
+                                className={`aspect-square rounded-lg overflow-hidden border-2 transition ${
+                                  i === idx
+                                    ? 'border-[#33a8da]'
+                                    : 'border-transparent opacity-60 hover:opacity-100'
+                                }`}
+                              >
+                                <img
+                                  src={url}
+                                  alt={`Thumbnail ${i + 1}`}
+                                  className="w-full h-full object-cover"
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+
+                {/* Right: Details */}
+                <div className="p-6 space-y-5">
+
+                  {/* Price */}
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                    <p className="text-xs font-medium text-blue-600 uppercase tracking-wider">Price</p>
+                    <p className="text-2xl font-bold text-[#33a8da] mt-1">
+                      {formatRoomPrice(roomDetailModal.price)}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Total for the stay • includes taxes & fees
+                    </p>
+                  </div>
+
+                                    {/* Occupancy & Bed */}
+                                    <div>
+                    <h4 className="text-sm font-bold text-gray-900 mb-2">Room Features</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {/* ✅ Room Type pill */}
+                      <span className="px-3 py-1 bg-[#33a8da] text-white rounded-full text-xs font-medium">
+                        {safeRender(roomDetailModal.name || 'Standard Room')}
+                      </span>
+                      {roomDetailModal.occupancy && (
+                        <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">
+                          👥 Max {roomDetailModal.occupancy.maxAdults || 2} adults
+                        </span>
+                      )}
+                      {roomDetailModal.bedTypes?.map((b: any, i: number) => (
+                        <span key={i} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">
+                          🛏 {b.quantity > 1 ? `${b.quantity} × ` : ''}{b.type || 'Bed'}
+                        </span>
+                      ))}
+                      {roomDetailModal.isRefundable ? (
+                        <span className="px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs font-medium">
+                          ✓ Refundable
+                        </span>
+                      ) : (
+                        <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">
+                          Non-refundable
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                                    {/* ✅ Parsed Amenities (extracted from description) */}
+                                    {(() => {
+                    const parsed = extractRoomAmenities(roomDetailModal.description || '');
+                    if (parsed.length === 0) return null;
+                    return (
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-900 mb-2">
+                          Amenities & Features
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {parsed.map((a, i) => (
+                            <span
+                              key={i}
+                              className="px-3 py-1 bg-gray-50 border border-gray-200 text-gray-700 rounded-full text-xs"
+                            >
+                              ✓ {a}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Description */}
+                  {roomDetailModal.description && (
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-900 mb-2">Description</h4>
+                      <div className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">
+                      {safeRender(roomDetailModal.description)
+  .replace(/\r\n|\r|\n/g, '\n')      // ← single backslash = real newlines
+  .replace(/[ \t]{2,}/g, ' ')         // collapse runs of spaces/tabs only
+  .trim()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cancellation */}
+                  {roomDetailModal.cancellationDeadline && (
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-900 mb-2">Cancellation</h4>
+                      <p className="text-sm text-gray-600">
+                        Free cancellation until{' '}
+                        <strong>{new Date(roomDetailModal.cancellationDeadline).toLocaleString()}</strong>
+                      </p>
+                    </div>
+                  )}
+
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-gray-100 px-6 py-4 flex gap-3 shrink-0">
+              <button
+                onClick={() => setRoomDetailModal(null)}
+                className="flex-1 py-3 border-2 border-gray-200 text-gray-600 rounded-xl font-medium text-sm hover:bg-gray-50 transition"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedRoomType(roomDetailModal);
+                  setRoomDetailModal(null);
+                }}
+                className="flex-1 py-3 bg-[#33a8da] text-white rounded-xl font-bold text-sm hover:bg-[#2c98c7] transition"
+              >
+                Select This Room
               </button>
             </div>
           </div>

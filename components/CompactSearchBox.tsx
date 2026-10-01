@@ -651,7 +651,10 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
         cityCode: cityCode,
         checkInDate: checkIn,
         checkOutDate: checkOut,
-        travellers: { adults: parseInt(guests), children: 0 },
+        travellers: {
+          adults: passengers.adults,
+          children: passengers.children,
+        },
         rooms: 1,
         provider: 'amadeus'
       };
@@ -874,73 +877,100 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
     </div>
   ), [multiCitySegments, showSegmentFromDropdown, showSegmentToDropdown, segmentFromSuggestions, segmentToSuggestions, loadingSuggestions, handleSegmentFromChange, handleSegmentToChange, handleSegmentDateChange, handleSegmentAirportSelect, renderDropdown, addSegment, removeSegment]);
 
-  // ✅ Render passenger and cabin class dropdown
-  const renderPassengerDropdown = useCallback(() => (
-    <div className="min-w-[160px] relative" ref={passengerDropdownRef}>
-      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">PASSENGER</label>
-      <button
-        type="button"
-        onClick={() => setShowPassengerDropdown(!showPassengerDropdown)}
-        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white text-left flex justify-between items-center"
-      >
-        <span>{passengerDisplayText}</span>
-        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+  // ✅ Render passenger and cabin class dropdown — supports 'flight' and 'hotel' modes
+  const renderPassengerDropdown = useCallback((mode: 'flight' | 'hotel' = 'flight') => {
+    const isHotel = mode === 'hotel';
 
-      {showPassengerDropdown && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-200 z-50 p-4 min-w-[280px]">
-          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-            <div>
-              <div className="font-medium text-gray-900 text-sm">Adults</div>
-              <div className="text-xs text-gray-400">Age 12+</div>
-            </div>
-            <div className="flex items-center gap-3">
-              <button type="button" onClick={() => updatePassengers('adults', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.adults <= 1}>-</button>
-              <span className="w-5 text-center text-sm font-medium">{passengers.adults}</span>
-              <button type="button" onClick={() => updatePassengers('adults', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
-            </div>
-          </div>
-          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-            <div>
-              <div className="font-medium text-gray-900 text-sm">Children</div>
-              <div className="text-xs text-gray-400">Age 2-11</div>
-            </div>
-            <div className="flex items-center gap-3">
-              <button type="button" onClick={() => updatePassengers('children', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.children <= 0}>-</button>
-              <span className="w-5 text-center text-sm font-medium">{passengers.children}</span>
-              <button type="button" onClick={() => updatePassengers('children', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
-            </div>
-          </div>
-          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-            <div>
-              <div className="font-medium text-gray-900 text-sm">Infants</div>
-              <div className="text-xs text-gray-400">Under 2</div>
-            </div>
-            <div className="flex items-center gap-3">
-              <button type="button" onClick={() => updatePassengers('infants', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.infants <= 0}>-</button>
-              <span className="w-5 text-center text-sm font-medium">{passengers.infants}</span>
-              <button type="button" onClick={() => updatePassengers('infants', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
-            </div>
-          </div>
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <div className="font-medium text-gray-900 text-sm">Cabin Class</div>
-            </div>
-            <select value={cabinClass} onChange={(e) => setCabinClass(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#33a8da] bg-gray-50">
-              <option value="economy">Economy</option>
-              <option value="premium-economy">Premium Economy</option>
-              <option value="business">Business</option>
-              <option value="first">First Class</option>
-            </select>
-          </div>
-          <button type="button" onClick={() => setShowPassengerDropdown(false)} className="w-full mt-3 bg-[#33a8da] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#2c98c7] transition">Done</button>
-        </div>
-      )}
-    </div>
-  ), [showPassengerDropdown, passengerDisplayText, passengers.adults, passengers.children, passengers.infants, cabinClass, updatePassengers]);
+    // Labels differ per mode
+    const triggerLabel = isHotel ? 'GUESTS' : 'PASSENGER';
+    const triggerText = isHotel
+      ? `${passengers.adults} Adult${passengers.adults > 1 ? 's' : ''}` +
+        (passengers.children > 0 ? `, ${passengers.children} Child${passengers.children > 1 ? 'ren' : ''}` : '') +
+        (passengers.infants > 0 ? `, ${passengers.infants} Infant${passengers.infants > 1 ? 's' : ''}` : '')
+      : passengerDisplayText;
 
+    return (
+      <div className="min-w-[160px] relative" ref={passengerDropdownRef}>
+        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+          {triggerLabel}
+        </label>
+        <button
+          type="button"
+          onClick={() => setShowPassengerDropdown(!showPassengerDropdown)}
+          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white text-left flex justify-between items-center"
+        >
+          <span>{triggerText}</span>
+          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {showPassengerDropdown && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-200 z-50 p-4 min-w-[280px]">
+            {/* Adults — always shown */}
+            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+              <div>
+                <div className="font-medium text-gray-900 text-sm">Adults</div>
+                <div className="text-xs text-gray-400">Age 12+</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => updatePassengers('adults', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.adults <= 1}>-</button>
+                <span className="w-5 text-center text-sm font-medium">{passengers.adults}</span>
+                <button type="button" onClick={() => updatePassengers('adults', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
+              </div>
+            </div>
+
+            {/* Children — always shown */}
+            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+              <div>
+                <div className="font-medium text-gray-900 text-sm">Children</div>
+                <div className="text-xs text-gray-400">Age 2-11</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => updatePassengers('children', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.children <= 0}>-</button>
+                <span className="w-5 text-center text-sm font-medium">{passengers.children}</span>
+                <button type="button" onClick={() => updatePassengers('children', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
+              </div>
+            </div>
+
+            {/* Infants — FLIGHTS ONLY (Amadeus hotels don't support infants in search) */}
+            {!isHotel && (
+              <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                <div>
+                  <div className="font-medium text-gray-900 text-sm">Infants</div>
+                  <div className="text-xs text-gray-400">Under 2</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => updatePassengers('infants', -1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center disabled:opacity-50" disabled={passengers.infants <= 0}>-</button>
+                  <span className="w-5 text-center text-sm font-medium">{passengers.infants}</span>
+                  <button type="button" onClick={() => updatePassengers('infants', 1)} className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center">+</button>
+                </div>
+              </div>
+            )}
+
+            {/* Cabin Class — FLIGHTS ONLY */}
+            {!isHotel && (
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <div className="font-medium text-gray-900 text-sm">Cabin Class</div>
+                </div>
+                <select value={cabinClass} onChange={(e) => setCabinClass(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#33a8da] bg-gray-50">
+                  <option value="economy">Economy</option>
+                  <option value="premium-economy">Premium Economy</option>
+                  <option value="business">Business</option>
+                  <option value="first">First Class</option>
+                </select>
+              </div>
+            )}
+
+            <button type="button" onClick={() => setShowPassengerDropdown(false)} className="w-full mt-3 bg-[#33a8da] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#2c98c7] transition">
+              Done
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }, [showPassengerDropdown, passengerDisplayText, passengers.adults, passengers.children, passengers.infants, cabinClass, updatePassengers]);
   // ✅ Render Flight Compact with Multi-City support
   const renderFlightCompact = useMemo(() => (
     <div className="flex flex-col gap-4">
@@ -1010,7 +1040,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
           </>
         )}
 
-        {renderPassengerDropdown()}
+{renderPassengerDropdown('flight')}
 
         <div className="flex flex-col gap-1.5">
           <span className="text-[10px] font-semibold text-transparent uppercase tracking-wider">.</span>
@@ -1059,15 +1089,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
         <input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white" />
       </div>
 
-      <div className="min-w-[110px]">
-        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">GUESTS</label>
-        <select value={guests} onChange={(e) => setGuests(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white">
-          <option value="1">1 Guest</option>
-          <option value="2">2 Guests</option>
-          <option value="3">3 Guests</option>
-          <option value="4">4 Guests</option>
-        </select>
-      </div>
+      {renderPassengerDropdown('hotel')}
 
       <div className="flex flex-col gap-1.5">
         <span className="text-[10px] font-semibold text-transparent uppercase tracking-wider">.</span>
@@ -1076,7 +1098,17 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
         </button>
       </div>
     </div>
-  ), [hotelLocation, checkIn, checkOut, guests, showHotelDropdown, loading, handleHotelChange, renderHotelDropdown, popularHotelDestinations]);
+    ), [
+      hotelLocation, checkIn, checkOut, guests,
+      showHotelDropdown, loading,
+      handleHotelChange, renderHotelDropdown, popularHotelDestinations,
+      // ✅ Required for passenger dropdown to re-render
+      renderPassengerDropdown,
+      showPassengerDropdown,
+      passengers.adults,
+      passengers.children,
+      passengers.infants,
+    ]);
 
   const renderCarCompact = useMemo(() => (
     <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">

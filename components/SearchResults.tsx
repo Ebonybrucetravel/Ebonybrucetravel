@@ -2525,187 +2525,175 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
   const renderHotelCard = (item: ExtendedSearchResult) => {
-    const starRating = Math.floor(item.rating || 4);
-    const displayPrice = hotelCarPrices[item.id] || 'Price on request';
-    
-    // ✅ Get hotel ID from various possible locations
     const hotelId = item.hotelId || item.hotel?.hotelId || item.id;
     const isSaved = savedItems.has(hotelId);
     const hotelName = item.hotel?.name || item.title || 'Hotel';
     const primaryImage = item.hotel?.primaryImage || item.image || null;
-  
-    // ✅ Extract offers and offerId from all possible sources
+
     const offers = item.offers || item.hotel?.offers || [];
-    const offerId = item.offerId || 
-                    item.offer_id || 
-                    item.hotel?.offerId || 
-                    item.hotel?.offer_id ||
-                    (offers.length > 0 ? offers[0]?.id : null);
-  
-    // ✅ Handle hotel click - navigates to details page
-    const handleHotelClick = (e: React.MouseEvent) => {
+    const bestOffer = offers[0];
+    const offerId = item.offerId || item.offer_id || item.hotel?.offerId || (bestOffer?.id ?? null);
+
+    // ── Location: use what Amadeus returns
+    const cityCode = item.hotel?.cityCode || item.cityCode || '';
+    const latitude = item.hotel?.latitude || item.latitude;
+    const longitude = item.hotel?.longitude || item.longitude;
+    const hasCoords = typeof latitude === 'number' && typeof longitude === 'number';
+
+    // ── Amenities: Amadeus returns CODES. Map only well-known ones.
+    const AMENITY_LABELS: Record<string, string> = {
+      'WIFI': '📶 Wi-Fi',
+      'SWIMMING_POOL': '🏊 Pool',
+      'FITNESS_CENTER': '🏋 Fitness',
+      'SPA': '💆 Spa',
+      'PARKING': '🅿️ Parking',
+      'RESTAURANT': '🍽 Restaurant',
+      'BAR': '🍸 Bar',
+      'AIR_CONDITIONING': '❄️ A/C',
+      'AIRPORT_SHUTTLE': '🚐 Shuttle',
+      'BUSINESS_CENTER': '💼 Business',
+      'LAUNDRY': '🧺 Laundry',
+      'ROOM_SERVICE': '🛎 Room Service',
+      'PETS_ALLOWED': '🐾 Pet Friendly',
+      'MEETING_ROOMS': '📊 Meeting Rooms',
+      'ELEVATOR': '🛗 Elevator',
+      'TWENTY_FOUR_HOUR_FRONT_DESK': '🕐 24h Front Desk',
+      'NON_SMOKING': '🚭 Non-Smoking',
+      'CHILDREN_PROGRAMS': '👶 Kids Club',
+      'TENNIS': '🎾 Tennis',
+      'GOLF': '⛳ Golf',
+    };
+    const amenityCodes: string[] = item.hotel?.amenities || item.amenities || [];
+    const amenityLabels = amenityCodes
+      .map(code => AMENITY_LABELS[code] || null)
+      .filter((label): label is string => !!label)
+      .slice(0, 5);
+
+    // ── Room info from Amadeus fields
+    const roomCode = bestOffer?.room?.type || item.roomType || '';
+    const estimatedCategory = bestOffer?.room?.typeEstimated?.category || '';
+    const rawDescription = typeof bestOffer?.room?.description === 'string'
+      ? bestOffer.room.description
+      : bestOffer?.room?.description?.text || '';
+    
+    // Fall back to the room name field we cleaned on the backend
+    const roomType = item.roomType || item.name?.name || estimatedCategory || roomCode || 'Room';
+
+    // Bed info — from Amadeus, only if `bedType`/`beds` are present
+    const bedType = bestOffer?.room?.typeEstimated?.bedType;
+    const beds = bestOffer?.room?.typeEstimated?.beds;
+    const bedLine = bedType
+      ? `${beds || 1} ${String(bedType).toLowerCase()} bed${(beds || 1) > 1 ? 's' : ''}`
+      : '';
+
+    // Board type from Amadeus
+    const boardType = bestOffer?.boardType || '';
+    const boardLabel = boardType
+      ? String(boardType).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+      : '';
+
+    // ── Price: total + fees (from Amadeus)
+    const displayPrice = hotelCarPrices[item.id] || 'Price on request';
+    const currencySymbol =
+      item.currency === 'NGN' ? '₦' :
+      item.currency === 'GBP' ? '£' :
+      item.currency === 'USD' ? '$' :
+      item.currency === 'EUR' ? '€' : '';
+
+    // Only show TAX fees (not markup or service fee — those are your margin)
+    const fees: any[] = bestOffer?.price?.fees || [];
+    const taxFee = fees.find((f: any) => f.type === 'TAX');
+    const taxAmount = taxFee ? parseFloat(taxFee.amount) || 0 : 0;
+    const taxLine = taxAmount > 0
+      ? `+ ${currencySymbol}${Math.round(taxAmount).toLocaleString()} taxes`
+      : null;
+
+    // ── Refundability from Amadeus
+    const isRefundable =
+      bestOffer?.policies?.refundable?.cancellationRefund === 'REFUNDABLE_UP_TO_DEADLINE' ||
+      (bestOffer?.policies?.cancellations?.length > 0);
+    const cancellationDeadline = bestOffer?.policies?.cancellations?.[0]?.deadline;
+
+    // ── Availability
+    const isAvailable = bestOffer?.available !== false;
+
+    // ── Stay context from searchParams
+    const nightsCount = item.nights || 1;
+    const adultsCount = item.adults || searchParams?.adults || 1;
+    const stayLine = `${nightsCount} night${nightsCount > 1 ? 's' : ''}, ${adultsCount} adult${adultsCount > 1 ? 's' : ''}`;
+
+    // ── Navigation
+    const persistAndNavigate = (e: React.MouseEvent) => {
       e.stopPropagation();
-      
       if (!hotelId) {
         toast.error('Hotel ID not found');
         return;
       }
-  
-      console.log('🏨 Navigating to hotel details:', {
-        hotelId,
-        hotelName,
-        primaryImage,
-        hasOffers: !!(item.offers?.length),
-        offerId: offerId,
-        firstOfferId: offers.length > 0 ? offers[0]?.id : 'none',
-      });
-  
-      // Store the hotel data in sessionStorage for the details page
       const hotelData = {
         id: hotelId,
-        hotelId: hotelId,
+        hotelId,
         name: hotelName,
         title: hotelName,
-        subtitle: item.subtitle || item.hotel?.cityCode || '',
+        subtitle: cityCode ? `LONDON, ${cityCode}` : '',
         image: primaryImage,
-        primaryImage: primaryImage,
+        primaryImage,
         images: item.hotel?.images || [],
         imageCategories: item.hotel?.imageCategories || {},
         price: displayPrice,
         originalPriceAmount: item.originalPriceAmount,
         originalPriceCurrency: item.originalPriceCurrency,
-        // ✅ CRITICAL: Preserve offers and offerId
-        offers: offers,
-        offerId: offerId,
+        offers,
+        offerId,
         offer_id: offerId,
         rating: item.rating || 0,
         description: item.description || item.hotel?.description || '',
         address: item.address || item.hotel?.address || '',
-        cityCode: item.hotel?.cityCode || item.cityCode || '',
+        cityCode,
+        latitude,
+        longitude,
         checkInDate: item.checkInDate || searchParams?.checkInDate,
         checkOutDate: item.checkOutDate || searchParams?.checkOutDate,
-        adults: item.adults || searchParams?.adults || 1,
+        adults: adultsCount,
         currency: item.currency || searchParams?.currency || 'NGN',
         provider: item.provider || 'amadeus',
-        hotel: {
-          ...item.hotel,
-          offers: offers,
-          offerId: offerId,
-          offer_id: offerId,
-        },
-        // ✅ Also preserve realData
-        realData: {
-          ...item.realData,
-          offerId: offerId,
-        },
+        hotel: { ...item.hotel, offers, offerId, offer_id: offerId },
+        realData: { ...item.realData, offerId },
       };
-      
-      console.log('✅ Storing hotel data with offerId:', {
-        hotelId: hotelData.hotelId,
-        offerId: hotelData.offerId,
-        offersCount: hotelData.offers?.length || 0,
-      });
-      
       sessionStorage.setItem('selectedHotelDetails', JSON.stringify(hotelData));
-      
-      // ✅ Also store the offerId separately for easy access
-      if (offerId) {
-        sessionStorage.setItem('hotelOfferId', offerId);
-      }
-      
-      // ✅ Navigate to hotel details page
+      if (offerId) sessionStorage.setItem('hotelOfferId', offerId);
       router.push(`/hotels/${encodeURIComponent(hotelId)}`);
     };
-  
-    // ✅ Handle the View Details button click
+
     const handleViewDetailsClick = (e: React.MouseEvent) => {
       e.stopPropagation();
-      
-      if (!hotelId) {
-        toast.error('Hotel ID not found');
-        return;
-      }
-  
-      // ✅ Store the hotel data with offerId directly from the button click
-      const hotelData = {
-        id: hotelId,
-        hotelId: hotelId,
-        name: hotelName,
-        title: hotelName,
-        subtitle: item.subtitle || item.hotel?.cityCode || '',
-        image: primaryImage,
-        primaryImage: primaryImage,
-        images: item.hotel?.images || [],
-        imageCategories: item.hotel?.imageCategories || {},
-        price: displayPrice,
-        originalPriceAmount: item.originalPriceAmount,
-        originalPriceCurrency: item.originalPriceCurrency,
-        offers: offers,
-        offerId: offerId,
-        offer_id: offerId,
-        rating: item.rating || 0,
-        description: item.description || item.hotel?.description || '',
-        address: item.address || item.hotel?.address || '',
-        cityCode: item.hotel?.cityCode || item.cityCode || '',
-        checkInDate: item.checkInDate || searchParams?.checkInDate,
-        checkOutDate: item.checkOutDate || searchParams?.checkOutDate,
-        adults: item.adults || searchParams?.adults || 1,
-        currency: item.currency || searchParams?.currency || 'NGN',
-        provider: item.provider || 'amadeus',
-        hotel: {
-          ...item.hotel,
-          offers: offers,
-          offerId: offerId,
-          offer_id: offerId,
-        },
-        realData: {
-          ...item.realData,
-          offerId: offerId,
-        },
-      };
-      
-      sessionStorage.setItem('selectedHotelDetails', JSON.stringify(hotelData));
-      if (offerId) {
-        sessionStorage.setItem('hotelOfferId', offerId);
-      }
-      
-      router.push(`/hotels/${encodeURIComponent(hotelId)}`);
+      persistAndNavigate(e);
     };
-  
+
     return (
-      <div 
-        key={item.id} 
-        className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2 cursor-pointer"
-        onClick={handleHotelClick}
+      <div
+        key={item.id}
+        className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden cursor-pointer"
+        onClick={persistAndNavigate}
       >
         <div className="flex flex-col md:flex-row">
-          <div className="w-full md:w-[320px] relative flex-shrink-0 min-h-[256px]">
+
+          {/* ── LEFT: image ── */}
+          <div className="w-full md:w-[280px] relative flex-shrink-0 min-h-[220px]">
             <HotelListImage
-              hotelId={hotelId}          
-              hotelName={hotelName}       
-              initialSrc={primaryImage}   
+              hotelId={hotelId}
+              hotelName={hotelName}
+              initialSrc={primaryImage}
               alt={hotelName}
               className="absolute inset-0 w-full h-full overflow-hidden"
             />
             <button
               onClick={async (e) => {
                 e.stopPropagation();
-              
-                const hotelId = item.hotelId || item.hotel?.hotelId || item.id;
-                const hotelName = item.hotel?.name || item.title || 'Hotel';
-                const primaryImage = item.hotel?.primaryImage || item.image || '';
-                const cityCode = item.hotel?.cityCode || item.cityCode || searchParams?.destination || '';
-                const location = item.subtitle || item.hotel?.address?.cityName || item.hotel?.address?.countryCode || cityCode;
                 const isCurrentlySaved = savedItems.has(hotelId);
                 const newSet = new Set(savedItems);
-              
-                if (isCurrentlySaved) {
-                  newSet.delete(hotelId);
-                } else {
-                  newSet.add(hotelId);
-                }
+                if (isCurrentlySaved) newSet.delete(hotelId);
+                else newSet.add(hotelId);
                 setSavedItems(newSet);
-              
                 try {
                   if (isCurrentlySaved) {
                     const savedId = savedItemIdMapRef.current.get(hotelId);
@@ -2714,91 +2702,107 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                       savedItemIdMapRef.current.delete(hotelId);
                     }
                   } else {
-                    // ✅ Pack name + image + code + location + hotelId into title
-                    const packedTitle = [
-                      hotelName || 'Hotel',
-                      primaryImage || '',
-                      cityCode || '',
-                      location || '',
-                      hotelId || '',
-                    ].join('|||');
-              
+                    const packedTitle = [hotelName, primaryImage || '', cityCode || '', '', hotelId].join('|||');
                     const response: any = await api.userApi.saveItem({
                       productType: 'HOTEL',
                       title: packedTitle,
-                      price: item.originalPriceAmount 
-  ?? (typeof item.price === 'number' ? item.price : 0),
+                      price: item.originalPriceAmount ?? 0,
                       currency: item.originalPriceCurrency || item.currency || 'NGN',
                     });
-              
-                    const newSavedId =
-                      response?.data?.id || response?.id || response?.data?.savedItemId;
-                    if (newSavedId) {
-                      savedItemIdMapRef.current.set(hotelId, newSavedId);
-                    }
+                    const newSavedId = response?.data?.id || response?.id;
+                    if (newSavedId) savedItemIdMapRef.current.set(hotelId, newSavedId);
                   }
                 } catch (err) {
-                  console.warn('Could not sync wishlist with server:', err);
-                  setSavedItems(prev => {
-                    const rollback = new Set(prev);
-                    if (isCurrentlySaved) rollback.add(hotelId);
-                    else rollback.delete(hotelId);
-                    return rollback;
-                  });
+                  console.warn('Wishlist sync failed:', err);
                 }
               }}
-              className={`absolute top-4 right-4 w-10 h-10 rounded-full z-10 flex items-center justify-center transition backdrop-blur-md ${isSaved ? "bg-red-500 text-white" : "bg-white/40 text-gray-400 hover:bg-white"}`}
->
-  <svg
-    className="w-5 h-5"
-    fill={isSaved ? "currentColor" : "none"}
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-    strokeWidth={2}
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-    />
-  </svg>
-</button>
+              className={`absolute top-3 right-3 w-9 h-9 rounded-full z-10 flex items-center justify-center transition backdrop-blur-md ${
+                isSaved ? 'bg-red-500 text-white' : 'bg-white/70 text-gray-500 hover:bg-white'
+              }`}
+            >
+              <svg className="w-4 h-4" fill={isSaved ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+            </button>
           </div>
-          <div className="flex-1 p-8">
-            <h3 className="text-xl font-black text-gray-900 group-hover:text-[#33a8da] transition">
+
+          {/* ── MIDDLE: hotel info (all from Amadeus) ── */}
+          <div className="flex-1 p-5 min-w-0">
+            <h3 className="text-lg font-bold text-gray-900 hover:text-[#33a8da] transition leading-snug">
               {hotelName}
             </h3>
-            <p className="text-[11px] font-bold text-gray-400 uppercase mt-1">
-              {item.subtitle || item.hotel?.cityCode || ''}
-            </p>
-            <div className="flex items-center gap-4 mt-4 mb-6">
-              <div className="flex text-yellow-400">
-                {[...Array(5)].map((_, i) => (
-                  <svg key={i} className={`w-3.5 h-3.5 ${i < starRating ? "fill-current" : "text-gray-200"}`} viewBox="0 0 20 20">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                ))}
-              </div>
-              {item.hotel?.images && item.hotel.images.length > 0 && (
-                <span className="text-xs text-gray-400">
-                  📸 {item.hotel.images.length} photos
+
+            {/* Location + chain from Amadeus */}
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs text-gray-500">
+              {cityCode && <span className="font-medium">{cityCode}</span>}
+              {item.hotel?.chainCode && (
+                <span className="bg-gray-100 px-2 py-0.5 rounded text-[10px] font-semibold text-gray-600">
+                  Chain: {item.hotel.chainCode}
                 </span>
               )}
+              {hasCoords && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(`https://www.google.com/maps?q=${latitude},${longitude}`, '_blank');
+                  }}
+                  className="text-[#33a8da] underline hover:no-underline text-[10px]"
+                >
+                  Show on map
+                </button>
+              )}
             </div>
-            <div className="flex items-end justify-between pt-6 border-t border-gray-50">
-              <div>
-                <p className="text-2xl font-black text-[#33a8da]">{displayPrice}</p>
-                {isLoadingRates && (
-                  <p className="text-[9px] text-gray-400 mt-1">Converting...</p>
-                )}
+
+            {/* Amenities from Amadeus (only mapped ones) */}
+            {amenityLabels.length > 0 && (
+              <div className="flex items-center gap-3 mt-2 text-xs text-gray-600 flex-wrap">
+                {amenityLabels.map((a, i) => (
+                  <span key={i} className="whitespace-nowrap">{a}</span>
+                ))}
               </div>
-              <button
-                onClick={handleViewDetailsClick}
-                className="bg-[#33a8da] text-white font-black px-8 py-3 rounded-xl transition hover:bg-[#2c98c7] uppercase text-[11px]"
-              >
-                View Details
-              </button>
+            )}
+
+            {/* Room + board + bed + refundable — all from Amadeus */}
+            <div className="mt-3 pt-3 border-t border-gray-100 space-y-1">
+              <p className="text-sm font-semibold text-gray-900">{roomType}</p>
+              {bedLine && <p className="text-xs text-gray-500">{bedLine}</p>}
+              {boardLabel && (
+                <p className="text-xs text-gray-500">{boardLabel}</p>
+              )}
+              {isRefundable && (
+                <p className="text-xs text-green-600 font-medium">
+                  ✓ Refundable{cancellationDeadline ? ` until ${new Date(cancellationDeadline).toLocaleDateString()}` : ''}
+                </p>
+              )}
+              {!isRefundable && (
+                <p className="text-xs text-gray-500">Non-refundable</p>
+              )}
+              {!isAvailable && (
+                <p className="text-xs text-red-600 font-medium">Sold out</p>
+              )}
             </div>
+          </div>
+
+          {/* ── RIGHT: price + CTA ── */}
+          <div className="w-full md:w-[200px] flex-shrink-0 p-5 flex flex-col justify-between md:border-l border-gray-100">
+            <div className="text-xs text-gray-500 text-right mb-2">{stayLine}</div>
+
+            <div className="text-right">
+              <p className="text-2xl font-bold text-gray-900">{displayPrice}</p>
+              {taxLine && (
+                <p className="text-[10px] text-gray-500 mt-0.5">{taxLine}</p>
+              )}
+            </div>
+
+            <button
+              onClick={handleViewDetailsClick}
+              className="mt-4 w-full bg-[#33a8da] hover:bg-[#2c98c7] text-white font-bold px-4 py-2.5 rounded-xl text-sm transition flex items-center justify-center gap-1 shadow-sm hover:shadow-md"
+            >
+              See availability
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>

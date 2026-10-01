@@ -547,6 +547,32 @@ export default function HotelDetailsPage() {
       searchParams={hotelSearchParams}
       onBack={() => router.push('/search')}
       onBook={handleBook}
+      onNewSearch={(data: any) => {
+        console.log('🔄 New hotel search from details header:', data);
+
+        // Persist any updated dates back to enrichedItem so the page keeps them
+        setEnrichedItem((prev: any) => ({
+          ...prev,
+          checkInDate: data.checkInDate || prev?.checkInDate,
+          checkOutDate: data.checkOutDate || prev?.checkOutDate,
+          adults: data.travellers?.adults ?? prev?.adults,
+          rooms: data.rooms ?? prev?.rooms,
+        }));
+
+        // Build the URL so SearchPage.tsx can auto-run the search
+        const params = new URLSearchParams();
+        params.set('type', 'hotels');
+        params.set('location', data.location || enrichedItem?.subtitle || '');
+        params.set('cityCode', data.cityCode || enrichedItem?.cityCode || '');
+        params.set('checkInDate', data.checkInDate || '');
+        params.set('checkOutDate', data.checkOutDate || '');
+        params.set('guests', String(data.travellers?.adults || 2));
+        params.set('rooms', String(data.rooms || 1));
+        params.set('currency', data.currency || enrichedItem?.currency || 'NGN');
+
+        
+        router.push(`/search?${params.toString()}`);
+      }}
     />
   );
 }

@@ -333,7 +333,7 @@ const isDomesticFlightGlobal = (origin: string, destination: string): boolean =>
   return normalizedOrigin === normalizedDest;
 };
 
-// Mock fallback data (only used when API fails)
+
 const MOCK: Record<string, SearchResult[]> = {
   flights: [
     { id: 'f-1', provider: 'Air Peace', title: 'Air Peace P47121', subtitle: 'Lagos (LOS) → Abuja (ABV)', price: '£85', time: '08:00 AM', duration: '1h 15m', type: 'flights', image: 'https://logos-world.net/wp-content/uploads/2023/03/Air-Peace-Logo.png' },
@@ -346,6 +346,72 @@ const MOCK: Record<string, SearchResult[]> = {
     { id: 'c-1', provider: 'Hertz Elite', title: 'Mercedes-Benz E-Class', subtitle: 'Lagos Int. Airport', price: '£85/day', rating: 4.8, image: 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?auto=format&fit=crop&q=80&w=800', type: 'car-rentals', amenities: ['Automatic', 'AC'], features: ['5 Seats', 'Luxury'] },
   ],
 };
+
+
+ function cleanRoomName(
+  rawDescription: string | undefined,
+  roomCode: string | undefined,
+  estimatedCategory?: string,
+): string {
+
+  if (estimatedCategory && typeof estimatedCategory === 'string') {
+    const categoryMap: Record<string, string> = {
+      STANDARD_ROOM: 'Standard Room',
+      SUPERIOR_ROOM: 'Superior Room',
+      DELUXE_ROOM: 'Deluxe Room',
+      EXECUTIVE_ROOM: 'Executive Room',
+      JUNIOR_SUITE: 'Junior Suite',
+      SUITE: 'Suite',
+      STUDIO: 'Studio',
+      APARTMENT: 'Apartment',
+      FAMILY_ROOM: 'Family Room',
+      RUN_OF_HOUSE: 'Run of House',
+      ROH: 'Run of House',
+    };
+
+    const mapped = categoryMap[estimatedCategory.toUpperCase()];
+    if (mapped) return mapped;
+
+   
+    const humanized = estimatedCategory
+      .toLowerCase()
+      .split('_')
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    if (humanized) return humanized;
+  }
+
+ 
+  if (rawDescription && typeof rawDescription === 'string') {
+    let cleaned = rawDescription;
+
+    
+    cleaned = cleaned.replace(/Sudio/gi, 'Studio');
+  
+    cleaned = cleaned.replace(/CORPORATE RATE.*?INCLUDED/gi, '');
+    cleaned = cleaned.replace(/BB INCLUDED/gi, '');
+    cleaned = cleaned.replace(/ROOM ONLY/gi, '');
+    cleaned = cleaned.replace(/ADVANCE SAVER/gi, '');
+
+   
+    const parts = cleaned.split(/\s*-\s*/);
+    if (parts.length > 0 && parts[0].trim().length > 2) {
+      cleaned = parts[0];
+    }
+
+    
+    cleaned = cleaned.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+    cleaned = cleaned.replace(/^[*\-:\s]+|[*\-:\s]+$/g, '').trim();
+
+    if (cleaned && cleaned.length >= 3) {
+      return cleaned.replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+  }
+
+ 
+  return roomCode || 'Standard Room';
+}
 
 interface SearchContextType {
   searchParams: SearchParams | null;
@@ -886,7 +952,11 @@ const searchHotels = async (params: SearchParams) => {
         const pricePerNightNGN = finalPriceNGN / nights;
         const formattedPricePerNight = await formatPriceInUserCurrency(pricePerNightNGN, 'NGN');
         
-        const roomType = bestOffer.room?.typeEstimated?.category || bestOffer.room?.type || 'Standard';
+        const roomType = cleanRoomName(
+          bestOffer.room?.description?.text,
+          bestOffer.room?.type,
+          bestOffer.room?.typeEstimated?.category,
+        );
         const bedType = bestOffer.room?.typeEstimated?.bedType || 'King';
         const beds = bestOffer.room?.typeEstimated?.beds || 1;
         
@@ -2372,7 +2442,6 @@ setSelectedItem(itemWithMessages);
         clearSelectedSeats,
         seatTotalPrice,
         seatCurrency,
-        // ✅ ADD TECHNICAL STOPS
         technicalStops,
         hasTechnicalStops,
         totalTechnicalStops,
