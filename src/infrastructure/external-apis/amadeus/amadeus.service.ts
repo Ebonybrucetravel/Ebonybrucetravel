@@ -749,6 +749,7 @@ private async getAccessToken(): Promise<string> {
             const finalPrice = convertedBasePrice + markupAmount + serviceFeePercentage  + conversionFee;
         
             const roomType = room.type || room.typeEstimated?.category || 'STANDARD';
+            const estimatedCategory = room.typeEstimated?.category;
             
             const roomImages = this.getRoomImagesForOffer(hotelRoomImages, roomType);
             
@@ -793,12 +794,18 @@ private async getAccessToken(): Promise<string> {
               }
             }
             
+            const cleanedName = this.cleanRoomName(
+              room.description,
+              roomType,
+              estimatedCategory,
+            );
+
             return {
               id: offer.id,
               roomId: room.roomId || offer.id,
               type: roomType,
               name: {
-                name: room.description || room.type || 'Standard Room',
+                name: cleanedName,
               },
               description: {
                 text: room.description || null,
@@ -933,7 +940,11 @@ private async getAccessToken(): Promise<string> {
         roomType: {
           id: room.roomId,
           type: room.type,
-          description: room.description,
+          description: this.cleanRoomName(
+            room.description,
+            room.type,
+            room.typeEstimated?.category,
+          ),
           bedTypes: room.beds,
           maxOccupancy: room.maxAdultOccupancy,
         },
@@ -2154,4 +2165,73 @@ async createTransferBooking(params: {
   ): Promise<any> {
     return this.cancelTransfer({ orderId, confirmNbr });
   }
+  private cleanRoomName(
+    rawDescription: string,
+    roomCode: string,
+    estimatedCategory?: string,
+  ): string {
+    // ── TIER 1: Use Amadeus's standardized category (BEST SOURCE) ──
+    // Examples from docs: "STANDARD_ROOM", "SUPERIOR_ROOM", "SUITE", etc.
+    if (estimatedCategory && typeof estimatedCategory === 'string') {
+      const categoryMap: Record<string, string> = {
+        'STANDARD_ROOM': 'Standard Room',
+        'SUPERIOR_ROOM': 'Superior Room',
+        'DELUXE_ROOM': 'Deluxe Room',
+        'EXECUTIVE_ROOM': 'Executive Room',
+        'JUNIOR_SUITE': 'Junior Suite',
+        'SUITE': 'Suite',
+        'STUDIO': 'Studio',
+        'APARTMENT': 'Apartment',
+        'FAMILY_ROOM': 'Family Room',
+        'RUN_OF_HOUSE': 'Run of House',
+        'ROH': 'Run of House',
+      };
+
+      const mapped = categoryMap[estimatedCategory.toUpperCase()];
+      if (mapped) return mapped;
+
+      // Unknown category — humanize it: "SOME_CATEGORY" → "Some Category"
+      const humanized = estimatedCategory
+        .toLowerCase()
+        .split('_')
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+
+      if (humanized) return humanized;
+    }
+
+    // ── TIER 2: Parse the messy description ──
+    if (rawDescription && typeof rawDescription === 'string') {
+      let cleaned = rawDescription;
+
+      // Fix common typos
+      cleaned = cleaned.replace(/Sudio/gi, 'Studio');
+
+      // Remove rate plan prefixes
+      cleaned = cleaned.replace(/CORPORATE RATE.*?INCLUDED/gi, '');
+      cleaned = cleaned.replace(/BB INCLUDED/gi, '');
+      cleaned = cleaned.replace(/ROOM ONLY/gi, '');
+      cleaned = cleaned.replace(/ADVANCE SAVER/gi, '');
+
+      // Take only the first segment before the first dash
+      const parts = cleaned.split(/\s*-\s*/);
+      if (parts.length > 0 && parts[0].trim().length > 2) {
+        cleaned = parts[0];
+      }
+
+      // Normalize whitespace
+      cleaned = cleaned.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+      cleaned = cleaned.replace(/^[*\-:\s]+|[*\-:\s]+$/g, '').trim();
+
+      if (cleaned && cleaned.length >= 3) {
+        // Title case
+        return cleaned.replace(/\b\w/g, (c) => c.toUpperCase());
+      }
+    }
+
+    // ── TIER 3: Fall back to the code (e.g., "C12") ──
+    return roomCode || 'Standard Room';
+  }
 }
+
