@@ -1267,305 +1267,400 @@ if (uniqueImages.length > 0) {
     );
   };
 
-  const renderRoomTypesList = () => {
-    if (loadingRoomTypes) {
-      return (
-        <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#33a8da]"></div>
-          <p className="mt-3 text-gray-500 text-sm">Loading room types...</p>
-        </div>
-      );
+  // ✅ Group rooms by name (e.g., "Standard Room" appears once, all rate plans inside)
+const groupRoomsByType = useCallback((rooms: any[]) => {
+  const groups = new Map<string, {
+    key: string;
+    name: string;
+    type: string;
+    image: string;
+    images: any[];
+    features: string[];
+    maxAdults: number;
+    bedTypes: any[];
+    description: string;
+    rateFamily: string;
+    rates: any[];
+  }>();
+
+  rooms.forEach((room) => {
+    const name = room.name || room.type || 'Standard Room';
+const key = name; 
+
+    if (!groups.has(key)) {
+      // Extract feature tags from description (uses your existing helper)
+      const features = extractRoomAmenities(room.description || '');
+
+      groups.set(key, {
+        key,
+        name,
+        type: room.type || '',
+        image: room.image || room.primaryImage || '',
+        images: room.images || [],
+        features,
+        maxAdults: room.occupancy?.maxAdults || 2,
+        bedTypes: room.bedTypes || [],
+        description: room.description || '',
+        rateFamily: room.rateFamily || '',
+        rates: [],
+      });
     }
+
+    groups.get(key)!.rates.push(room);
+  });
+
+ 
+  // Sort rates inside each group by price ascending
+for (const group of groups.values()) {
+  group.rates.sort((a, b) => (a.price?.total || 0) - (b.price?.total || 0));
+
+  // ✅ Deduplicate visually identical rate plans
+  const seen = new Set<string>();
+  group.rates = group.rates.filter((rate) => {
+    // Extract the "visible fingerprint" of this rate
+    const rateFeatures = extractRoomAmenities(rate.description || '');
+    const boardType = rateFeatures.find(f =>
+      /breakfast|half board|full board|room only/i.test(f)
+    ) || '';
+    const isFlexible = rate.isRefundable ||
+      rateFeatures.some(f => /free cancellation|flexible rate/i.test(f));
+
+   
+    const bedSig = (rate.bedTypes || [])
+      .map((b: any) => `${b.type || 'Bed'}${b.quantity > 1 ? 'x' + b.quantity : ''}`)
+      .sort()
+      .join('|');
+
   
-    if (!roomTypes || roomTypes.length === 0) {
-      return (
-        <div className="text-center py-10 bg-white rounded-xl border border-gray-200">
-          <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
-            <svg className="w-6 h-6 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-          </div>
-          <p className="text-gray-500 font-medium text-sm">No rooms available</p>
-          <p className="text-xs text-gray-400 mt-1">All rooms are sold out for these dates</p>
-          <p className="text-xs text-gray-400 mt-1">Please try different dates</p>
-        </div>
-      );
+    const fingerprint = [
+      rate.price?.total || 0,
+      rate.price?.currency || '',
+      bedSig,
+      boardType.toLowerCase(),
+      isFlexible ? 'refundable' : 'nonrefundable',
+      (rate.rateFamily || '').toLowerCase(),
+      rate.cancellationDeadline || '',
+    ].join('::');
+
+    if (seen.has(fingerprint)) {
+    
+      console.log(`🗑️ Deduping rate: ${fingerprint}`);
+      return false;
     }
-  
+    seen.add(fingerprint);
+    return true;
+  });
+}
+
+return Array.from(groups.values()).sort(
+  (a, b) => (a.rates[0]?.price?.total || 0) - (b.rates[0]?.price?.total || 0)
+);
+}, []);
+
+const renderRoomTypesList = () => {
+  if (loadingRoomTypes) {
     return (
-      <div className="space-y-4">
-        {roomTypes.map((room: any, index: number) => {
-          const total = room.price?.total || 0;
-          const currencyCode = room.price?.currency || 'GBP';
-          const isSelected = selectedRoomType?.type === room.type;
-          const isAvailable = room.available !== undefined ? room.available : true;
-          
-          const currencySymbol = currencyCode === 'NGN' ? '₦' : 
-                                currencyCode === 'GBP' ? '£' : 
-                                currencyCode === 'USD' ? '$' : 
-                                currencyCode === 'EUR' ? '€' : currencyCode;
-          
-          const roomName = room.name || room.type || 'Standard Room';
-          const roomDescription = room.description || '';
-          
-          const bedTypes = room.bedTypes || [];
-          const bedTypeDisplay = bedTypes.length > 0 
-            ? bedTypes.map((b: any) => `${b.type || 'Queen'}${b.quantity > 1 ? ` x${b.quantity}` : ''}`).join(' • ')
-            : 'Queen';
-          
-          const maxAdults = room.occupancy?.maxAdults || 2;
-          const roomImage = room.image || '';
-          
-          // Debug log to see if image is being passed
-          console.log(`🔍 Rendering room ${room.type}: image exists? ${!!roomImage}`);
-          if (roomImage) {
-            console.log(`   Image URL: ${roomImage.substring(0, 60)}...`);
-          }
-  
-          return (
-            <div 
-              key={room.id || index} 
-              className={`bg-white rounded-lg border-2 overflow-hidden transition-all duration-200 ${
-                isSelected && isAvailable
-                  ? 'border-[#33a8da] shadow-md shadow-[#33a8da]/15' 
-                  : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
-              } ${!isAvailable ? 'opacity-75 bg-gray-50' : 'cursor-pointer'}`}
-              onClick={() => isAvailable && setSelectedRoomType(room)}
-            >
-              <div className="flex flex-col sm:flex-row">
-                {/* Image - ALWAYS render this container */}
-                <div className="w-full sm:w-[140px] h-[120px] sm:h-[140px] bg-gray-100 relative flex-shrink-0 overflow-hidden">
-                  {roomImage ? (
-                    <img 
-                      src={roomImage} 
-                      alt={roomName}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        console.warn(`⚠️ Image failed to load for ${room.type}:`, roomImage);
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        const parent = target.parentElement;
-                        if (parent) {
-                          const placeholder = parent.querySelector('.room-image-placeholder');
-                          if (placeholder) {
-                            (placeholder as HTMLElement).style.display = 'flex';
-                          }
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div className="room-image-placeholder w-full h-full flex items-center justify-center bg-gray-100">
-                      <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                  )}
-                  {isSelected && isAvailable && (
-                    <div className="absolute top-1.5 right-1.5 bg-[#33a8da] text-white text-[8px] font-bold px-2 py-0.5 rounded-full shadow-lg">
-                      ✓ Selected
-                    </div>
-                  )}
-                  {!isAvailable && (
-                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                      <span className="text-white text-xs font-bold px-3 py-1 bg-red-600/80 rounded-full">
-                        Sold Out
-                      </span>
-                    </div>
-                  )}
-                </div>
-  
-                <div className={`flex-1 p-3 sm:p-4`}>
-                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between sm:hidden">
-                        <h4 className={`font-bold text-sm leading-tight flex-1 ${!isAvailable ? 'text-gray-500' : 'text-gray-900'}`}>
-                          {safeRender(roomName)}
-                        </h4>
-                        <p className={`text-base font-bold ml-2 shrink-0 ${!isAvailable ? 'text-gray-400' : 'text-[#33a8da]'}`}>
-                          {currencySymbol}{total.toFixed(2)}
-                        </p>
-                      </div>
-                      
-                      <h4 className={`font-bold text-sm leading-tight hidden sm:block ${!isAvailable ? 'text-gray-500' : 'text-gray-900'}`}>
-                        {safeRender(roomName)}
-                      </h4>
-                      
-                    
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setRoomDetailModal(room);
-                          setRoomImageIndex(0);
-                        }}
-                        className="text-[10px] text-[#33a8da] hover:underline mt-0.5 inline-flex items-center gap-1"
-                      >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
-                        View details
-                      </button>
-                      
-                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                        {room.type && (
-                          <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full font-medium">
-                            {safeRender(room.type)}
-                          </span>
-                        )}
-                        <span className="text-[10px] text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
-                          {bedTypeDisplay}
-                        </span>
-                        <span className="text-[10px] text-gray-500">
-                          {maxAdults} adults
-                        </span>
-                        {room.rateFamily && (
-                          <span className="text-[10px] text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
-                            {safeRender(room.rateFamily)}
-                          </span>
-                        )}
-                        {!isAvailable && (
-                          <span className="text-[10px] text-red-600 bg-red-50 px-2 py-0.5 rounded-full font-medium">
-                            Sold Out
-                          </span>
-                        )}
-                      </div>
-  
-                      {roomDescription && (
-                        <p className={`text-xs mt-1 line-clamp-2 leading-relaxed ${!isAvailable ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {safeRender(roomDescription)}
-                        </p>
-                      )}
-  
-                      <div className="flex items-center gap-2 mt-1.5">
-                        {room.isRefundable ? (
-                          <span className="text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                            <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                            </svg>
-                            Refundable
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                            Non-refundable
-                          </span>
-                        )}
-                        {room.cancellationDeadline && (
-                          <span className="text-[9px] text-orange-500">
-                            Cancel by {new Date(room.cancellationDeadline).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-  
-                    <div className="hidden sm:flex sm:flex-col sm:items-end sm:justify-between sm:gap-1 shrink-0">
-                      <p className={`text-lg font-bold ${!isAvailable ? 'text-gray-400' : 'text-[#33a8da]'}`}>
-                        {currencySymbol}{total.toFixed(2)}
-                      </p>
-                      <p className="text-[9px] text-gray-400">total for {(() => {
-                        const checkIn = room.raw?.checkInDate || room.raw?.checkIn;
-                        const checkOut = room.raw?.checkOutDate || room.raw?.checkOut;
-                        if (checkIn && checkOut) {
-                          try {
-                            const start = new Date(checkIn);
-                            const end = new Date(checkOut);
-                            if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-                              const nights = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-                              if (nights > 0) return `${nights} night${nights > 1 ? 's' : ''}`;
-                            }
-                          } catch (e) {}
-                        }
-                        return 'stay';
-                      })()}</p>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (isAvailable) {
-                            setSelectedRoomType(room);
-                            const perNight = room.price?.total || 0;
-                            const originalCurrency = room.price?.currency || 'USD';
-                            let calculatedNights = 1;
-                            const offerCheckIn = room.raw?.checkInDate || room.raw?.checkIn;
-                            const offerCheckOut = room.raw?.checkOutDate || room.raw?.checkOut;
-                            
-                            if (offerCheckIn && offerCheckOut) {
-                              try {
-                                const nightsFromOffer = Math.ceil((new Date(offerCheckOut).getTime() - new Date(offerCheckIn).getTime()) / (1000 * 60 * 60 * 24));
-                                if (nightsFromOffer > 0) calculatedNights = nightsFromOffer;
-                              } catch (e) {}
-                            }
-                            const totalForStay = perNight * calculatedNights;
-                            setOriginalPriceAmount(totalForStay);
-                            setOriginalPriceCurrency(originalCurrency);
-                            if (originalCurrency !== currency.code) {
-                              convertPrice(totalForStay, originalCurrency).then(converted => {
-                                formatPrice(converted).then(formatted => {
-                                  setBookingCardPrice(formatted);
-                                });
-                              });
-                            } else {
-                              formatPrice(totalForStay, originalCurrency).then(formatted => {
-                                setBookingCardPrice(formatted);
-                              });
-                            }
-                          }
-                        }}
-                      >
-                        {!isAvailable ? 'Sold Out' : isSelected ? '✓ Selected' : 'Select'}
-                      </button>
-                    </div>
-                  </div>
-  
-                  <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center sm:hidden">
-                    <span className="text-[9px] text-gray-400">Includes taxes & charges</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isAvailable) {
-                          setSelectedRoomType(room);
-                          const perNight = room.price?.total || 0;
-                          const originalCurrency = room.price?.currency || 'USD';
-                          let calculatedNights = 1;
-                          const offerCheckIn = room.raw?.checkInDate || room.raw?.checkIn;
-                          const offerCheckOut = room.raw?.checkOutDate || room.raw?.checkOut;
-                          if (offerCheckIn && offerCheckOut) {
-                            try {
-                              const start = new Date(offerCheckIn);
-                              const end = new Date(offerCheckOut);
-                              if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-                                const nightsFromOffer = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-                                if (nightsFromOffer > 0) calculatedNights = nightsFromOffer;
-                              }
-                            } catch (e) {}
-                          }
-                          const totalForStay = perNight * calculatedNights;
-                          setOriginalPriceAmount(totalForStay);
-                          setOriginalPriceCurrency(originalCurrency);
-                          if (originalCurrency !== currency.code) {
-                            convertPrice(totalForStay, originalCurrency).then(converted => {
-                              formatPrice(converted).then(formatted => {
-                                setBookingCardPrice(formatted);
-                              });
-                            });
-                          } else {
-                            formatPrice(totalForStay, originalCurrency).then(formatted => {
-                              setBookingCardPrice(formatted);
-                            });
-                          }
-                        }
-                      }}
-                    >
-                      {!isAvailable ? 'Sold Out' : isSelected ? '✓ Selected' : 'Select'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <div className="text-center py-8">
+        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#33a8da]"></div>
+        <p className="mt-3 text-gray-500 text-sm">Loading room types...</p>
       </div>
     );
+  }
+
+  if (!roomTypes || roomTypes.length === 0) {
+    return (
+      <div className="text-center py-10 bg-white rounded-xl border border-gray-200">
+        <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
+          <svg className="w-6 h-6 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+          </svg>
+        </div>
+        <p className="text-gray-500 font-medium text-sm">No rooms available</p>
+        <p className="text-xs text-gray-400 mt-1">All rooms are sold out for these dates</p>
+      </div>
+    );
+  }
+
+  const grouped = groupRoomsByType(roomTypes);
+
+  // Helper: calculate nights from offer dates
+  const getRoomNights = (room: any) => {
+    const checkIn = room.raw?.checkInDate || room.raw?.checkIn;
+    const checkOut = room.raw?.checkOutDate || room.raw?.checkOut;
+    if (checkIn && checkOut) {
+      try {
+        const start = new Date(checkIn);
+        const end = new Date(checkOut);
+        if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+          const n = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+          if (n > 0) return n;
+        }
+      } catch { /* noop */ }
+    }
+    return nights;
   };
 
+  // Short icon set for the room-level chips
+  const IcoSnow = () => (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v18M3 12h18M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+  const IcoWifi = () => (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0M5.05 13.05a10 10 0 0113.9 0" />
+    </svg>
+  );
+  const IcoBath = () => (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h18v3a4 4 0 01-4 4H7a4 4 0 01-4-4v-3zM7 12V6a2 2 0 114 0" />
+    </svg>
+  );
+  const IcoTv = () => (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <rect x="2" y="4" width="20" height="14" rx="2" />
+      <path d="M8 22h8M12 18v4" />
+    </svg>
+  );
+  const IcoBed = () => (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 10V7a2 2 0 012-2h4a2 2 0 012 2v3m0 0V7a2 2 0 012-2h4a2 2 0 012 2v3m0 0v9m0-9H3m0 0v9m18-3H3" />
+    </svg>
+  );
+  const IcoUser = () => (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+    </svg>
+  );
+  const IcoCoffee = () => (
+    <svg className="w-4 h-4 text-green-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3" />
+    </svg>
+  );
+  const IcoCheck = () => (
+    <svg className="w-4 h-4 text-green-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+    </svg>
+  );
+  const IcoInfo = () => (
+    <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <circle cx="12" cy="12" r="10" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 16v-4M12 8h.01" />
+    </svg>
+  );
+
+  return (
+    <div className="space-y-4">
+      {grouped.map((group) => {
+        const currencyCode = group.rates[0]?.price?.currency || 'GBP';
+        const currencySymbol =
+          currencyCode === 'NGN' ? '₦'
+          : currencyCode === 'GBP' ? '£'
+          : currencyCode === 'USD' ? '$'
+          : currencyCode === 'EUR' ? '€'
+          : currencyCode;
+
+        // Short feature chips based on parsed features
+        const featureChips = [
+          { show: group.features.some(f => /air condition/i.test(f)), icon: <IcoSnow />, label: 'Air conditioning' },
+          { show: group.features.some(f => /bath/i.test(f)),          icon: <IcoBath />, label: 'Private bathroom' },
+          { show: group.features.some(f => /tv/i.test(f)),            icon: <IcoTv />,   label: 'Flat-screen TV' },
+          { show: group.features.some(f => /sound/i.test(f)),         icon: <IcoSnow />, label: 'Soundproofing' },
+          { show: group.features.some(f => /wifi|internet/i.test(f)), icon: <IcoWifi />, label: 'Free WiFi' },
+        ].filter(c => c.show);
+
+        const bedDisplay = group.bedTypes.length > 0
+          ? group.bedTypes.map((b: any) => `${b.quantity > 1 ? `${b.quantity} × ` : ''}${b.type || 'Bed'}`).join(' • ')
+          : 'Queen';
+
+        return (
+          <div key={group.key} className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+            <div className="flex flex-col lg:flex-row">
+              {/* ── LEFT: Room info ── */}
+              <div className="lg:w-[30%] p-4 border-b lg:border-b-0 lg:border-r border-gray-100">
+                {group.image ? (
+                  <img
+                    src={group.image}
+                    alt={group.name}
+                    className="w-full h-32 object-cover rounded-md mb-3"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ) : (
+                  <div className="w-full h-32 bg-gray-100 rounded-md mb-3 flex items-center justify-center">
+                    <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                )}
+
+                <h3 className="text-[#33a8da] font-bold text-base mb-2 hover:underline cursor-pointer">
+                  {safeRender(group.name)}
+                </h3>
+
+                <div className="flex items-center gap-1.5 text-gray-700 text-xs mb-1">
+                  <IcoUser />
+                  <span>Sleeps: {group.maxAdults} adult{group.maxAdults > 1 ? 's' : ''}</span>
+                </div>
+                
+
+                {/* Feature chips */}
+                {featureChips.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-3">
+                    {featureChips.map((f, i) => (
+                      <span
+                        key={i}
+                        className="inline-flex items-center gap-1 text-[10px] text-gray-700 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5"
+                      >
+                        {f.icon}
+                        {f.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    setRoomDetailModal(group.rates[0]);
+                    setRoomImageIndex(0);
+                  }}
+                  className="text-[10px] text-[#33a8da] hover:underline mt-3 inline-flex items-center gap-1"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  View details
+                </button>
+              </div>
+
+              {/* ── RIGHT: Rate plans ── */}
+              <div className="flex-1">
+                {group.rates.map((rate: any, idx: number) => {
+                  const isSelected = selectedRoomType?.id === rate.id;
+                  const price = rate.price?.total || 0;
+                  const basePrice = rate.price?.base || 0;
+                  const roomNights = getRoomNights(rate);
+
+                  // Detect board type
+                  const rateFeatures = extractRoomAmenities(rate.description || '');
+                  const boardType = rateFeatures.find(f =>
+                    /breakfast|half board|full board|room only/i.test(f)
+                  ) || null;
+                  const isFlexible = rate.isRefundable ||
+                    rateFeatures.some(f => /free cancellation|flexible rate/i.test(f));
+
+                  return (
+                    <div
+                      key={rate.id || idx}
+                      className={`flex flex-col lg:flex-row items-stretch ${
+                        idx < group.rates.length - 1 ? 'border-b border-gray-100' : ''
+                      } ${isSelected ? 'bg-blue-50/40' : ''}`}
+                    >
+                      {/* Today's price */}
+                      <div className="lg:w-[30%] p-4 border-b lg:border-b-0 lg:border-r border-gray-100">
+                        {basePrice > price && (
+                          <div className="text-xs text-red-500 line-through mb-0.5">
+                            {currencySymbol}{basePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-lg font-bold text-gray-900">
+                            {currencySymbol}{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                          <IcoInfo />
+                        </div>
+                        <div className="text-xs text-gray-500">Includes taxes and fees</div>
+                        <div className="text-xs text-gray-500">
+                          {roomNights} night{roomNights > 1 ? 's' : ''}
+                        </div>
+                      </div>
+
+                      {/* Available rates */}
+                      <div className="lg:flex-1 p-4 border-b lg:border-b-0 lg:border-r border-gray-100">
+                      <div className="flex items-start gap-2 text-sm text-gray-800 mb-2">
+    <IcoBed />
+    <span>
+      {rate.bedTypes && rate.bedTypes.length > 0
+        ? rate.bedTypes.map((b: any) => `${b.quantity > 1 ? `${b.quantity} × ` : ''}${b.type || 'Bed'}`).join(' • ')
+        : 'Queen'}
+    </span>
+  </div>
+                        {boardType && (
+                          <div className="flex items-start gap-2 text-sm text-gray-800 mb-2">
+                            <IcoCoffee />
+                            <span>{boardType}</span>
+                          </div>
+                        )}
+                        {isFlexible ? (
+                          <div className="flex items-start gap-2 text-sm text-green-700 mb-2">
+                            <IcoCheck />
+                            <span>
+                              {rate.cancellationDeadline
+                                ? `Free cancellation before ${new Date(rate.cancellationDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                                : 'Free cancellation'}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-2 text-sm text-gray-500 mb-2">
+                            <span className="w-4 h-4" />
+                            <span>Non-refundable</span>
+                          </div>
+                        )}
+                        {rate.rateFamily && (
+                          <div className="flex items-start gap-2 text-xs text-purple-600 mt-1">
+                            <span className="w-4" />
+                            <span>Rate: {rate.rateFamily}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Select */}
+                      <div className="lg:w-[22%] p-4 flex flex-col items-start justify-center gap-2">
+                        <button
+                          type="button"
+                          disabled={!rate.available}
+                          onClick={() => {
+                            if (!rate.available) return;
+                            setSelectedRoomType(rate);
+                            setOriginalPriceAmount(price);
+                            setOriginalPriceCurrency(currencyCode);
+
+                            // Sync booking card price
+                            if (currencyCode !== currency.code) {
+                              convertPrice(price, currencyCode).then(converted => {
+                                formatPrice(converted).then(formatted => setBookingCardPrice(formatted));
+                              });
+                            } else {
+                              formatPrice(price, currencyCode).then(formatted => setBookingCardPrice(formatted));
+                            }
+                          }}
+                          className={`w-full text-sm font-semibold py-2 rounded transition ${
+                            !rate.available
+                              ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                              : isSelected
+                                ? 'bg-green-600 text-white hover:bg-green-700'
+                                : 'bg-[#33a8da] text-white hover:bg-[#2c98c7]'
+                          }`}
+                        >
+                          {!rate.available ? 'Sold Out' : isSelected ? '✓ Selected' : "I'll reserve"}
+                        </button>
+                        {rate.isRefundable && (
+                          <p className="text-[10px] text-gray-500 leading-tight">
+                            • You won&apos;t be charged yet
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
   const renderAmenities = () => {
     const amenities = fullDetails?.amenities || [];
     return (
