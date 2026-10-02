@@ -18,21 +18,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // Admin routes: no main site nav/footer, full-screen admin UI
   const isAdminRoute = pathname?.startsWith('/admin');
 
-  // ── Auth modal state (popup overlay, synced with route) ───
   const authRoutes = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email'];
-  const isAuthRoute = authRoutes.includes(pathname);
-  const authMode = pathname === '/register' ? 'register'
-    : pathname === '/forgot-password' ? 'forgot-password'
-    : pathname === '/reset-password' ? 'reset-password'
-    : pathname === '/verify-email' ? 'verify-email'
-    : 'login';
+const isAuthRoute = authRoutes.includes(pathname);
+const authMode = pathname === '/register' ? 'register'
+  : pathname === '/forgot-password' ? 'forgot-password'
+  : pathname === '/reset-password' ? 'reset-password'
+  : pathname === '/verify-email' ? 'verify-email'
+  : 'login';
 
-  // Store the page the user was on before opening auth
-  useEffect(() => {
-    if (!isAuthRoute && pathname !== '/') {
-      sessionStorage.setItem('authReturnTo', pathname);
-    }
-  }, [pathname, isAuthRoute]);
+// ✅ NEW: Read the token from the URL (query string + hash fallback)
+const [authToken, setAuthToken] = useState<string>('');
+
+useEffect(() => {
+  if (typeof window === 'undefined') return;
+  if (!isAuthRoute) return;
+
+  let t = '';
+
+
+  const params = new URLSearchParams(window.location.search);
+  t = params.get('token') || '';
+
+ 
+  if (!t && window.location.hash) {
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    t = hashParams.get('token') || '';
+  }
+
+  console.log('🔍 [AppShell] Auth route:', pathname);
+  console.log('🔍 [AppShell] Token from URL:', t ? t.substring(0, 16) + '...' : '(empty)');
+
+  setAuthToken(t);
+}, [pathname, isAuthRoute]);
 
   const openAuth = (mode: 'login' | 'register') => {
     sessionStorage.setItem('authReturnTo', pathname);
@@ -90,12 +107,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <AuthModal
           isOpen={isAuthRoute}
           initialMode={authMode}
+          resetToken={authToken}
           onLoginSuccess={handleAuthSuccess}
           onClose={closeAuth}
         />
       )}
 
-      {/* ✅ AI Assistant Button - Visible to EVERYONE (guests + logged in) */}
+     
       <button
         onClick={() => setIsAiOpen(!isAiOpen)}
         className="fixed bottom-8 right-8 w-16 h-16 bg-[#33a8da] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition z-50"

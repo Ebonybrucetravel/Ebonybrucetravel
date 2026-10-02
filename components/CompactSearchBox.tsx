@@ -47,6 +47,7 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
   const hotelLocationRef = useRef<HTMLDivElement>(null);
   const carPickupRef = useRef<HTMLDivElement>(null);
   const carDropoffRef = useRef<HTMLDivElement>(null);
+  const quickFiltersRef = useRef<HTMLDivElement>(null); 
   const passengerDropdownRef = useRef<HTMLDivElement>(null);
   
   // Flight states
@@ -90,17 +91,34 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
   const [hotelSuggestions, setHotelSuggestions] = useState<HotelDestination[]>([]);
   const [loadingHotelSuggestions, setLoadingHotelSuggestions] = useState(false);
   const [selectedCityCode, setSelectedCityCode] = useState<string | null>(null);
-  
   // Car states
-  const [carPickup, setCarPickup] = useState('');
-  const [carDropoff, setCarDropoff] = useState('');
-  const [carPickupDate, setCarPickupDate] = useState('');
-  const [carDropoffDate, setCarDropoffDate] = useState('');
-  const [showCarPickupDropdown, setShowCarPickupDropdown] = useState(false);
-  const [showCarDropoffDropdown, setShowCarDropoffDropdown] = useState(false);
-  const [carPickupSuggestions, setCarPickupSuggestions] = useState<Airport[]>([]);
-  const [carDropoffSuggestions, setCarDropoffSuggestions] = useState<Airport[]>([]);
-  const [loadingCarSuggestions, setLoadingCarSuggestions] = useState(false);
+const [carPickup, setCarPickup] = useState('');
+const [carDropoff, setCarDropoff] = useState('');
+const [carPickupDate, setCarPickupDate] = useState('');
+const [carPickupTime, setCarPickupTime] = useState('10:00');   
+const [carDropoffDate, setCarDropoffDate] = useState('');
+const [carDropoffTime, setCarDropoffTime] = useState('10:00'); 
+const [showCarPickupDropdown, setShowCarPickupDropdown] = useState(false);
+const [showCarDropoffDropdown, setShowCarDropoffDropdown] = useState(false);
+const [carPickupSuggestions, setCarPickupSuggestions] = useState<Airport[]>([]);
+const [carDropoffSuggestions, setCarDropoffSuggestions] = useState<Airport[]>([]);
+const [loadingCarSuggestions, setLoadingCarSuggestions] = useState(false);
+  const [dropOffDifferent, setDropOffDifferent] = useState(false);
+const [driverAged3065, setDriverAged3065] = useState(true);
+const [showQuickFilters, setShowQuickFilters] = useState(false);
+const [seatFilter, setSeatFilter] = useState<number | null>(null);
+const [transmission, setTransmission] = useState<'ANY' | 'AUTOMATIC' | 'MANUAL'>('ANY');
+const [fuelType, setFuelType] = useState<'ANY' | 'PETROL' | 'DIESEL' | 'ELECTRIC' | 'HYBRID'>('ANY');
+const [airConditioning, setAirConditioning] = useState(false);
+const [unlimitedMileage, setUnlimitedMileage] = useState(false);
+const [extras, setExtras] = useState({
+  additionalDriver: false,
+  infantSeat: false,
+  boosterSeat: false,
+  carSeat: false,
+  gps: false,
+  wifi: false,
+});
 
   // Memoize popular airports
   const popularAirports = useMemo<Airport[]>(() => [
@@ -662,21 +680,66 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
       
     } else if (activeTab === 'cars') {
       const pickupCode = extractCode(carPickup);
-      const dropoffCode = extractCode(carDropoff);
+      const dropoffCode = extractCode(carDropoff || carPickup);
+      
+      if (!pickupCode || !carPickupDate || !carDropoffDate) {
+        alert('Please fill in all rental details.');
+        return;
+      }
+      
+      const formatDT = (d: string, t: string) => {
+        const date = new Date(d);
+        const [h, m] = t.split(':');
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${h}:${m}:00`;
+      };
+      
+      const pickupDate = new Date(`${carPickupDate}T${carPickupTime}:00`);
+      const dropoffDate = new Date(`${carDropoffDate}T${carDropoffTime}:00`);
+      const diffHours = (dropoffDate.getTime() - pickupDate.getTime()) / (1000 * 60 * 60);
+      const hours = Math.floor(diffHours);
+      const minutes = Math.round((diffHours - hours) * 60);
+      const duration = `PT${hours}H${minutes > 0 ? `${minutes}M` : ''}`;
       
       searchData = {
         type: 'car-rentals',
-        pickupLocationCode: pickupCode,
-        dropoffLocationCode: dropoffCode,
-        pickupDateTime: `${carPickupDate}T10:00:00`,
-        dropoffDateTime: `${carDropoffDate}T10:00:00`,
+        // Core Amadeus fields
+        startLocationCode: pickupCode,
+        endLocationCode: dropoffCode,
+        startDateTime: formatDT(carPickupDate, carPickupTime),
+        endDateTime: formatDT(carDropoffDate, carDropoffTime),
         passengers: 2,
+        transferType: 'PRIVATE',
+        currency: 'GBP',
+        duration,
+        vehicleCategory: 'BU',
+        vehicleCode: 'VAN',
+        // Quick filter attributes
+        seatCount: seatFilter || undefined,
+        transmission: transmission !== 'ANY' ? transmission : undefined,
+        fuelType: fuelType !== 'ANY' ? fuelType : undefined,
+        airConditioning: airConditioning || undefined,
+        unlimitedMileage: unlimitedMileage || undefined,
+        extras: Object.entries(extras)
+          .filter(([, v]) => v)
+          .map(([k]) => k.toUpperCase()),
+        // User preferences
+        driverAge: driverAged3065 ? '30-65' : 'any',
+        dropOffDifferent,
       };
-      console.log('🚗 Car Search Data:', searchData);
+      console.log('🚗 Amadeus Car Rental Payload:', searchData);
     }
     
     onSearch(searchData);
-  }, [activeTab, extractCode, getCityCodeFromLocation, flightFrom, flightTo, flightDate, tripType, returnDate, passengers, cabinClass, hotelLocation, checkIn, checkOut, guests, carPickup, carDropoff, carPickupDate, carDropoffDate, multiCitySegments, onSearch]);
+  }, [
+    activeTab, extractCode, getCityCodeFromLocation,
+    flightFrom, flightTo, flightDate, tripType, returnDate,
+    passengers, cabinClass,
+    hotelLocation, checkIn, checkOut, guests,
+    carPickup, carDropoff, carPickupDate, carPickupTime, carDropoffDate, carDropoffTime,
+    multiCitySegments, onSearch,
+    seatFilter, transmission, fuelType, airConditioning, unlimitedMileage, extras,
+    driverAged3065, dropOffDifferent,
+  ]);
 
   const renderDropdown = useCallback((suggestions: Airport[], onSelect: (airport: Airport) => void, isLoading: boolean) => (
     <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 max-h-64 overflow-y-auto z-50">
@@ -1110,39 +1173,417 @@ const CompactSearchBox: React.FC<CompactSearchBoxProps> = ({
       passengers.infants,
     ]);
 
-  const renderCarCompact = useMemo(() => (
-    <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">
-      <div className="flex-1 min-w-[130px] relative" ref={carPickupRef}>
-        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">PICKUP</label>
-        <input type="text" value={carPickup} onChange={(e) => handleCarPickupChange(e.target.value)} onFocus={() => setShowCarPickupDropdown(true)} placeholder="City or airport" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white" />
-        {showCarPickupDropdown && renderDropdown(carPickupSuggestions, (airport) => handleCarLocationSelect(airport, 'pickup'), loadingCarSuggestions)}
+    const renderCarCompact = useMemo(() => (
+      <div className="space-y-3">
+        {/* ===== MAIN SEARCH BAR ===== */}
+        <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">
+    
+          {/* Pickup Location */}
+          <div className="flex-1 min-w-[180px] relative" ref={carPickupRef}>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+              PICK-UP
+            </label>
+            <input
+              type="text"
+              value={carPickup}
+              onChange={(e) => handleCarPickupChange(e.target.value)}
+              onFocus={() => {
+                if (carPickup.length < 2) setShowCarPickupDropdown(true);
+              }}
+              placeholder="Airport, city, or station"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+            />
+            {showCarPickupDropdown && renderDropdown(
+              carPickupSuggestions,
+              (airport) => {
+                const displayValue = `${airport.code} - ${airport.city}, ${airport.country}`;
+                setCarPickup(displayValue);
+                setShowCarPickupDropdown(false);
+                if (!dropOffDifferent) setCarDropoff(displayValue);
+              },
+              loadingCarSuggestions
+            )}
+          </div>
+    
+          {/* Pickup Date */}
+          <div className="flex-1 min-w-[130px]">
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+              PICK-UP DATE
+            </label>
+            <input
+              type="date"
+              value={carPickupDate}
+              onChange={(e) => setCarPickupDate(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+            />
+          </div>
+    
+          {/* Pickup Time */}
+          <div className="flex-1 min-w-[110px]">
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+              TIME
+            </label>
+            <input
+              type="time"
+              value={carPickupTime}
+              onChange={(e) => setCarPickupTime(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+            />
+          </div>
+    
+          {/* Dropoff Date */}
+          <div className="flex-1 min-w-[130px]">
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+              DROP-OFF DATE
+            </label>
+            <input
+              type="date"
+              min={carPickupDate}
+              value={carDropoffDate}
+              onChange={(e) => setCarDropoffDate(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+            />
+          </div>
+    
+          {/* Dropoff Time */}
+          <div className="flex-1 min-w-[110px]">
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+              TIME
+            </label>
+            <input
+              type="time"
+              value={carDropoffTime}
+              onChange={(e) => setCarDropoffTime(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
+            />
+          </div>
+    
+          {/* Search Button */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-semibold text-transparent uppercase tracking-wider">.</span>
+            <button
+              type="submit"
+              disabled={loading || !carPickup || (dropOffDifferent && !carDropoff) || !carPickupDate || !carDropoffDate}
+              className="bg-[#33a8da] text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#2c98c7] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap"
+            >
+              {loading ? '...' : 'Search'}
+            </button>
+          </div>
+        </div>
+    
+        {/* ===== Conditional Drop-off Location (only if different) ===== */}
+        {dropOffDifferent && (
+          <div className="relative">
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+              DROP-OFF LOCATION
+            </label>
+            <input
+              type="text"
+              value={carDropoff}
+              onChange={(e) => handleCarDropoffChange(e.target.value)}
+              onFocus={() => {
+                if (carDropoff.length < 2) setShowCarDropoffDropdown(true);
+              }}
+              placeholder="Airport, city, or station"
+              className="w-full px-3 py-2 text-sm border border-[#33a8da] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-white"
+            />
+            {showCarDropoffDropdown && renderDropdown(
+              carDropoffSuggestions,
+              (airport) => {
+                setCarDropoff(`${airport.code} - ${airport.city}, ${airport.country}`);
+                setShowCarDropoffDropdown(false);
+              },
+              loadingCarSuggestions
+            )}
+          </div>
+        )}
+    
+        {/* ===== SUB BAR: Checkboxes + Quick Filters ===== */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <div className="flex flex-wrap items-center gap-5">
+            {/* Drop car off at different location */}
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition ${
+                dropOffDifferent ? 'bg-[#33a8da] border-[#33a8da]' : 'border-gray-400 group-hover:border-gray-600'
+              }`}>
+                {dropOffDifferent && (
+                  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              <input
+                type="checkbox"
+                checked={dropOffDifferent}
+                onChange={(e) => {
+                  setDropOffDifferent(e.target.checked);
+                  if (!e.target.checked) setCarDropoff(carPickup);
+                }}
+                className="hidden"
+              />
+              <span className="text-xs font-medium text-gray-600">
+                Drop car off at different location
+              </span>
+            </label>
+    
+            {/* Driver aged 30-65 */}
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition ${
+                driverAged3065 ? 'bg-[#33a8da] border-[#33a8da]' : 'border-gray-400 group-hover:border-gray-600'
+              }`}>
+                {driverAged3065 && (
+                  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              <input
+                type="checkbox"
+                checked={driverAged3065}
+                onChange={(e) => setDriverAged3065(e.target.checked)}
+                className="hidden"
+              />
+              <span className="text-xs font-medium text-gray-600">
+                Driver aged 30 – 65?
+              </span>
+            </label>
+          </div>
+    
+          {/* Quick filters button */}
+          <button
+            type="button"
+            onClick={() => setShowQuickFilters(true)}
+            className="flex items-center gap-1.5 text-[#33a8da] hover:text-[#2c98c7] font-semibold text-xs transition group"
+          >
+            <svg className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+            </svg>
+            <span>Quick filters</span>
+            {(seatFilter || transmission !== 'ANY' || fuelType !== 'ANY' || airConditioning || unlimitedMileage || Object.values(extras).some(Boolean)) && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[#33a8da] animate-pulse"></span>
+            )}
+          </button>
+        </div>
+    
+        {/* ===== QUICK FILTERS MODAL ===== */}
+        {showQuickFilters && (
+          <div
+            className="fixed inset-0 z-[200] flex items-start justify-center p-4 sm:p-6 overflow-y-auto bg-black/40 backdrop-blur-sm"
+            onClick={() => setShowQuickFilters(false)}
+          >
+            <div
+              className="bg-white rounded-2xl w-full max-w-lg shadow-2xl my-auto sm:my-8 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-4rem)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="bg-white flex items-start justify-between p-6 pb-4 border-b border-gray-100 flex-shrink-0">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900">Quick filters</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Powered by Ebony Bruce Travels · Fine-tune your results
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickFilters(false)}
+                  className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 transition"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+    
+              {/* Body */}
+              <div className="p-6 space-y-6 overflow-y-auto flex-1">
+    
+                {/* Number of seats */}
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Number of seats
+                  </h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: '2–4 seats', value: 4 },
+                      { label: '5 seats',   value: 5 },
+                      { label: '6+ seats',  value: 7 },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setSeatFilter(seatFilter === opt.value ? null : opt.value)}
+                        className={`py-3 px-3 rounded-full border text-xs font-semibold transition ${
+                          seatFilter === opt.value
+                            ? 'border-[#33a8da] bg-[#33a8da]/10 text-[#33a8da] ring-2 ring-[#33a8da]'
+                            : 'border-gray-300 text-gray-700 hover:border-gray-500 hover:bg-gray-50'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+    
+                {/* Transmission */}
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Transmission
+                  </h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    {(['ANY', 'AUTOMATIC', 'MANUAL'] as const).map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => setTransmission(opt)}
+                        className={`py-2.5 px-3 rounded-full border text-xs font-semibold transition ${
+                          transmission === opt
+                            ? 'border-[#33a8da] bg-[#33a8da]/10 text-[#33a8da] ring-2 ring-[#33a8da]'
+                            : 'border-gray-300 text-gray-700 hover:border-gray-500 hover:bg-gray-50'
+                        }`}
+                      >
+                        {opt === 'ANY' ? 'Any' : opt.charAt(0) + opt.slice(1).toLowerCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+    
+                {/* Fuel Type */}
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Fuel type
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {(['ANY', 'PETROL', 'DIESEL', 'ELECTRIC', 'HYBRID'] as const).map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => setFuelType(opt)}
+                        className={`py-2 px-4 rounded-full border text-xs font-semibold transition ${
+                          fuelType === opt
+                            ? 'border-[#33a8da] bg-[#33a8da]/10 text-[#33a8da] ring-2 ring-[#33a8da]'
+                            : 'border-gray-300 text-gray-700 hover:border-gray-500 hover:bg-gray-50'
+                        }`}
+                      >
+                        {opt === 'ANY' ? 'Any' : opt.charAt(0) + opt.slice(1).toLowerCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+    
+                {/* Popular Extras */}
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Popular extras
+                  </h4>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Only show rental companies with these extras available
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    {[
+                      { key: 'additionalDriver', label: 'Additional driver', icon: '👤' },
+                      { key: 'infantSeat',       label: 'Infant car seat',   icon: '👶' },
+                      { key: 'boosterSeat',      label: 'Booster seat',      icon: '🧒' },
+                      { key: 'carSeat',          label: 'Child car seat',    icon: '🪑' },
+                      { key: 'gps',              label: 'GPS navigation',    icon: '🗺️' },
+                      { key: 'wifi',             label: 'Wi-Fi hotspot',     icon: '📶' },
+                    ].map((extra) => (
+                      <button
+                        key={extra.key}
+                        type="button"
+                        onClick={() => setExtras(prev => ({ ...prev, [extra.key]: !prev[extra.key as keyof typeof prev] }))}
+                        className={`py-2.5 px-4 rounded-full border text-xs font-semibold transition flex items-center gap-2 ${
+                          extras[extra.key as keyof typeof extras]
+                            ? 'border-[#33a8da] bg-[#33a8da]/10 text-[#33a8da] ring-2 ring-[#33a8da]'
+                            : 'border-gray-300 text-gray-700 hover:border-gray-500 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span>{extra.icon}</span>
+                        {extra.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+    
+                {/* Toggles */}
+                <div className="space-y-4 pt-2 border-t border-gray-100">
+                  {[
+                    { label: 'Automatic transmission only', value: transmission === 'AUTOMATIC', setter: () => setTransmission(transmission === 'AUTOMATIC' ? 'ANY' : 'AUTOMATIC') },
+                    { label: 'Air conditioning',            value: airConditioning,             setter: () => setAirConditioning(!airConditioning) },
+                    { label: 'Unlimited mileage',           value: unlimitedMileage,            setter: () => setUnlimitedMileage(!unlimitedMileage) },
+                  ].map((toggle) => (
+                    <div key={toggle.label} className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-800 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        {toggle.label}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={toggle.setter}
+                        className={`relative w-12 h-7 rounded-full transition-colors ${
+                          toggle.value ? 'bg-[#33a8da]' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform ${
+                          toggle.value ? 'translate-x-5' : 'translate-x-0'
+                        }`} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+    
+              {/* Footer */}
+              <div className="bg-white flex items-center justify-between gap-4 p-6 pt-4 border-t border-gray-100 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSeatFilter(null);
+                    setTransmission('ANY');
+                    setFuelType('ANY');
+                    setAirConditioning(false);
+                    setUnlimitedMileage(false);
+                    setExtras({ additionalDriver: false, infantSeat: false, boosterSeat: false, carSeat: false, gps: false, wifi: false });
+                  }}
+                  className="text-[#33a8da] hover:text-[#2c98c7] font-semibold text-sm px-4 py-2.5"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickFilters(false)}
+                  className="flex-1 bg-[#33a8da] hover:bg-[#2c98c7] text-white font-bold text-sm py-3 px-6 rounded-lg transition"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-
-      <div className="flex-1 min-w-[130px] relative" ref={carDropoffRef}>
-        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">DROPOFF</label>
-        <input type="text" value={carDropoff} onChange={(e) => handleCarDropoffChange(e.target.value)} onFocus={() => setShowCarDropoffDropdown(true)} placeholder="City or airport" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white" />
-        {showCarDropoffDropdown && renderDropdown(carDropoffSuggestions, (airport) => handleCarLocationSelect(airport, 'dropoff'), loadingCarSuggestions)}
-      </div>
-
-      <div className="flex-1 min-w-[130px]">
-        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">PICKUP DATE</label>
-        <input type="date" value={carPickupDate} onChange={(e) => setCarPickupDate(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white" />
-      </div>
-
-      <div className="flex-1 min-w-[130px]">
-        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">DROPOFF DATE</label>
-        <input type="date" value={carDropoffDate} onChange={(e) => setCarDropoffDate(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white" />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[10px] font-semibold text-transparent uppercase tracking-wider">.</span>
-        <button type="submit" disabled={loading || !carPickup || !carDropoff || !carPickupDate || !carDropoffDate} className="bg-[#33a8da] text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#2c98c7] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap">
-          {loading ? '...' : 'Search'}
-        </button>
-      </div>
-    </div>
-  ), [carPickup, carDropoff, carPickupDate, carDropoffDate, showCarPickupDropdown, showCarDropoffDropdown, carPickupSuggestions, carDropoffSuggestions, loadingCarSuggestions, loading, handleCarPickupChange, handleCarDropoffChange, handleCarLocationSelect, renderDropdown]);
-
+    ), [
+      // Deps
+      carPickup, carDropoff, carPickupDate, carPickupTime, carDropoffDate, carDropoffTime,
+      showCarPickupDropdown, showCarDropoffDropdown,
+      carPickupSuggestions, carDropoffSuggestions, loadingCarSuggestions, loading,
+      dropOffDifferent, driverAged3065, showQuickFilters,
+      seatFilter, transmission, fuelType, airConditioning, unlimitedMileage, extras,
+      handleCarPickupChange, handleCarDropoffChange, renderDropdown,
+    ]);
   return (
     <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
       {activeTab === 'flights' && renderFlightCompact}

@@ -110,12 +110,39 @@ const AuthModal: React.FC<AuthModalProps> = ({
     setMode(initialMode);
     setError(null);
     setSuccessMessage(null);
+  
     if (isOpen) {
       setEmail('');
       setPassword('');
       setConfirmPassword('');
       setName('');
-      setResetPasswordToken(resetToken || '');
+  
+
+      let resolvedToken = resetToken || '';
+  
+      if (!resolvedToken && typeof window !== 'undefined') {
+  
+        const params = new URLSearchParams(window.location.search);
+        resolvedToken = params.get('token') || '';
+  
+    
+        if (!resolvedToken && window.location.hash) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          resolvedToken = hashParams.get('token') || '';
+        }
+      }
+  
+      console.log('🔍 [AuthModal] Resolved token:', resolvedToken.substring(0, 16) + '...');
+      console.log('🔍 [AuthModal] Mode:', initialMode);
+      setResetPasswordToken(resolvedToken);
+  
+     
+      if (
+        (initialMode === 'reset-password' || initialMode === 'verify-email') &&
+        !resolvedToken
+      ) {
+        setError('Invalid or missing token. Please use the link from your email.');
+      }
     }
   }, [initialMode, isOpen, resetToken]);
 
@@ -883,12 +910,12 @@ const AuthModal: React.FC<AuthModalProps> = ({
               </div>
               
               <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-[#33a8da] text-white font-bold py-3 rounded-lg hover:bg-[#2c98c7] transition text-sm disabled:opacity-50"
-              >
-                {isLoading ? 'Resetting…' : 'Reset Password'}
-              </button>
+  type="submit"
+  disabled={isLoading || !resetPasswordToken}
+  className="w-full bg-[#33a8da] text-white font-bold py-3 rounded-lg hover:bg-[#2c98c7] transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+>
+  {isLoading ? 'Resetting…' : 'Reset Password'}
+</button>
             </form>
           )}
 
@@ -902,13 +929,13 @@ const AuthModal: React.FC<AuthModalProps> = ({
               </div>
               <p className="text-sm text-gray-600">Check your inbox for the verification link.</p>
               <form onSubmit={handleVerifyEmail} className="mt-4">
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full bg-[#33a8da] text-white font-bold py-3 rounded-lg hover:bg-[#2c98c7] transition text-sm disabled:opacity-50"
-                >
-                  {isLoading ? 'Verifying...' : 'Verify Email'}
-                </button>
+              <button
+  type="submit"
+  disabled={isLoading || !resetPasswordToken}
+  className="w-full bg-[#33a8da] text-white font-bold py-3 rounded-lg hover:bg-[#2c98c7] transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+>
+  {isLoading ? 'Verifying...' : 'Verify Email'}
+</button>
               </form>
             </div>
           )}
