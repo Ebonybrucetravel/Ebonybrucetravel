@@ -285,14 +285,15 @@ export class ResendService {
     try {
       const subject = 'Welcome to Ebony Bruce Travels!';
       const html = this.getRegistrationEmailTemplate(data);
-
+  
       await this.resend.emails.send({
         from: this.fromEmail,
         to: data.to,
         subject,
         html,
+    
       });
-
+  
       this.logger.log(`Registration email sent to ${data.to}`);
     } catch (error) {
       this.logger.error(`Failed to send registration email to ${data.to}:`, error);
@@ -303,14 +304,15 @@ export class ResendService {
     try {
       const subject = 'Reset Your Password - Ebony Bruce Travels';
       const html = this.getPasswordResetEmailTemplate(data);
-
+  
       await this.resend.emails.send({
         from: this.fromEmail,
         to: data.to,
         subject,
         html,
+      
       });
-
+  
       this.logger.log(`Password reset email sent to ${data.to}`);
     } catch (error) {
       this.logger.error(`Failed to send password reset email to ${data.to}:`, error);
