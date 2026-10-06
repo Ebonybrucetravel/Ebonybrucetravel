@@ -9,6 +9,13 @@ import { useRouter } from "next/navigation";
 import { selectWakanowFlight } from "@/lib/wakanow-api";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
+import { extractAmenities } from "@/lib/amenities"; 
+import {
+  resolveCityName,
+  getCityCenter,
+  distanceMeters,
+  formatDistance,
+} from '@/lib/cities';
 
 
 interface ExtendedSearchResult extends Omit<BaseSearchResult, 'price'> {
@@ -472,6 +479,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const [flightPrices, setFlightPrices] = useState<Record<string, string>>({});
   const [hotelCarPrices, setHotelCarPrices] = useState<Record<string, string>>({});
   const [processedFlights, setProcessedFlights] = useState<ExtendedSearchResult[]>([]);
+  const [addressCache, setAddressCache] = useState<Record<string, string>>({});
 
  
   const [bookingFlightId, setBookingFlightId] = useState<string | null>(null);
@@ -635,6 +643,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
     return hasProcessedFields;
   }, [results, searchType]);
+
+
 
   const flightOffers = useMemo(() => {
     if (Array.isArray(results) && results.length > 0 && 'FlightCombination' in results[0]) {
@@ -2525,74 +2535,108 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     );
   };
   const renderHotelCard = (item: ExtendedSearchResult) => {
-    const hotelId = item.hotelId || item.hotel?.hotelId || item.id;
+
+    console.log('[renderHotelCard]', {
+      id: item.id,
+      hotelRef: item.hotel,
+      hotelKeys: item.hotel ? Object.keys(item.hotel) : null,
+      cityName: item.hotel?.cityName,
+      amenityLabels: item.hotel?.amenityLabels,
+      distanceFromCenter: item.hotel?.distanceFromCenter,
+    });
+    const hotelId = item.hotel?.hotelId || item.hotelId || item.id;
     const isSaved = savedItems.has(hotelId);
     const hotelName = item.hotel?.name || item.title || 'Hotel';
-    const primaryImage = item.hotel?.primaryImage || item.image || null;
 
-    const offers = item.offers || item.hotel?.offers || [];
+    // ✅ Fix 1: primaryImageUrl is on the top-level item, NOT inside hotel
+    const primaryImage =
+      (item as any).primaryImageUrl ||
+      item.hotel?.primaryImage ||
+      item.image ||
+      null;
+
+    const offers = item.offers || [];
     const bestOffer = offers[0];
-    const offerId = item.offerId || item.offer_id || item.hotel?.offerId || (bestOffer?.id ?? null);
-
-    // ── Location: use what Amadeus returns
-    const cityCode = item.hotel?.cityCode || item.cityCode || '';
-    const latitude = item.hotel?.latitude || item.latitude;
-    const longitude = item.hotel?.longitude || item.longitude;
+    const offerId =
+      item.offerId || item.offer_id || item.hotel?.offerId || (bestOffer?.id ?? null);
+    // ── Location ──
+    const cityCode           = item.hotel?.cityCode || (item as any).cityCode || '';
+    const rawCityName        = item.hotel?.cityName || (item as any).cityName || '';
+    const cityName           = resolveCityName(cityCode, rawCityName);
+    const neighbourhood      = item.hotel?.neighbourhood || (item as any).neighbourhood || '';
+    const latitude           = item.hotel?.latitude  ?? (item as any).latitude;
+    const longitude          = item.hotel?.longitude ?? (item as any).longitude;
     const hasCoords = typeof latitude === 'number' && typeof longitude === 'number';
 
-    // ── Amenities: Amadeus returns CODES. Map only well-known ones.
-    const AMENITY_LABELS: Record<string, string> = {
-      'WIFI': '📶 Wi-Fi',
-      'SWIMMING_POOL': '🏊 Pool',
-      'FITNESS_CENTER': '🏋 Fitness',
-      'SPA': '💆 Spa',
-      'PARKING': '🅿️ Parking',
-      'RESTAURANT': '🍽 Restaurant',
-      'BAR': '🍸 Bar',
-      'AIR_CONDITIONING': '❄️ A/C',
-      'AIRPORT_SHUTTLE': '🚐 Shuttle',
-      'BUSINESS_CENTER': '💼 Business',
-      'LAUNDRY': '🧺 Laundry',
-      'ROOM_SERVICE': '🛎 Room Service',
-      'PETS_ALLOWED': '🐾 Pet Friendly',
-      'MEETING_ROOMS': '📊 Meeting Rooms',
-      'ELEVATOR': '🛗 Elevator',
-      'TWENTY_FOUR_HOUR_FRONT_DESK': '🕐 24h Front Desk',
-      'NON_SMOKING': '🚭 Non-Smoking',
-      'CHILDREN_PROGRAMS': '👶 Kids Club',
-      'TENNIS': '🎾 Tennis',
-      'GOLF': '⛳ Golf',
-    };
-    const amenityCodes: string[] = item.hotel?.amenities || item.amenities || [];
-    const amenityLabels = amenityCodes
-      .map(code => AMENITY_LABELS[code] || null)
-      .filter((label): label is string => !!label)
-      .slice(0, 5);
+    // Distance: prefer what Amadeus sent, else compute from hotel lat/lng vs city center.
+    let distanceFromCenter = item.hotel?.distanceFromCenter ?? (item as any).distanceFromCenter;
+    let distanceUnit       = item.hotel?.distanceUnit || (item as any).distanceUnit || 'km';
 
-    // ── Room info from Amadeus fields
-    const roomCode = bestOffer?.room?.type || item.roomType || '';
+    if (
+      distanceFromCenter == null &&
+      typeof latitude === 'number' &&
+      typeof longitude === 'number'
+    ) {
+      const center = getCityCenter(cityCode);
+      if (center) {
+        const meters = distanceMeters(latitude, longitude, center.lat, center.lng);
+        const fmt = formatDistance(meters);
+        distanceFromCenter = fmt.value;
+        distanceUnit = fmt.unit;
+      }
+    }
+
+        // Gather amenities from every possible Amadeus field and map to friendly labels
+        const amenities = extractAmenities(item).slice(0, 6);
+
+    // ── Room info ──
+    const roomCode = bestOffer?.room?.type || '';
     const estimatedCategory = bestOffer?.room?.typeEstimated?.category || '';
-    const rawDescription = typeof bestOffer?.room?.description === 'string'
-      ? bestOffer.room.description
-      : bestOffer?.room?.description?.text || '';
-    
-    // Fall back to the room name field we cleaned on the backend
-    const roomType = item.roomType || item.name?.name || estimatedCategory || roomCode || 'Room';
+    const rawDescription =
+      typeof bestOffer?.room?.description === 'string'
+        ? bestOffer.room.description
+        : bestOffer?.room?.description?.text || '';
 
-    // Bed info — from Amadeus, only if `bedType`/`beds` are present
+    // Parse a human-friendly room name from the Amadeus multi-line description.
+    // Line 1 is usually the rate plan ("FLEXIBLE RATE"), line 2 is the room name.
+    const rateNamePattern =
+      /^(FLEXIBLE|BREAKFAST|BEST|DAILY|15PCT|SIGNATURE|PACKAGE|RATE|2X POINTS|HALF BOARD|ROOM ONLY|ADVANCE SAVER|CORPORATE)/i;
+    const descLines = rawDescription
+      .split('\n')
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+    const parsedRoomName =
+      descLines.find((line: string) => !rateNamePattern.test(line)) || descLines[0] || '';
+
+    const humanizedCategory = estimatedCategory
+      ? estimatedCategory
+          .toLowerCase()
+          .split('_')
+          .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(' ')
+      : '';
+
+      const roomType =
+      (bestOffer as any)?.roomName ||
+      parsedRoomName ||
+      humanizedCategory ||
+      roomCode ||
+      'Room';
+
+    // Bed info
     const bedType = bestOffer?.room?.typeEstimated?.bedType;
     const beds = bestOffer?.room?.typeEstimated?.beds;
     const bedLine = bedType
       ? `${beds || 1} ${String(bedType).toLowerCase()} bed${(beds || 1) > 1 ? 's' : ''}`
       : '';
 
-    // Board type from Amadeus
+    // Board type
     const boardType = bestOffer?.boardType || '';
     const boardLabel = boardType
-      ? String(boardType).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+      ? String(boardType).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
       : '';
 
-    // ── Price: total + fees (from Amadeus)
+    // ── Price ──
     const displayPrice = hotelCarPrices[item.id] || 'Price on request';
     const currencySymbol =
       item.currency === 'NGN' ? '₦' :
@@ -2600,7 +2644,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       item.currency === 'USD' ? '$' :
       item.currency === 'EUR' ? '€' : '';
 
-    // Only show TAX fees (not markup or service fee — those are your margin)
     const fees: any[] = bestOffer?.price?.fees || [];
     const taxFee = fees.find((f: any) => f.type === 'TAX');
     const taxAmount = taxFee ? parseFloat(taxFee.amount) || 0 : 0;
@@ -2608,21 +2651,21 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       ? `+ ${currencySymbol}${Math.round(taxAmount).toLocaleString()} taxes`
       : null;
 
-    // ── Refundability from Amadeus
+    // ── Refundability ──
     const isRefundable =
       bestOffer?.policies?.refundable?.cancellationRefund === 'REFUNDABLE_UP_TO_DEADLINE' ||
       (bestOffer?.policies?.cancellations?.length > 0);
     const cancellationDeadline = bestOffer?.policies?.cancellations?.[0]?.deadline;
 
-    // ── Availability
+    // ── Availability ──
     const isAvailable = bestOffer?.available !== false;
 
-    // ── Stay context from searchParams
+    // ── Stay context ──
     const nightsCount = item.nights || 1;
     const adultsCount = item.adults || searchParams?.adults || 1;
     const stayLine = `${nightsCount} night${nightsCount > 1 ? 's' : ''}, ${adultsCount} adult${adultsCount > 1 ? 's' : ''}`;
 
-    // ── Navigation
+    // ── Navigation ──
     const persistAndNavigate = (e: React.MouseEvent) => {
       e.stopPropagation();
       if (!hotelId) {
@@ -2634,7 +2677,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         hotelId,
         name: hotelName,
         title: hotelName,
-        subtitle: cityCode ? `LONDON, ${cityCode}` : '',
+        subtitle: cityCode
+  ? [cityName || neighbourhood || '', cityCode].filter(Boolean).join(', ')
+  : '',
         image: primaryImage,
         primaryImage,
         images: item.hotel?.images || [],
@@ -2676,7 +2721,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         onClick={persistAndNavigate}
       >
         <div className="flex flex-col md:flex-row">
-
           {/* ── LEFT: image ── */}
           <div className="w-full md:w-[280px] relative flex-shrink-0 min-h-[220px]">
             <HotelListImage
@@ -2702,7 +2746,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                       savedItemIdMapRef.current.delete(hotelId);
                     }
                   } else {
-                    const packedTitle = [hotelName, primaryImage || '', cityCode || '', '', hotelId].join('|||');
+                    const packedTitle = [hotelName, primaryImage || '', cityName || '', '', hotelId].join('|||');
                     const response: any = await api.userApi.saveItem({
                       productType: 'HOTEL',
                       title: packedTitle,
@@ -2726,52 +2770,65 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             </button>
           </div>
 
-          {/* ── MIDDLE: hotel info (all from Amadeus) ── */}
+          {/* ── MIDDLE: hotel info ── */}
           <div className="flex-1 p-5 min-w-0">
             <h3 className="text-lg font-bold text-gray-900 hover:text-[#33a8da] transition leading-snug">
               {hotelName}
             </h3>
 
-            {/* Location + chain from Amadeus */}
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs text-gray-500">
-              {cityCode && <span className="font-medium">{cityCode}</span>}
-              {item.hotel?.chainCode && (
-                <span className="bg-gray-100 px-2 py-0.5 rounded text-[10px] font-semibold text-gray-600">
-                  Chain: {item.hotel.chainCode}
+            {/* Location + distance + map link */}
+            <div className="mt-1.5 flex flex-col text-xs text-gray-500 gap-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="underline cursor-pointer font-medium text-[#0071c2]">
+                {[neighbourhood, cityName].filter(Boolean).join(', ') || cityCode || 'Location'}
                 </span>
-              )}
+                {distanceFromCenter != null && (
+  <span className="text-gray-500">
+    · {distanceFromCenter} {distanceUnit} from downtown
+  </span>
+)}
+              </div>
               {hasCoords && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    window.open(`https://www.google.com/maps?q=${latitude},${longitude}`, '_blank');
-                  }}
-                  className="text-[#33a8da] underline hover:no-underline text-[10px]"
-                >
-                  Show on map
-                </button>
+                <div className="flex items-center gap-2 text-[11px]">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(
+                        `https://www.google.com/maps?q=${latitude},${longitude}`,
+                        '_blank',
+                      );
+                    }}
+                    className="text-[#33a8da] underline hover:no-underline font-medium"
+                  >
+                    Show on map
+                  </button>
+                </div>
               )}
             </div>
 
-            {/* Amenities from Amadeus (only mapped ones) */}
-            {amenityLabels.length > 0 && (
-              <div className="flex items-center gap-3 mt-2 text-xs text-gray-600 flex-wrap">
-                {amenityLabels.map((a, i) => (
-                  <span key={i} className="whitespace-nowrap">{a}</span>
-                ))}
-              </div>
-            )}
+            {/* Amenities — already mapped by backend */}
+            {amenities.length > 0 && (
+  <div className="flex items-center gap-3 mt-2 text-xs text-gray-600 flex-wrap">
+    {amenities.map((a, i) => (
+      <span key={i} className="flex items-center gap-1 whitespace-nowrap">
+        <i className={`fa-solid fa-${a.icon} text-gray-400`} aria-hidden />
+        <span>{a.label}</span>
+      </span>
+    ))}
+  </div>
+)}
 
-            {/* Room + board + bed + refundable — all from Amadeus */}
+            {/* Room + bed + board + refundable */}
             <div className="mt-3 pt-3 border-t border-gray-100 space-y-1">
               <p className="text-sm font-semibold text-gray-900">{roomType}</p>
               {bedLine && <p className="text-xs text-gray-500">{bedLine}</p>}
-              {boardLabel && (
-                <p className="text-xs text-gray-500">{boardLabel}</p>
-              )}
+              {boardLabel && <p className="text-xs text-gray-500">{boardLabel}</p>}
               {isRefundable && (
                 <p className="text-xs text-green-600 font-medium">
-                  ✓ Refundable{cancellationDeadline ? ` until ${new Date(cancellationDeadline).toLocaleDateString()}` : ''}
+                  ✓ Refundable
+                  {cancellationDeadline
+                    ? ` until ${new Date(cancellationDeadline).toLocaleDateString()}`
+                    : ''}
                 </p>
               )}
               {!isRefundable && (

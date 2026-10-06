@@ -1031,6 +1031,7 @@ const searchHotels = async (params: SearchParams) => {
           
           // All hotel data in ONE property
           hotelData: hotelData,
+          hotel: hotelData,  
           address: hotelData.address,
           contact: hotelData.contact,
           media: hotelData.media,

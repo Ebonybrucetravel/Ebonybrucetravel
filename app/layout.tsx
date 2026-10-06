@@ -5,6 +5,7 @@ import './globals.css';
 import Providers from '@/components/Providers';
 import AppShell from '@/components/AppShell';
 import { Toaster } from 'react-hot-toast';
+import '@fortawesome/fontawesome-free/css/all.min.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
