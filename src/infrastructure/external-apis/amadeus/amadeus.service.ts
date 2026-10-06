@@ -4,6 +4,7 @@ import { redactCardFromString } from '@common/utils/pci-redaction.util';
 import { CurrencyService } from '@infrastructure/currency/currency.service';
 import { ProductType } from '@prisma/client';
 import { MarkupRepository } from '@infrastructure/database/repositories/markup.repository';
+import { CacheService } from '@infrastructure/cache/cache.service';
 
 @Injectable()
 export class AmadeusService {
@@ -21,6 +22,7 @@ export class AmadeusService {
     private readonly configService: ConfigService,
     private readonly currencyService: CurrencyService,
     private readonly markupRepository: MarkupRepository,
+    private readonly cacheService: CacheService,
   ) {
     this.apiKey = this.configService.get<string>('AMADEUS_API_KEY') || '';
     this.apiSecret = this.configService.get<string>('AMADEUS_API_SECRET') || '';
@@ -511,6 +513,7 @@ private async getAccessToken(): Promise<string> {
           name: hotelData?.name || null,
           chainCode: hotelData?.chainCode || null,
           chainName: hotelData?.chainName || null,
+          rating: hotelData?.rating || null, 
           description: description,
           address: hotelData?.contact?.[0]?.address || null,
           contact: hotelData?.contact || null,
@@ -561,7 +564,24 @@ private async getAccessToken(): Promise<string> {
         HttpStatus.BAD_REQUEST,
       );
     }
-    
+
+    const cachedIds = (params.hotelIds || []).slice().sort().join(',');
+    const chunkCacheKey =
+      `amadeus_offers:` +
+      `${params.checkInDate}:${params.checkOutDate}:` +
+      `${params.adults ?? 1}:${params.roomQuantity ?? 1}:` +
+      `${params.currency ?? ''}:${params.bestRateOnly ?? false}:` +
+      `${params.includeImages ?? true}:` +
+      `${cachedIds}`;
+
+    const cachedResponse = this.cacheService.get<any>(chunkCacheKey);
+    if (cachedResponse) {
+      this.logger.debug(`Chunk cache hit: ${cachedIds.slice(0, 60)}...`);
+      return cachedResponse;
+    }
+
+    this.logger.debug(`Chunk cache MISS, calling Amadeus: ${cachedIds.slice(0, 60)}...`);
+
     const queryParams: Record<string, string> = {
       checkInDate: params.checkInDate,
       checkOutDate: params.checkOutDate,
@@ -616,9 +636,11 @@ private async getAccessToken(): Promise<string> {
       }
     }
     
-    return response;
-  }
+      // Cache the response for 5 minutes
+      this.cacheService.set(chunkCacheKey, response, 5 * 60 * 1000);
 
+      return response;
+    }
   async getHotelOffersWithRoomTypes(params: {
     hotelIds?: string[];
     cityCode?: string;

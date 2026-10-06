@@ -142,10 +142,9 @@ const finalResults = validResults;
 
     this.logger.log(`💰 Using conversion rate: ${conversionRate}, fee: ${conversionFee}`);
 
-    // ✅ Pre-calculate constants for faster normalization
     const markupMultiplier = 1 + (markupPercentage / 100);
 
-    // ✅ Normalize all offers SYNCHRONOUSLY (FAST - no async needed)
+
     const normalizedOffers = this.normalizeOffersBatch(
       finalResults,
       isDomestic,
@@ -162,21 +161,20 @@ const finalResults = validResults;
     const totalTime = Date.now() - startTime;
 this.logger.log(`📊 Normalized ${normalizedOffers.length} offers in ${totalTime}ms`);
 
-// ✅ Log per-offer selectData lengths (sanity check)
 if (normalizedOffers.length > 0) {
   this.logger.log(`🔑 Offer 0 selectData length: ${normalizedOffers[0].selectData?.length ?? 0}`);
 }
 
 return {
-  offers: normalizedOffers,                    // 👈 each offer carries its own selectData
+  offers: normalizedOffers,                   
   total_offers: normalizedOffers.length,
-  // ⚠️ DEPRECATED — kept for backwards compat only.
-  //    Frontend MUST use each offer's own .selectData, NOT this.
+  
   selectData: normalizedOffers[0]?.selectData ?? null,
   message: normalizedOffers.length > 0 
     ? `Found ${normalizedOffers.length} flight offers` 
     : 'No flights found for the selected route and dates',
 };
+
   }
 
 private async getMarkupConfig(productType: ProductType, currency: string) {

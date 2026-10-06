@@ -168,225 +168,212 @@ export class SearchAmadeusHotelsUseCase {
       return { ...cached, cached: true };
     }
 
-    try {
-// ✅ If getAll is true, fetch ALL hotels (no pagination)
-let totalHotels = finalHotelIds.length;
-let totalPages = 1;
-let hasMore = false;
+    // Cap the number of hotels we fetch per search. Amadeus is slow (~3.7s per
+    // 10-hotel chunk), so fetching all 334 London hotels takes minutes. We only
+    // need enough IDs to cover a few pages of results, plus a buffer for hotels
+    // that end up having no availability (which Amadeus drops silently).
+    const MAX_FETCH = Math.min(finalHotelIds.length, limit * 5);
+    const idsToFetch = finalHotelIds.slice(0, MAX_FETCH);
+    this.logger.log(`Will fetch ${idsToFetch.length} of ${finalHotelIds.length} hotel IDs`);
 
-if (getAll) {
-  // ✅ Use ALL hotels
-  this.logger.log(`🔄 Fetching ALL ${totalHotels} hotels (no pagination)`);
-  // Process in chunks of 10 (Amadeus API limit)
+    try {
+
+      if (getAll) {
+        // ✅ Use ALL hotels
+        this.logger.log(`🔄 Fetching ${idsToFetch.length} of ${finalHotelIds.length} hotels (no pagination)`);
+
+  // Process in chunks of 10 (Amadeus API limit), 5 chunks at a time
   const allResults = [];
   const chunkSize = 10;
-  
-  for (let i = 0; i < finalHotelIds.length; i += chunkSize) {
-    const chunk = finalHotelIds.slice(i, i + chunkSize);
-    this.logger.log(`📦 Fetching chunk ${Math.floor(i/chunkSize) + 1}/${Math.ceil(finalHotelIds.length/chunkSize)}`);
-    
-    try {
-      const chunkResponse = await this.amadeusService.searchHotels({
-        hotelIds: chunk,
-        checkInDate,
-        checkOutDate,
-        adults,
-        roomQuantity,
-        currency: targetCurrency,
-        includeImages,
-      });
-      
-      if (chunkResponse?.data) {
-        allResults.push(...chunkResponse.data);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`Failed to fetch chunk ${i}: ${errorMessage}`);
+  const PARALLEL = 10;
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < idsToFetch.length; i += chunkSize) {
+    chunks.push(idsToFetch.slice(i, i + chunkSize));
+  }
+
+  for (let b = 0; b < chunks.length; b += PARALLEL) {
+    const batch = chunks.slice(b, b + PARALLEL);
+    this.logger.log(
+      `📦 Fetching batch ${Math.floor(b / PARALLEL) + 1}/${Math.ceil(chunks.length / PARALLEL)} (${batch.length} chunks)`,
+    );
+
+    const batchResults = await Promise.all(
+      batch.map((chunk) =>
+        this.amadeusService
+          .searchHotels({
+            hotelIds: chunk,
+            checkInDate,
+            checkOutDate,
+            adults,
+            roomQuantity,
+            currency: targetCurrency,
+            includeImages: false,
+          })
+          .then((res) => res?.data || [])
+          .catch((error) => {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.warn(`Chunk failed: ${errorMessage}`);
+            return [];
+          }),
+      ),
+    );
+
+    for (const r of batchResults) {
+      allResults.push(...r);
     }
   }
   
-  return this.processResults(
+    
+  const processed = await this.processResults(
     allResults,
     targetCurrency,
     finalHotelIds.length,
-    true 
+    cityCode || '',
   );
+
+
+  const ENRICH_LIMIT = 10;
+  const toEnrich = processed.data.slice(0, ENRICH_LIMIT);
+  const untouched = processed.data.slice(ENRICH_LIMIT);
+
+  const enrichedSlice = await this.enrichHotelsWithLocation(
+    toEnrich,
+    cityCode || '',
+    { skipReverseGeocode: true },
+  );
+
+  processed.data = [...enrichedSlice, ...untouched];
+
+  processed.cached = false;
+  this.cacheService.set(cacheKey, processed, 5 * 60 * 1000);
+
+  return processed;
 }
 
+  
+    // ─────────────────────────────────────────────────────────────
+  // PAGINATED BRANCH — fetch-all-then-paginate-in-memory
+  // ─────────────────────────────────────────────────────────────
 
-const startIndex = (page - 1) * limit;
-const endIndex = startIndex + limit;
-const paginatedHotelIds = finalHotelIds.slice(startIndex, endIndex);
+  const allCacheKey = this.generateCacheKey({
+    ...searchParams,
+    page: 1,
+    limit: 9999,
+    getAll: true,
+  });
 
-if (paginatedHotelIds.length === 0) {
-  throw new BadRequestException(
-    `No hotels found for page ${page}. Please try a different page.`,
-  );
-}
+  let allData = this.cacheService.get<any>(allCacheKey);
 
-this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelIds.join(', ')}`);
+  if (!allData) {
+    this.logger.log(`🔄 Fetching ${idsToFetch.length} of ${finalHotelIds.length} hotels for pagination`);
 
-      const response = await this.amadeusService.searchHotels({
-        hotelIds: paginatedHotelIds,
-        checkInDate,
-        checkOutDate,
-        adults,
-        roomQuantity,
-        ...(priceRange && { priceRange, currency: targetCurrency }),
-        ...(!priceRange && { currency: targetCurrency }),
-        ...(paymentPolicy && { paymentPolicy }),
-        ...(boardType && { boardType }),
-        ...(includeClosed !== undefined && { includeClosed }),
-        ...(bestRateOnly !== undefined && { bestRateOnly }),
-        ...(countryOfResidence && { countryOfResidence }),
-        ...(lang && { lang }),
-        includeImages: includeImages,
-      });
+    const allResults = [];
+    const chunkSize = 10;
+    const PARALLEL = 10;
 
-      // Validate response
-      if (!response || !response.data || !Array.isArray(response.data)) {
-        this.logger.error('Invalid response structure:', response);
-        throw new HttpException(
-          'Invalid response from Amadeus API: missing or invalid data array',
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
-      }
+    const chunks: string[][] = [];
+    for (let i = 0; i < idsToFetch.length; i += chunkSize) {
+      chunks.push(idsToFetch.slice(i, i + chunkSize));
+    }
 
-      // Fetch markup configuration
-      let markupPercentage = 2.5;
-      let serviceFeeAmount = 0;
-      try {
-        const markupConfig = await this.markupRepository.findActiveMarkupByProductType(
-          ProductType.HOTEL,
-          targetCurrency,
-        );
-        if (markupConfig) {
-          markupPercentage = markupConfig.markupPercentage || 2.5;
-          serviceFeeAmount = markupConfig.serviceFeePercentage || 0;
-        } else {
-          this.logger.warn(`No markup config found for ${targetCurrency}, using default ${markupPercentage}%`);
-        }
-      } catch (error) {
-        this.logger.warn(`Could not fetch markup config, using default ${markupPercentage}%:`, error);
-      }
-
-      const processedResults = await Promise.all(
-        response.data.map(async (hotelOffer: any) => {
-          const processedOffers = await Promise.all(
-            (hotelOffer.offers || []).map(async (offer: any) => {
-              const originalBasePrice = parseFloat(offer.price?.total || offer.price?.base || '0');
-              const originalCurrency = offer.price?.currency || 'EUR';
-              
-              let convertedBasePrice: number;
-              let conversionFee: number = 0;
-              let conversionFeePercentage: number = 0;
-          
-              if (originalCurrency !== targetCurrency) {
-                convertedBasePrice = await this.currencyService.convert(
-                  originalBasePrice,
-                  originalCurrency,
-                  targetCurrency,
-                );
-                
-                const conversionDetails = this.currencyService.calculateConversionFee(
-                  convertedBasePrice,
-                  originalCurrency,
-                  targetCurrency,
-                );
-                
-                conversionFee = conversionDetails.conversionFee;
-                conversionFeePercentage = this.currencyService.getConversionBuffer();
-              } else {
-                convertedBasePrice = originalBasePrice;
-              }
-          
-              // ✅ Apply markup on the converted BASE price (BEFORE adding conversion fee)
-              const markupAmount = (convertedBasePrice * markupPercentage) / 100;
-              // ✅ Final price = base + markup + service fee + conversion fee (all added together)
-              const finalPrice = convertedBasePrice + markupAmount + serviceFeeAmount + conversionFee;
-          
-              this.logger.debug(`Price calculation: Base=${convertedBasePrice}, Markup(${markupPercentage}%)=${markupAmount}, ServiceFee=${serviceFeeAmount}, ConvFee=${conversionFee}, Final=${finalPrice}`);
-          
-              return {
-                ...offer,
-                original_price: originalBasePrice.toString(),
-                original_currency: originalCurrency,
-                base_price: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
-                currency: targetCurrency,
-                conversion_fee: this.currencyService.formatAmount(conversionFee, targetCurrency),
-                conversion_fee_percentage: conversionFeePercentage,
-                markup_percentage: markupPercentage,
-                markup_amount: this.currencyService.formatAmount(markupAmount, targetCurrency),
-                service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
-                final_price: this.currencyService.formatAmount(finalPrice, targetCurrency),
-                final_amount: this.currencyService.formatAmount(finalPrice, targetCurrency), // ← ADD THIS
-                price: {
-                  ...offer.price,
-                  currency: targetCurrency,
-                  base: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
-                  total: this.currencyService.formatAmount(finalPrice, targetCurrency),
-                  original_total: originalBasePrice.toString(),
-                  original_currency: originalCurrency,
-                },
-              };
-            }),
-          );
-      
-          return {
-            ...hotelOffer,
-            hotel: hotelOffer.hotel,
-            offers: processedOffers,
-            currency: targetCurrency,
-          };
-        }),
+    for (let b = 0; b < chunks.length; b += PARALLEL) {
+      const batch = chunks.slice(b, b + PARALLEL);
+      this.logger.log(
+        `📦 Fetching batch ${Math.floor(b / PARALLEL) + 1}/${Math.ceil(chunks.length / PARALLEL)} (${batch.length} chunks)`,
       );
 
-      totalPages = Math.ceil(totalHotels / limit);
-      hasMore = page < totalPages;
+      const batchResults = await Promise.all(
+        batch.map((chunk) =>
+          this.amadeusService
+            .searchHotels({
+              hotelIds: chunk,
+              checkInDate,
+              checkOutDate,
+              adults,
+              roomQuantity,
+              ...(priceRange && { priceRange, currency: targetCurrency }),
+              ...(!priceRange && { currency: targetCurrency }),
+              ...(paymentPolicy && { paymentPolicy }),
+              ...(boardType && { boardType }),
+              ...(includeClosed !== undefined && { includeClosed }),
+              ...(bestRateOnly !== undefined && { bestRateOnly }),
+              ...(countryOfResidence && { countryOfResidence }),
+              ...(lang && { lang }),
+              includeImages: false,
+            })
+            .then((res) => res?.data || [])
+            .catch((error) => {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              this.logger.warn(`Chunk failed: ${errorMessage}`);
+              return [];
+            }),
+        ),
+      );
 
-      // Attach images from cache
-      const ids = processedResults
-        .map((r: any) => r.hotel?.hotelId)
-        .filter((id): id is string => Boolean(id));
-      
-      let primaryUrls: Record<string, string> = {};
-      if (ids.length > 0) {
-        try {
-          primaryUrls = await this.hotelImageCacheService.getPrimaryImageUrls(ids);
-        } catch (e) {
-          this.logger.warn('Could not attach primary image URLs to search results', e);
-        }
+      for (const r of batchResults) {
+        allResults.push(...r);
       }
-      
-      const dataWithImages = processedResults.map((item: any) => ({
-        ...item,
-        primaryImageUrl: item.hotel?.hotelId ? primaryUrls[item.hotel.hotelId] ?? null : null,
-      }));
+    }
 
-      const result = {
-        data: dataWithImages,
-        meta: {
-          count: processedResults.length,
-          total: totalHotels,
-          limit,
-          page,
-          totalPages,
-          hasMore,
-          nextPage: hasMore ? page + 1 : null,
-          prevPage: page > 1 ? page - 1 : null,
-        },
-        currency: targetCurrency,
-        conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${serviceFeeAmount} ${targetCurrency} service fee` : ''}.`,
-        cached: false,
-        images_enriched: includeImages, 
-      };
+    const processed = await this.processResults(
+      allResults,
+      targetCurrency,
+      finalHotelIds.length,
+    );
 
-      // Cache for 5 minutes
-      this.cacheService.set(cacheKey, result, 5 * 60 * 1000);
+    const ENRICH_LIMIT = 10;
+    const toEnrich = processed.data.slice(0, ENRICH_LIMIT);
+    const untouched = processed.data.slice(ENRICH_LIMIT);
 
-      return result;
-    } catch (error) {
-      this.logger.error('Error searching Amadeus hotels:', error);
+    const enrichedSlice = await this.enrichHotelsWithLocation(
+      toEnrich,
+      cityCode || '',
+      { skipReverseGeocode: true },
+    );
+
+    processed.data = [...enrichedSlice, ...untouched];
+    this.cacheService.set(allCacheKey, processed, 5 * 60 * 1000);
+    allData = processed;
+  }
+
+  // ── Paginate from the full, cached dataset ──
+  const totalAvailable = allData.data.length;
+  const totalPages = Math.ceil(totalAvailable / limit);
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  const paginatedData = allData.data.slice(startIndex, endIndex);
+  const hasMore = page < totalPages;
+
+  if (paginatedData.length === 0) {
+    throw new BadRequestException(
+      `No hotels found for page ${page}. Please try a different page.`,
+    );
+  }
+
+  const result = {
+    data: paginatedData,
+    meta: {
+      count: paginatedData.length,
+      total: totalAvailable,
+      limit,
+      page,
+      totalPages,
+      hasMore,
+      nextPage: hasMore ? page + 1 : null,
+      prevPage: page > 1 ? page - 1 : null,
+    },
+    currency: targetCurrency,
+    conversion_note: allData.conversion_note,
+    cached: false,
+    images_enriched: includeImages,
+  };
+
+  this.cacheService.set(cacheKey, result, 5 * 60 * 1000);
+
+  return result;
+  } catch (error) {
+    this.logger.error('Error searching Amadeus hotels:', error);
       
       const anyError = error as any;
       // Handle specific Amadeus errors
@@ -575,6 +562,14 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
     if (!results?.data) {
       return results;
     }
+
+    const EXCLUDED_FROM_MARKUP = new Set([
+      'BASE_RATE',
+      'BASE',
+      'MARKUP',
+      'SERVICE_FEE',
+      'CONVERSION_FEE',
+    ]);
   
     let markupPercentage = 2.5;
     let serviceFeeAmount = 0;
@@ -660,8 +655,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
                   feeAmount = parsedFeeAmount;
                 }
                 
-                // ✅ Apply markup only to non-base fees
-                if (fee.type !== 'BASE_RATE' && fee.type !== 'BASE') {
+                if (!EXCLUDED_FROM_MARKUP.has(fee.type)) {
                   feeAmount = feeAmount + (feeAmount * markupPercentage / 100);
                 }
                 
@@ -742,7 +736,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
       currency: targetCurrency,
       markup_percentage: markupPercentage,
       service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
-      conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${serviceFeeAmount} ${targetCurrency} service fee` : ''}.`,
+      conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${this.currencyService.formatAmount(serviceFeeAmount, targetCurrency)} service fee` : ''}.`,
     };
   }
 
@@ -751,6 +745,14 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
     if (!results?.data) {
       return results;
     }
+
+    const EXCLUDED_FROM_MARKUP = new Set([
+      'BASE_RATE',
+      'BASE',
+      'MARKUP',
+      'SERVICE_FEE',
+      'CONVERSION_FEE',
+    ]);
 
     let markupPercentage = 2.5;
     let serviceFeeAmount = 0;
@@ -795,21 +797,27 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
     const markupAmount = (convertedBasePrice * markupPercentage) / 100;
     const finalPrice = convertedBasePrice + markupAmount + serviceFeeAmount + conversionFee;
 
-    const transformedFees = (offer.price?.fees || []).map((fee: any) => {
-      let feeAmount = fee.amount || 0;
-      let feeCurrency = fee.currency || originalCurrency;
-      if (feeCurrency !== targetCurrency) {
-        feeAmount = this.currencyService.convert(feeAmount, feeCurrency, targetCurrency);
-      }
-      if (fee.type !== 'BASE_RATE') {
-        feeAmount = feeAmount + (feeAmount * markupPercentage / 100);
-      }
-      return {
-        ...fee,
-        amount: this.currencyService.formatAmount(feeAmount, targetCurrency),
-        currency: targetCurrency,
-      };
-    });
+    const transformedFees = await Promise.all(
+      (offer.price?.fees || []).map(async (fee: any) => {
+        let feeAmount = fee.amount || 0;
+        const feeCurrency = fee.currency || originalCurrency;
+        if (feeCurrency !== targetCurrency) {
+          feeAmount = await this.currencyService.convert(
+            feeAmount,
+            feeCurrency,
+            targetCurrency,
+          );
+        }
+        if (!EXCLUDED_FROM_MARKUP.has(fee.type)) {
+          feeAmount = feeAmount + (feeAmount * markupPercentage / 100);
+        }
+        return {
+          ...fee,
+          amount: this.currencyService.formatAmount(feeAmount, targetCurrency),
+          currency: targetCurrency,
+        };
+      }),
+    );
 
     if (markupAmount > 0) {
       transformedFees.push({
@@ -862,7 +870,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
       currency: targetCurrency,
       markup_percentage: markupPercentage,
       service_fee: this.currencyService.formatAmount(serviceFeeAmount, targetCurrency),
-      conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${serviceFeeAmount} ${targetCurrency} service fee` : ''}.`,
+      conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${this.currencyService.formatAmount(serviceFeeAmount, targetCurrency)} service fee` : ''}.`,
     };
   }
 
@@ -871,8 +879,82 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
     hotelData: any[],
     targetCurrency: string,
     totalHotels: number,
-    cached: boolean = false
+    cityCode?: string,
   ): Promise<any> {
+    const CITY_CENTERS: Record<string, { name: string }> = {
+      LON: { name: 'London' },
+      PAR: { name: 'Paris' },
+      NYC: { name: 'New York' },
+      DXB: { name: 'Dubai' },
+      LOS: { name: 'Lagos' },
+      ABV: { name: 'Abuja' },
+      MAD: { name: 'Madrid' },
+      BCN: { name: 'Barcelona' },
+      ROM: { name: 'Rome' },
+      AMS: { name: 'Amsterdam' },
+      BER: { name: 'Berlin' },
+      IST: { name: 'Istanbul' },
+    };
+
+    const AMENITY_LABELS: Record<string, string> = {
+      // Room basics
+      NON_SMOKING_ROOMS: '🚭 Non-Smoking',
+      AIR_CONDITIONING: '❄️ A/C',
+      FREE_HIGH_SPEED_INTERNET_IN_ROOM: '📶 Free WiFi',
+      WIFI: '📶 Free WiFi',
+      WIRELESS_CONNECTIVITY_IN_ROOMS: '📶 Free WiFi',
+      TELEVISION: '📺 TV',
+      DUVET: '🛏 Duvet',
+      IRON_AND_IRONING_BOARD: '🧺 Iron',
+      SAFE: '🔐 Safe',
+      TELEPHONE: '☎️ Phone',
+      BATH: '🛁 Bath',
+      BATHROBE: '🛁 Bathrobe',
+      MARBLE_BATHROOM: '🛁 Marble Bath',
+      SEPARATE_TUB_AND_SHOWER: '🛁 Tub & Shower',
+      DOUBLE_VANITY: '🪞 Double Vanity',
+      UPGRADED_BATHROOM_AMENITIES: '🛁 Upgraded Bath',
+      WALK_IN_CLOSET: '👔 Walk-in Closet',
+      PLUG_AND_PLAY_PANEL: '🔌 Plug & Play',
+      SITTING_AREA: '🛋 Sitting Area',
+      FIREPLACE: '🔥 Fireplace',
+      OVERSIZED_ROOMS: '📐 Oversized Room',
+      CONNECTING_ROOMS: '🚪 Connecting Rooms',
+      DUAL_VOLTAGE_OUTLET: '🔌 Dual Voltage',
+      LAMP: '💡 Lamp',
+      TABLES_AND_CHAIRS: '🪑 Tables & Chairs',
+      WELCOME_GIFT: '🎁 Welcome Gift',
+      IPOD_DOCKING_STATION: '🎵 iPod Dock',
+      TURN_DOWN_SERVICE: '🌙 Turn-Down Service',
+      KING_BED: '🛏 King Bed',
+      QUEEN_BED: '🛏 Queen Bed',
+      TWIN_BED: '🛏 Twin Beds',
+      SINGLE_BED: '🛏 Single Bed',
+      SOFA_BED: '🛋 Sofa Bed',
+      ROLLAWAY_BEDS: '🛏 Rollaway Bed',
+      MEAL_INCLUDED_BREAKFAST: '🍳 Breakfast Included',
+      FULL_KITCHEN: '🍳 Full Kitchen',
+      OVEN: '🔥 Oven',
+      KITCHEN_SUPPLIES: '🍽 Kitchen Supplies',
+      SILVERWARE_OR_UTENSILS: '🍴 Utensils',
+      CUPS_OR_GLASSWARE: '🥂 Glassware',
+      SWIMMING_POOL: '🏊 Pool',
+      FITNESS_CENTER: '🏋 Fitness Center',
+      HEALTH_CLUB: '🏋 Fitness Center',
+      SPA: '💆 Spa',
+      PARKING: '🅿️ Parking',
+      RESTAURANT: '🍽 Restaurant',
+      BAR: '🍸 Bar',
+      AIRPORT_SHUTTLE: '🚐 Shuttle',
+      BUSINESS_CENTER: '💼 Business Center',
+      LAUNDRY: '🧺 Laundry',
+      ROOM_SERVICE: '🛎 Room Service',
+      PETS_ALLOWED: '🐾 Pet Friendly',
+      MEETING_ROOMS: '📊 Meeting Rooms',
+      ELEVATOR: '🛗 Elevator',
+      TWENTY_FOUR_HOUR_FRONT_DESK: '🕐 24h Front Desk',
+    };
+
     // Fetch markup configuration
     let markupPercentage = 2.5;
     let serviceFeeAmount = 0;
@@ -888,6 +970,9 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
     } catch (error) {
       this.logger.warn(`Could not fetch markup config, using default ${markupPercentage}%:`, error);
     }
+
+    const withOffers = hotelData.filter((h: any) => Array.isArray(h.offers) && h.offers.length > 0);
+    this.logger.log(`Amadeus returned ${hotelData.length} hotels, ${withOffers.length} have offers`);
 
     const processedResults = await Promise.all(
       hotelData.map(async (hotelOffer: any) => {
@@ -921,9 +1006,21 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
         
             const markupAmount = (convertedBasePrice * markupPercentage) / 100;
             const finalPrice = convertedBasePrice + markupAmount + serviceFeeAmount + conversionFee;
-        
+
+            // ── Extract a clean room name from the messy Amadeus description ──
+            const rawRoomDescription =
+              typeof offer?.room?.description === 'string'
+                ? offer.room.description
+                : offer?.room?.description?.text || '';
+
+            const roomName = this.extractRoomName(
+              rawRoomDescription,
+              offer?.room?.typeEstimated?.category,
+            );
+
             return {
               ...offer,
+              roomName,                                       // ← ADD
               original_price: originalBasePrice.toString(),
               original_currency: originalCurrency,
               base_price: this.currencyService.formatAmount(convertedBasePrice, targetCurrency),
@@ -947,12 +1044,36 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
           }),
         );
     
-        return {
-          ...hotelOffer,
-          hotel: hotelOffer.hotel,
-          offers: processedOffers,
-          currency: targetCurrency,
-        };
+               // ── Compute amenities + cityName for EVERY hotel (no network) ──
+               const hotel = hotelOffer.hotel || {};
+
+               const firstOffer = (processedOffers && processedOffers[0]) || {};
+               const offerAmenityCodes: string[] = (
+                 firstOffer.roomInformation?.amenities || []
+               ).map((a: any) => a.code);
+               const hotelAmenityCodes: string[] = hotel.amenities || [];
+               const allAmenityCodes = Array.from(
+                 new Set([...hotelAmenityCodes, ...offerAmenityCodes]),
+               );
+               const amenityLabels = allAmenityCodes
+                 .map((code) => AMENITY_LABELS[code])
+                 .filter(Boolean)
+                 .slice(0, 6);
+       
+               const cityName =
+                 CITY_CENTERS[cityCode || '']?.name || hotel.cityName || '';
+       
+               return {
+                 ...hotelOffer,
+                 hotel: {
+                   ...hotel,
+                   amenities: allAmenityCodes,
+                   amenityLabels,
+                   cityName,
+                 },
+                 offers: processedOffers,
+                 currency: targetCurrency,
+               };
       }),
     );
 
@@ -980,7 +1101,7 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
       meta: {
         count: processedResults.length,
         total: totalHotels,
-        limit: 100,
+        limit: totalHotels,
         page: 1,
         totalPages: 1,
         hasMore: false,
@@ -988,8 +1109,8 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
         prevPage: null,
       },
       currency: targetCurrency,
-      conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${serviceFeeAmount} ${targetCurrency} service fee` : ''}.`,
-      cached: cached,
+      conversion_note: `Prices converted to ${targetCurrency} with ${markupPercentage}% markup${serviceFeeAmount > 0 ? ` and ${this.currencyService.formatAmount(serviceFeeAmount, targetCurrency)} service fee` : ''}.`,
+      cached: false,
       images_enriched: true,
       all_fetched: true,
     };
@@ -1024,6 +1145,70 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
     
     return hasLetters && hasNumbers;
   }
+
+
+     private extractRoomName(description: string, estimatedCategory?: string): string {
+      // ── Tier 1: Try to parse the description ──
+      if (description && description.trim()) {
+        const RATE_PREFIX_PATTERN =
+          /^(FLEXIBLE|BREAKFAST|BEST|DAILY|15PCT|SIGNATURE|PACKAGE|RATE|2X POINTS|HALF BOARD|ROOM ONLY|ADVANCE SAVER|CORPORATE|BB|HB|RO|SLS|BBI|RAC|BAR|DAILY RATE|BEST AVAILABLE|BEST FLEXIBLE|READY TO SAVOR|EXPERIENCE|ROMANCE|LITTLE FEET|COLLECTION)/i;
+  
+        const STOP_WORDS =
+          /\b(INC VAT|FREE WIFI|FREE HIGH SPEED|WITH BREAKFAST|BREAKFAST INCLUDED|ROOM ONLY|NON[- ]?REFUNDABLE|REFUNDABLE|150 MBPS|150MBPS|WIFI|INTERNET)\b/gi;
+  
+        // Split on newlines first, then on " - " (dash with spaces on both sides)
+        const segments = description
+          .split(/\n/)
+          .flatMap((line) => line.split(/\s+-\s+/))
+          .map((s) => s.trim())
+          .filter(Boolean);
+  
+        for (const segment of segments) {
+          // Skip rate plan names
+          if (RATE_PREFIX_PATTERN.test(segment)) continue;
+  
+          // Skip pure-numbers or super-short segments
+          if (segment.length < 3) continue;
+  
+          // Strip trailing rate-plan junk
+          const cleaned = segment
+            .replace(STOP_WORDS, '')
+            .replace(/\s+/g, ' ')
+            .replace(/^[\s\-:•*]+|[\s\-:•*]+$/g, '')
+            .trim();
+  
+          if (cleaned.length < 3) continue;
+  
+          // If it's too long, cut at the first comma or hyphen
+          let final = cleaned;
+          if (final.length > 50) {
+            final = final.split(/[,–—-]/)[0].trim();
+          }
+  
+          if (final.length >= 3 && final.length <= 60) {
+            // Title-case only ALLCAPS words, leave mixed-case words alone
+            return final.replace(/\b\w+/g, (w) =>
+              w.length > 2 && w === w.toUpperCase()
+                ? w.charAt(0) + w.slice(1).toLowerCase()
+                : w,
+            );
+          }
+        }
+      }
+  
+      // ── Tier 2: Fall back to the estimated category ──
+      if (estimatedCategory && typeof estimatedCategory === 'string') {
+        return estimatedCategory
+          .toLowerCase()
+          .split('_')
+          .filter(Boolean)
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(' ');
+      }
+  
+      // ── Tier 3: Give up ──
+      return '';
+    }
 
   private generateCacheKey(searchParams: SearchAmadeusHotelsDto): string {
     const {
@@ -1062,5 +1247,254 @@ this.logger.log(`Searching ${paginatedHotelIds.length} hotels: ${paginatedHotelI
     }
   
     return key;
+  }
+
+  private async enrichHotelsWithLocation(
+    hotelOffers: any[],
+    cityCode: string,
+    options: { skipReverseGeocode?: boolean } = {},
+  ): Promise<any[]> {
+    if (!hotelOffers || hotelOffers.length === 0) return hotelOffers;
+
+    const CITY_CENTERS: Record<string, { lat: number; lng: number; name: string }> = {
+      LON: { lat: 51.5074, lng: -0.1278, name: 'London' },
+      PAR: { lat: 48.8566, lng: 2.3522, name: 'Paris' },
+      NYC: { lat: 40.7128, lng: -74.006, name: 'New York' },
+      DXB: { lat: 25.2048, lng: 55.2708, name: 'Dubai' },
+      LOS: { lat: 6.5244, lng: 3.3792, name: 'Lagos' },
+      ABV: { lat: 9.0579, lng: 7.4951, name: 'Abuja' },
+      MAD: { lat: 40.4168, lng: -3.7038, name: 'Madrid' },
+      BCN: { lat: 41.3851, lng: 2.1734, name: 'Barcelona' },
+      ROM: { lat: 41.9028, lng: 12.4964, name: 'Rome' },
+      AMS: { lat: 52.3676, lng: 4.9041, name: 'Amsterdam' },
+      BER: { lat: 52.52, lng: 13.405, name: 'Berlin' },
+      IST: { lat: 41.0082, lng: 28.9784, name: 'Istanbul' },
+    };
+
+    const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+      const R = 6371;
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLng = ((lng2 - lng1) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos((lat1 * Math.PI) / 180) *
+          Math.cos((lat2 * Math.PI) / 180) *
+          Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    const AMENITY_LABELS: Record<string, string> = {
+      // Room basics
+      NON_SMOKING_ROOMS: '🚭 Non-Smoking',
+      AIR_CONDITIONING: '❄️ A/C',
+      FREE_HIGH_SPEED_INTERNET_IN_ROOM: '📶 Free WiFi',
+      WIFI: '📶 Free WiFi',
+      WIRELESS_CONNECTIVITY_IN_ROOMS: '📶 Free WiFi',
+      TELEVISION: '📺 TV',
+      DUVET: '🛏 Duvet',
+      IRON_AND_IRONING_BOARD: '🧺 Iron',
+      SAFE: '🔐 Safe',
+      TELEPHONE: '☎️ Phone',
+      BATH: '🛁 Bath',
+      BATHROBE: '🛁 Bathrobe',
+      MARBLE_BATHROOM: '🛁 Marble Bath',
+      SEPARATE_TUB_AND_SHOWER: '🛁 Tub & Shower',
+      DOUBLE_VANITY: '🪞 Double Vanity',
+      UPGRADED_BATHROOM_AMENITIES: '🛁 Upgraded Bath',
+      WALK_IN_CLOSET: '👔 Walk-in Closet',
+      PLUG_AND_PLAY_PANEL: '🔌 Plug & Play',
+      SITTING_AREA: '🛋 Sitting Area',
+      FIREPLACE: '🔥 Fireplace',
+      OVERSIZED_ROOMS: '📐 Oversized Room',
+      CONNECTING_ROOMS: '🚪 Connecting Rooms',
+      DUAL_VOLTAGE_OUTLET: '🔌 Dual Voltage',
+      LAMP: '💡 Lamp',
+      TABLES_AND_CHAIRS: '🪑 Tables & Chairs',
+      WELCOME_GIFT: '🎁 Welcome Gift',
+      IPOD_DOCKING_STATION: '🎵 iPod Dock',
+      TURN_DOWN_SERVICE: '🌙 Turn-Down Service',
+
+      // Beds
+      KING_BED: '🛏 King Bed',
+      QUEEN_BED: '🛏 Queen Bed',
+      TWIN_BED: '🛏 Twin Beds',
+      SINGLE_BED: '🛏 Single Bed',
+      SOFA_BED: '🛋 Sofa Bed',
+      ROLLAWAY_BEDS: '🛏 Rollaway Bed',
+
+      // Meals
+      MEAL_INCLUDED_BREAKFAST: '🍳 Breakfast Included',
+
+      // Kitchen
+      FULL_KITCHEN: '🍳 Full Kitchen',
+      OVEN: '🔥 Oven',
+      KITCHEN_SUPPLIES: '🍽 Kitchen Supplies',
+      SILVERWARE_OR_UTENSILS: '🍴 Utensils',
+      CUPS_OR_GLASSWARE: '🥂 Glassware',
+
+      // Hotel facilities
+      SWIMMING_POOL: '🏊 Pool',
+      FITNESS_CENTER: '🏋 Fitness Center',
+      HEALTH_CLUB: '🏋 Fitness Center',
+      SPA: '💆 Spa',
+      PARKING: '🅿️ Parking',
+      RESTAURANT: '🍽 Restaurant',
+      BAR: '🍸 Bar',
+      AIRPORT_SHUTTLE: '🚐 Shuttle',
+      BUSINESS_CENTER: '💼 Business Center',
+      LAUNDRY: '🧺 Laundry',
+      ROOM_SERVICE: '🛎 Room Service',
+      PETS_ALLOWED: '🐾 Pet Friendly',
+      MEETING_ROOMS: '📊 Meeting Rooms',
+      ELEVATOR: '🛗 Elevator',
+      TWENTY_FOUR_HOUR_FRONT_DESK: '🕐 24h Front Desk',
+    };
+
+    // Process sequentially with throttling (Nominatim: 1 req/sec)
+    const enriched: any[] = [];
+
+    for (const item of hotelOffers) {
+      const hotel = item.hotel || {};
+      const hotelId = hotel.hotelId;
+
+      if (!hotelId) {
+        enriched.push(item);
+        continue;
+      }
+
+      // ── Build amenities list (from first offer's room info) ──
+      const firstOffer = (item.offers && item.offers[0]) || {};
+      const offerAmenityCodes: string[] = (firstOffer.roomInformation?.amenities || []).map(
+        (a: any) => a.code,
+      );
+      const hotelAmenityCodes: string[] = hotel.amenities || [];
+      const allAmenityCodes = Array.from(
+        new Set([...hotelAmenityCodes, ...offerAmenityCodes]),
+      );
+      const amenityLabels = allAmenityCodes
+        .map((code) => AMENITY_LABELS[code])
+        .filter(Boolean)
+        .slice(0, 6);
+
+      // ── Distance from city center ──
+      let distanceFromCenter: number | null = null;
+      let distanceUnit: 'km' | 'm' = 'km';
+      const center = CITY_CENTERS[cityCode];
+      if (
+        center &&
+        typeof hotel.latitude === 'number' &&
+        typeof hotel.longitude === 'number'
+      ) {
+        const km = haversineKm(center.lat, center.lng, hotel.latitude, hotel.longitude);
+        if (km < 1) {
+          distanceFromCenter = Math.round(km * 1000);
+          distanceUnit = 'm';
+        } else {
+          distanceFromCenter = Math.round(km * 10) / 10;
+          distanceUnit = 'km';
+        }
+      }
+
+      // ── Reverse geocode (cached per hotel for 30 days) ──
+      let neighbourhood = '';
+      let cityName = center?.name || '';
+      let countryName = '';
+      let countryCode = '';
+      let formattedAddress = '';
+
+      const geoCacheKey = `geo:hotel:${hotelId}:v1`;
+      const cachedGeo = this.cacheService.get<{
+        neighbourhood: string;
+        cityName: string;
+        countryName: string;
+        countryCode: string;
+        formattedAddress: string;
+      }>(geoCacheKey);
+
+      if (cachedGeo) {
+        neighbourhood = cachedGeo.neighbourhood;
+        cityName = cachedGeo.cityName || cityName;
+        countryName = cachedGeo.countryName;
+        countryCode = cachedGeo.countryCode;
+        formattedAddress = cachedGeo.formattedAddress;
+      } else if (
+        !options.skipReverseGeocode &&
+        typeof hotel.latitude === 'number' &&
+        typeof hotel.longitude === 'number'
+      ) {
+        try {
+          const url =
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2` +
+            `&lat=${hotel.latitude}&lon=${hotel.longitude}` +
+            `&zoom=14&addressdetails=1&accept-language=en`;
+
+          const res = await fetch(url, {
+            headers: {
+              // ⚠️ REQUIRED by Nominatim ToS — replace with your real contact
+              'User-Agent': 'EbonyBruceTravels/1.0 (contact@ebonybrucetravels.com)',
+              Accept: 'application/json',
+            },
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const a = data.address || {};
+
+            neighbourhood =
+              a.suburb ||
+              a.neighbourhood ||
+              a.quarter ||
+              a.city_district ||
+              a.borough ||
+              a.village ||
+              '';
+
+            cityName = a.city || a.town || a.municipality || a.county || cityName;
+            countryName = a.country || '';
+            countryCode = (a.country_code || '').toUpperCase();
+
+            const parts = [
+              [a.house_number, a.road].filter(Boolean).join(' '),
+              neighbourhood,
+              cityName,
+              a.postcode,
+              countryName,
+            ].filter(Boolean);
+            formattedAddress = parts.join(', ');
+
+            // Cache for 30 days
+            this.cacheService.set(
+              geoCacheKey,
+              { neighbourhood, cityName, countryName, countryCode, formattedAddress },
+              30 * 24 * 60 * 60 * 1000,
+            );
+          }
+        } catch (err) {
+          this.logger.warn(`Geocode failed for hotel ${hotelId}: ${err}`);
+        }
+
+        // Respect Nominatim rate limit ONLY when we actually hit the API
+        await new Promise((r) => setTimeout(r, 1100));
+      }
+
+      // ── Merge everything back into the hotel object ──
+      enriched.push({
+        ...item,
+        hotel: {
+          ...hotel,
+          neighbourhood,
+          cityName: cityName || center?.name || '',
+          countryName,
+          countryCode,
+          formattedAddress,
+          distanceFromCenter,
+          distanceUnit,
+          amenities: allAmenityCodes, // raw codes
+          amenityLabels, // display labels for the frontend
+        },
+      });
+    }
+
+    return enriched;
   }
 }
