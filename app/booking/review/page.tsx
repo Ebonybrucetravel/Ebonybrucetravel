@@ -24,17 +24,37 @@ const LoadingSpinner = ({ message }: { message?: string }) => (
 
 function extractOfferIdFromHotel(item: any): string {
   if (!item) return '';
-  
-  console.log('🔍 extractOfferIdFromHotel - Input:', {
-    hasOfferId: !!item.offerId,
-    hasOffer_id: !!item.offer_id,
-    hasHotelData: !!item.hotelData,
-    hasRealData: !!item.realData,
-    hasOffers: !!(item.offers?.length),
-    itemKeys: Object.keys(item),
-  });
-  
-  // Check all possible locations for offer ID
+
+  /* ── ① Multi-room cart ── */
+  if (
+    item.isMultiRoom &&
+    Array.isArray(item.rooms) &&
+    item.rooms.length > 0
+  ) {
+    console.log('🔍 extractOfferIdFromHotel - multi-room detected:', {
+      totalRooms: item.totalRooms,
+      roomCount: item.rooms.length,
+    });
+
+    for (const entry of item.rooms) {
+      const rate = entry?.rate || entry;
+      const offerId =
+        rate?.raw?.offerId ||
+        rate?.raw?.offer_id ||
+        rate?.offerId ||
+        rate?.offer_id ||
+        (typeof rate?.id === 'string' && rate.id.length > 0 && !rate.id.startsWith('room-')
+          ? rate.id
+          : null);
+
+      if (offerId && typeof offerId === 'string') {
+        console.log('✅ Multi-room: first offer ID found:', offerId);
+        return offerId;
+      }
+    }
+  }
+
+  /* ── ② Single-room ── */
   const sources = [
     item.offerId,
     item.offer_id,
@@ -43,19 +63,28 @@ function extractOfferIdFromHotel(item: any): string {
     item.offers?.[0]?.id,
     item.hotelData?.offers?.[0]?.id,
     item.realData?.offers?.[0]?.id,
-    // Check if the id itself is an offer ID
-    (typeof item.id === 'string' && (item.id.startsWith('offer_') || item.id.includes('offer'))) ? item.id : null,
-    (typeof item.hotelId === 'string' && (item.hotelId.startsWith('offer_') || item.hotelId.includes('offer'))) ? item.hotelId : null,
+    (typeof item.id === 'string' &&
+      (item.id.startsWith('offer_') || item.id.includes('offer')))
+      ? item.id
+      : null,
+    (typeof item.hotelId === 'string' &&
+      (item.hotelId.startsWith('offer_') || item.hotelId.includes('offer')))
+      ? item.hotelId
+      : null,
   ];
-  
+
   for (const source of sources) {
     if (source && typeof source === 'string' && source.length > 0) {
-      console.log('✅ Found offer ID:', source);
+      console.log('✅ Single-room: offer ID found:', source);
       return source;
     }
   }
-  
-  console.warn('⚠️ No offer ID found in hotel item');
+
+  console.warn('⚠️ No offer ID found in hotel item', {
+    isMultiRoom: item.isMultiRoom,
+    hasRooms: Array.isArray(item.rooms),
+    itemKeys: Object.keys(item),
+  });
   return '';
 }
 
@@ -1523,9 +1552,140 @@ console.log('✈️ Flight details preserved in cleanedPassengerInfo:', {
     });
   
     if (isHotel && !isCar) {
-      
+
+      /* ══════════════════════════════════════════
+         MULTI-ROOM (new)
+         ══════════════════════════════════════════ */
+      if ((extendedItem as any)?.isMultiRoom && Array.isArray((extendedItem as any)?.rooms)) {
+        const roomEntries = (extendedItem as any).rooms.map((r: any) => {
+          const rate = r.rate || {};
+          const offerId =
+            rate?.raw?.offerId ||
+            rate?.raw?.offer_id ||
+            rate?.offerId ||
+            rate?.offer_id ||
+            (typeof rate?.id === 'string' && !rate.id.startsWith('room-') ? rate.id : null);
+          return {
+            offerId,
+            quantity: r.quantity || 1,
+            roomType: rate.type || rate.name || 'Room',
+            roomName: rate.name || rate.type || 'Room',
+            price: rate.price?.total || 0,
+            currency: rate.price?.currency || 'NGN',
+            rateKey: rate.raw?.rateKey || null,
+            raw: rate.raw || null,
+          };
+        });
+    
+        console.log('🏨 Multi-room booking payload:', {
+          totalRooms: (extendedItem as any).totalRooms,
+          entries: roomEntries.map((e: any) => ({
+            offerId: e.offerId ? `${e.offerId.substring(0, 12)}…` : null,
+            roomType: e.roomType,
+            quantity: e.quantity,
+          })),
+        });
+    
+        const missingOfferIds = roomEntries.filter((e: any) => !e.offerId);
+        if (missingOfferIds.length > 0) {
+          console.error('❌ Multi-room: missing offer IDs', missingOfferIds);
+          toast.error(
+            'Some rooms are missing offer details. Please go back and select rooms again.',
+            { duration: 5000 }
+          );
+          setIsProcessingPayment(false);
+          return;
+        }
+    
+        const primaryOfferId = roomEntries[0].offerId;
+    
+        const multiRoomItem = {
+          ...extendedItem,
+          offerId: primaryOfferId,
+          offer_id: primaryOfferId,
+          isMultiRoom: true,
+          rooms: roomEntries,
+          totalRooms: (extendedItem as any).totalRooms,
+          totalAmount: (extendedItem as any).totalAmount,
+          currency:
+            (extendedItem as any).selectedCurrency ||
+            (extendedItem as any).currency ||
+            currency.code ||
+            'NGN',
+          hotelId: (extendedItem as any).hotelId || (extendedItem as any).id,
+          hotelName: (extendedItem as any).hotelName || (extendedItem as any).title,
+
+       
+          numberOfRooms:
+            (extendedItem as any).totalRooms ||
+            roomEntries.reduce((s: number, e: any) => s + (e.quantity || 1), 0),
+          roomQuantity:
+            (extendedItem as any).totalRooms ||
+            roomEntries.reduce((s: number, e: any) => s + (e.quantity || 1), 0),
+          guests:
+            (extendedItem as any).totalRooms ||
+            roomEntries.reduce((s: number, e: any) => s + (e.quantity || 1), 0),
+        };
+    
+        /* ══ Merchant model ══ */
+        if (isMerchantPaymentModel) {
+          try {
+            console.log('🏨 Multi-room: creating Amadeus booking (merchant model)');
+            const testCard = {
+              cardNumber: '4242424242424242',
+              expiryMonth: '12',
+              expiryYear: '2026',
+              cvc: '123',
+              holderName: `${cleanedPassengerInfo.firstName} ${cleanedPassengerInfo.lastName}`,
+            };
+    
+            const newBooking = await createAmadeusHotelBooking(
+              multiRoomItem,
+              cleanedPassengerInfo,
+              testCard,
+              isGuest,
+              searchParams,
+            );
+    
+            if (newBooking) {
+              if (isGuest && cleanedPassengerInfo.email) {
+                sessionStorage.setItem('guest_booking_email', cleanedPassengerInfo.email);
+              }
+              const b: any = newBooking;
+              b.email = cleanedPassengerInfo.email;
+              if (!b.passengerInfo) b.passengerInfo = {};
+              b.passengerInfo.email = cleanedPassengerInfo.email;
+              if (!b.bookingData) b.bookingData = {};
+              b.bookingData.email = cleanedPassengerInfo.email;
+              setBooking(b);
+            } else {
+              setBooking(newBooking);
+            }
+            setAppliedVoucherCode(voucherCode);
+            setShowPayment(true);
+          } catch (err: any) {
+            console.error('Multi-room merchant booking error:', err);
+            toast.error(err?.message ?? "We couldn't create your booking.");
+          } finally {
+            setIsProcessingPayment(false);
+          }
+          return;
+        }
+    
+        /* ══ Non-merchant (Amadeus payment modal) ══ */
+        console.log('🏨 Multi-room: opening Amadeus payment modal');
+        setPendingPassengerInfo(cleanedPassengerInfo);
+        setAppliedVoucherCode(voucherCode);
+        sessionStorage.setItem('pendingHotelBooking', JSON.stringify(multiRoomItem));
+        setShowAmadeusPayment(true);
+        return;
+      }
+    
+      /* ══════════════════════════════════════════
+         SINGLE-ROOM (original path, unchanged)
+         ══════════════════════════════════════════ */
       const hotelOfferId = extractOfferIdFromHotel(extendedItem);
-      
+    
       console.log('🏨 Hotel booking - Offer ID check:', {
         originalOfferId: extendedItem.offerId,
         extractedOfferId: hotelOfferId,
@@ -1533,18 +1693,19 @@ console.log('✈️ Flight details preserved in cleanedPassengerInfo:', {
         hotelId: extendedItem.hotelId || extendedItem.id,
         hotelName: extendedItem.name || extendedItem.title,
       });
-
+    
       let finalHotelItem = extendedItem;
       if (!hotelOfferId && typeof window !== 'undefined') {
         const stored = sessionStorage.getItem('selectedHotelForBooking');
         if (stored) {
           try {
             const hotelData = JSON.parse(stored);
-            const storedOfferId = hotelData.offerId || 
-                                 hotelData.offer_id ||
-                                 hotelData.offers?.[0]?.id ||
-                                 hotelData.hotelData?.offerId ||
-                                 hotelData.realData?.offerId;
+            const storedOfferId =
+              hotelData.offerId ||
+              hotelData.offer_id ||
+              hotelData.offers?.[0]?.id ||
+              hotelData.hotelData?.offerId ||
+              hotelData.realData?.offerId;
             if (storedOfferId) {
               console.log('✅ Found offer ID in sessionStorage:', storedOfferId);
               finalHotelItem = {
@@ -1555,7 +1716,7 @@ console.log('✈️ Flight details preserved in cleanedPassengerInfo:', {
                   ...extendedItem.hotelData,
                   offerId: storedOfferId,
                   offer_id: storedOfferId,
-                }
+                },
               };
             }
           } catch (e) {
@@ -1563,69 +1724,60 @@ console.log('✈️ Flight details preserved in cleanedPassengerInfo:', {
           }
         }
       }
-      
-      // ✅ If we still don't have an offer ID, show error
-      const finalOfferId = finalHotelItem.offerId || 
-                           finalHotelItem.offer_id || 
-                           finalHotelItem.hotelData?.offerId || 
-                           finalHotelItem.hotelData?.offer_id ||
-                           finalHotelItem.offers?.[0]?.id ||
-                           extractOfferIdFromHotel(finalHotelItem);
-      
+    
+      const finalOfferId =
+        finalHotelItem.offerId ||
+        finalHotelItem.offer_id ||
+        finalHotelItem.hotelData?.offerId ||
+        finalHotelItem.hotelData?.offer_id ||
+        finalHotelItem.offers?.[0]?.id ||
+        extractOfferIdFromHotel(finalHotelItem);
+    
       if (!finalOfferId) {
-        console.error('❌ No offer ID found for hotel:', {
-          item: finalHotelItem,
-          offerId: finalHotelItem.offerId,
-          offer_id: finalHotelItem.offer_id,
-          hotelData: finalHotelItem.hotelData,
-          offers: finalHotelItem.offers,
-        });
+        console.error('❌ No offer ID found for hotel:', finalHotelItem);
         toast.error(
           'Unable to find a valid hotel offer. Please go back and search for hotels again.',
           { duration: 5000 }
         );
+        setIsProcessingPayment(false);
         return;
       }
-      
-      // ✅ Ensure the offer ID is on the item
+    
       finalHotelItem = {
         ...finalHotelItem,
         offerId: finalOfferId,
         offer_id: finalOfferId,
-        realData: {
-          ...finalHotelItem.realData,
-          offerId: finalOfferId,
-        },
+        realData: { ...finalHotelItem.realData, offerId: finalOfferId },
         hotelData: {
           ...finalHotelItem.hotelData,
           offerId: finalOfferId,
           offer_id: finalOfferId,
-        }
+        },
       };
-      
-      console.log('✅ Proceeding with hotel booking using offer ID:', finalOfferId);
-      
+    
+      console.log('✅ Proceeding with single-room hotel booking, offer ID:', finalOfferId);
+    
       if (isMerchantPaymentModel) {
         try {
-          console.log("🏨 Creating Amadeus hotel booking with merchant payment model...");
-          
-          const correctPrice = parseFloat(finalHotelItem.final_amount || finalHotelItem.final_price || '0');
-          console.log("💰 Amadeus hotel price check:", {
+          const correctPrice = parseFloat(
+            finalHotelItem.final_amount || finalHotelItem.final_price || '0'
+          );
+          console.log('💰 Amadeus hotel price check:', {
             final_amount: finalHotelItem.final_amount,
             final_price: finalHotelItem.final_price,
-            correctPrice: correctPrice,
+            correctPrice,
             offerId: finalOfferId,
           });
-          
-          // Try to restore price from sessionStorage if needed
+    
           if (correctPrice < 500000 && typeof window !== 'undefined') {
             const stored = sessionStorage.getItem('selectedHotel');
             if (stored) {
               try {
                 const hotelData = JSON.parse(stored);
-                const storedPrice = parseFloat(hotelData.final_amount || hotelData.final_price || '0');
+                const storedPrice = parseFloat(
+                  hotelData.final_amount || hotelData.final_price || '0'
+                );
                 if (storedPrice > correctPrice && storedPrice > 0) {
-                  console.log("💰 Restoring correct price from sessionStorage:", storedPrice);
                   finalHotelItem = {
                     ...finalHotelItem,
                     final_amount: hotelData.final_amount,
@@ -1635,18 +1787,15 @@ console.log('✈️ Flight details preserved in cleanedPassengerInfo:', {
               } catch (e) {}
             }
           }
-          
-          const finalPrice = parseFloat(finalHotelItem.final_amount || finalHotelItem.final_price || '0');
-          console.log("💰 Final price being sent to createAmadeusHotelBooking:", finalPrice);
-          
+    
           const testCard = {
-            cardNumber: "4242424242424242",
-            expiryMonth: "12",
-            expiryYear: "2026",
-            cvc: "123",
+            cardNumber: '4242424242424242',
+            expiryMonth: '12',
+            expiryYear: '2026',
+            cvc: '123',
             holderName: `${cleanedPassengerInfo.firstName} ${cleanedPassengerInfo.lastName}`,
           };
-          
+    
           const newBooking = await createAmadeusHotelBooking(
             finalHotelItem,
             cleanedPassengerInfo,
@@ -1654,49 +1803,35 @@ console.log('✈️ Flight details preserved in cleanedPassengerInfo:', {
             isGuest,
             searchParams,
           );
-          
-          // ✅ FIX: Store email after hotel booking creation
+    
           if (newBooking) {
-            // Store email in sessionStorage for guest bookings
             if (isGuest && cleanedPassengerInfo.email) {
               sessionStorage.setItem('guest_booking_email', cleanedPassengerInfo.email);
-              console.log('📧 Stored guest email in sessionStorage for hotel:', cleanedPassengerInfo.email);
             }
-            
-            // Ensure email is in the booking object
-            const bookingAny = newBooking as any;
-            bookingAny.email = cleanedPassengerInfo.email;
-            if (!bookingAny.passengerInfo) {
-              bookingAny.passengerInfo = {};
-            }
-            bookingAny.passengerInfo.email = cleanedPassengerInfo.email;
-            // ✅ ADD THIS - for consistency with car and flight flows
-            if (!bookingAny.bookingData) {
-              bookingAny.bookingData = {};
-            }
-            bookingAny.bookingData.email = cleanedPassengerInfo.email;
-            
-            setBooking(bookingAny);
+            const b: any = newBooking;
+            b.email = cleanedPassengerInfo.email;
+            if (!b.passengerInfo) b.passengerInfo = {};
+            b.passengerInfo.email = cleanedPassengerInfo.email;
+            if (!b.bookingData) b.bookingData = {};
+            b.bookingData.email = cleanedPassengerInfo.email;
+            setBooking(b);
           } else {
             setBooking(newBooking);
           }
-          
           setAppliedVoucherCode(voucherCode);
           setShowPayment(true);
-          
         } catch (err: any) {
-          console.error("Amadeus hotel booking error:", err);
+          console.error('Amadeus hotel booking error:', err);
           toast.error(err?.message ?? "We couldn't create your booking. Please try again.");
         } finally {
-          setIsProcessingPayment(false); 
+          setIsProcessingPayment(false);
         }
         return;
       }
-      console.log("🏨 Setting up Amadeus hotel payment modal...");
+    
+      console.log('🏨 Setting up Amadeus hotel payment modal...');
       setPendingPassengerInfo(cleanedPassengerInfo);
       setAppliedVoucherCode(voucherCode);
-      // ✅ Pass the finalHotelItem with offer ID via state
-      // We need to store it so the modal can use it
       sessionStorage.setItem('pendingHotelBooking', JSON.stringify(finalHotelItem));
       setShowAmadeusPayment(true);
       return;
@@ -2315,17 +2450,33 @@ if (!selectedItem && !restoredHotelItem) {
 
 {showAmadeusPayment && effectiveSelectedItem && pendingPassengerInfo && (
   <AmadeusHotelPaymentModal
-    item={{
-      ...effectiveSelectedItem,
-      offerId: effectiveSelectedItem.offerId || 
-               effectiveSelectedItem.offer_id ||
-               effectiveSelectedItem.hotelData?.offerId ||
-               effectiveSelectedItem.offers?.[0]?.id ||
-               (typeof window !== 'undefined' && 
-                sessionStorage.getItem('pendingHotelBooking') ? 
-                  JSON.parse(sessionStorage.getItem('pendingHotelBooking')!).offerId : 
-                  ''),
-    }}
+    item={(() => {
+      // ✅ Prefer the normalized multi-room item stored in sessionStorage
+      if (typeof window !== 'undefined') {
+        const stored = sessionStorage.getItem('pendingHotelBooking');
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            if (parsed?.isMultiRoom && Array.isArray(parsed.rooms)) {
+              console.log('🏨 Modal: using normalized multi-room item from sessionStorage');
+              return parsed;
+            }
+          } catch (e) {
+            console.warn('Failed to parse pendingHotelBooking:', e);
+          }
+        }
+      }
+      // ✅ Fall back to effectiveSelectedItem (single-room)
+      return {
+        ...effectiveSelectedItem,
+        offerId:
+          effectiveSelectedItem.offerId ||
+          effectiveSelectedItem.offer_id ||
+          effectiveSelectedItem.hotelData?.offerId ||
+          effectiveSelectedItem.offers?.[0]?.id ||
+          '',
+      };
+    })()}
     passengerInfo={pendingPassengerInfo}
     isGuest={!isLoggedIn}
     voucherCode={appliedVoucherCode}

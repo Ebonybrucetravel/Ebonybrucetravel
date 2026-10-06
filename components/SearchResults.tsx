@@ -436,6 +436,86 @@ const advertisements = [
   },
 ];
 
+/* ═══════════════════════════════════════════════════════════
+   HOTEL FILTER HELPERS
+   ═══════════════════════════════════════════════════════════ */
+
+   const titleCaseHotel = (s: string): string =>
+   String(s || '')
+     .toLowerCase()
+     .replace(/_/g, ' ')
+     .replace(/\b\w/g, (c) => c.toUpperCase())
+     .trim();
+ 
+ const mapBoardTypeHotel = (bt?: string): string | null => {
+   if (!bt) return null;
+   const k = bt.toUpperCase().replace(/\s+/g, '_');
+   if (/ROOM_ONLY/.test(k)) return 'Room Only';
+   if (/BREAKFAST/.test(k)) return 'Breakfast Included';
+   if (/HALF_BOARD/.test(k)) return 'Breakfast & Dinner Included';
+   if (/FULL_BOARD/.test(k)) return 'Full Board';
+   if (/ALL_INCLUSIVE/.test(k)) return 'All Inclusive';
+   return null;
+ };
+ 
+ const AMENITY_PATTERNS: [RegExp, string][] = [
+   [/\bwi[\s-]?fi|wireless|internet/i, 'Free WiFi'],
+   [/\bpool|swimming/i, 'Swimming Pool'],
+   [/\bspa\b/i, 'Spa'],
+   [/\bgym|fitness/i, 'Gym'],
+   [/\brestaurant/i, 'Restaurant'],
+   [/\bbar\b|lounge/i, 'Bar/Lounge'],
+   [/\bparking|garage/i, 'Parking available'],
+   [/\bairport.*(shuttle|transfer)/i, 'Airport Transfer'],
+   [/\bair.?condition|a\/c\b/i, 'Air Conditioning'],
+   [/\bpet.?friendly|pets allowed/i, 'Pet Friendly'],
+   [/\bnon.?smok/i, 'Non-Smoking'],
+   [/\bkitchen|kitchenette/i, 'Kitchen'],
+   [/\blaundry/i, 'Laundry Service'],
+   [/\bbusiness.?(center|centre)/i, 'Business Center'],
+   [/\bconcierge/i, 'Concierge'],
+   [/\belevator|lift\b/i, 'Elevator'],
+   [/\bprivate.?bathroom|en.?suite/i, 'Private bathroom'],
+   [/\bprivate.?toilet/i, 'Private toilet'],
+   [/\bbalcony/i, 'Balcony'],
+   [/\bterrace/i, 'Terrace'],
+   [/\bfamily.?room|family.?friendly/i, 'Family-friendly'],
+ ];
+ 
+ const ACCESS_PATTERNS: [RegExp, string][] = [
+   [/wheelchair|wheel.?chair/i, 'Wheelchairs available'],
+   [/accessible.?room|rooms? for disabled/i, 'Accessible rooms available'],
+   [/accessible.?shower/i, 'Accessible shower'],
+   [/braille/i, 'Braille signs'],
+   [/handrails?.*stair/i, 'Handrails on stairs'],
+   [/handrails?.*hallway/i, 'Handrails in hallways'],
+   [/visual.?alarm/i, 'Visual alarm devices in hallways'],
+   [/assistive.?listening/i, 'Assistive listening devices'],
+   [/sign.?language/i, 'Employees proficient with sign language'],
+   [/stair.?free/i, 'Stair-free main entrance'],
+   [/pool.?hoist|pool.?lift/i, 'Pool hoist available'],
+   [/pool.?ramp/i, 'Pool ramp available'],
+   [/accessible.?facilit/i, 'Accessible facilities'],
+ ];
+ 
+ const ROOM_FACILITY_PATTERNS: [RegExp, string][] = [
+   [/\bwi[\s-]?fi|wireless/i, 'Free WiFi'],
+   [/\bair.?condition|a\/c\b/i, 'Air Conditioning'],
+   [/\bprivate.?bathroom|en.?suite/i, 'Private bathroom'],
+   [/\bprivate.?toilet/i, 'Private toilet'],
+   [/\bbalcony/i, 'Balcony'],
+   [/\bflat.?screen|smart.?tv|\btv\b/i, 'Flat-screen TV'],
+   [/\bminibar|mini.?bar/i, 'Minibar'],
+   [/\bsafe\b/i, 'In-Room Safe'],
+   [/\bcoffee.?maker|nespresso/i, 'Coffee Maker'],
+   [/\bhair.?dryer/i, 'Hair Dryer'],
+   [/\bbathtub|bath.?tub/i, 'Bathtub'],
+   [/\bshower/i, 'Shower'],
+   [/\bkitchen|kitchenette/i, 'Kitchen'],
+   [/\bdesk|workspace/i, 'Work Desk'],
+   [/\biron\b/i, 'Iron & Board'],
+ ];
+
 const SearchResults: React.FC<SearchResultsProps> = ({
   results,
   searchParams,
@@ -468,6 +548,19 @@ const SearchResults: React.FC<SearchResultsProps> = ({
  
   const [starRatings, setStarRatings] = useState<number[]>([]);
   const [amenitiesFilter, setAmenitiesFilter] = useState<string[]>([]);
+  const [popularFilter, setPopularFilter] = useState<string[]>([]);
+const [propertyTypeFilter, setPropertyTypeFilter] = useState<string[]>([]);
+const [bedTypeFilter, setBedTypeFilter] = useState<string[]>([]);
+const [roomFeatureFilter, setRoomFeatureFilter] = useState<string[]>([]);
+const [mealFilter, setMealFilter] = useState<string[]>([]);
+const [brandFilter, setBrandFilter] = useState<string[]>([]);
+const [guestRatingFilter, setGuestRatingFilter] = useState<number | null>(null);
+const [freeCancelFilter, setFreeCancelFilter] = useState(false);
+const [payAtHotelFilter, setPayAtHotelFilter] = useState(false);
+const [roomFacilityFilter, setRoomFacilityFilter] = useState<string[]>([]);
+const [accessibilityFilter, setAccessibilityFilter] = useState<string[]>([]);
+const [reviewCountFilter, setReviewCountFilter] = useState<string[]>([]);
+const [propertyFacilityFilter, setPropertyFacilityFilter] = useState<string[]>([]);
 
   
   const [carTypeFilter, setCarTypeFilter] = useState<string[]>([]);
@@ -1692,50 +1785,296 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
   const filteredHotelAndCarResults = useMemo(() => {
     let filtered = [...hotelAndCarResults];
-
+  
     filtered = filtered.filter((item) => {
       const numericPrice = item.originalPriceAmount || 0;
       return numericPrice <= priceRange;
     });
-
-    if (searchType === "hotels") {
+  
+    if (searchType === 'hotels') {
       if (starRatings.length > 0) {
         filtered = filtered.filter(item => starRatings.includes(Math.floor(item.rating || 0)));
       }
       if (amenitiesFilter.length > 0) {
         filtered = filtered.filter(item => amenitiesFilter.every(a => item.amenities?.includes(a)));
       }
-    } else if (searchType === "car-rentals") {
-      if (carTypeFilter.length > 0) {
+      if (popularFilter.length > 0) {
+        filtered = filtered.filter(item => {
+          const offers = item.offers || [];
+          const labels = item.hotel?.amenityLabels || [];
+          const labelText = labels.join(' | ');
+          return popularFilter.every((f) => {
+            if (f === 'Free cancellation') {
+              return offers.some((o: any) =>
+                o?.policies?.refundable?.cancellationRefund === 'REFUNDABLE_UP_TO_DEADLINE' ||
+                (o?.policies?.cancellations?.length > 0)
+              );
+            }
+            if (f === 'Breakfast included') {
+              return offers.some((o: any) => /BREAKFAST|HALF_BOARD|FULL_BOARD/i.test(o?.boardType || ''));
+            }
+            return new RegExp(f.replace(/\s+/g, '.?'), 'i').test(labelText);
+          });
+        });
+      }
+      if (propertyFacilityFilter.length > 0) {
+        filtered = filtered.filter(item => {
+          const labels = item.hotel?.amenityLabels || [];
+          const text = labels.join(' | ');
+          return propertyFacilityFilter.every((f) => new RegExp(f.replace(/\s+/g, '.?'), 'i').test(text));
+        });
+      }
+      if (bedTypeFilter.length > 0) {
         filtered = filtered.filter(item =>
-          item.vehicleCode && carTypeFilter.includes(item.vehicleCode)
+          (item.offers || []).some((o: any) =>
+            bedTypeFilter.includes(titleCaseHotel(o?.room?.typeEstimated?.bedType || ''))
+          )
         );
+      }
+      if (roomFeatureFilter.length > 0) {
+        filtered = filtered.filter(item =>
+          (item.offers || []).some((o: any) =>
+            roomFeatureFilter.includes(titleCaseHotel(o?.room?.typeEstimated?.category || ''))
+          )
+        );
+      }
+      if (mealFilter.length > 0) {
+        filtered = filtered.filter(item =>
+          (item.offers || []).some((o: any) =>
+            mealFilter.includes(mapBoardTypeHotel(o?.boardType) || '')
+          )
+        );
+      }
+      if (brandFilter.length > 0) {
+        filtered = filtered.filter(item => brandFilter.includes(item.hotel?.chainName || ''));
+      }
+      if (guestRatingFilter !== null) {
+        filtered = filtered.filter(item => (item.hotel?.guestRating || 0) >= guestRatingFilter);
+      }
+      if (reviewCountFilter.length > 0) {
+        filtered = filtered.filter(item => {
+          const n = item.hotel?.totalReviews || 0;
+          return reviewCountFilter.some((b) => n >= parseInt(b.replace('+', '')));
+        });
+      }
+      if (freeCancelFilter) {
+        filtered = filtered.filter(item =>
+          (item.offers || []).some((o: any) =>
+            o?.policies?.refundable?.cancellationRefund === 'REFUNDABLE_UP_TO_DEADLINE' ||
+            (o?.policies?.cancellations?.length > 0)
+          )
+        );
+      }
+      if (payAtHotelFilter) {
+        filtered = filtered.filter(item =>
+          (item.offers || []).some((o: any) => /GUARANTEE/i.test(o?.policies?.paymentType || ''))
+        );
+      }
+      if (roomFacilityFilter.length > 0) {
+        filtered = filtered.filter(item =>
+          (item.offers || []).some((o: any) => {
+            const rd =
+              (typeof o?.room?.description === 'string' ? o.room.description : '') ||
+              o?.room?.description?.text || '';
+            const hits = ROOM_FACILITY_PATTERNS.filter(([re]) => re.test(rd)).map(([, l]) => l);
+            return roomFacilityFilter.every((f) => hits.includes(f));
+          })
+        );
+      }
+      if (accessibilityFilter.length > 0) {
+        filtered = filtered.filter(item => {
+          const labels = (item.hotel?.amenityLabels || []).join(' | ');
+          return accessibilityFilter.every((f) => new RegExp(f.replace(/\s+/g, '.?'), 'i').test(labels));
+        });
+      }
+    } else if (searchType === 'car-rentals') {
+      if (carTypeFilter.length > 0) {
+        filtered = filtered.filter(item => item.vehicleCode && carTypeFilter.includes(item.vehicleCode));
       }
       if (transmissionFilter.length > 0) {
-        filtered = filtered.filter(item =>
-          item.transmission && transmissionFilter.includes(item.transmission)
-        );
+        filtered = filtered.filter(item => item.transmission && transmissionFilter.includes(item.transmission));
       }
       if (seatCapacityFilter.length > 0) {
-        filtered = filtered.filter(item =>
-          item.seats && seatCapacityFilter.includes(item.seats)
-        );
+        filtered = filtered.filter(item => item.seats && seatCapacityFilter.includes(item.seats));
       }
       if (providerFilter.length > 0) {
-        filtered = filtered.filter(item =>
-          item.provider && providerFilter.includes(item.provider)
-        );
+        filtered = filtered.filter(item => item.provider && providerFilter.includes(item.provider));
+      }
+    }
+  
+    if (sortBy === 'price') {
+      filtered.sort((a, b) => (a.originalPriceAmount || 0) - (b.originalPriceAmount || 0));
+    } else if (sortBy === 'rating') {
+      filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    }
+  
+    return filtered;
+  }, [
+    hotelAndCarResults, searchType, priceRange, sortBy,
+    starRatings, amenitiesFilter,
+    popularFilter, propertyFacilityFilter, bedTypeFilter, roomFeatureFilter,
+    mealFilter, brandFilter, guestRatingFilter, reviewCountFilter,
+    freeCancelFilter, payAtHotelFilter, roomFacilityFilter, accessibilityFilter,
+    carTypeFilter, transmissionFilter, seatCapacityFilter, providerFilter,
+  ]);
+
+  /* ═══ Dynamically extract available hotel filter options ═══ */
+const hotelFilterOptions = useMemo(() => {
+  if (searchType !== 'hotels' || hotelAndCarResults.length === 0) return null;
+
+  const priceMin = { v: Infinity };
+  const priceMax = { v: 0 };
+  let hasPrice = false;
+
+  const bump = (map: Map<string, number>, k: string) =>
+    map.set(k, (map.get(k) || 0) + 1);
+  const add = (set: Set<string>, v: string) => v && set.add(v);
+
+  const popular = new Map<string, number>();
+  const propertyTypes = new Set<string>();
+  const starRatingsSet = new Set<number>();
+  const bedTypes = new Set<string>();
+  const roomFeatures = new Set<string>();
+  const meals = new Set<string>();
+  const brands = new Set<string>();
+  const guestRatings = new Map<number, number>();
+  const propertyFacilities = new Map<string, number>();
+  const roomFacilities = new Map<string, number>();
+  const accessibility = new Map<string, number>();
+  const reviewBuckets = new Set<string>();
+
+  let hasFreeCancel = false;
+  let hasPayAtHotel = false;
+  let hasPrepay = false;
+
+  for (const item of hotelAndCarResults) {
+    const h: any = (item as any).hotel || {};
+    const offers: any[] = (item as any).offers || [];
+    const bestOffer = offers[0];
+
+    /* Price */
+    const p = (item as any).originalPriceAmount;
+    if (typeof p === 'number' && p > 0) {
+      priceMin.v = Math.min(priceMin.v, p);
+      priceMax.v = Math.max(priceMax.v, p);
+      hasPrice = true;
+    }
+
+    /* Star rating */
+    const star = (item as any).rating;
+    if (typeof star === 'number' && star >= 1 && star <= 5) {
+      starRatingsSet.add(Math.floor(star));
+    }
+
+    /* Guest rating */
+    const gr = h.guestRating ?? (item as any).guestRating;
+    if (typeof gr === 'number' && gr > 0) {
+      const bucket = Math.round(gr * 2) / 2;
+      guestRatings.set(bucket, (guestRatings.get(bucket) || 0) + 1);
+    }
+
+    /* Reviews count */
+    const reviews = h.totalReviews ?? (item as any).totalReviews;
+    if (typeof reviews === 'number') {
+      if (reviews >= 500) reviewBuckets.add('500+');
+      if (reviews >= 200) reviewBuckets.add('200+');
+      if (reviews >= 100) reviewBuckets.add('100+');
+    }
+
+    /* Brand / chain */
+    const brand = h.chainName || h.chainCode;
+    if (typeof brand === 'string' && brand.trim()) add(brands, brand.trim());
+
+
+
+    /* Property amenities — from amenityLabels */
+    const labels: string[] = Array.isArray(h.amenityLabels) ? h.amenityLabels : [];
+    const labelText = labels.join(' | ');
+    for (const [re, lbl] of AMENITY_PATTERNS) if (re.test(labelText)) bump(propertyFacilities, lbl);
+    for (const [re, lbl] of ACCESS_PATTERNS) if (re.test(labelText)) bump(accessibility, lbl);
+
+    /* Description scan */
+    const desc =
+      (typeof h.description === 'string' ? h.description : '') ||
+      (typeof (item as any).description === 'string' ? (item as any).description : '');
+    if (desc) {
+      for (const [re, lbl] of AMENITY_PATTERNS) if (re.test(desc)) bump(propertyFacilities, lbl);
+      for (const [re, lbl] of ACCESS_PATTERNS) if (re.test(desc)) bump(accessibility, lbl);
+    }
+
+    /* Per-offer scan */
+    for (const o of offers) {
+      const t = o?.room?.typeEstimated || {};
+      if (t.bedType) add(bedTypes, titleCaseHotel(t.bedType));
+      if (t.category) add(roomFeatures, titleCaseHotel(t.category));
+
+      const board = o?.boardType || o?.board;
+      const meal = mapBoardTypeHotel(board);
+      if (meal) add(meals, meal);
+
+      /* Free cancellation */
+      if (
+        o?.policies?.refundable?.cancellationRefund === 'REFUNDABLE_UP_TO_DEADLINE' ||
+        (o?.policies?.cancellations?.length > 0)
+      ) hasFreeCancel = true;
+
+      /* Payment */
+      const payType = o?.policies?.paymentType || o?.paymentType;
+      if (typeof payType === 'string') {
+        if (/GUARANTEE/i.test(payType)) hasPayAtHotel = true;
+        if (/DEPOSIT|PREPAY/i.test(payType)) hasPrepay = true;
+      }
+
+      /* Room description */
+      const rd =
+        (typeof o?.room?.description === 'string' ? o.room.description : '') ||
+        o?.room?.description?.text ||
+        '';
+      if (rd) {
+        for (const [re, lbl] of ROOM_FACILITY_PATTERNS) if (re.test(rd)) bump(roomFacilities, lbl);
       }
     }
 
-    if (sortBy === "price") {
-      filtered.sort((a, b) => (a.originalPriceAmount || 0) - (b.originalPriceAmount || 0));
-    } else if (sortBy === "rating") {
-      filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
-    }
+    /* Popular tags */
+    if (hasFreeCancel) bump(popular, 'Free cancellation');
+    if (meals.size > 0) bump(popular, 'Breakfast included');
+    if (propertyFacilities.has('Free WiFi')) bump(popular, 'Free WiFi');
+    if (propertyFacilities.has('Swimming Pool')) bump(popular, 'Swimming Pool');
+    if (propertyFacilities.has('Parking available')) bump(popular, 'Parking available');
+  }
 
-    return filtered;
-  }, [hotelAndCarResults, searchType, priceRange, sortBy, starRatings, amenitiesFilter, carTypeFilter, transmissionFilter, seatCapacityFilter, providerFilter]);
+  return {
+    price: {
+      min: hasPrice ? Math.floor(priceMin.v) : 0,
+      max: hasPrice ? Math.ceil(priceMax.v) : 0,
+      hasData: hasPrice,
+    },
+    popular: [...popular.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count),
+    propertyTypes: [...propertyTypes].sort(),
+    starRatings: [...starRatingsSet].sort((a, b) => b - a),
+    bedTypes: [...bedTypes].sort(),
+    roomFeatures: [...roomFeatures].sort(),
+    meals: [...meals].sort(),
+    brands: [...brands].sort(),
+    guestRatings: [...guestRatings.entries()]
+      .map(([value, count]) => ({
+        value,
+        label:
+          value >= 9 ? `Great ${value}+` :
+          value >= 8 ? `Very Good ${value}+` :
+          value >= 7 ? `Good ${value}+` : `${value}+`,
+        count,
+      }))
+      .sort((a, b) => b.value - a.value),
+    propertyFacilities: [...propertyFacilities.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count),
+    roomFacilities: [...roomFacilities.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count),
+    accessibility: [...accessibility.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count),
+    reviewBuckets: ['500+', '200+', '100+'].filter((b) => reviewBuckets.has(b)),
+    hasFreeCancel,
+    hasPayAtHotel,
+    hasPrepay,
+  };
+}, [hotelAndCarResults, searchType]);
 
 
   const uniqueCarTypes = useMemo(() => {
@@ -1770,11 +2109,25 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     setPriceRange(2000000);
     setStarRatings([]);
     setAmenitiesFilter([]);
+    setPopularFilter([]);
+    setPropertyTypeFilter([]);
+    setBedTypeFilter([]);
+    setRoomFeatureFilter([]);
+    setMealFilter([]);
+    setBrandFilter([]);
+    setGuestRatingFilter(null);
+    setFreeCancelFilter(false);
+    setPayAtHotelFilter(false);
+    setRoomFacilityFilter([]);
+    setAccessibilityFilter([]);
+    setReviewCountFilter([]);
+    setPropertyFacilityFilter([]);
+  
     setCarTypeFilter([]);
     setTransmissionFilter([]);
     setSeatCapacityFilter([]);
     setProviderFilter([]);
-    setSortBy("match");
+    setSortBy('match');
   };
 
   const renderFilterSection = (title: string, content: React.ReactNode) => (
@@ -3653,24 +4006,224 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       ))}
 
 
-      {searchType === "hotels" && (
+{searchType === "hotels" && (
+  <>
+    {/* Price Range */}
+    {renderFilterSection("Price Range", (
+      <>
+        <input
+          type="range"
+          min={hotelFilterOptions?.price.min ?? 0}
+          max={hotelFilterOptions?.price.max ?? 2000000}
+          step="50000"
+          value={priceRange}
+          onChange={(e) => setPriceRange(parseInt(e.target.value))}
+          className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-[#33a8da] cursor-pointer"
+        />
+        <div className="flex justify-between mt-4">
+          <span className="text-[10px] font-bold text-gray-400">
+            {currency.symbol}{(hotelFilterOptions?.price.min ?? 0).toLocaleString()}
+          </span>
+          <span className="text-[10px] font-black text-[#33a8da] uppercase">
+            {currency.symbol}{priceRange.toLocaleString()}
+          </span>
+        </div>
+      </>
+    ))}
+
+    {/* Popular filters */}
+    {hotelFilterOptions?.popular && hotelFilterOptions.popular.length > 0 &&
+      renderFilterSection("Popular filters", (
         <>
-          {renderFilterSection("Star Rating", (
-            <>
-              {[5, 4, 3].map(stars =>
-                renderCheckbox(`${stars} Stars`, starRatings.includes(stars), () => toggleFilter(setStarRatings, starRatings, stars))
+          {hotelFilterOptions.popular.map((p) => (
+            <div key={p.label} className="flex items-center justify-between">
+              {renderCheckbox(
+                `${p.label} (${p.count})`,
+                popularFilter.includes(p.label),
+                () => toggleFilter(setPopularFilter, popularFilter, p.label)
               )}
-            </>
-          ))}
-          {renderFilterSection("Amenities", (
-            <>
-              {["Free Wi-Fi", "Swimming Pool", "Spa", "Fitness center"].map(amenity =>
-                renderCheckbox(amenity, amenitiesFilter.includes(amenity), () => toggleFilter(setAmenitiesFilter, amenitiesFilter, amenity))
-              )}
-            </>
+            </div>
           ))}
         </>
-      )}
+      ))
+    }
+
+    
+
+    {/* Star Rating */}
+    {hotelFilterOptions?.starRatings && hotelFilterOptions.starRatings.length > 0 &&
+      renderFilterSection("Star Rating", (
+        <>
+          {hotelFilterOptions.starRatings.map((s) =>
+            renderCheckbox(
+              '★'.repeat(s),
+              starRatings.includes(s),
+              () => toggleFilter(setStarRatings, starRatings, s)
+            )
+          )}
+        </>
+      ))
+    }
+
+    {/* Guest Rating */}
+    {hotelFilterOptions?.guestRatings && hotelFilterOptions.guestRatings.length > 0 &&
+      renderFilterSection("Guest Rating", (
+        <>
+          {hotelFilterOptions.guestRatings.map((g) => (
+            <label key={g.value} className="flex items-center gap-3 cursor-pointer">
+              <div
+                onClick={() => setGuestRatingFilter(g.value)}
+                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                  guestRatingFilter === g.value ? 'border-[#33a8da]' : 'border-gray-200'
+                }`}
+              >
+                {guestRatingFilter === g.value && (
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#33a8da]" />
+                )}
+              </div>
+              <span className="text-xs font-bold text-gray-700">{g.label}</span>
+            </label>
+          ))}
+        </>
+      ))
+    }
+
+    {/* Meals */}
+    {hotelFilterOptions?.meals && hotelFilterOptions.meals.length > 0 &&
+      renderFilterSection("Meals", (
+        <>
+          {hotelFilterOptions.meals.map((m) =>
+            renderCheckbox(
+              m,
+              mealFilter.includes(m),
+              () => toggleFilter(setMealFilter, mealFilter, m)
+            )
+          )}
+        </>
+      ))
+    }
+
+    {/* Bed type */}
+    {hotelFilterOptions?.bedTypes && hotelFilterOptions.bedTypes.length > 0 &&
+      renderFilterSection("Bed Type", (
+        <>
+          {hotelFilterOptions.bedTypes.map((b) =>
+            renderCheckbox(
+              b,
+              bedTypeFilter.includes(b),
+              () => toggleFilter(setBedTypeFilter, bedTypeFilter, b)
+            )
+          )}
+        </>
+      ))
+    }
+
+    {/* Room features */}
+    {hotelFilterOptions?.roomFeatures && hotelFilterOptions.roomFeatures.length > 0 &&
+      renderFilterSection("Room Features", (
+        <>
+          {hotelFilterOptions.roomFeatures.map((rf) =>
+            renderCheckbox(
+              rf,
+              roomFeatureFilter.includes(rf),
+              () => toggleFilter(setRoomFeatureFilter, roomFeatureFilter, rf)
+            )
+          )}
+        </>
+      ))
+    }
+
+    {/* Property facilities */}
+    {hotelFilterOptions?.propertyFacilities && hotelFilterOptions.propertyFacilities.length > 0 &&
+      renderFilterSection("Property Facilities", (
+        <>
+          {hotelFilterOptions.propertyFacilities.map((a) =>
+            renderCheckbox(
+              `${a.label} (${a.count})`,
+              propertyFacilityFilter.includes(a.label),
+              () => toggleFilter(setPropertyFacilityFilter, propertyFacilityFilter, a.label)
+            )
+          )}
+        </>
+      ))
+    }
+
+    {/* Room facilities */}
+    {hotelFilterOptions?.roomFacilities && hotelFilterOptions.roomFacilities.length > 0 &&
+      renderFilterSection("Room Facilities", (
+        <>
+          {hotelFilterOptions.roomFacilities.map((a) =>
+            renderCheckbox(
+              `${a.label} (${a.count})`,
+              roomFacilityFilter.includes(a.label),
+              () => toggleFilter(setRoomFacilityFilter, roomFacilityFilter, a.label)
+            )
+          )}
+        </>
+      ))
+    }
+
+    {/* Booking Policy */}
+    {hotelFilterOptions?.hasFreeCancel &&
+      renderFilterSection("Booking Policy", (
+        <>
+          {renderCheckbox(
+            'Free cancellation',
+            freeCancelFilter,
+            () => setFreeCancelFilter(!freeCancelFilter)
+          )}
+        </>
+      ))
+    }
+
+   
+
+    {/* Brands */}
+    {hotelFilterOptions?.brands && hotelFilterOptions.brands.length > 0 &&
+      renderFilterSection("Brands", (
+        <>
+          {hotelFilterOptions.brands.map((b) =>
+            renderCheckbox(
+              b,
+              brandFilter.includes(b),
+              () => toggleFilter(setBrandFilter, brandFilter, b)
+            )
+          )}
+        </>
+      ))
+    }
+
+    {/* Reviews */}
+    {hotelFilterOptions?.reviewBuckets && hotelFilterOptions.reviewBuckets.length > 0 &&
+      renderFilterSection("Reviews", (
+        <>
+          {hotelFilterOptions.reviewBuckets.map((r) =>
+            renderCheckbox(
+              r,
+              reviewCountFilter.includes(r),
+              () => toggleFilter(setReviewCountFilter, reviewCountFilter, r)
+            )
+          )}
+        </>
+      ))
+    }
+
+    {/* Accessibility */}
+    {hotelFilterOptions?.accessibility && hotelFilterOptions.accessibility.length > 0 &&
+      renderFilterSection("Accessibility", (
+        <>
+          {hotelFilterOptions.accessibility.map((a) =>
+            renderCheckbox(
+              `${a.label} (${a.count})`,
+              accessibilityFilter.includes(a.label),
+              () => toggleFilter(setAccessibilityFilter, accessibilityFilter, a.label)
+            )
+          )}
+        </>
+      ))
+    }
+  </>
+)}
 
       {searchType === "car-rentals" && (
         <>

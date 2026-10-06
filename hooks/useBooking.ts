@@ -2311,7 +2311,37 @@ if (isGuest && passenger.email) {
                 }
                 
                 const roomType = item.roomType || realData.roomType || 'Standard Room';
-                const numberOfRooms = item.rooms || realData.rooms || 1;
+
+                // ✅ FIX: numberOfRooms must be an integer >= 1.
+                //    For multi-room carts, `item.rooms` is an array — derive the total from it.
+                let numberOfRooms: number;
+                if (typeof item.numberOfRooms === 'number' && item.numberOfRooms > 0) {
+                  numberOfRooms = item.numberOfRooms;
+                } else if (typeof (item as any).totalRooms === 'number' && (item as any).totalRooms > 0) {
+                  numberOfRooms = (item as any).totalRooms;
+                } else if (typeof (item as any).roomQuantity === 'number' && (item as any).roomQuantity > 0) {
+                  numberOfRooms = (item as any).roomQuantity;
+                } else if (typeof item.rooms === 'number' && item.rooms > 0) {
+                  numberOfRooms = item.rooms;
+                } else if (Array.isArray(item.rooms) && item.rooms.length > 0) {
+                  numberOfRooms = item.rooms.reduce(
+                    (sum: number, r: any) => sum + (typeof r?.quantity === 'number' ? r.quantity : 1),
+                    0
+                  );
+                } else if (typeof realData.rooms === 'number' && realData.rooms > 0) {
+                  numberOfRooms = realData.rooms;
+                } else {
+                  numberOfRooms = 1;
+                }
+
+                console.log('🏨 Resolved numberOfRooms:', {
+                  numberOfRooms,
+                  itemRoomsType: Array.isArray(item.rooms) ? 'array' : typeof item.rooms,
+                  itemTotalRooms: (item as any).totalRooms,
+                  itemRoomQuantity: (item as any).roomQuantity,
+                  isMultiRoom: (item as any).isMultiRoom,
+                });
+
                 const boardType = item.boardType || realData.boardType || 'Room Only';
                 
                 console.log("🏨 Hotel details being sent:", {
@@ -2339,36 +2369,54 @@ if (isGuest && passenger.email) {
           
                 const token = getStoredAuthToken();
           
-                // ✅ Build booking payload
                 const bookingPayload: any = {
                   hotelOfferId: offerId.toString(),
                   offerPrice: originalPrice,
                   currency: originalCurrency,
                   checkInDate: checkInDate,
                   checkOutDate: checkOutDate,
-                  guests: [
-                    {
-                      name: {
-                        title: passenger.title?.toUpperCase() || "MR",
-                        firstName: passenger.firstName,
-                        lastName: passenger.lastName,
-                      },
-                      contact: {
-                        phone: passenger.phone,
-                        email: passenger.email,
-                      },
+
+                  // ✅ One guest entry per room booked
+                  guests: Array.from({ length: numberOfRooms }, (_, i) => ({
+                    name: {
+                      title: passenger.title?.toUpperCase() || "MR",
+                      firstName: i === 0 ? passenger.firstName : `${passenger.firstName}${i + 1}`,
+                      lastName: passenger.lastName,
                     },
-                  ],
-                  roomAssociations: [
-                    {
-                      hotelOfferId: offerId.toString(),
-                      guestReferences: [{ guestReference: "1" }],
+                    contact: {
+                      phone: passenger.phone,
+                      email: passenger.email,
                     },
-                  ],
+                  })),
+
+                  // ✅ Multi-room: one roomAssociation per unique offerId,
+                  //    with guestReferences matching each room's quantity
+                  roomAssociations: (() => {
+                    if ((item as any).isMultiRoom === true && Array.isArray(item.rooms)) {
+                      let refCounter = 0;
+                      return (item.rooms as any[]).map((r) => {
+                        const qty = r.quantity || 1;
+                        const refs = Array.from({ length: qty }, () => ({
+                          guestReference: String(++refCounter),
+                        }));
+                        return {
+                          hotelOfferId: String(r.offerId || offerId),
+                          guestReferences: refs,
+                        };
+                      });
+                    }
+                    return [
+                      {
+                        hotelOfferId: offerId.toString(),
+                        guestReferences: [{ guestReference: "1" }],
+                      },
+                    ];
+                  })(),
+
                   cancellationDeadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
                   cancellationPolicySnapshot: "Free cancellation until 24 hours before check-in.",
                   policyAccepted: true,
-                  
+
                   hotelId: item.id || realData.id || '',
                   hotelName: hotelName,
                   hotelAddress: hotelAddress,
@@ -2384,7 +2432,21 @@ if (isGuest && passenger.email) {
                   roomType: roomType,
                   numberOfRooms: numberOfRooms,
                   boardType: boardType,
+                  ...(((item as any).isMultiRoom === true) && {
+                    isMultiRoom: true,
+                    totalRooms: numberOfRooms,
+                    rooms: Array.isArray(item.rooms)
+                      ? item.rooms.map((r: any) => ({
+                          offerId: r?.offerId,
+                          quantity: r?.quantity || 1,
+                          roomName: r?.roomName || r?.roomType || 'Room',
+                          price: r?.price || 0,
+                          currency: r?.currency || originalCurrency,
+                        }))
+                      : [],
+                  }),
                 };
+                
           
                 // ✅ ✅ ✅ FIX: Handle both payment methods
                 if (card) {

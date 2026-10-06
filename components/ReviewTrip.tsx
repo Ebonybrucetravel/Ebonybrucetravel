@@ -2352,6 +2352,22 @@ if (!dateRegex.test(formattedDateOfBirth)) {
 };
 
   const inputCls = 'w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#33a8da]/30 focus:border-[#33a8da] transition-all text-sm font-medium text-gray-900 placeholder-gray-400';
+const tripNights = (() => {
+  const fromItem = (actualItem as any)?.nights;
+  if (typeof fromItem === 'number' && fromItem > 0) return fromItem;
+
+  const checkIn = (actualItem as any)?.checkInDate || searchParams?.checkInDate;
+  const checkOut = (actualItem as any)?.checkOutDate || searchParams?.checkOutDate;
+  if (checkIn && checkOut) {
+    try {
+      const start = new Date(checkIn);
+      const end = new Date(checkOut);
+      const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      if (diff > 0) return diff;
+    } catch { /* noop */ }
+  }
+  return 1;
+})();
   const bookingReference = extBooking?.reference;
 
   if (isLoadingRates && !extBooking) {
@@ -3182,6 +3198,102 @@ if (!dateRegex.test(formattedDateOfBirth)) {
     </div>
   </div>
 
+  {/* ✅ NEW: Multi-room breakdown */}
+  {isHotel &&
+    (actualItem as any)?.isMultiRoom &&
+    Array.isArray((actualItem as any)?.rooms) &&
+    (actualItem as any).rooms.length > 0 && (
+      <div className="mt-4 pt-4 border-t border-gray-100">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+          <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 10l9-7 9 7v10a2 2 0 01-2 2H5a2 2 0 01-2-2V10z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 22V12h6v10" />
+          </svg>
+          {(actualItem as any).totalRooms ||
+            (actualItem as any).rooms.reduce(
+              (sum: number, r: any) => sum + (r?.quantity || 1),
+              0
+            )}{' '}
+          Room
+          {((actualItem as any).totalRooms ||
+            (actualItem as any).rooms.reduce(
+              (sum: number, r: any) => sum + (r?.quantity || 1),
+              0
+            )) > 1
+            ? 's'
+            : ''}{' '}
+          Selected
+        </h4>
+
+        <div className="space-y-2">
+          {((actualItem as any).rooms as any[]).map((r: any, idx: number) => {
+            const rate = r?.rate || {};
+            const qty = r?.quantity || 1;
+            const roomPrice = rate?.price?.total || 0;
+            const roomCurrency = rate?.price?.currency || offerCurrency;
+            const lineTotal = roomPrice * qty;
+
+            const bedTypes = Array.isArray(rate?.bedTypes) ? rate.bedTypes : [];
+            const bedDisplay = bedTypes
+              .map(
+                (b: any) =>
+                  `${b.quantity > 1 ? `${b.quantity} × ` : ''}${b.type || 'Bed'}`
+              )
+              .join(' • ');
+
+            const desc = String(rate?.description || '').toUpperCase();
+            const boardLabel =
+              /BED\s*&\s*BREAKFAST|BED AND BREAKFAST/.test(desc)
+                ? 'Breakfast Included'
+                : /HALF\s*BOARD/.test(desc)
+                ? 'Half Board'
+                : /FULL\s*BOARD/.test(desc)
+                ? 'Full Board'
+                : /ROOM\s*ONLY/.test(desc)
+                ? 'Room Only'
+                : '';
+
+            return (
+              <div
+                key={idx}
+                className="flex items-start justify-between p-3 bg-gray-50 rounded-lg border border-gray-100"
+              >
+                <div className="flex-1 min-w-0 pr-3">
+                  <p className="text-sm font-semibold text-gray-900">
+                    {qty} × {rate?.name || rate?.type || 'Room'}
+                  </p>
+                  {bedDisplay && (
+                    <p className="text-xs text-gray-500 mt-0.5">🛏 {bedDisplay}</p>
+                  )}
+                  {boardLabel && (
+                    <p className="text-xs text-gray-500 mt-0.5">🍽 {boardLabel}</p>
+                  )}
+                  {rate?.cancellationDeadline && (
+                    <p className="text-xs text-green-600 mt-0.5">
+                      ✓ Free cancellation
+                    </p>
+                  )}
+                </div>
+                <p className="text-sm font-bold text-gray-900 flex-shrink-0">
+                  {roomCurrency} {Math.round(lineTotal).toLocaleString()}
+                </p>
+              </div>
+            );
+          })}
+
+          {/* Subtotal */}
+          <div className="flex justify-between items-center pt-3 border-t border-gray-200 mt-2">
+            <span className="text-xs font-semibold text-gray-600">
+              Total for {tripNights} night{tripNights > 1 ? 's' : ''}
+            </span>
+            <span className="text-base font-black text-[#33a8da]">
+              {displayTotalDue}
+            </span>
+          </div>
+        </div>
+      </div>
+    )}
+
   {/* ========== FLIGHT ROUTE WITH STOPS ========== */}
   {isFlight && (actualItem as any)?.stopInformation && (
     <div className="mt-4 pt-4 border-t border-gray-100">
@@ -3542,6 +3654,13 @@ if (!dateRegex.test(formattedDateOfBirth)) {
 <aside className="w-full lg:w-[380px]">
   <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-24 border border-gray-100">
     <h3 className="text-lg font-semibold text-gray-900 mb-4">Price details</h3>
+    {isHotel && (actualItem as any)?.isMultiRoom && (
+  <div className="mb-3 px-3 py-2 bg-[#33a8da]/10 border border-[#33a8da]/20 rounded-lg text-xs font-semibold text-[#33a8da]">
+    🏨 {(actualItem as any).totalRooms} room
+    {(actualItem as any).totalRooms > 1 ? 's' : ''} • {tripNights} night
+    {tripNights > 1 ? 's' : ''}
+  </div>
+)}
 
     <div className="mb-4 text-xs text-gray-500 flex items-center gap-1">
       <span> All prices in {currency.code} ({currency.symbol})</span>
