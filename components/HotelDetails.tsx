@@ -8,6 +8,7 @@ import { SearchResult, SearchParams } from '../lib/types';
 import api from '../lib/api';
 import CompactSearchBox from './CompactSearchBox';
 import { config } from '../lib/config';
+import { extractAmenities } from '@/lib/amenities'; 
 import dynamic from 'next/dynamic';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -202,8 +203,165 @@ const extractRoomAmenities = (description: string): string[] => {
     found.push('Room with View');
   }
 
+    // Water & drinks
+    if (/\bBOTTLED?\s*WATER\b/.test(desc)) found.push('Bottled Water');
+    if (/\bTEA\b|\bTEA\s*MAKER\b|\bTEA\s*&\s*COFFEE\b/.test(desc) && !found.includes('Tea Maker')) {
+      found.push('Tea Maker');
+    }
+  
+    // Data / connectivity
+    const gbMatch = desc.match(/\b(\d+)\s*GB\b/);
+    if (gbMatch) found.push(`${gbMatch[1]}GB Wi-Fi`);
+  
+    // Room size (MTR = metres, SQM = square metres)
+    const mtrMatch = desc.match(/\b(\d{1,3})\s*(?:MTR|M²|SQM|SQUARE\s*MET(?:RE|ER)?S?)\b/i);
+    if (mtrMatch) found.push(`${mtrMatch[1]} m² Room`);
+  
+    // Bathroom specifics
+    if (/\bMOLTON\s*BROWN\b|\bBATH\s*AMENITIES\b|\bAMENITIES\b/.test(desc) && !found.includes('Toiletries')) {
+      found.push('Toiletries');
+    }
+  
+    // Generic extras commonly seen in Amadeus strings
+    if (/\bNESPRESSO\b/.test(desc) && !found.includes('Nespresso Machine')) {
+      found.push('Nespresso Machine');
+    }
+    if (/\bFREE\s*BOTTLED\s*WATER\b/.test(desc)) {
+      if (!found.includes('Bottled Water')) found.push('Bottled Water');
+    }
+    if (/\bNESPRESSO\s*MACHINE\b/.test(desc)) {
+      if (!found.includes('Nespresso Machine')) found.push('Nespresso Machine');
+    }
+
   return Array.from(new Set(found));
 };
+
+// Icon per amenity category for the grouped view
+const CATEGORY_ICONS: Record<string, string> = {
+  'Room Comfort':           'fa-bed',
+  'Technology & Media':     'fa-wifi',
+  'Food & Drink':           'fa-utensils',
+  'Wellness & Fitness':     'fa-spa',
+  'Recreation':             'fa-person-swimming',
+  'Transportation':         'fa-car',
+  'Guest Services':         'fa-bell-concierge',
+  'Business':               'fa-briefcase',
+  'Accessibility & Family': 'fa-wheelchair',
+  'Other':                  'fa-circle-info',
+};
+
+// Preferred display order for the categories
+const CATEGORY_ORDER: string[] = [
+  'Room Comfort',
+  'Technology & Media',
+  'Food & Drink',
+  'Wellness & Fitness',
+  'Recreation',
+  'Transportation',
+  'Guest Services',
+  'Business',
+  'Accessibility & Family',
+  'Other',
+];
+
+// Icon per room-amenity label (from extractRoomAmenities)
+const ROOM_AMENITY_ICONS: Record<string, string> = {
+  // Bed
+  'King Bed': 'fa-bed',
+  'Queen Bed': 'fa-bed',
+  'Double Bed': 'fa-bed',
+  'Twin Beds': 'fa-bed',
+  'Single Bed': 'fa-bed',
+  'Sofa Bed': 'fa-couch',
+  // Smoking
+  'Non-Smoking': 'fa-ban-smoking',
+  'Smoking': 'fa-smoking',
+  // Board
+  'Breakfast Included': 'fa-utensils',
+  'Half Board': 'fa-utensils',
+  'Full Board': 'fa-utensils',
+  'Room Only': 'fa-utensils',
+  // Rate
+  'Flexible Rate': 'fa-tag',
+  'Best Available Rate': 'fa-tag',
+  'Special Offer': 'fa-tag',
+  'Advance Saver': 'fa-tag',
+  'Free Cancellation': 'fa-circle-check',
+  // Connectivity
+  'Wi-Fi': 'fa-wifi',
+  // Views / rooms
+  'Balcony': 'fa-door-open',
+  'Terrace': 'fa-house',
+  'Sea View': 'fa-water',
+  'City View': 'fa-city',
+  'Garden View': 'fa-tree',
+  'Mountain View': 'fa-mountain-sun',
+  'Pool View': 'fa-person-swimming',
+  'Room with View': 'fa-eye',
+  'Suite': 'fa-star',
+  'Apartment': 'fa-building',
+  'Studio': 'fa-door-open',
+  'Executive': 'fa-briefcase',
+  'Deluxe': 'fa-gem',
+  'Superior': 'fa-arrow-up',
+  'Premium': 'fa-crown',
+  'Standard': 'fa-check',
+  // Amenities
+  'Nespresso Machine': 'fa-mug-hot',
+  'Coffee Maker': 'fa-mug-hot',
+  'Tea Maker': 'fa-mug-saucer',
+  'Minibar': 'fa-wine-bottle',
+  'In-Room Safe': 'fa-lock',
+  'Hair Dryer': 'fa-wind',
+  'Flat-screen TV': 'fa-tv',
+  'Air Conditioning': 'fa-snowflake',
+  'Heating': 'fa-fire',
+  'Work Desk': 'fa-table',
+  'Iron & Board': 'fa-shirt',
+  'Bathtub': 'fa-bath',
+  'Shower': 'fa-shower',
+  'Jacuzzi': 'fa-hot-tub-person',
+  'Toiletries': 'fa-spray-can-sparkles',
+  // Accessibility
+  'Accessible': 'fa-wheelchair',
+  'Family Room': 'fa-children',
+  'Connecting Rooms': 'fa-door-open',
+};
+
+function categorizeAmenity(label: string): string {
+  const l = (label || '').toLowerCase();
+
+  // Food & Drink FIRST — must include nespresso, bottle water, tea maker, etc.
+  if (/breakfast|restaurant|\bbar\b|lounge|coffee|tea\b|nespresso|minibar|mini bar|cafe|café|dining|room service|snack|beverage|bottle.?water|bottled water/i.test(l)) {
+    return 'Food & Drink';
+  }
+  if (/wifi|wi-fi|internet|ethernet|data port|\d+\s*gb|phone|telephone|tv|television|flat.screen|av equip|computer|printer|fax|copy|satellite/i.test(l)) {
+    return 'Technology & Media';
+  }
+  if (/pool|spa|gym|fitness|sauna|massage|jacuzzi|steam|beauty|wellness|health club|yoga/i.test(l)) {
+    return 'Wellness & Fitness';
+  }
+  if (/parking|shuttle|car rental|taxi|limousine|airport|transport|garage|valet/i.test(l)) {
+    return 'Transportation';
+  }
+  if (/wheelchair|accessible|family|children|childcare|pets|baby|playground|play area|crib/i.test(l)) {
+    return 'Accessibility & Family';
+  }
+  if (/meeting|business center|conference/i.test(l)) {
+    return 'Business';
+  }
+  if (/laundry|dry clean|concierge|elevator|luggage|currency|atm|gift|nightclub|tour|travel desk|wake|bellman|shoe shine|translation|wedding|newspaper|safe|lock/i.test(l)) {
+    return 'Guest Services';
+  }
+  // Room Comfort — moved AFTER Food & Drink; drop "nespresso" and "minibar" from here
+  if (/\bbed\b|room size|mtr|m²|sqm|air condition|a\/c|heating|heat|fan |iron|hair|bath|shower|toiletries|desk|kitchen|fridge|microwave|non.smok|smoking|balcony|view/i.test(l)) {
+    return 'Room Comfort';
+  }
+  if (/jog|treadmill|locker|sun bed|shopping|sightseeing|swimming|steam bath|garden|shuttle to/i.test(l)) {
+    return 'Recreation';
+  }
+  return 'Other';
+}
 
 const HotelDetails: React.FC<HotelDetailsProps> = ({
   item,
@@ -1138,7 +1296,7 @@ if (uniqueImages.length > 0) {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-3">About the Property</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-3">About the Hotel</h2>
           <p className="text-gray-600 leading-relaxed text-sm">
             {description || "Experience luxury and comfort in this beautiful property."}
           </p>
@@ -1252,17 +1410,34 @@ if (uniqueImages.length > 0) {
         </div>
 
         {amenities.length > 0 && (
-          <div>
-            <h3 className="text-sm font-bold text-gray-900 mb-3">Hotel Amenities</h3>
-            <div className="flex flex-wrap gap-2">
-              {amenities.slice(0, 15).map((amenity: string, i: number) => (
-                <span key={i} className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full text-xs text-gray-700">
-                  {safeRender(amenity)}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+  <div>
+    <div className="flex items-center justify-between mb-3">
+      <h3 className="text-sm font-bold text-gray-900">Top Amenities</h3>
+      <button
+        onClick={() => setActiveTab('amenities')}
+        className="text-xs text-[#33a8da] hover:underline font-medium"
+      >
+        See all {amenities.length} →
+      </button>
+    </div>
+    <div className="flex flex-wrap gap-2">
+      {extractAmenities({ amenities })
+        .slice(0, 10)
+        .map((a, i) => (
+          <span
+            key={i}
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full text-xs text-gray-700"
+          >
+            <i
+              className={`fa-solid fa-${a.icon || 'circle-info'} text-gray-400 text-[11px]`}
+              aria-hidden
+            />
+            <span>{a.label}</span>
+          </span>
+        ))}
+    </div>
+  </div>
+)}
       </div>
     );
   };
@@ -1661,18 +1836,68 @@ const renderRoomTypesList = () => {
     </div>
   );
 };
-  const renderAmenities = () => {
-    const amenities = fullDetails?.amenities || [];
+const renderAmenities = () => {
+  const rawAmenities = fullDetails?.amenities || [];
+  const amenities = extractAmenities({ amenities: rawAmenities });
+
+  if (amenities.length === 0) {
     return (
-      <div className="flex flex-wrap gap-2">
-        {amenities.map((amenity: string, i: number) => (
-          <span key={i} className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full text-xs text-gray-700">
-            {safeRender(amenity)}
-          </span>
-        ))}
-      </div>
+      <p className="text-sm text-gray-500 italic">
+        No amenity details provided for this hotel.
+      </p>
     );
-  };
+  }
+
+  // Group by category
+  const groups: Record<string, typeof amenities> = {};
+  for (const a of amenities) {
+    const cat = categorizeAmenity(a.label);
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(a);
+  }
+
+  const sortedCategories = CATEGORY_ORDER.filter((c) => groups[c]?.length > 0);
+
+  return (
+    <div className="space-y-6">
+      {sortedCategories.map((category) => (
+        <div key={category}>
+          {/* Category header */}
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-[#33a8da]/10 flex items-center justify-center">
+              <i
+                className={`fa-solid ${CATEGORY_ICONS[category] || 'fa-circle-info'} text-[#33a8da] text-sm`}
+                aria-hidden
+              />
+            </div>
+            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">
+              {category}
+            </h3>
+            <span className="text-xs text-gray-400">
+              ({groups[category].length})
+            </span>
+          </div>
+
+          {/* Amenities grid */}
+          <div className="flex flex-wrap gap-2">
+            {groups[category].map((a, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full text-xs text-gray-700 hover:bg-gray-100 transition"
+              >
+                <i
+                  className={`fa-solid fa-${a.icon || 'circle-info'} text-gray-400 text-[11px]`}
+                  aria-hidden
+                />
+                <span>{a.label}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
   const renderPolicies = () => {
     const policies = fullDetails?.policies || [];
@@ -1938,30 +2163,59 @@ const renderRoomTypesList = () => {
               </div>
 
               {selectedRoomType && (
-                <div className="bg-blue-50 rounded-lg p-3 mb-4 border border-blue-100">
-                  <p className="text-xs font-medium text-blue-600 uppercase tracking-wider">Selected Room</p>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {safeRender(selectedRoomType.name || selectedRoomType.type || 'Standard Room')}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {formatRoomPrice(selectedRoomType.price)} total for {(() => {
-                      const checkIn = selectedRoomType.raw?.checkInDate || selectedRoomType.raw?.checkIn;
-                      const checkOut = selectedRoomType.raw?.checkOutDate || selectedRoomType.raw?.checkOut;
-                      if (checkIn && checkOut) {
-                        try {
-                          const start = new Date(checkIn);
-                          const end = new Date(checkOut);
-                          if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-                            const nights = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-                            if (nights > 0) return `${nights} night${nights > 1 ? 's' : ''}`;
-                          }
-                        } catch (e) {}
-                      }
-                      return 'stay';
-                    })()}
-                  </p>
-                </div>
-              )}
+  <div className="bg-blue-50 rounded-lg p-3 mb-4 border border-blue-100">
+    <p className="text-xs font-medium text-blue-600 uppercase tracking-wider">Selected Room</p>
+    <p className="text-sm font-semibold text-gray-900">
+      {safeRender(selectedRoomType.name || selectedRoomType.type || 'Standard Room')}
+    </p>
+    <p className="text-xs text-gray-500 mt-1">
+      {formatRoomPrice(selectedRoomType.price)} total for {(() => {
+        const checkIn = selectedRoomType.raw?.checkInDate || selectedRoomType.raw?.checkIn;
+        const checkOut = selectedRoomType.raw?.checkOutDate || selectedRoomType.raw?.checkOut;
+        if (checkIn && checkOut) {
+          try {
+            const start = new Date(checkIn);
+            const end = new Date(checkOut);
+            if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+              const nights = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+              if (nights > 0) return `${nights} night${nights > 1 ? 's' : ''}`;
+            }
+          } catch (e) {}
+        }
+        return 'stay';
+      })()}
+    </p>
+
+    {/* ✅ Room amenities — icon + label */}
+    {(() => {
+      const parsed = extractRoomAmenities(selectedRoomType.description || '');
+      if (parsed.length === 0) return null;
+      return (
+        <div className="mt-3 pt-3 border-t border-blue-200">
+          <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-2">
+            Room Amenities ({parsed.length})
+          </p>
+          <div className="space-y-1">
+            {parsed.slice(0, 10).map((a, i) => (
+              <div key={i} className="flex items-center gap-2 text-[11px] text-gray-700">
+                <i
+                  className={`fa-solid ${ROOM_AMENITY_ICONS[a] || 'fa-circle-check'} text-[#33a8da] text-[10px] w-3`}
+                  aria-hidden
+                />
+                <span className="truncate">{a}</span>
+              </div>
+            ))}
+            {parsed.length > 10 && (
+              <p className="text-[10px] text-gray-400 italic pt-0.5">
+                +{parsed.length - 10} more
+              </p>
+            )}
+          </div>
+        </div>
+      );
+    })()}
+  </div>
+)}
 
 <button 
   onClick={() => {
@@ -2381,28 +2635,72 @@ const renderRoomTypesList = () => {
                     </div>
                   </div>
 
-                                    {/* ✅ Parsed Amenities (extracted from description) */}
-                                    {(() => {
-                    const parsed = extractRoomAmenities(roomDetailModal.description || '');
-                    if (parsed.length === 0) return null;
-                    return (
-                      <div>
-                        <h4 className="text-sm font-bold text-gray-900 mb-2">
-                          Amenities & Features
-                        </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {parsed.map((a, i) => (
-                            <span
-                              key={i}
-                              className="px-3 py-1 bg-gray-50 border border-gray-200 text-gray-700 rounded-full text-xs"
-                            >
-                              ✓ {a}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })()}
+                       {/* ✅ Parsed Amenities — grouped with icons */}
+{(() => {
+  const parsed = extractRoomAmenities(roomDetailModal.description || '');
+  if (parsed.length === 0) return null;
+
+  // Convert labels → { label, icon }
+  const items = parsed.map((label) => ({
+    label,
+    icon: ROOM_AMENITY_ICONS[label] || 'fa-circle-check',
+  }));
+
+  // Group by category
+  const groups: Record<string, typeof items> = {};
+  for (const item of items) {
+    const cat = categorizeAmenity(item.label);
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(item);
+  }
+
+  const sortedCategories = CATEGORY_ORDER.filter((c) => groups[c]?.length > 0);
+
+  return (
+    <div>
+      <h4 className="text-sm font-bold text-gray-900 mb-3">
+        Amenities & Features
+      </h4>
+      <div className="space-y-4">
+        {sortedCategories.map((category) => (
+          <div key={category}>
+            {/* Category header */}
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-6 h-6 rounded-md bg-[#33a8da]/10 flex items-center justify-center">
+                <i
+                  className={`fa-solid ${CATEGORY_ICONS[category] || 'fa-circle-info'} text-[#33a8da] text-[11px]`}
+                  aria-hidden
+                />
+              </div>
+              <h5 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                {category}
+              </h5>
+              <span className="text-[10px] text-gray-400">
+                ({groups[category].length})
+              </span>
+            </div>
+
+            {/* Amenity chips */}
+            <div className="flex flex-wrap gap-2">
+              {groups[category].map((a, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-2 px-3 py-1 bg-gray-50 border border-gray-200 text-gray-700 rounded-full text-xs"
+                >
+                  <i
+                    className={`fa-solid ${a.icon} text-[#33a8da] text-[11px]`}
+                    aria-hidden
+                  />
+                  <span>{a.label}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+})()}
 
                   {/* Description */}
                   {roomDetailModal.description && (
