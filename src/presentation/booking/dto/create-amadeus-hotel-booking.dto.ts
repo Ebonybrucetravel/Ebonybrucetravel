@@ -102,6 +102,34 @@ export class AmadeusRoomAssociationDto {
   guestReferences: AmadeusRoomGuestReferenceDto[];
 }
 
+export class AmadeusMultiRoomEntryDto {
+  @ApiProperty({ description: 'Hotel offer ID for this room', example: 'ABC123' })
+  @IsString()
+  @IsNotEmpty()
+  offerId: string;
+
+  @ApiProperty({ description: 'Number of rooms of this type', example: 2 })
+  @IsInt()
+  @Min(1)
+  quantity: number;
+
+  @ApiPropertyOptional({ description: 'Room display name', example: 'Superior Room' })
+  @IsOptional()
+  @IsString()
+  roomName?: string;
+
+  @ApiPropertyOptional({ description: 'Total price for this room × quantity', example: 7716290 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  price?: number;
+
+  @ApiPropertyOptional({ description: 'Currency code', example: 'NGN' })
+  @IsOptional()
+  @IsString()
+  currency?: string;
+}
+
 export class AmadeusPaymentCardInfoDto {
   @ApiProperty({
     description: 'Card vendor code',
@@ -433,6 +461,37 @@ export class CreateAmadeusHotelBookingDto {
   @ValidateNested({ each: true })
   @Type(() => AmadeusRoomAssociationDto)
   roomAssociations: AmadeusRoomAssociationDto[];
+
+  @ApiPropertyOptional({
+    description: 'Whether this is a multi-room cart (set by frontend when 2+ rooms are selected)',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isMultiRoom?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Total number of rooms in a multi-room cart (sum of all room quantities)',
+    example: 3,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  totalRooms?: number;
+
+  @ApiPropertyOptional({
+    description: 'Normalized multi-room cart entries (one per unique offer with quantity)',
+    type: [AmadeusMultiRoomEntryDto],
+    example: [
+      { offerId: 'ABC123', quantity: 2, roomName: 'Superior Room', price: 3858145, currency: 'NGN' },
+      { offerId: 'XYZ789', quantity: 1, roomName: 'Standard Room', price: 1286048, currency: 'NGN' },
+    ],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AmadeusMultiRoomEntryDto)
+  rooms?: AmadeusMultiRoomEntryDto[];
 
   // ============================================================
   // ✅ PAYMENT METHOD ID (PCI COMPLIANT - LIVE MODE)

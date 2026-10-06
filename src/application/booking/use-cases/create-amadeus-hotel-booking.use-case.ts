@@ -162,6 +162,21 @@ export class CreateAmadeusHotelBookingUseCase {
         );
       }
 
+      // ✅ Multi-room detection: unique offer IDs in roomAssociations
+      const uniqueOfferIds = new Set(
+        (dto.roomAssociations || []).map((ra: any) => ra.hotelOfferId).filter(Boolean),
+      );
+      const isMultiOffer = uniqueOfferIds.size > 1;
+      const isMultiRoom = (dto as any).isMultiRoom === true || isMultiOffer;
+
+      this.logger.log(`🏨 Multi-room analysis:`, {
+        uniqueOfferIds: Array.from(uniqueOfferIds),
+        isMultiOffer,
+        isMultiRoom,
+        totalRooms: (dto as any).totalRooms ?? numberOfRooms ?? 1,
+        roomAssociationsCount: (dto.roomAssociations || []).length,
+      });
+
       // ✅ Build hotel details object
       const hotelDetailsObj = {
         hotelName: hotelName || 'Hotel',
@@ -206,6 +221,11 @@ export class CreateAmadeusHotelBookingUseCase {
           amadeus_offer_id: dto.hotelOfferId,
           room_associations: dto.roomAssociations,
           guests: dto.guests,
+          isMultiRoom,
+          isMultiOffer,
+          uniqueOfferIds: Array.from(uniqueOfferIds),
+          totalRooms: (dto as any).totalRooms ?? numberOfRooms ?? 1,
+          rooms: (dto as any).rooms || [],
           payment_method: dto.payment?.method ?? 'CREDIT_CARD',
           ...(paymentCardInfo && { payment_card_info: paymentCardInfo }),
           // ✅ NEW: Store PaymentMethod ID for PCI compliance
@@ -443,12 +463,162 @@ export class CreateAmadeusHotelBookingUseCase {
 
       this.logger.log(`📤 Sending to Amadeus with ${paymentMethodId ? 'PCI compliant' : 'legacy'} payment method`);
 
-      const amadeusBooking = await this.amadeusService.createHotelBooking(amadeusRequestPayload);
+      // ✅ Detect multi-offer: unique offer IDs in roomAssociations
+      const uniqueOfferIds = Array.from(
+        new Set(
+          roomAssociations.map((ra: any) => ra.hotelOfferId).filter(Boolean),
+        ),
+      );
 
-      const hotelOrderId = amadeusBooking.data?.id;
-      const hotelBookingId = amadeusBooking.data?.hotelBookings?.[0]?.id;
+      const isMultiOffer = uniqueOfferIds.length > 1;
 
-      this.logger.log(`✅ Amadeus response - Order ID: ${hotelOrderId}, Booking ID: ${hotelBookingId}`);
+      this.logger.log(`🏨 Amadeus hotel order plan:`, {
+        uniqueOfferIds,
+        isMultiOffer,
+        roomAssociationsCount: roomAssociations.length,
+        guestsCount: transformedGuests.length,
+      });
+
+      let hotelOrderId: string | undefined;
+      let hotelBookingId: string | undefined;
+      let finalOrderData: any;
+
+      if (isMultiOffer) {
+        // ══════════════════════════════════════════════════════════════
+        // ✅ MULTI-OFFER: One Amadeus call per unique offerId, then aggregate
+        // ══════════════════════════════════════════════════════════════
+        const orderResults: any[] = [];
+        const orderIds: string[] = [];
+        const bookingIds: string[] = [];
+
+        // Guest reference map: "1" -> guest object (from transformedGuests)
+        const guestByRef = new Map<string, any>();
+        transformedGuests.forEach((g, idx) => {
+          guestByRef.set(String(idx + 1), g);
+        });
+
+        for (const offerId of uniqueOfferIds) {
+          // Which guest references belong to this offer?
+          const assocForOffer = roomAssociations.find(
+            (ra: any) => ra.hotelOfferId === offerId,
+          );
+          const guestRefs = (assocForOffer?.guestReferences || []).map(
+            (gr: any) => gr.guestReference,
+          );
+
+          // Which guests to send for this offer? (must be subset)
+          const guestsForOffer = guestRefs
+            .map((ref: string) => guestByRef.get(ref))
+            .filter(Boolean);
+
+          if (guestsForOffer.length === 0) {
+            this.logger.warn(
+              `⚠️ No guests mapped to offer ${offerId}; skipping.`,
+            );
+            continue;
+          }
+
+          // Amadeus expects guests with "tid" matching 1..N within this order
+          const remappedGuests = guestsForOffer.map((g: any, i: number) => ({
+            tid: String(i + 1),
+            title: g.title,
+            firstName: g.firstName,
+            lastName: g.lastName,
+            phone: g.phone,
+            email: g.email,
+          }));
+
+          // guestReferences inside this order → 1..N
+          const remappedRefs = guestRefs.map((_: any, i: number) => ({
+            guestReference: String(i + 1),
+          }));
+
+          const perOfferPayload = {
+            data: {
+              type: 'hotel-order',
+              guests: remappedGuests,
+              roomAssociations: [
+                {
+                  hotelOfferId: offerId,
+                  guestReferences: remappedRefs,
+                },
+              ],
+              payment: {
+                method: 'CREDIT_CARD',
+                paymentCard: {
+                  paymentCardInfo: {
+                    vendorCode: cardDetails.vendorCode,
+                    cardNumber: cardDetails.cardNumber,
+                    expiryDate: cardDetails.expiryDate,
+                    holderName: cardDetails.holderName,
+                    securityCode: cardDetails.securityCode,
+                  },
+                },
+              },
+              travelAgent: {
+                contact: {
+                  email:
+                    this.configService.get<string>(
+                      'AMADEUS_TRAVEL_AGENT_EMAIL',
+                    ) || 'info@ebonybrucetravels.com',
+                },
+              },
+              ...(bookingData.accommodation_special_requests && {
+                accommodationSpecialRequests:
+                  bookingData.accommodation_special_requests,
+              }),
+              price: priceForAmadeus,
+            },
+          };
+
+          this.logger.log(
+            `📤 [MULTI-OFFER] Creating Amadeus order for offer ${offerId} (${remappedGuests.length} guests)`,
+          );
+
+          const perOfferResult =
+            await this.amadeusService.createHotelBooking(perOfferPayload);
+
+          if (perOfferResult?.data?.id) {
+            orderIds.push(perOfferResult.data.id);
+            const hbId = perOfferResult.data.hotelBookings?.[0]?.id;
+            if (hbId) bookingIds.push(hbId);
+          }
+
+          orderResults.push({
+            offerId,
+            orderId: perOfferResult.data?.id,
+            bookingId: perOfferResult.data?.hotelBookings?.[0]?.id,
+            raw: perOfferResult.data,
+          });
+        }
+
+        hotelOrderId = orderIds[0];
+        hotelBookingId = bookingIds[0];
+        finalOrderData = {
+          _multiOffer: true,
+          _orderIds: orderIds,
+          _bookingIds: bookingIds,
+          orders: orderResults,
+        };
+
+        this.logger.log(
+          `✅ [MULTI-OFFER] Created ${orderResults.length} Amadeus orders: ${orderIds.join(', ')}`,
+        );
+      } else {
+        // ══════════════════════════════════════════════════════════════
+        // ✅ SINGLE-OFFER: unchanged behavior
+        // ══════════════════════════════════════════════════════════════
+        const amadeusBooking =
+          await this.amadeusService.createHotelBooking(amadeusRequestPayload);
+
+        hotelOrderId = amadeusBooking.data?.id;
+        hotelBookingId = amadeusBooking.data?.hotelBookings?.[0]?.id;
+        finalOrderData = amadeusBooking.data;
+
+        this.logger.log(
+          `✅ Amadeus response - Order ID: ${hotelOrderId}, Booking ID: ${hotelBookingId}`,
+        );
+      }
 
       const updatedBookingData = { ...bookingData };
       
@@ -475,33 +645,39 @@ export class CreateAmadeusHotelBookingUseCase {
         currency_used: originalCurrency,
         price_sent: priceForAmadeus,
         hotel_offer_id: offerId,
-        hotel_order_id: hotelOrderId,      
-        hotel_booking_id: hotelBookingId,  
+        hotel_order_id: hotelOrderId,
+        hotel_booking_id: hotelBookingId,
         created_at: new Date().toISOString(),
         request_payload: amadeusRequestPayload,
         payment_method_type: paymentMethodId ? 'PCI_COMPLIANT_PAYMENT_METHOD_ID' : 'LEGACY_RAW_CARD',
+        // ✅ Multi-offer aggregate (populated only for multi-offer carts)
+        multi_offer_orders: (finalOrderData as any)?._multiOffer
+          ? (finalOrderData as any).orders
+          : undefined,
       };
 
       await this.prisma.booking.update({
         where: { id: bookingId },
         data: {
-          providerBookingId: hotelOrderId,  
-          providerData: amadeusBooking.data,
+          providerBookingId: hotelOrderId,
+          providerData: finalOrderData,
           status: BookingStatus.CONFIRMED,
           bookingData: updatedBookingData,
         },
       });
 
-      this.logger.log(`✅ Successfully created Amadeus hotel order ${amadeusBooking.data.id} with price ${priceForAmadeus.total} ${priceForAmadeus.currency}`);
+      this.logger.log(
+        `✅ Successfully created Amadeus hotel order(s) with price ${priceForAmadeus.total} ${priceForAmadeus.currency}`,
+      );
 
       // ✅ Send confirmation email after successful booking
-      if (amadeusBooking?.data?.id) {
-        await this.sendHotelConfirmationEmail(booking, amadeusBooking.data);
+      if (hotelOrderId) {
+        await this.sendHotelConfirmationEmail(booking, finalOrderData);
       }
 
       return {
-        orderId: amadeusBooking.data.id,
-        orderData: amadeusBooking.data,
+        orderId: hotelOrderId!,
+        orderData: finalOrderData,
       };
     } catch (error: any) {
       const errResponse = error?.getResponse?.();
