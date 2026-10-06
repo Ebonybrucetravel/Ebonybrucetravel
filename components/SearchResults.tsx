@@ -2548,7 +2548,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     const isSaved = savedItems.has(hotelId);
     const hotelName = item.hotel?.name || item.title || 'Hotel';
 
-    // ✅ Fix 1: primaryImageUrl is on the top-level item, NOT inside hotel
+
     const primaryImage =
       (item as any).primaryImageUrl ||
       item.hotel?.primaryImage ||

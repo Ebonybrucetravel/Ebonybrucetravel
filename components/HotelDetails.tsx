@@ -8,7 +8,7 @@ import { SearchResult, SearchParams } from '../lib/types';
 import api from '../lib/api';
 import CompactSearchBox from './CompactSearchBox';
 import { config } from '../lib/config';
-import { extractAmenities } from '@/lib/amenities'; 
+import { extractAmenities, AMENITY_LABEL_MAP } from '@/lib/amenities'; 
 import dynamic from 'next/dynamic';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -327,6 +327,23 @@ const ROOM_AMENITY_ICONS: Record<string, string> = {
   'Family Room': 'fa-children',
   'Connecting Rooms': 'fa-door-open',
 };
+
+
+function getAmenityIcon(label: string, existingIcon?: string): string {
+  // 1. Use existing icon if it came from the hotel-amenity map
+  if (existingIcon && existingIcon !== 'circle-info') return existingIcon;
+
+  // 2. Room-level icon map (values already contain the "fa-" prefix, so strip it)
+  const roomIcon = ROOM_AMENITY_ICONS[label];
+  if (roomIcon) return roomIcon.replace(/^fa-/, '');
+
+  // 3. Pattern-based fallbacks for dynamic labels
+  if (/m²|sqm|mtr|room size/i.test(label)) return 'ruler-combined';
+  if (/\d+\s*gb/i.test(label)) return 'wifi';
+
+  // 4. Nothing matched
+  return 'circle-info';
+}
 
 function categorizeAmenity(label: string): string {
   const l = (label || '').toLowerCase();
@@ -704,6 +721,23 @@ const HotelDetails: React.FC<HotelDetailsProps> = ({
   room.description?.text?.text ||
   (typeof room.description === 'string' ? room.description : null) ||
   '';
+
+             
+              const rawRoomAmenityCodes: string[] = [];
+              const amenitySources = [
+                (room as any).amenities,
+                (room as any).roomInformation?.amenities,
+                (room as any).raw?.amenities,
+                (room as any).raw?.roomInformation?.amenities,
+              ];
+              for (const src of amenitySources) {
+                if (!Array.isArray(src)) continue;
+                for (const item of src) {
+                  if (!item) continue;
+                  if (typeof item === 'string') rawRoomAmenityCodes.push(item);
+                  else if (typeof item?.code === 'string') rawRoomAmenityCodes.push(item.code);
+                }
+              }
             
             // ✅ GET IMAGES FROM THE API - FIXED
 const roomImages = room.images || [];
@@ -783,6 +817,7 @@ console.log(`  - roomImage URL: ${roomImage || 'none'}`);
               name: roomName,
               type: room.type || 'Standard',
               description: roomDescription,
+              roomAmenityCodes: Array.from(new Set(rawRoomAmenityCodes)),
               bedTypes: bedTypes,
               occupancy: occupancy,
               image: roomImage,
@@ -1266,7 +1301,28 @@ if (uniqueImages.length > 0) {
     } else {
       console.log('📸 No new unique room images to add');
     }
-  }, [roomTypes]); // This runs whenever roomTypes changes
+  }, [roomTypes]); 
+
+  useEffect(() => {
+    if (!fullDetails || roomTypes.length === 0) return;
+
+    const existing: string[] = fullDetails.amenities || [];
+    const merged = new Set<string>(existing);
+
+    roomTypes.forEach((room: any) => {
+      const labels = extractRoomAmenities(room.description || '');
+      labels.forEach((label) => merged.add(label));
+    });
+
+    if (merged.size > existing.length) {
+      setFullDetails((prev: any) =>
+        prev ? { ...prev, amenities: Array.from(merged) } : prev
+      );
+      console.log(
+        `✅ Merged room amenities into hotel amenities: ${existing.length} → ${merged.size}`
+      );
+    }
+  }, [fullDetails, roomTypes]);
 
 
 
@@ -1281,7 +1337,7 @@ if (uniqueImages.length > 0) {
     const checkIn = fullDetails?.checkInOut?.checkIn || '15:00';
     const checkOut = fullDetails?.checkInOut?.checkOut || '12:00';
     const hotelName = fullDetails?.name || item?.title || 'Hotel';
-    
+  
     let addressDisplay = '';
     if (fullDetails?.address) {
       const lines = fullDetails.address.lines?.join(', ') || '';
@@ -1290,25 +1346,78 @@ if (uniqueImages.length > 0) {
       const country = fullDetails.address.countryCode || '';
       addressDisplay = [lines, city, postalCode, country].filter(Boolean).join(', ');
     }
-
+  
     const hasCoordinates = latitude && longitude;
-
+  
+    // Build the top-10 amenity list for the facilities grid
+    const allAmenities = extractAmenities({ amenities });
+    const topFacilities = allAmenities.slice(0, 10);
+  
+    // Split description into paragraphs for better readability
+    const descriptionParagraphs = description
+      .split(/\r\n|\r|\n/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+  
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-3">About the Hotel</h2>
-          <p className="text-gray-600 leading-relaxed text-sm">
-            {description || "Experience luxury and comfort in this beautiful property."}
-          </p>
-          {fullDetails?.chainName && (
-            <p className="text-xs font-medium text-gray-400 mt-2">Chain: {fullDetails.chainName}</p>
-          )}
-        </div>
-
+  
+        {/* ── MOST POPULAR FACILITIES ── */}
+        {topFacilities.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-gray-900">Most popular facilities</h2>
+              <button
+                onClick={() => setActiveTab('amenities')}
+                className="text-xs text-[#33a8da] hover:underline font-medium"
+              >
+                See all {allAmenities.length} →
+              </button>
+            </div>
+  
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+              {topFacilities.map((a, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 px-3 py-2.5 bg-white border border-gray-200 rounded-lg hover:border-[#33a8da] hover:shadow-sm transition cursor-default"
+                >
+                  <i
+                    className={`fa-solid fa-${getAmenityIcon(a.label, a.icon)} text-[#33a8da] text-sm flex-shrink-0`}
+                    aria-hidden
+                  />
+                  <span className="text-xs font-medium text-gray-800 truncate">
+                    {a.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+  
+        {/* ── ABOUT THIS PROPERTY ── */}
+        {descriptionParagraphs.length > 0 && (
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 mb-3">About this property</h2>
+            <div className="space-y-2">
+              {descriptionParagraphs.slice(0, 4).map((para, i) => (
+                <p key={i} className="text-sm text-gray-600 leading-relaxed">
+                  {para}
+                </p>
+              ))}
+            </div>
+            {fullDetails?.chainName && (
+              <p className="text-xs font-medium text-gray-400 mt-3">
+                Chain: {fullDetails.chainName}
+              </p>
+            )}
+          </div>
+        )}
+  
+        {/* ── LOCATION MAP ── */}
         {hasCoordinates && (
           <div>
-            <h3 className="text-sm font-bold text-gray-900 mb-3">Location Map</h3>
-            <div className="rounded-xl overflow-hidden border border-gray-200 h-[250px] bg-gray-100 relative">
+            <h3 className="text-sm font-bold text-gray-900 mb-3">Location</h3>
+            <div className="rounded-xl overflow-hidden border border-gray-200 h-[220px] bg-gray-100 relative">
               {typeof window !== 'undefined' && (
                 <MapContainer
                   center={[latitude, longitude]}
@@ -1329,9 +1438,9 @@ if (uniqueImages.length > 0) {
                 </MapContainer>
               )}
               <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs text-gray-500 shadow-sm">
-                <a 
-                  href={`https://www.google.com/maps?q=${latitude},${longitude}`} 
-                  target="_blank" 
+                <a
+                  href={`https://www.google.com/maps?q=${latitude},${longitude}`}
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="text-[#33a8da] hover:underline"
                 >
@@ -1341,29 +1450,24 @@ if (uniqueImages.length > 0) {
             </div>
           </div>
         )}
-
+  
+        {/* ── LOCATION & CONTACT ── */}
         <div className="bg-gray-50 rounded-lg p-4 space-y-3">
           <h3 className="text-sm font-bold text-gray-900">Location & Contact</h3>
-          
+  
           {addressDisplay && (
             <div className="flex items-start gap-2 text-sm">
-              <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
+              <i className="fa-solid fa-location-dot text-gray-400 mt-0.5 flex-shrink-0 text-[13px]" aria-hidden />
               <span className="text-gray-700">{addressDisplay}</span>
             </div>
           )}
-          
+  
           {hasCoordinates && (
             <div className="flex items-start gap-2 text-sm">
-              <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18.5a5.5 5.5 0 100-11 5.5 5.5 0 000 11z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 13v-2m0 4h.01" />
-              </svg>
-              <a 
-                href={`https://www.google.com/maps?q=${latitude},${longitude}`} 
-                target="_blank" 
+              <i className="fa-solid fa-compass text-gray-400 mt-0.5 flex-shrink-0 text-[13px]" aria-hidden />
+              <a
+                href={`https://www.google.com/maps?q=${latitude},${longitude}`}
+                target="_blank"
                 rel="noopener noreferrer"
                 className="text-[#33a8da] hover:underline"
               >
@@ -1371,73 +1475,35 @@ if (uniqueImages.length > 0) {
               </a>
             </div>
           )}
-          
+  
           {phoneNumber && (
             <div className="flex items-start gap-2 text-sm">
-              <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-              </svg>
+              <i className="fa-solid fa-phone text-gray-400 mt-0.5 flex-shrink-0 text-[13px]" aria-hidden />
               <span className="text-gray-700">{phoneNumber}</span>
             </div>
           )}
-          
+  
           {email && (
             <div className="flex items-start gap-2 text-sm">
-              <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
+              <i className="fa-solid fa-envelope text-gray-400 mt-0.5 flex-shrink-0 text-[13px]" aria-hidden />
               <a href={`mailto:${email}`} className="text-[#33a8da] hover:underline">{email}</a>
             </div>
           )}
-          
+  
           {website && (
             <div className="flex items-start gap-2 text-sm">
-              <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
-              </svg>
+              <i className="fa-solid fa-globe text-gray-400 mt-0.5 flex-shrink-0 text-[13px]" aria-hidden />
               <a href={website} target="_blank" rel="noopener noreferrer" className="text-[#33a8da] hover:underline">
                 Visit Website
               </a>
             </div>
           )}
-          
+  
           <div className="flex items-start gap-2 text-sm">
-            <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+            <i className="fa-solid fa-clock text-gray-400 mt-0.5 flex-shrink-0 text-[13px]" aria-hidden />
             <span className="text-gray-700">Check-in: {checkIn} / Check-out: {checkOut}</span>
           </div>
         </div>
-
-        {amenities.length > 0 && (
-  <div>
-    <div className="flex items-center justify-between mb-3">
-      <h3 className="text-sm font-bold text-gray-900">Top Amenities</h3>
-      <button
-        onClick={() => setActiveTab('amenities')}
-        className="text-xs text-[#33a8da] hover:underline font-medium"
-      >
-        See all {amenities.length} →
-      </button>
-    </div>
-    <div className="flex flex-wrap gap-2">
-      {extractAmenities({ amenities })
-        .slice(0, 10)
-        .map((a, i) => (
-          <span
-            key={i}
-            className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full text-xs text-gray-700"
-          >
-            <i
-              className={`fa-solid fa-${a.icon || 'circle-info'} text-gray-400 text-[11px]`}
-              aria-hidden
-            />
-            <span>{a.label}</span>
-          </span>
-        ))}
-    </div>
-  </div>
-)}
       </div>
     );
   };
@@ -1886,7 +1952,7 @@ const renderAmenities = () => {
                 className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full text-xs text-gray-700 hover:bg-gray-100 transition"
               >
                 <i
-                  className={`fa-solid fa-${a.icon || 'circle-info'} text-gray-400 text-[11px]`}
+                  className={`fa-solid fa-${getAmenityIcon(a.label, a.icon)} text-gray-400 text-[11px]`}
                   aria-hidden
                 />
                 <span>{a.label}</span>
@@ -1899,33 +1965,101 @@ const renderAmenities = () => {
   );
 };
 
-  const renderPolicies = () => {
-    const policies = fullDetails?.policies || [];
-    
-    if (policies.length === 0) {
-      return <p className="text-gray-500">No policies available</p>;
-    }
+const renderPolicies = () => {
+  const policies = fullDetails?.policies || [];
 
+  if (policies.length === 0) {
     return (
-      <div className="space-y-4">
-        {policies.map((policy: any, i: number) => {
-          let displayType = policy.type || 'Policy';
-          displayType = displayType.replace(/_/g, ' ');
-          displayType = displayType.toLowerCase().split(' ').map((word: string) => 
-            word.charAt(0).toUpperCase() + word.slice(1)
-          ).join(' ');
-          
-          return (
-            <div key={i} className="bg-gray-50 rounded-lg p-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{displayType}</p>
-              <p className="text-sm text-gray-700 mt-1">{policy.text}</p>
-            </div>
-          );
-        })}
+      <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-8 text-center">
+        <i className="fa-solid fa-file-shield text-gray-300 text-2xl mb-2" aria-hidden />
+        <p className="text-sm text-gray-500">No policies available for this hotel.</p>
       </div>
     );
+  }
+
+  // Metadata per policy type: icon + accent color
+  const POLICY_META: Record<string, { icon: string; accent: string; label: string }> = {
+    'CANCELLATION_POLICY':            { icon: 'fa-calendar-xmark',    accent: 'text-red-500 bg-red-50',       label: 'Cancellation' },
+    'GUARANTEE_POLICY':               { icon: 'fa-shield-halved',     accent: 'text-blue-500 bg-blue-50',     label: 'Guarantee' },
+    'GENERAL_POLICY_DECRIPTION':      { icon: 'fa-circle-info',       accent: 'text-gray-500 bg-gray-100',    label: 'General' },
+    'GENERAL_POLICY_DESCRIPTION':     { icon: 'fa-circle-info',       accent: 'text-gray-500 bg-gray-100',    label: 'General' },
+    'LATE_CHECKOUT_DESCRIPTION':      { icon: 'fa-clock',             accent: 'text-amber-500 bg-amber-50',   label: 'Late Check-out' },
+    'EARLY_CHECKOUT_DESCRIPTION':     { icon: 'fa-clock',             accent: 'text-amber-500 bg-amber-50',   label: 'Early Check-out' },
+    'COMMISSION_POLICY_DESCRIPTION':  { icon: 'fa-percent',           accent: 'text-purple-500 bg-purple-50', label: 'Commission' },
+    'SERVICE_CHARGE_DESCRIPTION':     { icon: 'fa-receipt',           accent: 'text-orange-500 bg-orange-50', label: 'Service Charge' },
+    'TAX_AND_FEE_DESCRIPTION':        { icon: 'fa-money-bill-wave',   accent: 'text-orange-500 bg-orange-50', label: 'Taxes & Fees' },
+    'GROUP_CONDITIONS':               { icon: 'fa-users',             accent: 'text-teal-500 bg-teal-50',     label: 'Group Conditions' },
   };
 
+  const getMeta = (type: string) => {
+    const key = (type || '').toUpperCase().replace(/\s+/g, '_');
+    return POLICY_META[key] || {
+      icon: 'fa-circle-info',
+      accent: 'text-gray-500 bg-gray-100',
+      label: type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+    };
+  };
+
+  // Sort: cancellation/guarantee first, then checkout, then tax/fees, then general
+  const ORDER = [
+    'CANCELLATION_POLICY',
+    'GUARANTEE_POLICY',
+    'LATE_CHECKOUT_DESCRIPTION',
+    'EARLY_CHECKOUT_DESCRIPTION',
+    'TAX_AND_FEE_DESCRIPTION',
+    'SERVICE_CHARGE_DESCRIPTION',
+    'COMMISSION_POLICY_DESCRIPTION',
+    'GROUP_CONDITIONS',
+    'GENERAL_POLICY_DECRIPTION',
+    'GENERAL_POLICY_DESCRIPTION',
+  ];
+
+  const sorted = [...policies].sort((a, b) => {
+    const ai = ORDER.indexOf((a.type || '').toUpperCase());
+    const bi = ORDER.indexOf((b.type || '').toUpperCase());
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+
+  return (
+    <div className="space-y-3">
+      {sorted.map((policy: any, i: number) => {
+        const meta = getMeta(policy.type);
+
+        return (
+          <div
+            key={i}
+            className="bg-white border border-gray-200 rounded-xl p-4 hover:border-gray-300 transition"
+          >
+            <div className="flex items-start gap-3">
+              {/* Icon badge */}
+              <div className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${meta.accent}`}>
+                <i className={`fa-solid ${meta.icon} text-sm`} aria-hidden />
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 min-w-0">
+                <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-1">
+                  {meta.label}
+                </h4>
+                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">
+                  {policy.text || '—'}
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Note */}
+      <div className="mt-4 pt-4 border-t border-gray-100 flex items-start gap-2 text-[11px] text-gray-500">
+        <i className="fa-solid fa-circle-info text-gray-400 mt-0.5" aria-hidden />
+        <p>
+          Policies are set by the hotel and may change. Please confirm at check-in.
+        </p>
+      </div>
+    </div>
+  );
+};
   const renderActiveContent = () => {
     switch (activeTab) {
       case 'overview': return renderOverview();
@@ -2186,34 +2320,7 @@ const renderAmenities = () => {
       })()}
     </p>
 
-    {/* ✅ Room amenities — icon + label */}
-    {(() => {
-      const parsed = extractRoomAmenities(selectedRoomType.description || '');
-      if (parsed.length === 0) return null;
-      return (
-        <div className="mt-3 pt-3 border-t border-blue-200">
-          <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-2">
-            Room Amenities ({parsed.length})
-          </p>
-          <div className="space-y-1">
-            {parsed.slice(0, 10).map((a, i) => (
-              <div key={i} className="flex items-center gap-2 text-[11px] text-gray-700">
-                <i
-                  className={`fa-solid ${ROOM_AMENITY_ICONS[a] || 'fa-circle-check'} text-[#33a8da] text-[10px] w-3`}
-                  aria-hidden
-                />
-                <span className="truncate">{a}</span>
-              </div>
-            ))}
-            {parsed.length > 10 && (
-              <p className="text-[10px] text-gray-400 italic pt-0.5">
-                +{parsed.length - 10} more
-              </p>
-            )}
-          </div>
-        </div>
-      );
-    })()}
+    
   </div>
 )}
 
@@ -2636,9 +2743,22 @@ const renderAmenities = () => {
                   </div>
 
                        {/* ✅ Parsed Amenities — grouped with icons */}
-{(() => {
-  const parsed = extractRoomAmenities(roomDetailModal.description || '');
-  if (parsed.length === 0) return null;
+                       {(() => {
+  const descLabels = extractRoomAmenities(roomDetailModal.description || '');
+  const codeLabels = (roomDetailModal.roomAmenityCodes || []).map((code: string) => {
+        const key = code.toUpperCase();
+        const hotel = AMENITY_LABEL_MAP?.[key];
+        if (hotel) return typeof hotel === 'string' ? hotel : hotel.label;
+        return key.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+      }).filter(Boolean);
+      const parsed = Array.from(new Set([...descLabels, ...codeLabels]));
+if (parsed.length === 0) return null;
+
+// ✅ If room has sparse amenities, fall back to hotel-wide list
+const isSparse = parsed.length < 3;
+const hotelAmenities = isSparse
+  ? extractAmenities({ amenities: fullDetails?.amenities || [] }).slice(0, 8)
+  : [];<h4 className="text-sm font-bold text-gray-900 mb-3"></h4>
 
   // Convert labels → { label, icon }
   const items = parsed.map((label) => ({
@@ -2659,8 +2779,8 @@ const renderAmenities = () => {
   return (
     <div>
       <h4 className="text-sm font-bold text-gray-900 mb-3">
-        Amenities & Features
-      </h4>
+  {isSparse ? 'Room Details & Hotel Amenities' : 'Amenities & Features'}
+</h4>
       <div className="space-y-4">
         {sortedCategories.map((category) => (
           <div key={category}>
@@ -2697,23 +2817,151 @@ const renderAmenities = () => {
             </div>
           </div>
         ))}
+
+        {/* Hotel-wide fallback */}
+{isSparse && hotelAmenities.length > 0 && (
+  <div className="mt-4 pt-4 border-t border-gray-100">
+    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+      Hotel-wide amenities
+    </p>
+    <div className="flex flex-wrap gap-2">
+      {hotelAmenities.map((a, i) => (
+        <span
+          key={i}
+          className="inline-flex items-center gap-2 px-3 py-1 bg-gray-50 border border-gray-200 text-gray-600 rounded-full text-xs"
+        >
+          <i className={`fa-solid fa-${a.icon || 'circle-info'} text-gray-400 text-[11px]`} aria-hidden />
+          <span>{a.label}</span>
+        </span>
+      ))}
+    </div>
+  </div>
+)}
       </div>
     </div>
   );
 })()}
 
-                  {/* Description */}
-                  {roomDetailModal.description && (
-                    <div>
-                      <h4 className="text-sm font-bold text-gray-900 mb-2">Description</h4>
-                      <div className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">
-                      {safeRender(roomDetailModal.description)
-  .replace(/\r\n|\r|\n/g, '\n')      // ← single backslash = real newlines
-  .replace(/[ \t]{2,}/g, ' ')         // collapse runs of spaces/tabs only
-  .trim()}
-                      </div>
-                    </div>
-                  )}
+{/* Description */}
+{roomDetailModal.description && (() => {
+  // ── 1. Clean the raw text ─────────────────────────────────────────
+  const raw = safeRender(roomDetailModal.description)
+    .replace(/\r\n|\r/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+
+  if (!raw) return null;
+
+  const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
+
+  // ── 2. Extract an ALL-CAPS rate header (first line, short) ────────
+  let rateHeader = '';
+  let bodyLines = lines;
+  if (
+    lines.length > 1 &&
+    lines[0].length <= 60 &&
+    /^[A-Z0-9\s&/\-]+$/.test(lines[0])
+  ) {
+    rateHeader = lines[0];
+    bodyLines = lines.slice(1);
+  }
+
+  const bodyText = bodyLines.join(' ').trim();
+
+  // ── 3. Detect list-style descriptions (ALL CAPS, slash/dot separated) ──
+  const isAllCaps = bodyText === bodyText.toUpperCase() && /[A-Z]/.test(bodyText);
+  const hasSeparators = /[\/•·|]/.test(bodyText);
+
+  // Split on slash, pipe, bullet, or " - " — then trim
+  const isListStyle = isAllCaps && (hasSeparators || bodyText.length > 40);
+
+  // ── 4. Build the amenity chips if it's list-style ─────────────────
+  const parseList = (text: string): string[] => {
+    return text
+      .split(/[\/|•·]|\s+-\s+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 1)
+      // Title-case each chip so it reads cleanly
+      .map((s) =>
+        s
+          .toLowerCase()
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+          // Fix common tokens that shouldn't be title-cased blindly
+          .replace(/\bWifi\b/g, 'Wi-Fi')
+          .replace(/\bAc\b/g, 'A/C')
+          .replace(/\bTv\b/g, 'TV')
+          .replace(/\bLg\b/g, 'LG')
+          .replace(/\bInch\b/g, 'inch')
+      );
+  };
+
+  const chips = isListStyle ? parseList(bodyText) : [];
+
+  // ── 5. Notices ("When you arrive…") — only applies to prose ───────
+  const noticeMatch = !isListStyle
+    ? bodyText.match(/(when you arrive[^.]*\.?|on arrival[^.]*\.?)/i)
+    : null;
+
+  let mainBody = bodyText;
+  let notice = '';
+  if (noticeMatch) {
+    notice = noticeMatch[0].trim();
+    mainBody = bodyText.replace(noticeMatch[0], '').trim();
+  }
+
+  // ── 6. Render ─────────────────────────────────────────────────────
+  return (
+    <div>
+      <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+        <i className="fa-solid fa-circle-info text-[#33a8da] text-xs" aria-hidden />
+        About this room
+      </h4>
+
+      {rateHeader && (
+        <div className="mb-3">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-[#33a8da] to-[#2c98c7] text-white rounded-full text-[11px] font-bold uppercase tracking-wider shadow-sm">
+            <i className="fa-solid fa-tag text-[9px]" aria-hidden />
+            {rateHeader}
+          </span>
+        </div>
+      )}
+
+      {/* List-style description → chips */}
+      {isListStyle && chips.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {chips.map((chip, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 border border-gray-200 text-gray-700 rounded-md text-[11px] font-medium"
+            >
+              <i className="fa-solid fa-check text-[#33a8da] text-[9px]" aria-hidden />
+              {chip}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Prose description → paragraph */}
+      {!isListStyle && mainBody && (
+        <p className="text-sm text-gray-600 leading-relaxed">
+          {mainBody}
+        </p>
+      )}
+
+      {notice && (
+        <div className="mt-3 flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-lg p-3">
+          <i
+            className="fa-solid fa-circle-exclamation text-amber-500 text-sm mt-0.5 shrink-0"
+            aria-hidden
+          />
+          <p className="text-xs text-amber-800 leading-relaxed">
+            {notice}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+})()}
 
                   {/* Cancellation */}
                   {roomDetailModal.cancellationDeadline && (
