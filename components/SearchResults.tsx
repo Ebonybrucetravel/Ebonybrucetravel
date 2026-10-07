@@ -3403,7 +3403,7 @@ const hotelFilterOptions = useMemo(() => {
       <div key={item.id} className="bg-white rounded-[24px] shadow-sm border border-gray-100 hover:shadow-md transition overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
         <div className="flex flex-col md:flex-row">
           {/* Vehicle Image Section */}
-          <div className="w-full md:w-[320px] h-56 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-8 relative">
+          <div className="w-full md:w-[320px] h-56 bg-white flex items-center justify-center p-8 relative">
             {carImageUrl ? (
               <img
                 src={carImageUrl}
@@ -4270,7 +4270,7 @@ const hotelFilterOptions = useMemo(() => {
             <h3 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-2">
               {searchType === 'flights' ? 'Searching for flights...' :
                 searchType === 'hotels' ? 'Searching for hotels...' :
-                  'Searching for car rentals...'}
+                  'Searching for car transfers...'}
             </h3>
             <p className="text-sm text-gray-500 font-medium">
               {searchType === 'flights' ? 'Finding the best flight options for you' :
