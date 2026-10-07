@@ -4,19 +4,39 @@ import React, { useState, useEffect, useRef } from "react";
 import { useLanguage } from "../context/LanguageContext";
 import { useRouter } from "next/navigation";
 import api from "../lib/api";
+import { extractAmenities } from "../lib/amenities";
+import {
+  resolveCityName,
+  getCityCenter,
+  distanceMeters,
+  formatDistance,
+} from "../lib/cities";
 
 // ─── Interfaces ────────────────────────────────────────────────────────
+interface HotelAmenity {
+  label: string;
+  icon: string;
+}
+
 interface HotelDisplay {
   id: string;
   name: string;
   location: string;
   code: string;
+  cityName?: string;
+  neighbourhood?: string;
+  latitude?: number;
+  longitude?: number;
+  distanceFromCenter?: number | string;
+  distanceUnit?: string;
   price: number;
   originalPrice?: number;
   currency: string;
   roomCategory: string;
+  roomName?: string;
   bedType: string;
   beds: number;
+  bedLine?: string;
   guests: number;
   boardType?: string;
   boardLabel?: string;
@@ -25,6 +45,8 @@ interface HotelDisplay {
   freeCancellationText?: string;
   image: string;
   amenities: string[];
+  amenitiesList?: HotelAmenity[];
+  rating?: number;
 }
 
 interface HomesGridProps {
@@ -46,20 +68,9 @@ const MIXES_BY_GEO: Record<string, string[][]> = {
     ['LOS', 'TYO', 'MAD'],
     ['PHC', 'DXB', 'CPT'],
   ],
-  GB: [
-    ['LON', 'DXB', 'NYC'],
-    ['MAN', 'PAR', 'ROM'],
-    ['LON', 'SIN', 'IST'],
-  ],
-  US: [
-    ['NYC', 'LON', 'PAR'],
-    ['MIA', 'DXB', 'TYO'],
-    ['LAS', 'ROM', 'MAD'],
-  ],
-  AE: [
-    ['DXB', 'LON', 'PAR'],
-    ['AUH', 'IST', 'ROM'],
-  ],
+  GB: [['LON', 'DXB', 'NYC'], ['MAN', 'PAR', 'ROM'], ['LON', 'SIN', 'IST']],
+  US: [['NYC', 'LON', 'PAR'], ['MIA', 'DXB', 'TYO'], ['LAS', 'ROM', 'MAD']],
+  AE: [['DXB', 'LON', 'PAR'], ['AUH', 'IST', 'ROM']],
   FR: [['PAR', 'LON', 'DXB']],
   DE: [['BER', 'FRA', 'PAR']],
   ES: [['MAD', 'BCN', 'PAR']],
@@ -83,7 +94,6 @@ const DEFAULT_MIXES: string[][] = [
   ['MAD', 'ROM', 'IST'],
 ];
 
-// Which cities count as "domestic" for a given geo
 const DOMESTIC_CITIES: Record<string, string[]> = {
   NG: ['LOS', 'ABV', 'PHC', 'KAN'],
   GB: ['LON', 'MAN', 'EDI', 'BRS'],
@@ -134,11 +144,10 @@ function writeCache(key: string, data: CachedData) {
   } catch {}
 }
 
-// ─── Geo detection (much more thorough now) ────────────────────────────
+// ─── Geo detection ─────────────────────────────────────────────────────
 function getUserGeoCountry(): string | null {
   if (typeof window === 'undefined') return null;
 
-  // 1. Direct country code keys
   const directKeys = [
     'geo_country', 'geoCountry', 'country', 'user_country', 'userCountry',
     'detected_country', 'detectedCountry', 'user_country_code', 'countryCode',
@@ -148,12 +157,10 @@ function getUserGeoCountry(): string | null {
     if (v && v.length === 2 && /^[A-Z]{2}$/i.test(v)) return v.toUpperCase();
   }
 
-  // 2. Compound locale strings: "EN/NG" or "en-NG" or "en_NG"
   const localeKeys = ['locale', 'user_locale', 'userLocale', 'app_locale', 'lang', 'language'];
   for (const k of localeKeys) {
     const v = localStorage.getItem(k);
     if (!v) continue;
-
     if (v.includes('/')) {
       const code = v.split('/')[1]?.toUpperCase();
       if (code && /^[A-Z]{2}$/.test(code)) return code;
@@ -162,7 +169,6 @@ function getUserGeoCountry(): string | null {
     if (m) return m[1].toUpperCase();
   }
 
-  // 3. Currency fallback — your app sets currency reliably
   const currencyToCountry: Record<string, string> = {
     NGN: 'NG', GBP: 'GB', USD: 'US', EUR: 'FR',
     CAD: 'CA', AUD: 'AU', JPY: 'JP', CNY: 'CN', ZAR: 'ZA', KES: 'KE',
@@ -176,7 +182,6 @@ function getUserGeoCountry(): string | null {
   return null;
 }
 
-// Async fallback via ipapi.co — only called if localStorage has no geo yet
 async function detectGeoFromAPI(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   try {
@@ -246,8 +251,8 @@ function boardLabel(boardType?: string): string | undefined {
     RO: 'Room only',
     BREAKFAST: 'Breakfast included',
     BB: 'Breakfast included',
-    HALF_BOARD: 'Half board',
-    HB: 'Half board',
+    HALF_BOARD: 'Breakfast & Dinner Included',
+    HB: 'Breakfast & Dinner Included',
     FULL_BOARD: 'Full board',
     FB: 'Full board',
     ALL_INCLUSIVE: 'All inclusive',
@@ -283,6 +288,36 @@ function formatCancellationDeadline(isoDate?: string): string | undefined {
   }
 }
 
+// ─── Room name parsing (same rules as SearchResults) ───────────────────
+const rateNamePattern =
+  /^(FLEXIBLE|BREAKFAST|BEST|DAILY|15PCT|SIGNATURE|PACKAGE|RATE|2X POINTS|HALF BOARD|ROOM ONLY|ADVANCE SAVER|CORPORATE)/i;
+
+function parseRoomName(firstOffer: any): string {
+  const room = firstOffer?.room?.typeEstimated || {};
+  const rawDescription =
+    typeof firstOffer?.room?.description === 'string'
+      ? firstOffer.room.description
+      : firstOffer?.room?.description?.text || '';
+
+  const descLines = rawDescription
+    .split('\n')
+    .map((s: string) => s.trim())
+    .filter(Boolean);
+
+  const parsedRoomName =
+    descLines.find((line: string) => !rateNamePattern.test(line)) || descLines[0] || '';
+
+  const humanizedCategory = room.category
+    ? room.category
+        .toLowerCase()
+        .split('_')
+        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ')
+    : '';
+
+  return firstOffer?.roomName || parsedRoomName || humanizedCategory || room.category || 'Room';
+}
+
 // ─── Map Amadeus HotelOffer → HotelDisplay ─────────────────────────────
 function mapOfferToDisplay(
   offer: any,
@@ -312,19 +347,58 @@ function mapOfferToDisplay(
     policies.cancellations?.[0]?.deadline ||
     firstOffer.cancellationPolicies?.[0]?.from;
 
+  const rawCityName = hotel.address?.cityName || hotel.cityName || '';
+  const cityName = resolveCityName(cityCode, rawCityName);
+  const neighbourhood = hotel.address?.neighbourhood || hotel.neighbourhood || '';
+  const latitude = hotel.latitude ?? offer.latitude;
+  const longitude = hotel.longitude ?? offer.longitude;
+
+  let distanceFromCenter = hotel.distance?.value ?? hotel.distanceFromCenter;
+  let distanceUnit = hotel.distance?.unit || 'KM';
+  if (
+    distanceFromCenter == null &&
+    typeof latitude === 'number' &&
+    typeof longitude === 'number'
+  ) {
+    const center = getCityCenter(cityCode);
+    if (center) {
+      const meters = distanceMeters(latitude, longitude, center.lat, center.lng);
+      const fmt = formatDistance(meters);
+      distanceFromCenter = fmt.value;
+      distanceUnit = fmt.unit;
+    }
+  }
+
+  const roomName = parseRoomName(firstOffer);
+  const bedType = room.bedType;
+  const beds = room.beds || 1;
+  const bedLine = bedType
+    ? `${beds} ${String(bedType).toLowerCase()} bed${beds > 1 ? 's' : ''}`
+    : '';
+
+  const amenitiesList = extractAmenities(offer).slice(0, 5);
+
   return {
     id: hotel.hotelId || `hotel-${index}`,
     name: hotel.name || 'Hotel',
-    location: hotel.address?.cityName
-      ? `${hotel.address.cityName}${hotel.address.countryCode ? ', ' + hotel.address.countryCode : ''}`
+    location: cityName
+      ? `${cityName}${hotel.address?.countryCode ? ', ' + hotel.address.countryCode : ''}`
       : cityCode,
     code: cityCode,
+    cityName,
+    neighbourhood,
+    latitude,
+    longitude,
+    distanceFromCenter,
+    distanceUnit,
     price: totalPrice,
     originalPrice,
     currency: (price.currency || 'GBP').toUpperCase(),
     roomCategory: room.category || 'Room',
+    roomName,
     bedType: room.bedType || 'Bed',
     beds: room.beds || 1,
+    bedLine,
     guests: firstOffer.guests?.adults || 2,
     boardType: firstOffer.boardType,
     boardLabel: boardLabel(firstOffer.boardType),
@@ -335,6 +409,8 @@ function mapOfferToDisplay(
       : undefined,
     image: '',
     amenities: (hotel.amenities || []).slice(0, 3),
+    amenitiesList,
+    rating: hotel.rating || 0,
   };
 }
 
@@ -372,12 +448,13 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     }
   }, [propHotels]);
 
-  // Load saved hotel ids from server (falls back to sessionStorage for guests)
   useEffect(() => {
     const loadSaved = async () => {
       try {
         const response = await api.userApi.getSavedItems('HOTEL');
-        const items: any[] = Array.isArray(response) ? response : (response as any)?.data || [];
+        const items: any[] = Array.isArray(response)
+          ? response
+          : (response as any)?.data || [];
 
         const ids = new Set<string>();
         const map = new Map<string, string>();
@@ -403,7 +480,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     loadSaved();
   }, []);
 
-  // Load trending hotels (mix of domestic + international, rotated hourly)
   useEffect(() => {
     if (propHotels && propHotels.length > 0) return;
 
@@ -413,7 +489,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       setInternalLoading(true);
       setInternalError(null);
 
-      // ─── 1. Resolve geo (localStorage → API fallback) ────────
       let geo = getUserGeoCountry();
       if (!geo) {
         console.log('🌍 No geo in localStorage, trying ipapi.co...');
@@ -424,13 +499,8 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       const mixKey = mix.join('-');
       const cacheKey = `homes_grid_real_v4_${mixKey}`;
 
-      console.log('🌍 Hotel mix:', {
-        geo: geo || 'unknown',
-        mix,
-        cacheKey,
-      });
+      console.log('🌍 Hotel mix:', { geo: geo || 'unknown', mix, cacheKey });
 
-      // ─── 2. Cache check ───────────────────────────────────────
       const cached = readCache(cacheKey);
       if (cached) {
         console.log('✅ Loaded from cache:', cached.hotels.length, 'hotels');
@@ -443,7 +513,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
         const { checkIn, checkOut } = getDefaultDates();
         const displayCurrency = getDisplayCurrency();
 
-        // ─── 3. Fetch all cities in parallel ─────────────────────
         const results = await Promise.all(
           mix.map(async (cityCode) => {
             try {
@@ -468,7 +537,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
 
         if (cancelled) return;
 
-        // ─── 4. Collect up to 6 unique hotels per city ───────────
         const collected: { offer: any; city: string; isDomestic: boolean }[] = [];
         const seen = new Set<string>();
         const domesticSet = new Set(geo ? DOMESTIC_CITIES[geo] || [] : []);
@@ -494,7 +562,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           throw new Error('No hotels available right now');
         }
 
-        // ─── 5. Sort domestic hotels first (if any) ──────────────
         collected.sort((a, b) => {
           if (a.isDomestic && !b.isDomestic) return -1;
           if (!a.isDomestic && b.isDomestic) return 1;
@@ -506,12 +573,8 @@ const HomesGrid: React.FC<HomesGridProps> = ({
         );
 
         setHotels(mapped);
-        console.log('✅ Loaded', mapped.length, 'hotels:', {
-          domestic: collected.filter((c) => c.isDomestic).length,
-          international: collected.filter((c) => !c.isDomestic).length,
-        });
+        console.log('✅ Loaded', mapped.length, 'hotels');
 
-        // ─── 6. Fetch real Amadeus images in parallel ────────────
         const imageResults = await Promise.all(
           collected.map(async ({ offer }) => {
             const hotelId = offer.hotel?.hotelId;
@@ -545,7 +608,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
 
         if (cancelled) return;
 
-        // ─── 7. Attach images + reorder (with-image first) + cache ──
         setHotels((prev) => {
           const withImages = prev.map((h, idx) => ({
             ...h,
@@ -580,16 +642,12 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     };
   }, [propHotels]);
 
-  // Wishlist toggle
   const toggleSaveHotel = async (hotel: HotelDisplay) => {
     const isCurrentlySaved = savedHotelIds.has(hotel.id);
     const newSet = new Set(savedHotelIds);
 
-    if (isCurrentlySaved) {
-      newSet.delete(hotel.id);
-    } else {
-      newSet.add(hotel.id);
-    }
+    if (isCurrentlySaved) newSet.delete(hotel.id);
+    else newSet.add(hotel.id);
 
     setSavedHotelIds(newSet);
 
@@ -607,12 +665,12 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       } else {
         const packedTitle = [
           hotel.name || 'Hotel',
-          hotel.image || '',          
+          hotel.image || '',
           hotel.code || '',
           hotel.location || '',
           hotel.id || '',
         ].join('|||');
-        
+
         const response: any = await api.userApi.saveItem({
           productType: 'HOTEL',
           title: packedTitle,
@@ -678,9 +736,10 @@ const HomesGrid: React.FC<HomesGridProps> = ({
   const displayHotels = propHotels || hotels;
 
   const displayTitle = title || 'Homes guests love';
-  const displaySubtitle = subtitle || 'From castles and villas to boats and igloos, we have it all';
+  const displaySubtitle =
+    subtitle || 'From castles and villas to boats and igloos, we have it all';
 
-  // ─── Loading skeleton ─────────────────────────────────────────────
+  // ─── Loading skeleton (3 columns) ────────────────────────────────
   if (isLoading) {
     return (
       <section className="px-4 md:px-8 lg:px-16 pt-8 pb-0">
@@ -689,19 +748,18 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           <p className="text-gray-600 mt-1 text-sm">{displaySubtitle}</p>
         </div>
         <div className="flex gap-4 overflow-hidden">
-          {[1, 2, 3, 4].map((i) => (
+          {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="bg-white rounded-lg overflow-hidden border border-gray-200 animate-pulse flex-shrink-0"
-              style={{ width: 'calc((100% - 3rem) / 4)', minWidth: '260px' }}
+              className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm animate-pulse flex-shrink-0"
+              style={{ width: 'calc((100% - 2rem) / 3)', minWidth: '320px' }}
             >
               <div className="aspect-[16/10] bg-gray-200"></div>
-              <div className="p-3">
-                <div className="h-3 bg-gray-200 rounded w-1/3 mb-2"></div>
-                <div className="h-5 bg-gray-200 rounded mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded w-2/3 mb-3"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2 mb-3"></div>
-                <div className="h-6 bg-gray-200 rounded w-1/2"></div>
+              <div className="p-4 space-y-3">
+                <div className="h-3 bg-gray-200 rounded w-1/3" />
+                <div className="h-5 bg-gray-200 rounded w-4/5" />
+                <div className="h-4 bg-gray-200 rounded w-2/3" />
+                <div className="h-4 bg-gray-200 rounded w-1/2" />
               </div>
             </div>
           ))}
@@ -715,7 +773,9 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       <section className="px-4 md:px-8 lg:px-16 pt-8 pb-4">
         <div className="text-center py-10">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">{displayTitle}</h2>
-          <p className="text-gray-500 text-sm">{hasError || 'No properties available right now.'}</p>
+          <p className="text-gray-500 text-sm">
+            {hasError || 'No properties available right now.'}
+          </p>
         </div>
       </section>
     );
@@ -731,7 +791,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
         </div>
         <button
           onClick={() => router.push('/search?type=hotels')}
-          className="text-sm font-semibold text-[#0071c2] hover:underline flex items-center gap-1"
+          className="text-sm font-semibold text-[#33a8da] hover:underline flex items-center gap-1"
         >
           Explore all
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -742,7 +802,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
 
       {/* Carousel */}
       <div className="relative group/carousel">
-        {/* Left arrow — always visible on desktop */}
+        {/* Left arrow */}
         <button
           onClick={() => {
             const el = document.getElementById('homes-carousel');
@@ -756,126 +816,192 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           </svg>
         </button>
 
-        {/* Track */}
+        {/* Track — 3 columns now */}
         <div
           id="homes-carousel"
-          className="flex gap-4 overflow-x-auto scroll-smooth snap-x snap-mandatory pb-0"
-          style={{
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
-          }}
+          className="flex gap-4 overflow-x-auto scroll-smooth snap-x snap-mandatory pb-2"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
-          {displayHotels.map((hotel) => (
-            <div
-              key={hotel.id}
-              onClick={() => handleHotelClick(hotel)}
-              className="group cursor-pointer bg-white rounded-lg overflow-hidden border border-gray-200 hover:shadow-lg transition-all duration-200 flex flex-col snap-start flex-shrink-0"
-              style={{
-                width: 'calc((100% - 3rem) / 4)',
-                minWidth: '260px',
-              }}
-            >
-              {/* Image area */}
-              <div className="relative aspect-[16/10] overflow-hidden bg-gray-100">
-                {hotel.image ? (
-                  <img
-                    src={hotel.image}
-                    alt={hotel.name}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    loading="lazy"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                ) : null}
+          {displayHotels.map((hotel) => {
+            const locationLine =
+              [hotel.neighbourhood, hotel.cityName].filter(Boolean).join(', ') ||
+              hotel.code ||
+              'Location';
 
-                {!hotel.image && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+            return (
+              <div
+                key={hotel.id}
+                onClick={() => handleHotelClick(hotel)}
+                className="group cursor-pointer bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col snap-start flex-shrink-0"
+                style={{
+                  width: 'calc((100% - 2rem) / 3)',
+                  minWidth: '320px',
+                }}
+              >
+                {/* Image */}
+                <div className="relative aspect-[16/10] overflow-hidden bg-gray-100">
+                  {hotel.image ? (
+                    <img
+                      src={hotel.image}
+                      alt={hotel.name}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      loading="lazy"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+                      <svg
+                        className="w-12 h-12 text-gray-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={1.2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M9 11h.01M15 11h.01M9 15h.01M15 15h.01"
+                        />
+                      </svg>
+                    </div>
+                  )}
+
+                  {/* Wishlist heart */}
+                  <button
+                    className={`absolute top-3 right-3 w-9 h-9 rounded-full z-10 flex items-center justify-center transition backdrop-blur-md ${
+                      savedHotelIds.has(hotel.id)
+                        ? 'bg-red-500 text-white'
+                        : 'bg-white/70 text-gray-500 hover:bg-white'
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSaveHotel(hotel);
+                    }}
+                    aria-label={
+                      savedHotelIds.has(hotel.id)
+                        ? 'Remove from wishlist'
+                        : 'Save to wishlist'
+                    }
+                  >
                     <svg
-                      className="w-12 h-12 text-gray-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
+                      className="w-4 h-4"
+                      fill={savedHotelIds.has(hotel.id) ? 'currentColor' : 'none'}
                       stroke="currentColor"
-                      strokeWidth={1.2}
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
                     >
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M9 11h.01M15 11h.01M9 15h.01M15 15h.01"
+                        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
                       />
                     </svg>
-                  </div>
-                )}
+                  </button>
+                </div>
 
-                {/* Wishlist heart */}
-                <button
-                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/95 hover:bg-white flex items-center justify-center shadow-sm transition z-10"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleSaveHotel(hotel);
-                  }}
-                  aria-label={savedHotelIds.has(hotel.id) ? 'Remove from wishlist' : 'Save to wishlist'}
-                >
-                  {savedHotelIds.has(hotel.id) ? (
-                    <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                    </svg>
+                {/* Content — no flex-1 spacer, no CTA button */}
+                <div className="p-4 flex flex-col">
+                  {hotel.boardLabel && (
+                    <div className="mb-1">
+                      <span className="text-[11px] font-semibold text-gray-700">
+                        {hotel.boardLabel}
+                      </span>
+                    </div>
                   )}
-                </button>
-              </div>
 
-              {/* Content */}
-              <div className="p-3 flex flex-col flex-1">
-                {hotel.boardLabel && (
-                  <div className="mb-1">
-                    <span className="text-[11px] font-medium text-gray-700">{hotel.boardLabel}</span>
+                  <h3 className="font-bold text-gray-900 text-[15px] leading-snug line-clamp-2 group-hover:text-[#33a8da] transition">
+                    {hotel.name}
+                  </h3>
+
+                  {/* Location + distance + map link */}
+                  <div className="mt-1.5 flex flex-col text-xs text-gray-500 gap-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="underline cursor-pointer font-medium text-[#0071c2] line-clamp-1">
+                        {locationLine}
+                      </span>
+                      {hotel.distanceFromCenter != null && (
+                        <span className="text-gray-500 whitespace-nowrap">
+                          · {hotel.distanceFromCenter} {hotel.distanceUnit} from downtown
+                        </span>
+                      )}
+                    </div>
+                    {typeof hotel.latitude === 'number' &&
+                      typeof hotel.longitude === 'number' && (
+                        <div className="flex items-center gap-2 text-[11px]">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(
+                                `https://www.google.com/maps?q=${hotel.latitude},${hotel.longitude}`,
+                                '_blank',
+                              );
+                            }}
+                            className="text-[#33a8da] underline hover:no-underline font-medium"
+                          >
+                            Show on map
+                          </button>
+                        </div>
+                      )}
                   </div>
-                )}
 
-                <h3 className="font-bold text-gray-900 text-[15px] leading-tight line-clamp-2 mb-1">
-                  {hotel.name}
-                </h3>
+                  {/* Amenities */}
+                  {hotel.amenitiesList && hotel.amenitiesList.length > 0 && (
+                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-600 flex-wrap">
+                      {hotel.amenitiesList.map((a, i) => (
+                        <span key={i} className="flex items-center gap-1 whitespace-nowrap">
+                          <i className={`fa-solid fa-${a.icon} text-gray-400`} aria-hidden />
+                          <span>{a.label}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
-                <p className="text-xs text-gray-500 mb-2 line-clamp-1">{hotel.location}</p>
-
-                <p className="text-xs text-gray-600 mb-2 line-clamp-1">
-                  {hotel.roomCategory} · {hotel.beds} {hotel.bedType} bed
-                  {hotel.beds > 1 ? 's' : ''} · {hotel.guests} guests
-                </p>
-
-                {hotel.isRefundable && hotel.freeCancellationText && (
-                  <div className="flex items-center gap-1 mb-2 text-xs text-emerald-700">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span className="font-semibold">{hotel.freeCancellationText}</span>
-                  </div>
-                )}
-
-                <div className="flex-1" />
-
-                <div className="pt-2 border-t border-gray-100">
-                  <p className="text-[10px] text-gray-500 leading-tight">Starting from</p>
-                  {hotel.originalPrice && (
-                    <p className="text-xs text-red-500 line-through leading-tight">
-                      {symbol} {hotel.originalPrice.toLocaleString()}
+                  {/* Room + bed + refundable block */}
+                  <div className="mt-3 pt-3 border-t border-gray-100 space-y-1">
+                    <p className="text-sm font-semibold text-gray-900 line-clamp-1">
+                      {hotel.roomName || hotel.roomCategory}
                     </p>
-                  )}
-                  <p className="text-base font-bold text-gray-900 leading-tight">
-                    {formatPrice(hotel.price)}
-                  </p>
-                  <p className="text-[10px] text-gray-500 mt-0.5">per night, incl. taxes</p>
+                    {hotel.bedLine && (
+                      <p className="text-xs text-gray-500">{hotel.bedLine}</p>
+                    )}
+                    {hotel.isRefundable ? (
+                      <p className="text-xs text-green-600 font-medium">
+                        ✓ Refundable
+                        {hotel.freeCancellationText
+                          ? ` · ${hotel.freeCancellationText}`
+                          : ''}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-500">Non-refundable</p>
+                    )}
+                  </div>
+
+                  {/* Price block — sits directly below, no gap, no CTA */}
+                  <div className="pt-3 mt-3 border-t border-gray-100">
+                    <p className="text-[10px] text-gray-500 leading-tight">
+                      Starting from
+                    </p>
+                    {hotel.originalPrice && (
+                      <p className="text-xs text-red-500 line-through leading-tight">
+                        {symbol} {hotel.originalPrice.toLocaleString()}
+                      </p>
+                    )}
+                    <p className="text-xl font-bold text-gray-900 leading-tight">
+                      {formatPrice(hotel.price)}
+                    </p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">
+                      per night, incl. taxes
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {/* Right arrow — always visible on desktop */}
+        {/* Right arrow */}
         <button
           onClick={() => {
             const el = document.getElementById('homes-carousel');
@@ -890,8 +1016,8 @@ const HomesGrid: React.FC<HomesGridProps> = ({
         </button>
       </div>
 
-      {/* Dots */}
-      {displayHotels.length > 4 && (
+      {/* Dots — only show when more than 3 hotels */}
+      {displayHotels.length > 3 && (
         <div className="flex justify-center gap-1.5 mt-3">
           {displayHotels.map((_, i) => (
             <button

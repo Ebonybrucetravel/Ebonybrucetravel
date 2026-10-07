@@ -4178,20 +4178,7 @@ const hotelFilterOptions = useMemo(() => {
 
    
 
-    {/* Brands */}
-    {hotelFilterOptions?.brands && hotelFilterOptions.brands.length > 0 &&
-      renderFilterSection("Brands", (
-        <>
-          {hotelFilterOptions.brands.map((b) =>
-            renderCheckbox(
-              b,
-              brandFilter.includes(b),
-              () => toggleFilter(setBrandFilter, brandFilter, b)
-            )
-          )}
-        </>
-      ))
-    }
+  
 
     {/* Reviews */}
     {hotelFilterOptions?.reviewBuckets && hotelFilterOptions.reviewBuckets.length > 0 &&

@@ -895,7 +895,10 @@ const searchHotels = async (params: SearchParams) => {
       roomQuantity: params.rooms || 1,
       currency: 'NGN',
       page: params.page || 1,
-      limit: params.limit || 20,
+      limit: params.limit || 100,
+      getAll: (params as any).getAll ?? true,
+      radius: (params as any).radius ?? 100,
+      provider: 'amadeus',
     };
 
     console.log('🏨 Sending hotel search request with cityCode:', hotelParams);

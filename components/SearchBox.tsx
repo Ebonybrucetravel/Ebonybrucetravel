@@ -92,7 +92,6 @@
         const [showFiltersDropdown, setShowFiltersDropdown] = useState(false);
         const [stopsFilter, setStopsFilter] = useState('Any');
         const [maxPrice, setMaxPrice] = useState(2000);
-        const [getAllHotels, setGetAllHotels] = useState(false);
         const [segments, setSegments] = useState<Segment[]>([
           { from: '', to: '', date: '' }
         ]);
@@ -1419,13 +1418,14 @@
               checkOutDate,
               travellers: {
                 adults: travellers.adults,
-                children: travellers.children
+                children: travellers.children,
               },
               rooms,
               currency: currency.code || 'NGN',
               provider: 'amadeus',
-              radius: getAllHotels ? 200 : 30,
-              limit: getAllHotels ? 100 : 50,
+              radius: 100,     
+              limit: 100,
+              getAll: true,   
             };
         
             onSearch(data);
@@ -2209,6 +2209,8 @@
                       {renderRoomDropdown()}
                     </div>
                   </div>
+
+                  
                 </div>
                 <button
                   type="submit"

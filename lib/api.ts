@@ -1766,7 +1766,9 @@ export async function searchAndTransformHotels(
         roomQuantity: searchParams.roomQuantity || 1,
         currency: searchParams.currency || "NGN",
         page: searchParams.page || 1,
-        limit: searchParams.limit || 20,
+        limit: searchParams.limit || 100,
+        getAll: searchParams.getAll ?? true,
+        radius: searchParams.radius ?? 100,
       };
 
 

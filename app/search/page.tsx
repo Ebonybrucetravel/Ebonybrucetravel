@@ -73,11 +73,12 @@ useEffect(() => {
           travellers: { adults: guests, children: 0 },
           rooms,
           currency,
+          radius: 100,
+          limit: 100,
+          getAll: true,
+          provider: 'amadeus',
         } as any);
-        return;
       }
-
-    
     } catch (err) {
       console.error('Auto-search from URL failed:', err);
     }
@@ -219,6 +220,8 @@ useEffect(() => {
         params.set('checkInDate', searchData.checkInDate);
         params.set('checkOutDate', searchData.checkOutDate);
         params.set('guests', searchData.travellers.adults.toString());
+        params.set('rooms', (searchData.rooms || 1).toString());
+        params.set('currency', searchData.currency || 'NGN');
       } else if (searchData.type === 'car-rentals') {
         params.set('pickupLocation', searchData.pickupLocationCode);
         params.set('dropoffLocation', searchData.dropoffLocationCode);

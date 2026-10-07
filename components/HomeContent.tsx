@@ -222,23 +222,29 @@ const handleCarSearch = async (carData: any) => {
         activeSearchTab={activeTab}
         onTabChange={handleTabChange}
       />
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 space-y-32">
         <Partners />
         <ExclusiveOffers onTypeClick={handleTabChange} />
-        <TrendingDestinations
-          onCityClick={handleTrendingSearch}
-        />
-        <HomesGrid onSearch={handleHotelSearch} />
-        <CarRentals onSearch={handleCarSearch} />
-        <SpecializedServices onServiceClick={(s) => {
-          const pathMap: Record<string, string> = {
-            'Travel Services': '/services/travel-services',
-            'DHL Logistics': '/services/dhl-logistics',
-            'Admission Processing': '/services/admission-processing'
-          };
-          router.push(pathMap[s] || '/services');
-        }} />
-      </div>
+        <TrendingDestinations onCityClick={handleTrendingSearch} />
+
+        {/* Tight group: hotel grid + car rentals sit close together */}
+        <div className="space-y-4">
+          <HomesGrid onSearch={handleHotelSearch} />
+          <CarRentals onSearch={handleCarSearch} />
+        </div>
+
+        <div className="!mt-16">
+          <SpecializedServices onServiceClick={(s) => {
+            const pathMap: Record<string, string> = {
+              'Travel Services': '/services/travel-services',
+              'DHL Logistics': '/services/dhl-logistics',
+              'Admission Processing': '/services/admission-processing'
+            };
+            router.push(pathMap[s] || '/services');
+          }} />
+        </div>
+      </div>{/* ← this closes max-w-7xl */}
 
       {/* Global Loading Overlay for better UX */}
       {(isHotelSearching || isCarSearching || isTrendingSearching) && (
@@ -254,6 +260,6 @@ const handleCarSearch = async (carData: any) => {
           </div>
         </div>
       )}
-    </>
+      </>
   );
 }
