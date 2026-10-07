@@ -7,7 +7,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // ✅ url is removed - it's now in prisma.config.ts
+  // url      = env("DATABASE_URL") 
 }
 
 // User model for authentication and customer/admin management
@@ -133,9 +133,9 @@ model Booking {
   finalAmount            Decimal? @db.Decimal(12, 2)
 
   // Booking details (stored as JSON for flexibility)
-  bookingData   Json // Product-specific data (flight details, hotel info, car details)
-  passengerInfo Json? // Passenger/traveler information
-  paymentInfo   Json? // Payment transaction details
+  bookingData   Json @db.JsonB // Product-specific data (flight details, hotel info, car details)
+  passengerInfo Json? @db.JsonB // Passenger/traveler information
+  paymentInfo   Json? @db.JsonB // Payment transaction details
 
   // Payment tracking
   paymentStatus    PaymentStatus    @default(PENDING)

@@ -162,12 +162,17 @@ export class CreateAmadeusHotelBookingUseCase {
         );
       }
 
-      // ✅ Multi-room detection: unique offer IDs in roomAssociations
-      const uniqueOfferIds = new Set(
-        (dto.roomAssociations || []).map((ra: any) => ra.hotelOfferId).filter(Boolean),
-      );
-      const isMultiOffer = uniqueOfferIds.size > 1;
-      const isMultiRoom = (dto as any).isMultiRoom === true || isMultiOffer;
+            // ✅ Multi-room detection: unique offer IDs in roomAssociations
+            const uniqueOfferIds = new Set<string>(
+              (dto.roomAssociations || [])
+                .map((ra: any) => ra.hotelOfferId)
+                .filter(
+                  (id: any): id is string =>
+                    typeof id === 'string' && id.length > 0,
+                ),
+            );
+            const isMultiOffer = uniqueOfferIds.size > 1;
+            const isMultiRoom = (dto as any).isMultiRoom === true || isMultiOffer;
 
       this.logger.log(`🏨 Multi-room analysis:`, {
         uniqueOfferIds: Array.from(uniqueOfferIds),
@@ -463,14 +468,19 @@ export class CreateAmadeusHotelBookingUseCase {
 
       this.logger.log(`📤 Sending to Amadeus with ${paymentMethodId ? 'PCI compliant' : 'legacy'} payment method`);
 
-      // ✅ Detect multi-offer: unique offer IDs in roomAssociations
-      const uniqueOfferIds = Array.from(
-        new Set(
-          roomAssociations.map((ra: any) => ra.hotelOfferId).filter(Boolean),
-        ),
-      );
-
-      const isMultiOffer = uniqueOfferIds.length > 1;
+      
+            const uniqueOfferIds: string[] = Array.from(
+              new Set<string>(
+                roomAssociations
+                  .map((ra: any) => ra.hotelOfferId)
+                  .filter(
+                    (id: any): id is string =>
+                      typeof id === 'string' && id.length > 0,
+                  ),
+              ),
+            );
+      
+            const isMultiOffer = uniqueOfferIds.length > 1;
 
       this.logger.log(`🏨 Amadeus hotel order plan:`, {
         uniqueOfferIds,
@@ -516,6 +526,25 @@ export class CreateAmadeusHotelBookingUseCase {
               `⚠️ No guests mapped to offer ${offerId}; skipping.`,
             );
             continue;
+          }
+
+        
+          const perOfferPrice: any = { ...priceForAmadeus };
+          try {
+            this.logger.log(`🔄 [MULTI-OFFER] Re-pricing offer ${offerId}...`);
+            const repriced = await this.amadeusService.repriceHotelOffer(offerId);
+            if (repriced?.data?.price) {
+              perOfferPrice.currency = repriced.data.price.currency;
+              perOfferPrice.base = repriced.data.price.base;
+              perOfferPrice.total = repriced.data.price.total;
+              this.logger.log(
+                `✅ [MULTI-OFFER] Offer ${offerId} re-priced: ${perOfferPrice.total} ${perOfferPrice.currency}`,
+              );
+            }
+          } catch (e: any) {
+            this.logger.warn(
+              `⚠️ [MULTI-OFFER] Repricing failed for ${offerId} (using frontend price): ${e.message}`,
+            );
           }
 
           // Amadeus expects guests with "tid" matching 1..N within this order
@@ -567,7 +596,7 @@ export class CreateAmadeusHotelBookingUseCase {
                 accommodationSpecialRequests:
                   bookingData.accommodation_special_requests,
               }),
-              price: priceForAmadeus,
+              price: perOfferPrice,   
             },
           };
 
@@ -650,7 +679,6 @@ export class CreateAmadeusHotelBookingUseCase {
         created_at: new Date().toISOString(),
         request_payload: amadeusRequestPayload,
         payment_method_type: paymentMethodId ? 'PCI_COMPLIANT_PAYMENT_METHOD_ID' : 'LEGACY_RAW_CARD',
-        // ✅ Multi-offer aggregate (populated only for multi-offer carts)
         multi_offer_orders: (finalOrderData as any)?._multiOffer
           ? (finalOrderData as any).orders
           : undefined,

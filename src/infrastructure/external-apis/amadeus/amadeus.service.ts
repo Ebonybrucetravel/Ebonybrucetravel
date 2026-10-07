@@ -213,9 +213,10 @@ private async getAccessToken(): Promise<string> {
     };
     
     if (params.radius) {
-      queryParams.radius = Math.min(params.radius, 200).toString();
+     
+      queryParams.radius = Math.min(params.radius, 100).toString();
     } else {
-      queryParams.radius = '200';
+      queryParams.radius = '30';
     }
     
     if (params.radiusUnit) {
@@ -257,7 +258,8 @@ private async getAccessToken(): Promise<string> {
     };
     
     if (params.radius) {
-      queryParams.radius = params.radius.toString();
+
+      queryParams.radius = Math.min(Math.max(params.radius, 1), 100).toString();
     } else {
       queryParams.radius = '30';
     }
@@ -572,6 +574,7 @@ private async getAccessToken(): Promise<string> {
       `${params.adults ?? 1}:${params.roomQuantity ?? 1}:` +
       `${params.currency ?? ''}:${params.bestRateOnly ?? false}:` +
       `${params.includeImages ?? true}:` +
+      `${params.cityCode ?? ''}:` + 
       `${cachedIds}`;
 
     const cachedResponse = this.cacheService.get<any>(chunkCacheKey);
@@ -604,7 +607,107 @@ private async getAccessToken(): Promise<string> {
       method: 'GET', 
       params: queryParams 
     });
-  
+
+    // ✅ DIAGNOSTIC: log what Amadeus returned
+    this.logger.log(`🔍 [searchHotels] Amadeus response:`, {
+      cityCode: params.cityCode,
+      hotelIdsCount: (params.hotelIds || []).length,
+      returnedCount: Array.isArray(response?.data) ? response.data.length : 'not-array',
+      hasErrors: !!response?.errors,
+      firstHotelId: response?.data?.[0]?.hotel?.hotelId,
+    });
+
+    // ✅ FALLBACK: shopping-by-city is unreliable for many cities.
+    //    If it returns empty and we only had a cityCode, look up hotel IDs
+    //    by city and re-shop using those IDs.
+    if (
+      hasCityCode &&
+      (!Array.isArray(response?.data) || response.data.length === 0)
+    ) {
+      this.logger.warn(
+        `⚠️ [searchHotels] cityCode=${params.cityCode} returned empty. Falling back to by-city + by-IDs.`,
+      );
+
+      try {
+        const byCity = await this.getHotelsByCity({
+          cityCode: params.cityCode!,
+          radius: 100,
+          radiusUnit: 'KM',
+          hotelSource: 'ALL',
+        });
+
+        const allIds = (byCity?.data || [])
+          .map((h: any) => h.hotelId)
+          .filter(Boolean) as string[];
+
+        this.logger.log(
+          `🔁 [searchHotels] by-city returned ${allIds.length} hotel IDs for ${params.cityCode}`,
+        );
+
+        if (allIds.length > 0) {
+          // Amadeus shopping-by-IDs accepts ~20 per call. Chunk to be safe.
+          const CHUNK_SIZE = 20;
+          const mergedOffers: any[] = [];
+
+          for (let i = 0; i < allIds.length; i += CHUNK_SIZE) {
+            const chunk = allIds.slice(i, i + CHUNK_SIZE);
+
+            try {
+              const chunkResp = await this.makeRequest(
+                '/v3/shopping/hotel-offers',
+                {
+                  method: 'GET',
+                  params: {
+                    hotelIds: chunk.join(','),
+                    checkInDate: params.checkInDate,
+                    checkOutDate: params.checkOutDate,
+                    adults: String(params.adults ?? 1),
+                    roomQuantity: String(params.roomQuantity ?? 1),
+                    ...(params.currency ? { currency: params.currency } : {}),
+                    ...(params.bestRateOnly !== undefined
+                      ? { bestRateOnly: String(params.bestRateOnly) }
+                      : {}),
+                  },
+                },
+              );
+
+              if (Array.isArray(chunkResp?.data) && chunkResp.data.length > 0) {
+                mergedOffers.push(...chunkResp.data);
+                this.logger.log(
+                  `  ✅ [searchHotels] chunk ${i / CHUNK_SIZE + 1}: ${chunkResp.data.length} offers`,
+                );
+              } else {
+                this.logger.log(
+                  `  ⏳ [searchHotels] chunk ${i / CHUNK_SIZE + 1}: 0 offers (IDs: ${chunk.length})`,
+                );
+              }
+            } catch (chunkErr) {
+              const msg = chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
+              this.logger.warn(
+                `  ❌ [searchHotels] chunk ${i / CHUNK_SIZE + 1} failed: ${msg}`,
+              );
+            }
+          }
+
+          if (mergedOffers.length > 0) {
+            this.logger.log(
+              `✅ [searchHotels] fallback produced ${mergedOffers.length} total offers for ${params.cityCode}`,
+            );
+            response.data = mergedOffers;
+          } else {
+            this.logger.warn(
+              `⚠️ [searchHotels] fallback yielded 0 offers for ${params.cityCode} (Amadeus has no rates)`,
+            );
+          }
+        }
+      } catch (fallbackErr) {
+        const msg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+        this.logger.error(
+          `❌ [searchHotels] fallback failed for ${params.cityCode}: ${msg}`,
+        );
+      }
+    }
+
     if (params.includeImages !== false && response?.data?.length > 0) {
       this.logger.log(`Enriching ${response.data.length} hotels with images...`);
       
@@ -636,11 +739,12 @@ private async getAccessToken(): Promise<string> {
       }
     }
     
-      // Cache the response for 5 minutes
-      this.cacheService.set(chunkCacheKey, response, 5 * 60 * 1000);
+         // Cache the response for 5 minutes
+    this.cacheService.set(chunkCacheKey, response, 5 * 60 * 1000);
 
-      return response;
-    }
+    return response;
+  }
+
   async getHotelOffersWithRoomTypes(params: {
     hotelIds?: string[];
     cityCode?: string;
@@ -676,36 +780,133 @@ private async getAccessToken(): Promise<string> {
     if (params.roomQuantity) queryParams.roomQuantity = params.roomQuantity.toString();
     if (params.currency) queryParams.currency = params.currency;
     queryParams.bestRateOnly = params.bestRateOnly === undefined 
-      ? 'false' 
-      : params.bestRateOnly.toString();
-    
-    const response = await this.makeRequest('/v3/shopping/hotel-offers', { 
-      method: 'GET', 
-      params: queryParams 
-    });
-    
-    if (!response?.data?.length) {
-      return {
-        success: true,
-        data: [],
-        message: 'No hotels found',
-      };
-    }
-  
-    let roomImagesMap = new Map<string, Map<string, any[]>>();
+    ? 'false' 
+    : params.bestRateOnly.toString();
+
+  const response = await this.makeRequest('/v3/shopping/hotel-offers', { 
+    method: 'GET', 
+    params: queryParams 
+  });
+
+  // ✅ DIAGNOSTIC
+  this.logger.log(`🔍 [getHotelOffersWithRoomTypes] Amadeus response:`, {
+    cityCode: params.cityCode,
+    hotelIdsCount: (params.hotelIds || []).length,
+    returnedCount: Array.isArray(response?.data) ? response.data.length : 'not-array',
+    firstHotelId: response?.data?.[0]?.hotel?.hotelId,
+  });
+
+  // ✅ FALLBACK: shopping-by-city is unreliable for many cities.
+  if (
+    hasCityCode &&
+    (!Array.isArray(response?.data) || response.data.length === 0)
+  ) {
+    this.logger.warn(
+      `⚠️ [getHotelOffersWithRoomTypes] cityCode=${params.cityCode} returned empty. Falling back to by-city + by-IDs.`,
+    );
+
     try {
-      const hotelIds = response.data
-        .map((item: any) => item.hotel?.hotelId)
-        .filter((id: string) => id);
-  
-      if (hotelIds.length > 0) {
-        const imagesData = await this.fetchHotelImagesWithRoomsBatch(hotelIds);
-        roomImagesMap = new Map(
-          Array.from(imagesData.entries()).map(([hotelId, data]) => [hotelId, data.roomImages])
-        );
-        this.logger.log(`✅ Fetched room images for ${roomImagesMap.size} hotels`);
+      const byCity = await this.getHotelsByCity({
+        cityCode: params.cityCode!,
+        radius: 100,
+        radiusUnit: 'KM',
+        hotelSource: 'ALL',
+      });
+
+      const allIds = (byCity?.data || [])
+        .map((h: any) => h.hotelId)
+        .filter(Boolean) as string[];
+
+      this.logger.log(
+        `🔁 [getHotelOffersWithRoomTypes] by-city returned ${allIds.length} hotel IDs for ${params.cityCode}`,
+      );
+
+      if (allIds.length > 0) {
+        const CHUNK_SIZE = 20;
+        const mergedOffers: any[] = [];
+
+        for (let i = 0; i < allIds.length; i += CHUNK_SIZE) {
+          const chunk = allIds.slice(i, i + CHUNK_SIZE);
+
+          try {
+            const chunkResp = await this.makeRequest(
+              '/v3/shopping/hotel-offers',
+              {
+                method: 'GET',
+                params: {
+                  hotelIds: chunk.join(','),
+                  checkInDate: params.checkInDate,
+                  checkOutDate: params.checkOutDate,
+                  adults: String(params.adults ?? 1),
+                  roomQuantity: String(params.roomQuantity ?? 1),
+                  ...(params.currency ? { currency: params.currency } : {}),
+                  bestRateOnly:
+                    params.bestRateOnly === undefined
+                      ? 'false'
+                      : String(params.bestRateOnly),
+                },
+              },
+            );
+
+            if (Array.isArray(chunkResp?.data) && chunkResp.data.length > 0) {
+              mergedOffers.push(...chunkResp.data);
+              this.logger.log(
+                `  ✅ [getHotelOffersWithRoomTypes] chunk ${i / CHUNK_SIZE + 1}: ${chunkResp.data.length} offers`,
+              );
+            } else {
+              this.logger.log(
+                `  ⏳ [getHotelOffersWithRoomTypes] chunk ${i / CHUNK_SIZE + 1}: 0 offers (IDs: ${chunk.length})`,
+              );
+            }
+          } catch (chunkErr) {
+            const msg = chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
+            this.logger.warn(
+              `  ❌ [getHotelOffersWithRoomTypes] chunk ${i / CHUNK_SIZE + 1} failed: ${msg}`,
+            );
+          }
+        }
+
+        if (mergedOffers.length > 0) {
+          this.logger.log(
+            `✅ [getHotelOffersWithRoomTypes] fallback produced ${mergedOffers.length} total offers for ${params.cityCode}`,
+          );
+          response.data = mergedOffers;
+        } else {
+          this.logger.warn(
+            `⚠️ [getHotelOffersWithRoomTypes] fallback yielded 0 offers for ${params.cityCode}`,
+          );
+        }
       }
-    } catch (error) {
+    } catch (fallbackErr) {
+      const msg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+      this.logger.error(
+        `❌ [getHotelOffersWithRoomTypes] fallback failed for ${params.cityCode}: ${msg}`,
+      );
+    }
+  }
+
+  if (!response?.data?.length) {
+    return {
+      success: true,
+      data: [],
+      message: 'No hotels found',
+    };
+  }
+
+  let roomImagesMap = new Map<string, Map<string, any[]>>();
+  try {
+    const hotelIds = response.data
+      .map((item: any) => item.hotel?.hotelId)
+      .filter((id: string) => id);
+
+    if (hotelIds.length > 0) {
+      const imagesData = await this.fetchHotelImagesWithRoomsBatch(hotelIds);
+      roomImagesMap = new Map(
+        Array.from(imagesData.entries()).map(([hotelId, data]) => [hotelId, data.roomImages])
+      );
+      this.logger.log(`✅ Fetched room images for ${roomImagesMap.size} hotels`);
+    }
+  } catch (error) {
       // ✅ FIXED: Type guard for 'unknown' error
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.warn(`Failed to fetch room images, continuing without them: ${errorMessage}`);

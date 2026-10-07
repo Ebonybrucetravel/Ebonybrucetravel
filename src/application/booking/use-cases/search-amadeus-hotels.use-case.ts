@@ -11,6 +11,41 @@ import { ProductType } from '@prisma/client';
 export class SearchAmadeusHotelsUseCase {
   private readonly logger = new Logger(SearchAmadeusHotelsUseCase.name);
 
+  // Master city → coords map. Single source of truth.
+  // Used by: execute() fallback, processResults() cityName, enrichHotelsWithLocation().
+  private readonly CITY_CENTERS: Record<string, { lat: number; lng: number; name: string }> = {
+    LON: { lat: 51.5074, lng: -0.1278, name: 'London' },
+    PAR: { lat: 48.8566, lng: 2.3522, name: 'Paris' },
+    NYC: { lat: 40.7128, lng: -74.006, name: 'New York' },
+    DXB: { lat: 25.2048, lng: 55.2708, name: 'Dubai' },
+    LOS: { lat: 6.5244, lng: 3.3792, name: 'Lagos' },
+    ABV: { lat: 9.0579, lng: 7.4951, name: 'Abuja' },
+    MAD: { lat: 40.4168, lng: -3.7038, name: 'Madrid' },
+    BCN: { lat: 41.3851, lng: 2.1734, name: 'Barcelona' },
+    ROM: { lat: 41.9028, lng: 12.4964, name: 'Rome' },
+    AMS: { lat: 52.3676, lng: 4.9041, name: 'Amsterdam' },
+    BER: { lat: 52.52, lng: 13.405, name: 'Berlin' },
+    IST: { lat: 41.0082, lng: 28.9784, name: 'Istanbul' },
+    IBA: { lat: 7.3775, lng: 3.947, name: 'Ibadan' },
+    KAN: { lat: 12.0022, lng: 8.592, name: 'Kano' },
+    PHC: { lat: 4.8156, lng: 7.0498, name: 'Port Harcourt' },
+    ENU: { lat: 6.4402, lng: 7.4943, name: 'Enugu' },
+    BNI: { lat: 6.335, lng: 5.6037, name: 'Benin City' },
+    CBQ: { lat: 4.976, lng: 8.3374, name: 'Calabar' },
+    QRW: { lat: 5.5167, lng: 5.75, name: 'Warri' },
+    JOS: { lat: 9.8965, lng: 8.8583, name: 'Jos' },
+    KAD: { lat: 10.5222, lng: 7.4383, name: 'Kaduna' },
+    MIU: { lat: 11.8333, lng: 13.15, name: 'Maiduguri' },
+    SKO: { lat: 13.0059, lng: 5.2476, name: 'Sokoto' },
+    YOL: { lat: 9.2, lng: 12.4833, name: 'Yola' },
+    AKR: { lat: 7.2571, lng: 5.2058, name: 'Akure' },
+    MXJ: { lat: 9.6139, lng: 6.5569, name: 'Minna' },
+    UYO: { lat: 5.0378, lng: 7.9128, name: 'Uyo' },
+    ABK: { lat: 6.3249, lng: 8.1137, name: 'Abakaliki' },
+    QOW: { lat: 5.4836, lng: 7.0333, name: 'Owerri' },
+    BCU: { lat: 10.3103, lng: 9.8439, name: 'Bauchi' },
+  };
+
   constructor(
     private readonly amadeusService: AmadeusService,
     private readonly markupRepository: MarkupRepository,
@@ -36,7 +71,7 @@ export class SearchAmadeusHotelsUseCase {
       bestRateOnly = false,
       countryOfResidence,
       lang,
-      radius = 200,
+      radius = 50,
       radiusUnit = 'KM',
       limit = 20,
       page = 1,
@@ -82,44 +117,62 @@ export class SearchAmadeusHotelsUseCase {
     
     if (hasCityCode && !hasHotelIds) {
       this.logger.log(`Fetching hotels for city code: ${cityCode}`);
-      
-      const hotelsList = await this.amadeusService.getHotelsByCity({
-        cityCode: cityCode,
-        radius: radius,
-        radiusUnit: radiusUnit,
-      });
-      
-      if (!hotelsList?.data || hotelsList.data.length === 0) {
-        throw new BadRequestException(
-          `No hotels found for city code: ${cityCode}. Please try a different city or use hotelIds directly.`,
-        );
-      }
-      
-    
-      finalHotelIds = hotelsList.data
-        .map((hotel: any) => hotel.hotelId)
-        .filter((id: string) => this.isValidHotelId(id, cityCode));
-    
-      if (finalHotelIds.length === 0 && radius) {
-        this.logger.warn(`No valid hotel IDs found with radius ${radius}km for ${cityCode}, retrying without radius...`);
-        
-        const retryHotelsList = await this.amadeusService.getHotelsByCity({
+
+      const safeRadius = Math.min(Math.max(Number(radius) || 50, 1), 100);
+
+      // ── Attempt 1: by-city ──
+      let finalHotelIdsAttempt: string[] = [];
+      try {
+        const hotelsList = await this.amadeusService.getHotelsByCity({
           cityCode: cityCode,
+          radius: safeRadius,
+          radiusUnit: radiusUnit,
         });
-        
-        if (retryHotelsList?.data) {
-          finalHotelIds = retryHotelsList.data
-            .map((hotel: any) => hotel.hotelId)
-            .filter((id: string) => this.isValidHotelId(id, cityCode));
+
+        finalHotelIdsAttempt = (hotelsList?.data || [])
+          .map((hotel: any) => hotel.hotelId)
+          .filter((id: string) => this.isValidHotelId(id, cityCode));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`by-city failed for ${cityCode}: ${msg}`);
+      }
+
+      // ── Attempt 2: by-geocode fallback (handles Ibadan, Kano, etc.) ──
+      if (finalHotelIdsAttempt.length === 0) {
+        const coords = this.CITY_CENTERS[cityCode];
+        if (coords) {
+          this.logger.warn(
+            `by-city returned nothing for ${cityCode}; trying by-geocode at (${coords.lat}, ${coords.lng})`,
+          );
+          try {
+            const geoList = await this.amadeusService.getHotelsByGeocode({
+              latitude: coords.lat,
+              longitude: coords.lng,
+              radius: safeRadius,
+              radiusUnit: 'KM',
+            });
+
+            finalHotelIdsAttempt = (geoList?.data || [])
+              .map((hotel: any) => hotel.hotelId)
+              .filter((id: string) => this.isValidHotelId(id, cityCode));
+
+            this.logger.log(`by-geocode fallback found ${finalHotelIdsAttempt.length} hotel IDs for ${cityCode}`);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.logger.warn(`by-geocode fallback failed for ${cityCode}: ${msg}`);
+          }
+        } else {
+          this.logger.warn(`No city center coordinates on file for ${cityCode}; cannot fall back`);
         }
       }
-      
-      if (finalHotelIds.length === 0) {
+
+      if (finalHotelIdsAttempt.length === 0) {
         throw new BadRequestException(
-          `No valid hotel IDs found for city code: ${cityCode}. Please try a different city or use hotelIds directly.`,
+          `No hotels found for ${cityCode}. Amadeus has no indexed inventory for this city.`,
         );
       }
-      
+
+      finalHotelIds = finalHotelIdsAttempt;
       this.logger.log(`Found ${finalHotelIds.length} valid hotels for city code: ${cityCode}`);
     }
 
@@ -127,10 +180,11 @@ export class SearchAmadeusHotelsUseCase {
     if (hasGeographicCoordinates && !hasHotelIds && !hasCityCode) {
       this.logger.log(`Fetching hotels near coordinates: ${geographicCoordinates.latitude}, ${geographicCoordinates.longitude}`);
       
-      const hotelsList = await this.amadeusService.getHotelsByGeocode({
-        latitude: geographicCoordinates.latitude,
-        longitude: geographicCoordinates.longitude,
-        radius: radius,
+      const safeRadius = Math.min(Math.max(Number(radius) || 50, 1), 100);
+
+      const hotelsList = await this.amadeusService.getHotelsByCity({
+        cityCode: cityCode,
+        radius: safeRadius,
         radiusUnit: radiusUnit,
       });
       
@@ -167,14 +221,24 @@ export class SearchAmadeusHotelsUseCase {
     if (cached) {
       return { ...cached, cached: true };
     }
+        // Fetch everything if the city has a manageable number of hotels.
+    // Only truncate when the list is genuinely huge (Amadeus offer pricing is slow).
+    const SOFT_LIMIT = 300;
+    const HARD_FETCH_CAP = 400;
 
-    // Cap the number of hotels we fetch per search. Amadeus is slow (~3.7s per
-    // 10-hotel chunk), so fetching all 334 London hotels takes minutes. We only
-    // need enough IDs to cover a few pages of results, plus a buffer for hotels
-    // that end up having no availability (which Amadeus drops silently).
-    const MAX_FETCH = Math.min(finalHotelIds.length, limit * 5);
-    const idsToFetch = finalHotelIds.slice(0, MAX_FETCH);
-    this.logger.log(`Will fetch ${idsToFetch.length} of ${finalHotelIds.length} hotel IDs`);
+    let idsToFetch: string[];
+    let truncated = false;
+
+    if (finalHotelIds.length <= SOFT_LIMIT) {
+      idsToFetch = finalHotelIds;
+      this.logger.log(`Fetching ALL ${finalHotelIds.length} hotels for ${cityCode || 'geocode search'}`);
+    } else {
+      idsToFetch = finalHotelIds.slice(0, HARD_FETCH_CAP);
+      truncated = true;
+      this.logger.log(
+        `Truncating: fetching ${idsToFetch.length} of ${finalHotelIds.length} hotels (cap: ${HARD_FETCH_CAP})`,
+      );
+    }
 
     try {
 
@@ -356,6 +420,12 @@ export class SearchAmadeusHotelsUseCase {
     meta: {
       count: paginatedData.length,
       total: totalAvailable,
+      totalListedByAmadeus: finalHotelIds.length,
+      truncated,
+      coveragePercentage:
+        finalHotelIds.length > 0
+          ? Math.round((totalAvailable / finalHotelIds.length) * 100)
+          : 0,
       limit,
       page,
       totalPages,
@@ -434,7 +504,7 @@ export class SearchAmadeusHotelsUseCase {
       roomQuantity = 1,
       currency: targetCurrency = 'NGN',
       bestRateOnly = false,
-      radius = 200,
+      radius = 50,
       radiusUnit = 'KM',
     } = searchParams;
 
@@ -503,10 +573,12 @@ export class SearchAmadeusHotelsUseCase {
     if (hasGeographicCoordinates && !hasHotelIds && !hasCityCode) {
       this.logger.log(`Fetching hotels near coordinates: ${geographicCoordinates.latitude}, ${geographicCoordinates.longitude}`);
       
+      const safeGeoRadius = Math.min(Math.max(Number(radius) || 50, 1), 100);
+
       const hotelsList = await this.amadeusService.getHotelsByGeocode({
         latitude: geographicCoordinates.latitude,
         longitude: geographicCoordinates.longitude,
-        radius: radius,
+        radius: safeGeoRadius,
         radiusUnit: radiusUnit,
       });
       
@@ -881,20 +953,7 @@ export class SearchAmadeusHotelsUseCase {
     totalHotels: number,
     cityCode?: string,
   ): Promise<any> {
-    const CITY_CENTERS: Record<string, { name: string }> = {
-      LON: { name: 'London' },
-      PAR: { name: 'Paris' },
-      NYC: { name: 'New York' },
-      DXB: { name: 'Dubai' },
-      LOS: { name: 'Lagos' },
-      ABV: { name: 'Abuja' },
-      MAD: { name: 'Madrid' },
-      BCN: { name: 'Barcelona' },
-      ROM: { name: 'Rome' },
-      AMS: { name: 'Amsterdam' },
-      BER: { name: 'Berlin' },
-      IST: { name: 'Istanbul' },
-    };
+    const CITY_CENTERS = this.CITY_CENTERS;
 
     const AMENITY_LABELS: Record<string, string> = {
       // Room basics
@@ -1100,7 +1159,12 @@ export class SearchAmadeusHotelsUseCase {
       data: dataWithImages,
       meta: {
         count: processedResults.length,
-        total: totalHotels,
+        total: processedResults.length,       // ← what we actually returned
+        totalListedByAmadeus: totalHotels,    // ← what Amadeus listed
+        coveragePercentage:
+          totalHotels > 0
+            ? Math.round((processedResults.length / totalHotels) * 100)
+            : 0,
         limit: totalHotels,
         page: 1,
         totalPages: 1,
@@ -1118,32 +1182,22 @@ export class SearchAmadeusHotelsUseCase {
 
 
   private isValidHotelId(hotelId: string, cityCode?: string): boolean {
+    // Amadeus hotel IDs are exactly 8 uppercase alphanumeric characters.
+    // Format: [chain 2][city 3][suffix 3] — e.g. ADMAD02V, ADMADAAD, ADMADCFU.
+    if (!hotelId || !/^[A-Z0-9]{8}$/.test(hotelId)) {
+      return false;
+    }
 
-    if (!hotelId || hotelId.length !== 8) {
-      return false;
-    }
-    
+    // Reject only obvious placeholder/garbage IDs.
     const invalidPatterns = ['FGDX', 'XXXX', 'TEST', '0000', '9999'];
-    if (invalidPatterns.some(pattern => hotelId.includes(pattern))) {
+    if (invalidPatterns.some((p) => hotelId.includes(p))) {
       return false;
     }
-    
-    const cityPatterns: Record<string, RegExp> = {
-      'DXB': /^(DXB|DHD|CPD|YHD|MKD|ROD|UID|RTD|IMD|HSD|MCD|WVD|OND|TJD)/,
-      'LON': /^(HPL|PIL|RTL|CQL|EDL|IAL|AZL|HLL|TIL|DSL|SBL|XKL|RDL|MRL|WHL)/,
-      'PAR': /^(ACP|BWP|OIP|HIP|AZP|LXP|CXL|RTP|UIP|MKP|YRP|YYP|XKP|DHP)/,
-      'LOS': /^(SIL|FGL|ICL|PRL|HSL|RDL|SUL|OIL|IRL|ONL|BWL)/,
-    };
-    
-    
-    if (cityCode && cityPatterns[cityCode]) {
-      return cityPatterns[cityCode].test(hotelId);
-    }
-    
-    const hasLetters = /[A-Z]/.test(hotelId);
-    const hasNumbers = /\d/.test(hotelId);
-    
-    return hasLetters && hasNumbers;
+
+    // Do NOT require digits — most valid IDs (ADMADAAD, ADMADCFU, ADMADDMM)
+    // contain only letters.
+    // Do NOT use hardcoded city-prefix whitelists — they reject valid hotels.
+    return true;
   }
 
 
@@ -1256,20 +1310,7 @@ export class SearchAmadeusHotelsUseCase {
   ): Promise<any[]> {
     if (!hotelOffers || hotelOffers.length === 0) return hotelOffers;
 
-    const CITY_CENTERS: Record<string, { lat: number; lng: number; name: string }> = {
-      LON: { lat: 51.5074, lng: -0.1278, name: 'London' },
-      PAR: { lat: 48.8566, lng: 2.3522, name: 'Paris' },
-      NYC: { lat: 40.7128, lng: -74.006, name: 'New York' },
-      DXB: { lat: 25.2048, lng: 55.2708, name: 'Dubai' },
-      LOS: { lat: 6.5244, lng: 3.3792, name: 'Lagos' },
-      ABV: { lat: 9.0579, lng: 7.4951, name: 'Abuja' },
-      MAD: { lat: 40.4168, lng: -3.7038, name: 'Madrid' },
-      BCN: { lat: 41.3851, lng: 2.1734, name: 'Barcelona' },
-      ROM: { lat: 41.9028, lng: 12.4964, name: 'Rome' },
-      AMS: { lat: 52.3676, lng: 4.9041, name: 'Amsterdam' },
-      BER: { lat: 52.52, lng: 13.405, name: 'Berlin' },
-      IST: { lat: 41.0082, lng: 28.9784, name: 'Istanbul' },
-    };
+    const CITY_CENTERS = this.CITY_CENTERS;
 
     const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
       const R = 6371;
