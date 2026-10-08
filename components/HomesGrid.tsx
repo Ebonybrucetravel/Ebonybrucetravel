@@ -58,6 +58,12 @@ interface HomesGridProps {
   onSearch?: (data: any) => void;
 }
 
+// ─── Base currency we request from the API ─────────────────────────────
+// We request everything in a stable base and convert client-side, exactly
+// like CarRentals does. This guarantees the displayed currency always
+// matches whatever the user selects in the language/currency switcher.
+const BASE_CURRENCY = "GBP";
+
 // ─── City mixes ────────────────────────────────────────────────────────
 const MIXES_BY_GEO: Record<string, string[][]> = {
   NG: [
@@ -202,31 +208,6 @@ async function detectGeoFromAPI(): Promise<string | null> {
   return null;
 }
 
-function getDisplayCurrency(): string {
-  if (typeof window === 'undefined') return 'NGN';
-
-  const keys = ['selectedCurrency', 'preferredCurrency', 'currency', 'currencyCode', 'app_currency'];
-  for (const k of keys) {
-    const v = localStorage.getItem(k);
-    if (v && ['NGN', 'GBP', 'USD', 'EUR', 'CAD', 'AUD', 'JPY', 'CNY', 'ZAR', 'KES'].includes(v.toUpperCase())) {
-      return v.toUpperCase();
-    }
-  }
-
-  const locale = localStorage.getItem('locale') || '';
-  if (locale.includes('/')) {
-    const code = locale.split('/')[1]?.toUpperCase();
-    if (code && ['NGN', 'GBP', 'USD', 'EUR'].includes(code)) return code;
-  }
-
-  const geo = getUserGeoCountry();
-  if (geo === 'NG') return 'NGN';
-  if (geo === 'US') return 'USD';
-  if (geo === 'GB') return 'GBP';
-  if (['FR', 'DE', 'ES', 'IT', 'NL'].includes(geo || '')) return 'EUR';
-  return 'NGN';
-}
-
 function pickCityMix(userGeo: string | null): string[] {
   const hourSlot = Math.floor(Date.now() / (60 * 60 * 1000));
   const mixes = (userGeo && MIXES_BY_GEO[userGeo]) || DEFAULT_MIXES;
@@ -288,7 +269,7 @@ function formatCancellationDeadline(isoDate?: string): string | undefined {
   }
 }
 
-// ─── Room name parsing (same rules as SearchResults) ───────────────────
+// ─── Room name parsing ─────────────────────────────────────────────────
 const rateNamePattern =
   /^(FLEXIBLE|BREAKFAST|BEST|DAILY|15PCT|SIGNATURE|PACKAGE|RATE|2X POINTS|HALF BOARD|ROOM ONLY|ADVANCE SAVER|CORPORATE)/i;
 
@@ -319,6 +300,8 @@ function parseRoomName(firstOffer: any): string {
 }
 
 // ─── Map Amadeus HotelOffer → HotelDisplay ─────────────────────────────
+// NOTE: this now stores the RAW price + the SOURCE currency from the API.
+// Conversion to the user's currency happens afterwards in an async step.
 function mapOfferToDisplay(
   offer: any,
   index: number,
@@ -337,6 +320,9 @@ function mapOfferToDisplay(
   if (markupAmount > 0 && price.original_total) {
     originalPrice = parseFloat(price.original_total);
   }
+
+  // ✅ FIX: capture the source currency that the API actually quoted in
+  const sourceCurrency = (price.currency || BASE_CURRENCY).toUpperCase();
 
   const isRefundable =
     policies.refundable?.cancellationRefund !== 'NON_REFUNDABLE' ||
@@ -393,7 +379,8 @@ function mapOfferToDisplay(
     distanceUnit,
     price: totalPrice,
     originalPrice,
-    currency: (price.currency || 'GBP').toUpperCase(),
+    // ✅ FIX: store the true source currency for the conversion step
+    currency: sourceCurrency,
     roomCategory: room.category || 'Room',
     roomName,
     bedType: room.bedType || 'Bed',
@@ -423,24 +410,21 @@ const HomesGrid: React.FC<HomesGridProps> = ({
   subtitle,
   onSearch,
 }) => {
-  const { t } = useLanguage();
+  // ✅ FIX: pull the reactive currency + converter from context, same as CarRentals
+  const { t, currency: userCurrency, convertPrice } = useLanguage();
   const router = useRouter();
+
   const [hotels, setHotels] = useState<HotelDisplay[]>([]);
   const [internalLoading, setInternalLoading] = useState(true);
   const [internalError, setInternalError] = useState<string | null>(null);
-  const [currency, setCurrency] = useState<string>('NGN');
   const [savedHotelIds, setSavedHotelIds] = useState<Set<string>>(new Set());
   const savedItemIdMapRef = useRef<Map<string, string>>(new Map());
 
-  const CURRENCY_SYMBOLS: Record<string, string> = {
-    NGN: '₦', GBP: '£', USD: '$', EUR: '€',
-    CAD: 'C$', AUD: 'A$', JPY: '¥', CNY: '¥', ZAR: 'R', KES: 'KSh',
-  };
+  // ✅ FIX: derive code + symbol from the reactive context (no more static map)
+  const userCurrencyCode = userCurrency?.code || "NGN";
+  const userCurrencySymbol = userCurrency?.symbol || "₦";
 
-  useEffect(() => {
-    setCurrency(getDisplayCurrency());
-  }, []);
-
+  // ─── Prop-driven state ────────────────────────────────────────────
   useEffect(() => {
     if (propHotels && propHotels.length > 0) {
       setHotels(propHotels);
@@ -448,6 +432,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     }
   }, [propHotels]);
 
+  // ─── Saved items ──────────────────────────────────────────────────
   useEffect(() => {
     const loadSaved = async () => {
       try {
@@ -480,6 +465,9 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     loadSaved();
   }, []);
 
+  // ─── Trending fetch ───────────────────────────────────────────────
+  // ✅ FIX: userCurrencyCode & convertPrice are dependencies so a currency
+  //         change triggers a re-fetch with the new cache key.
   useEffect(() => {
     if (propHotels && propHotels.length > 0) return;
 
@@ -497,13 +485,16 @@ const HomesGrid: React.FC<HomesGridProps> = ({
 
       const mix = pickCityMix(geo);
       const mixKey = mix.join('-');
-      const cacheKey = `homes_grid_real_v4_${mixKey}`;
+
+      // ✅ FIX: include the user's currency in the cache key.
+      //         Switching currency now invalidates the cache and re-fetches.
+      const cacheKey = `homes_grid_real_v5_${mixKey}_${userCurrencyCode}`;
 
       console.log('🌍 Hotel mix:', { geo: geo || 'unknown', mix, cacheKey });
 
       const cached = readCache(cacheKey);
-      if (cached) {
-        console.log('✅ Loaded from cache:', cached.hotels.length, 'hotels');
+      if (cached && cached.currency === userCurrencyCode) {
+        console.log('✅ Loaded from cache:', cached.hotels.length, 'hotels', cached.currency);
         setHotels(cached.hotels);
         setInternalLoading(false);
         return;
@@ -511,7 +502,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
 
       try {
         const { checkIn, checkOut } = getDefaultDates();
-        const displayCurrency = getDisplayCurrency();
 
         const results = await Promise.all(
           mix.map(async (cityCode) => {
@@ -522,7 +512,9 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                 checkOutDate: checkOut,
                 adults: 2,
                 roomQuantity: 1,
-                currency: displayCurrency,
+                // ✅ FIX: always request in a stable base currency, then convert
+                //         client-side (matches CarRentals behaviour).
+                currency: BASE_CURRENCY,
                 bestRateOnly: true,
                 page: 1,
                 limit: 20,
@@ -572,9 +564,57 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           mapOfferToDisplay(offer, i, city),
         );
 
-        setHotels(mapped);
-        console.log('✅ Loaded', mapped.length, 'hotels');
+        // ✅ FIX: convert raw prices → user's currency (like CarRentals).
+        //         Runs in parallel; failures fall back to the raw price.
+        const converted = await Promise.all(
+          mapped.map(async (hotel) => {
+            if (!hotel.price || hotel.price <= 0) return hotel;
 
+            const srcCurrency = (hotel.currency || BASE_CURRENCY).toUpperCase();
+            if (srcCurrency === userCurrencyCode) {
+              return { ...hotel, currency: userCurrencyCode };
+            }
+
+            try {
+              const newPrice = await convertPrice(hotel.price, srcCurrency);
+              const newOriginal = hotel.originalPrice
+                ? await convertPrice(hotel.originalPrice, srcCurrency)
+                : undefined;
+
+              const safePrice =
+                typeof newPrice === 'number' && newPrice > 0
+                  ? newPrice
+                  : hotel.price;
+
+              console.log(
+                `💱 Hotel ${hotel.name}: ${hotel.price} ${srcCurrency} → ${safePrice.toFixed(0)} ${userCurrencyCode}`,
+              );
+
+              return {
+                ...hotel,
+                price: safePrice,
+                originalPrice:
+                  typeof newOriginal === 'number' && newOriginal > 0
+                    ? newOriginal
+                    : hotel.originalPrice,
+                currency: userCurrencyCode,
+              };
+            } catch (err) {
+              console.warn(
+                `Failed to convert ${hotel.price} ${srcCurrency} → ${userCurrencyCode}`,
+                err,
+              );
+              return hotel;
+            }
+          }),
+        );
+
+        if (cancelled) return;
+
+        setHotels(converted);
+        console.log('✅ Loaded', converted.length, 'hotels in', userCurrencyCode);
+
+        // ─── Images ──────────────────────────────────────────────────
         const imageResults = await Promise.all(
           collected.map(async ({ offer }) => {
             const hotelId = offer.hotel?.hotelId;
@@ -622,7 +662,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           writeCache(cacheKey, {
             hotels: sorted,
             timestamp: Date.now(),
-            currency: displayCurrency,
+            currency: userCurrencyCode,
           });
 
           return sorted;
@@ -640,7 +680,8 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [propHotels]);
+    // ✅ FIX: added userCurrencyCode + convertPrice so switching currency refetches
+  }, [propHotels, userCurrencyCode, convertPrice]);
 
   const toggleSaveHotel = async (hotel: HotelDisplay) => {
     const isCurrentlySaved = savedHotelIds.has(hotel.id);
@@ -707,7 +748,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       checkOutDate,
       travellers: { adults: 2, children: 0 },
       rooms: 1,
-      currency,
+      currency: userCurrencyCode, // ✅ FIX: send the reactive currency
     };
 
     if (onSearch) {
@@ -721,13 +762,14 @@ const HomesGrid: React.FC<HomesGridProps> = ({
         checkOut: checkOutDate,
         guests: '2',
         rooms: '1',
-        currency,
+        currency: userCurrencyCode, // ✅ FIX
       });
       router.push(`/search?${params.toString()}`);
     }
   };
 
-  const symbol = CURRENCY_SYMBOLS[currency] || currency;
+  // ✅ FIX: derive symbol from reactive context (no static CURRENCY_SYMBOLS map)
+  const symbol = userCurrencySymbol;
   const formatPrice = (p: number) =>
     `${symbol}${p.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
@@ -739,7 +781,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
   const displaySubtitle =
     subtitle || 'From castles and villas to boats and igloos, we have it all';
 
-  // ─── Loading skeleton (3 columns) ────────────────────────────────
+  // ─── Loading skeleton ────────────────────────────────────────────
   if (isLoading) {
     return (
       <section className="px-4 md:px-8 lg:px-16 pt-8 pb-0">
@@ -802,7 +844,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
 
       {/* Carousel */}
       <div className="relative group/carousel">
-        {/* Left arrow */}
         <button
           onClick={() => {
             const el = document.getElementById('homes-carousel');
@@ -816,7 +857,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           </svg>
         </button>
 
-        {/* Track — 3 columns now */}
         <div
           id="homes-carousel"
           className="flex gap-4 overflow-x-auto scroll-smooth snap-x snap-mandatory pb-2"
@@ -868,7 +908,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                     </div>
                   )}
 
-                  {/* Wishlist heart */}
                   <button
                     className={`absolute top-3 right-3 w-9 h-9 rounded-full z-10 flex items-center justify-center transition backdrop-blur-md ${
                       savedHotelIds.has(hotel.id)
@@ -901,7 +940,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                   </button>
                 </div>
 
-                {/* Content — no flex-1 spacer, no CTA button */}
+                {/* Content */}
                 <div className="p-4 flex flex-col">
                   {hotel.boardLabel && (
                     <div className="mb-1">
@@ -915,7 +954,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                     {hotel.name}
                   </h3>
 
-                  {/* Location + distance + map link */}
                   <div className="mt-1.5 flex flex-col text-xs text-gray-500 gap-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="underline cursor-pointer font-medium text-[#0071c2] line-clamp-1">
@@ -946,7 +984,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                       )}
                   </div>
 
-                  {/* Amenities */}
                   {hotel.amenitiesList && hotel.amenitiesList.length > 0 && (
                     <div className="flex items-center gap-3 mt-2 text-xs text-gray-600 flex-wrap">
                       {hotel.amenitiesList.map((a, i) => (
@@ -958,7 +995,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                     </div>
                   )}
 
-                  {/* Room + bed + refundable block */}
                   <div className="mt-3 pt-3 border-t border-gray-100 space-y-1">
                     <p className="text-sm font-semibold text-gray-900 line-clamp-1">
                       {hotel.roomName || hotel.roomCategory}
@@ -978,14 +1014,14 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                     )}
                   </div>
 
-                  {/* Price block — sits directly below, no gap, no CTA */}
+                  {/* Price block */}
                   <div className="pt-3 mt-3 border-t border-gray-100">
                     <p className="text-[10px] text-gray-500 leading-tight">
                       Starting from
                     </p>
                     {hotel.originalPrice && (
                       <p className="text-xs text-red-500 line-through leading-tight">
-                        {symbol} {hotel.originalPrice.toLocaleString()}
+                        {formatPrice(hotel.originalPrice)}
                       </p>
                     )}
                     <p className="text-xl font-bold text-gray-900 leading-tight">
@@ -1001,7 +1037,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           })}
         </div>
 
-        {/* Right arrow */}
         <button
           onClick={() => {
             const el = document.getElementById('homes-carousel');
@@ -1016,7 +1051,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
         </button>
       </div>
 
-      {/* Dots — only show when more than 3 hotels */}
       {displayHotels.length > 3 && (
         <div className="flex justify-center gap-1.5 mt-3">
           {displayHotels.map((_, i) => (

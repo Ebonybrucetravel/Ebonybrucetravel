@@ -99,7 +99,7 @@ const CAR_ROUTES_BY_GEO: Record<
 };
 
 const DEFAULT_CAR_ROUTES = CAR_ROUTES_BY_GEO.GB;
-const CAR_CACHE_KEY = "car_rentals_grid_v2"; // ← bumped version to invalidate old broken cache
+const CAR_CACHE_KEY = "car_rentals_grid_v2";
 const CAR_CACHE_TTL_MS = 30 * 60 * 1000;
 
 // ─── Geo detection ─────────────────────────────────────────────────────
@@ -171,14 +171,11 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
 function normalizeCurrencyCode(raw?: string): string {
   if (!raw) return "GBP";
   const cleaned = String(raw).trim().toUpperCase();
-  // Some Amadeus responses use 3-letter ISO; if it looks weird, default
   if (!/^[A-Z]{3}$/.test(cleaned)) return "GBP";
   return cleaned;
 }
 
 function extractRawPrice(item: any): { amount: number; currency: string } {
-  // Walk through every possible price field Amadeus might return
-  // and pull out BOTH the amount AND the currency it's denominated in.
   const candidates: Array<{ amount: any; currency: any }> = [
     { amount: item?.realData?.finalPrice, currency: item?.realData?.currency },
     { amount: item?.final_amount,         currency: item?.currency },
@@ -206,7 +203,6 @@ function extractRawPrice(item: any): { amount: number; currency: string } {
 }
 
 const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
-  // ✅ Added convertPrice from useLanguage
   const { t, currency, convertPrice } = useLanguage();
   const router = useRouter();
   const [cars, setCars] = useState<CarDisplay[]>([]);
@@ -235,7 +231,6 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
       setLoading(true);
       setError(null);
 
-      // 1. Cache hit — but only if the cached currency matches current
       const cached = readCarCache();
       if (cached && cached.cars.length > 0 && cached.currency === userCurrencyCode) {
         console.log("✅ Cars loaded from cache:", cached.cars.length, cached.currency);
@@ -246,7 +241,6 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
         return;
       }
 
-      // 2. Build search params
       const geo = getUserGeoCountry();
       const routes = pickCarRoutes(geo);
       console.log("🚗 Car grid — geo:", geo || "unknown", "routes:", routes.length);
@@ -263,7 +257,6 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
       const pickupISO = pickup.toISOString();
       const dropoffISO = dropoff.toISOString();
 
-      // 3. Fetch every route in parallel
       try {
         const responses = await Promise.all(
           routes.map(async (route) => {
@@ -274,7 +267,7 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
                   pickupDateTime: pickupISO,
                   dropoffLocationCode: route.to.code,
                   dropoffDateTime: dropoffISO,
-                  currency: "GBP",   // request GBP from backend; we convert client-side
+                  currency: "GBP",
                   passengers: 2,
                   transferType: "PRIVATE",
                 },
@@ -303,10 +296,8 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
             if (!id || seen.has(id)) continue;
             seen.add(id);
 
-            // ✅ FIX: extract raw amount + its TRUE currency
             const { amount: rawAmount, currency: sourceCurrency } = extractRawPrice(item);
 
-            // ✅ FIX: convert to the user's selected currency before display
             let convertedAmount = rawAmount;
             if (rawAmount > 0 && sourceCurrency !== userCurrencyCode) {
               try {
@@ -323,7 +314,6 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
               }
             }
 
-            // Drop vehicles we couldn't price at all
             if (convertedAmount <= 0) {
               console.warn(`⚠️ Skipping car ${id} — no price`);
               continue;
@@ -344,7 +334,7 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
               provider: item.provider || item.serviceProvider?.name || "Car Rental",
               vehicleCategory: item.vehicleCategory || item.vehicle?.category || "Standard",
               vehicleDescription: vehicleDesc,
-              price: Math.round(convertedAmount),   // ← now in user's currency
+              price: Math.round(convertedAmount),
               rating: item.rating || 4.5,
               reviews: Math.floor(Math.random() * 300) + 150,
               image: item.image || carImages[mapped.length % carImages.length].image,
@@ -430,7 +420,6 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
       const isSUV = car.name.includes("Range") || car.name.includes("Porsche");
       const isElectric = car.name.includes("Tesla");
 
-      // ✅ FIX: realistic NGN prices for the fallback (3-day rental, Nigeria rates)
       const isNigeria = geo === "NG" || userCurrencyCode === "NGN";
       const basePrice = isNigeria
         ? isLuxury ? 650000 : isSUV ? 750000 : isElectric ? 600000 : 500000
@@ -682,7 +671,6 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
                   className="text-white font-bold px-3.5 py-1.5 rounded-full text-sm shadow-md flex items-center gap-1"
                   style={{ backgroundColor: brandBlue }}
                 >
-                  {/* ✅ FIX: formatted with .toLocaleString() */}
                   {formatPriceDisplay(car.discountedPrice || car.price)}
                   <span className="text-[10px] font-normal opacity-90">{t("cars.perTrip")}</span>
                 </div>
@@ -772,32 +760,14 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
                   )}
                 </div>
 
-                <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
-                  <div>
-                    <p className="text-[9px] text-gray-500 leading-tight">
-                      {t("cars.perTrip")}
-                    </p>
-                    {/* ✅ FIX: formatted with .toLocaleString() */}
-                    <p className="text-lg font-bold text-gray-900 leading-tight">
-                      {formatPriceDisplay(car.discountedPrice || car.price)}
-                    </p>
-                  </div>
-                  <button
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors duration-200"
-                    style={{ backgroundColor: brandBlue, color: "white" }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = "#2a8bb5";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = brandBlue;
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCarClick(car);
-                    }}
-                  >
-                    {t("cars.bookTransfer")}
-                  </button>
+                {/* ─── Price block (button removed) ─────────────────── */}
+                <div className="pt-3 border-t border-gray-100">
+                  <p className="text-[9px] text-gray-500 leading-tight">
+                    {t("cars.perTrip")}
+                  </p>
+                  <p className="text-lg font-bold text-gray-900 leading-tight">
+                    {formatPriceDisplay(car.discountedPrice || car.price)}
+                  </p>
                 </div>
               </div>
             </div>
