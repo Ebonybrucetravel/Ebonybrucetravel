@@ -50,12 +50,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           />
         </Providers>
 
-        {/* HubSpot Embed Code */}
-        <Script
-          id="hs-script-loader"
-          src="//js-eu1.hs-scripts.com/149412794.js"
-          strategy="afterInteractive"
-        />
+        {/* Start of Tawk.to Script */}
+        <Script id="tawk-to-script" strategy="afterInteractive">
+          {`
+            var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+            (function(){
+              var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+              s1.async=true;
+              s1.src='https://embed.tawk.to/6ac78729264a6434c6228977/1k4dmfuk2';
+              s1.charset='UTF-8';
+              s1.setAttribute('crossorigin','*');
+              s0.parentNode.insertBefore(s1,s0);
+            })();
+          `}
+        </Script>
+        {/* End of Tawk.to Script */}
+        
       </body>
     </html>
   );

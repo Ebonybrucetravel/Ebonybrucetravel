@@ -7,49 +7,45 @@ import Navbar from '@/components/Navbar';
 import Newsletter from '@/components/Newsletter';
 import Footer from '@/components/Footer';
 import AuthModal from '@/components/AuthModal';
-import AIAssistant from '@/components/AIAssistant';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const { user, isLoggedIn, logout, updateUser } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const [isAiOpen, setIsAiOpen] = useState(false);
 
   // Admin routes: no main site nav/footer, full-screen admin UI
   const isAdminRoute = pathname?.startsWith('/admin');
 
   const authRoutes = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email'];
-const isAuthRoute = authRoutes.includes(pathname);
-const authMode = pathname === '/register' ? 'register'
-  : pathname === '/forgot-password' ? 'forgot-password'
-  : pathname === '/reset-password' ? 'reset-password'
-  : pathname === '/verify-email' ? 'verify-email'
-  : 'login';
+  const isAuthRoute = authRoutes.includes(pathname);
+  const authMode = pathname === '/register' ? 'register'
+    : pathname === '/forgot-password' ? 'forgot-password'
+    : pathname === '/reset-password' ? 'reset-password'
+    : pathname === '/verify-email' ? 'verify-email'
+    : 'login';
 
-// ✅ NEW: Read the token from the URL (query string + hash fallback)
-const [authToken, setAuthToken] = useState<string>('');
+  // ✅ Read the token from the URL (query string + hash fallback)
+  const [authToken, setAuthToken] = useState<string>('');
 
-useEffect(() => {
-  if (typeof window === 'undefined') return;
-  if (!isAuthRoute) return;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!isAuthRoute) return;
 
-  let t = '';
+    let t = '';
 
+    const params = new URLSearchParams(window.location.search);
+    t = params.get('token') || '';
 
-  const params = new URLSearchParams(window.location.search);
-  t = params.get('token') || '';
+    if (!t && window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      t = hashParams.get('token') || '';
+    }
 
- 
-  if (!t && window.location.hash) {
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    t = hashParams.get('token') || '';
-  }
+    console.log('🔍 [AppShell] Auth route:', pathname);
+    console.log('🔍 [AppShell] Token from URL:', t ? t.substring(0, 16) + '...' : '(empty)');
 
-  console.log('🔍 [AppShell] Auth route:', pathname);
-  console.log('🔍 [AppShell] Token from URL:', t ? t.substring(0, 16) + '...' : '(empty)');
-
-  setAuthToken(t);
-}, [pathname, isAuthRoute]);
+    setAuthToken(t);
+  }, [pathname, isAuthRoute]);
 
   const openAuth = (mode: 'login' | 'register') => {
     sessionStorage.setItem('authReturnTo', pathname);
@@ -112,25 +108,7 @@ useEffect(() => {
           onClose={closeAuth}
         />
       )}
-
-     
-      <button
-        onClick={() => setIsAiOpen(!isAiOpen)}
-        className="fixed bottom-8 right-8 w-16 h-16 bg-[#33a8da] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition z-50"
-        aria-label="Open AI Assistant"
-      >
-        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-        </svg>
-      </button>
-
-      {/* AI Assistant Modal - Pass user if logged in, otherwise undefined/null */}
-      {isAiOpen && (
-        <AIAssistant 
-          onClose={() => setIsAiOpen(false)} 
-          user={isLoggedIn ? user : null} 
-        />
-      )}
+      
     </div>
   );
 }

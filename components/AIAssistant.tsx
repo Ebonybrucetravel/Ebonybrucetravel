@@ -336,6 +336,30 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
     return "I can help you search flights, hotels, and car rentals. Just tell me what you're looking for!";
   };
 
+  // --- Tawk.to Live Chat Handoff Function ---
+  const triggerLiveChatHandoff = () => {
+    // Cast window to any to access the Tawk.to global API
+    const tawk = (window as any).Tawk_API;
+    
+    if (tawk) {
+      // Open the Tawk.to chat widget
+      tawk.maximize();
+      
+      setMessages(prev => [
+        ...prev,
+        { role: 'assistant', content: "I'm opening a live chat window for you. A human agent will be with you shortly. Please briefly repeat your question for them so they can assist you right away." }
+      ]);
+    } else {
+      console.error('Tawk.to widget is not loaded yet.');
+      // Fallback to WhatsApp if Tawk.to fails to load
+      setMessages(prev => [
+        ...prev,
+        { role: 'assistant', content: "Live chat is currently unavailable. Let me connect you with our team on WhatsApp instead." }
+      ]);
+      openWhatsApp();
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -350,7 +374,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
 
       // Check for complex queries first
       if (isComplexQuery(userMessage)) {
-        apiResponse = `For assistance with ${userMessage}, please contact our travel specialists on WhatsApp. They can provide personalized help.`;
+        // Trigger Tawk.to Handoff
+        triggerLiveChatHandoff();
+        return; 
       }
       // Flight search
       else if ((userMessage.toLowerCase().includes('flight') || userMessage.toLowerCase().includes('fly')) && 
@@ -410,10 +436,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
       setMessages(prev => [...prev, { role: 'assistant', content: apiResponse }]);
     } catch (error) {
       console.error("AI Chat error:", error);
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: "I'm having trouble connecting right now. Please try again or contact us on WhatsApp for immediate assistance."
-      }]);
+      // Trigger Handoff on AI failure
+      triggerLiveChatHandoff();
     } finally {
       setIsLoading(false);
     }
